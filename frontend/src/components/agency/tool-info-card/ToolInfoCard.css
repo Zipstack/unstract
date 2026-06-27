@@ -30,3 +30,8 @@
   grid-auto-flow: column;
   justify-self: end;
 }
+
+.toolinfo-card-deprecated {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

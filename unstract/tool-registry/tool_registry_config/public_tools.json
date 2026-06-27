@@ -1,6 +1,8 @@
 {
     "classify": {
         "tool_uid": "classify",
+        "deprecated": true,
+        "deprecation_message": "File Classifier is deprecated and will be removed in a future release. Use Prompt Studio with an LLM for classification.",
         "properties": {
             "schemaVersion": "0.0.1",
             "displayName": "File Classifier",
@@ -112,6 +114,8 @@
     },
     "text_extractor": {
         "tool_uid": "text_extractor",
+        "deprecated": true,
+        "deprecation_message": "Text Extractor is deprecated and will be removed in a future release. Use the X2Text adapter instead.",
         "properties": {
             "schemaVersion": "0.0.1",
             "displayName": "Text Extractor",

@@ -199,6 +199,8 @@ services:
     image: unstract/runner:${VERSION}
     container_name: unstract-runner
     restart: unless-stopped
+    profiles:
+      - legacy-runner
     ports:
       - 5002:5002
     env_file:
