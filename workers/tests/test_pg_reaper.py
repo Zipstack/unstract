@@ -35,6 +35,7 @@ from queue_backend.pg_queue.reaper import (
     sweep_expired_results,
     sweep_orphan_dedup,
 )
+from queue_backend.pg_queue.schema import qualified
 
 
 # The reaper's leader tick also runs the PG scheduler tick (②b). Its behaviour
@@ -163,14 +164,18 @@ class TestConstruction:
         # An injected knob bypasses the env parser's guard → re-validated in __init__.
         with pytest.raises(ValueError, match="sweep_interval"):
             PgReaper(
-                _FakeLease(), interval_seconds=1, sweep_interval_seconds=0,
+                _FakeLease(),
+                interval_seconds=1,
+                sweep_interval_seconds=0,
                 sweep_conn=object(),
             )
 
     def test_non_positive_dedup_retention_rejected(self):
         with pytest.raises(ValueError, match="dedup_retention"):
             PgReaper(
-                _FakeLease(), interval_seconds=1, dedup_retention_seconds=0,
+                _FakeLease(),
+                interval_seconds=1,
+                dedup_retention_seconds=0,
                 sweep_conn=object(),
             )
 
@@ -264,7 +269,8 @@ class TestLeadershipGating:
 class TestSchedulerTick:
     """The orchestrator's second job: the leader (and only the leader) runs the
     PG scheduler tick each cycle. Scheduling behaviour itself is in
-    test_pg_scheduler.py; here we only assert the wiring + leader gating."""
+    test_pg_scheduler.py; here we only assert the wiring + leader gating.
+    """
 
     def _reaper(self, lease):
         return PgReaper(
@@ -335,14 +341,17 @@ class TestRetentionSweepSql:
         conn, cur = self._conn_cur(3)
         assert sweep_expired_results(conn) == 3
         sql = cur.execute.call_args[0][0]
-        assert "DELETE FROM pg_task_result" in sql and "expires_at <= now()" in sql
+        assert (
+            f"DELETE FROM {qualified('pg_task_result')}" in sql
+            and "expires_at <= now()" in sql
+        )
         conn.commit.assert_called_once()
 
     def test_sweep_orphan_dedup_sql(self):
         conn, cur = self._conn_cur(2)
         assert sweep_orphan_dedup(conn, 999) == 2
         args = cur.execute.call_args[0]
-        assert "DELETE FROM pg_batch_dedup" in args[0]
+        assert f"DELETE FROM {qualified('pg_batch_dedup')}" in args[0]
         assert "created_at <= now() - make_interval" in args[0]
         assert args[1] == (999,)  # the retention param is bound, not interpolated
         conn.commit.assert_called_once()
@@ -502,8 +511,13 @@ class _FakeApiClient:
     """
 
     def __init__(
-        self, status="EXECUTING", *, fail_read=False, fail_update=False,
-        fail_update_for=None, on_get=None,
+        self,
+        status="EXECUTING",
+        *,
+        fail_read=False,
+        fail_update=False,
+        fail_update_for=None,
+        on_get=None,
     ):
         self._status = status
         self._fail_read = fail_read

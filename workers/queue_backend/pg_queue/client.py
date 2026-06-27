@@ -37,11 +37,13 @@ import psycopg2
 
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import create_pg_connection
+from .schema import qualified
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
 
 logger = logging.getLogger(__name__)
+
 
 # Atomic claim. Takes up to %(qty)s ready messages no other transaction
 # holds, makes them invisible for %(vt)s seconds, returns them. SKIP LOCKED
@@ -78,17 +80,27 @@ logger = logging.getLogger(__name__)
 # ``vt <= now()`` applied as a per-row filter — not a guaranteed top-N: vt is
 # not in the index, so claimed-but-unacked rows (future vt) at the front of a
 # priority band are scanned past on each claim. Cheap at low in-flight depth.
-_DEQUEUE_SQL = """
+def _dequeue_sql() -> str:
+    """Build the atomic-claim SQL, schema-qualifying ``pg_queue_message``.
+
+    Built per call (not a module constant) so the schema is resolved from the
+    live ``DB_SCHEMA`` — the table is named ``"<schema>".pg_queue_message`` so
+    it resolves through PgBouncer transaction pooling without ``search_path``
+    (see :mod:`queue_backend.pg_queue.schema`). Cost is a trivial f-string vs.
+    the DB round trip that follows.
+    """
+    msg = qualified("pg_queue_message")
+    return f"""
 WITH locked AS (
     SELECT msg_id
-      FROM pg_queue_message
+      FROM {msg}
      WHERE queue_name = %s
        AND vt <= now()
      ORDER BY priority DESC, msg_id
        FOR UPDATE SKIP LOCKED
      LIMIT %s
 ), claimed AS (
-    UPDATE pg_queue_message q
+    UPDATE {msg} q
        SET vt = now() + make_interval(secs => %s),
            read_ct = read_ct + 1
       FROM locked
@@ -123,12 +135,16 @@ class QueueMessage:
 # appends ``RETURNING msg_id``; the PG scheduler (pg_scheduler.py) executes this
 # verbatim inside its own transaction so the enqueue + next_run advance commit
 # atomically (it can't call send(), which commits internally). Keep callers in
-# sync by sharing this constant rather than copying the SQL.
-INSERT_MESSAGE_SQL: str = (
-    "INSERT INTO pg_queue_message "
-    "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
-    "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0)"
-)
+# sync by calling this helper rather than copying the SQL. Built per call so
+# ``pg_queue_message`` is schema-qualified from the live ``DB_SCHEMA`` (resolves
+# through PgBouncer txn pooling without ``search_path`` — see
+# :mod:`queue_backend.pg_queue.schema`).
+def insert_message_sql() -> str:
+    return (
+        f"INSERT INTO {qualified('pg_queue_message')} "
+        "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
+        "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0)"
+    )
 
 
 class PgQueueClient:
@@ -211,7 +227,7 @@ class PgQueueClient:
             )
         with self._cursor() as cur:
             cur.execute(
-                INSERT_MESSAGE_SQL + " RETURNING msg_id",
+                insert_message_sql() + " RETURNING msg_id",
                 # "" rather than NULL for "no org" — the column is non-null
                 # (string fields shouldn't have two empty values; Django S6553).
                 (
@@ -242,9 +258,9 @@ class PgQueueClient:
         if qty <= 0:
             raise ValueError(f"qty must be positive, got {qty}")
         with self._cursor() as cur:
-            # Param order matches the %s positions in _DEQUEUE_SQL:
+            # Param order matches the %s positions in _dequeue_sql():
             # queue_name (locked CTE), qty (LIMIT), vt_seconds (UPDATE SET).
-            cur.execute(_DEQUEUE_SQL, (queue_name, qty, vt_seconds))
+            cur.execute(_dequeue_sql(), (queue_name, qty, vt_seconds))
             rows = cur.fetchall()
         return [
             QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
@@ -260,7 +276,10 @@ class PgQueueClient:
         avoids a duplicate warning per double-run.
         """
         with self._cursor() as cur:
-            cur.execute("DELETE FROM pg_queue_message WHERE msg_id = %s", (msg_id,))
+            cur.execute(
+                f"DELETE FROM {qualified('pg_queue_message')} WHERE msg_id = %s",
+                (msg_id,),
+            )
             deleted = cur.rowcount
         if deleted == 0:
             logger.debug(

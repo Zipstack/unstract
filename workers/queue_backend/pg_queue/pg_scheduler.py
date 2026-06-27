@@ -41,7 +41,8 @@ from croniter import croniter
 from unstract.core.data_models import TaskPayload
 
 from ..fairness import DEFAULT_PRIORITY
-from .client import INSERT_MESSAGE_SQL
+from .client import insert_message_sql
+from .schema import qualified
 from .task_payload import to_payload
 
 if TYPE_CHECKING:
@@ -114,7 +115,8 @@ def _quiesce_invalid_cron(conn: PgConnection, schedule: _DueSchedule) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE pg_periodic_schedule SET enabled = FALSE WHERE pipeline_id = %s",
+                f"UPDATE {qualified('pg_periodic_schedule')} "
+                "SET enabled = FALSE WHERE pipeline_id = %s",
                 (schedule.pipeline_id,),
             )
         conn.commit()
@@ -140,10 +142,10 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
             cur.execute("SELECT now()")
             base = cur.fetchone()[0]
             cur.execute(
-                """
+                f"""
                 SELECT pipeline_id, organization_id, workflow_id, pipeline_name,
                        cron_string, next_run_at
-                FROM pg_periodic_schedule
+                FROM {qualified('pg_periodic_schedule')}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)
                 """,
@@ -170,8 +172,8 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
                 # next time and do NOT fire (no burst when handed over).
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE pg_periodic_schedule SET next_run_at = %s "
-                        "WHERE pipeline_id = %s",
+                        f"UPDATE {qualified('pg_periodic_schedule')} "
+                        "SET next_run_at = %s WHERE pipeline_id = %s",
                         (nxt, schedule.pipeline_id),
                     )
                 conn.commit()
@@ -189,11 +191,11 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
                 pipeline_name=schedule.pipeline_name,
             )
             # Enqueue + advance in ONE transaction so a crash between them can't
-            # re-fire next cycle. INSERT_MESSAGE_SQL is the shared enqueue
-            # contract from client.py (send() uses the same constant).
+            # re-fire next cycle. insert_message_sql() is the shared enqueue
+            # contract from client.py (send() uses the same helper).
             with conn.cursor() as cur:
                 cur.execute(
-                    INSERT_MESSAGE_SQL,
+                    insert_message_sql(),
                     (
                         SCHEDULER_QUEUE_NAME,
                         json.dumps(payload),
@@ -202,7 +204,7 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
                     ),
                 )
                 cur.execute(
-                    "UPDATE pg_periodic_schedule "
+                    f"UPDATE {qualified('pg_periodic_schedule')} "
                     "SET last_run_at = %s, next_run_at = %s WHERE pipeline_id = %s",
                     (base, nxt, schedule.pipeline_id),
                 )

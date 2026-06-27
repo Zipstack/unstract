@@ -83,6 +83,7 @@ from .fairness import (
 )
 from .handle import BarrierHandle
 from .pg_queue.connection import create_pg_connection
+from .pg_queue.schema import qualified
 
 if TYPE_CHECKING:
     from celery.canvas import Signature
@@ -130,7 +131,8 @@ def _cursor() -> Iterator[Any]:
 def _delete_barrier(execution_id: str) -> None:
     with _cursor() as cur:
         cur.execute(
-            "DELETE FROM pg_barrier_state WHERE execution_id = %s", (execution_id,)
+            f"DELETE FROM {qualified('pg_barrier_state')} WHERE execution_id = %s",
+            (execution_id,),
         )
 
 
@@ -154,7 +156,8 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
     """
     with _cursor() as cur:
         cur.execute(
-            "INSERT INTO pg_batch_dedup (execution_id, batch_index, created_at) "
+            f"INSERT INTO {qualified('pg_batch_dedup')} "
+            "(execution_id, batch_index, created_at) "
             "VALUES (%s, %s, now()) "
             "ON CONFLICT (execution_id, batch_index) DO NOTHING "
             "RETURNING execution_id",
@@ -178,7 +181,10 @@ def clear_execution_batches(execution_id: str) -> int:
     Called from the barrier-finalise + abort paths.
     """
     with _cursor() as cur:
-        cur.execute("DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,))
+        cur.execute(
+            f"DELETE FROM {qualified('pg_batch_dedup')} WHERE execution_id = %s",
+            (execution_id,),
+        )
         return cur.rowcount
 
 
@@ -312,7 +318,7 @@ class PgBarrier:
                 # concurrent enqueues; orphan reclaim is a separate (future)
                 # periodic sweep keyed on pg_barrier_expires_idx.
                 cur.execute(
-                    "INSERT INTO pg_barrier_state "
+                    f"INSERT INTO {qualified('pg_barrier_state')} "
                     "(execution_id, organization_id, remaining, results, "
                     " created_at, expires_at) "
                     "VALUES (%s, %s, %s, '[]'::jsonb, now(), "
@@ -329,7 +335,7 @@ class PgBarrier:
                 # returns False → all batches skip → barrier hangs to expiry.
                 # (Markers are written by claim_batch() on the in-body PG path.)
                 cur.execute(
-                    "DELETE FROM pg_batch_dedup WHERE execution_id = %s",
+                    f"DELETE FROM {qualified('pg_batch_dedup')} WHERE execution_id = %s",
                     (execution_id,),
                 )
 
@@ -578,7 +584,7 @@ def _barrier_pg_decrement(
     try:
         with _cursor() as cur:
             cur.execute(
-                "UPDATE pg_barrier_state "
+                f"UPDATE {qualified('pg_barrier_state')} "
                 "   SET remaining = remaining - 1, "
                 "       results = results || jsonb_build_array(%s::jsonb) "
                 " WHERE execution_id = %s "
@@ -718,7 +724,7 @@ def barrier_pg_abort(
     with _cursor() as cur:
         cur.execute(
             "WITH claimed AS ("
-            "    DELETE FROM pg_barrier_state WHERE execution_id = %s "
+            f"    DELETE FROM {qualified('pg_barrier_state')} WHERE execution_id = %s "
             "    RETURNING execution_id"
             ") SELECT execution_id FROM claimed",
             (execution_id,),

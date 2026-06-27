@@ -23,6 +23,7 @@ import pytest
 from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.connection import create_pg_connection
+from queue_backend.pg_queue.schema import qualified
 
 # --- Unit: SQL shape against a mocked connection ---
 
@@ -56,7 +57,7 @@ class TestPgQueueClientUnit:
         msg_id = PgQueueClient(conn=conn).send("q1", {"a": 1}, org_id="org-9")
         assert msg_id == 42
         sql, params = cur.execute.call_args.args
-        assert "INSERT INTO pg_queue_message" in sql
+        assert f"INSERT INTO {qualified('pg_queue_message')}" in sql
         assert params[0] == "q1"
         assert params[2] == "org-9"
         assert '"a": 1' in params[1]  # message JSON-serialised
@@ -95,7 +96,7 @@ class TestPgQueueClientUnit:
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)
         sql, params = cur.execute.call_args.args
         assert "FOR UPDATE SKIP LOCKED" in sql
-        assert "UPDATE pg_queue_message" in sql
+        assert f"UPDATE {qualified('pg_queue_message')}" in sql
         assert "ORDER BY priority DESC" in sql  # fairness L3 claim order
         # Param order follows the %s positions: queue_name, qty, vt_seconds.
         assert params == ("q1", 3, 15)
@@ -106,7 +107,7 @@ class TestPgQueueClientUnit:
         conn, cur = _mock_conn(rowcount=1)
         assert PgQueueClient(conn=conn).delete(7) is True
         sql, params = cur.execute.call_args.args
-        assert "DELETE FROM pg_queue_message" in sql
+        assert f"DELETE FROM {qualified('pg_queue_message')}" in sql
         assert params == (7,)
         conn.commit.assert_called_once()
 
@@ -145,9 +146,7 @@ class TestConnectionLifecycle:
         conn.closed = 0
         conn.cursor.return_value = _CursorCtx(cur)
         factory = MagicMock(return_value=conn)
-        monkeypatch.setattr(
-            "queue_backend.pg_queue.client.create_pg_connection", factory
-        )
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
         return PgQueueClient(), conn, factory
 
     def test_owned_conn_recovered_on_operational_error(self, monkeypatch):
@@ -243,9 +242,7 @@ class TestCreatePgConnection:
         def boom(**_):
             raise psycopg2.OperationalError("nope")
 
-        monkeypatch.setattr(
-            "queue_backend.pg_queue.connection.psycopg2.connect", boom
-        )
+        monkeypatch.setattr("queue_backend.pg_queue.connection.psycopg2.connect", boom)
         with (
             caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.connection"),
             pytest.raises(psycopg2.OperationalError),

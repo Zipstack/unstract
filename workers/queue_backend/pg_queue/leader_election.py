@@ -55,6 +55,7 @@ from typing import TYPE_CHECKING, Any
 import psycopg2
 
 from .connection import create_pg_connection
+from .schema import qualified
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -203,7 +204,7 @@ class LeaderLease:
         """
         with self._cursor() as cur:
             cur.execute(
-                "UPDATE pg_orchestrator_lock "
+                f"UPDATE {qualified('pg_orchestrator_lock')} "
                 "   SET leader = %s, acquired_at = now() "
                 " WHERE id = 1 "
                 "   AND (leader = '' "
@@ -227,7 +228,7 @@ class LeaderLease:
         """
         with self._cursor() as cur:
             cur.execute(
-                "UPDATE pg_orchestrator_lock SET acquired_at = now() "
+                f"UPDATE {qualified('pg_orchestrator_lock')} SET acquired_at = now() "
                 "WHERE id = 1 AND leader = %s RETURNING id",
                 (self._worker_id,),
             )
@@ -250,7 +251,8 @@ class LeaderLease:
         """
         with self._cursor() as cur:
             cur.execute(
-                "UPDATE pg_orchestrator_lock SET leader = '', acquired_at = now() "
+                f"UPDATE {qualified('pg_orchestrator_lock')} "
+                "SET leader = '', acquired_at = now() "
                 "WHERE id = 1 AND leader = %s",
                 (self._worker_id,),
             )

@@ -60,6 +60,7 @@ from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
 from .pg_scheduler import dispatch_due_schedules
+from .schema import qualified
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -212,7 +213,9 @@ def sweep_expired_results(conn: PgConnection) -> int:
     """
     try:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM pg_task_result WHERE expires_at <= now()")
+            cur.execute(
+                f"DELETE FROM {qualified('pg_task_result')} WHERE expires_at <= now()"
+            )
             deleted = cur.rowcount
         conn.commit()
         return deleted
@@ -236,7 +239,7 @@ def sweep_orphan_dedup(conn: PgConnection, retention_seconds: int) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM pg_batch_dedup "
+                f"DELETE FROM {qualified('pg_batch_dedup')} "
                 "WHERE created_at <= now() - make_interval(secs => %s)",
                 (retention_seconds,),
             )
@@ -280,7 +283,7 @@ def _still_expired(conn: PgConnection, execution_id: str) -> bool:
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT 1 FROM pg_barrier_state "
+            f"SELECT 1 FROM {qualified('pg_barrier_state')} "
             "WHERE execution_id = %s AND expires_at < now()",
             (execution_id,),
         )
@@ -401,14 +404,15 @@ def _recover_one_barrier(
     # Queue-infra cleanup (direct PG), re-guarded against a concurrent re-arm.
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM pg_barrier_state WHERE execution_id = %s "
+            f"DELETE FROM {qualified('pg_barrier_state')} WHERE execution_id = %s "
             "AND expires_at < now()",
             (execution_id,),
         )
         deleted = cur.rowcount > 0
         if deleted:
             cur.execute(
-                "DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,)
+                f"DELETE FROM {qualified('pg_batch_dedup')} WHERE execution_id = %s",
+                (execution_id,),
             )
         else:
             logger.warning(
@@ -441,7 +445,7 @@ def recover_expired_barriers(
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT execution_id, organization_id, remaining "
-                "FROM pg_barrier_state WHERE expires_at < now()"
+                f"FROM {qualified('pg_barrier_state')} WHERE expires_at < now()"
             )
             rows = cur.fetchall()
         conn.commit()

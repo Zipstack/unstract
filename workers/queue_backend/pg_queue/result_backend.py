@@ -41,6 +41,7 @@ from unstract.core.data_models import PgTaskStatus
 from unstract.core.polling import poll_for_row
 
 from .connection import create_pg_connection
+from .schema import qualified
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -52,15 +53,26 @@ logger = logging.getLogger(__name__)
 # outlives any caller still waiting on it.
 DEFAULT_RETENTION_SECONDS = 3600
 
+
 # First write wins — an at-least-once redelivery of the executor message must
-# not overwrite a recorded result.
-_STORE_SQL = (
-    "INSERT INTO pg_task_result "
-    "(task_id, status, result, error, created_at, expires_at) "
-    "VALUES (%s, %s, %s::jsonb, %s, now(), now() + make_interval(secs => %s)) "
-    "ON CONFLICT (task_id) DO NOTHING"
-)
-_GET_SQL = "SELECT status, result, error FROM pg_task_result WHERE task_id = %s"
+# not overwrite a recorded result. Built per call so ``pg_task_result`` is
+# schema-qualified from the live ``DB_SCHEMA`` (resolves through PgBouncer txn
+# pooling without ``search_path`` — see :mod:`queue_backend.pg_queue.schema`).
+def _store_sql() -> str:
+    return (
+        f"INSERT INTO {qualified('pg_task_result')} "
+        "(task_id, status, result, error, created_at, expires_at) "
+        "VALUES (%s, %s, %s::jsonb, %s, now(), now() + make_interval(secs => %s)) "
+        "ON CONFLICT (task_id) DO NOTHING"
+    )
+
+
+def _get_sql() -> str:
+    return (
+        f"SELECT status, result, error FROM {qualified('pg_task_result')} "
+        "WHERE task_id = %s"
+    )
+
 
 # Poll cadence for wait_for_result: start tight (low latency for fast tasks),
 # back off to a ceiling so a long-running task doesn't hammer the DB.
@@ -137,7 +149,7 @@ class PgResultBackend:
             status, result_json, error_text = STATUS_FAILED, None, error or ""
         with self._cursor() as cur:
             cur.execute(
-                _STORE_SQL,
+                _store_sql(),
                 (str(task_id), status, result_json, error_text, retention_seconds),
             )
 
@@ -148,7 +160,7 @@ class PgResultBackend:
         Python ``dict``); ``None`` means the task has not finished yet.
         """
         with self._cursor() as cur:
-            cur.execute(_GET_SQL, (str(task_id),))
+            cur.execute(_get_sql(), (str(task_id),))
             row = cur.fetchone()
         if row is None:
             return None
