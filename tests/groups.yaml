@@ -47,17 +47,6 @@ groups:
     install_editable: true
     coverage_source: src/unstract/runner
 
-  unit-prompt-service:
-    tier: unit
-    workdir: prompt-service
-    paths: [src/unstract/prompt_service/tests/unit]
-    uv_sync_group: test
-    # The parent conftest pulls in heavy adapter chains (pinecone etc.); unit
-    # tests must not depend on integration fixtures.
-    pytest_extra: ["--noconftest"]
-    markers: "not slow"
-    coverage_source: src/unstract/prompt_service
-
   unit-platform-service:
     tier: unit
     workdir: platform-service
@@ -88,7 +77,7 @@ groups:
       - dashboard_metrics/tests
       - file_management/tests
       - project/tests
-      - prompt_studio/tests
+      - prompt_studio/prompt_studio_registry_v2/tests
       - tenant_account_v2/tests
       - usage_v2/tests
       - utils/tests

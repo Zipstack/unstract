@@ -59,7 +59,11 @@ class OrganizationGroup(BaseModel):
     """
 
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="groups"
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="groups",
+        # Server-managed; never accepted as client input.
+        editable=False,
     )
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -109,6 +113,8 @@ class ResourceGroupShare(BaseModel):
         Organization,
         on_delete=models.CASCADE,
         related_name="resource_group_shares",
+        # Server-managed; never accepted as client input.
+        editable=False,
     )
 
     class Meta:

@@ -14,6 +14,9 @@ class ProfileManagerSerializer(AuditSerializer):
     class Meta:
         model = ProfileManager
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData on create); drop
+        # the DRF auto-validator that 400s on re-save / PUT before the view runs.
+        validators = []
 
     def to_representation(self, instance):  # type: ignore
         rep: dict[str, str] = super().to_representation(instance)

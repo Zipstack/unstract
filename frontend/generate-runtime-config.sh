@@ -18,6 +18,7 @@ cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 window.RUNTIME_CONFIG = {
   faviconPath: "${VITE_FAVICON_PATH:-${REACT_APP_FAVICON_PATH}}",
   logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}",
+  enablePosthog: "${VITE_ENABLE_POSTHOG:-${REACT_APP_ENABLE_POSTHOG}}",
   version: "${APP_VERSION}"
 };
 EOF
@@ -25,4 +26,4 @@ EOF
 # Make sure nginx can read the file
 chmod 755 /usr/share/nginx/html/config/runtime-config.js
 
-echo "Runtime configuration generated successfully with logo URL: ${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL:-<not set>}}"
+echo "Runtime configuration generated successfully with logo URL: ${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL:-<not set>}}, enablePosthog: ${VITE_ENABLE_POSTHOG:-${REACT_APP_ENABLE_POSTHOG:-<not set>}}"

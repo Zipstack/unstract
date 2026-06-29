@@ -34,6 +34,9 @@ class BaseAdapterSerializer(AuditSerializer):
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData); drop the DRF
+        # auto-validator that 400s on re-save before the view can handle it.
+        validators = []
         extra_kwargs = {
             "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},

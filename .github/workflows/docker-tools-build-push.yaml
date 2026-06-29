@@ -10,13 +10,12 @@ on:
       service_name:
         description: "Tool to build"
         required: true
-        default: "tool-structure" # Provide a default value
+        default: "tool-sidecar" # Provide a default value
         type: choice
         options: # Define available options
-          - tool-classifier
-          - tool-structure
-          - tool-text-extractor
           - tool-sidecar
+          - tool-classifier
+          - tool-text-extractor
       add_latest_tag:
         description: "Also tag as 'latest'"
         required: false
@@ -58,18 +57,15 @@ jobs:
       - name: Set build configuration
         id: build-config
         run: |
-          if [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
+          if [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
+            echo "context=." >> $GITHUB_OUTPUT
+            echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event.inputs.service_name }}" == "tool-classifier" ]; then
             echo "context=." >> $GITHUB_OUTPUT
             echo "dockerfile=./tools/classifier/Dockerfile" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.inputs.service_name }}" == "tool-structure" ]; then
-            echo "context=." >> $GITHUB_OUTPUT
-            echo "dockerfile=./tools/structure/Dockerfile" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.service_name }}" == "tool-text-extractor" ]; then
             echo "context=." >> $GITHUB_OUTPUT
             echo "dockerfile=./tools/text_extractor/Dockerfile" >> $GITHUB_OUTPUT
-          elif [ "${{ github.event.inputs.service_name }}" == "tool-sidecar" ]; then
-            echo "context=." >> $GITHUB_OUTPUT
-            echo "dockerfile=docker/dockerfiles/tool-sidecar.Dockerfile" >> $GITHUB_OUTPUT
           fi
 
       # Determine tags based on inputs
