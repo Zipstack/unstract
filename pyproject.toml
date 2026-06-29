@@ -178,7 +178,6 @@ keep-dict-typing = true
 
 [tool.pytest.ini_options]
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-DJANGO_SETTINGS_MODULE = "backend.settings.test_cases"
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

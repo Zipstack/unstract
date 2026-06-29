@@ -642,13 +642,8 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
             env=env,
             check=False,
         )
-    if group.install_editable:
-        subprocess.run(
-            ["uv", "pip", "install", "-e", "."],
-            cwd=workdir,
-            env=env,
-            check=False,
-        )
+    # install_editable is handled in _pytest_command via `--with-editable`;
+    # installing it here would be wiped by `uv run`'s venv re-sync.
     if group.pip_install:
         subprocess.run(
             ["uv", "pip", "install", *group.pip_install],
@@ -682,6 +677,10 @@ def _pytest_command(
         with_args: list[str] = []
         for spec in RIG_PYTEST_PLUGINS:
             with_args += ["--with", spec]
+        # Inject the project as editable here so it survives the venv re-sync,
+        # same as the plugins above.
+        if group.install_editable:
+            with_args += ["--with-editable", str(workdir)]
         base: list[str] = ["uv", "run", *with_args, "pytest"]
     else:
         base = [sys.executable, "-m", "pytest"]
