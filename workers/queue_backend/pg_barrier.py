@@ -128,6 +128,53 @@ def _cursor() -> Iterator[Any]:
         raise
 
 
+# One retry for an IDEMPOTENT barrier write. The thread-local connection is
+# cached across barrier ops, so it can be reaped server-side (PgBouncer
+# server_idle_timeout / DB failover) while sitting idle BETWEEN ops — and
+# ``_get_conn`` can't tell, since ``conn.closed`` is a client-side flag only.
+# The first statement after the idle gap then fails; ``_cursor`` discards the
+# dead conn, so a single retry runs against a freshly reconnected one. This
+# turns a transient blip (which previously aborted the whole execution at
+# barrier enqueue) into a self-heal.
+_BARRIER_WRITE_ATTEMPTS = 2
+
+
+def _run_idempotent_write(operation: Callable[[Any], None], *, what: str) -> None:
+    """Run ``operation(cur)`` in a committed cursor, retrying ONCE if the cached
+    connection was dead.
+
+    Restricted to **idempotent** statements run BEFORE any task dispatch — the
+    barrier UPSERT (``ON CONFLICT … DO UPDATE`` → same row, same state) + the
+    per-execution dedup reset (``DELETE WHERE execution_id``). Re-running them
+    after an ambiguous commit is a no-op, so a retry can neither duplicate a row
+    nor double-dispatch work (no header has been enqueued yet).
+
+    Deliberately NOT used for the barrier **decrement** (``remaining =
+    remaining - 1``): that is not idempotent — a re-applied decrement could drive
+    ``remaining`` to 0 early and fire the callback twice — so it stays on the
+    plain :func:`_cursor` (recover-but-don't-retry). Same for ``claim_batch``,
+    whose ``RETURNING`` answer flips on a retry.
+    """
+    for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
+        try:
+            with _cursor() as cur:
+                operation(cur)
+            return
+        except (psycopg2.OperationalError, psycopg2.InterfaceError):
+            # _cursor already dropped the dead thread-local conn → the next
+            # _get_conn() reconnects. Retry once; re-raise if it still fails
+            # (a genuinely-down DB surfaces as ERROR, as before).
+            if attempt >= _BARRIER_WRITE_ATTEMPTS:
+                raise
+            logger.warning(
+                "PgBarrier: %s lost its DB connection (attempt %d/%d); "
+                "reconnecting and retrying",
+                what,
+                attempt,
+                _BARRIER_WRITE_ATTEMPTS,
+            )
+
+
 def _delete_barrier(execution_id: str) -> None:
     with _cursor() as cur:
         cur.execute(
@@ -311,7 +358,7 @@ class PgBarrier:
                     f"could not be reaper-recovered. This is a bug in the caller."
                 )
 
-            with _cursor() as cur:
+            def _reset_barrier(cur: Any) -> None:
                 # UPSERT clears any leftover state from a prior run with this id.
                 # No inline expiry sweep here — an unbounded global DELETE on the
                 # enqueue hot path risks lock contention / deadlocks between
@@ -338,6 +385,11 @@ class PgBarrier:
                     f"DELETE FROM {qualified('pg_batch_dedup')} WHERE execution_id = %s",
                     (execution_id,),
                 )
+
+            # Both statements are idempotent and run BEFORE any header dispatch,
+            # so a one-shot retry on a stale cached connection can't duplicate
+            # state or double-dispatch — see _run_idempotent_write.
+            _run_idempotent_write(_reset_barrier, what=f"enqueue exec={execution_id}")
 
             self._dispatch_headers(
                 header_tasks,

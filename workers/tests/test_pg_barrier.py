@@ -43,6 +43,7 @@ def _pg_header(task_name="process_file_batch", args=None, queue="file_processing
     sig.options = {"queue": queue}
     return sig
 
+
 _CALLBACK = {
     "task_name": "process_batch_callback_api",
     "kwargs": {"execution_id": "exec-1", "pipeline_id": "pipe-1"},
@@ -113,6 +114,121 @@ class TestEnqueueShortCircuits:
                 callback_queue="general",
                 app_instance=None,
             )
+
+
+# --- Idempotent-write reconnect-retry (no DB) ---
+
+
+class _FakeCursorCtx:
+    def __init__(self, on_execute):
+        self._on_execute = on_execute
+
+    def __enter__(self):
+        cur = MagicMock(name="cursor")
+        cur.execute.side_effect = self._on_execute
+        return cur
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeConn:
+    """Minimal psycopg2-connection stub. ``execute_error`` (if set) is raised by
+    every cursor.execute on this connection — simulating a stale/dead socket.
+    """
+
+    def __init__(self, *, execute_error=None):
+        self.closed = False
+        self._execute_error = execute_error
+        self.commits = 0
+        self.rollbacks = 0
+        self.executes = 0
+
+    def cursor(self):
+        def _on_execute(*_a, **_k):
+            self.executes += 1
+            if self._execute_error is not None:
+                raise self._execute_error
+
+        return _FakeCursorCtx(_on_execute)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def _clean_local():
+    """Ensure the module thread-local connection is reset around each test."""
+    pg_barrier._local.conn = None
+    yield
+    pg_barrier._local.conn = None
+
+
+class TestIdempotentWriteRetry:
+    """`_run_idempotent_write` self-heals a stale cached connection with ONE
+    retry — the fix for the `server closed the connection unexpectedly` abort at
+    barrier enqueue. It must retry ONLY on connection errors, stay bounded, and
+    never silently swallow a real (non-connection) failure.
+    """
+
+    def test_retries_once_on_dead_connection_then_succeeds(
+        self, _clean_local, monkeypatch
+    ):
+        dead = _FakeConn(
+            execute_error=psycopg2.OperationalError(
+                "server closed the connection unexpectedly"
+            )
+        )
+        healthy = _FakeConn()
+        pg_barrier._local.conn = dead
+        # On reconnect (_cursor discarded the dead conn), hand back the healthy one.
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
+
+        attempts = []
+
+        def op(cur):
+            attempts.append(1)
+            cur.execute("UPSERT ...", ("x",))
+
+        pg_barrier._run_idempotent_write(op, what="test")
+
+        assert len(attempts) == 2  # first failed mid-execute, retry succeeded
+        assert dead.closed is True  # stale conn discarded
+        assert healthy.commits == 1  # committed exactly once, on the retry
+        assert pg_barrier._local.conn is healthy
+
+    def test_does_not_retry_non_connection_error(self, _clean_local, monkeypatch):
+        healthy = _FakeConn()
+        pg_barrier._local.conn = healthy
+        reconnects = []
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: reconnects.append(1) or _FakeConn(),
+        )
+
+        def op(cur):
+            raise ValueError("not a connection problem")
+
+        with pytest.raises(ValueError, match="not a connection problem"):
+            pg_barrier._run_idempotent_write(op, what="test")
+        assert reconnects == []  # a real error must surface immediately, no retry
+
+    def test_reraises_after_exhausting_attempts(self, _clean_local, monkeypatch):
+        err = psycopg2.OperationalError("still down")
+        # Every connection (initial + reconnect) is dead → both attempts fail.
+        monkeypatch.setattr(
+            pg_barrier, "create_pg_connection", lambda **_k: _FakeConn(execute_error=err)
+        )
+
+        with pytest.raises(psycopg2.OperationalError, match="still down"):
+            pg_barrier._run_idempotent_write(lambda cur: cur.execute("X"), what="test")
 
 
 # --- Layer 2: enqueue + link/abort with a real injected connection ---
@@ -484,7 +600,6 @@ class TestAbort:
     def test_registered_under_canonical_name(self):
         assert barrier_pg_abort.name == "barrier_pg_abort"
 
-
     def test_max_retries_zero(self):
         # A Celery retry would replay the decrement and corrupt the count.
         assert barrier_pg_decr_and_check.max_retries == 0
@@ -795,9 +910,7 @@ class TestPgFireAndForgetMode:
             raise RuntimeError("broker down")
 
         dispatch_side_effect.claimed = False
-        with patch(
-            "queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect
-        ):
+        with patch("queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect):
             with pytest.raises(RuntimeError, match="broker down"):
                 PgBarrier().enqueue(
                     [_pg_header(), _pg_header()],
