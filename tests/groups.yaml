@@ -99,7 +99,6 @@ groups:
     paths: [tests]
     uv_sync_group: test
     coverage_source: src
-    optional: true
 
   unit-core:
     tier: unit
@@ -108,7 +107,6 @@ groups:
     # No `test` uv group in unstract/core today; rig still injects pytest plugins.
     install_editable: true
     coverage_source: src
-    optional: true
 
   # ── Integration tier: needs infra but not full platform ────────────────────
   integration-workflow-execution:
