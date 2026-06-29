@@ -29,9 +29,10 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import time
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Final, Self
 
 import psycopg2
 
@@ -147,6 +148,13 @@ def insert_message_sql() -> str:
     )
 
 
+# Small fixed pause before send()'s single reconnect-retry (see send()). The
+# idle-reap case reconnects instantly regardless; this only widens the self-heal
+# window for a brief DB failover and avoids re-hammering a struggling server.
+# A literal, not env-driven, so the one-shot bound can't be weakened operationally.
+_SEND_RETRY_BACKOFF_SECONDS: Final = 0.5
+
+
 class PgQueueClient:
     """``send`` / ``read`` / ``delete`` over ``pg_queue_message``.
 
@@ -220,11 +228,53 @@ class PgQueueClient:
         MAX_PRIORITY]`` — out of range raises (it would silently jump/sink the
         row in the ``priority DESC`` claim order), mirroring ``read()``'s guards.
         The DB ``CheckConstraint`` is the backstop for any ORM/raw writer.
+
+        Reconnect-retry: the cached connection can be reaped server-side
+        (PgBouncer ``server_idle_timeout`` / DB failover) while idle BETWEEN
+        sends, and ``conn.closed`` is a client-side flag only — so the first
+        ``execute`` after the idle gap fails (this aborted whole executions at
+        the barrier's header dispatch). We retry ONCE, but only when the failing
+        connection was **reused** (cached, and owned by us): a reused conn that
+        dies on its first statement was reaped while idle, so the ``INSERT``
+        never reached the server — re-inserting can't duplicate. A **fresh**
+        connection failing is a genuine error (or an ambiguous mid-statement
+        death) → re-raise, never retry. Unlike the barrier's idempotent
+        pre-dispatch write, an ``INSERT`` is not idempotent, so this
+        reused-only guard is what keeps the retry from double-enqueuing; in the
+        rare reused-conn mid-statement-death case a duplicate batch enqueue is
+        absorbed by the ``claim_batch`` / ``pg_batch_dedup`` gate downstream.
         """
         if not MIN_PRIORITY <= priority <= MAX_PRIORITY:
             raise ValueError(
                 f"priority out of range [{MIN_PRIORITY}, {MAX_PRIORITY}]: {priority!r}"
             )
+        # Capture BEFORE the attempt: a fresh conn has self._conn is None here.
+        reused = self._conn is not None and self._owns_conn
+        try:
+            return self._insert_message(queue_name, message, org_id, priority)
+        except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
+            if not reused:
+                raise
+            logger.warning(
+                "PG-queue: send to queue=%r failed (%s: %s); cached connection "
+                "likely stale, reconnecting and retrying once",
+                queue_name,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            time.sleep(_SEND_RETRY_BACKOFF_SECONDS)
+            # _cursor already dropped the dead owned conn, so this reconnects.
+            return self._insert_message(queue_name, message, org_id, priority)
+
+    def _insert_message(
+        self,
+        queue_name: str,
+        message: dict[str, Any],
+        org_id: str | None,
+        priority: int,
+    ) -> int:
+        """One INSERT of a queue row, returning its ``msg_id`` (see :meth:`send`)."""
         with self._cursor() as cur:
             cur.execute(
                 insert_message_sql() + " RETURNING msg_id",
