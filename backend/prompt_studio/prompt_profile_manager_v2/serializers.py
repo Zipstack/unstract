@@ -1,8 +1,8 @@
 import logging
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
-
 from backend.serializers import AuditSerializer
+
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
 
 from .models import ProfileManager

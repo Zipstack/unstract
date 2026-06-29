@@ -1,9 +1,9 @@
 import logging
 
 from rest_framework.exceptions import APIException
+from unstract.sdk1.exceptions import SdkError
 
 from adapter_processor_v2.constants import AdapterKeys
-from unstract.sdk1.exceptions import SdkError
 
 logger = logging.getLogger(__name__)
 

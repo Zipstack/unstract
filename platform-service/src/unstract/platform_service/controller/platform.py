@@ -6,7 +6,6 @@ from typing import Any
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request, jsonify, make_response, request
 from flask import current_app as app
-
 from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
