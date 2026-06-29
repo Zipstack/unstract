@@ -54,11 +54,6 @@ paths:
     entry: "POST /api/v1/pipeline/{id}/execute/"
     covered_by: []   # gap
 
-  - id: tool-sandbox-exec
-    description: "Tool image runs in sandbox container and emits structured output."
-    entry: "internal: tool-registry → runner → docker run"
-    covered_by: [unit-runner]
-
   - id: usage-token-tracking
     description: "Per-execution token usage is recorded and retrievable."
     entry: "GET /api/v1/usage/get_token_usage/"

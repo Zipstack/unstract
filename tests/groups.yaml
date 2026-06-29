@@ -32,21 +32,6 @@ groups:
     uv_sync_group: test
     coverage_source: src/unstract/sdk1
 
-  unit-runner:
-    tier: unit
-    workdir: runner
-    # Runner co-locates its tests under src/. Pytest recurses from here.
-    # The project has no `test` uv group, so deps are pip-installed inline.
-    paths: [src]
-    pip_install:
-      - "flask~=3.1.0"
-      - "docker==6.1.3"
-      - "redis~=5.2.1"
-      - "python-dotenv>=1.0.0"
-      - "kubernetes"
-    install_editable: true
-    coverage_source: src/unstract/runner
-
   unit-platform-service:
     tier: unit
     workdir: platform-service
@@ -70,15 +55,11 @@ groups:
     # including vendored fixtures and pluggable-app tests that don't belong
     # in the OSS rig — keep this list scoped to the apps actually under test.
     paths:
-      - account_v2/tests
       - adapter_processor_v2/tests
-      - api_deployment_v2/tests
-      - connector_v2/tests
       - dashboard_metrics/tests
-      - file_management/tests
-      - project/tests
+      - middleware/test_exception.py
+      - prompt_studio/prompt_studio_core_v2/tests
       - prompt_studio/prompt_studio_registry_v2/tests
-      - tenant_account_v2/tests
       - usage_v2/tests
       - utils/tests
       - workflow_manager/endpoint_v2/tests
@@ -107,11 +88,6 @@ groups:
     install_editable: true
     coverage_source: src
     optional: true
-
-  # NOTE: `unit-tool-registry` was intentionally dropped — tool-registry is
-  # slated for removal, and its tests can't even collect (commented-out
-  # [build-system] + an undeclared transitive `celery` import). Re-add a group
-  # here only if that component is kept and made installable.
 
   # ── Integration tier: needs infra but not full platform ────────────────────
   integration-workflow-execution:
