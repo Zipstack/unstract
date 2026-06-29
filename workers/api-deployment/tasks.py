@@ -422,6 +422,15 @@ def _run_workflow_api(
     WorkflowHelper.process_input_files() methods.
     """
     total_files = len(hash_values_of_files)
+    # Resolve transport ONCE, up front from the authoritative kwargs source, so
+    # the failure handler can rely on it even if orchestration fails before the
+    # fan-out (the PR-1 seam; the fan-out honours it → PG path = PgBarrier).
+    # Fail-closed to celery on any unrecognised value.
+    transport = normalize_transport(
+        kwargs.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+        logger=logger,
+        context=f" [exec:{execution_id}]",
+    )
 
     # TOOL VALIDATION: Validate tool instances before API workflow orchestration
     # Get workflow execution context to retrieve tool instances
@@ -690,14 +699,7 @@ def _run_workflow_api(
             org_id=str(schema_name),
             workload_type=WorkloadType.API,
         )
-        # Transport rides in via the dispatched task's kwargs (PR 1 seam); the
-        # fan-out honours it (PG path → fire-and-forget PgBarrier). Fail-closed
-        # to celery on any unrecognised value.
-        transport = normalize_transport(
-            kwargs.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
-            logger=logger,
-            context=f" [exec:{execution_id}]",
-        )
+        # transport was resolved up front (see top of _run_workflow_api).
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name="process_batch_callback_api",
@@ -807,40 +809,37 @@ def _run_workflow_api(
         }
 
     except Exception as e:
-        # PG path only (gated → Celery branch byte-identical): an orchestration
-        # failure here leaves the execution ERROR, but its files would otherwise
-        # show as perpetually "in progress" (UI = total - successful - failed) and
-        # the failure reason never reaches the UI. So on PG:
-        #   (C) surface the error to the UI/WS execution logs, and
-        #   (B) reconcile counters — mark the attempted files failed so the run
-        #       reads "N failed", not "N in progress" (total_files is bound above
-        #       the try; successful=0/failed=total zeroes the UI's in-progress).
-        # `transport` is assigned inside the try (~L695); resolve it defensively so
-        # a failure before that point still fails closed to the Celery (no-op) path.
-        transport = locals().get("transport", DEFAULT_WORKFLOW_TRANSPORT)
+        error_message = f"Error while processing files: {str(e)}"
+        # On PG, surface the error to the UI + reconcile file counters so a failed
+        # run reads "N failed" not "N in progress"; the wrapped update inside the
+        # helper guarantees a status-update failure can't mask `e` or skip the
+        # re-raise below (see record_pg_orchestration_failure). The Celery branch
+        # is the original bare update, untouched.
         if is_pg_transport(transport):
+            error_logger = None
             try:
                 error_logger = WorkerWorkflowLogger.create_for_api_workflow(
                     execution_id=str(execution_id),
                     organization_id=str(schema_name),
                     pipeline_id=str(pipeline_id) if pipeline_id else None,
                 )
-                if error_logger:
-                    error_logger.log_error(
-                        logger, f"❌ Workflow orchestration failed: {e}"
-                    )
             except Exception as log_error:
-                logger.warning(f"Failed to publish error to UI logs: {log_error}")
-        failure_counts = WorkflowOrchestrationUtils.pg_failure_file_counts(
-            transport, total_files
-        )
-        # Update execution to ERROR status matching Django pattern
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=ExecutionStatus.ERROR.value,
-            error_message=f"Error while processing files: {str(e)}",
-            **failure_counts,
-        )
+                logger.warning(f"Failed to build UI logger: {log_error}")
+            WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+                api_client=api_client,
+                execution_id=execution_id,
+                total_files=total_files,
+                error_message=error_message,
+                logger=logger,
+                workflow_logger=error_logger,
+            )
+        else:
+            # Update execution to ERROR status matching Django pattern
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.ERROR.value,
+                error_message=error_message,
+            )
         logger.error(f"Execution {execution_id} failed: {str(e)}", exc_info=True)
         raise
 

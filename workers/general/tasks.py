@@ -754,33 +754,28 @@ def _execute_general_workflow(
 
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
-            # PG path only (gated → Celery branch byte-identical): an orchestration
-            # failure here leaves the execution ERROR but its files would otherwise
-            # show as perpetually "in progress" (UI = total - successful - failed),
-            # and the failure reason never reaches the UI. So on PG:
-            #   (C) surface the error to the UI/WS execution logs, and
-            #   (B) reconcile counters — mark the attempted files failed so the run
-            #       reads "N failed", not "N in progress" (total_files was already
-            #       persisted at orchestration start; successful=0/failed=total).
+            # On PG, surface the error to the UI + reconcile file counters so a
+            # failed run reads "N failed" not "N in progress" (see
+            # WorkflowOrchestrationUtils.record_pg_orchestration_failure). The
+            # Celery branch below is the original status update, untouched.
             if is_pg_transport(transport):
-                try:
-                    workflow_logger.log_error(
-                        logger, f"❌ Workflow orchestration failed: {e}"
-                    )
-                except Exception as log_error:
-                    logger.warning(f"Failed to publish error to UI logs: {log_error}")
-            failure_counts = WorkflowOrchestrationUtils.pg_failure_file_counts(
-                transport, total_files
-            )
-            try:
-                api_client.update_workflow_execution_status(
+                WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+                    api_client=api_client,
                     execution_id=execution_id,
-                    status=ExecutionStatus.ERROR.value,
+                    total_files=total_files,
                     error_message=str(e),
-                    **failure_counts,
+                    logger=logger,
+                    workflow_logger=workflow_logger,
                 )
-            except Exception as status_error:
-                logger.warning(f"Failed to update error status: {status_error}")
+            else:
+                try:
+                    api_client.update_workflow_execution_status(
+                        execution_id=execution_id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=str(e),
+                    )
+                except Exception as status_error:
+                    logger.warning(f"Failed to update error status: {status_error}")
 
             orchestration_result = WorkerTaskResponse.error_response(
                 execution_id=execution_id,
