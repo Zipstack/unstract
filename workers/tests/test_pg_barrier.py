@@ -43,6 +43,7 @@ def _pg_header(task_name="process_file_batch", args=None, queue="file_processing
     sig.options = {"queue": queue}
     return sig
 
+
 _CALLBACK = {
     "task_name": "process_batch_callback_api",
     "kwargs": {"execution_id": "exec-1", "pipeline_id": "pipe-1"},
@@ -115,6 +116,140 @@ class TestEnqueueShortCircuits:
             )
 
 
+# --- Idempotent-write reconnect-retry (no DB) ---
+
+
+class _FakeCursorCtx:
+    def __init__(self, on_execute):
+        self._on_execute = on_execute
+
+    def __enter__(self):
+        cur = MagicMock(name="cursor")
+        cur.execute.side_effect = self._on_execute
+        return cur
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _FakeConn:
+    """Minimal psycopg2-connection stub. ``execute_error`` (if set) is raised by
+    every cursor.execute on this connection — simulating a stale/dead socket.
+    """
+
+    def __init__(self, *, execute_error=None):
+        self.closed = False
+        self._execute_error = execute_error
+        self.commits = 0
+        self.rollbacks = 0
+        self.executes = 0
+
+    def cursor(self):
+        def _on_execute(*_a, **_k):
+            self.executes += 1
+            if self._execute_error is not None:
+                raise self._execute_error
+
+        return _FakeCursorCtx(_on_execute)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.fixture
+def _clean_local():
+    """Ensure the module thread-local connection is reset around each test."""
+    pg_barrier._local.conn = None
+    yield
+    pg_barrier._local.conn = None
+
+
+class TestIdempotentWriteRetry:
+    """`_run_idempotent_pre_dispatch_write` self-heals a stale cached connection
+    with ONE retry — the fix for the `server closed the connection unexpectedly`
+    abort at barrier enqueue. It must retry ONLY on connection errors, stay
+    bounded, and never silently swallow a real (non-connection) failure.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch):
+        # The retry backoff is real (0.5s); skip the wall-clock wait in tests.
+        monkeypatch.setattr(pg_barrier.time, "sleep", lambda *_a, **_k: None)
+
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            psycopg2.OperationalError("server closed the connection unexpectedly"),
+            psycopg2.InterfaceError("connection already closed"),
+        ],
+        ids=["OperationalError", "InterfaceError"],
+    )
+    def test_retries_once_on_dead_connection_then_succeeds(
+        self, _clean_local, monkeypatch, caplog, exc
+    ):
+        # InterfaceError is the more common stale-socket symptom, so both arms of
+        # the (OperationalError, InterfaceError) catch must self-heal.
+        dead = _FakeConn(execute_error=exc)
+        healthy = _FakeConn()
+        pg_barrier._local.conn = dead
+        # On reconnect (_cursor discarded the dead conn), hand back the healthy one.
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
+
+        attempts = []
+
+        def op(cur):
+            attempts.append(1)
+            cur.execute("UPSERT ...", ("x",))
+
+        with caplog.at_level("WARNING"):
+            pg_barrier._run_idempotent_pre_dispatch_write(op, what="test")
+
+        assert len(attempts) == 2  # first failed mid-execute, retry succeeded
+        assert dead.executes == 1 and healthy.executes == 1  # exactly one extra try
+        assert dead.commits == 0  # no partial commit on the failed attempt
+        assert dead.closed is True  # stale conn discarded
+        assert healthy.commits == 1  # committed exactly once, on the retry
+        assert pg_barrier._local.conn is healthy
+        # logs on retry (not on success) and names the real error, not a guess.
+        assert "reconnecting and retrying" in caplog.text
+        assert type(exc).__name__ in caplog.text
+
+    def test_does_not_retry_non_connection_error(self, _clean_local, monkeypatch):
+        healthy = _FakeConn()
+        pg_barrier._local.conn = healthy
+        reconnects = []
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: reconnects.append(1) or _FakeConn(),
+        )
+
+        def op(cur):
+            raise ValueError("not a connection problem")
+
+        with pytest.raises(ValueError, match="not a connection problem"):
+            pg_barrier._run_idempotent_pre_dispatch_write(op, what="test")
+        assert reconnects == []  # a real error must surface immediately, no retry
+
+    def test_reraises_after_exhausting_attempts(self, _clean_local, monkeypatch):
+        err = psycopg2.OperationalError("still down")
+        # Every connection (initial + reconnect) is dead → both attempts fail.
+        monkeypatch.setattr(
+            pg_barrier, "create_pg_connection", lambda **_k: _FakeConn(execute_error=err)
+        )
+
+        with pytest.raises(psycopg2.OperationalError, match="still down"):
+            pg_barrier._run_idempotent_pre_dispatch_write(
+                lambda cur: cur.execute("X"), what="test"
+            )
+
+
 # --- Layer 2: enqueue + link/abort with a real injected connection ---
 
 
@@ -180,6 +315,38 @@ class TestPgBarrierEnqueue:
         for _, cloned in tasks:
             cloned.link.assert_called_once()
             cloned.link_error.assert_called_once()
+            cloned.apply_async.assert_called_once()
+
+    def test_enqueue_self_heals_on_stale_connection(self, barrier_db, monkeypatch):
+        # End-to-end through enqueue(): the first barrier write hits a dead cached
+        # conn; the fix must reconnect to the REAL db, land the row exactly once,
+        # and still dispatch every header exactly once (no double-dispatch). This
+        # pins the wiring — reverting enqueue() to the inline `with _cursor()`
+        # would make this fail (the no-DB retry tests alone would not catch that).
+        monkeypatch.setattr(pg_barrier.time, "sleep", lambda *_a, **_k: None)
+        dead = _FakeConn(
+            execute_error=psycopg2.OperationalError(
+                "server closed the connection unexpectedly"
+            )
+        )
+        pg_barrier._local.conn = (
+            dead  # the barrier_db fixture's real conn is the reconnect target
+        )
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: barrier_db)
+
+        tasks = [_mock_header_task() for _ in range(3)]
+        handle = PgBarrier().enqueue(
+            [t for t, _ in tasks],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-HEAL"},
+            callback_queue="general",
+            app_instance=None,
+        )
+
+        assert handle.id == "exec-HEAL"
+        assert dead.closed is True  # stale conn discarded by _cursor
+        assert _row(barrier_db, "exec-HEAL") == (3, [])  # row landed once, remaining=N
+        for _, cloned in tasks:  # every header dispatched exactly once
             cloned.apply_async.assert_called_once()
 
     def test_fairness_header_stamped(self, barrier_db):
@@ -483,7 +650,6 @@ class TestAbort:
 
     def test_registered_under_canonical_name(self):
         assert barrier_pg_abort.name == "barrier_pg_abort"
-
 
     def test_max_retries_zero(self):
         # A Celery retry would replay the decrement and corrupt the count.
@@ -795,9 +961,7 @@ class TestPgFireAndForgetMode:
             raise RuntimeError("broker down")
 
         dispatch_side_effect.claimed = False
-        with patch(
-            "queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect
-        ):
+        with patch("queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect):
             with pytest.raises(RuntimeError, match="broker down"):
                 PgBarrier().enqueue(
                     [_pg_header(), _pg_header()],
