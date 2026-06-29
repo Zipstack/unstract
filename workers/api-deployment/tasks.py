@@ -31,6 +31,7 @@ from unstract.core.data_models import (
     ExecutionStatus,
     FileHashData,
     WorkerFileData,
+    is_pg_transport,
     normalize_transport,
 )
 from unstract.core.worker_models import ApiDeploymentResultStatus
@@ -806,11 +807,39 @@ def _run_workflow_api(
         }
 
     except Exception as e:
+        # PG path only (gated → Celery branch byte-identical): an orchestration
+        # failure here leaves the execution ERROR, but its files would otherwise
+        # show as perpetually "in progress" (UI = total - successful - failed) and
+        # the failure reason never reaches the UI. So on PG:
+        #   (C) surface the error to the UI/WS execution logs, and
+        #   (B) reconcile counters — mark the attempted files failed so the run
+        #       reads "N failed", not "N in progress" (total_files is bound above
+        #       the try; successful=0/failed=total zeroes the UI's in-progress).
+        # `transport` is assigned inside the try (~L695); resolve it defensively so
+        # a failure before that point still fails closed to the Celery (no-op) path.
+        transport = locals().get("transport", DEFAULT_WORKFLOW_TRANSPORT)
+        if is_pg_transport(transport):
+            try:
+                error_logger = WorkerWorkflowLogger.create_for_api_workflow(
+                    execution_id=str(execution_id),
+                    organization_id=str(schema_name),
+                    pipeline_id=str(pipeline_id) if pipeline_id else None,
+                )
+                if error_logger:
+                    error_logger.log_error(
+                        logger, f"❌ Workflow orchestration failed: {e}"
+                    )
+            except Exception as log_error:
+                logger.warning(f"Failed to publish error to UI logs: {log_error}")
+        failure_counts = WorkflowOrchestrationUtils.pg_failure_file_counts(
+            transport, total_files
+        )
         # Update execution to ERROR status matching Django pattern
         api_client.update_workflow_execution_status(
             execution_id=execution_id,
             status=ExecutionStatus.ERROR.value,
             error_message=f"Error while processing files: {str(e)}",
+            **failure_counts,
         )
         logger.error(f"Execution {execution_id} failed: {str(e)}", exc_info=True)
         raise

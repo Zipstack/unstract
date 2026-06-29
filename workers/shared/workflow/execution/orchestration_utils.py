@@ -49,6 +49,34 @@ class WorkflowOrchestrationUtils:
     """Centralized workflow orchestration patterns and utilities."""
 
     @staticmethod
+    def pg_failure_file_counts(transport: str, total_files: int) -> dict[str, int]:
+        """File counters to record when a **PG** orchestration fails before/at
+        fan-out.
+
+        Returns ``{"total_files": N, "successful_files": 0, "failed_files": N}``
+        on the PG transport so a failed execution reads "N failed" rather than "N
+        in progress" (the UI derives in-progress as ``total - successful -
+        failed``, which would otherwise stay > 0 forever on an ERROR run that set
+        ``total_files`` but created no file rows).
+
+        ``total_files`` is included deliberately: the backend ``update_status``
+        serializer rejects file aggregates unless ``total_files`` accompanies them
+        ("total_files is required when file aggregates are provided"), and it must
+        satisfy ``successful + failed <= total`` — both hold here (0 + N <= N).
+
+        Returns ``{}`` for every non-PG transport, so the Celery failure path is
+        byte-identical to before — this is the gate that keeps the fix entirely
+        under ``pg_queue_enabled``.
+        """
+        if is_pg_transport(transport):
+            return {
+                "total_files": total_files,
+                "successful_files": 0,
+                "failed_files": total_files,
+            }
+        return {}
+
+    @staticmethod
     def create_chord_execution(
         batch_tasks: list[Signature],
         callback_task_name: str,
