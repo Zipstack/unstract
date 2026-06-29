@@ -5,6 +5,10 @@ from unstract.connectors.filesystems.zs_dropbox import DropboxFS
 
 
 class TestDropboxFS(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("TEST_DROPBOX_ACCESS_TOKEN"),
+        "Integration test requires TEST_DROPBOX_ACCESS_TOKEN",
+    )
     def test_access_token(self):
         access_token = os.environ.get("TEST_DROPBOX_ACCESS_TOKEN")
         settings = {"token": access_token}

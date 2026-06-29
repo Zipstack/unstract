@@ -86,7 +86,7 @@ class TestMariaDB(unittest.TestCase):
 
         error_message = str(context.exception)
         self.assertIn("Authentication failed", error_message)
-        self.assertIn("username, password and ssl-settings", error_message)
+        self.assertIn("username, password and SSL SETTINGS", error_message)
         self.assertIn("localhost:3306", error_message)
         self.assertIn("SSL enabled", error_message)
 

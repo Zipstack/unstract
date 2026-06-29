@@ -1,17 +1,22 @@
+import os
 import unittest
 
 from unstract.connectors.databases.redshift.redshift import Redshift
 
 
 class TestRedshift(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("REDSHIFT_TEST_PASSWORD"),
+        "Integration test requires a live Redshift cluster and REDSHIFT_TEST_* env vars",
+    )
     def test_user_name_and_password(self):
         redshift = Redshift(
             {
-                "user": "awsuser",
-                "password": "PASSWORD",
-                "host": "redshift-cluster-1.redshift.amazonaws.com",
-                "port": "5439",
-                "database": "dev",
+                "user": os.environ.get("REDSHIFT_TEST_USER", "awsuser"),
+                "password": os.environ["REDSHIFT_TEST_PASSWORD"],
+                "host": os.environ["REDSHIFT_TEST_HOST"],
+                "port": os.environ.get("REDSHIFT_TEST_PORT", "5439"),
+                "database": os.environ.get("REDSHIFT_TEST_DATABASE", "dev"),
             }
         )
         query = (

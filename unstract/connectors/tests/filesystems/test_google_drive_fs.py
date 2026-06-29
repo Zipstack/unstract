@@ -1,9 +1,14 @@
+import os
 import unittest
 
 from unstract.connectors.filesystems.google_drive.google_drive import GoogleDriveFS
 
 
 class TestGoogleDriveFS(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT"),
+        "Integration test requires GDRIVE_GOOGLE_SERVICE_ACCOUNT",
+    )
     def test_basic(self):
         self.assertEqual(GoogleDriveFS.requires_oauth(), True)
         drive = GoogleDriveFS(

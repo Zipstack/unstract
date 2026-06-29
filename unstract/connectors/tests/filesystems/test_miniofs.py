@@ -32,7 +32,10 @@ class TestMinoFS(unittest.TestCase):
 
         print(s3.get_fsspec_fs().ls("unstract-user-storage"))
 
-    # @unittest.skip("Minio is not running")
+    @unittest.skipUnless(
+        os.environ.get("MINIO_ACCESS_KEY_ID"),
+        "Integration test requires a live MinIO and MINIO_ACCESS_KEY_ID",
+    )
     def test_minio(self) -> None:
         self.assertEqual(MinioFS.requires_oauth(), False)
         access_key = os.environ.get("MINIO_ACCESS_KEY_ID")

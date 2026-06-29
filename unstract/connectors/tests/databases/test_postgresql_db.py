@@ -1,18 +1,23 @@
+import os
 import unittest
 
 from unstract.connectors.databases.postgresql.postgresql import PostgreSQL
 
 
 class TestPostgreSqlDB(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("POSTGRESQL_TEST_PASSWORD"),
+        "Integration test requires a live Postgres and POSTGRESQL_TEST_* env vars",
+    )
     def test_user_name_and_password(self):
         psql = PostgreSQL(
             {
-                "user": "test",
-                "password": "ascon",
-                "host": "localhost",
-                "port": "5432",
-                "database": "test7",
-                "schema": "public",
+                "user": os.environ.get("POSTGRESQL_TEST_USER", "test"),
+                "password": os.environ["POSTGRESQL_TEST_PASSWORD"],
+                "host": os.environ.get("POSTGRESQL_TEST_HOST", "localhost"),
+                "port": os.environ.get("POSTGRESQL_TEST_PORT", "5432"),
+                "database": os.environ.get("POSTGRESQL_TEST_DATABASE", "test7"),
+                "schema": os.environ.get("POSTGRESQL_TEST_SCHEMA", "public"),
             }
         )
         query = "SELECT * FROM account_user LIMIT 3"
@@ -25,14 +30,14 @@ class TestPostgreSqlDB(unittest.TestCase):
 
         self.assertTrue(len(results) > 0)
 
+    @unittest.skipUnless(
+        os.environ.get("POSTGRESQL_TEST_CONNECTION_URL"),
+        "Integration test requires POSTGRESQL_TEST_CONNECTION_URL",
+    )
     def test_connection_url(self):
-        connection_url = (
-            "postgres://iamali003:FeQhupi41INg@ep-crimson-wind-434055"
-            ".us-east-2.aws.neon.tech/neondb"
-        )
         psql = PostgreSQL(
             {
-                "connection_url": connection_url,
+                "connection_url": os.environ["POSTGRESQL_TEST_CONNECTION_URL"],
             }
         )
         query = "SELECT * FROM users LIMIT 3"

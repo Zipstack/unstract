@@ -1,17 +1,22 @@
+import os
 import unittest
 
 from unstract.connectors.databases.mssql.mssql import MSSQL
 
 
 class TestMSSQL(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("MSSQL_TEST_PASSWORD"),
+        "Integration test requires a live MSSQL server and MSSQL_TEST_* env vars",
+    )
     def test_user_name_and_password(self):
         mssql = MSSQL(
             {
-                "user": "sa",
-                "password": "Ascon@123",
-                "server": "localhost",
-                "port": "1433",
-                "database": "testdb",
+                "user": os.environ.get("MSSQL_TEST_USER", "sa"),
+                "password": os.environ["MSSQL_TEST_PASSWORD"],
+                "server": os.environ.get("MSSQL_TEST_SERVER", "localhost"),
+                "port": os.environ.get("MSSQL_TEST_PORT", "1433"),
+                "database": os.environ.get("MSSQL_TEST_DATABASE", "testdb"),
             }
         )
         query = "SELECT * FROM Employees"
