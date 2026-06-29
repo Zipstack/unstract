@@ -160,8 +160,6 @@ DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")
 PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
-PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
-PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )

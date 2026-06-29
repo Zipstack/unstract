@@ -33,7 +33,6 @@ services:
       - minio
       - minio-bootstrap
       - platform-service
-      - prompt-service
       - x2text-service
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
@@ -161,23 +160,6 @@ services:
     depends_on:
       - redis
       - db
-    labels:
-      - traefik.enable=false
-
-  prompt-service:
-    <<: *host_gateway
-    image: unstract/prompt-service:${VERSION}
-    container_name: unstract-prompt-service
-    restart: unless-stopped
-    depends_on:
-      - db
-      - minio
-      - minio-bootstrap
-      - rabbitmq
-    ports:
-      - "3003:3003"
-    env_file:
-      - ../prompt-service/.env
     labels:
       - traefik.enable=false
 
