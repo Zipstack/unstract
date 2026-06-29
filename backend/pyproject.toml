@@ -71,7 +71,10 @@ dev = [
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]
-test = ["pytest>=8.0.1"]
+test = [
+    "pytest>=8.0.1",
+    "pytest-django>=4.12.0",
+]
 deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let uv decide version

@@ -54,6 +54,8 @@ groups:
     # List paths explicitly. `[.]` recurses into every test_*.py in backend/,
     # including vendored fixtures and pluggable-app tests that don't belong
     # in the OSS rig — keep this list scoped to the apps actually under test.
+    # endpoint_v2/tests is intentionally excluded: its destination-connector
+    # tests import the enterprise `plugins` package, absent in OSS.
     paths:
       - adapter_processor_v2/tests
       - dashboard_metrics/tests
@@ -62,15 +64,34 @@ groups:
       - prompt_studio/prompt_studio_registry_v2/tests
       - usage_v2/tests
       - utils/tests
-      - workflow_manager/endpoint_v2/tests
     uv_sync_group: test
     env:
-      DJANGO_SETTINGS_MODULE: backend.settings.test_cases
+      DJANGO_SETTINGS_MODULE: backend.settings.test
+      # The fixed app schema doesn't exist in the fresh test DB; tests run in
+      # public (tenancy is row-level, not schema-per-tenant).
+      DB_SCHEMA: public
+      # base.py resolves these at import time with no default; supply test-safe
+      # values here (DB/Redis hosts come from requires_services provisioning).
+      DJANGO_SECRET_KEY: test-secret-key-not-for-production
+      # All-zero Fernet key: valid format, zero entropy so it reads as the
+      # obvious test placeholder it is (not a real secret).
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CELERY_BROKER_BASE_URL: redis://localhost:6379
+      CELERY_BROKER_USER: guest
+      CELERY_BROKER_PASS: guest
+      INDEXING_FLAG_TTL: "3600"
+      ENABLE_LOG_HISTORY: "False"
+      STRUCTURE_TOOL_IMAGE_URL: docker:test
+      STRUCTURE_TOOL_IMAGE_NAME: test-structure-tool
+      STRUCTURE_TOOL_IMAGE_TAG: test
+      SYSTEM_ADMIN_USERNAME: admin
+      SYSTEM_ADMIN_PASSWORD: admin
+      SYSTEM_ADMIN_EMAIL: admin@example.com
     # Backend ORM imports require a real Postgres; rig provisions it via
     # testcontainers or compose when this group is selected.
     requires_services: [postgres, redis]
     coverage_source: .
-    optional: true   # gated until backend test_cases settings are complete
+    optional: true   # gated until backend django_db tests provision cleanly
 
   unit-connectors:
     tier: unit

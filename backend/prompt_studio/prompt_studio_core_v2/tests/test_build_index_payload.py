@@ -42,6 +42,12 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
+# Originals displaced by the stubs below, restored once the helper is imported
+# so the stubs never leak into sibling test modules' collection (a stubbed
+# ``account_v2.models`` would otherwise break their real imports).
+_SAVED_MODULES: dict[str, types.ModuleType | None] = {}
+
+
 def _install(name: str, attrs: dict[str, Any] | None = None) -> types.ModuleType:
     """Install (or replace) a fake module into ``sys.modules``.
 
@@ -50,6 +56,7 @@ def _install(name: str, attrs: dict[str, Any] | None = None) -> types.ModuleType
     (via pytest collection, conftest, etc.), and we need our fake to
     actually take effect.
     """
+    _SAVED_MODULES.setdefault(name, sys.modules.get(name))
     mod = types.ModuleType(name)
     if attrs:
         for key, value in attrs.items():
@@ -69,10 +76,24 @@ def _install_package(name: str) -> types.ModuleType:
     """
     if name in sys.modules:
         return sys.modules[name]
+    _SAVED_MODULES.setdefault(name, None)
     mod = types.ModuleType(name)
     mod.__path__ = []  # type: ignore[attr-defined]
     sys.modules[name] = mod
     return mod
+
+
+def _restore_modules() -> None:
+    """Undo every stub installed above, restoring the real modules (or
+    removing the stub when nothing was there before). The helper has already
+    bound its imports by the time this runs, so its tests are unaffected.
+    """
+    for name, original in _SAVED_MODULES.items():
+        if original is None:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
+    _SAVED_MODULES.clear()
 
 
 try:
@@ -290,6 +311,8 @@ except Exception as exc:  # pragma: no cover — environment guard
     )
     PromptStudioHelper = None  # type: ignore[assignment]
     IKeys = None  # type: ignore[assignment]
+finally:
+    _restore_modules()
 
 
 pytestmark = pytest.mark.skipif(
