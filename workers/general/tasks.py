@@ -57,6 +57,7 @@ from unstract.core.data_models import (
     FileBatchData,
     FileHashData,
     WorkerFileData,
+    is_pg_transport,
     normalize_transport,
 )
 
@@ -753,14 +754,28 @@ def _execute_general_workflow(
 
         except Exception as e:
             logger.error(f"Workflow execution failed: {e}")
-            try:
-                api_client.update_workflow_execution_status(
+            # On PG, surface the error to the UI + reconcile file counters so a
+            # failed run reads "N failed" not "N in progress" (see
+            # WorkflowOrchestrationUtils.record_pg_orchestration_failure). The
+            # Celery branch below is the original status update, untouched.
+            if is_pg_transport(transport):
+                WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+                    api_client=api_client,
                     execution_id=execution_id,
-                    status=ExecutionStatus.ERROR.value,
+                    total_files=total_files,
                     error_message=str(e),
+                    logger=logger,
+                    workflow_logger=workflow_logger,
                 )
-            except Exception as status_error:
-                logger.warning(f"Failed to update error status: {status_error}")
+            else:
+                try:
+                    api_client.update_workflow_execution_status(
+                        execution_id=execution_id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=str(e),
+                    )
+                except Exception as status_error:
+                    logger.warning(f"Failed to update error status: {status_error}")
 
             orchestration_result = WorkerTaskResponse.error_response(
                 execution_id=execution_id,
