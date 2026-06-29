@@ -31,7 +31,7 @@ services:
             - node_modules/
             - build/
         - action: rebuild
-          path: ../frontend/package-lock.json
+          path: ../frontend/bun.lock
         - action: rebuild
           path: ../frontend/package.json
     labels:
