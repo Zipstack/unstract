@@ -277,7 +277,7 @@ def iter_with_retry[T](
 def is_retryable_error(error: Exception) -> bool:
     """Check if a requests-library HTTP error should trigger a retry.
 
-    For retrying internal service calls (platform-service, prompt-service) that
+    For retrying internal service calls (platform-service) that
     use the requests library. Distinct from is_retryable_litellm_error() which
     handles litellm/openai/httpx exceptions with different class hierarchies
     (e.g. error.status_code vs error.response.status_code).

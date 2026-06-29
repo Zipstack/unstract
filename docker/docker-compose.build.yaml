@@ -36,7 +36,7 @@ services:
       dockerfile: tools/classifier/Dockerfile
       context: ..
   tool-text_extractor:
-    image: unstract/tool-text_extractor:${VERSION}
+    image: unstract/tool-text-extractor:${VERSION}
     build:
       dockerfile: tools/text_extractor/Dockerfile
       context: ..
