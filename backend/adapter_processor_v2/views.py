@@ -224,7 +224,12 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
                     adapter_metadata_b
                 )
 
-            instance = serializer.save()
+            # Bind the adapter to the request-scoped organization, overriding any
+            # client-supplied `organization` in the payload (the serializer
+            # exposes it via fields="__all__"). This keeps the row's org
+            # consistent with the org the controlled-mode check above evaluated,
+            # so the per-org restriction can't be sidestepped via the payload.
+            instance = serializer.save(organization=UserContext.get_organization())
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
