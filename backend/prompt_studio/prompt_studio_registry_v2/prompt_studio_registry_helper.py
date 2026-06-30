@@ -266,10 +266,23 @@ class PromptStudioRegistryHelper:
 
         embedding_suffix = ""
         adapter_id = ""
-        vector_db = str(default_llm_profile.vector_store.id)
-        embedding_model = str(default_llm_profile.embedding_model.id)
+        # Extraction adapters may be null for image-only profiles
+        vector_db = (
+            str(default_llm_profile.vector_store.id)
+            if default_llm_profile.vector_store
+            else ""
+        )
+        embedding_model = (
+            str(default_llm_profile.embedding_model.id)
+            if default_llm_profile.embedding_model
+            else ""
+        )
         llm = str(default_llm_profile.llm.id)
-        x2text = str(default_llm_profile.x2text.id)
+        x2text = (
+            str(default_llm_profile.x2text.id)
+            if default_llm_profile.x2text
+            else ""
+        )
 
         # Tool settings
         tool_settings = {}
@@ -328,36 +341,54 @@ class PromptStudioRegistryHelper:
                     invalidated_outputs.append(prompt.prompt_key)
                     continue
 
-            vector_db = str(prompt.profile_manager.vector_store.id)
-            embedding_model = str(prompt.profile_manager.embedding_model.id)
-            llm = str(prompt.profile_manager.llm.id)
-            x2text = str(prompt.profile_manager.x2text.id)
-            adapter_id = str(prompt.profile_manager.embedding_model.adapter_id)
-            embedding_suffix = adapter_id.split("|")[0]
+            # Extraction adapters may be null for image-only prompts
+            pm = prompt.profile_manager
+            vector_db = str(pm.vector_store.id) if pm.vector_store else ""
+            embedding_model = str(pm.embedding_model.id) if pm.embedding_model else ""
+            llm = str(pm.llm.id)
+            x2text = str(pm.x2text.id) if pm.x2text else ""
+            if pm.embedding_model:
+                adapter_id = str(pm.embedding_model.adapter_id)
+                embedding_suffix = adapter_id.split("|")[0]
+            else:
+                adapter_id = ""
+                embedding_suffix = ""
 
             output[JsonSchemaKey.PROMPT] = prompt.prompt
             output[JsonSchemaKey.ACTIVE] = prompt.active
             output[JsonSchemaKey.REQUIRED] = prompt.required
-            output[JsonSchemaKey.CHUNK_SIZE] = prompt.profile_manager.chunk_size
+            output[JsonSchemaKey.CHUNK_SIZE] = pm.chunk_size
             output[JsonSchemaKey.VECTOR_DB] = vector_db
             output[JsonSchemaKey.EMBEDDING] = embedding_model
             output[JsonSchemaKey.X2TEXT_ADAPTER] = x2text
-            output[JsonSchemaKey.CHUNK_OVERLAP] = prompt.profile_manager.chunk_overlap
+            output[JsonSchemaKey.CHUNK_OVERLAP] = pm.chunk_overlap
             output[JsonSchemaKey.LLM] = llm
             output[JsonSchemaKey.PREAMBLE] = tool.preamble
             output[JsonSchemaKey.POSTAMBLE] = tool.postamble
             output[JsonSchemaKey.GRAMMAR] = grammar_list
             output[JsonSchemaKey.TYPE] = prompt.enforce_type
             output[JsonSchemaKey.NAME] = prompt.prompt_key
-            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = (
-                prompt.profile_manager.retrieval_strategy
-            )
-            output[JsonSchemaKey.SIMILARITY_TOP_K] = (
-                prompt.profile_manager.similarity_top_k
-            )
-            output[JsonSchemaKey.SECTION] = prompt.profile_manager.section
-            output[JsonSchemaKey.REINDEX] = prompt.profile_manager.reindex
+            output[JsonSchemaKey.RETRIEVAL_STRATEGY] = pm.retrieval_strategy
+            output[JsonSchemaKey.SIMILARITY_TOP_K] = pm.similarity_top_k
+            output[JsonSchemaKey.SECTION] = pm.section
+            output[JsonSchemaKey.REINDEX] = pm.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
+            # Vision mode fields — force text_only when single-pass is enabled
+            if (
+                tool.single_pass_extraction_mode
+                and prompt.extraction_inputs != "text"
+            ):
+                logger.warning(
+                    "Single-pass extraction enabled: forcing prompt '%s' "
+                    "from extraction_inputs='%s' to 'text' in export",
+                    prompt.prompt_key,
+                    prompt.extraction_inputs,
+                )
+                output[JsonSchemaKey.EXTRACTION_INPUTS] = "text"
+                output[JsonSchemaKey.SOURCE_OF_TRUTH] = "text"
+            else:
+                output[JsonSchemaKey.EXTRACTION_INPUTS] = prompt.extraction_inputs
+                output[JsonSchemaKey.SOURCE_OF_TRUTH] = prompt.source_of_truth
             # Webhook postprocessing settings
             output[JsonSchemaKey.ENABLE_POSTPROCESSING_WEBHOOK] = (
                 prompt.enable_postprocessing_webhook

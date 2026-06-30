@@ -411,6 +411,10 @@ class PromptStudioHelper:
         if lookup_config := get_lookup_config(prompt):
             output["lookup_config"] = lookup_config
 
+        # Vision mode fields
+        output[TSPKeys.EXTRACTION_INPUTS] = prompt.extraction_inputs
+        output[TSPKeys.SOURCE_OF_TRUTH] = prompt.source_of_truth
+
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
@@ -825,6 +829,10 @@ class PromptStudioHelper:
         if lookup_config := get_lookup_config(prompt):
             output["lookup_config"] = lookup_config
 
+        # Vision mode fields
+        output[TSPKeys.EXTRACTION_INPUTS] = prompt.extraction_inputs
+        output[TSPKeys.SOURCE_OF_TRUTH] = prompt.source_of_truth
+
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
@@ -874,6 +882,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.SOURCE_FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1064,6 +1073,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.SOURCE_FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1225,6 +1235,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_PATH: file_path,
+            TSPKeys.SOURCE_FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1950,6 +1961,9 @@ class PromptStudioHelper:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
         if lookup_config := get_lookup_config(prompt):
             output["lookup_config"] = lookup_config
+        # Vision mode fields
+        output[TSPKeys.EXTRACTION_INPUTS] = prompt.extraction_inputs
+        output[TSPKeys.SOURCE_OF_TRUTH] = prompt.source_of_truth
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -2000,6 +2014,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: doc_path,
+            TSPKeys.SOURCE_FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,

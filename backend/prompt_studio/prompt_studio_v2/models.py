@@ -33,6 +33,15 @@ class ToolStudioPrompt(BaseModel):
         TABLE = "table", "Response sent as json"
         AGENTIC_TABLE = "agentic_table", "Response sent as agentic table extraction"
 
+    class ExtractionInput(models.TextChoices):
+        TEXT = "text", "Text only (default)"
+        IMAGE = "image", "Page image only"
+        BOTH = "both", "Text and page image"
+
+    class SourceOfTruth(models.TextChoices):
+        TEXT = "text", "Text is source of truth"
+        IMAGE = "image", "Image is source of truth"
+
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"
         NOTES = "NOTES", "Response sent as float"
@@ -116,6 +125,17 @@ class ToolStudioPrompt(BaseModel):
         blank=False,
         default=dict,
         db_comment="JSON adapter metadata for the FE to load the pagination",
+    )
+    extraction_inputs = models.TextField(
+        choices=ExtractionInput.choices,
+        default=ExtractionInput.TEXT,
+        db_comment="What inputs to send to the LLM: text, image, or both",
+    )
+    source_of_truth = models.TextField(
+        choices=SourceOfTruth.choices,
+        default=SourceOfTruth.TEXT,
+        db_comment="Which input is source of truth "
+        "(only meaningful when extraction_inputs=both)",
     )
     created_by = models.ForeignKey(
         User,

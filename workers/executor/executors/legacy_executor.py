@@ -1349,6 +1349,7 @@ class LegacyExecutor(BaseExecutor):
         tool_id: str = params.get(PSKeys.TOOL_ID, "")
         run_id: str = context.run_id
         file_path = params.get(PSKeys.FILE_PATH)
+        source_file_path: str = params.get(PSKeys.SOURCE_FILE_PATH, "")
         doc_name = str(params.get(PSKeys.FILE_NAME, ""))
         execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
         platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
@@ -1659,6 +1660,7 @@ class LegacyExecutor(BaseExecutor):
         execution_id = params.get(PSKeys.EXECUTION_ID, "")
         file_hash = params.get(PSKeys.FILE_HASH)
         file_path = params.get(PSKeys.FILE_PATH)
+        source_file_path: str = params.get(PSKeys.SOURCE_FILE_PATH, "")
         doc_name = str(params.get(PSKeys.FILE_NAME, ""))
         log_events_id = params.get(PSKeys.LOG_EVENTS_ID, "")
         tool_id = params.get(PSKeys.TOOL_ID, "")
@@ -1818,6 +1820,7 @@ class LegacyExecutor(BaseExecutor):
                     execution_source=execution_source,
                     file_path=file_path,
                     process_text=process_text_fn,
+                    source_file_path=source_file_path,
                 )
             else:
                 logger.warning(

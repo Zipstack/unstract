@@ -108,6 +108,10 @@ class ToolStudioPromptKeys:
     # Webhook postprocessing settings
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
+    # Vision mode fields
+    EXTRACTION_INPUTS = "extraction_inputs"
+    SOURCE_OF_TRUTH = "source_of_truth"
+    SOURCE_FILE_PATH = "source_file_path"
 
 
 class FileViewTypes:

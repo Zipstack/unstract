@@ -114,6 +114,9 @@ class _SK:
     CUSTOM_DATA = "custom_data"
     SINGLE_PASS_EXTRACTION_MODE = "single_pass_extraction_mode"
     CHALLENGE_LLM_ADAPTER_ID = "challenge_llm_adapter_id"
+    EXTRACTION_INPUTS = "extraction_inputs"
+    SOURCE_OF_TRUTH = "source_of_truth"
+    SOURCE_FILE_PATH = "source_file_path"
 
 
 # -----------------------------------------------------------------------
@@ -205,6 +208,22 @@ def _should_skip_extraction_for_smart_table(
         if isinstance(schema_data, dict) and schema_data:
             return True
     return False
+
+
+def _should_skip_extraction_for_vision(
+    outputs: list[dict[str, Any]],
+) -> bool:
+    """Check if extraction/indexing should be skipped for image-only vision.
+
+    When ALL prompts use extraction_inputs="image" (page image only),
+    text extraction is unnecessary since the LLM receives only page images.
+    """
+    if not outputs:
+        return False
+    return all(
+        output.get(_SK.EXTRACTION_INPUTS, "text") == "image"
+        for output in outputs
+    )
 
 
 # -----------------------------------------------------------------------
@@ -368,12 +387,18 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     execution_run_data_folder = Path(execution_data_dir)
     extracted_input_file = str(execution_run_data_folder / _SK.EXTRACT)
 
-    # ---- Step 4: Smart table detection ----
+    # ---- Step 4: Smart table / vision-only detection ----
     skip_extraction_and_indexing = _should_skip_extraction_for_smart_table(outputs)
     if skip_extraction_and_indexing:
         logger.info(
             "Skipping extraction and indexing for Excel table with valid JSON schema"
         )
+    if not skip_extraction_and_indexing:
+        skip_extraction_and_indexing = _should_skip_extraction_for_vision(outputs)
+        if skip_extraction_and_indexing:
+            logger.info(
+                "Skipping extraction and indexing: all prompts use image-only vision mode"
+            )
 
     # ---- Step 5: Build pipeline params ----
     usage_kwargs: dict[Any, Any] = {}
@@ -383,6 +408,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         usage_kwargs[UsageKwargs.EXECUTION_ID] = execution_id
 
     custom_data = exec_metadata.get(_SK.CUSTOM_DATA, {})
+    # SOURCE is the immutable original file (e.g. PDF) written by the
+    # source connector alongside INFILE; used for vision mode rasterisation.
+    source_file_path = str(execution_run_data_folder / "SOURCE")
     answer_params = {
         _SK.RUN_ID: file_execution_id,
         _SK.EXECUTION_ID: execution_id,
@@ -394,6 +422,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         _SK.FILE_PATH: extracted_input_file,
         _SK.EXECUTION_SOURCE: _SK.TOOL,
         _SK.CUSTOM_DATA: custom_data,
+        _SK.SOURCE_FILE_PATH: source_file_path,
         "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
     }
 
