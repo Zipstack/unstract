@@ -1,7 +1,11 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.filesystems.zs_dropbox import DropboxFS
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestDropboxFS(unittest.TestCase):

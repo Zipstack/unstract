@@ -568,3 +568,23 @@ def test_cmd_report_re_aggregates_existing_junit(tmp_path: Path, monkeypatch) ->
     for artifact in ("summary.md", "summary.json", "combined-test-report.md"):
         assert (reports_dir / artifact).exists(), f"missing {artifact}"
     assert "unit-x" in (reports_dir / "summary.md").read_text()
+
+
+def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
+    """The provisioned-Postgres URL (testcontainers, with a `+driver` scheme
+    and a random host port) must translate into the discrete DB_* vars Django
+    reads — otherwise integration-backend falls back to `backend-db-1` and
+    every django_db test errors on connect.
+    """
+    import tests.rig.cli as cli_mod
+
+    env = cli_mod._db_env_from_postgres_url(
+        "postgresql+psycopg2://tcuser:tcpass@127.0.0.1:49231/testdb"
+    )
+    assert env == {
+        "DB_HOST": "127.0.0.1",
+        "DB_PORT": "49231",
+        "DB_USER": "tcuser",
+        "DB_PASSWORD": "tcpass",
+        "DB_NAME": "testdb",
+    }

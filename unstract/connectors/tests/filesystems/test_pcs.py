@@ -1,7 +1,11 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestPCS_FS(unittest.TestCase):

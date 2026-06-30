@@ -5,6 +5,8 @@ import os
 import unittest
 from datetime import datetime, timezone
 
+import pytest
+
 logger = logging.getLogger(__name__)
 
 
@@ -248,6 +250,7 @@ class TestSharePointFSUnit(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+@pytest.mark.integration
 class TestSharePointFSIntegration(unittest.TestCase):
     """Integration tests for SharePointFS (require real credentials)."""
 

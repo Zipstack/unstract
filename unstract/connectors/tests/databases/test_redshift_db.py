@@ -1,7 +1,11 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.databases.redshift.redshift import Redshift
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestRedshift(unittest.TestCase):

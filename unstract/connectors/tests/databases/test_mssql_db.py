@@ -1,7 +1,11 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.databases.mssql.mssql import MSSQL
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestMSSQL(unittest.TestCase):

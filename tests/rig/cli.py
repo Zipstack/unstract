@@ -21,6 +21,7 @@ import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 from xml.sax import saxutils
 
 from tests.rig import critical_paths as cp
@@ -32,7 +33,12 @@ from tests.rig.groups import (
     load_groups,
 )
 from tests.rig.reporting import GroupResult, parse_junit, write_summary
-from tests.rig.runtime import PlatformEndpoints, PlatformRuntime, pick_runtime
+from tests.rig.runtime import (
+    PlatformEndpoints,
+    PlatformRuntime,
+    TestcontainersRuntime,
+    pick_runtime,
+)
 from tests.rig.selection import resolve
 
 # Pytest exit codes that the rig treats as non-failure for aggregation:
@@ -349,6 +355,13 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     needs_platform = any(manifest.get(n).requires_platform for n in runnable)
+    # Groups can declare `requires_services` (e.g. unit-backend needs Postgres)
+    # without needing the whole platform. Provision just the stateful infra via
+    # testcontainers in that case — compose would bring up every service for a
+    # unit-tier run. needs_platform wins when both are set (e2e/all runs go
+    # through compose); tiers run as separate rig invocations in CI, so the
+    # unit tier only ever hits the services-only branch.
+    needs_services = any(manifest.get(n).requires_services for n in runnable)
     runtime: PlatformRuntime | None = None
     endpoints: PlatformEndpoints | None = None
     group_results: list[GroupResult] = []
@@ -360,6 +373,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"[rig] bringing platform up via runtime={runtime.name}")
             # `up()` is inside the try so a failure here still triggers `down()`
             # in the finally, cleaning up any partial stack.
+            endpoints = runtime.up()
+        elif needs_services and not args.dry_run:
+            # Infra-only: testcontainers Postgres/Redis/etc., no platform
+            # services. ponytail: up() starts the full infra set even if a run
+            # only needs Postgres; trim to the requested services if startup
+            # cost ever matters.
+            runtime = TestcontainersRuntime()
+            print(f"[rig] bringing infra up via runtime={runtime.name} (requires_services)")
             endpoints = runtime.up()
 
         # TODO(runtime-gate-skip): groups run unconditionally in topo order;
@@ -524,6 +545,26 @@ def cmd_run(args: argparse.Namespace) -> int:
 # ── execution helpers ─────────────────────────────────────────────────────────
 
 
+def _db_env_from_postgres_url(url: str) -> dict[str, str]:
+    """Translate a provisioned Postgres URL into the discrete ``DB_*`` vars
+    Django reads (``backend/settings/base.py``).
+
+    The rig provisions a throwaway Postgres via testcontainers for groups
+    declaring ``requires_services: [postgres]``. Without this translation the
+    backend falls back to the compose hostname ``backend-db-1``, unreachable
+    from the host-side pytest, and every ``django_db`` test errors on connect.
+    """
+    # e.g. postgresql+psycopg2://user:pass@host:49153/dbname
+    parts = urlsplit(url)
+    return {
+        "DB_HOST": parts.hostname or "localhost",
+        "DB_PORT": str(parts.port or 5432),
+        "DB_USER": parts.username or "test",
+        "DB_PASSWORD": parts.password or "test",
+        "DB_NAME": parts.path.lstrip("/") or "test",
+    }
+
+
 def _green_group_names(results: list[GroupResult]) -> set[str]:
     return {r.name for r in results if r.status in ("pass", "empty")}
 
@@ -567,6 +608,27 @@ def _execute_group(
         # leaked in". `setdefault` would let a leaked sentinel win, which
         # defeats the purpose — set unconditionally.
         env["UNSTRACT_RIG_SESSION_ID"] = _rig_session_id()
+    if (
+        endpoints is not None
+        and "postgres" in group.requires_services
+        and endpoints.infra.postgres_url
+    ):
+        # Real provisioned Postgres beats the base.py `backend-db-1` default;
+        # override (not setdefault) so a stale shell DB_HOST can't shadow it.
+        env.update(_db_env_from_postgres_url(endpoints.infra.postgres_url))
+    if (
+        endpoints is not None
+        and "minio" in group.requires_services
+        and endpoints.infra.minio_endpoint
+    ):
+        # setdefault: a developer pointing at their own MinIO (env pre-set) wins.
+        env.setdefault(
+            "MINIO_ENDPOINT_URL", f"http://{endpoints.infra.minio_endpoint}"
+        )
+        if endpoints.infra.minio_access_key:
+            env.setdefault("MINIO_ACCESS_KEY_ID", endpoints.infra.minio_access_key)
+        if endpoints.infra.minio_secret_key:
+            env.setdefault("MINIO_SECRET_ACCESS_KEY", endpoints.infra.minio_secret_key)
     if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 

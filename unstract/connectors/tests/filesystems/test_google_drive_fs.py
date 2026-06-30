@@ -1,7 +1,11 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.filesystems.google_drive.google_drive import GoogleDriveFS
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestGoogleDriveFS(unittest.TestCase):
