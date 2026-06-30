@@ -29,6 +29,19 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 
+// The "restrict LLM creation" control is enterprise/cloud-only: org admin
+// roles and user management don't exist in OSS, so this setting is meaningless
+// there. Detect the enterprise build by probing for an enterprise-only plugin
+// (absent in OSS) and hide the control entirely otherwise. Mirrors the
+// plugin-gating idiom used in SideNavBar.
+let isEnterpriseBuild = false;
+try {
+  await import("../../../plugins/store/unstract-subscription-plan-store");
+  isEnterpriseBuild = true;
+} catch {
+  // OSS build — enterprise plugins are not bundled.
+}
+
 const defaultKeys = [
   {
     id: null,
@@ -124,9 +137,14 @@ function PlatformSettings() {
   }, [sessionDetails?.orgId]);
 
   useEffect(() => {
-    // Admin-only org setting; skip the call entirely for non-admins (the
-    // endpoint is admin-gated and would 403) and before session hydration.
-    if (!sessionDetails?.orgId || !sessionDetails?.isAdmin) {
+    // Enterprise/cloud-only + admin-only setting; skip the call in OSS and for
+    // non-admins (the endpoint is admin-gated and would 403) and before
+    // session hydration.
+    if (
+      !isEnterpriseBuild ||
+      !sessionDetails?.orgId ||
+      !sessionDetails?.isAdmin
+    ) {
       return;
     }
     axiosPrivate({
@@ -538,7 +556,7 @@ function PlatformSettings() {
                   </Typography.Text>
                 </div>
               </div>
-              {sessionDetails?.isAdmin && (
+              {isEnterpriseBuild && sessionDetails?.isAdmin && (
                 <div className="plt-set-section">
                   <Typography.Title level={5}>
                     LLM Adapter Creation
