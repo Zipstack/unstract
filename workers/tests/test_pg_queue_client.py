@@ -13,6 +13,7 @@ Two layers:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -22,6 +23,7 @@ import psycopg2
 import pytest
 from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
+from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.schema import qualified
 
@@ -195,6 +197,125 @@ class TestConnectionLifecycle:
         injected = MagicMock()
         PgQueueClient(conn=injected).close()
         injected.close.assert_not_called()
+
+
+class TestSendReconnectRetry:
+    """``send()``'s one-shot reconnect-retry for a reused, idle-reaped connection.
+
+    A cached connection can be reaped server-side (PgBouncer
+    ``server_idle_timeout`` / failover) while idle between sends; the first
+    statement after the gap then fails. ``send()`` retries ONCE — but only when
+    the failing connection was **reused** (cached + owned), so the ``INSERT``
+    (which is not idempotent) can't be double-enqueued: a reused conn that dies
+    on its first statement was reaped while idle and never ran the write.
+    """
+
+    @staticmethod
+    def _conn(*, execute_side_effect=None, fetchone=(1,)):
+        cur = MagicMock()
+        if execute_side_effect is not None:
+            cur.execute.side_effect = execute_side_effect
+        cur.fetchone.return_value = fetchone
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        return conn, cur
+
+    @staticmethod
+    def _no_sleep(monkeypatch):
+        sleep = MagicMock()
+        monkeypatch.setattr("queue_backend.pg_queue.client.time.sleep", sleep)
+        return sleep
+
+    @pytest.mark.parametrize(
+        "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
+    )
+    def test_reused_stale_conn_retries_and_succeeds(self, monkeypatch, caplog, exc_type):
+        # Cached owned conn reaped while idle fails its first statement; the
+        # one-shot retry reconnects (factory) and the INSERT lands. Exercise
+        # BOTH connection-dead error types — InterfaceError is the more likely
+        # stale symptom and is otherwise never covered, so narrowing the except
+        # to OperationalError alone would silently pass.
+        dead, _ = self._conn(execute_side_effect=exc_type("idle reap"))
+        fresh, fresh_cur = self._conn(fetchone=(77,))
+        factory = MagicMock(return_value=fresh)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()  # owns its connection
+        client._conn = dead  # simulate a cached (reused) connection
+
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.client"):
+            msg_id = client.send("q", {"a": 1}, org_id="org-7", priority=9)
+        assert msg_id == 77  # the retry's INSERT
+        dead.close.assert_called_once()  # stale conn discarded
+        factory.assert_called_once()  # reconnected exactly once
+        # The backoff actually fired (don't just discard the _no_sleep mock).
+        sleep.assert_called_once_with(_SEND_RETRY_BACKOFF_SECONDS)
+        # The retry's INSERT carries the passthrough params — a params-drop on
+        # the reconnect path would be caught here (assert on the FRESH cursor).
+        _, params = fresh_cur.execute.call_args.args
+        assert params[0] == "q"  # queue_name
+        assert params[2] == "org-7"  # org_id
+        assert params[3] == 9  # priority
+        # The connection-level failure surfaced as a WARNING on the retry.
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert "retrying once" in caplog.text
+
+    def test_fresh_conn_failure_does_not_retry(self, monkeypatch):
+        # First-ever send (self._conn is None) is on a FRESH conn — a failure
+        # there is a genuine error / ambiguous; must NOT retry (could duplicate).
+        dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("down"))
+        factory = MagicMock(return_value=dead)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.send("q", {"a": 1})
+        factory.assert_called_once()  # created once, NOT retried
+        sleep.assert_not_called()
+
+    def test_injected_conn_not_retried(self, monkeypatch):
+        # An injected (caller-owned) conn is never recycled, so retrying can't
+        # reconnect — and isn't ours to retry. Re-raise without retry.
+        conn, _ = self._conn(execute_side_effect=psycopg2.OperationalError("dead"))
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient(conn=conn)
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.send("q", {"a": 1})
+        sleep.assert_not_called()
+        conn.close.assert_not_called()  # caller's connection untouched
+
+    def test_retry_failure_reraises_once(self, monkeypatch):
+        # If the reconnected attempt also fails, raise — exactly one reconnect,
+        # no loop.
+        dead1, _ = self._conn(execute_side_effect=psycopg2.OperationalError("reap"))
+        dead2, _ = self._conn(execute_side_effect=psycopg2.OperationalError("still"))
+        factory = MagicMock(return_value=dead2)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+        client._conn = dead1
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.send("q", {"a": 1})
+        factory.assert_called_once()  # one reconnect only
+
+    def test_reused_conn_non_connection_error_not_retried(self, monkeypatch):
+        # A logical error (not Operational/Interface) on a reused conn is not a
+        # stale-connection symptom → re-raise, no reconnect.
+        bad, _ = self._conn(execute_side_effect=RuntimeError("logic"))
+        factory = MagicMock()
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+        client._conn = bad
+
+        with pytest.raises(RuntimeError):
+            client.send("q", {"a": 1})
+        factory.assert_not_called()
+        sleep.assert_not_called()
 
 
 class TestCreatePgConnection:
