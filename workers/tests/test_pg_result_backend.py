@@ -15,7 +15,6 @@ from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
-
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.result_backend import (
     _STORE_RETRY_BACKOFF_SECONDS,
@@ -145,7 +144,14 @@ class TestStoreResultReconnectRetry:
         monkeypatch.setattr("queue_backend.pg_queue.result_backend.time.sleep", sleep)
         return sleep
 
-    def test_stale_conn_retries_and_writes_result(self, monkeypatch):
+    # Both outcomes go through the same write path — the PR's whole point is that
+    # a *failed* task's result (error=) is delivered too, not silently dropped.
+    @pytest.mark.parametrize(
+        "outcome",
+        [{"result": {"ok": True}}, {"error": "boom"}],
+        ids=["completed", "failed"],
+    )
+    def test_stale_conn_retries_and_writes_result(self, monkeypatch, outcome):
         # Cached owned conn reaped while idle fails its first INSERT; the one-shot
         # retry reconnects (factory) and the result is written + committed.
         dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("idle reap"))
@@ -158,12 +164,49 @@ class TestStoreResultReconnectRetry:
         rb = PgResultBackend()  # owns its connection
         rb._conn = dead  # simulate a cached (reused) connection
 
-        rb.store_result("k", result={"ok": True})
+        rb.store_result("k", **outcome)
 
         dead.close.assert_called_once()  # stale conn discarded
         factory.assert_called_once()  # reconnected exactly once
         fresh_cur.execute.assert_called_once()  # the retry INSERT ran
         fresh.commit.assert_called_once()
+
+    def test_commit_time_reap_retries(self, monkeypatch):
+        # An idle reap usually surfaces when the buffered INSERT flushes at
+        # conn.commit() (after the cursor yield), not at execute() — that path
+        # must retry too.
+        dead, _ = self._conn()
+        dead.commit.side_effect = psycopg2.OperationalError("reaped at commit")
+        fresh, _ = self._conn()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection",
+            MagicMock(return_value=fresh),
+        )
+        self._no_sleep(monkeypatch)
+        rb = PgResultBackend()
+        rb._conn = dead
+
+        rb.store_result("k", result={"ok": True})  # must self-heal
+        dead.close.assert_called_once()
+        fresh.commit.assert_called_once()
+
+    def test_injected_connection_not_retried(self, monkeypatch):
+        # An injected (caller-owned) conn is never discarded by _cursor, so a
+        # retry would re-acquire the same dead handle — short-circuit to re-raise
+        # without the spurious backoff sleep.
+        conn, _ = self._conn(execute_side_effect=psycopg2.OperationalError("dead"))
+        factory = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection", factory
+        )
+        sleep = self._no_sleep(monkeypatch)
+        rb = PgResultBackend(conn=conn)  # injected -> not owned
+
+        with pytest.raises(psycopg2.OperationalError):
+            rb.store_result("k", result={"ok": True})
+        factory.assert_not_called()
+        sleep.assert_not_called()
+        conn.close.assert_not_called()  # caller's connection untouched
 
     @pytest.mark.parametrize(
         "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
@@ -228,3 +271,42 @@ class TestStoreResultReconnectRetry:
             rb.store_result("k", result={"ok": True})
         factory.assert_not_called()
         sleep.assert_not_called()
+
+
+class TestStoreResultRealReconnect:
+    """DB-gated: store_result REALLY reconnects against live PG (not just mock
+    orchestration). Skips when Postgres is unreachable (pg_conn fixture). This is
+    the test that fails if _cursor stopped nulling _conn or the reconnect handle
+    were unusable — the mock tests can't see that.
+    """
+
+    def test_real_reconnect_heals_closed_connection(self, pg_conn, monkeypatch):
+        # The owned backend reconnects via result_backend.create_pg_connection;
+        # point that at the integration DB (TEST_DB_*), the same one pg_conn uses
+        # (the bare DB_* env is the suite's unit-isolation placeholder).
+        os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection",
+            lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
+        )
+
+        key = _key()
+        rb = PgResultBackend()  # owned, real connection to the test DB
+        try:
+            _ = rb.conn  # materialise the connection
+            rb._conn.close()  # client-side close -> InterfaceError on next use
+            rb.store_result(key, result={"healed": True})  # must self-heal
+        finally:
+            rb.close()
+
+        # The row really landed — read it back on the fixture's own connection.
+        pg_conn.rollback()  # clear any aborted txn before reading
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT result->>'healed' FROM pg_task_result WHERE task_id = %s",
+                (key,),
+            )
+            row = cur.fetchone()
+            cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (key,))
+        pg_conn.commit()
+        assert row is not None and row[0] == "true"

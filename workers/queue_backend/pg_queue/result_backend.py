@@ -37,7 +37,7 @@ import contextlib
 import json
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
 import psycopg2
@@ -52,6 +52,17 @@ if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
 
 logger = logging.getLogger(__name__)
+
+# psycopg2 errors that mean the connection itself is dead (dropped socket /
+# PgBouncer recycle / server termination). Shared by ``_cursor`` (decides whether
+# to discard the cached handle) and ``_store_with_reconnect`` (decides whether the
+# one-shot retry is eligible) so the two can't drift — narrowing one without the
+# other would silently break the retry's "was this a connection death?" test.
+# Mirrors ``PgQueueClient._CONN_DEAD_ERRORS`` (UN-3654), the sibling this models on.
+_CONN_DEAD_ERRORS: Final[tuple[type[Exception], ...]] = (
+    psycopg2.OperationalError,
+    psycopg2.InterfaceError,
+)
 
 # How long a stored result lives before the reaper's retention sweep may delete
 # it. Defaults to the executor caller-timeout default so a result always
@@ -119,9 +130,7 @@ class PgResultBackend:
                 yield cur
             conn.commit()
         except Exception as exc:
-            conn_dead = isinstance(
-                exc, (psycopg2.OperationalError, psycopg2.InterfaceError)
-            )
+            conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
             try:
                 conn.rollback()
             except Exception:
@@ -139,7 +148,7 @@ class PgResultBackend:
                 self._conn = None
             raise
 
-    def _store_with_reconnect(self, operation: Any) -> None:
+    def _store_with_reconnect(self, operation: Callable[[Any], None]) -> None:
         """Run an idempotent store ``operation(cur)`` in a committed cursor,
         retrying ONCE if the cached connection was reaped while idle.
 
@@ -150,7 +159,14 @@ class PgResultBackend:
         heals the *next* call, so without a retry the *current* ``store_result``
         fails, the result is silently dropped, and the blocking caller is
         stranded forever (the exec-b11ba2f3 hang). On a dead-connection error
-        ``_cursor`` has already dropped the handle, so the retry reconnects.
+        ``_cursor`` (when it OWNS the connection) has already dropped the handle,
+        so the retry reconnects.
+
+        Only **owned** connections are retried: ``_cursor`` clears a dead handle
+        only when ``_owns_conn`` (an injected connection is the caller's), so for
+        an injected connection the retry would re-acquire the same dead handle and
+        buy nothing — re-raise immediately. Production is always owned (the
+        executor consumer constructs ``PgResultBackend()``).
 
         Safe to retry unconditionally (no reused-vs-fresh guard needed, unlike
         the non-idempotent ``PgQueueClient.send``): the write is
@@ -162,15 +178,17 @@ class PgResultBackend:
                 with self._cursor() as cur:
                     operation(cur)
                 return
-            except (psycopg2.OperationalError, psycopg2.InterfaceError) as exc:
-                if attempt >= _STORE_RETRY_ATTEMPTS:
+            except _CONN_DEAD_ERRORS:
+                # Last attempt, or an injected (non-owned) conn _cursor won't
+                # have dropped — retrying can't reconnect, so re-raise.
+                if attempt >= _STORE_RETRY_ATTEMPTS or not self._owns_conn:
                     raise
+                # Describe what was observed, not an inferred cause: this catch
+                # also covers deadlock / statement-timeout / admin-shutdown, not
+                # only a stale idle reap. exc_info carries the type + message.
                 logger.warning(
                     "PgResultBackend: result write failed with a connection-level "
-                    "error (%s: %s); dropping the cached connection and retrying "
-                    "once (stale idle reap or DB unavailable)",
-                    type(exc).__name__,
-                    exc,
+                    "error; dropping the cached connection and retrying once",
                     exc_info=True,
                 )
                 time.sleep(_STORE_RETRY_BACKOFF_SECONDS)
@@ -208,11 +226,14 @@ class PgResultBackend:
         ``result`` is the decoded JSONB dict (psycopg2 parses ``jsonb`` to a
         Python ``dict``); ``None`` means the task has not finished yet.
 
-        No reconnect-retry here (unlike :meth:`store_result`): the only caller,
-        ``executor_rpc.wait_for_result``, makes a FRESH ``PgResultBackend`` per
-        wait and then polls every ~0.2–2s, so this connection is new and kept
-        warm — it has no idle window to be reaped. A failure on a fresh
-        connection is a genuine error, not a stale-reap.
+        No reconnect-retry here (unlike :meth:`store_result`). The invariant it
+        relies on: the sole entry point into a wait (``executor_rpc.wait_for_result``
+        → this class's :meth:`wait_for_result` → ``get_result``) constructs a
+        FRESH ``PgResultBackend`` per wait and polls it every ~0.2–2s, so this
+        connection is new and kept warm — no idle window to be reaped, and a
+        failure on a fresh connection is a genuine error, not a stale reap. If a
+        long-lived backend ever gains a one-shot ``get_result`` lookup, revisit
+        this.
         """
         with self._cursor() as cur:
             cur.execute(_get_sql(), (str(task_id),))
