@@ -13,6 +13,7 @@ Two layers:
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 import uuid
@@ -22,6 +23,7 @@ import psycopg2
 import pytest
 from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
+from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.schema import qualified
 
@@ -225,20 +227,39 @@ class TestSendReconnectRetry:
         monkeypatch.setattr("queue_backend.pg_queue.client.time.sleep", sleep)
         return sleep
 
-    def test_reused_stale_conn_retries_and_succeeds(self, monkeypatch):
+    @pytest.mark.parametrize(
+        "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
+    )
+    def test_reused_stale_conn_retries_and_succeeds(self, monkeypatch, caplog, exc_type):
         # Cached owned conn reaped while idle fails its first statement; the
-        # one-shot retry reconnects (factory) and the INSERT lands.
-        dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("idle reap"))
-        fresh, _ = self._conn(fetchone=(77,))
+        # one-shot retry reconnects (factory) and the INSERT lands. Exercise
+        # BOTH connection-dead error types — InterfaceError is the more likely
+        # stale symptom and is otherwise never covered, so narrowing the except
+        # to OperationalError alone would silently pass.
+        dead, _ = self._conn(execute_side_effect=exc_type("idle reap"))
+        fresh, fresh_cur = self._conn(fetchone=(77,))
         factory = MagicMock(return_value=fresh)
         monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
-        self._no_sleep(monkeypatch)
+        sleep = self._no_sleep(monkeypatch)
         client = PgQueueClient()  # owns its connection
         client._conn = dead  # simulate a cached (reused) connection
 
-        assert client.send("q", {"a": 1}) == 77  # the retry's INSERT
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.client"):
+            msg_id = client.send("q", {"a": 1}, org_id="org-7", priority=9)
+        assert msg_id == 77  # the retry's INSERT
         dead.close.assert_called_once()  # stale conn discarded
         factory.assert_called_once()  # reconnected exactly once
+        # The backoff actually fired (don't just discard the _no_sleep mock).
+        sleep.assert_called_once_with(_SEND_RETRY_BACKOFF_SECONDS)
+        # The retry's INSERT carries the passthrough params — a params-drop on
+        # the reconnect path would be caught here (assert on the FRESH cursor).
+        _, params = fresh_cur.execute.call_args.args
+        assert params[0] == "q"  # queue_name
+        assert params[2] == "org-7"  # org_id
+        assert params[3] == 9  # priority
+        # The connection-level failure surfaced as a WARNING on the retry.
+        assert any(r.levelno == logging.WARNING for r in caplog.records)
+        assert "retrying once" in caplog.text
 
     def test_fresh_conn_failure_does_not_retry(self, monkeypatch):
         # First-ever send (self._conn is None) is on a FRESH conn — a failure
