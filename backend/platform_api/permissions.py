@@ -34,6 +34,12 @@ class CanRotatePlatformApiKey(BasePermission):
       enforced upstream (auth middleware + org-scoped queryset); this adds the
       intra-org "self only" restriction for key callers.
 
+    The "self only" constraint for key callers is enforced object-level in
+    ``has_object_permission`` (the idiomatic DRF location); ``has_permission``
+    is the coarse session-vs-key gate. This permission is only used by the
+    detail-route ``rotate`` action, which fetches the row via ``get_object()``
+    and therefore always triggers the object-level check.
+
     Note: the auth middleware already blocks ``read`` keys from POST, so only
     ``read_write``/``full_access`` keys can reach rotate.
     """
@@ -46,9 +52,17 @@ class CanRotatePlatformApiKey(BasePermission):
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
-        platform_key = getattr(request, "platform_api_key", None)
-        if platform_key is not None:
-            # Platform API key caller: self-rotation only.
-            return str(view.kwargs.get("pk")) == str(platform_key.id)
+        if getattr(request, "platform_api_key", None) is not None:
+            # Platform API key caller: admitted here; the "own key only"
+            # constraint is enforced in has_object_permission below.
+            return True
         # Session caller: must be an org admin (may rotate any key in the org).
         return IsOrganizationAdmin().has_permission(request, view)
+
+    def has_object_permission(self, request, view, obj):
+        platform_key = getattr(request, "platform_api_key", None)
+        if platform_key is not None:
+            # Platform API key may rotate only its own key.
+            return obj.id == platform_key.id
+        # Session admins were already gated in has_permission.
+        return True
