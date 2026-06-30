@@ -63,7 +63,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 import psycopg2
 import psycopg2.extensions
@@ -83,6 +83,7 @@ from .fairness import (
     WorkloadType,
 )
 from .handle import BarrierHandle
+from .pg_queue.connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .pg_queue.connection import create_pg_connection
 from .pg_queue.schema import qualified
 
@@ -94,17 +95,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# psycopg2 errors that mean the connection itself is dead (dropped socket /
-# PgBouncer recycle / server termination), as opposed to a logical/data error on
-# a live connection. Shared by ``_cursor`` / ``_recover_after_error`` (discard the
-# stale thread-local handle), the idempotent pre-dispatch write retry, and the
-# decrement phase-split retry, so the "was this a connection death?" test can't
-# drift across them. Mirrors ``PgQueueClient._CONN_DEAD_ERRORS`` (UN-3654) and
-# ``PgResultBackend._CONN_DEAD_ERRORS`` (UN-3659), the siblings this models on.
-_CONN_DEAD_ERRORS: Final[tuple[type[Exception], ...]] = (
-    psycopg2.OperationalError,
-    psycopg2.InterfaceError,
-)
+# ``_CONN_DEAD_ERRORS`` (the "is this a connection death?" test, used by
+# ``_recover_after_error``/``_cursor`` to discard a stale handle and by the
+# enqueue/decrement retries to decide eligibility) is imported from
+# ``pg_queue.connection`` so the dispatch/result/barrier sites can't drift.
 
 
 # Thread-local owned connection (prefork → one per child; thread-local keeps it
@@ -135,6 +129,17 @@ def _recover_after_error(conn: PgConnection, exc: BaseException) -> bool:
     try:
         conn.rollback()
     except Exception:
+        # A failed rollback proves the connection is unusable regardless of the
+        # original error's subclass — treat it as dead. Surface why (instead of
+        # swallowing it): this also reclassifies a non-conn error (e.g. DataError)
+        # whose rollback fails into the dead/retry path, so the trail must show it
+        # was the rollback, not the original error, that condemned the connection.
+        logger.warning(
+            "PgBarrier: rollback during error recovery failed (original error %s) "
+            "— treating the connection as dead and discarding it.",
+            type(exc).__name__,
+            exc_info=True,
+        )
         conn_dead = True
     if conn_dead or conn.closed:
         with contextlib.suppress(Exception):
@@ -628,9 +633,21 @@ def _fire_barrier_callback(
     return str(callback_signature.apply_async().id)
 
 
-def _apply_decrement(execution_id: str, result_json: str) -> tuple[int, Any] | None:
+class _DecrementRow(NamedTuple):
+    """The decrement ``UPDATE … RETURNING`` row, named so the caller reads
+    ``row.remaining`` / ``row.results`` instead of positional ``row[0]`` / ``row[1]``
+    and the ``results`` list-shape is documented in the type.
+    """
+
+    remaining: int
+    results: list[Any]
+
+
+def _apply_decrement(
+    execution_id: str, result_json: str, *, reused: bool
+) -> _DecrementRow | None:
     """Apply the barrier decrement ``UPDATE`` and return its ``(remaining,
-    results)`` RETURNING row (``None`` if the barrier row is already gone).
+    results)`` row (``None`` if the barrier row is already gone).
 
     The decrement is NON-idempotent — re-applying it double-counts (premature
     callback fire with incomplete results, or a strand past 0) — so it is split
@@ -638,27 +655,32 @@ def _apply_decrement(execution_id: str, result_json: str) -> tuple[int, Any] | N
     provably safe:
 
     - **EXECUTE phase** (``UPDATE … RETURNING`` + ``fetchone``) — the statement
-      runs but is NOT yet committed. A connection-level failure here on a
-      **reused** (cached) connection is the PgBouncer idle-reap: the statement
+      runs but is NOT yet committed. A connection-level failure here when the
+      connection was *cached* (``reused`` — sampled by the caller BEFORE the entry
+      guard materialises a connection) is the PgBouncer idle-reap: the statement
       never reached the server, no commit was issued, and the open transaction is
       rolled back on disconnect. So the decrement provably never landed →
-      reconnect and re-apply it exactly once. (Only a *cached* connection can be a
-      stale idle-reaped handle; a freshly-created one failing is a genuine DB
-      error, not a reap, so it is not retried.) **This safety relies on the
-      connection being non-autocommit** (``create_pg_connection`` opens it that
-      way): even if the server actually ran the ``UPDATE`` before the socket
-      dropped, it sits in an uncommitted transaction that is rolled back on
-      disconnect — durability happens ONLY at the commit below — so re-applying
-      can never double-count.
+      reconnect and re-apply it exactly once. A *freshly-created* connection
+      failing (``reused`` False) is a genuine DB error, not a reap, so it is NOT
+      retried — a reconnect would buy nothing. **This safety relies on the
+      connection being non-autocommit** (psycopg2's default; ``create_pg_connection``
+      does not override it): even if the server actually ran the ``UPDATE`` before
+      the socket dropped, it sits in an uncommitted transaction that is rolled back
+      on disconnect — durability happens ONLY at the commit below — so re-applying
+      can never double-count. (``test_create_pg_connection_is_non_autocommit`` pins
+      that default at its source.)
     - **COMMIT phase** — ``conn.commit()``. A failure here is AMBIGUOUS: the
       server may have applied the commit before the socket dropped. Re-applying
-      could double-count, so it is NEVER retried — it propagates, and the caller
-      (:func:`run_batch_with_barrier`) tears the barrier down so the execution
-      fails fast rather than risk a corrupted counter.
+      could double-count, so it is NEVER retried — it propagates. On the in-body
+      PG path (:func:`run_batch_with_barrier`) the caller then tears the barrier
+      down so the execution fails fast; on the Celery ``.link`` path
+      (:func:`barrier_pg_decr_and_check`, ``max_retries=0``) it is not retried and
+      the barrier is reclaimed at ``expires_at`` by the reaper. Either way the
+      counter is never corrupted.
 
     Any non-connection error (e.g. the NUL-byte ``psycopg2.DataError`` from the
     jsonb cast) also propagates unchanged — only the idle-reap self-heals. This is
-    the decrement's counterpart to ``PgQueueClient.send``'s reused-guard
+    the decrement's counterpart to ``pg_queue.client.send``'s reused-guard
     (UN-3654) and the idempotent pre-dispatch write's retry, but phase-split
     because the decrement, unlike those, must never replay a committed write.
     """
@@ -670,20 +692,18 @@ def _apply_decrement(execution_id: str, result_json: str) -> tuple[int, Any] | N
         "RETURNING remaining, results"
     )
     for attempt in range(1, _BARRIER_DECREMENT_ATTEMPTS + 1):
-        # Only a connection cached BEFORE this attempt can be a stale idle-reaped
-        # handle; a freshly-reconnected one failing is a genuine error, not a reap.
-        reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
         conn = _get_conn()
         try:
             with conn.cursor() as cur:
                 cur.execute(sql, (result_json, execution_id))
-                row = cur.fetchone()
+                fetched = cur.fetchone()
         except Exception as exc:
             conn_dead = _recover_after_error(conn, exc)
             # Retry ONLY a reused-conn death on the execute phase: it never
             # committed (re-applying lands exactly once) and reconnecting can
-            # actually help. A fresh-conn death (DB genuinely down), a DataError,
-            # or the last attempt all propagate unchanged.
+            # actually help. ``reused`` reflects the connection state at entry, so
+            # it is True only on the first attempt's cached handle; a reconnect
+            # makes the next attempt fresh, and the attempt bound stops the loop.
             if conn_dead and reused and attempt < _BARRIER_DECREMENT_ATTEMPTS:
                 logger.warning(
                     "[exec:%s] PgBarrier decrement: execute failed on a cached "
@@ -698,26 +718,45 @@ def _apply_decrement(execution_id: str, result_json: str) -> tuple[int, Any] | N
                 )
                 time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
                 continue
+            # Not retried. A non-connection error (e.g. DataError) is logged by the
+            # caller's own teardown; but a conn-dead give-up (fresh-conn death, or
+            # the retry budget spent) would otherwise be silent — log it so the
+            # terminal "didn't self-heal" decision leaves the same breadcrumb the
+            # retryable path does, then propagate.
+            if conn_dead:
+                logger.warning(
+                    "[exec:%s] PgBarrier decrement: execute failed with a "
+                    "connection error (%s) that is NOT being retried (reused=%s, "
+                    "attempt %d/%d) — propagating; the barrier is not self-healed "
+                    "here.",
+                    execution_id,
+                    type(exc).__name__,
+                    reused,
+                    attempt,
+                    _BARRIER_DECREMENT_ATTEMPTS,
+                    exc_info=True,
+                )
             raise
         try:
             conn.commit()
         except Exception as exc:
             _recover_after_error(conn, exc)
             # AMBIGUOUS — the server may have committed. Re-applying could
-            # double-count, so do NOT retry: propagate so the caller tears the
-            # barrier down (fail-fast) rather than corrupt the counter.
+            # double-count, so do NOT retry: propagate (the caller fails the
+            # barrier fast, or it is reclaimed at expiry) rather than corrupt it.
             logger.warning(
                 "[exec:%s] PgBarrier decrement: commit failed (%s) — NOT retrying "
                 "(the server may already have applied it; a re-apply would "
-                "double-count). Propagating so the barrier is torn down.",
+                "double-count). Propagating.",
                 execution_id,
                 type(exc).__name__,
                 exc_info=True,
             )
             raise
-        return row
-    # Unreachable: the loop either returns the row or raises. The bare raise keeps
-    # the type checker honest about the no-fallthrough invariant.
+        return None if fetched is None else _DecrementRow(int(fetched[0]), fetched[1])
+    # Defensive: the loop always returns or raises before here. The annotation
+    # permits None, so a type checker would NOT catch a stray fall-through — this
+    # guards a future edit that breaks the always-return/raise invariant.
     raise AssertionError("unreachable: _apply_decrement loop exited without return")
 
 
@@ -754,6 +793,15 @@ def _barrier_pg_decrement(
     committed) is reconnected and re-applied exactly once. A commit-phase failure
     is ambiguous and is NEVER retried — see :func:`_apply_decrement`.
     """
+    # Sample whether the decrement will run on a *cached* connection BEFORE the
+    # entry-guard's _get_conn() below materialises one. _apply_decrement's
+    # reused-guard needs the pre-guard state: a freshly-created connection must NOT
+    # be classified 'reused' (only a cached handle can be a stale idle-reap), but
+    # the guard's _get_conn() would otherwise always leave _local.conn populated,
+    # making 'reused' permanently True. Mirrors pg_queue.client.send, which samples
+    # before any _get_conn().
+    conn_was_cached = getattr(_local, "conn", None) is not None and not _local.conn.closed
+
     # Enforce the "own committed transaction" contract loudly. A caller that
     # invokes this inside an already-open transaction on the shared thread-local
     # connection would hold the row lock across the call and let the outer txn's
@@ -787,7 +835,7 @@ def _barrier_pg_decrement(
     # jsonb_build_array(...) appends exactly one element regardless of the
     # result's shape (``||`` would concatenate if the result were itself a list).
     try:
-        row = _apply_decrement(execution_id, result_json)
+        row = _apply_decrement(execution_id, result_json, reused=conn_was_cached)
     except psycopg2.DataError:
         # json.dumps accepts a few bytes jsonb rejects — notably a NUL (0x00)
         # in a string. The cast above then raises, the decrement never lands, and
@@ -811,7 +859,7 @@ def _barrier_pg_decrement(
         )
         return {"status": "abandoned", "remaining": None}
 
-    remaining, all_results = int(row[0]), row[1]
+    remaining, all_results = row.remaining, row.results
     logger.info(f"[exec:{execution_id}] PgBarrier decrement → remaining={remaining}")
 
     if remaining > 0:

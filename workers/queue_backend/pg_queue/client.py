@@ -34,9 +34,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
-import psycopg2
-
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
+from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import create_pg_connection
 from .schema import qualified
 
@@ -46,16 +45,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-# psycopg2 errors that mean the connection itself is dead (dropped socket /
-# PgBouncer recycle / server termination) rather than a statement-level fault.
-# Shared by ``_cursor`` (decides whether to discard the cached handle) and
-# ``send`` (decides whether the one-shot reconnect-retry is eligible) so the two
-# sites can't drift — narrowing one without the other would silently break the
-# retry's "was this a connection death?" test.
-_CONN_DEAD_ERRORS: Final[tuple[type[Exception], ...]] = (
-    psycopg2.OperationalError,
-    psycopg2.InterfaceError,
-)
+# ``_CONN_DEAD_ERRORS`` (the "is this a connection death?" test, shared by
+# ``_cursor`` discarding the cached handle and ``send`` deciding retry eligibility)
+# is imported from ``.connection`` so the dispatch/result/barrier sites can't drift.
 
 
 # Atomic claim. Takes up to %(qty)s ready messages no other transaction

@@ -271,9 +271,15 @@ class TestDecrementPhaseSplitRetry:
     The count is therefore never double-applied. (UN-3660)
     """
 
-    @pytest.fixture(autouse=True)
-    def _no_sleep(self, monkeypatch):
-        monkeypatch.setattr(pg_barrier.time, "sleep", lambda *_a, **_k: None)
+    @pytest.fixture
+    def sleeps(self, monkeypatch):
+        # Record (and skip) the retry backoff so a test can assert it fired exactly
+        # when — and only when — a retry happens. Deleting the time.sleep in
+        # _apply_decrement, or a refactor that starts hammering a struggling DB,
+        # changes this list.
+        calls: list[float] = []
+        monkeypatch.setattr(pg_barrier.time, "sleep", calls.append)
+        return calls
 
     @pytest.mark.parametrize(
         "exc",
@@ -284,7 +290,7 @@ class TestDecrementPhaseSplitRetry:
         ids=["OperationalError", "InterfaceError"],
     )
     def test_execute_phase_reaped_cached_conn_retries_once(
-        self, _clean_local, monkeypatch, caplog, exc
+        self, _clean_local, monkeypatch, caplog, sleeps, exc
     ):
         # The idle-reap: a cached conn fails mid-execute (never committed), so the
         # decrement reconnects and re-applies exactly once on a healthy conn.
@@ -294,17 +300,20 @@ class TestDecrementPhaseSplitRetry:
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
 
         with caplog.at_level("WARNING"):
-            pg_barrier._apply_decrement("exec-1", '{"ok": true}')
+            pg_barrier._apply_decrement("exec-1", '{"ok": true}', reused=True)
 
         assert dead.executes == 1 and healthy.executes == 1  # exactly one extra try
         assert dead.commits == 0  # the reaped attempt never committed
         assert dead.closed is True  # stale conn discarded
         assert healthy.commits == 1  # committed exactly once, on the retry
         assert pg_barrier._local.conn is healthy
+        assert sleeps == [pg_barrier._BARRIER_RETRY_BACKOFF_SECONDS]  # backoff fired once
         assert "execute failed on a cached connection" in caplog.text
         assert type(exc).__name__ in caplog.text
 
-    def test_commit_phase_failure_is_not_retried(self, _clean_local, monkeypatch):
+    def test_commit_phase_failure_is_not_retried(
+        self, _clean_local, monkeypatch, sleeps
+    ):
         # A commit failure is AMBIGUOUS (the server may have applied it) → must
         # NOT retry, or the decrement could land twice. It propagates; the dead
         # conn is discarded; no reconnect is attempted.
@@ -319,34 +328,40 @@ class TestDecrementPhaseSplitRetry:
         )
 
         with pytest.raises(psycopg2.OperationalError, match="during commit"):
-            pg_barrier._apply_decrement("exec-2", '{"ok": true}')
+            pg_barrier._apply_decrement("exec-2", '{"ok": true}', reused=True)
 
         assert conn.executes == 1  # the UPDATE ran exactly once
         assert conn.commits == 1  # commit was attempted exactly once
         assert reconnects == []  # NEVER reconnected/retried after a commit failure
         assert conn.closed is True  # the dead conn was discarded
+        assert sleeps == []  # no backoff — a commit failure is not retried
 
     def test_fresh_conn_execute_failure_is_not_retried(
-        self, _clean_local, monkeypatch
+        self, _clean_local, monkeypatch, sleeps
     ):
-        # No cached conn → the first conn is freshly created. A failure on a fresh
-        # conn is a genuine DB error, not an idle-reap, so the reused-guard skips
-        # the retry and it surfaces immediately.
+        # reused=False (the production wrapper passes this when no conn was cached
+        # before the entry guard). A failure on a fresh conn is a genuine DB error,
+        # not an idle-reap, so the reused-guard skips the retry — even though it is
+        # a connection-dead error — and it surfaces immediately.
         err = psycopg2.OperationalError("db down")
-        made = []
+        conn = _FakeConn(execute_error=err)
+        pg_barrier._local.conn = conn
+        reconnects = []
         monkeypatch.setattr(
             pg_barrier,
             "create_pg_connection",
-            lambda **_k: made.append(c := _FakeConn(execute_error=err)) or c,
+            lambda **_k: reconnects.append(1) or _FakeConn(),
         )
-        pg_barrier._local.conn = None  # nothing cached → fresh
 
         with pytest.raises(psycopg2.OperationalError, match="db down"):
-            pg_barrier._apply_decrement("exec-3", '{"ok": true}')
+            pg_barrier._apply_decrement("exec-3", '{"ok": true}', reused=False)
 
-        assert len(made) == 1  # created once, never retried
+        assert reconnects == []  # fresh-conn death is not retried
+        assert sleeps == []  # …so no backoff either
 
-    def test_non_connection_error_is_not_retried(self, _clean_local, monkeypatch):
+    def test_non_connection_error_is_not_retried(
+        self, _clean_local, monkeypatch, sleeps
+    ):
         # A DataError (e.g. a NUL byte rejected by the jsonb cast) is not a
         # connection death → propagate immediately so the caller tears the barrier
         # down. A live conn after a logical error is NOT discarded.
@@ -360,24 +375,77 @@ class TestDecrementPhaseSplitRetry:
         )
 
         with pytest.raises(psycopg2.DataError):
-            pg_barrier._apply_decrement("exec-4", '{"ok": true}')
+            pg_barrier._apply_decrement("exec-4", '{"ok": true}', reused=True)
 
         assert reconnects == []  # no retry on a logical/data error
         assert conn.closed is False  # a live conn after a data error is kept
+        assert sleeps == []  # not retried → no backoff
 
-    def test_reraises_after_second_execute_failure(self, _clean_local, monkeypatch):
-        # The one-shot bound: if the reconnect target also dies on execute,
-        # re-raise rather than loop (and the second conn is "fresh" anyway).
+    def test_reraises_after_one_retry(self, _clean_local, monkeypatch, sleeps):
+        # The one-shot bound: a reused-conn idle-reap retries ONCE; if the
+        # reconnect target also dies on execute, re-raise rather than loop. On
+        # attempt 2 the attempt bound (attempt < _BARRIER_DECREMENT_ATTEMPTS) is
+        # what refuses the next retry — note reused is still True (the caller's
+        # entry-time value), so bumping the attempt constant would NOT add
+        # self-heals unless the reconnect logic also re-evaluated freshness.
         err = psycopg2.OperationalError("still down")
         pg_barrier._local.conn = _FakeConn(execute_error=err)
+        reconnects = []
         monkeypatch.setattr(
             pg_barrier,
             "create_pg_connection",
-            lambda **_k: _FakeConn(execute_error=err),
+            lambda **_k: reconnects.append(1) or _FakeConn(execute_error=err),
         )
 
         with pytest.raises(psycopg2.OperationalError, match="still down"):
-            pg_barrier._apply_decrement("exec-5", '{"ok": true}')
+            pg_barrier._apply_decrement("exec-5", '{"ok": true}', reused=True)
+
+        assert len(reconnects) == 1  # exactly one reconnect, then gave up
+        assert sleeps == [pg_barrier._BARRIER_RETRY_BACKOFF_SECONDS]  # one backoff
+
+    def test_wrapper_fresh_conn_not_retried_end_to_end(
+        self, _clean_local, monkeypatch, sleeps
+    ):
+        # Through the PRODUCTION entry (_barrier_pg_decrement), not _apply_decrement
+        # directly: with no cached conn, the entry-guard's _get_conn() creates a
+        # fresh one — but _barrier_pg_decrement samples `reused` BEFORE the guard,
+        # so it threads reused=False and a genuine fresh-conn DB error is NOT
+        # retried. Pins the sample-before-the-guard wiring the direct-call tests
+        # can't see (the guard would otherwise leave _local.conn always populated).
+        err = psycopg2.OperationalError("db down")
+        creates = []
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: creates.append(c := _FakeConn(execute_error=err)) or c,
+        )
+        pg_barrier._local.conn = None  # nothing cached → wrapper samples reused=False
+
+        with pytest.raises(psycopg2.OperationalError, match="db down"):
+            _barrier_pg_decrement(
+                {"f": 1}, execution_id="exec-FRESH", callback_descriptor=_CALLBACK
+            )
+
+        assert len(creates) == 1  # the guard created one; NO retry reconnect
+        assert sleeps == []  # a fresh-conn death is not retried → no backoff
+
+
+def test_create_pg_connection_is_non_autocommit():
+    """The decrement phase-split's exactly-once safety rests on the connection
+    being non-autocommit (an uncommitted UPDATE rolls back on disconnect, so an
+    execute-phase failure is never durable). Pin that at its SOURCE — a future
+    ``conn.autocommit = True`` in ``create_pg_connection`` would silently
+    reintroduce the double-count the split exists to prevent, and no other test
+    would catch it (the barrier_db fixture sets autocommit itself)."""
+    os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
+    try:
+        conn = create_pg_connection(env_prefix="TEST_DB_")
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"Postgres not reachable: {exc}")
+    try:
+        assert conn.autocommit is False
+    finally:
+        conn.close()
 
 
 # --- Layer 2: enqueue + link/abort with a real injected connection ---
