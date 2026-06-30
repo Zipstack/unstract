@@ -71,8 +71,11 @@
   width: 250px;
   margin: 0;
   padding: 0;
-  height: 60px;
   margin-right: 20px;
+}
+
+.logs-details-card .ant-card-body {
+  padding: 8px 16px;
 }
 
 .logging-card-icons {
