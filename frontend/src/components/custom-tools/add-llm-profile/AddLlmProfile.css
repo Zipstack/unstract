@@ -1,16 +1,13 @@
 /* Styles for AddLlmProfile */
 
-/* .conn-modal-form-pad-left (SettingsModal) wraps every settings panel, so
-   scope the padding override to this form alone. */
+/* Scope padding override to this form; .conn-modal-form-pad-left is shared. */
 .conn-modal-form-pad-left:has(> .add-llm-profile-body) {
   padding: 8px 16px;
 }
 
-/* The settings row is hard-fixed to 800px, which forces this form's column
-   (.conn-modal-col) to scroll. Let the row size to the form so the modal
-   grows instead of showing an inner scrollbar. Scoped via :has so the other
-   settings panels and the connector dialog (shared .conn-modal-row/-col) are
-   untouched. !important overrides the inline height on the row. */
+/* Drop the inner scrollbar: size the fixed-800px row to the form so the modal
+   grows instead. :has scopes it so sibling panels / connector dialog (shared
+   .conn-modal-row/-col) are untouched; !important beats the inline height. */
 .conn-modal-row:has(.add-llm-profile-body) {
   height: auto !important;
 }
@@ -18,10 +15,7 @@
   overflow-y: visible;
 }
 
-/* Pin the submit button to the bottom of the scrollable panel so it stays
-   visible as the form grows (e.g. Advanced Settings expanded) instead of
-   flowing past the modal. Background is set inline from the antd theme token
-   so scrolling fields don't show through. */
+/* Sticky footer keeps the submit button visible as the form grows. */
 .add-llm-profile-footer {
   position: sticky;
   bottom: 0;
