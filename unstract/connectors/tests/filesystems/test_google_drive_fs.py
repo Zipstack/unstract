@@ -6,8 +6,9 @@ from unstract.connectors.filesystems.google_drive.google_drive import GoogleDriv
 
 class TestGoogleDriveFS(unittest.TestCase):
     @unittest.skipUnless(
-        os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT"),
-        "Integration test requires GDRIVE_GOOGLE_SERVICE_ACCOUNT",
+        os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT")
+        and os.environ.get("GDRIVE_GOOGLE_PROJECT_ID"),
+        "Integration test requires GDRIVE_GOOGLE_SERVICE_ACCOUNT and GDRIVE_GOOGLE_PROJECT_ID",
     )
     def test_basic(self):
         self.assertEqual(GoogleDriveFS.requires_oauth(), True)

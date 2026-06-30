@@ -67,8 +67,10 @@ class CriticalPathStatus:
     notes: str = ""
     # True when a declared covering group belongs to the tier(s) this run
     # covered. An out-of-scope gap (coverage only in an unrun tier, or none
-    # declared) must not gate under --fail-on-critical-gap.
-    in_scope: bool = True
+    # declared) must not gate under --fail-on-critical-gap. Defaults False so a
+    # regression that forgets to pass it can only under-gate (spurious warning),
+    # never over-gate (spurious build block).
+    in_scope: bool = False
 
     def __post_init__(self) -> None:
         # Make the contradictory states unrepresentable rather than relying on

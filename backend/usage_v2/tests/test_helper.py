@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock
 
+import pytest
 import usage_v2.helper as helper_mod
 from usage_v2.helper import UsageHelper
 
@@ -26,8 +27,12 @@ class FakeUsage:
     objects = MagicMock(name="Usage.objects")
 
 
-# Swap the symbol get_usage_by_model resolves; leaves the real model untouched.
-helper_mod.Usage = FakeUsage
+@pytest.fixture(autouse=True)
+def _swap_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Swap the symbol get_usage_by_model resolves, per-test, so monkeypatch
+    # restores the real model afterwards — a module-level rebind would leak
+    # FakeUsage into every later test in the same process.
+    monkeypatch.setattr(helper_mod, "Usage", FakeUsage)
 
 
 # ---------------------------------------------------------------------------

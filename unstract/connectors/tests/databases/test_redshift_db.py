@@ -6,7 +6,7 @@ from unstract.connectors.databases.redshift.redshift import Redshift
 
 class TestRedshift(unittest.TestCase):
     @unittest.skipUnless(
-        os.environ.get("REDSHIFT_TEST_PASSWORD"),
+        os.environ.get("REDSHIFT_TEST_PASSWORD") and os.environ.get("REDSHIFT_TEST_HOST"),
         "Integration test requires a live Redshift cluster and REDSHIFT_TEST_* env vars",
     )
     def test_user_name_and_password(self):

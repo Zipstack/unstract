@@ -94,6 +94,12 @@ def _restore_modules() -> None:
         else:
             sys.modules[name] = original
     _SAVED_MODULES.clear()
+    # The helper imported above is now cached bound to the stubbed globals.
+    # Evict it so any later importer in this process gets a real copy; our
+    # own `_psh_mod`/`PromptStudioHelper` refs are already bound, unaffected.
+    sys.modules.pop(
+        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper", None
+    )
 
 
 try:

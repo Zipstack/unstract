@@ -6,8 +6,9 @@ from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
 class TestPCS_FS(unittest.TestCase):
     @unittest.skipUnless(
-        os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID"),
-        "Integration test requires GOOGLE_STORAGE_ACCESS_KEY_ID",
+        os.environ.get("GOOGLE_STORAGE_ACCESS_KEY_ID")
+        and os.environ.get("GOOGLE_STORAGE_SECRET_ACCESS_KEY"),
+        "Integration test requires GOOGLE_STORAGE_ACCESS_KEY_ID and GOOGLE_STORAGE_SECRET_ACCESS_KEY",
     )
     def test_pcs(self) -> None:
         self.assertEqual(UnstractCloudStorage.requires_oauth(), False)

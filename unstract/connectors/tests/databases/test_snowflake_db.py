@@ -6,7 +6,9 @@ from unstract.connectors.databases.snowflake.snowflake import SnowflakeDB
 
 class TestSnowflakeDB(unittest.TestCase):
     @unittest.skipUnless(
-        os.environ.get("SNOWFLAKE_TEST_PASSWORD"),
+        os.environ.get("SNOWFLAKE_TEST_PASSWORD")
+        and os.environ.get("SNOWFLAKE_TEST_USER")
+        and os.environ.get("SNOWFLAKE_TEST_ACCOUNT"),
         "Integration test requires a live Snowflake account and SNOWFLAKE_TEST_* env vars",
     )
     def test_something(self):
