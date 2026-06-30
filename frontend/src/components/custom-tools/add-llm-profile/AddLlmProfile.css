@@ -1,18 +1,16 @@
 /* Styles for AddLlmProfile */
 
-/* The settings modal's content column (.conn-modal-col) is the real scroll
-   container. .settings-body-pad-top declares its own overflow-y: auto with no
-   bounded height, which does nothing except register a nested scroll context
-   that would stop the sticky footer below from pinning to .conn-modal-col.
-   Drop it back to visible for this form. */
-.settings-body-pad-top.add-llm-profile-scroll-root {
-  overflow: visible;
+.conn-modal-form-pad-left:has(> .add-llm-profile-body) {
+  padding: 8px 16px;
 }
 
-/* Pin the submit button to the bottom of the scrollable panel so it stays
-   visible as the form grows (e.g. Advanced Settings expanded) instead of
-   flowing past the modal. Background is set inline from the antd theme token
-   so scrolling fields don't show through. */
+.conn-modal-row:has(.add-llm-profile-body) {
+  height: auto !important;
+}
+.conn-modal-col:has(.add-llm-profile-body) {
+  overflow-y: visible;
+}
+
 .add-llm-profile-footer {
   position: sticky;
   bottom: 0;
