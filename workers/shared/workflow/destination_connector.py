@@ -1833,6 +1833,7 @@ class WorkerDestinationConnector:
                 workflow_id=str(self.workflow_id),
                 whisper_hash=whisper_hash,
                 file_execution_id=file_execution_id,
+                execution_id=self.execution_id,
                 extracted_text=extracted_text,
                 ttl_seconds=ttl_seconds,
                 hitl_reason=hitl_reason,
