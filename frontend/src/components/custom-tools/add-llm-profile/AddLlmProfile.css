@@ -1,13 +1,9 @@
 /* Styles for AddLlmProfile */
 
-/* Scope padding override to this form; .conn-modal-form-pad-left is shared. */
 .conn-modal-form-pad-left:has(> .add-llm-profile-body) {
   padding: 8px 16px;
 }
 
-/* Drop the inner scrollbar: size the fixed-800px row to the form so the modal
-   grows instead. :has scopes it so sibling panels / connector dialog (shared
-   .conn-modal-row/-col) are untouched; !important beats the inline height. */
 .conn-modal-row:has(.add-llm-profile-body) {
   height: auto !important;
 }
@@ -15,7 +11,6 @@
   overflow-y: visible;
 }
 
-/* Sticky footer keeps the submit button visible as the form grows. */
 .add-llm-profile-footer {
   position: sticky;
   bottom: 0;
