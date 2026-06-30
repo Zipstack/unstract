@@ -116,7 +116,9 @@ def _append_image_blocks(
     for page_num, png_bytes in page_images:
         b64 = base64.standard_b64encode(png_bytes).decode("utf-8")
         content.append({"type": "text", "text": f"Page {page_num + 1}:"})
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{b64}"},
-        })
+        content.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
+            }
+        )

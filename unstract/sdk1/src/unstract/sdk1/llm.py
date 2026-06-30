@@ -458,9 +458,7 @@ class LLM:
                 completion_kwargs, self._get_adapter_info()
             )
             response: dict[str, object] = call_with_retry(
-                lambda: litellm.completion(
-                    messages=messages, **completion_kwargs
-                ),
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
                 max_retries=max_retries,
                 retry_predicate=is_retryable_litellm_error,
                 description=self._get_adapter_info(),

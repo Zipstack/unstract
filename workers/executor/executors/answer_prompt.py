@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
+
 from unstract.sdk1.constants import (
     ExtractionInputs,
     VisionMode,
@@ -144,9 +145,7 @@ class AnswerPromptService:
             The LLM answer string.
         """
         # Derive vision mode from per-prompt fields
-        extraction_inputs = output.get(
-            PSKeys.EXTRACTION_INPUTS, ExtractionInputs.TEXT
-        )
+        extraction_inputs = output.get(PSKeys.EXTRACTION_INPUTS, ExtractionInputs.TEXT)
         source_of_truth = output.get(PSKeys.SOURCE_OF_TRUTH, "text")
         vision_mode = derive_vision_mode(extraction_inputs, source_of_truth)
 
@@ -376,9 +375,7 @@ class AnswerPromptService:
             # Read source file bytes from file storage
             from executor.executors.file_utils import FileUtils
 
-            fs = FileUtils.get_fs_instance(
-                execution_source=execution_source
-            )
+            fs = FileUtils.get_fs_instance(execution_source=execution_source)
             file_bytes: bytes = fs.read(path=source_file_path, mode="rb")
 
             # Rasterise pages

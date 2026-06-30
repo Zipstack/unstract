@@ -1,9 +1,8 @@
-from django.db import migrations, models
 import django.db.models.deletion
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("adapter_processor_v2", "0001_initial"),
         ("prompt_profile_manager_v2", "0005_profilemanager_shared_to_org_and_more"),

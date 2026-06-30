@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
-
 from unstract.sdk1.rasteriser import (
     RenderSettings,
     _preprocess_image,
@@ -217,9 +216,7 @@ class TestRasterisePages:
         mock_page = MagicMock()
         mock_bitmap = MagicMock()
         # Return an RGBA image
-        mock_bitmap.to_pil.return_value = Image.new(
-            "RGBA", (100, 100), (255, 0, 0, 128)
-        )
+        mock_bitmap.to_pil.return_value = Image.new("RGBA", (100, 100), (255, 0, 0, 128))
         mock_page.render.return_value = mock_bitmap
         mock_doc.__getitem__ = MagicMock(return_value=mock_page)
         mock_pdf_cls.return_value = mock_doc
@@ -250,9 +247,7 @@ class TestRasterisePages:
     ) -> None:
         """PDF document should be closed even when an error occurs."""
         mock_doc = MagicMock()
-        mock_doc.__len__ = MagicMock(
-            side_effect=RuntimeError("bad pdf")
-        )
+        mock_doc.__len__ = MagicMock(side_effect=RuntimeError("bad pdf"))
         mock_pdf_cls.return_value = mock_doc
 
         with pytest.raises(RuntimeError, match="bad pdf"):

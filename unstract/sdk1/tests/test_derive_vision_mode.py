@@ -2,7 +2,6 @@
 
 from typing import Self
 
-import pytest
 from unstract.sdk1.constants import (
     ExtractionInputs,
     SourceOfTruthValues,
@@ -51,28 +50,16 @@ class TestDeriveVisionMode:
 
     def test_image_returns_source_of_truth(self: Self) -> None:
         """extraction_inputs=image -> source_of_truth, always."""
-        assert (
-            derive_vision_mode("image", "text")
-            == VisionMode.SOURCE_OF_TRUTH
-        )
-        assert (
-            derive_vision_mode("image", "image")
-            == VisionMode.SOURCE_OF_TRUTH
-        )
+        assert derive_vision_mode("image", "text") == VisionMode.SOURCE_OF_TRUTH
+        assert derive_vision_mode("image", "image") == VisionMode.SOURCE_OF_TRUTH
 
     def test_both_text_sot_returns_spatial_helper(self: Self) -> None:
         """extraction_inputs=both, source_of_truth=text -> spatial_helper."""
-        assert (
-            derive_vision_mode("both", "text")
-            == VisionMode.SPATIAL_HELPER
-        )
+        assert derive_vision_mode("both", "text") == VisionMode.SPATIAL_HELPER
 
     def test_both_image_sot_returns_source_of_truth(self: Self) -> None:
         """extraction_inputs=both, source_of_truth=image -> source_of_truth."""
-        assert (
-            derive_vision_mode("both", "image")
-            == VisionMode.SOURCE_OF_TRUTH
-        )
+        assert derive_vision_mode("both", "image") == VisionMode.SOURCE_OF_TRUTH
 
     def test_with_enum_constants(self: Self) -> None:
         """Verify the function works with class constants."""
@@ -81,20 +68,14 @@ class TestDeriveVisionMode:
             == VisionMode.TEXT_ONLY
         )
         assert (
-            derive_vision_mode(
-                ExtractionInputs.IMAGE, SourceOfTruthValues.TEXT
-            )
+            derive_vision_mode(ExtractionInputs.IMAGE, SourceOfTruthValues.TEXT)
             == VisionMode.SOURCE_OF_TRUTH
         )
         assert (
-            derive_vision_mode(
-                ExtractionInputs.BOTH, SourceOfTruthValues.TEXT
-            )
+            derive_vision_mode(ExtractionInputs.BOTH, SourceOfTruthValues.TEXT)
             == VisionMode.SPATIAL_HELPER
         )
         assert (
-            derive_vision_mode(
-                ExtractionInputs.BOTH, SourceOfTruthValues.IMAGE
-            )
+            derive_vision_mode(ExtractionInputs.BOTH, SourceOfTruthValues.IMAGE)
             == VisionMode.SOURCE_OF_TRUTH
         )

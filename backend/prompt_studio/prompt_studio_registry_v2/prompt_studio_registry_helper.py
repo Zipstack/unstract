@@ -278,11 +278,7 @@ class PromptStudioRegistryHelper:
             else ""
         )
         llm = str(default_llm_profile.llm.id)
-        x2text = (
-            str(default_llm_profile.x2text.id)
-            if default_llm_profile.x2text
-            else ""
-        )
+        x2text = str(default_llm_profile.x2text.id) if default_llm_profile.x2text else ""
 
         # Tool settings
         tool_settings = {}
@@ -374,10 +370,7 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.REINDEX] = pm.reindex
             output[JsonSchemaKey.EMBEDDING_SUFFIX] = embedding_suffix
             # Vision mode fields — force text_only when single-pass is enabled
-            if (
-                tool.single_pass_extraction_mode
-                and prompt.extraction_inputs != "text"
-            ):
+            if tool.single_pass_extraction_mode and prompt.extraction_inputs != "text":
                 logger.warning(
                     "Single-pass extraction enabled: forcing prompt '%s' "
                     "from extraction_inputs='%s' to 'text' in export",

@@ -47,9 +47,7 @@ class TestBuildVisionMessages:
         assert "Document text here" in content[0]["text"]
 
         # Images come after text
-        image_blocks = [
-            b for b in content if b.get("type") == "image_url"
-        ]
+        image_blocks = [b for b in content if b.get("type") == "image_url"]
         assert len(image_blocks) == 2
 
         # Last block is the extraction prompt
@@ -80,8 +78,7 @@ class TestBuildVisionMessages:
         text_blocks = [
             b
             for b in user_content
-            if b.get("type") == "text"
-            and "supplementary" in b.get("text", "")
+            if b.get("type") == "text" and "supplementary" in b.get("text", "")
         ]
         assert len(text_blocks) == 1
         assert "Document text" in text_blocks[0]["text"]
@@ -99,9 +96,7 @@ class TestBuildVisionMessages:
 
         # No system prompt -> user message is messages[0]
         user_content = messages[0]["content"]
-        image_blocks = [
-            b for b in user_content if b.get("type") == "image_url"
-        ]
+        image_blocks = [b for b in user_content if b.get("type") == "image_url"]
         assert len(image_blocks) == 1
 
         url = image_blocks[0]["image_url"]["url"]
@@ -123,11 +118,7 @@ class TestBuildVisionMessages:
         )
 
         user_content = messages[1]["content"]
-        text_values = [
-            b["text"]
-            for b in user_content
-            if b.get("type") == "text"
-        ]
+        text_values = [b["text"] for b in user_content if b.get("type") == "text"]
 
         # Page labels are 1-indexed (page_num + 1)
         assert any("Page 1:" in t for t in text_values)
@@ -167,8 +158,7 @@ class TestBuildVisionMessages:
         doc_text_blocks = [
             b
             for b in user_content
-            if b.get("type") == "text"
-            and "DOCUMENT TEXT" in b.get("text", "")
+            if b.get("type") == "text" and "DOCUMENT TEXT" in b.get("text", "")
         ]
         assert len(doc_text_blocks) == 0
 
@@ -189,8 +179,7 @@ class TestBuildVisionMessages:
         doc_text_blocks = [
             b
             for b in user_content
-            if b.get("type") == "text"
-            and "DOCUMENT TEXT" in b.get("text", "")
+            if b.get("type") == "text" and "DOCUMENT TEXT" in b.get("text", "")
         ]
         assert len(doc_text_blocks) == 0
 

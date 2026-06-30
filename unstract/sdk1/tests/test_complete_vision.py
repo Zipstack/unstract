@@ -48,7 +48,8 @@ def _make_litellm_response(
                 "finish_reason": finish_reason,
             }
         ],
-        "usage": usage or {
+        "usage": usage
+        or {
             "prompt_tokens": 100,
             "completion_tokens": 20,
             "total_tokens": 120,
@@ -70,9 +71,7 @@ class TestCompleteVision:
         mock_completion.return_value = _make_litellm_response("answer")
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "hi"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
         result = llm.complete_vision(messages)
 
         assert "response" in result
@@ -98,9 +97,7 @@ class TestCompleteVision:
                     {"type": "text", "text": "context"},
                     {
                         "type": "image_url",
-                        "image_url": {
-                            "url": "data:image/png;base64,AAAA"
-                        },
+                        "image_url": {"url": "data:image/png;base64,AAAA"},
                     },
                 ],
             },
@@ -124,14 +121,10 @@ class TestCompleteVision:
             "completion_tokens": 50,
             "total_tokens": 550,
         }
-        mock_completion.return_value = _make_litellm_response(
-            usage=usage
-        )
+        mock_completion.return_value = _make_litellm_response(usage=usage)
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         llm.complete_vision(messages)
 
         llm._record_usage.assert_called_once()
@@ -149,14 +142,10 @@ class TestCompleteVision:
     ) -> None:
         """extract_json=True should strip JSON code markers."""
         json_response = '```json\n{"key": "value"}\n```'
-        mock_completion.return_value = _make_litellm_response(
-            content=json_response
-        )
+        mock_completion.return_value = _make_litellm_response(content=json_response)
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         result = llm.complete_vision(messages, extract_json=True)
 
         # After extract_json, the markers should be stripped
@@ -176,9 +165,7 @@ class TestCompleteVision:
         )
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         with pytest.raises(LLMError):
             llm.complete_vision(messages)
 
@@ -193,9 +180,7 @@ class TestCompleteVision:
         mock_completion.side_effect = RuntimeError("provider error")
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         with pytest.raises(LLMError, match="Error from LLM adapter"):
             llm.complete_vision(messages)
 
@@ -211,9 +196,7 @@ class TestCompleteVision:
         mock_completion.side_effect = original_err
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         with pytest.raises(LLMError) as exc_info:
             llm.complete_vision(messages)
         assert exc_info.value is original_err
@@ -230,9 +213,7 @@ class TestCompleteVision:
         mock_completion.return_value = raw_resp
         llm = _make_llm()
 
-        messages = [
-            {"role": "user", "content": [{"type": "text", "text": "q"}]}
-        ]
+        messages = [{"role": "user", "content": [{"type": "text", "text": "q"}]}]
         result = llm.complete_vision(messages)
 
         assert result["response"].raw is raw_resp

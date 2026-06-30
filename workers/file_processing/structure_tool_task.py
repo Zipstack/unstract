@@ -220,10 +220,7 @@ def _should_skip_extraction_for_vision(
     """
     if not outputs:
         return False
-    return all(
-        output.get(_SK.EXTRACTION_INPUTS, "text") == "image"
-        for output in outputs
-    )
+    return all(output.get(_SK.EXTRACTION_INPUTS, "text") == "image" for output in outputs)
 
 
 # -----------------------------------------------------------------------

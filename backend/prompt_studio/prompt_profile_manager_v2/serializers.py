@@ -52,10 +52,7 @@ class ProfileManagerSerializer(AuditSerializer):
                 field
                 for field in _TEXT_EXTRACTION_FIELDS
                 if not attrs.get(field)
-                and (
-                    instance is None
-                    or not getattr(instance, f"{field}_id", None)
-                )
+                and (instance is None or not getattr(instance, f"{field}_id", None))
             ]
             if missing:
                 raise serializers.ValidationError(

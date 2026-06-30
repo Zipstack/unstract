@@ -168,9 +168,7 @@ class SourceConnector(BaseConnector):
                 source_of_truth = output.get("source_of_truth", "text")
                 if extraction_inputs != "text":
                     name = output.get("name", "")
-                    vision_parts.append(
-                        f"{name}:{extraction_inputs}:{source_of_truth}"
-                    )
+                    vision_parts.append(f"{name}:{extraction_inputs}:{source_of_truth}")
 
             if not vision_parts:
                 return ""
