@@ -40,11 +40,10 @@ import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
-import psycopg2
-
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.polling import poll_for_row
 
+from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import create_pg_connection
 from .schema import qualified
 
@@ -53,16 +52,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# psycopg2 errors that mean the connection itself is dead (dropped socket /
-# PgBouncer recycle / server termination). Shared by ``_cursor`` (decides whether
-# to discard the cached handle) and ``_store_with_reconnect`` (decides whether the
-# one-shot retry is eligible) so the two can't drift — narrowing one without the
-# other would silently break the retry's "was this a connection death?" test.
-# Mirrors ``PgQueueClient._CONN_DEAD_ERRORS`` (UN-3654), the sibling this models on.
-_CONN_DEAD_ERRORS: Final[tuple[type[Exception], ...]] = (
-    psycopg2.OperationalError,
-    psycopg2.InterfaceError,
-)
+# ``_CONN_DEAD_ERRORS`` (the "is this a connection death?" test, shared by
+# ``_cursor`` discarding the cached handle and ``_store_with_reconnect`` deciding
+# retry eligibility) is imported from ``.connection`` so the dispatch/result/barrier
+# sites can't drift.
 
 # How long a stored result lives before the reaper's retention sweep may delete
 # it. Defaults to the executor caller-timeout default so a result always

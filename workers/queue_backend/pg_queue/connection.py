@@ -27,6 +27,19 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# psycopg2 errors that mean the connection itself is dead (dropped socket /
+# PgBouncer recycle / server termination), as opposed to a logical/data error on
+# a live connection. Single source of truth for every PG-queue site that decides
+# "was this a connection death?" — the dispatch ``send`` reused-guard
+# (``pg_queue.client``, UN-3654), the ``store_result`` retry
+# (``pg_queue.result_backend``, UN-3659) and the barrier enqueue/decrement
+# (``pg_barrier``, UN-3651/UN-3660). Hoisted here (the module all of them already
+# import) so the three call sites can't drift apart.
+CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
+    psycopg2.OperationalError,
+    psycopg2.InterfaceError,
+)
+
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool
 # wait, brief network partition, "too many clients" spikes) — the common cloud
 # blips. Opening a connection is side-effect-free, so retrying it is safe and
