@@ -39,6 +39,13 @@ class Organization(models.Model):
         default=-1,
         db_comment="token limit set in case of frition less onbaoarded org",
     )
+    restrict_llm_adapter_creation = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Controlled mode: when True, only organization admins may create "
+            "LLM adapters in this org. Default False preserves open creation."
+        ),
+    )
 
     class Meta:
         verbose_name = "Organization"

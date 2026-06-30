@@ -4,10 +4,13 @@ from typing import Any
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import UserRoleData
 from account_v2.models import Organization
+from platform_api.permissions import IsOrganizationAdmin
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from tenant_account_v2.dto import OrganizationLoginResponse, ResetUserPasswordDto
@@ -50,6 +53,46 @@ def reset_password(request: Request) -> Response:
             status=status.HTTP_400_BAD_REQUEST,
             data={"status": "failed", "message": data.message},
         )
+
+
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated, IsOrganizationAdmin])
+def organization_settings(request: Request) -> Response:
+    """Read or update org-level settings. Admin-only.
+
+    Currently exposes the ``restrict_llm_adapter_creation`` controlled-mode
+    flag. GET returns the current value; PATCH updates it.
+    """
+    organization = UserContext.get_organization()
+    if not organization:
+        return Response(
+            status=status.HTTP_404_NOT_FOUND,
+            data={"message": "Org Not Found"},
+        )
+
+    if request.method == "PATCH":
+        value = request.data.get("restrict_llm_adapter_creation")
+        if not isinstance(value, bool):
+            return Response(
+                status=status.HTTP_400_BAD_REQUEST,
+                data={"message": "restrict_llm_adapter_creation must be a boolean"},
+            )
+        organization.restrict_llm_adapter_creation = value
+        organization.modified_by = request.user
+        organization.save(
+            update_fields=[
+                "restrict_llm_adapter_creation",
+                "modified_by",
+                "modified_at",
+            ]
+        )
+
+    return Response(
+        status=status.HTTP_200_OK,
+        data={
+            "restrict_llm_adapter_creation": (organization.restrict_llm_adapter_creation)
+        },
+    )
 
 
 @api_view(["GET"])
