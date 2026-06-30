@@ -16,6 +16,7 @@ from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
@@ -24,6 +25,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -184,9 +186,25 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
-        try:
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
 
+        # Controlled mode (UN-3584): when the org has restricted LLM adapter
+        # creation, only organization admins may create LLM adapters. Other
+        # adapter types are unaffected, and the default (flag off) keeps
+        # creation open for everyone.
+        if adapter_type == AdapterKeys.LLM:
+            organization = UserContext.get_organization()
+            if (
+                organization
+                and organization.restrict_llm_adapter_creation
+                and not OrganizationMemberService.is_user_organization_admin(request.user)
+            ):
+                raise PermissionDenied(
+                    "LLM adapter creation is restricted to organization admins. "
+                    "Please contact your organization admin."
+                )
+
+        try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B

@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   Row,
+  Switch,
   Tag,
   Typography,
 } from "antd";
@@ -85,6 +86,9 @@ function PlatformSettings() {
   // UI shows minutes; wire format (and ConfigSpec.value) is seconds.
   const [batchIntervalMinutes, setBatchIntervalMinutes] = useState(null);
   const [isSavingInterval, setIsSavingInterval] = useState(false);
+  // Controlled-mode flag: only admins can create LLM adapters when true.
+  const [restrictLlmCreation, setRestrictLlmCreation] = useState(false);
+  const [isSavingRestriction, setIsSavingRestriction] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -118,6 +122,57 @@ function PlatformSettings() {
         console.warn("Failed to load notification batch interval", err);
       });
   }, [sessionDetails?.orgId]);
+
+  useEffect(() => {
+    // Admin-only org setting; skip the call entirely for non-admins (the
+    // endpoint is admin-gated and would 403) and before session hydration.
+    if (!sessionDetails?.orgId || !sessionDetails?.isAdmin) {
+      return;
+    }
+    axiosPrivate({
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
+    })
+      .then((res) => {
+        setRestrictLlmCreation(
+          Boolean(res?.data?.restrict_llm_adapter_creation),
+        );
+      })
+      .catch((err) => {
+        console.warn("Failed to load LLM adapter creation setting", err);
+      });
+  }, [sessionDetails?.orgId, sessionDetails?.isAdmin]);
+
+  const handleToggleRestriction = (checked) => {
+    const previous = restrictLlmCreation;
+    setRestrictLlmCreation(checked); // optimistic
+    setIsSavingRestriction(true);
+    axiosPrivate({
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: { restrict_llm_adapter_creation: checked },
+    })
+      .then((res) => {
+        setRestrictLlmCreation(
+          Boolean(res?.data?.restrict_llm_adapter_creation),
+        );
+        setAlertDetails({
+          type: "success",
+          content: "LLM adapter creation setting updated.",
+        });
+      })
+      .catch((err) => {
+        setRestrictLlmCreation(previous); // revert on failure
+        setAlertDetails(handleException(err, "Failed to update setting"));
+      })
+      .finally(() => {
+        setIsSavingRestriction(false);
+      });
+  };
 
   const handleSaveInterval = () => {
     if (
@@ -483,6 +538,32 @@ function PlatformSettings() {
                   </Typography.Text>
                 </div>
               </div>
+              {sessionDetails?.isAdmin && (
+                <div className="plt-set-section">
+                  <Typography.Title level={5}>
+                    LLM Adapter Creation
+                  </Typography.Title>
+                  <Typography.Text
+                    type="secondary"
+                    className="plt-set-section-subtitle"
+                  >
+                    Restrict creation of LLM connections to organization admins.
+                    When enabled, non-admin users cannot create LLM adapters.
+                  </Typography.Text>
+                  <div className="plt-set-inner-card">
+                    <div className="plt-set-notif-field-row">
+                      <Switch
+                        checked={restrictLlmCreation}
+                        loading={isSavingRestriction}
+                        onChange={handleToggleRestriction}
+                      />
+                      <Typography.Text>
+                        Only admins can create LLM adapters
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </IslandLayout>
         </div>
