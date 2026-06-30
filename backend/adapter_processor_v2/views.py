@@ -175,6 +175,28 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             return AdapterListSerializer
         return AdapterInstanceSerializer
 
+    @staticmethod
+    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
+        """Controlled mode (UN-3584): only org admins may create LLM adapters
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) and non-LLM adapter types bypass; the default
+        (flag off) keeps creation open for everyone.
+        """
+        if adapter_type != AdapterKeys.LLM:
+            return
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_llm_adapter_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "LLM adapter creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
+
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
 
@@ -187,22 +209,7 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
 
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-
-        # Controlled mode (UN-3584): when the org has restricted LLM adapter
-        # creation, only organization admins may create LLM adapters. Other
-        # adapter types are unaffected, and the default (flag off) keeps
-        # creation open for everyone.
-        if adapter_type == AdapterKeys.LLM:
-            organization = UserContext.get_organization()
-            if (
-                organization
-                and organization.restrict_llm_adapter_creation
-                and not OrganizationMemberService.is_user_organization_admin(request.user)
-            ):
-                raise PermissionDenied(
-                    "LLM adapter creation is restricted to organization admins. "
-                    "Please contact your organization admin."
-                )
+        self._enforce_llm_creation_restriction(request, adapter_type)
 
         try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:

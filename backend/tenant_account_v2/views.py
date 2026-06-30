@@ -78,7 +78,14 @@ def organization_settings(request: Request) -> Response:
                 data={"message": "restrict_llm_adapter_creation must be a boolean"},
             )
         organization.restrict_llm_adapter_creation = value
-        organization.save(update_fields=["restrict_llm_adapter_creation", "modified_at"])
+        organization.modified_by = request.user
+        organization.save(
+            update_fields=[
+                "restrict_llm_adapter_creation",
+                "modified_by",
+                "modified_at",
+            ]
+        )
 
     return Response(
         status=status.HTTP_200_OK,
