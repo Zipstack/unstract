@@ -143,6 +143,10 @@ export default defineConfig(({ mode }) => {
       target: "esnext",
       outDir: "build",
       sourcemap: true,
+      // Keep all CSS in one stylesheet. Per-chunk CSS (the default) loads in
+      // navigation order, so equal-specificity rules across components resolve
+      // unpredictably. JS code-splitting is unaffected.
+      cssCodeSplit: false,
       // Chunk size warning limit
       chunkSizeWarningLimit: 1000,
       rollupOptions: {
