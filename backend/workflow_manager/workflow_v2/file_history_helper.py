@@ -58,8 +58,14 @@ class FileHistoryHelper:
 
         filters = Q(workflow=workflow)
         if cache_key:
+            # cache_key includes vision mode signature when applicable,
+            # so lookups by cache_key are vision-aware automatically.
             filters &= Q(cache_key=cache_key)
         elif provider_file_uuid:
+            # Note: provider_file_uuid lookups are NOT vision-discriminated.
+            # If vision mode changes on a deployed workflow using file connectors
+            # with provider UUIDs (e.g., Google Drive), users must clear file
+            # markers to trigger reprocessing.
             filters &= Q(provider_file_uuid=provider_file_uuid)
 
         file_history: FileHistory | None

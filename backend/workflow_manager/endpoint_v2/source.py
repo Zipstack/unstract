@@ -103,6 +103,7 @@ class SourceConnector(BaseConnector):
         self.hash_value_of_file_content: str | None = None
         self.workflow_log = workflow_log
         self.use_file_history = use_file_history
+        self._vision_signature = self._compute_vision_signature(workflow)
 
     def _get_endpoint_for_workflow(
         self,
@@ -121,6 +122,67 @@ class SourceConnector(BaseConnector):
             endpoint_type=WorkflowEndpoint.EndpointType.SOURCE,
         )
         return endpoint
+
+    @staticmethod
+    def _compute_vision_signature(workflow: Workflow) -> str:
+        """Compute a vision mode signature for cache key discrimination.
+
+        Queries the workflow's tool configuration to determine whether any
+        prompt uses vision mode (extraction_inputs != 'text'). Returns a
+        deterministic signature string that is appended to the file content
+        hash, preventing cache collisions between text-only and vision runs
+        of the same file.
+
+        Returns empty string when no vision prompts exist, preserving
+        backward-compatible hash values for existing text-only workflows.
+
+        Note: For ETL/TASK connectors using provider_file_uuid-based file
+        history lookups, this discriminator is not applied because the
+        content hash is not available at lookup time. Users must clear
+        file markers after changing vision mode on such workflows.
+        """
+        try:
+            from prompt_studio.prompt_studio_registry_v2.models import (
+                PromptStudioRegistry,
+            )
+            from tool_instance_v2.models import ToolInstance
+
+            tool_instance = ToolInstance.objects.filter(workflow=workflow).first()
+            if not tool_instance or not tool_instance.metadata:
+                return ""
+
+            prompt_registry_id = tool_instance.metadata.get("prompt_registry_id")
+            if not prompt_registry_id:
+                return ""
+
+            registry = PromptStudioRegistry.objects.filter(
+                prompt_registry_id=prompt_registry_id
+            ).first()
+            if not registry or not registry.tool_metadata:
+                return ""
+
+            outputs = registry.tool_metadata.get("outputs", [])
+            vision_parts: list[str] = []
+            for output in outputs:
+                extraction_inputs = output.get("extraction_inputs", "text")
+                source_of_truth = output.get("source_of_truth", "text")
+                if extraction_inputs != "text":
+                    name = output.get("name", "")
+                    vision_parts.append(f"{name}:{extraction_inputs}:{source_of_truth}")
+
+            if not vision_parts:
+                return ""
+
+            # Sort for determinism across runs
+            return "|vision:" + ",".join(sorted(vision_parts))
+        except Exception:
+            logger.warning(
+                "Failed to compute vision signature for workflow %s, "
+                "using content-only hash",
+                workflow.id,
+                exc_info=True,
+            )
+            return ""
 
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
@@ -938,19 +1000,24 @@ class SourceConnector(BaseConnector):
     def get_file_content_hash(self, source_fs: UnstractFileSystem, file_path: str) -> str:
         """Generate a hash value from the file content.
 
+        Includes vision signature in the hash when any prompt uses vision mode,
+        preventing cache collisions between text-only and vision runs.
+
         Args:
             source_fs (UnstractFileSystem): The file system object used for
                 reading the file.
             file_path (str): The path of the file.
 
         Returns:
-            str: The hash value of the file content.
+            str: The hash value of the file content (with vision discriminator).
         """
         file_content_hash = sha256()
         source = source_fs.get_fsspec_fs()
         with source.open(file_path, "rb") as remote_file:
             while chunk := remote_file.read(self.READ_CHUNK_SIZE):
                 file_content_hash.update(chunk)
+        if self._vision_signature:
+            file_content_hash.update(self._vision_signature.encode())
         return file_content_hash.hexdigest()
 
     def copy_file_to_infile_dir(self, source_file_path: str, infile_path: str) -> None:
@@ -1021,6 +1088,8 @@ class SourceConnector(BaseConnector):
         # This function is typically relevant for extracted text content,
         # may not be necessary for PDFs, images, or other non-text formats.
         self.publish_input_file_content(input_file_path, input_log)
+        if self._vision_signature:
+            file_content_hash.update(self._vision_signature.encode())
         hash_value_of_file_content = file_content_hash.hexdigest()
         file_hash.mime_type = mime_type
         logger.info(
@@ -1221,6 +1290,7 @@ class SourceConnector(BaseConnector):
             workflow_id=workflow_id, execution_id=execution_id
         )
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
+        vision_signature = cls._compute_vision_signature(workflow)
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
         connection_type = WorkflowEndpoint.ConnectionType.API
@@ -1260,6 +1330,8 @@ class SourceConnector(BaseConnector):
             for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
                 file_hash.update(chunk)
                 file_storage.write(path=destination_path, mode="ab", data=chunk)
+            if vision_signature:
+                file_hash.update(vision_signature.encode())
             file_hash = file_hash.hexdigest()
 
             # Skip duplicate files

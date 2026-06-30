@@ -61,15 +61,15 @@ class ProfileManager(BaseModel):
     vector_store = models.ForeignKey(
         AdapterInstance,
         db_comment="Field to store the chosen vector store.",
-        blank=False,
-        null=False,
+        blank=True,
+        null=True,
         on_delete=models.PROTECT,
         related_name="profiles_vector_store",
     )
     embedding_model = models.ForeignKey(
         AdapterInstance,
-        blank=False,
-        null=False,
+        blank=True,
+        null=True,
         on_delete=models.PROTECT,
         related_name="profiles_embedding_model",
     )
@@ -84,8 +84,8 @@ class ProfileManager(BaseModel):
     x2text = models.ForeignKey(
         AdapterInstance,
         db_comment="Field to store the X2Text Adapter chosen by the user",
-        blank=False,
-        null=False,
+        blank=True,
+        null=True,
         on_delete=models.PROTECT,
         related_name="profiles_x2text",
     )

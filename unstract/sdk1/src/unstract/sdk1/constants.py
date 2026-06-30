@@ -1,3 +1,4 @@
+import os
 from enum import Enum
 
 
@@ -205,3 +206,62 @@ class RequestHeader:
 
     REQUEST_ID = "X-Request-ID"
     AUTHORIZATION = "Authorization"
+
+
+# ---------------------------------------------------------------------------
+# Vision mode constants
+# ---------------------------------------------------------------------------
+
+MAX_VISION_PAGES = int(os.environ.get("MAX_VISION_PAGES", "10"))
+
+
+class VisionMode:
+    """Derived vision mode values used at the answer step."""
+
+    TEXT_ONLY = "text_only"
+    SPATIAL_HELPER = "spatial_helper"
+    SOURCE_OF_TRUTH = "source_of_truth"
+
+
+class ExtractionInputs:
+    """Values for the per-prompt extraction_inputs field."""
+
+    TEXT = "text"
+    IMAGE = "image"
+    BOTH = "both"
+
+
+class SourceOfTruthValues:
+    """Values for the per-prompt source_of_truth field."""
+
+    TEXT = "text"
+    IMAGE = "image"
+
+
+def derive_vision_mode(extraction_inputs: str, source_of_truth: str) -> str:
+    """Derive the vision mode from two orthogonal per-prompt UI fields.
+
+    +-------------------+-----------------+---------------------+
+    | extraction_inputs | source_of_truth | vision_mode         |
+    +-------------------+-----------------+---------------------+
+    | text              | (ignored)       | text_only           |
+    | image             | (ignored)       | source_of_truth     |
+    | both              | text            | spatial_helper      |
+    | both              | image           | source_of_truth     |
+    +-------------------+-----------------+---------------------+
+
+    Args:
+        extraction_inputs: One of "text", "image", "both".
+        source_of_truth: One of "text", "image".
+
+    Returns:
+        One of VisionMode.TEXT_ONLY, SPATIAL_HELPER, SOURCE_OF_TRUTH.
+    """
+    if extraction_inputs == ExtractionInputs.TEXT:
+        return VisionMode.TEXT_ONLY
+    if extraction_inputs == ExtractionInputs.IMAGE:
+        return VisionMode.SOURCE_OF_TRUTH
+    # extraction_inputs == "both"
+    if source_of_truth == SourceOfTruthValues.IMAGE:
+        return VisionMode.SOURCE_OF_TRUTH
+    return VisionMode.SPATIAL_HELPER

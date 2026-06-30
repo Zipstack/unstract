@@ -46,7 +46,7 @@ class FileHistory(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     cache_key = models.CharField(
         max_length=HASH_LENGTH,
-        db_comment="Hash value of file contents, WF and tool modified times",
+        db_comment="SHA256 of file contents, includes vision mode signature when any prompt uses vision",
     )
     provider_file_uuid = models.CharField(
         max_length=HASH_LENGTH,
