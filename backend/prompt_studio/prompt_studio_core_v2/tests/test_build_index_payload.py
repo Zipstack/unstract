@@ -118,7 +118,10 @@ try:
     )
     _install(
         "adapter_processor_v2.models",
-        {"AdapterInstance": MagicMock(name="AdapterInstance")},
+        {
+            "AdapterInstance": MagicMock(name="AdapterInstance"),
+            "UserDefaultAdapter": MagicMock(name="UserDefaultAdapter"),
+        },
     )
 
     # Plugins stub
