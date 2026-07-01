@@ -776,7 +776,13 @@ class TestProcessFileBatchTransportRouting:
     def test_celery_path_runs_stages_directly(self, monkeypatch):
         from file_processing import tasks as tasks_mod
 
-        monkeypatch.setattr(tasks_mod, "_run_batch_stages", lambda *a: {"r": "celery"})
+        stages_kwargs = {}
+
+        def fake_stages(*a, **k):
+            stages_kwargs.update(k)
+            return {"r": "celery"}
+
+        monkeypatch.setattr(tasks_mod, "_run_batch_stages", fake_stages)
         barrier_calls = []
         monkeypatch.setattr(
             tasks_mod,
@@ -786,11 +792,18 @@ class TestProcessFileBatchTransportRouting:
         out = tasks_mod._process_file_batch_core(MagicMock(), {"fb": 1}, None)
         assert out == {"r": "celery"}
         assert barrier_calls == []  # barrier path NOT taken on the celery transport
+        assert stages_kwargs.get("is_pg") is False  # UN-3662 guard OFF on Celery
 
     def test_pg_path_routes_through_barrier(self, monkeypatch):
         from file_processing import tasks as tasks_mod
 
-        monkeypatch.setattr(tasks_mod, "_run_batch_stages", lambda *a: {"r": "work"})
+        stages_kwargs = {}
+
+        def fake_stages(*a, **k):
+            stages_kwargs.update(k)
+            return {"r": "work"}
+
+        monkeypatch.setattr(tasks_mod, "_run_batch_stages", fake_stages)
         captured = {}
 
         def fake_run_batch_with_barrier(ctx, work_fn):
@@ -805,6 +818,7 @@ class TestProcessFileBatchTransportRouting:
         assert captured["ctx"] is ctx
         assert out["via"] == "barrier"
         assert out["work"] == {"r": "work"}  # work_fn runs the real stages
+        assert stages_kwargs.get("is_pg") is True  # UN-3662 guard ON on PG
 
 
 if __name__ == "__main__":

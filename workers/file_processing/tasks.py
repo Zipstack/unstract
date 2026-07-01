@@ -12,7 +12,10 @@ from typing import Any
 
 from queue_backend import worker_task
 from queue_backend.barrier import BarrierContext
-from queue_backend.pg_barrier import run_batch_with_barrier
+from queue_backend.pg_barrier import (
+    SKIPPED_TERMINAL_EXECUTION_KEY,
+    run_batch_with_barrier,
+)
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -224,8 +227,71 @@ def _enhance_batch_with_mrq_flags(
         )
 
 
+class _TerminalExecutionSkip(Exception):
+    """A batch was delivered for an execution already in a terminal state.
+
+    Raised by :func:`_setup_execution_context` when the execution's status is
+    COMPLETED/ERROR/STOPPED. On the PG queue (at-least-once), a batch can be
+    redelivered — or a stale batch consumed — *after* the reaper has recovered
+    the execution (marked it ERROR) and deleted its barrier. Reprocessing would
+    resurrect the execution back to EXECUTING and re-run its files (double LLM /
+    destination write). The batch is skipped instead (UN-3662).
+
+    The guard is gated to the PG path (``is_pg``) so the Celery flow is
+    byte-for-byte unchanged — the resurrection it prevents is PG-specific
+    (Celery lost tasks are never redelivered, so they can't be resurrected).
+    """
+
+    def __init__(self, execution_id: str, status: str | None) -> None:
+        self.execution_id = execution_id
+        self.status = status
+        super().__init__(
+            f"Execution {execution_id} already terminal ({status}); "
+            f"skipping stale/redelivered batch"
+        )
+
+
+def _raise_if_execution_terminal(
+    workflow_execution: dict[str, Any], execution_id: str, *, is_pg: bool
+) -> None:
+    """PG-path-only validate-first guard: refuse to (re)process a batch whose
+    execution is already terminal. See :class:`_TerminalExecutionSkip`.
+
+    No-op on the Celery path (``is_pg=False``) — the resurrection this prevents
+    is PG-specific, so gating keeps the Celery flow byte-for-byte unchanged
+    (UN-3662). A missing/unknown status is treated as non-terminal (fail open —
+    proceed as normal).
+    """
+    if not is_pg:
+        return
+    status = workflow_execution.get("status")
+    if status in ExecutionStatus.terminal_values():
+        raise _TerminalExecutionSkip(execution_id, status)
+
+
+def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
+    """Batch result for a batch skipped because its execution is already terminal
+    (UN-3662). The files were never attempted; per the accounting contract from
+    68d137a8 (unaccounted files count as failed, not in-progress) they are
+    reported as failed, so a consumer that ever aggregates this result does not
+    render them as perpetually in-progress. The ``SKIPPED_TERMINAL_EXECUTION_KEY``
+    marker tells ``run_batch_with_barrier`` to bypass the barrier decrement (the
+    reaper has by definition already torn the barrier down).
+    """
+    n_files = len(batch_data.files)
+    result = BatchExecutionResult(
+        total_files=n_files,
+        successful_files=0,
+        failed_files=n_files,
+        execution_time=0.0,
+        organization_id=batch_data.file_data.organization_id,
+    ).to_dict()
+    result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
+    return result
+
+
 def _run_batch_stages(
-    file_batch_data: dict[str, Any], celery_task_id: str
+    file_batch_data: dict[str, Any], celery_task_id: str, is_pg: bool = False
 ) -> dict[str, Any]:
     """The actual batch work (validate → setup → pre-create → process → compile).
 
@@ -237,8 +303,21 @@ def _run_batch_stages(
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
-    # Step 2: Setup execution context
-    context = _setup_execution_context(batch_data, celery_task_id)
+    # Step 2: Setup execution context. Validate-first (PG path only): a batch
+    # delivered for an already-terminal execution is a stale/redelivered task
+    # arriving after the reaper recovered the execution — skip it rather than
+    # resurrect the execution and re-run its files (UN-3662). The guard is gated
+    # inside _setup_execution_context via is_pg, so on Celery this never fires.
+    try:
+        context = _setup_execution_context(batch_data, celery_task_id, is_pg=is_pg)
+    except _TerminalExecutionSkip as skip:
+        logger.warning(
+            f"[exec:{skip.execution_id}] Skipping batch of "
+            f"{len(batch_data.files)} file(s): execution already terminal "
+            f"({skip.status}) — stale/redelivered after reaper-recovery; not "
+            f"reprocessing (UN-3662)."
+        )
+        return _terminal_skip_result(batch_data)
 
     # Step 3: Handle manual review logic
     # context = _handle_manual_review_logic(context)
@@ -281,13 +360,16 @@ def _process_file_batch_core(
 
     if barrier_context is None:
         # Celery chord path — the chord's .link runs the decrement after this.
-        return _run_batch_stages(file_batch_data, celery_task_id)
+        # is_pg=False disables the UN-3662 terminal guard → Celery flow unchanged.
+        return _run_batch_stages(file_batch_data, celery_task_id, is_pg=False)
 
     # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
     # the stages, then decrement the barrier in-body / self-chain the callback.
+    # is_pg=True enables the UN-3662 terminal guard (skip stale/redelivered
+    # batches for a reaper-recovered execution).
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_batch_stages(file_batch_data, celery_task_id),
+        lambda: _run_batch_stages(file_batch_data, celery_task_id, is_pg=True),
     )
 
 
@@ -359,7 +441,7 @@ def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatch
 
 
 def _setup_execution_context(
-    batch_data: FileBatchData, celery_task_id: str
+    batch_data: FileBatchData, celery_task_id: str, is_pg: bool = False
 ) -> WorkflowContextData:
     """Setup execution context with validation and API client initialization.
 
@@ -410,6 +492,14 @@ def _setup_execution_context(
         raise Exception(f"Failed to get execution context: {execution_response.error}")
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
+
+    # UN-3662: validate-first terminal guard (PG path only, gated by is_pg). If
+    # the execution is already terminal (COMPLETED/ERROR/STOPPED), this batch is
+    # a stale/redelivered task arriving after the reaper recovered the execution
+    # — reprocessing would resurrect it to EXECUTING and re-run its files. Skip
+    # before we touch status or process anything. On Celery (is_pg=False) this is
+    # a no-op, so the existing Celery flow is unchanged.
+    _raise_if_execution_terminal(workflow_execution, execution_id, is_pg=is_pg)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
     # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
