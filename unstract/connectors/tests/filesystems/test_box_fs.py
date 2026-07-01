@@ -19,7 +19,6 @@ class TestBoxFS(unittest.TestCase):
         file_path = "/"
         try:
             files = box_fs.get_fsspec_fs().ls(file_path)
-            print(files)
             self.assertIsNotNone(files)
         except Exception as e:
             self.fail(f"TestBoxFS.test_basic failed: {e}")

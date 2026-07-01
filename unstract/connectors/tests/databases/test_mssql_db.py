@@ -28,9 +28,6 @@ class TestMSSQL(unittest.TestCase):
         cursor.execute(query)
         results = cursor.fetchall()
 
-        for c in results:
-            print(c)
-
         self.assertTrue(len(results) > 0)
 
 

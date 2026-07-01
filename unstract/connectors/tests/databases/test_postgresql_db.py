@@ -29,9 +29,6 @@ class TestPostgreSqlDB(unittest.TestCase):
         cursor.execute(query)
         results = cursor.fetchall()
 
-        for c in results:
-            print(c)
-
         self.assertTrue(len(results) > 0)
 
     @unittest.skipUnless(
@@ -48,9 +45,6 @@ class TestPostgreSqlDB(unittest.TestCase):
         cursor = psql.get_engine().cursor()
         cursor.execute(query)
         results = cursor.fetchall()
-
-        for c in results:
-            print(c)
 
         self.assertTrue(len(results) > 0)
 

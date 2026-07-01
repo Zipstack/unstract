@@ -20,9 +20,7 @@ class TestDropboxFS(unittest.TestCase):
         # Leave empty for root
         file_path = ""
         try:
-            # print(dropbox_fs.get_fsspec_fs().ls(file_path))
             files = dropbox_fs.get_fsspec_fs().ls(file_path)
-            print(files)
             self.assertIsNotNone(files)
         except Exception as e:
             self.fail(f"TestDropboxFS.test_access_token failed: {e}")

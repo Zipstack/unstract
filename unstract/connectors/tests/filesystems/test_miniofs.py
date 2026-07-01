@@ -16,22 +16,6 @@ from unstract.connectors.filesystems.ucs.ucs import UnstractCloudStorage
 
 
 class TestMinoFS(unittest.TestCase):
-    @unittest.skip("")
-    def test_s3(self) -> None:
-        self.assertEqual(MinioFS.requires_oauth(), False)
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        s3 = MinioFS(
-            {
-                "key": access_key,
-                "secret": secret_key,
-                "path": "/",
-                "endpoint_url": "https://s3.amazonaws.com",
-            }
-        )
-
-        print(s3.get_fsspec_fs().ls("unstract-user-storage"))
-
     @pytest.mark.integration
     @unittest.skipUnless(
         os.environ.get("MINIO_ACCESS_KEY_ID")

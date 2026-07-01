@@ -24,7 +24,7 @@ class TestGoogleDriveFS(unittest.TestCase):
             }
         )
 
-        print(drive.get_fsspec_fs().ls(""))
+        self.assertIsNotNone(drive.get_fsspec_fs().ls(""))
 
 
 if __name__ == "__main__":

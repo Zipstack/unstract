@@ -29,9 +29,6 @@ class TestSnowflakeDB(unittest.TestCase):
         )
         cursor = sf.get_engine().cursor()
         results = cursor.execute("describe table RESUME")
-        for c in results:
-            print(c)
-
         self.assertIsNotNone(results)
 
 
