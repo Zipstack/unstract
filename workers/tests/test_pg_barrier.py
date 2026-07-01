@@ -92,6 +92,24 @@ class TestTtlEnv:
             barrier_mod.barrier_ttl_seconds()
 
 
+class TestStuckTimeoutEnv:
+    # The PG barrier's sliding last_progress_at window (UN-3661) — distinct from the
+    # Redis-shared TTL above. Default 2.5h, in Celery's FILE_PROCESSING band (2h–3h).
+    def test_default_is_two_and_half_hours(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", raising=False)
+        assert barrier_mod.barrier_stuck_timeout_seconds() == 9000
+
+    def test_overridable(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", "120")
+        assert barrier_mod.barrier_stuck_timeout_seconds() == 120
+
+    @pytest.mark.parametrize("bad", ["abc", "0", "-5"])
+    def test_invalid_raises(self, monkeypatch, bad):
+        monkeypatch.setenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", bad)
+        with pytest.raises(ValueError, match="WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS"):
+            barrier_mod.barrier_stuck_timeout_seconds()
+
+
 class TestEnqueueShortCircuits:
     def test_empty_header_returns_none(self):
         # Returns before any DB / dispatch.
@@ -498,6 +516,30 @@ def _org(conn, execution_id):
         return row[0] if row else None
 
 
+def _expires_in_seconds(conn, execution_id):
+    """Seconds from *now* until the barrier's expires_at (DB-side now(), so no
+    client-clock skew) — the fixed 6h absolute cap."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT EXTRACT(EPOCH FROM (expires_at - now())) "
+            "FROM pg_barrier_state WHERE execution_id = %s",
+            (execution_id,),
+        )
+        return float(cur.fetchone()[0])
+
+
+def _last_progress_age_seconds(conn, execution_id):
+    """How long ago (DB-side) the barrier last made progress — the reaper's stuck
+    signal (UN-3661). Small = fresh; large = stalled."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT EXTRACT(EPOCH FROM (now() - last_progress_at)) "
+            "FROM pg_barrier_state WHERE execution_id = %s",
+            (execution_id,),
+        )
+        return float(cur.fetchone()[0])
+
+
 class TestPgBarrierEnqueue:
     def test_upsert_creates_row_and_attaches_links(self, barrier_db):
         tasks = [_mock_header_task() for _ in range(3)]
@@ -514,6 +556,24 @@ class TestPgBarrierEnqueue:
             cloned.link.assert_called_once()
             cloned.link_error.assert_called_once()
             cloned.apply_async.assert_called_once()
+
+    def test_enqueue_sets_expires_cap_and_fresh_progress(
+        self, barrier_db, monkeypatch
+    ):
+        # enqueue stamps expires_at = now()+ttl (the absolute cap) AND
+        # last_progress_at = now() (fresh), so a just-enqueued barrier is neither
+        # expired nor stale. (UN-3661)
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "600")
+        task, _ = _mock_header_task()
+        PgBarrier().enqueue(
+            [task],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-SD"},
+            callback_queue="general",
+            app_instance=None,
+        )
+        assert 590 <= _expires_in_seconds(barrier_db, "exec-SD") <= 600  # ~ttl cap
+        assert _last_progress_age_seconds(barrier_db, "exec-SD") < 5  # fresh
 
     def test_enqueue_self_heals_on_stale_connection(self, barrier_db, monkeypatch):
         # End-to-end through enqueue(): the first barrier write hits a dead cached
@@ -657,6 +717,26 @@ class TestDecrAndCheck:
         remaining, results = _row(barrier_db, "exec-P")
         assert remaining == 2
         assert results == [{"f": 1}]
+
+    def test_decrement_refreshes_last_progress_at(self, barrier_db):
+        # Each decrement re-stamps last_progress_at = now(), so a barrier that IS
+        # making progress never goes stale (the reaper only reaps a stalled one).
+        # Seed a STALE last_progress_at (as if about to be reaped) → decrement must
+        # refresh it. (UN-3661)
+        with barrier_db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pg_barrier_state "
+                "(execution_id, organization_id, remaining, results, "
+                " created_at, expires_at, last_progress_at) "
+                "VALUES ('exec-SL', '', 2, '[]'::jsonb, "
+                " now() - interval '1 hour', now() + interval '5 hours', "
+                " now() - interval '1 hour')"
+            )
+        assert _last_progress_age_seconds(barrier_db, "exec-SL") > 3000  # ~1h stale
+        barrier_pg_decr_and_check(
+            {"f": 1}, execution_id="exec-SL", callback_descriptor=_CALLBACK
+        )
+        assert _last_progress_age_seconds(barrier_db, "exec-SL") < 5  # refreshed
 
     def test_idle_reaped_conn_self_heals_and_decrements_exactly_once(
         self, barrier_db, monkeypatch

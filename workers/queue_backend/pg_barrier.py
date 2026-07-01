@@ -17,7 +17,8 @@ for the fan-in. The transport for the header tasks themselves is unchanged
 **Wire model.**
 
 1. ``enqueue``: UPSERT one ``pg_barrier_state`` row (``remaining = N``,
-   ``results = []``, ``expires_at = now() + ttl``) — the UPSERT clears any stale
+   ``results = []``, ``expires_at = now() + ttl``, ``last_progress_at = now()``)
+   — the UPSERT clears any stale
    state from a prior run reusing the same ``execution_id``. Each header task is
    dispatched with
    ``.link(barrier_pg_decr_and_check)`` (success) and
@@ -38,10 +39,17 @@ for the fan-in. The transport for the header tasks themselves is unchanged
    (leaving the row for a sibling to retry) — there is no claimed-but-not-deleted
    window. Mirrors chord's default error semantic (callback not invoked on
    header failure).
-4. Orphan bound: like the Redis backend's key TTL, ``expires_at`` bounds a
-   barrier whose header tasks never complete. **No expiry reclaim ships in this
-   phase** — a periodic sweep job (keyed on ``pg_barrier_expires_idx``) is the
-   intended backstop and is future work.
+4. Stuck bound: ``last_progress_at`` is re-stamped to ``now()`` on enqueue AND on
+   every decrement, tracking when a batch last completed. The
+   :mod:`~queue_backend.pg_queue.reaper` marks the stranded execution ERROR once
+   ``last_progress_at`` is older than ``WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS``
+   (default 2.5h — in the same band as Celery's per-task
+   ``FILE_PROCESSING_TASK_TIME_LIMIT``, which ships 2h–3h) — a
+   per-PROGRESS window, invariant to how many batches run in parallel
+   (``MAX_PARALLEL_FILE_BATCHES`` is dynamic per-org), so it never false-fails a
+   legitimately long multi-batch run. ``expires_at`` (fixed at enqueue,
+   ``WORKER_BARRIER_KEY_TTL_SECONDS``, default 6h) is the absolute last-resort cap
+   the reaper also sweeps.
 
 **Failure-masking guards.** The callback can only fire when ``remaining`` hits
 exactly 0, which requires ALL N header tasks to have decremented — i.e. all
@@ -400,6 +408,8 @@ class PgBarrier:
                 # The decrement (run in-body on the PG path) reads this to
                 # self-chain the callback onto PG rather than Celery.
                 callback_descriptor["transport"] = WorkflowTransport.PG_QUEUE.value
+            # expires_at = absolute orphan cap (6h). last_progress_at = now() (the
+            # reaper's fast stuck signal, re-stamped on every decrement).
             ttl_seconds = barrier_ttl_seconds()
             # Stamp the owning org so the reaper can call the org-scoped status
             # API when recovering this barrier if it strands (it has only the
@@ -424,14 +434,20 @@ class PgBarrier:
                 cur.execute(
                     f"INSERT INTO {qualified('pg_barrier_state')} "
                     "(execution_id, organization_id, remaining, results, "
-                    " created_at, expires_at) "
+                    " created_at, expires_at, last_progress_at) "
                     "VALUES (%s, %s, %s, '[]'::jsonb, now(), "
-                    "        now() + make_interval(secs => %s)) "
+                    "        now() + make_interval(secs => %s), now()) "
                     "ON CONFLICT (execution_id) DO UPDATE SET "
                     "  organization_id = EXCLUDED.organization_id, "
                     "  remaining = EXCLUDED.remaining, results = '[]'::jsonb, "
-                    "  created_at = now(), expires_at = EXCLUDED.expires_at",
-                    (execution_id, organization_id, len(header_tasks), ttl_seconds),
+                    "  created_at = now(), expires_at = EXCLUDED.expires_at, "
+                    "  last_progress_at = now()",
+                    (
+                        execution_id,
+                        organization_id,
+                        len(header_tasks),
+                        ttl_seconds,
+                    ),
                 )
                 # Reset per-batch dedup markers from a prior run reusing this
                 # execution_id, ATOMICALLY with the barrier reset. Without this a
@@ -684,10 +700,17 @@ def _apply_decrement(
     (UN-3654) and the idempotent pre-dispatch write's retry, but phase-split
     because the decrement, unlike those, must never replay a committed write.
     """
+    # ``last_progress_at = now()`` records that a batch just completed — the
+    # reaper's stuck signal (it marks the execution ERROR only once no decrement
+    # has landed for stuck_timeout; see barrier.py / reaper.py). last_progress_at
+    # is UNINDEXED, so — like remaining/results — this stays a heap-only-tuple (HOT)
+    # update: no index churn on the decrement hot path. (expires_at, the indexed
+    # absolute cap, is deliberately NOT touched here, to preserve HOT.)
     sql = (
         f"UPDATE {qualified('pg_barrier_state')} "
         "   SET remaining = remaining - 1, "
-        "       results = results || jsonb_build_array(%s::jsonb) "
+        "       results = results || jsonb_build_array(%s::jsonb), "
+        "       last_progress_at = now() "
         " WHERE execution_id = %s "
         "RETURNING remaining, results"
     )

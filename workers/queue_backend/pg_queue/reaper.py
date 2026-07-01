@@ -56,6 +56,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
 
 from unstract.core.data_models import ExecutionStatus
 
+from ..barrier import barrier_stuck_timeout_seconds
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
@@ -80,6 +81,15 @@ _DEFAULT_SWEEP_INTERVAL_SECONDS = 300.0
 # fan-out — this is operator-enforced, not coupled in code to the actual bound. 24h
 # is comfortably above any single execution.
 _DEFAULT_DEDUP_RETENTION_SECONDS = 86400
+
+# A barrier is "stranded" when it has made no progress for the stuck-timeout (the
+# fast, per-progress signal — UN-3661) OR it has passed its absolute ``expires_at``
+# cap (the last-resort backstop). Both feed the SAME recovery. Defined once so the
+# detection SELECT, the pre-mark re-check, and the cleanup DELETE can't drift.
+# Binds one ``%s`` — the stuck-timeout in seconds (``barrier_stuck_timeout_seconds``).
+_STRANDED_PREDICATE = (
+    "(last_progress_at < now() - make_interval(secs => %s) OR expires_at < now())"
+)
 
 _N = TypeVar("_N", int, float)
 
@@ -274,18 +284,20 @@ def _execution_status(
     return getattr(response, "status", None)
 
 
-def _still_expired(conn: PgConnection, execution_id: str) -> bool:
-    """True iff the barrier row is still present AND still past expiry.
+def _still_stranded(
+    conn: PgConnection, execution_id: str, stuck_timeout_seconds: int
+) -> bool:
+    """True iff the barrier row is still present AND still stranded.
 
     Re-checked immediately before the ERROR mark so a same-id re-enqueue (UPSERT
-    resets ``expires_at`` to the future) between the sweep's SELECT and the mark
-    doesn't get its live run flagged ERROR.
+    resets both ``expires_at`` to the future AND ``last_progress_at`` to now())
+    between the sweep's SELECT and the mark doesn't get its live run flagged ERROR.
     """
     with conn.cursor() as cur:
         cur.execute(
             f"SELECT 1 FROM {qualified('pg_barrier_state')} "
-            "WHERE execution_id = %s AND expires_at < now()",
-            (execution_id,),
+            f"WHERE execution_id = %s AND {_STRANDED_PREDICATE}",
+            (execution_id, stuck_timeout_seconds),
         )
         found = cur.fetchone() is not None
     conn.commit()
@@ -314,12 +326,27 @@ def _mark_stranded_error(
             "the barrier was already torn down (remaining < 0) yet the execution "
             "was left non-terminal — inconsistent state"
         )
-    api_client.update_workflow_execution_status(
+    response = api_client.update_workflow_execution_status(
         execution_id=execution_id,
         status=ExecutionStatus.ERROR.value,
         error_message=f"[reaper-recovery] Execution stranded: {reason}.",
         organization_id=organization_id,
+        # Cascade ERROR to the execution's non-terminal file executions in the same
+        # backend transaction — else the execution goes ERROR while its files stay
+        # EXECUTING (the b11ba2f3 inconsistency).
+        cascade_terminal_files=True,
     )
+    # Mirror the read path (_execution_status): the internal client returns an
+    # APIResponse and may report a failed write via ``success=False`` rather than
+    # raising. Treat a non-success as a hard failure so the caller does NOT proceed
+    # to DELETE the barrier row (erasing the only recovery handle while the
+    # execution stays non-terminal). ``success`` absent → assume raised-on-failure
+    # legacy contract (True).
+    if not getattr(response, "success", True):
+        raise RuntimeError(
+            f"status update for stranded execution {execution_id} reported "
+            f"success=False (refusing to delete the barrier recovery handle)"
+        )
     logger.error(
         "Reaper: marked stranded execution %s ERROR (remaining=%s).",
         execution_id,
@@ -333,6 +360,7 @@ def _recover_one_barrier(
     execution_id: str,
     organization_id: str,
     remaining: int,
+    stuck_timeout_seconds: int,
 ) -> bool:
     """Recover one stranded execution; return True iff its barrier row was deleted.
 
@@ -389,7 +417,7 @@ def _recover_one_barrier(
             execution_id,
             status,
         )
-    elif not _still_expired(conn, execution_id):
+    elif not _still_stranded(conn, execution_id, stuck_timeout_seconds):
         # Re-armed (same execution_id re-enqueued) between the read and here —
         # do NOT mark a freshly-running execution ERROR; leave it for the new run.
         logger.warning(
@@ -405,8 +433,8 @@ def _recover_one_barrier(
     with conn.cursor() as cur:
         cur.execute(
             f"DELETE FROM {qualified('pg_barrier_state')} WHERE execution_id = %s "
-            "AND expires_at < now()",
-            (execution_id,),
+            f"AND {_STRANDED_PREDICATE}",
+            (execution_id, stuck_timeout_seconds),
         )
         deleted = cur.rowcount > 0
         if deleted:
@@ -425,11 +453,21 @@ def _recover_one_barrier(
 
 
 def recover_expired_barriers(
-    conn: PgConnection, api_client: InternalAPIClient
+    conn: PgConnection,
+    api_client: InternalAPIClient,
+    stuck_timeout_seconds: int | None = None,
 ) -> list[str]:
-    """Recover executions stranded by an expired barrier. Returns recovered ids.
+    """Recover stranded executions. Returns recovered ids.
 
-    SELECT the expired rows (the reaper is leader-elected → a single active
+    A barrier is stranded when it has made no progress for
+    ``stuck_timeout_seconds`` (the fast per-progress signal — a crashed worker's
+    batch, or a runaway) OR it has passed its absolute ``expires_at`` cap; see
+    :data:`_STRANDED_PREDICATE`. ``stuck_timeout_seconds`` defaults to
+    :func:`~queue_backend.barrier.barrier_stuck_timeout_seconds` (resolved once
+    per sweep and threaded through, so the SELECT and the per-row re-check/DELETE
+    all use the same value).
+
+    SELECT the stranded rows (the reaper is leader-elected → a single active
     sweeper, so a read-then-act is safe from double-claim), then recover each one
     best-effort: mark the execution ERROR if it isn't already terminal, then
     delete its ``pg_batch_dedup`` + ``pg_barrier_state`` rows. One execution
@@ -441,11 +479,14 @@ def recover_expired_barriers(
     ``conn`` runs in manual-commit mode; on any error we roll back before
     continuing/re-raising so the connection isn't left in an aborted-txn state.
     """
+    if stuck_timeout_seconds is None:
+        stuck_timeout_seconds = barrier_stuck_timeout_seconds()
     try:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT execution_id, organization_id, remaining "
-                f"FROM {qualified('pg_barrier_state')} WHERE expires_at < now()"
+                f"FROM {qualified('pg_barrier_state')} WHERE {_STRANDED_PREDICATE}",
+                (stuck_timeout_seconds,),
             )
             rows = cur.fetchall()
         conn.commit()
@@ -459,7 +500,12 @@ def recover_expired_barriers(
     for execution_id, organization_id, remaining in rows:
         try:
             if _recover_one_barrier(
-                conn, api_client, execution_id, organization_id, remaining
+                conn,
+                api_client,
+                execution_id,
+                organization_id,
+                remaining,
+                stuck_timeout_seconds,
             ):
                 recovered.append(execution_id)
             # else: a benign skip (terminal / re-armed / no-status / no-org) —
@@ -507,10 +553,22 @@ class PgReaper:
         interval_seconds: float | None = None,
         sweep_interval_seconds: float | None = None,
         dedup_retention_seconds: int | None = None,
+        stuck_timeout_seconds: int | None = None,
         sweep_conn: PgConnection | None = None,
         api_client: InternalAPIClient | None = None,
     ) -> None:
         self._lease = lease
+        # Resolve + validate the barrier stuck-timeout ONCE, at construction, so a
+        # garbled WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS crashes loudly at boot rather
+        # than raising inside every tick (where run()'s generic "cycle failed" catch
+        # would silently disable the whole recovery net, looking like a DB blip).
+        self._stuck_timeout_seconds = (
+            stuck_timeout_seconds
+            if stuck_timeout_seconds is not None
+            else barrier_stuck_timeout_seconds()
+        )
+        if self._stuck_timeout_seconds <= 0:
+            raise ValueError("stuck_timeout_seconds must be positive")
         self._interval = (
             interval_seconds
             if interval_seconds is not None
@@ -634,7 +692,11 @@ class PgReaper:
             return TickOutcome(was_leader=False, reclaimed=0)
         try:
             reclaimed = len(
-                recover_expired_barriers(self._get_sweep_conn(), self._get_api_client())
+                recover_expired_barriers(
+                    self._get_sweep_conn(),
+                    self._get_api_client(),
+                    self._stuck_timeout_seconds,
+                )
             )
         except Exception:
             self._discard_owned_sweep_conn()

@@ -512,6 +512,12 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # File aggregates are not handled by update_execution; persist separately.
                 self._update_file_aggregates(execution, validated_data)
 
+                # Reaper recovery: cascade the terminal status to any non-terminal
+                # file executions so the execution and its files agree (atomic with
+                # the status write above — they can't diverge).
+                if validated_data.get("cascade_terminal_files"):
+                    self._cascade_terminal_files(execution, status_enum, error_message)
+
             logger.info(
                 f"Updated workflow execution {id} status to {validated_data['status']}"
             )
@@ -529,6 +535,46 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @staticmethod
+    def _cascade_terminal_files(execution, status_enum, error_message) -> None:
+        """Mark this execution's non-terminal (PENDING/EXECUTING) file executions to
+        *status_enum*, so a reaper-recovered strand doesn't leave the execution
+        terminal while its files stay EXECUTING (the b11ba2f3 inconsistency).
+
+        No-op unless *status_enum* is terminal. Runs in the caller's transaction, so
+        the execution status and the file cascade commit together. Idempotent — a
+        re-run finds those files already terminal and updates nothing.
+        """
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        terminal = ExecutionStatus.terminal_values()  # canonical COMPLETED/ERROR/STOPPED
+        if status_enum.value not in terminal:
+            return
+        # Bulk .update() deliberately bypasses WorkflowFileExecution.update_status():
+        # this is a give-up recovery, so per-file execution_time is unknown (stays
+        # NULL) and the parent's failed/successful_files aggregates are NOT
+        # reconciled here — the execution's own terminal status (set above) is the
+        # source of truth (is_failure_run / notifications read it), and the
+        # serializer already derives failed counts for a terminal-failure run.
+        cascaded = (
+            WorkflowFileExecution.objects.filter(workflow_execution=execution)
+            .exclude(status__in=terminal)
+            .update(
+                status=status_enum.value,
+                execution_error=(
+                    error_message
+                    or "[reaper-recovery] Execution stranded; file marked terminal "
+                    "to match the execution."
+                ),
+            )
+        )
+        if cascaded:
+            logger.info(
+                f"Cascaded terminal status {status_enum.value} to {cascaded} "
+                f"non-terminal file execution(s) of execution {execution.id}"
             )
 
     @staticmethod

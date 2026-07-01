@@ -517,12 +517,16 @@ class _FakeApiClient:
         fail_read=False,
         fail_update=False,
         fail_update_for=None,
+        update_success=True,
         on_get=None,
     ):
         self._status = status
         self._fail_read = fail_read
         self._fail_update = fail_update
         self._fail_update_for = set(fail_update_for or [])
+        # NON-raising failure: the real update client returns an APIResponse and can
+        # report success=False rather than raising (like the read path).
+        self._update_success = update_success
         self._on_get = on_get  # side-effect hook (e.g. re-arm the row mid-recovery)
         self.get_calls: list = []
         self.update_calls: list = []
@@ -546,11 +550,12 @@ class _FakeApiClient:
                 status=status,
                 error_message=error_message,
                 organization_id=organization_id,
+                cascade_terminal_files=kw.get("cascade_terminal_files", False),
             )
         )
         if self._fail_update or execution_id in self._fail_update_for:
             raise RuntimeError("api down")
-        return {"status": "updated"}
+        return SimpleNamespace(success=self._update_success)
 
 
 class TestRecoverConnection:
@@ -648,11 +653,22 @@ def barrier_conn():
     conn.close()
 
 
-def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
+def _seed(
+    conn,
+    execution_id,
+    *,
+    expired,
+    organization_id="org-1",
+    remaining=1,
+    last_progress="now()",
+):
     # created_at must precede expires_at (CheckConstraint
     # pg_barrier_expires_after_created). Commit so the seed is durable like a
     # real barrier row (written by PgBarrier in another transaction) — and so the
     # manual-commit recovery's own commit is what persists the DELETE.
+    # ``expired`` sets the absolute expires_at cap past/future; ``last_progress`` is
+    # a raw SQL expr (default "now()" = fresh) so a test can seed a STALE
+    # last_progress_at to exercise the fast (per-progress) stuck path independently.
     created_sql, expires_sql = (
         ("now() - interval '2 hours'", "now() - interval '1 hour'")
         if expired
@@ -662,8 +678,9 @@ def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
         cur.execute(
             "INSERT INTO pg_barrier_state "
             "(execution_id, organization_id, remaining, results, "
-            " created_at, expires_at) "
-            f"VALUES (%s, %s, %s, '[]'::jsonb, {created_sql}, {expires_sql})",
+            " created_at, expires_at, last_progress_at) "
+            f"VALUES (%s, %s, %s, '[]'::jsonb, {created_sql}, {expires_sql}, "
+            f"{last_progress})",
             (execution_id, organization_id, remaining),
         )
     conn.commit()
@@ -700,6 +717,9 @@ class TestRecoverExpiredBarriers:
         assert call.status == "ERROR"
         assert call.organization_id == "org-1"
         assert "never completed" in call.error_message  # remaining>0
+        # Cascade the terminal status to the stranded execution's non-terminal
+        # files (the b11ba2f3 fix) — else execution=ERROR while files stay EXECUTING.
+        assert call.cascade_terminal_files is True
         assert _ids(barrier_conn) == ["fresh-1"]  # fresh barrier untouched
 
     def test_remaining_zero_uses_callback_stranded_message(self, barrier_conn):
@@ -788,6 +808,50 @@ class TestRecoverExpiredBarriers:
         assert api.update_calls == []  # the live re-run was NOT marked ERROR
         assert _ids(barrier_conn) == ["exp-rearm"]  # re-armed row left intact
 
+    def test_reaps_stale_last_progress_while_expires_at_future(self, barrier_conn):
+        # THE headline path (UN-3661): a barrier is reaped via a stale
+        # last_progress_at even though its absolute expires_at cap is still 6h in
+        # the FUTURE (a crash mid-run → no 6h wait). And a *progressing* barrier
+        # (fresh last_progress_at, same future cap) is NOT reaped — proving the
+        # last_progress_at clause is load-bearing, not just the expires_at clause.
+        _seed(
+            barrier_conn,
+            "stale-lp",
+            expired=False,  # expires_at = now()+6h (future)
+            remaining=2,
+            last_progress="now() - interval '1 hour'",  # > 120s stuck window
+        )
+        _seed(barrier_conn, "fresh-lp", expired=False, last_progress="now()")
+        api = _FakeApiClient(status="EXECUTING")
+        recovered = recover_expired_barriers(barrier_conn, api, 120)  # stuck=120s
+        assert recovered == ["stale-lp"]
+        (call,) = api.update_calls
+        assert call.execution_id == "stale-lp" and call.status == "ERROR"
+        assert call.cascade_terminal_files is True
+        assert _ids(barrier_conn) == ["fresh-lp"]  # progressing barrier untouched
+
+    def test_progress_refresh_mid_recovery_aborts_the_mark(self, barrier_conn):
+        # The re-arm race for the fast path: a decrement refreshes last_progress_at
+        # to now() between the sweep SELECT and the mark → the barrier is no longer
+        # stranded and the reaper must NOT mark its live run ERROR (mirrors the
+        # expires_at re-arm test, but via last_progress_at).
+        _seed(barrier_conn, "lp-rearm", expired=False, last_progress="now() - interval '1 hour'")
+
+        def refresh(execution_id):
+            with barrier_conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pg_barrier_state SET last_progress_at = now() "
+                    "WHERE execution_id = %s",
+                    (execution_id,),
+                )
+            barrier_conn.commit()
+
+        api = _FakeApiClient(status="EXECUTING", on_get=refresh)
+        recovered = recover_expired_barriers(barrier_conn, api, 120)
+        assert recovered == []  # progress refreshed → not stranded
+        assert api.update_calls == []  # live run NOT marked ERROR
+        assert _ids(barrier_conn) == ["lp-rearm"]  # row left for the new run
+
     def test_status_none_on_success_does_not_mark(self, barrier_conn):
         # A successful read with no status is anomalous — don't mark on it.
         _seed(barrier_conn, "exp-nostatus", expired=True)
@@ -796,6 +860,19 @@ class TestRecoverExpiredBarriers:
         assert recovered == []
         assert api.update_calls == []
         assert _ids(barrier_conn) == ["exp-nostatus"]  # left for next sweep
+
+    def test_unsuccessful_status_write_does_not_delete_recovery_handle(
+        self, barrier_conn
+    ):
+        # Defensive (mirrors the read path): if the status-update client ever
+        # reports success=False WITHOUT raising, the reaper must NOT proceed to
+        # DELETE the barrier row — that would erase the only recovery handle while
+        # the execution stays non-terminal forever.
+        _seed(barrier_conn, "exp-unsuccess", expired=True)
+        api = _FakeApiClient(status="EXECUTING", update_success=False)
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == []  # the RuntimeError → row left for the next sweep
+        assert _ids(barrier_conn) == ["exp-unsuccess"]  # recovery handle preserved
 
     def test_all_skipped_sweep_does_not_log_systemic_error(self, barrier_conn, caplog):
         # org-missing rows are benign skips, not failures — they must NOT trigger
