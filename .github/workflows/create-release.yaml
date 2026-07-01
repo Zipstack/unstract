@@ -40,6 +40,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 'auto' version_bump classifies merged PR titles via `gh pr list`, which
+      # needs read access to pull requests (the permissions block above sets every
+      # unlisted scope to 'none', so this must be explicit or the query 403s and
+      # 'auto' would silently fall back to patch every time).
+      pull-requests: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
@@ -187,18 +192,28 @@ jobs:
             exit 0
           fi
 
-          FEAT_COUNT=$(gh pr list --repo "${{ github.repository }}" \
-            --base main --state merged --limit 200 --search "merged:>$SINCE" \
-            --json title \
-            --jq '[.[] | select(.title | test("\\[(FEAT|GATED-FEAT)\\]"; "i"))] | length' 2>/dev/null || echo "")
+          LIMIT=200
+          PR_JSON=$(gh pr list --repo "${{ github.repository }}" \
+            --base main --state merged --limit "$LIMIT" --search "merged:>$SINCE" \
+            --json title 2>/dev/null || echo "")
 
-          if [[ -z "$FEAT_COUNT" ]]; then
+          if [[ -z "$PR_JSON" ]]; then
+            # Empty only on command failure; a no-PR result is the JSON literal "[]".
             echo "::warning::PR classification query failed; defaulting to patch."
             RESOLVED=patch
-          elif [[ "$FEAT_COUNT" -gt 0 ]]; then
-            RESOLVED=minor
           else
-            RESOLVED=patch
+            TOTAL=$(echo "$PR_JSON" | jq 'length')
+            FEAT_COUNT=$(echo "$PR_JSON" | jq '[.[] | select(.title | test("\\[(FEAT|GATED-FEAT)\\]"; "i"))] | length')
+            # Surface truncation rather than silently under-counting: if we hit the cap,
+            # a FEAT PR beyond it could be missed (biasing toward patch).
+            if [[ "$TOTAL" -ge "$LIMIT" ]]; then
+              echo "::warning::merged-PR query hit the $LIMIT-result cap since $SINCE; FEAT detection may under-count — double-check the bump (override with version_bump=minor if needed)."
+            fi
+            if [[ "$FEAT_COUNT" -gt 0 ]]; then
+              RESOLVED=minor
+            else
+              RESOLVED=patch
+            fi
           fi
 
           echo "resolved=$RESOLVED" >> "$GITHUB_OUTPUT"
@@ -212,7 +227,10 @@ jobs:
         id: compute-version
         env:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
-          BUMP_TYPE: ${{ github.event.inputs.version_bump == 'auto' && steps.resolve-bump.outputs.resolved || github.event.inputs.version_bump }}
+          # Non-auto: use the raw input. Auto: use the resolved value, falling back
+          # to 'patch' (never back to 'auto', which would hit compute-version's
+          # unknown-bump error).
+          BUMP_TYPE: ${{ github.event.inputs.version_bump != 'auto' && github.event.inputs.version_bump || steps.resolve-bump.outputs.resolved || 'patch' }}
         run: |
           VERSION="${LATEST_TAG#v}"
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
