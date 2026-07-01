@@ -1,7 +1,12 @@
 import os
 import unittest
 
+import pytest
 from unstract.connectors.filesystems.http.http import HttpFS
+
+# Live-HTTP test — integration tier only, so `unit-connectors` (-m "not
+# integration") never selects it even when HTTP_FS_TEST_URL is set.
+pytestmark = pytest.mark.integration
 
 
 class TestHttpFS(unittest.TestCase):

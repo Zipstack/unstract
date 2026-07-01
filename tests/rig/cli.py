@@ -565,6 +565,32 @@ def _db_env_from_postgres_url(url: str) -> dict[str, str]:
     }
 
 
+def _inject_infra_env(
+    env: dict[str, str],
+    group: GroupDefinition,
+    endpoints: PlatformEndpoints | None,
+) -> None:
+    # Postgres/Redis override so a stale shell value can't shadow the
+    # provisioned testcontainer; MinIO uses setdefault so a developer's own
+    # endpoint wins.
+    if endpoints is None:
+        return
+    infra = endpoints.infra
+    if "postgres" in group.requires_services and infra.postgres_url:
+        env.update(_db_env_from_postgres_url(infra.postgres_url))
+    if "minio" in group.requires_services and infra.minio_endpoint:
+        env.setdefault("MINIO_ENDPOINT_URL", f"http://{infra.minio_endpoint}")
+        if infra.minio_access_key:
+            env.setdefault("MINIO_ACCESS_KEY_ID", infra.minio_access_key)
+        if infra.minio_secret_key:
+            env.setdefault("MINIO_SECRET_ACCESS_KEY", infra.minio_secret_key)
+    if "redis" in group.requires_services and infra.redis_host:
+        redis_port = str(infra.redis_port or 6379)
+        env["REDIS_HOST"] = infra.redis_host
+        env["REDIS_PORT"] = redis_port
+        env["CELERY_BROKER_BASE_URL"] = f"redis://{infra.redis_host}:{redis_port}"
+
+
 def _green_group_names(results: list[GroupResult]) -> set[str]:
     return {r.name for r in results if r.status in ("pass", "empty")}
 
@@ -608,27 +634,7 @@ def _execute_group(
         # leaked in". `setdefault` would let a leaked sentinel win, which
         # defeats the purpose — set unconditionally.
         env["UNSTRACT_RIG_SESSION_ID"] = _rig_session_id()
-    if (
-        endpoints is not None
-        and "postgres" in group.requires_services
-        and endpoints.infra.postgres_url
-    ):
-        # Real provisioned Postgres beats the base.py `backend-db-1` default;
-        # override (not setdefault) so a stale shell DB_HOST can't shadow it.
-        env.update(_db_env_from_postgres_url(endpoints.infra.postgres_url))
-    if (
-        endpoints is not None
-        and "minio" in group.requires_services
-        and endpoints.infra.minio_endpoint
-    ):
-        # setdefault: a developer pointing at their own MinIO (env pre-set) wins.
-        env.setdefault(
-            "MINIO_ENDPOINT_URL", f"http://{endpoints.infra.minio_endpoint}"
-        )
-        if endpoints.infra.minio_access_key:
-            env.setdefault("MINIO_ACCESS_KEY_ID", endpoints.infra.minio_access_key)
-        if endpoints.infra.minio_secret_key:
-            env.setdefault("MINIO_SECRET_ACCESS_KEY", endpoints.infra.minio_secret_key)
+    _inject_infra_env(env, group, endpoints)
     if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 
@@ -718,6 +724,20 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
 
 
+def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
+    if not shutil.which("uv"):
+        return [sys.executable, "-m", "pytest"]
+    # `uv run` re-syncs the venv each call, wiping anything from `uv pip
+    # install`. `--with`/`--with-editable` inject plugins + the project into the
+    # ephemeral run env instead, surviving the sync.
+    with_args: list[str] = []
+    for spec in RIG_PYTEST_PLUGINS:
+        with_args += ["--with", spec]
+    if group.install_editable:
+        with_args += ["--with-editable", str(workdir)]
+    return ["uv", "run", *with_args, "pytest"]
+
+
 def _pytest_command(
     group: GroupDefinition,
     *,
@@ -731,21 +751,7 @@ def _pytest_command(
     workers: str,
     timeout: int,
 ) -> list[str]:
-    use_uv = shutil.which("uv") is not None
-    if use_uv:
-        # `uv run` re-syncs the project's venv each call, which would wipe any
-        # plugins added via `uv pip install`. `--with` injects them into the
-        # ephemeral run environment, surviving the sync.
-        with_args: list[str] = []
-        for spec in RIG_PYTEST_PLUGINS:
-            with_args += ["--with", spec]
-        # Inject the project as editable here so it survives the venv re-sync,
-        # same as the plugins above.
-        if group.install_editable:
-            with_args += ["--with-editable", str(workdir)]
-        base: list[str] = ["uv", "run", *with_args, "pytest"]
-    else:
-        base = [sys.executable, "-m", "pytest"]
+    base = _pytest_base_cmd(group, workdir)
 
     cmd = [
         *base,

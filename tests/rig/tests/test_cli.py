@@ -585,6 +585,29 @@ def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
         "DB_HOST": "127.0.0.1",
         "DB_PORT": "49231",
         "DB_USER": "tcuser",
-        "DB_PASSWORD": "tcpass",
+        "DB_PASSWORD": "tcpass",  # NOSONAR - test placeholder, not a real credential
         "DB_NAME": "testdb",
     }
+
+
+def test_inject_infra_env_wires_provisioned_redis() -> None:
+    """A group declaring `requires_services: [redis]` must get REDIS_HOST/PORT +
+    the Celery broker URL rewritten to the provisioned endpoint — otherwise
+    Redis-backed tests silently hit the localhost default and bypass the
+    testcontainer.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(redis_host="10.0.0.5", redis_port=49999)
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("redis",)
+    )
+    env: dict[str, str] = {}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["REDIS_HOST"] == "10.0.0.5"
+    assert env["REDIS_PORT"] == "49999"
+    assert env["CELERY_BROKER_BASE_URL"] == "redis://10.0.0.5:49999"
