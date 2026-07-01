@@ -12,7 +12,10 @@ from typing import Any
 
 from queue_backend import worker_task
 from queue_backend.barrier import BarrierContext
-from queue_backend.pg_barrier import run_batch_with_barrier
+from queue_backend.pg_barrier import (
+    SKIPPED_TERMINAL_EXECUTION_KEY,
+    run_batch_with_barrier,
+)
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -267,16 +270,24 @@ def _raise_if_execution_terminal(
 
 
 def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
-    """Benign zero-work batch result for a batch skipped because its execution
-    is already terminal (UN-3662) — no files processed, all counts zero.
+    """Batch result for a batch skipped because its execution is already terminal
+    (UN-3662). The files were never attempted; per the accounting contract from
+    68d137a8 (unaccounted files count as failed, not in-progress) they are
+    reported as failed, so a consumer that ever aggregates this result does not
+    render them as perpetually in-progress. The ``SKIPPED_TERMINAL_EXECUTION_KEY``
+    marker tells ``run_batch_with_barrier`` to bypass the barrier decrement (the
+    reaper has by definition already torn the barrier down).
     """
-    return BatchExecutionResult(
-        total_files=len(batch_data.files),
+    n_files = len(batch_data.files)
+    result = BatchExecutionResult(
+        total_files=n_files,
         successful_files=0,
-        failed_files=0,
+        failed_files=n_files,
         execution_time=0.0,
         organization_id=batch_data.file_data.organization_id,
     ).to_dict()
+    result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
+    return result
 
 
 def _run_batch_stages(

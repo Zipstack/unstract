@@ -16,6 +16,8 @@ from unittest import mock
 import pytest
 from unstract.core.data_models import ExecutionStatus
 
+from queue_backend.pg_barrier import SKIPPED_TERMINAL_EXECUTION_KEY
+
 from file_processing.tasks import (
     _raise_if_execution_terminal,
     _run_batch_stages,
@@ -59,15 +61,19 @@ def _fake_batch_data(n_files: int = 3, org: str = "org-1"):
     return mock.Mock(files=[mock.Mock() for _ in range(n_files)], file_data=file_data)
 
 
-def test_terminal_skip_result_is_zero_work():
+def test_terminal_skip_result_counts_and_marker():
     result = _terminal_skip_result(_fake_batch_data(n_files=4, org="org-9"))
     assert result["total_files"] == 4
     assert result["successful_files"] == 0
-    assert result["failed_files"] == 0
+    # Unaccounted files count as failed (68d137a8), not in-progress → in-progress
+    # (total - successful - failed) is 0, and they don't silently vanish.
+    assert result["failed_files"] == 4
+    # Marker tells run_batch_with_barrier to bypass the (already-gone) decrement.
+    assert result[SKIPPED_TERMINAL_EXECUTION_KEY] is True
 
 
 def test_run_batch_stages_skips_terminal_without_processing():
-    """Terminal execution → benign skip result, and NO pre-create / processing."""
+    """Terminal execution → skip result (failed=N + marker), NO pre-create / processing."""
     bd = _fake_batch_data(n_files=2, org="org-2")
     with (
         mock.patch(
@@ -90,7 +96,45 @@ def test_run_batch_stages_skips_terminal_without_processing():
     process_files.assert_not_called()
     assert result["total_files"] == 2
     assert result["successful_files"] == 0
-    assert result["failed_files"] == 0
+    assert result["failed_files"] == 2
+    assert result[SKIPPED_TERMINAL_EXECUTION_KEY] is True
+
+
+def test_barrier_bypasses_decrement_on_terminal_skip():
+    """UN-3662: a terminal-skip result (marker set) must NOT decrement the barrier
+    (the reaper already tore it down → a decrement would log a spurious ERROR) and
+    must NOT abort. Directly guards the Comment-2 fix in run_batch_with_barrier."""
+    from queue_backend import pg_barrier
+
+    skip_result = {"failed_files": 2, SKIPPED_TERMINAL_EXECUTION_KEY: True}
+    ctx = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
+    with (
+        mock.patch.object(pg_barrier, "claim_batch", return_value=True),
+        mock.patch.object(pg_barrier, "_barrier_pg_decrement") as decrement,
+        mock.patch.object(pg_barrier, "_abort_barrier_in_body") as abort,
+    ):
+        out = pg_barrier.run_batch_with_barrier(ctx, lambda: skip_result)
+
+    decrement.assert_not_called()
+    abort.assert_not_called()
+    assert out is skip_result
+
+
+def test_barrier_decrements_on_normal_result():
+    """A normal (non-skip) result still decrements the barrier — the bypass is
+    scoped strictly to the terminal-skip marker."""
+    from queue_backend import pg_barrier
+
+    normal = {"total_files": 1, "successful_files": 1, "failed_files": 0}
+    ctx = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
+    with (
+        mock.patch.object(pg_barrier, "claim_batch", return_value=True),
+        mock.patch.object(pg_barrier, "_barrier_pg_decrement") as decrement,
+    ):
+        out = pg_barrier.run_batch_with_barrier(ctx, lambda: normal)
+
+    decrement.assert_called_once()
+    assert out is normal
 
 
 def test_run_batch_stages_proceeds_when_not_terminal():
