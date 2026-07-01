@@ -608,8 +608,13 @@ class InternalAPIClient(CachedAPIClientMixin):
         attempts: int | None = None,
         execution_time: float | None = None,
         organization_id: str | None = None,
+        cascade_terminal_files: bool = False,
     ) -> dict[str, Any]:
-        """Update workflow execution status."""
+        """Update workflow execution status.
+
+        ``cascade_terminal_files=True`` also marks the execution's non-terminal file
+        executions to the same terminal status atomically (used by the reaper).
+        """
         return self.execution_client.update_workflow_execution_status(
             execution_id,
             status,
@@ -620,6 +625,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             attempts,
             execution_time,
             organization_id,
+            cascade_terminal_files=cascade_terminal_files,
         )
 
     def create_workflow_execution(self, execution_data: dict[str, Any]) -> dict[str, Any]:

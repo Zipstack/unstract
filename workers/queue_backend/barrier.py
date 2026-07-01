@@ -81,6 +81,47 @@ def barrier_ttl_seconds() -> int:
     return value
 
 
+# PG barrier stuck-timeout — the "no progress" deadline for a PG-backed barrier.
+# Unlike the Redis backend's fixed key TTL, the PG barrier's ``expires_at`` SLIDES:
+# it's re-stamped to ``now() + this`` on enqueue AND on every decrement, so a
+# barrier only "expires" (→ the reaper marks it ERROR) after this long with NO
+# batch completing. Default 2.5h matches Celery's per-task ``FILE_PROCESSING_TASK_
+# TIME_LIMIT`` (9000s), giving crash / runaway parity: a batch whose worker died
+# (or that runs longer than Celery would allow) stalls progress and is reaped at
+# ~this bound, PROMPTLY (not at the old ~6h barrier expiry). A per-PROGRESS window
+# is invariant to how many batches run in parallel (``MAX_PARALLEL_FILE_BATCHES``
+# is dynamic per-org), so — unlike a per-execution age cap — it never false-fails a
+# legitimately long multi-batch run: any completion refreshes the deadline.
+_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS = 9000  # 2.5h, = Celery FILE_PROCESSING hard limit
+
+
+def barrier_stuck_timeout_seconds() -> int:
+    """PG barrier stuck-timeout from ``WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS`` (default 2.5h).
+
+    Read at call time (tests flip it). Invalid / non-positive values raise,
+    matching :func:`barrier_ttl_seconds`'s loud-on-misconfig posture — this bounds
+    how long a stalled execution stays non-terminal, so a garbled value must fail
+    fast rather than silently disable the recovery net.
+    """
+    raw = os.getenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS")
+    if raw is None:
+        return _DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS={raw!r} is not an integer. Unset "
+            f"it to default to {_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS}s (2.5h)."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS={value} must be a positive "
+            f"integer. Unset it to default to "
+            f"{_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS}s (2.5h)."
+        )
+    return value
+
+
 class CallbackDescriptor(TypedDict):
     """Serialisable aggregating-callback spec baked into a barrier link signature.
 

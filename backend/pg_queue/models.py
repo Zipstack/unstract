@@ -185,9 +185,10 @@ class PgBarrierState(models.Model):
     drives ``remaining`` to 0 dispatches the aggregating callback and deletes the
     row. A header-task failure aborts the barrier by deleting the row outright
     (``DELETE … RETURNING`` — atomic claim+teardown), so the callback can never
-    fire with partial results. ``expires_at`` bounds an orphaned barrier (header
-    tasks that never complete); a periodic sweep job (not yet implemented) is the
-    intended reclaim backstop.
+    fire with partial results. The ``pg-queue-reaper`` marks a stranded execution
+    ERROR when ``last_progress_at`` goes stale (no batch completed for
+    ``WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS``) or, as an absolute backstop, when
+    ``expires_at`` passes (see ``workers/queue_backend/pg_queue/reaper.py``).
 
     Managed=True / generated migration — no DB-side function, extension-free
     (UN-3533), same posture as ``PgQueueMessage``.
@@ -206,10 +207,22 @@ class PgBarrierState(models.Model):
     # Aggregated header-task results, appended in completion order (JSONB array).
     results = models.JSONField(default=list)
     created_at = models.DateTimeField(default=timezone.now)
-    # Orphan bound (Redis-TTL equivalent): a barrier whose header tasks never
-    # complete is reclaimable past this. Must exceed the longest execution
-    # wall-clock, same budgeting as WORKER_BARRIER_KEY_TTL_SECONDS.
+    # Absolute orphan cap (Redis-TTL equivalent, WORKER_BARRIER_KEY_TTL_SECONDS,
+    # default 6h): a last-resort backstop the reaper also sweeps. Fixed at enqueue
+    # — the *fast* stuck signal is last_progress_at below.
     expires_at = models.DateTimeField()
+    # Progress liveness (UN-3661): re-stamped to now() on enqueue AND on every
+    # decrement, so it tracks when a batch last completed. The reaper marks the
+    # execution ERROR once it is older than WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS
+    # (default 2.5h, = Celery's per-task FILE_PROCESSING_TASK_TIME_LIMIT) — a
+    # per-PROGRESS window that is invariant to MAX_PARALLEL_FILE_BATCHES (dynamic
+    # per-org), so it never false-fails a legitimately long multi-batch run.
+    # Deliberately UNINDEXED: it's written on every decrement, so indexing it would
+    # break the heap-only-tuple (HOT) update the decrement relies on — and the
+    # reaper's sweep of this tiny (in-flight-only) table is a cheap seq scan.
+    # Directly queryable ("when did this barrier last progress?") — the PG-queue
+    # "stuck-detection = plain SQL" property.
+    last_progress_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "pg_barrier_state"

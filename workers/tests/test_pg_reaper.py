@@ -546,6 +546,7 @@ class _FakeApiClient:
                 status=status,
                 error_message=error_message,
                 organization_id=organization_id,
+                cascade_terminal_files=kw.get("cascade_terminal_files", False),
             )
         )
         if self._fail_update or execution_id in self._fail_update_for:
@@ -700,6 +701,9 @@ class TestRecoverExpiredBarriers:
         assert call.status == "ERROR"
         assert call.organization_id == "org-1"
         assert "never completed" in call.error_message  # remaining>0
+        # Cascade the terminal status to the stranded execution's non-terminal
+        # files (the b11ba2f3 fix) — else execution=ERROR while files stay EXECUTING.
+        assert call.cascade_terminal_files is True
         assert _ids(barrier_conn) == ["fresh-1"]  # fresh barrier untouched
 
     def test_remaining_zero_uses_callback_stranded_message(self, barrier_conn):

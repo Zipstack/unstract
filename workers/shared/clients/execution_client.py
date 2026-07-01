@@ -270,6 +270,7 @@ class ExecutionAPIClient(BaseAPIClient):
         attempts: int | None = None,
         execution_time: float | None = None,
         organization_id: str | None = None,
+        cascade_terminal_files: bool = False,
     ) -> APIResponse:
         """Update workflow execution status.
 
@@ -283,6 +284,9 @@ class ExecutionAPIClient(BaseAPIClient):
             attempts: Optional attempts count
             execution_time: Optional execution time
             organization_id: Optional organization ID override
+            cascade_terminal_files: When True and *status* is terminal, the backend
+                also marks this execution's non-terminal file executions to the same
+                terminal status, atomically (the reaper uses this on recovery).
 
         Returns:
             APIResponse with update result
@@ -292,6 +296,8 @@ class ExecutionAPIClient(BaseAPIClient):
 
         data = {"status": status_str}
 
+        if cascade_terminal_files:
+            data["cascade_terminal_files"] = True
         if error_message is not None:
             data["error_message"] = error_message
         if total_files is not None:

@@ -175,6 +175,11 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
 
     status = serializers.ChoiceField(choices=ExecutionStatus.choices)
     error_message = serializers.CharField(required=False, allow_blank=True)
+    # When true AND the new status is terminal, also mark this execution's
+    # non-terminal (PENDING/EXECUTING) file executions to the same terminal status,
+    # atomically. The reaper sets this so a stranded execution and its files reach a
+    # consistent terminal state (else execution=ERROR while its files stay EXECUTING).
+    cascade_terminal_files = serializers.BooleanField(required=False, default=False)
     total_files = serializers.IntegerField(
         required=False, min_value=0
     )  # Allow 0 but backend will only update if > 0
