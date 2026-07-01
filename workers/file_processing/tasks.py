@@ -54,6 +54,7 @@ from unstract.core.data_models import (
     FileHashData,
     PreCreatedFileData,
     WorkerFileData,
+    WorkflowTransport,
 )
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
@@ -266,9 +267,10 @@ def _raise_if_execution_terminal(
 
     No-op on the Celery path (``is_pg=False``) — the resurrection this prevents
     is PG-specific, so gating leaves the Celery flow behaviorally unchanged. A
-    missing/unrecognized status is treated as non-terminal (fail open — proceed
-    as normal), but a *missing* status on the PG path signals a degraded
-    execution-fetch response and is logged so it isn't silently masked.
+    missing or unrecognized status is treated as non-terminal (fail open —
+    proceed as normal), but both are logged on the PG path so a degraded
+    execution-fetch response or a new/renamed status isn't silently masked (an
+    unrecognized terminal-ish state would otherwise let a stale batch through).
     """
     if not is_pg:
         return
@@ -283,6 +285,14 @@ def _raise_if_execution_terminal(
         return
     if status in ExecutionStatus.terminal_values():
         raise _TerminalExecutionSkip(execution_id, status)
+    if status not in {s.value for s in ExecutionStatus}:
+        # Recognized non-terminal (PENDING/EXECUTING) proceeds silently; an
+        # UNRECOGNIZED value is surfaced so a new terminal-ish state or an enum
+        # typo can't silently defeat the guard.
+        logger.warning(
+            f"[exec:{execution_id}] terminal guard: unrecognized execution "
+            f"status {status!r}; treating as non-terminal (proceeding)."
+        )
 
 
 def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
@@ -589,13 +599,18 @@ def _setup_execution_context(
             f"File history from fallback access for workflow {workflow_id}: use_file_history = {use_file_history}"
         )
 
-    # Create type-safe workflow context
+    # Create type-safe workflow context. Set the transport authoritatively from
+    # is_pg (the batch-level fact) — WorkerFileData carries none — so the
+    # destination layer can apply PG-only guards.
     context_data = WorkflowContextData(
         workflow_id=workflow_id,
         workflow_name=workflow_name,
         workflow_type=workflow_type,
         execution_id=execution_id,
         organization_context=org_context,
+        transport=(
+            WorkflowTransport.PG_QUEUE.value if is_pg else WorkflowTransport.CELERY.value
+        ),
         files={
             f"file_{i}": file for i, file in enumerate(files)
         },  # Convert list to dict format
@@ -860,6 +875,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
             workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
             workflow_logger=workflow_logger,  # Pass workflow logger for UI logging
+            transport=context.transport,  # Drives the PG-only destination guard
         )
 
         # Handle file processing result
@@ -1629,6 +1645,7 @@ def _process_file(
     workflow_file_execution_id: str = None,
     workflow_file_execution_object: Any = None,
     workflow_logger: Any = None,
+    transport: str | None = None,
 ) -> dict[str, Any]:
     """Process a single file matching Django backend _process_file pattern.
 
@@ -1642,6 +1659,8 @@ def _process_file(
         file_hash: FileHashData instance with type-safe access
         api_client: Internal API client
         workflow_execution: Workflow execution context
+        transport: Execution transport (celery | pg_queue); drives PG-only
+            destination guards downstream.
 
     Returns:
         File execution result
@@ -1657,6 +1676,7 @@ def _process_file(
         workflow_file_execution_id=workflow_file_execution_id,
         workflow_file_execution_object=workflow_file_execution_object,
         workflow_logger=workflow_logger,
+        transport=transport,
     )
 
 
