@@ -189,12 +189,13 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
     execution_time = serializers.FloatField(required=False, min_value=0)
 
     def validate(self, attrs):
-        """Reject impossible file-count aggregates + a meaningless cascade combo.
+        """Reject a meaningless cascade combo + impossible file-count aggregates."""
+        self._validate_cascade(attrs)
+        self._validate_file_aggregates(attrs)
+        return attrs
 
-        Per-field min_value=0 catches negatives, but successful + failed >
-        total or either component > total slips through and skews the
-        outcome-based notification filter downstream.
-        """
+    @staticmethod
+    def _validate_cascade(attrs) -> None:
         # cascade_terminal_files only makes sense when the new status is terminal
         # (it's a silent no-op otherwise) — reject the illegal combo at the boundary
         # rather than accepting-and-ignoring it.
@@ -210,6 +211,12 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
                 }
             )
 
+    @staticmethod
+    def _validate_file_aggregates(attrs) -> None:
+        """Per-field min_value=0 catches negatives, but successful + failed > total
+        or either component > total slips through and skews the outcome-based
+        notification filter downstream.
+        """
         total = attrs.get("total_files")
         successful = attrs.get("successful_files")
         failed = attrs.get("failed_files")
@@ -221,23 +228,18 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
                         "total_files": "total_files is required when file aggregates are provided."
                     }
                 )
-        else:
-            if successful is not None and successful > total:
-                raise serializers.ValidationError(
-                    {"successful_files": "successful_files cannot exceed total_files."}
-                )
-            if failed is not None and failed > total:
-                raise serializers.ValidationError(
-                    {"failed_files": "failed_files cannot exceed total_files."}
-                )
-            if (
-                successful is not None
-                and failed is not None
-                and successful + failed > total
-            ):
-                msg = "successful_files + failed_files cannot exceed total_files."
-                raise serializers.ValidationError({"non_field_errors": msg})
-        return attrs
+            return
+        if successful is not None and successful > total:
+            raise serializers.ValidationError(
+                {"successful_files": "successful_files cannot exceed total_files."}
+            )
+        if failed is not None and failed > total:
+            raise serializers.ValidationError(
+                {"failed_files": "failed_files cannot exceed total_files."}
+            )
+        if successful is not None and failed is not None and successful + failed > total:
+            msg = "successful_files + failed_files cannot exceed total_files."
+            raise serializers.ValidationError({"non_field_errors": msg})
 
 
 class OrganizationContextSerializer(serializers.Serializer):
