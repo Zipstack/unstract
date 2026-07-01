@@ -214,8 +214,9 @@ class PgBarrierState(models.Model):
     # Progress liveness (UN-3661): re-stamped to now() on enqueue AND on every
     # decrement, so it tracks when a batch last completed. The reaper marks the
     # execution ERROR once it is older than WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS
-    # (default 2.5h, = Celery's per-task FILE_PROCESSING_TASK_TIME_LIMIT) — a
-    # per-PROGRESS window that is invariant to MAX_PARALLEL_FILE_BATCHES (dynamic
+    # (default 2.5h — in the same band as Celery's per-task
+    # FILE_PROCESSING_TASK_TIME_LIMIT, which ships 2h–3h) — a per-PROGRESS window
+    # that is invariant to MAX_PARALLEL_FILE_BATCHES (dynamic
     # per-org), so it never false-fails a legitimately long multi-batch run.
     # Deliberately UNINDEXED: it's written on every decrement, so indexing it would
     # break the heap-only-tuple (HOT) update the decrement relies on — and the

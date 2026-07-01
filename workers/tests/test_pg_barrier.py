@@ -93,8 +93,8 @@ class TestTtlEnv:
 
 
 class TestStuckTimeoutEnv:
-    # The PG barrier's sliding expires_at window (UN-3661) — distinct from the
-    # Redis-shared TTL above. Default 2.5h = Celery FILE_PROCESSING_TASK_TIME_LIMIT.
+    # The PG barrier's sliding last_progress_at window (UN-3661) — distinct from the
+    # Redis-shared TTL above. Default 2.5h, in Celery's FILE_PROCESSING band (2h–3h).
     def test_default_is_two_and_half_hours(self, monkeypatch):
         monkeypatch.delenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", raising=False)
         assert barrier_mod.barrier_stuck_timeout_seconds() == 9000

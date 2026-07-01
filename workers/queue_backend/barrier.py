@@ -56,6 +56,29 @@ logger = logging.getLogger(__name__)
 _DEFAULT_BARRIER_TTL_SECONDS = 6 * 60 * 60  # 6h
 
 
+def _positive_int_env(var: str, default: int, human_default: str) -> int:
+    """Read positive-int env ``var``; return *default* when unset, raise (loud) on a
+    non-integer or non-positive value. *human_default* is how the default renders in
+    the error (e.g. ``"21600s (6h)"``). Shared by the two barrier duration knobs so
+    their parse/validate can't drift.
+    """
+    raw = os.getenv(var)
+    if raw is None:
+        return default
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"{var}={raw!r} is not an integer. Unset it to default to {human_default}."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"{var}={value} must be a positive integer. Unset it to default to "
+            f"{human_default}."
+        )
+    return value
+
+
 def barrier_ttl_seconds() -> int:
     """Barrier TTL from ``WORKER_BARRIER_KEY_TTL_SECONDS`` (default 6h).
 
@@ -63,36 +86,26 @@ def barrier_ttl_seconds() -> int:
     matching ``get_barrier()``'s loud-on-misconfig posture — a TTL shorter than
     execution wall-clock would tear barriers down early (spurious behaviour).
     """
-    raw = os.getenv("WORKER_BARRIER_KEY_TTL_SECONDS")
-    if raw is None:
-        return _DEFAULT_BARRIER_TTL_SECONDS
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={raw!r} is not an integer. Unset it "
-            f"to default to {_DEFAULT_BARRIER_TTL_SECONDS}s (6h)."
-        ) from exc
-    if value <= 0:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={value} must be a positive integer. "
-            f"Unset it to default to {_DEFAULT_BARRIER_TTL_SECONDS}s (6h)."
-        )
-    return value
+    return _positive_int_env(
+        "WORKER_BARRIER_KEY_TTL_SECONDS",
+        _DEFAULT_BARRIER_TTL_SECONDS,
+        f"{_DEFAULT_BARRIER_TTL_SECONDS}s (6h)",
+    )
 
 
 # PG barrier stuck-timeout — the "no progress" deadline for a PG-backed barrier.
-# Unlike the Redis backend's fixed key TTL, the PG barrier's ``expires_at`` SLIDES:
-# it's re-stamped to ``now() + this`` on enqueue AND on every decrement, so a
-# barrier only "expires" (→ the reaper marks it ERROR) after this long with NO
-# batch completing. Default 2.5h matches Celery's per-task ``FILE_PROCESSING_TASK_
-# TIME_LIMIT`` (9000s), giving crash / runaway parity: a batch whose worker died
-# (or that runs longer than Celery would allow) stalls progress and is reaped at
-# ~this bound, PROMPTLY (not at the old ~6h barrier expiry). A per-PROGRESS window
-# is invariant to how many batches run in parallel (``MAX_PARALLEL_FILE_BATCHES``
-# is dynamic per-org), so — unlike a per-execution age cap — it never false-fails a
-# legitimately long multi-batch run: any completion refreshes the deadline.
-_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS = 9000  # 2.5h, = Celery FILE_PROCESSING hard limit
+# The barrier's ``last_progress_at`` column (NOT ``expires_at``) is re-stamped to
+# bare ``now()`` on enqueue AND on every decrement; the reaper applies THIS timeout
+# at query time (``last_progress_at < now() - stuck_timeout``, see
+# ``reaper._STRANDED_PREDICATE``), so a barrier is reaped only after this long with
+# NO batch completing. The 9000s (2.5h) default sits in the SAME BAND as Celery's
+# per-task ``FILE_PROCESSING_TASK_TIME_LIMIT`` — a tunable env shipping 7200 (2h) /
+# 10800 (3h) across the sample deployments — giving crash / runaway parity without
+# asserting an equality that rots when an operator tunes that var. A per-PROGRESS
+# window is invariant to how many batches run in parallel (``MAX_PARALLEL_FILE_
+# BATCHES`` is dynamic per-org), so — unlike a per-execution age cap — it never
+# false-fails a legitimately long multi-batch run: any completion refreshes it.
+_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS = 9000  # 2.5h — Celery file-proc band (2h–3h)
 
 
 def barrier_stuck_timeout_seconds() -> int:
@@ -103,23 +116,11 @@ def barrier_stuck_timeout_seconds() -> int:
     how long a stalled execution stays non-terminal, so a garbled value must fail
     fast rather than silently disable the recovery net.
     """
-    raw = os.getenv("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS")
-    if raw is None:
-        return _DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS={raw!r} is not an integer. Unset "
-            f"it to default to {_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS}s (2.5h)."
-        ) from exc
-    if value <= 0:
-        raise ValueError(
-            f"WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS={value} must be a positive "
-            f"integer. Unset it to default to "
-            f"{_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS}s (2.5h)."
-        )
-    return value
+    return _positive_int_env(
+        "WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS",
+        _DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS,
+        f"{_DEFAULT_BARRIER_STUCK_TIMEOUT_SECONDS}s (2.5h)",
+    )
 
 
 class CallbackDescriptor(TypedDict):

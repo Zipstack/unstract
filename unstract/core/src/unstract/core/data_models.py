@@ -553,12 +553,22 @@ ExecutionStatus.choices = tuple(
 )
 
 
+# Canonical terminal-status values (COMPLETED/STOPPED/ERROR). One definition so
+# every terminal check — is_completed() below, and ORM ``status__in`` filters like
+# the reaper's file cascade — stays in sync when a status is added/removed.
+def _terminal_values(cls) -> frozenset[str]:
+    """The string values of the terminal execution statuses."""
+    return frozenset({cls.COMPLETED.value, cls.STOPPED.value, cls.ERROR.value})
+
+
+ExecutionStatus.terminal_values = classmethod(_terminal_values)
+
+
 # Add the is_completed method as a class method
 def _is_completed(cls, status: str) -> bool:
-    """Check if the execution status represents a completed state."""
+    """Check if the execution status represents a completed (terminal) state."""
     try:
-        status_enum = cls(status)
-        return status_enum in [cls.COMPLETED, cls.STOPPED, cls.ERROR]
+        return cls(status).value in cls.terminal_values()
     except ValueError:
         raise ValueError(f"Invalid status: {status}. Must be a valid ExecutionStatus.")
 

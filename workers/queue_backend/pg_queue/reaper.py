@@ -326,7 +326,7 @@ def _mark_stranded_error(
             "the barrier was already torn down (remaining < 0) yet the execution "
             "was left non-terminal — inconsistent state"
         )
-    api_client.update_workflow_execution_status(
+    response = api_client.update_workflow_execution_status(
         execution_id=execution_id,
         status=ExecutionStatus.ERROR.value,
         error_message=f"[reaper-recovery] Execution stranded: {reason}.",
@@ -336,6 +336,17 @@ def _mark_stranded_error(
         # EXECUTING (the b11ba2f3 inconsistency).
         cascade_terminal_files=True,
     )
+    # Mirror the read path (_execution_status): the internal client returns an
+    # APIResponse and may report a failed write via ``success=False`` rather than
+    # raising. Treat a non-success as a hard failure so the caller does NOT proceed
+    # to DELETE the barrier row (erasing the only recovery handle while the
+    # execution stays non-terminal). ``success`` absent → assume raised-on-failure
+    # legacy contract (True).
+    if not getattr(response, "success", True):
+        raise RuntimeError(
+            f"status update for stranded execution {execution_id} reported "
+            f"success=False (refusing to delete the barrier recovery handle)"
+        )
     logger.error(
         "Reaper: marked stranded execution %s ERROR (remaining=%s).",
         execution_id,
@@ -542,10 +553,22 @@ class PgReaper:
         interval_seconds: float | None = None,
         sweep_interval_seconds: float | None = None,
         dedup_retention_seconds: int | None = None,
+        stuck_timeout_seconds: int | None = None,
         sweep_conn: PgConnection | None = None,
         api_client: InternalAPIClient | None = None,
     ) -> None:
         self._lease = lease
+        # Resolve + validate the barrier stuck-timeout ONCE, at construction, so a
+        # garbled WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS crashes loudly at boot rather
+        # than raising inside every tick (where run()'s generic "cycle failed" catch
+        # would silently disable the whole recovery net, looking like a DB blip).
+        self._stuck_timeout_seconds = (
+            stuck_timeout_seconds
+            if stuck_timeout_seconds is not None
+            else barrier_stuck_timeout_seconds()
+        )
+        if self._stuck_timeout_seconds <= 0:
+            raise ValueError("stuck_timeout_seconds must be positive")
         self._interval = (
             interval_seconds
             if interval_seconds is not None
@@ -669,7 +692,11 @@ class PgReaper:
             return TickOutcome(was_leader=False, reclaimed=0)
         try:
             reclaimed = len(
-                recover_expired_barriers(self._get_sweep_conn(), self._get_api_client())
+                recover_expired_barriers(
+                    self._get_sweep_conn(),
+                    self._get_api_client(),
+                    self._stuck_timeout_seconds,
+                )
             )
         except Exception:
             self._discard_owned_sweep_conn()

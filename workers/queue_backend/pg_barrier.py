@@ -43,7 +43,8 @@ for the fan-in. The transport for the header tasks themselves is unchanged
    every decrement, tracking when a batch last completed. The
    :mod:`~queue_backend.pg_queue.reaper` marks the stranded execution ERROR once
    ``last_progress_at`` is older than ``WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS``
-   (default 2.5h, = Celery's per-task ``FILE_PROCESSING_TASK_TIME_LIMIT``) — a
+   (default 2.5h — in the same band as Celery's per-task
+   ``FILE_PROCESSING_TASK_TIME_LIMIT``, which ships 2h–3h) — a
    per-PROGRESS window, invariant to how many batches run in parallel
    (``MAX_PARALLEL_FILE_BATCHES`` is dynamic per-org), so it never false-fails a
    legitimately long multi-batch run. ``expires_at`` (fixed at enqueue,

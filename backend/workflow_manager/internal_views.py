@@ -550,13 +550,15 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         from workflow_manager.file_execution.models import WorkflowFileExecution
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
-        terminal = {
-            ExecutionStatus.COMPLETED.value,
-            ExecutionStatus.ERROR.value,
-            ExecutionStatus.STOPPED.value,
-        }
+        terminal = ExecutionStatus.terminal_values()  # canonical COMPLETED/ERROR/STOPPED
         if status_enum.value not in terminal:
             return
+        # Bulk .update() deliberately bypasses WorkflowFileExecution.update_status():
+        # this is a give-up recovery, so per-file execution_time is unknown (stays
+        # NULL) and the parent's failed/successful_files aggregates are NOT
+        # reconciled here — the execution's own terminal status (set above) is the
+        # source of truth (is_failure_run / notifications read it), and the
+        # serializer already derives failed counts for a terminal-failure run.
         cascaded = (
             WorkflowFileExecution.objects.filter(workflow_execution=execution)
             .exclude(status__in=terminal)

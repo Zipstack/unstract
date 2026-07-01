@@ -189,12 +189,27 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
     execution_time = serializers.FloatField(required=False, min_value=0)
 
     def validate(self, attrs):
-        """Reject impossible file-count aggregates.
+        """Reject impossible file-count aggregates + a meaningless cascade combo.
 
         Per-field min_value=0 catches negatives, but successful + failed >
         total or either component > total slips through and skews the
         outcome-based notification filter downstream.
         """
+        # cascade_terminal_files only makes sense when the new status is terminal
+        # (it's a silent no-op otherwise) — reject the illegal combo at the boundary
+        # rather than accepting-and-ignoring it.
+        if attrs.get("cascade_terminal_files") and not ExecutionStatus.is_completed(
+            attrs["status"]
+        ):
+            raise serializers.ValidationError(
+                {
+                    "cascade_terminal_files": (
+                        "cascade_terminal_files=True requires a terminal status "
+                        "(COMPLETED/ERROR/STOPPED)."
+                    )
+                }
+            )
+
         total = attrs.get("total_files")
         successful = attrs.get("successful_files")
         failed = attrs.get("failed_files")
