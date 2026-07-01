@@ -601,13 +601,13 @@ def test_inject_infra_env_wires_provisioned_redis() -> None:
     from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
 
     endpoints = PlatformEndpoints.from_env(
-        infra=InfraEndpoints(redis_host="10.0.0.5", redis_port=49999)
+        infra=InfraEndpoints(redis_host="redis.internal", redis_port=49999)
     )
     group = GroupDefinition(
         name="g", tier="integration", paths=("tests",), requires_services=("redis",)
     )
     env: dict[str, str] = {}
     cli_mod._inject_infra_env(env, group, endpoints)
-    assert env["REDIS_HOST"] == "10.0.0.5"
+    assert env["REDIS_HOST"] == "redis.internal"
     assert env["REDIS_PORT"] == "49999"
-    assert env["CELERY_BROKER_BASE_URL"] == "redis://10.0.0.5:49999"
+    assert env["CELERY_BROKER_BASE_URL"] == "redis://redis.internal:49999"
