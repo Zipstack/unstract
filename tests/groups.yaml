@@ -51,18 +51,11 @@ groups:
   unit-backend:
     tier: unit
     workdir: backend
-    # Pure backend tests — no DB. django_db ORM tests live in
-    # `integration-backend` (integration tier): a live Postgres is infra, not a
-    # unit dependency. List paths explicitly; `[.]` would recurse into vendored
-    # fixtures and pluggable-app tests that don't belong in the OSS rig.
-    # endpoint_v2/tests stays excluded: its destination-connector tests import
-    # the enterprise `plugins` package, absent in OSS.
-    paths:
-      - adapter_processor_v2/tests
-      - middleware/test_exception.py
-      - prompt_studio/prompt_studio_core_v2/tests
-      - usage_v2/tests
-      - utils/tests
+    # Pure backend tests — no DB. Collect the whole tree and let markers, not a
+    # hand-kept file list, decide membership: tests needing live infra carry
+    # `@pytest.mark.integration` (see integration-backend) and are excluded here.
+    paths: ["."]
+    markers: "not integration"
     uv_sync_group: test
     # Anchored: integration-backend reuses the identical Django settings env so
     # the two halves of the backend suite can't drift apart.

@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 
+import pytest
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
@@ -18,6 +19,9 @@ from dashboard_metrics.tasks import (
     cleanup_daily_metrics,
     cleanup_hourly_metrics,
 )
+
+# Needs a live Postgres (django.test.TestCase) — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestTimeHelpers(TestCase):

@@ -11,6 +11,7 @@ active auth plugin's role handling.
 import secrets
 from unittest.mock import patch
 
+import pytest
 from account_v2.models import Organization, User
 from django.core.exceptions import PermissionDenied
 from django.test import TestCase
@@ -20,6 +21,9 @@ from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
+
+# Needs a live Postgres (django.test.TestCase) — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 def _make_user(email: str) -> User:
