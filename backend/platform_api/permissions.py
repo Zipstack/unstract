@@ -28,41 +28,28 @@ class CanRotatePlatformApiKey(BasePermission):
 
     - **Session callers** must be organization admins (existing behavior —
       an admin may rotate any key in their org).
-    - **Platform API key callers** (bearer/service-account sessions) may rotate
-      ONLY their own key, enabling self-service credential rotation via the API
-      without exposing other keys in the org. The org boundary is already
-      enforced upstream (auth middleware + org-scoped queryset); this adds the
-      intra-org "self only" restriction for key callers.
+    - **Platform API key callers** (bearer/service-account sessions) are also
+      allowed to rotate — this is the API/automation path that the admin-only
+      ``IsOrganizationAdmin`` gate otherwise blocks (it rejects service
+      accounts). Rotation stays confined to the caller's own organization via
+      the auth middleware (URL org must match the key's org) and the
+      org-scoped queryset, so a key can only rotate keys in its own org.
 
-    The "self only" constraint for key callers is enforced object-level in
-    ``has_object_permission`` (the idiomatic DRF location); ``has_permission``
-    is the coarse session-vs-key gate. This permission is only used by the
-    detail-route ``rotate`` action, which fetches the row via ``get_object()``
-    and therefore always triggers the object-level check.
-
-    Note: the auth middleware already blocks ``read`` keys from POST, so only
+    Note: the auth middleware blocks ``read`` keys from POST, so only
     ``read_write``/``full_access`` keys can reach rotate.
     """
 
     message = (
-        "You can only rotate your own API key. Rotating other keys requires an "
-        "organization admin."
+        "Rotating platform API keys requires an organization admin session "
+        "or a platform API key."
     )
 
     def has_permission(self, request, view):
         if not request.user or not request.user.is_authenticated:
             return False
+        # Platform API key (bearer) callers may rotate — the API/automation
+        # path that the admin-only IsOrganizationAdmin gate blocks.
         if getattr(request, "platform_api_key", None) is not None:
-            # Platform API key caller: admitted here; the "own key only"
-            # constraint is enforced in has_object_permission below.
             return True
         # Session caller: must be an org admin (may rotate any key in the org).
         return IsOrganizationAdmin().has_permission(request, view)
-
-    def has_object_permission(self, request, view, obj):
-        platform_key = getattr(request, "platform_api_key", None)
-        if platform_key is not None:
-            # Platform API key may rotate only its own key.
-            return obj.id == platform_key.id
-        # Session admins were already gated in has_permission.
-        return True
