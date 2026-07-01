@@ -230,16 +230,23 @@ def _enhance_batch_with_mrq_flags(
 class _TerminalExecutionSkip(Exception):
     """A batch was delivered for an execution already in a terminal state.
 
-    Raised by :func:`_setup_execution_context` when the execution's status is
+    Raised by :func:`_raise_if_execution_terminal` (called from
+    :func:`_setup_execution_context`) when the execution's status is
     COMPLETED/ERROR/STOPPED. On the PG queue (at-least-once), a batch can be
     redelivered — or a stale batch consumed — *after* the reaper has recovered
     the execution (marked it ERROR) and deleted its barrier. Reprocessing would
     resurrect the execution back to EXECUTING and re-run its files (double LLM /
-    destination write). The batch is skipped instead (UN-3662).
+    destination write). The batch is skipped instead.
 
-    The guard is gated to the PG path (``is_pg``) so the Celery flow is
-    byte-for-byte unchanged — the resurrection it prevents is PG-specific
-    (Celery lost tasks are never redelivered, so they can't be resurrected).
+    Gated to the PG path (``is_pg``): a no-op on Celery, so the existing Celery
+    flow is behaviorally unchanged. It's PG-specific because the **reaper** that
+    marks an in-flight execution terminal (and tears its barrier down) is a
+    PG-only mechanism — the Celery chord has no equivalent.
+
+    This is a validate-first *narrowing*, not a transactional guarantee: the
+    status read and the later ``EXECUTING`` write are not atomic, so a reaper
+    transition landing in that window can still resurrect the execution. The
+    reaper's terminal file-cascade is the backstop for that residual case.
     """
 
     def __init__(self, execution_id: str, status: str | None) -> None:
@@ -258,25 +265,36 @@ def _raise_if_execution_terminal(
     execution is already terminal. See :class:`_TerminalExecutionSkip`.
 
     No-op on the Celery path (``is_pg=False``) — the resurrection this prevents
-    is PG-specific, so gating keeps the Celery flow byte-for-byte unchanged
-    (UN-3662). A missing/unknown status is treated as non-terminal (fail open —
-    proceed as normal).
+    is PG-specific, so gating leaves the Celery flow behaviorally unchanged. A
+    missing/unrecognized status is treated as non-terminal (fail open — proceed
+    as normal), but a *missing* status on the PG path signals a degraded
+    execution-fetch response and is logged so it isn't silently masked.
     """
     if not is_pg:
         return
     status = workflow_execution.get("status")
+    if not status:
+        # Fail open (proceed), but surface it — a missing status is an
+        # API-contract regression, not a normal active execution.
+        logger.warning(
+            f"[exec:{execution_id}] terminal guard: execution-fetch returned no "
+            f"status; proceeding (fail-open) but the response looks degraded."
+        )
+        return
     if status in ExecutionStatus.terminal_values():
         raise _TerminalExecutionSkip(execution_id, status)
 
 
 def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
-    """Batch result for a batch skipped because its execution is already terminal
-    (UN-3662). The files were never attempted; per the accounting contract from
-    68d137a8 (unaccounted files count as failed, not in-progress) they are
-    reported as failed, so a consumer that ever aggregates this result does not
-    render them as perpetually in-progress. The ``SKIPPED_TERMINAL_EXECUTION_KEY``
-    marker tells ``run_batch_with_barrier`` to bypass the barrier decrement (the
-    reaper has by definition already torn the barrier down).
+    """Batch result for a batch skipped because its execution is already terminal.
+
+    The files were never attempted; they are counted as failed (not left
+    unaccounted). The UI derives in-progress as ``total - successful - failed``,
+    so reporting ``failed=total`` keeps a consumer that ever aggregates this
+    result from rendering the files as perpetually in-progress. The
+    ``SKIPPED_TERMINAL_EXECUTION_KEY`` marker tells ``run_batch_with_barrier`` to
+    bypass the barrier decrement (a terminal execution's barrier is by definition
+    already torn down).
     """
     n_files = len(batch_data.files)
     result = BatchExecutionResult(
@@ -291,7 +309,7 @@ def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
 
 
 def _run_batch_stages(
-    file_batch_data: dict[str, Any], celery_task_id: str, is_pg: bool = False
+    file_batch_data: dict[str, Any], celery_task_id: str, *, is_pg: bool
 ) -> dict[str, Any]:
     """The actual batch work (validate → setup → pre-create → process → compile).
 
@@ -299,15 +317,16 @@ def _run_batch_stages(
     fire-and-forget path. The task instance isn't needed here — its only use
     (deriving ``celery_task_id``) happens in the caller. Returns the
     JSON-serialisable batch result.
+
+    ``is_pg`` (keyword-only, no default so a PG call site can't silently forget
+    it) forwards to the terminal guard; see :class:`_TerminalExecutionSkip`.
     """
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
-    # Step 2: Setup execution context. Validate-first (PG path only): a batch
-    # delivered for an already-terminal execution is a stale/redelivered task
-    # arriving after the reaper recovered the execution — skip it rather than
-    # resurrect the execution and re-run its files (UN-3662). The guard is gated
-    # inside _setup_execution_context via is_pg, so on Celery this never fires.
+    # Step 2: Setup execution context. The terminal guard inside it may skip a
+    # stale/redelivered batch for an already-terminal execution — see
+    # :class:`_TerminalExecutionSkip`.
     try:
         context = _setup_execution_context(batch_data, celery_task_id, is_pg=is_pg)
     except _TerminalExecutionSkip as skip:
@@ -315,7 +334,7 @@ def _run_batch_stages(
             f"[exec:{skip.execution_id}] Skipping batch of "
             f"{len(batch_data.files)} file(s): execution already terminal "
             f"({skip.status}) — stale/redelivered after reaper-recovery; not "
-            f"reprocessing (UN-3662)."
+            f"reprocessing."
         )
         return _terminal_skip_result(batch_data)
 
@@ -360,13 +379,13 @@ def _process_file_batch_core(
 
     if barrier_context is None:
         # Celery chord path — the chord's .link runs the decrement after this.
-        # is_pg=False disables the UN-3662 terminal guard → Celery flow unchanged.
+        # is_pg=False disables the terminal guard → Celery flow unchanged.
         return _run_batch_stages(file_batch_data, celery_task_id, is_pg=False)
 
     # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
     # the stages, then decrement the barrier in-body / self-chain the callback.
-    # is_pg=True enables the UN-3662 terminal guard (skip stale/redelivered
-    # batches for a reaper-recovered execution).
+    # is_pg=True enables the terminal guard (skip a stale/redelivered batch for a
+    # reaper-recovered execution).
     return run_batch_with_barrier(
         barrier_context,
         lambda: _run_batch_stages(file_batch_data, celery_task_id, is_pg=True),
@@ -441,19 +460,24 @@ def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatch
 
 
 def _setup_execution_context(
-    batch_data: FileBatchData, celery_task_id: str, is_pg: bool = False
+    batch_data: FileBatchData, celery_task_id: str, *, is_pg: bool
 ) -> WorkflowContextData:
     """Setup execution context with validation and API client initialization.
 
     Args:
         batch_data: Validated batch data
         celery_task_id: Celery task ID for tracking
+        is_pg: Whether this batch runs on the PG (at-least-once) transport.
+            Keyword-only, no default so a PG call site can't silently forget it.
+            Enables the terminal guard; a no-op on Celery.
 
     Returns:
         WorkflowContextData containing type-safe execution context
 
     Raises:
         ValueError: If required context fields are missing
+        _TerminalExecutionSkip: On the PG path, if the execution is already
+            terminal (a stale/redelivered batch after reaper-recovery).
     """
     # Extract context using dataclass
     file_data = batch_data.file_data
@@ -493,12 +517,9 @@ def _setup_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
 
-    # UN-3662: validate-first terminal guard (PG path only, gated by is_pg). If
-    # the execution is already terminal (COMPLETED/ERROR/STOPPED), this batch is
-    # a stale/redelivered task arriving after the reaper recovered the execution
-    # — reprocessing would resurrect it to EXECUTING and re-run its files. Skip
-    # before we touch status or process anything. On Celery (is_pg=False) this is
-    # a no-op, so the existing Celery flow is unchanged.
+    # Validate-first terminal guard (PG only) — skip a stale/redelivered batch
+    # for an already-terminal execution, before we touch status or process
+    # anything. See :class:`_TerminalExecutionSkip`.
     _raise_if_execution_terminal(workflow_execution, execution_id, is_pg=is_pg)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
