@@ -579,7 +579,10 @@ def _inject_infra_env(
     if "postgres" in group.requires_services and infra.postgres_url:
         env.update(_db_env_from_postgres_url(infra.postgres_url))
     if "minio" in group.requires_services and infra.minio_endpoint:
-        env.setdefault("MINIO_ENDPOINT_URL", f"http://{infra.minio_endpoint}")
+        # http: this is a local, throwaway testcontainers MinIO with no TLS.
+        env.setdefault(
+            "MINIO_ENDPOINT_URL", f"http://{infra.minio_endpoint}"  # NOSONAR
+        )
         if infra.minio_access_key:
             env.setdefault("MINIO_ACCESS_KEY_ID", infra.minio_access_key)
         if infra.minio_secret_key:
