@@ -12,7 +12,7 @@ import Prism from "prismjs";
 // side-effect import), and its body pins core on the global. A sibling
 // dependency is fully evaluated — body included — before the next one, so the
 // global is guaranteed to exist by the time the add-on modules evaluate.
-if (typeof globalThis !== "undefined" && !globalThis.Prism) {
+if (!globalThis.Prism) {
   globalThis.Prism = Prism;
 }
 
