@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version_bump:
-        description: "Version bump type (hotfix branches force 'patch')"
+        description: "Version bump ('auto' = minor if a FEAT/GATED-FEAT PR merged since the last release, else patch; hotfix branches force 'patch')"
         required: true
-        default: "patch"
+        default: "auto"
         type: choice
         options:
+          - auto
           - patch
           - minor
           - major
@@ -82,7 +83,9 @@ jobs:
         env:
           BUMP: ${{ github.event.inputs.version_bump }}
         run: |
-          if [[ "$BUMP" != "patch" ]]; then
+          # 'auto' is allowed here — the "Resolve auto bump" step maps it to 'patch'
+          # on a hotfix line (hotfixes are patch-only by definition).
+          if [[ "$BUMP" != "patch" && "$BUMP" != "auto" ]]; then
             echo "::error::Hotfix branches only support 'patch' bumps. Got: '$BUMP'"
             exit 1
           fi
@@ -158,11 +161,58 @@ jobs:
             echo "✅ $AHEAD new commit(s) on '$BRANCH' since $LATEST_TAG"
           fi
 
+      - name: Resolve auto bump
+        id: resolve-bump
+        if: github.event.inputs.version_bump == 'auto'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+        run: |
+          # 'auto' only chooses minor-vs-patch on main; hotfix lines are patch-only.
+          if [[ "$MODE" != "main" ]]; then
+            echo "resolved=patch" >> "$GITHUB_OUTPUT"
+            echo "::notice::auto bump on hotfix line -> patch"
+            exit 0
+          fi
+
+          # Classify PRs merged into main after the base release was published:
+          # any [FEAT]/[GATED-FEAT] title (the only feature PR types in the
+          # contribution guide) => minor, otherwise patch. Fail-safe is always
+          # patch so a query hiccup never over-bumps the public version.
+          SINCE=$(gh api "repos/${{ github.repository }}/releases/tags/$LATEST_TAG" --jq '.published_at' 2>/dev/null || echo "")
+          if [[ -z "$SINCE" ]]; then
+            echo "::warning::Could not resolve publish time for $LATEST_TAG; defaulting to patch."
+            echo "resolved=patch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          FEAT_COUNT=$(gh pr list --repo "${{ github.repository }}" \
+            --base main --state merged --limit 200 --search "merged:>$SINCE" \
+            --json title \
+            --jq '[.[] | select(.title | test("\\[(FEAT|GATED-FEAT)\\]"; "i"))] | length' 2>/dev/null || echo "")
+
+          if [[ -z "$FEAT_COUNT" ]]; then
+            echo "::warning::PR classification query failed; defaulting to patch."
+            RESOLVED=patch
+          elif [[ "$FEAT_COUNT" -gt 0 ]]; then
+            RESOLVED=minor
+          else
+            RESOLVED=patch
+          fi
+
+          echo "resolved=$RESOLVED" >> "$GITHUB_OUTPUT"
+          if [[ "$RESOLVED" == "minor" ]]; then
+            echo "::notice::auto bump: $FEAT_COUNT FEAT/GATED-FEAT PR(s) merged since $LATEST_TAG -> minor"
+          else
+            echo "::notice::auto bump: no FEAT/GATED-FEAT PR merged since $LATEST_TAG -> patch. Re-run with version_bump=minor to override."
+          fi
+
       - name: Compute next version
         id: compute-version
         env:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
-          BUMP_TYPE: ${{ github.event.inputs.version_bump }}
+          BUMP_TYPE: ${{ github.event.inputs.version_bump == 'auto' && steps.resolve-bump.outputs.resolved || github.event.inputs.version_bump }}
         run: |
           VERSION="${LATEST_TAG#v}"
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
@@ -225,9 +275,12 @@ jobs:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
           NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
           BUMP: ${{ github.event.inputs.version_bump }}
+          RESOLVED: ${{ steps.resolve-bump.outputs.resolved }}
           PRERELEASE: ${{ github.event.inputs.pre_release }}
           MODE: ${{ steps.branch-mode.outputs.mode }}
         run: |
+          BUMP_DISPLAY="$BUMP"
+          [[ "$BUMP" == "auto" ]] && BUMP_DISPLAY="auto -> ${RESOLVED}"
           {
             echo "## Dry Run Summary"
             echo ""
@@ -235,7 +288,7 @@ jobs:
             echo "|-------|-------|"
             echo "| Mode | $MODE |"
             echo "| Current version | $LATEST_TAG |"
-            echo "| Bump type | $BUMP |"
+            echo "| Bump type | $BUMP_DISPLAY |"
             echo "| Next version | $NEW_TAG |"
             echo "| Pre-release | $PRERELEASE |"
             echo ""
@@ -324,9 +377,12 @@ jobs:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
           NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
           BUMP: ${{ github.event.inputs.version_bump }}
+          RESOLVED: ${{ steps.resolve-bump.outputs.resolved }}
           PRERELEASE: ${{ github.event.inputs.pre_release }}
           MODE: ${{ steps.branch-mode.outputs.mode }}
         run: |
+          BUMP_DISPLAY="$BUMP"
+          [[ "$BUMP" == "auto" ]] && BUMP_DISPLAY="auto -> ${RESOLVED}"
           {
             echo "## Release Created"
             echo ""
@@ -335,7 +391,7 @@ jobs:
             echo "| Mode | $MODE |"
             echo "| Previous version | $LATEST_TAG |"
             echo "| New version | $NEW_TAG |"
-            echo "| Bump type | $BUMP |"
+            echo "| Bump type | $BUMP_DISPLAY |"
             echo "| Pre-release | $PRERELEASE |"
             echo "| Triggered by | ${{ github.actor }} |"
             echo ""
