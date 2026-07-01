@@ -1,4 +1,4 @@
-import "prismjs";
+import "../../../helpers/prismSetup"; // installs global Prism; MUST precede prismjs add-ons
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
