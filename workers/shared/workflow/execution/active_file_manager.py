@@ -20,7 +20,11 @@ from ...infrastructure.logging import WorkerLogger
 
 # Constants for cache configuration
 DEFAULT_ACTIVE_FILE_CACHE_TTL = 300  # 5 minutes
-MAX_ACTIVE_FILE_CACHE_TTL = 7200  # 2 hours maximum
+# Cap the active-file marker TTL at (>=) the PG stuck-batch reaper timeout so a
+# marker can be configured to survive a stalled-but-not-yet-reaped batch — below
+# it there is a window where the marker has expired but the reaper has not yet
+# marked the execution terminal. Default stays 300s; operators opt into longer.
+MAX_ACTIVE_FILE_CACHE_TTL = 9000  # 2.5 hours maximum
 
 
 def get_active_file_cache_ttl() -> int:
