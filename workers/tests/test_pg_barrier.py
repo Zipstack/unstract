@@ -536,6 +536,19 @@ class TestClaimOrchestrationRetry:
         assert dead.executes == 1  # no retry
         assert sleeps == []
 
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn],
+        ids=["table-missing (0012)", "column-missing (0013)"],
+    )
+    def test_schema_behind_raises_actionable_error(self, _clean_local, exc_cls):
+        # A schema behind the code — 0012 not run (no table) OR 0012-but-not-0013
+        # (table, no organization_id column) — must fail fast with an actionable
+        # message, NOT the generic per-execution stack trace, and NOT proceed.
+        pg_barrier._local.conn = _FakeConn(execute_error=exc_cls("schema behind"))
+        with pytest.raises(RuntimeError, match="schema is out of date"):
+            try_claim_orchestration("exec-1", "org-1")
+
 
 # --- Layer 2: enqueue + link/abort with a real injected connection ---
 

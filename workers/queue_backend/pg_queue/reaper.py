@@ -61,7 +61,7 @@ import signal
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, TypeVar
 
 from unstract.core.data_models import ExecutionStatus
 
@@ -102,6 +102,14 @@ _STRANDED_PREDICATE = (
 )
 
 _N = TypeVar("_N", int, float)
+
+# Orphan-claim recovery outcomes (a closed domain — a typo in a returned literal
+# or a caller comparison would otherwise silently fall through to the skip path
+# and mis-count the sweep). Shared by _recover_one_claim (producer) and
+# sweep_orphan_claims (consumer).
+_CLAIM_RECOVERED: Final = "recovered"  # execution marked ERROR (crash-window)
+_CLAIM_GC: Final = "gc"  # terminal execution's tombstone deleted
+_ClaimOutcome = Literal["recovered", "gc"]
 
 
 class LeaderLeaseLike(Protocol):
@@ -595,10 +603,12 @@ def _claim_still_orphan(
 
 def _delete_orphan_claim(
     conn: PgConnection, execution_id: str, stuck_timeout_seconds: int
-) -> None:
+) -> int:
     """Delete a claim, re-guarded on still-orphan-and-old so a concurrent re-claim
     (release + redelivery inserting a fresh ``claimed_at``) or a freshly-armed
-    barrier is never torn out from under a live run.
+    barrier is never torn out from under a live run. Returns the number of rows
+    deleted (0 when the WHERE no longer matched — a concurrent re-claim / barrier
+    arm won the race, so the caller must not count or log a removal).
     """
     with conn.cursor() as cur:
         cur.execute(
@@ -606,7 +616,9 @@ def _delete_orphan_claim(
             f"WHERE c.execution_id = %s AND {_orphan_claim_where('c')}",
             (execution_id, stuck_timeout_seconds),
         )
+        deleted = cur.rowcount
     conn.commit()
+    return deleted
 
 
 def _recover_one_claim(
@@ -615,17 +627,19 @@ def _recover_one_claim(
     execution_id: str,
     organization_id: str,
     stuck_timeout_seconds: int,
-) -> str | None:
-    """Recover or GC one orphan claim; return ``"recovered"`` (execution marked
-    ERROR — a crash-window recovery), ``"gc"`` (a terminal execution's tombstone
-    deleted), or ``None`` (a benign skip). The claim row is deleted on GC and on a
-    confirmed recovery; it is LEFT for the next sweep on any unconfirmed step (no
-    org, unreadable status, re-armed during recovery, or an unconfirmed mark) so
-    nothing is lost.
+) -> _ClaimOutcome | None:
+    """Recover or GC one orphan claim; return :data:`_CLAIM_RECOVERED` (execution
+    marked ERROR — a crash-window recovery), :data:`_CLAIM_GC` (a terminal
+    execution's tombstone deleted), or ``None`` (a benign skip). The claim row is
+    deleted on GC and on a confirmed recovery; it is LEFT for the next sweep on any
+    unconfirmed step (no org, unreadable status, re-armed during recovery, an
+    unconfirmed mark, or a 0-row delete lost to a concurrent re-claim) so nothing
+    is lost and nothing is mis-counted.
 
-    A terminal execution (COMPLETED / ERROR) → GC the tombstone. A non-terminal one
-    is the claim→arm crash window (the orchestrator committed the claim then died
-    before arming the barrier; the reaper's barrier sweep can't see it because
+    A terminal execution (per :meth:`ExecutionStatus.is_completed` — COMPLETED /
+    STOPPED / ERROR, the single source of truth) → GC the tombstone. A non-terminal
+    one is the claim→arm crash window (the orchestrator committed the claim then
+    died before arming the barrier; the reaper's barrier sweep can't see it because
     there is no barrier row) → mark it ERROR so it reaches a terminal state instead
     of stranding EXECUTING forever, then delete the claim.
     """
@@ -648,16 +662,24 @@ def _recover_one_claim(
         return None
 
     if ExecutionStatus.is_completed(status):
-        # Completed / failed: the claim is a tombstone with no live run behind it —
-        # GC it. (The message was acked on completion or on the first skip-redelivery,
-        # so there is nothing left to re-orchestrate once the row is gone.)
-        _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds)
+        # Terminal: the claim is a tombstone with no live run behind it — GC it.
+        # (A terminal execution's orchestration message was acked on completion or
+        # on the first skip-redelivery, so there is nothing left to re-orchestrate
+        # once the row is gone.) A 0-row delete means a concurrent release+re-claim
+        # replaced the row in the window since the SELECT — leave the fresh one.
+        if not _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds):
+            logger.warning(
+                "Reaper: orphan-claim execution %s was re-claimed during GC — "
+                "leaving the fresh claim (its new run owns it).",
+                execution_id,
+            )
+            return None
         logger.info(
             "Reaper: GC'd orphan orchestration claim for terminal execution %s (%s).",
             execution_id,
             status,
         )
-        return "gc"
+        return _CLAIM_GC
 
     # Non-terminal → crash-window strand. Re-check it's STILL an orphan right before
     # marking, so a slow orchestration that just armed its barrier (or a fresh
@@ -683,8 +705,22 @@ def _recover_one_claim(
         # handle); leave it for the next sweep to retry.
         return None
 
-    _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds)
-    return "recovered"
+    # Safe to delete the tombstone now that the execution is terminal: the same
+    # ack argument as the GC branch holds (the message was acked on the first
+    # skip-redelivery). The re-guarded DELETE additionally protects the rare race
+    # where the claim was re-armed between the mark and here — a 0-row delete then
+    # leaves the fresh claim. (Residual: if the ENTIRE worker fleet were down
+    # longer than the stuck-timeout so no consumer ever hit the skip-and-ack path,
+    # the message could still be un-acked and a later redelivery would re-win the
+    # claim — an accepted tradeoff for a catastrophic multi-hour outage.)
+    if not _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds):
+        logger.warning(
+            "Reaper: orphan-claim execution %s was re-claimed between the ERROR "
+            "mark and the delete — leaving the fresh claim.",
+            execution_id,
+        )
+        return None
+    return _CLAIM_RECOVERED
 
 
 def sweep_orphan_claims(
@@ -726,18 +762,20 @@ def sweep_orphan_claims(
 
     gc_count = 0
     recovered = 0
+    failed = 0  # genuine per-row failures (exceptions) — NOT benign skips
     for execution_id, organization_id in rows:
         try:
             outcome = _recover_one_claim(
                 conn, api_client, execution_id, organization_id, stuck_timeout_seconds
             )
-            if outcome == "recovered":
+            if outcome == _CLAIM_RECOVERED:
                 recovered += 1
-            elif outcome == "gc":
+            elif outcome == _CLAIM_GC:
                 gc_count += 1
             # None = a benign skip (no org / no status / re-armed / unconfirmed
             # mark) — logged per-row inside; the row is left for the next sweep.
         except Exception:
+            failed += 1
             with contextlib.suppress(Exception):
                 conn.rollback()
             logger.exception(
@@ -755,6 +793,25 @@ def sweep_orphan_claims(
             len(rows),
             gc_count,
             recovered,
+        )
+    # A non-empty sweep that accomplished NOTHING because every row raised is
+    # systemic (internal API down / bad migration). Raise so _run_sweep records it
+    # on the consecutive-failure streak — a clean return would reset that streak
+    # and hide "the crash-window recovery net is completely down". Mirrors
+    # recover_expired_barriers' failed-and-nothing-recovered escalation. A PARTIAL
+    # failure (some rows swept) is only a warning — the net is working.
+    if failed and not removed:
+        raise RuntimeError(
+            f"orphan-claim sweep: all {failed} row(s) failed and nothing was "
+            f"swept — likely systemic (internal API down / bad migration)"
+        )
+    if failed:
+        logger.warning(
+            "Reaper: orphan-claim sweep — %d of %d row(s) failed (left for the next "
+            "sweep); %d swept.",
+            failed,
+            len(rows),
+            removed,
         )
     return removed
 

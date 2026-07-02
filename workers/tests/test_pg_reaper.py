@@ -1306,6 +1306,62 @@ class TestSweepOrphanClaims:
         assert removed == 1  # aaa-done GC'd despite zzz-boom raising
         assert _claim_ids(claim_conn) == ["zzz-boom"]  # left for the next sweep
 
+    def test_all_rows_failing_raises_systemic(self, claim_conn):
+        # A non-empty sweep where EVERY row raises is systemic (API down) → raise so
+        # _run_sweep records the consecutive-failure streak (a clean return would
+        # reset it and hide that the recovery net is down).
+        _seed_claim(claim_conn, "boom-1", old=True)
+        _seed_claim(claim_conn, "boom-2", old=True)
+
+        def _always_raise(_eid):
+            raise RuntimeError("api down")
+
+        api = _FakeApiClient(status="COMPLETED", on_get=_always_raise)
+        with pytest.raises(RuntimeError, match="systemic"):
+            sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert _claim_ids(claim_conn) == ["boom-1", "boom-2"]  # nothing removed
+
+    def test_recheck_race_barrier_armed_leaves_claim(self, claim_conn):
+        # A slow-but-live orchestration arms its barrier BETWEEN the sweep's SELECT
+        # and the pre-mark re-check → the claim must NOT be marked ERROR.
+        _seed_claim(claim_conn, "race-arm", old=True)
+
+        def _arm_barrier(eid):
+            if eid == "race-arm":
+                _seed(claim_conn, eid, expired=False)  # barrier now exists
+
+        api = _FakeApiClient(status="EXECUTING", on_get=_arm_barrier)
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0
+        assert api.update_calls == []  # re-check caught it → no ERROR mark
+        assert _claim_ids(claim_conn) == ["race-arm"]  # left for the live run
+
+    def test_delete_reguard_reclaim_leaves_fresh_claim(self, claim_conn):
+        # Terminal → GC path, but the claim is released + re-claimed with a fresh
+        # claimed_at between the SELECT and the DELETE → the re-guarded DELETE
+        # matches 0 rows → the fresh claim survives and is NOT counted.
+        _seed_claim(claim_conn, "race-gc", old=True)
+
+        def _reclaim(eid):
+            if eid == "race-gc":
+                with claim_conn.cursor() as cur:
+                    cur.execute(
+                        "DELETE FROM pg_orchestration_claim WHERE execution_id = %s",
+                        (eid,),
+                    )
+                    cur.execute(
+                        "INSERT INTO pg_orchestration_claim "
+                        "(execution_id, organization_id, claimed_at) "
+                        "VALUES (%s, 'org-1', now())",
+                        (eid,),
+                    )
+                claim_conn.commit()
+
+        api = _FakeApiClient(status="COMPLETED", on_get=_reclaim)
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0  # 0-row delete → not counted
+        assert _claim_ids(claim_conn) == ["race-gc"]  # the fresh claim survives
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

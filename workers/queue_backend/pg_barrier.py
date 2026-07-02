@@ -403,15 +403,18 @@ def try_claim_orchestration(execution_id: str, organization_id: str) -> bool:
             return won
         # Unreachable: the loop either returns or raises.
         raise AssertionError("try_claim_orchestration loop fell through")
-    except psycopg2.errors.UndefinedTable as exc:
+    except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn) as exc:
         # Fail fast with an actionable message instead of a generic per-execution
-        # stack trace: the table is missing because migration 0012 hasn't run.
-        # NOT swallowed to a "table missing → proceed" fallback — that would
-        # reopen the double-orchestration window this guard exists to close.
+        # stack trace when the schema is behind: UndefinedTable (0012 missing) OR
+        # UndefinedColumn — a 0012-but-not-0013 deploy has the table but not
+        # organization_id, so the INSERT above raises UndefinedColumn (a sibling
+        # SQLSTATE). NOT swallowed to a "proceed" fallback — that would reopen the
+        # double-orchestration window this guard exists to close.
         raise RuntimeError(
-            "pg_orchestration_claim table is missing — migration "
-            "0012_pgorchestrationclaim has not been applied. Run backend "
-            "migrations before enabling PG transport (pg_queue_enabled)."
+            "pg_orchestration_claim schema is out of date — migrations "
+            "0012_pgorchestrationclaim / 0013_pgorchestrationclaim_organization_id "
+            "have not been fully applied. Run backend migrations before enabling "
+            "PG transport (pg_queue_enabled)."
         ) from exc
 
 
