@@ -15,6 +15,7 @@ from datetime import timedelta
 from typing import Any, cast
 
 from api_v2.models import APIDeployment
+from backend.celery_service import app as celery_app
 from django.conf import settings
 from django.db import transaction
 from django.db.models import F, Min, QuerySet
@@ -27,7 +28,6 @@ from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
-from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
 from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
@@ -49,7 +49,7 @@ def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
     if not execution_id:
         return None
     try:
-        return cast(WorkflowExecution, WorkflowExecution.objects.get(id=execution_id))
+        return cast("WorkflowExecution", WorkflowExecution.objects.get(id=execution_id))
     except WorkflowExecution.DoesNotExist:
         # Catch ONLY DoesNotExist: a missing row is the fail-closed case
         # (_apply_failure_filter then drops notify_on_failures rows). A malformed

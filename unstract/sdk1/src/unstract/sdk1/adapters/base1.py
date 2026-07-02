@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -866,8 +867,7 @@ def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
     token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
     if not isinstance(token, str) or not token.strip():
         raise ValueError(
-            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
-            "auth_type is 'bearer_token'."
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when auth_type is 'bearer_token'."
         )
     validated[_BEDROCK_LITELLM_BEARER_KWARG] = token.strip()
 

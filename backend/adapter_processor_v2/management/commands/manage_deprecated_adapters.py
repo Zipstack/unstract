@@ -88,7 +88,7 @@ class Command(BaseCommand):
         )
 
         for adapter in deprecated_adapters:
-            self.stdout.write(f"\n{'='*80}")
+            self.stdout.write(f"\n{'=' * 80}")
             self.stdout.write(f"UUID: {adapter.id}")
             self.stdout.write(f"Name: {adapter.adapter_name}")
             self.stdout.write(f"Type: {adapter.adapter_type}")
@@ -258,7 +258,7 @@ class Command(BaseCommand):
         self.stdout.write(f"Total adapters: {total_adapters}")
         self.stdout.write(f"Deprecated adapters: {deprecated_count}")
         self.stdout.write(
-            f"Deprecation rate: {(deprecated_count/total_adapters*100):.1f}%\n"
+            f"Deprecation rate: {(deprecated_count / total_adapters * 100):.1f}%\n"
             if total_adapters > 0
             else "N/A\n"
         )

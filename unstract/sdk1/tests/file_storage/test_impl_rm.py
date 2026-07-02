@@ -11,6 +11,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
@@ -149,8 +150,8 @@ class TestFallbackDoesNotReenterBulkDelete:
         boto3_client.delete_object.return_value = {"ResponseMetadata": {}}
 
         # Top-level fs.rm routes to bulk DeleteObjects (broken on MinIO).
-        s3_file_storage.fs.rm.side_effect = (
-            lambda path, recursive: boto3_client.delete_objects(  # noqa: ARG005
+        s3_file_storage.fs.rm.side_effect = lambda path, recursive: (
+            boto3_client.delete_objects(  # noqa: ARG005
                 Bucket="bucket", Delete={"Objects": []}
             )
         )

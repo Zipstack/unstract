@@ -10,16 +10,15 @@ from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.llm import LLM
 from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
-
-from unstract.sdk1.constants import AdapterTypes
-from unstract.sdk1.exceptions import SdkError
-from unstract.sdk1.llm import LLM
 
 logger = logging.getLogger(__name__)
 
