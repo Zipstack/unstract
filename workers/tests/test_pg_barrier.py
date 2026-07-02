@@ -329,9 +329,7 @@ class TestDecrementPhaseSplitRetry:
         assert "execute failed on a cached connection" in caplog.text
         assert type(exc).__name__ in caplog.text
 
-    def test_commit_phase_failure_is_not_retried(
-        self, _clean_local, monkeypatch, sleeps
-    ):
+    def test_commit_phase_failure_is_not_retried(self, _clean_local, monkeypatch, sleeps):
         # A commit failure is AMBIGUOUS (the server may have applied it) → must
         # NOT retry, or the decrement could land twice. It propagates; the dead
         # conn is discarded; no reconnect is attempted.
@@ -377,9 +375,7 @@ class TestDecrementPhaseSplitRetry:
         assert reconnects == []  # fresh-conn death is not retried
         assert sleeps == []  # …so no backoff either
 
-    def test_non_connection_error_is_not_retried(
-        self, _clean_local, monkeypatch, sleeps
-    ):
+    def test_non_connection_error_is_not_retried(self, _clean_local, monkeypatch, sleeps):
         # A DataError (e.g. a NUL byte rejected by the jsonb cast) is not a
         # connection death → propagate immediately so the caller tears the barrier
         # down. A live conn after a logical error is NOT discarded.
@@ -459,7 +455,8 @@ def test_create_pg_connection_is_non_autocommit():
 
     Opens a real connection inline (no fixture), so it's marked ``integration``
     explicitly — the collection hook keys off fixture names and wouldn't catch
-    it, which would otherwise leave it in the DB-free unit lane."""
+    it, which would otherwise leave it in the DB-free unit lane.
+    """
     os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
     try:
         conn = create_pg_connection(env_prefix="TEST_DB_")
@@ -523,7 +520,8 @@ def _org(conn, execution_id):
 
 def _expires_in_seconds(conn, execution_id):
     """Seconds from *now* until the barrier's expires_at (DB-side now(), so no
-    client-clock skew) — the fixed 6h absolute cap."""
+    client-clock skew) — the fixed 6h absolute cap.
+    """
     with conn.cursor() as cur:
         cur.execute(
             "SELECT EXTRACT(EPOCH FROM (expires_at - now())) "
@@ -535,7 +533,8 @@ def _expires_in_seconds(conn, execution_id):
 
 def _last_progress_age_seconds(conn, execution_id):
     """How long ago (DB-side) the barrier last made progress — the reaper's stuck
-    signal (UN-3661). Small = fresh; large = stalled."""
+    signal (UN-3661). Small = fresh; large = stalled.
+    """
     with conn.cursor() as cur:
         cur.execute(
             "SELECT EXTRACT(EPOCH FROM (now() - last_progress_at)) "
@@ -562,9 +561,7 @@ class TestPgBarrierEnqueue:
             cloned.link_error.assert_called_once()
             cloned.apply_async.assert_called_once()
 
-    def test_enqueue_sets_expires_cap_and_fresh_progress(
-        self, barrier_db, monkeypatch
-    ):
+    def test_enqueue_sets_expires_cap_and_fresh_progress(self, barrier_db, monkeypatch):
         # enqueue stamps expires_at = now()+ttl (the absolute cap) AND
         # last_progress_at = now() (fresh), so a just-enqueued barrier is neither
         # expired nor stale. (UN-3661)
@@ -1161,10 +1158,29 @@ class TestPgFireAndForgetMode:
         remaining, _ = _row(barrier_db, "exec-re")
         assert remaining == 2  # NOT decremented again
 
-    def test_run_batch_with_barrier_exception_aborts_barrier(self, barrier_db):
+    def _dedup_count(self, conn, execution_id):
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+                (execution_id,),
+            )
+            return cur.fetchone()[0]
+
+    def test_exception_marks_error_then_tears_down_keeping_markers(
+        self, barrier_db, monkeypatch
+    ):
+        # Confirmed ERROR mark → safe to tear the barrier row down, but KEEP the
+        # per-batch dedup marker so this message's redelivery is skipped by
+        # claim_batch (not re-run wholesale).
         with barrier_db.cursor() as cur:
             cur.execute("DELETE FROM pg_batch_dedup")
         _seed(barrier_db, "exec-err", 2)
+        marked = []
+        monkeypatch.setattr(
+            pg_barrier,
+            "_mark_execution_error_on_abort",
+            lambda ctx, *, reason: marked.append(reason) or True,
+        )
         ctx = {
             "execution_id": "exec-err",
             "batch_index": 0,
@@ -1176,8 +1192,38 @@ class TestPgFireAndForgetMode:
 
         with pytest.raises(RuntimeError, match="batch failed"):
             run_batch_with_barrier(ctx, boom)
-        # No .link_error on the PG path → torn down in-body (mirror chord abort).
+        assert marked  # execution marked ERROR before teardown
+        # Row torn down (mirror chord abort) but the dedup marker survives.
         assert _row(barrier_db, "exec-err") is None
+        assert self._dedup_count(barrier_db, "exec-err") == 1  # claim marker kept
+
+    def test_exception_with_unconfirmed_mark_leaves_barrier_row(
+        self, barrier_db, monkeypatch
+    ):
+        # ERROR mark NOT confirmed (backend down / no org) → the barrier row is the
+        # reaper's only recovery handle, so it must be LEFT intact, not deleted.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        _seed(barrier_db, "exec-strand", 2)
+        monkeypatch.setattr(
+            pg_barrier,
+            "_mark_execution_error_on_abort",
+            lambda ctx, *, reason: False,
+        )
+        ctx = {
+            "execution_id": "exec-strand",
+            "batch_index": 0,
+            "callback_descriptor": _CALLBACK,
+        }
+
+        def boom():
+            raise RuntimeError("batch failed")
+
+        with pytest.raises(RuntimeError, match="batch failed"):
+            run_batch_with_barrier(ctx, boom)
+        # Barrier row preserved for the reaper (remaining untouched).
+        remaining, _ = _row(barrier_db, "exec-strand")
+        assert remaining == 2
 
     def test_fire_barrier_callback_pg_self_chains_via_dispatch(self):
         descriptor = {**_CALLBACK, "transport": "pg_queue"}
@@ -1239,6 +1285,24 @@ class TestPgFireAndForgetMode:
             )
             assert cur.fetchone()[0] == 0
 
+    def test_abort_preserve_flag_keeps_dedup_markers(self, barrier_db):
+        # preserve_dedup_markers=True (the in-body PG path): the barrier row is
+        # still deleted, but the marker survives so a redelivered batch is skipped
+        # by claim_batch rather than re-run wholesale.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        _seed(barrier_db, "exec-keep", 2)
+        claim_batch("exec-keep", 0)
+        barrier_pg_abort(execution_id="exec-keep", preserve_dedup_markers=True)
+        assert _row(barrier_db, "exec-keep") is None  # barrier row still deleted
+        with barrier_db.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+                ("exec-keep",),
+            )
+            assert cur.fetchone()[0] == 1  # marker preserved
+        assert claim_batch("exec-keep", 0) is False  # redelivery would be skipped
+
     def test_last_batch_self_chains_callback_to_pg_and_cleans_up(self, barrier_db):
         # The PR's core promise, end to end: the batch that drives remaining → 0
         # self-chains the aggregating callback onto PG (backend=PG, args=[results])
@@ -1275,13 +1339,17 @@ class TestPgFireAndForgetMode:
             )
             assert cur.fetchone()[0] == 0
 
-    def test_decrement_failure_aborts_barrier(self, barrier_db):
+    def test_decrement_failure_aborts_barrier(self, barrier_db, monkeypatch):
         # #69: a decrement-side failure (after the work succeeded) must tear the
         # barrier down in-body — else the dedup marker is committed, redelivery is
-        # blocked, and the barrier strands to expiry.
+        # blocked, and the barrier strands to expiry. With a confirmed ERROR mark
+        # the row is torn down (same path as a work failure).
         with barrier_db.cursor() as cur:
             cur.execute("DELETE FROM pg_batch_dedup")
         _seed(barrier_db, "exec-decfail", 2)
+        monkeypatch.setattr(
+            pg_barrier, "_mark_execution_error_on_abort", lambda ctx, *, reason: True
+        )
         ctx = {
             "execution_id": "exec-decfail",
             "batch_index": 0,
@@ -1335,6 +1403,74 @@ class TestPgFireAndForgetMode:
             # The marker existed post-UPSERT and was removed by the mid-loop
             # clear_execution_batches under test (not by the UPSERT reset).
             assert cur.fetchone()[0] == 0
+
+
+class TestMarkExecutionErrorOnAbort:
+    """``_mark_execution_error_on_abort`` — the in-body PG failure → terminal mark
+    (no DB; the internal API client + mark helper are mocked).
+    """
+
+    def _ctx(self, *, org):
+        kwargs = {"execution_id": "exec-1", "pipeline_id": "pipe-1"}
+        if org is not None:
+            kwargs["organization_id"] = org
+        return {
+            "execution_id": "exec-1",
+            "batch_index": 0,
+            "callback_descriptor": {**_CALLBACK, "kwargs": kwargs},
+        }
+
+    def test_no_org_returns_false_without_building_client(self, monkeypatch):
+        # No org → can't call the org-scoped API; must NOT build a client or mark.
+        built = MagicMock(side_effect=AssertionError("client built without org"))
+        monkeypatch.setattr("shared.api.InternalAPIClient", built)
+        assert (
+            pg_barrier._mark_execution_error_on_abort(
+                self._ctx(org=None), reason="batch 0 failed"
+            )
+            is False
+        )
+
+    def test_org_present_marks_error_and_returns_helper_result(self, monkeypatch):
+        client = MagicMock(name="api_client")
+        monkeypatch.setattr(
+            "shared.api.InternalAPIClient", MagicMock(return_value=client)
+        )
+        mark = MagicMock(return_value=True)
+        monkeypatch.setattr("queue_backend.pg_queue.recovery.mark_execution_error", mark)
+        out = pg_barrier._mark_execution_error_on_abort(
+            self._ctx(org="org-9"), reason="batch 0 failed"
+        )
+        assert out is True
+        mark.assert_called_once()
+        args, kwargs = mark.call_args
+        assert args[0] is client
+        assert args[1] == "exec-1"
+        assert args[2] == "org-9"
+        assert kwargs["error_message"] == "[pg-barrier-abort] batch 0 failed."
+
+    def test_helper_false_propagates(self, monkeypatch):
+        monkeypatch.setattr(
+            "shared.api.InternalAPIClient", MagicMock(return_value=MagicMock())
+        )
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            MagicMock(return_value=False),
+        )
+        assert (
+            pg_barrier._mark_execution_error_on_abort(self._ctx(org="org-9"), reason="x")
+            is False
+        )
+
+    def test_client_build_failure_returns_false(self, monkeypatch):
+        monkeypatch.setattr(
+            "shared.api.InternalAPIClient",
+            MagicMock(side_effect=RuntimeError("no config")),
+        )
+        assert (
+            pg_barrier._mark_execution_error_on_abort(self._ctx(org="org-9"), reason="x")
+            is False
+        )
 
 
 if __name__ == "__main__":

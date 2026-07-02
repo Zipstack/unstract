@@ -114,7 +114,15 @@ class TestPollOnce:
         app.tasks.get.return_value = task
         client = MagicMock()
         client.read.return_value = [
-            _msg(6, {"task_name": "t", "args": [1], "kwargs": {"k": "v"}, "fairness": fairness})
+            _msg(
+                6,
+                {
+                    "task_name": "t",
+                    "args": [1],
+                    "kwargs": {"k": "v"},
+                    "fairness": fairness,
+                },
+            )
         ]
         PgQueueConsumer(["q"], client=client, app=app).poll_once()
         kwargs = task.apply.call_args.kwargs
@@ -150,6 +158,155 @@ class TestPollOnce:
         client.delete.assert_not_called()
 
 
+def _callback_payload(execution_id="exec-1", organization_id="org-1"):
+    """A barrier aggregating-callback payload: execution identity in kwargs, no
+    reply_key / on_error (the sharpest silent-strand case).
+    """
+    return {
+        "task_name": "process_batch_callback_api",
+        "args": [[]],
+        "kwargs": {
+            "execution_id": execution_id,
+            "organization_id": organization_id,
+            "pipeline_id": "pipe-1",
+        },
+    }
+
+
+class TestPipelineIdentity:
+    """``_pipeline_identity`` extraction across the payload shapes."""
+
+    def test_from_callback_kwargs(self):
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        assert _pipeline_identity(_callback_payload("e", "o")) == ("e", "o")
+
+    def test_from_barrier_context_and_fairness(self):
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {
+            "task_name": "process_file_batch",
+            "kwargs": {"_barrier_context": {"execution_id": "e2"}},
+            "fairness": {"org_id": "o2", "workload_type": "api"},
+        }
+        assert _pipeline_identity(payload) == ("e2", "o2")
+
+    def test_org_from_barrier_callback_descriptor(self):
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {
+            "kwargs": {
+                "_barrier_context": {
+                    "execution_id": "e3",
+                    "callback_descriptor": {"kwargs": {"organization_id": "o3"}},
+                }
+            }
+        }
+        assert _pipeline_identity(payload) == ("e3", "o3")
+
+    def test_non_pipeline_returns_none(self):
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        assert _pipeline_identity({"task_name": "t", "kwargs": {}}) == (None, "")
+
+    def test_execution_without_org_returns_empty_org(self):
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {"kwargs": {"execution_id": "e4"}}
+        assert _pipeline_identity(payload) == ("e4", "")
+
+
+class TestPoisonDropMarksExecution:
+    """UN-3670: a poison drop with no reply channel marks the execution ERROR
+    (or re-parks if the mark can't be confirmed) instead of silently discarding.
+    """
+
+    def _poison(self, msg_id=5, payload=None, read_ct=6):
+        return _msg(msg_id, payload or _callback_payload(), read_ct=read_ct)
+
+    def test_marks_error_then_deletes(self, monkeypatch):
+        marks = []
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda client, eid, org, *, error_message: marks.append((eid, org)) or True,
+        )
+        client = MagicMock()
+        client.read.return_value = [self._poison()]
+        PgQueueConsumer(
+            ["q"], client=client, api_client=MagicMock(), max_attempts=5
+        ).poll_once()
+        assert marks == [("exec-1", "org-1")]  # marked ERROR
+        client.delete.assert_called_once_with(5)  # then dropped
+        client.set_vt.assert_not_called()
+
+    def test_reparks_when_mark_unconfirmed(self, monkeypatch):
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: False,  # backend down
+        )
+        client = MagicMock()
+        client.read.return_value = [self._poison(read_ct=6)]
+        PgQueueConsumer(
+            ["q"], client=client, api_client=MagicMock(), max_attempts=5
+        ).poll_once()
+        client.delete.assert_not_called()  # NOT dropped into a void
+        client.set_vt.assert_called_once_with(5, 300)  # re-parked long
+
+    def test_drops_after_repark_budget_exhausted(self, monkeypatch, caplog):
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: False,
+        )
+        client = MagicMock()
+        # read_ct beyond max_attempts + budget → give up and drop.
+        client.read.return_value = [self._poison(read_ct=11)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(
+                ["q"],
+                client=client,
+                api_client=MagicMock(),
+                max_attempts=5,
+                poison_repark_budget=5,
+            ).poll_once()
+        client.set_vt.assert_not_called()
+        client.delete.assert_called_once_with(5)
+        assert "re-park budget" in caplog.text
+
+    def test_reply_channel_keeps_existing_behavior(self, monkeypatch):
+        # A message with on_error surfaces on its channel and is dropped — NOT
+        # marked ERROR (it already has a failure channel).
+        marked = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error", marked
+        )
+        payload = {
+            "task_name": "some.executor",
+            "on_error": {"task_name": "cb", "queue": "q"},
+            "kwargs": {"execution_id": "exec-1", "organization_id": "org-1"},
+        }
+        client = MagicMock()
+        client.read.return_value = [self._poison(payload=payload)]
+        consumer = PgQueueConsumer(["q"], client=client, max_attempts=5)
+        monkeypatch.setattr(consumer, "_chain_continuation", MagicMock())
+        consumer.poll_once()
+        marked.assert_not_called()  # reply channel path, no execution mark
+        client.delete.assert_called_once_with(5)
+        client.set_vt.assert_not_called()
+
+    def test_no_execution_id_drops_without_marking(self, monkeypatch):
+        marked = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error", marked
+        )
+        client = MagicMock()
+        client.read.return_value = [
+            _msg(5, {"task_name": "test_pg_consumer.boom"}, read_ct=6)
+        ]
+        PgQueueConsumer(["q"], client=client, max_attempts=5).poll_once()
+        marked.assert_not_called()
+        client.delete.assert_called_once_with(5)
+
+
 class TestConstruction:
     def test_rejects_non_positive_params(self):
         for kw in (
@@ -158,6 +315,8 @@ class TestConstruction:
             {"poll_interval": 0},
             {"backoff_max": 0},
             {"max_attempts": 0},
+            {"poison_repark_vt_seconds": 0},
+            {"poison_repark_budget": -1},
         ):
             with pytest.raises(ValueError):
                 PgQueueConsumer(["q"], client=MagicMock(), **kw)
@@ -165,9 +324,7 @@ class TestConstruction:
     def test_rejects_backoff_max_below_poll_interval(self):
         # Otherwise backoff would shrink below poll_interval instead of growing.
         with pytest.raises(ValueError, match="backoff_max"):
-            PgQueueConsumer(
-                ["q"], client=MagicMock(), poll_interval=0.5, backoff_max=0.1
-            )
+            PgQueueConsumer(["q"], client=MagicMock(), poll_interval=0.5, backoff_max=0.1)
 
 
 class TestRunLoop:
@@ -389,7 +546,9 @@ class TestPollHeartbeat:
     def test_double_start_is_rejected(self):
         from queue_backend.pg_queue.consumer import LivenessServer
 
-        server = LivenessServer(PgQueueConsumer(["q"], client=MagicMock()), port=0, stale_after=60)
+        server = LivenessServer(
+            PgQueueConsumer(["q"], client=MagicMock()), port=0, stale_after=60
+        )
         server.start()
         try:
             with pytest.raises(RuntimeError, match="already started"):
@@ -453,7 +612,8 @@ class TestMultiQueue:
     def test_one_queue_failing_does_not_abort_the_others(self):
         """A read failure on one queue is isolated: the already-acked work this
         cycle still counts (so run() doesn't take the empty backoff path), and
-        the failure doesn't propagate out of poll_once."""
+        the failure doesn't propagate out of poll_once.
+        """
         client = MagicMock()
         client.read.side_effect = [[_msg(1, _ok_payload(1))], RuntimeError("boom")]
         claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
@@ -534,9 +694,7 @@ class TestRequestReply:
         client.read.return_value = [_msg(4, {**_ok_payload(1, 1), "reply_key": "rk4"})]
         with patch(self._RB) as rb_cls:
             rb_cls.return_value.store_result.side_effect = RuntimeError("db down")
-            with caplog.at_level(
-                logging.ERROR, logger="queue_backend.pg_queue.consumer"
-            ):
+            with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
                 PgQueueConsumer(["q"], client=client).poll_once()
         # A store failure must NOT block the ack (avoids an expensive re-run).
         client.delete.assert_called_once_with(4)
@@ -598,7 +756,11 @@ class TestSelfChain:
             # (msg_id, payload, read_ct)  — malformed / unknown / poison
             (10, {"on_error": err, "task_id": "t"}, 1),
             (11, {"task_name": "nope.nope", "on_error": err, "task_id": "t"}, 1),
-            (12, {"task_name": "test_pg_consumer.boom", "on_error": err, "task_id": "t"}, 99),
+            (
+                12,
+                {"task_name": "test_pg_consumer.boom", "on_error": err, "task_id": "t"},
+                99,
+            ),
         ]
         for msg_id, payload, read_ct in cases:
             client = MagicMock()
