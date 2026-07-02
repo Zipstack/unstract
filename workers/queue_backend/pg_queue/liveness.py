@@ -39,9 +39,19 @@ class LivenessServer:
     ``check_name`` / ``age_key`` label the JSON payload; ``extra_status_fn``
     (optional) merges extra fields in (informational — it never affects the
     200/503 verdict, which is purely the freshness heartbeat).
+
+    ``metrics_fn`` (optional) additionally serves ``/metrics``: it returns the
+    Prometheus text-exposition body (bytes). Kept as an opaque callable so this
+    module stays free of the prometheus dependency; the metric definitions live
+    in :mod:`queue_backend.pg_queue.metrics`. A ``metrics_fn`` failure returns
+    500 on ``/metrics`` only — it can never affect the ``/health`` verdict.
     """
 
     _PATHS = frozenset({"/health", "/healthz", "/livez"})
+    _METRICS_PATH = "/metrics"
+    # Prometheus text exposition format (metrics.METRICS_CONTENT_TYPE — inlined
+    # so this module keeps zero imports from the metrics side).
+    _METRICS_CONTENT_TYPE = "text/plain; version=0.0.4; charset=utf-8"
 
     def __init__(
         self,
@@ -52,6 +62,7 @@ class LivenessServer:
         check_name: str,
         age_key: str,
         extra_status_fn: Callable[[], dict[str, Any]] | None = None,
+        metrics_fn: Callable[[], bytes] | None = None,
         thread_name: str = "pg-queue-liveness",
         log_label: str = "pg-queue",
     ) -> None:
@@ -66,6 +77,7 @@ class LivenessServer:
         self._check_name = check_name
         self._age_key = age_key
         self._extra_status_fn = extra_status_fn
+        self._metrics_fn = metrics_fn
         self._thread_name = thread_name
         # Prefixes the (now-shared) log messages so they stay attributable to the
         # source process after the consumer/reaper extraction (e.g. "pg-queue
@@ -86,6 +98,9 @@ class LivenessServer:
         freshness_fn = self._freshness_fn
         stale_after = self._stale_after
         paths = self._PATHS
+        metrics_path = self._METRICS_PATH
+        metrics_content_type = self._METRICS_CONTENT_TYPE
+        metrics_fn = self._metrics_fn
         check_name = self._check_name
         age_key = self._age_key
         extra_status_fn = self._extra_status_fn
@@ -94,7 +109,11 @@ class LivenessServer:
         class _Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
                 # Strip any query string — a probe like /health?foo=bar must match.
-                if urlsplit(self.path).path not in paths:
+                path = urlsplit(self.path).path
+                if metrics_fn is not None and path == metrics_path:
+                    self._serve_metrics()
+                    return
+                if path not in paths:
                     self.send_response(404)
                     self.end_headers()
                     return
@@ -125,6 +144,24 @@ class LivenessServer:
                     self.wfile.write(body)
                 except (BrokenPipeError, ConnectionResetError):
                     pass  # client (probe) hung up mid-response — not our problem
+
+            def _serve_metrics(self) -> None:
+                # A broken metrics renderer must degrade to a 500 on /metrics
+                # alone — the probe verdict on /health stays untouched.
+                try:
+                    body = metrics_fn()  # type: ignore[misc]  # guarded by caller
+                except Exception:
+                    logger.exception("%s: /metrics render failed", log_label)
+                    self.send_response(500)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", metrics_content_type)
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # scraper hung up mid-response — not our problem
 
             def log_message(self, *_: object) -> None:
                 pass  # silence per-request access logging

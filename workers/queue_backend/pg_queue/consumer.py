@@ -867,18 +867,23 @@ class LivenessServer(_BaseLivenessServer):
     """Consumer poll-loop liveness — a thin wrapper over the shared
     :class:`queue_backend.pg_queue.liveness.LivenessServer`, bound to the
     consumer's heartbeat (``seconds_since_last_poll``). Same wire shape as before
-    (``/health`` → 200 fresh / 503 stale, ``check="pg_queue_poll"``).
+    (``/health`` → 200 fresh / 503 stale, ``check="pg_queue_poll"``), plus
+    ``/metrics`` exporting that heartbeat as a scrapeable gauge.
     """
 
     def __init__(
         self, consumer: PgQueueConsumer, *, port: int, stale_after: float
     ) -> None:
+        from .metrics import ConsumerMetrics
+
+        metrics = ConsumerMetrics(freshness_fn=consumer.seconds_since_last_poll)
         super().__init__(
             freshness_fn=consumer.seconds_since_last_poll,
             stale_after=stale_after,
             port=port,
             check_name="pg_queue_poll",
             age_key="seconds_since_last_poll",
+            metrics_fn=metrics.render,
             thread_name="pg-consumer-liveness",
             log_label="pg-queue consumer",
         )
