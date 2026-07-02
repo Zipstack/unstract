@@ -17,33 +17,26 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
 
-# Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). The patterns are regex-searched against the model id
-# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
-# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
-# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
-# covers every encoding of the id we have observed:
-#   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
-#   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
-#   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
-#                                   `eu.`, `apac.`, `global.` variants
-#   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
-#                                    anthropic.claude-opus-4-7-...`
-#   - Bedrock inference-profile ARN `arn:aws:bedrock:<region>:<account>:
-#                                    inference-profile/us.anthropic.claude-opus-4-7-...`
-#   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
-#   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
-# Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
-# through because the regex is anchored only at the trailing edge.
-# Add new entries here when Anthropic deprecates sampling on more models.
-# Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
-# delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
-# `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
-# `v` is intentionally rejected so alpha continuations like `4-7verbose` do
-# not silently match.
+# Anthropic deprecated the sampling parameters (`temperature`, `top_p`,
+# `top_k`) starting with Claude Opus 4.7; sending any of them yields a 400 from
+# Anthropic and the providers that proxy it (Bedrock, Azure AI Foundry, Vertex
+# AI). This covers every Opus release from 4.7 onwards: Opus 4.7, 4.8, 4.9 and
+# every Opus 5+ release.
+#
+# Patterns are regex-searched against the model id after lowercasing and
+# normalizing `.`/`_` to `-`, so they match every encoding we have seen:
+# native (`claude-opus-4-8`), Bedrock foundation models / cross-region
+# profiles / ARNs (`us.anthropic.claude-opus-4-8-<date>-v1:0`), Vertex
+# (`vertex_ai/claude-opus-4-8@<date>`), and Azure deployments embedding the id.
+# Route prefixes (`converse/`, `invoke/`, `bedrock/`) pass through.
+#
+# The trailing lookahead (`$`, a `-`/`:`/`@`/`/` delimiter, or `v<digit>`)
+# anchors the match so `claude-opus-4-70` and `claude-opus-4-7verbose` do NOT
+# match while date/ARN/version suffixes still do.
 # See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
 _SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
+    re.compile(r"claude-opus-4-[789](?=$|[-:@/]|v\d)"),  # Opus 4.7, 4.8, 4.9
+    re.compile(r"claude-opus-[5-9](?=$|[-:@/]|v\d)"),  # Opus 5 and later
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
@@ -63,7 +56,7 @@ def _looks_like_opaque_aip_arn(value: str | None) -> bool:
 
     Bedrock AIP ARNs do not carry the underlying foundation-model id in the
     string, so the sampling-strip detector cannot decide whether the call is
-    bound for Claude Opus 4.7.
+    bound for Claude Opus 4.7 or later.
     """
     return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
 
@@ -89,7 +82,8 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
       from the string. Pass the AIP ARN in `model_id` and keep the standard
       model id in `model`, or the strip won't fire.
     - Azure AI Foundry deployment names that omit the model id; rename the
-      deployment to include `claude-opus-4-7` so detection works.
+      deployment to include the relevant model id (e.g. `claude-opus-4-8`)
+      so detection works.
     """
     if not model:
         return False
