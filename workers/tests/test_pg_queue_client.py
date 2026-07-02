@@ -117,6 +117,26 @@ class TestPgQueueClientUnit:
         conn, _ = _mock_conn(rowcount=0)
         assert PgQueueClient(conn=conn).delete(999) is False
 
+    def test_set_vt_reparks_message(self):
+        conn, cur = _mock_conn(rowcount=1)
+        assert PgQueueClient(conn=conn).set_vt(42, 300) is True
+        sql, params = cur.execute.call_args.args
+        assert f"UPDATE {qualified('pg_queue_message')}" in sql
+        assert "SET vt = now() + make_interval(secs => %s)" in sql
+        assert "read_ct" not in sql  # re-park must NOT bump the delivery count
+        assert params == (300, 42)
+        conn.commit.assert_called_once()
+
+    def test_set_vt_returns_false_when_no_row(self):
+        conn, _ = _mock_conn(rowcount=0)
+        assert PgQueueClient(conn=conn).set_vt(999, 300) is False
+
+    def test_set_vt_rejects_non_positive(self):
+        conn, _ = _mock_conn()
+        client = PgQueueClient(conn=conn)
+        with pytest.raises(ValueError, match="vt_seconds"):
+            client.set_vt(1, 0)
+
     def test_read_rejects_non_positive_vt(self):
         conn, _ = _mock_conn()
         with pytest.raises(ValueError, match="vt_seconds"):

@@ -362,6 +362,28 @@ class PgQueueClient:
             QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
         ]
 
+    def set_vt(self, msg_id: int, vt_seconds: int) -> bool:
+        """Re-park a claimed message: hide it for another ``vt_seconds``.
+
+        Returns ``True`` if a row was updated (``False`` = the row is already gone,
+        e.g. its vt expired and another reader deleted it). Does NOT touch
+        ``read_ct`` — the increment happens on the next :meth:`read` when the row
+        reappears, so a re-park loop is naturally bounded by ``read_ct`` climbing.
+
+        Used by the consumer to defer a poison message whose terminal-ERROR mark
+        could not be confirmed (backend down), so the drop never races a dead
+        backend and the payload isn't discarded into a void.
+        """
+        if vt_seconds <= 0:
+            raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")
+        with self._cursor() as cur:
+            cur.execute(
+                f"UPDATE {qualified('pg_queue_message')} "
+                "SET vt = now() + make_interval(secs => %s) WHERE msg_id = %s",
+                (vt_seconds, msg_id),
+            )
+            return cur.rowcount == 1
+
     def delete(self, msg_id: int) -> bool:
         """Ack a processed message. Returns ``True`` if a row was removed.
 

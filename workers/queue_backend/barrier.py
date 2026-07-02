@@ -161,6 +161,24 @@ class BarrierContext(TypedDict):
     callback_descriptor: CallbackDescriptor
 
 
+def callback_recovery_identity(
+    callback_descriptor: CallbackDescriptor,
+) -> tuple[str | None, str | None]:
+    """``(execution_id, organization_id)`` from a callback descriptor's kwargs.
+
+    The barrier's recovery net (mark the execution ERROR when a batch strands)
+    needs the execution's identity, which the fan-out stamps into the callback's
+    ``kwargs`` (they are the aggregating callback's own arguments). Both recovery
+    sites — the in-body abort in :mod:`queue_backend.pg_barrier` and the consumer
+    poison-drop in :mod:`queue_backend.pg_queue.consumer` — read it through this
+    one accessor, so a producer-side kwarg rename is caught here rather than
+    silently regressing the safety net in two places. Either field may be ``None``
+    (a malformed/legacy descriptor); the callers handle a missing org.
+    """
+    kwargs = callback_descriptor.get("kwargs") or {}
+    return kwargs.get("execution_id"), kwargs.get("organization_id")
+
+
 class Barrier(Protocol):
     """Fan-out-then-callback primitive.
 

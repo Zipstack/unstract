@@ -82,7 +82,12 @@ from unstract.core.data_models import (
     is_pg_transport,
 )
 
-from .barrier import BarrierContext, CallbackDescriptor, barrier_ttl_seconds
+from .barrier import (
+    BarrierContext,
+    CallbackDescriptor,
+    barrier_ttl_seconds,
+    callback_recovery_identity,
+)
 from .decorator import worker_task
 from .fairness import (
     DEFAULT_PRIORITY,
@@ -969,6 +974,7 @@ def barrier_pg_abort(
     traceback: Any = None,
     *,
     execution_id: str,
+    preserve_dedup_markers: bool = False,
 ) -> dict[str, Any]:
     """``link_error`` callback: a header task failed → tear down barrier state.
 
@@ -982,10 +988,20 @@ def barrier_pg_abort(
     in-flight successful decrement then finds no row and abandons (no partial
     fire).
 
+    ``preserve_dedup_markers`` keeps the per-batch ``pg_batch_dedup`` markers in
+    place (default ``False`` — the Celery ``link_error`` path writes no markers,
+    so clearing them is a harmless no-op there). The in-body PG path passes
+    ``True``: the failed message can still redeliver, and a surviving marker makes
+    ``claim_batch`` return ``False`` on redelivery → the batch is skipped, not
+    re-run wholesale (real LLM spend). The markers are reclaimed later by the
+    barrier re-arm (same execution_id) or the dedup-orphan sweep; they can never
+    re-run anything on their own.
+
     The ``request``/``exc``/``traceback`` defaults keep the old-style
     ``errback(task_id)`` invocation (mixed-version deploy / ``bind=True``) from
     raising a ``TypeError``. This task does NOT drive workflow terminal status —
-    the outer orchestrators own that.
+    the outer orchestrators own that (the in-body PG path marks the execution
+    ERROR before calling here; see :func:`run_batch_with_barrier`).
     """
     del request, exc, traceback  # logged by the outer task; unused here
     with _cursor() as cur:
@@ -1002,29 +1018,39 @@ def barrier_pg_abort(
         # Another failure already aborted this execution (or it's already gone).
         return {"status": "already_aborted", "execution_id": execution_id}
 
-    # We won the abort: reclaim the per-batch dedup markers too (best-effort —
-    # the barrier is already torn down). A leftover marker would otherwise linger
-    # until the future dedup-orphan sweep; it can never re-run anything.
-    with contextlib.suppress(Exception):
-        clear_execution_batches(execution_id)
+    if not preserve_dedup_markers:
+        # We won the abort: reclaim the per-batch dedup markers too (best-effort —
+        # the barrier is already torn down). A leftover marker would otherwise
+        # linger until the future dedup-orphan sweep; it can never re-run anything.
+        with contextlib.suppress(Exception):
+            clear_execution_batches(execution_id)
 
     logger.error(
         f"[exec:{execution_id}] PgBarrier aborted — a header task failed; "
-        f"barrier state cleaned up (aggregating callback will not fire)."
+        f"barrier state cleaned up (aggregating callback will not fire; "
+        f"dedup markers {'preserved' if preserve_dedup_markers else 'cleared'})."
     )
     return {"status": "aborted", "execution_id": execution_id}
 
 
-def _abort_barrier_in_body(execution_id: str, *, reason: str) -> None:
+def _abort_barrier_in_body(
+    execution_id: str, *, reason: str, preserve_dedup_markers: bool = False
+) -> None:
     """Tear the barrier down from the in-body PG path (no ``.link_error`` here).
 
     Best-effort: a batch failure and a DB failure are correlated, so the abort
     itself can fail — that's logged (not swallowed silently) so a stuck barrier
     isn't masked by a misleading "torn down" message. A failed teardown bottoms
     out at the barrier's ``expires_at`` and is reclaimed by the reaper.
+
+    ``preserve_dedup_markers`` forwards to :func:`barrier_pg_abort` — the in-body
+    path keeps the per-batch markers so a redelivered batch is skipped by
+    ``claim_batch`` rather than re-run wholesale.
     """
     try:
-        barrier_pg_abort(execution_id=execution_id)
+        barrier_pg_abort(
+            execution_id=execution_id, preserve_dedup_markers=preserve_dedup_markers
+        )
         logger.error(
             f"[exec:{execution_id}] {reason} — barrier teardown attempted in-body "
             f"(no .link_error on the PG path); aggregating callback won't fire."
@@ -1035,6 +1061,59 @@ def _abort_barrier_in_body(execution_id: str, *, reason: str) -> None:
             f"itself failed — barrier will hang until expiry and be reclaimed by "
             f"the reaper (max_retries=0, no replay)."
         )
+
+
+def _mark_execution_error_on_abort(
+    barrier_context: BarrierContext, *, reason: str
+) -> bool:
+    """Best-effort: mark the execution ERROR (+cascade files) on an in-body PG
+    batch failure, so a failed batch reaches a terminal state instead of being
+    stranded ``EXECUTING`` forever with no handle the reaper can find.
+
+    Returns ``True`` iff the execution is now terminal (the mark was confirmed) —
+    only then is it safe for the caller to tear the barrier row down. On failure
+    (backend unreachable, or no ``organization_id`` to scope the org API) returns
+    ``False``: the caller must leave the barrier row so the reaper recovers it at
+    expiry, rather than erasing the only recovery handle.
+
+    PG path only — ``run_batch_with_barrier`` is the fire-and-forget substrate;
+    the Celery path never reaches here (its outer orchestrator owns terminal
+    status). The org and execution id come off the barrier's callback kwargs, the
+    same values the enqueue stamped onto ``pg_barrier_state``.
+    """
+    execution_id = str(barrier_context["execution_id"])
+    # .get(): this runs inside run_batch_with_barrier's except block, so a missing
+    # callback_descriptor (a future/legacy dispatch path) must not raise a KeyError
+    # that would mask the original batch exception before the re-raise.
+    _, org = callback_recovery_identity(barrier_context.get("callback_descriptor") or {})
+    organization_id = str(org or "")
+    if not organization_id:
+        logger.error(
+            f"[exec:{execution_id}] {reason} but the barrier carries no "
+            f"organization_id — cannot mark it ERROR via the org-scoped API; "
+            f"leaving the barrier row for the reaper (not erasing the handle)."
+        )
+        return False
+    # Lazy import: keep this module free of the HTTP/env client at import time
+    # (mirrors the reaper) and avoid an import cycle via shared.api.
+    from shared.api import InternalAPIClient
+
+    from .pg_queue.recovery import mark_execution_error
+
+    try:
+        api_client = InternalAPIClient()
+    except Exception:
+        logger.exception(
+            f"[exec:{execution_id}] {reason} and building the internal API client "
+            f"to mark it ERROR failed — leaving the barrier row for the reaper."
+        )
+        return False
+    return mark_execution_error(
+        api_client,
+        execution_id,
+        organization_id,
+        error_message=f"[pg-barrier-abort] {reason}.",
+    )
 
 
 # A batch whose execution is already terminal returns its result with this
@@ -1129,6 +1208,25 @@ def run_batch_with_barrier(
             callback_descriptor=barrier_context["callback_descriptor"],
         )
     except Exception:
-        _abort_barrier_in_body(execution_id, reason=f"batch {batch_index} failed")
+        reason = f"batch {batch_index} failed"
+        # Mark the execution ERROR FIRST (+cascade files) so it reaches a terminal
+        # state. Only if that's confirmed do we tear the barrier row down — the
+        # row is the reaper's only recovery handle, so we must not delete it while
+        # the execution is still non-terminal. On a confirmed mark, keep the dedup
+        # markers so this message's redelivery is skipped by claim_batch (belt-and-
+        # braces with the terminal-execution guard) rather than re-run wholesale.
+        if _mark_execution_error_on_abort(barrier_context, reason=reason):
+            _abort_barrier_in_body(
+                execution_id, reason=reason, preserve_dedup_markers=True
+            )
+        else:
+            # Mark unconfirmed (backend down / no org): leave the barrier row so
+            # the reaper marks it ERROR and reclaims it at expiry. Do NOT erase the
+            # handle — that's the strand this ticket fixes.
+            logger.error(
+                f"[exec:{execution_id}] {reason} and could not confirm the ERROR "
+                f"mark — leaving the barrier row intact for the reaper (barrier "
+                f"hangs to expiry rather than stranding non-terminal)."
+            )
         raise
     return result
