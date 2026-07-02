@@ -82,7 +82,12 @@ from unstract.core.data_models import (
     is_pg_transport,
 )
 
-from .barrier import BarrierContext, CallbackDescriptor, barrier_ttl_seconds
+from .barrier import (
+    BarrierContext,
+    CallbackDescriptor,
+    barrier_ttl_seconds,
+    callback_recovery_identity,
+)
 from .decorator import worker_task
 from .fairness import (
     DEFAULT_PRIORITY,
@@ -1077,8 +1082,8 @@ def _mark_execution_error_on_abort(
     same values the enqueue stamped onto ``pg_barrier_state``.
     """
     execution_id = str(barrier_context["execution_id"])
-    callback_kwargs = barrier_context["callback_descriptor"].get("kwargs") or {}
-    organization_id = str(callback_kwargs.get("organization_id") or "")
+    _, org = callback_recovery_identity(barrier_context["callback_descriptor"])
+    organization_id = str(org or "")
     if not organization_id:
         logger.error(
             f"[exec:{execution_id}] {reason} but the barrier carries no "

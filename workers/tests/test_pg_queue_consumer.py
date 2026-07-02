@@ -306,9 +306,70 @@ class TestPoisonDropMarksExecution:
         marked.assert_not_called()
         client.delete.assert_called_once_with(5)
 
+    def test_repark_budget_boundary_still_reparks(self, monkeypatch):
+        # Gap A: at exactly read_ct == max_attempts + budget (10) the message must
+        # still re-park; only strictly beyond it drops. Guards the >/>= boundary.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: False,
+        )
+        client = MagicMock()
+        client.read.return_value = [self._poison(read_ct=10)]  # 5 + 5
+        PgQueueConsumer(
+            ["q"],
+            client=client,
+            api_client=MagicMock(),
+            max_attempts=5,
+            poison_repark_budget=5,
+        ).poll_once()
+        client.set_vt.assert_called_once_with(5, 300)  # re-parked, not dropped
+        client.delete.assert_not_called()
+
+    def test_no_org_poison_drops_immediately_without_marking(self, monkeypatch):
+        # Gap B: an execution_id but no org can never be marked (org-scoped API),
+        # so it drops immediately — no wasted re-park budget, no mark attempt.
+        marked = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error", marked
+        )
+        client = MagicMock()
+        client.read.return_value = [
+            self._poison(
+                payload={
+                    "task_name": "process_file_batch",
+                    "kwargs": {"execution_id": "e4"},
+                }
+            )
+        ]
+        PgQueueConsumer(
+            ["q"], client=client, api_client=MagicMock(), max_attempts=5
+        ).poll_once()
+        marked.assert_not_called()  # never attempted (no org)
+        client.set_vt.assert_not_called()  # not re-parked (permanent)
+        client.delete.assert_called_once_with(5)  # dropped now
+
+    def test_api_client_build_failure_reparks(self, monkeypatch):
+        # Gap C: with no injected api_client, a build failure is transient — the
+        # message re-parks (not drops) so a recovered backend can still mark it.
+        monkeypatch.setattr(
+            "shared.api.InternalAPIClient",
+            MagicMock(side_effect=RuntimeError("no config")),
+        )
+        marked = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error", marked
+        )
+        client = MagicMock()
+        client.read.return_value = [self._poison(read_ct=6)]  # org present
+        PgQueueConsumer(["q"], client=client, max_attempts=5).poll_once()
+        marked.assert_not_called()  # never reached — client build raised first
+        client.set_vt.assert_called_once_with(5, 300)  # re-parked
+        client.delete.assert_not_called()
+
 
 class TestConstruction:
     def test_rejects_non_positive_params(self):
+        client = MagicMock()
         for kw in (
             {"batch_size": 0},
             {"vt_seconds": -1},
@@ -319,7 +380,7 @@ class TestConstruction:
             {"poison_repark_budget": -1},
         ):
             with pytest.raises(ValueError):
-                PgQueueConsumer(["q"], client=MagicMock(), **kw)
+                PgQueueConsumer(["q"], client=client, **kw)
 
     def test_rejects_backoff_max_below_poll_interval(self):
         # Otherwise backoff would shrink below poll_interval instead of growing.

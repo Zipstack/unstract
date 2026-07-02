@@ -72,7 +72,11 @@ def mark_execution_error(
             execution_id,
         )
         return False
-    logger.error(
+    # WARNING, not ERROR: this line records a successful recovery *action*; the
+    # underlying failure that caused the strand is already logged at ERROR by the
+    # caller (the batch failure / the poison drop), so ERROR here would double-
+    # count as alert noise for a non-error outcome.
+    logger.warning(
         "Marked stranded execution %s ERROR (+cascade files): %s",
         execution_id,
         error_message,

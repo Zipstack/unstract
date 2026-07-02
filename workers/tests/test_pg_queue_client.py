@@ -133,8 +133,9 @@ class TestPgQueueClientUnit:
 
     def test_set_vt_rejects_non_positive(self):
         conn, _ = _mock_conn()
+        client = PgQueueClient(conn=conn)
         with pytest.raises(ValueError, match="vt_seconds"):
-            PgQueueClient(conn=conn).set_vt(1, 0)
+            client.set_vt(1, 0)
 
     def test_read_rejects_non_positive_vt(self):
         conn, _ = _mock_conn()

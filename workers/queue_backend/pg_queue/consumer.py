@@ -26,12 +26,14 @@ import os
 import signal
 import time
 from collections.abc import Callable
+from enum import Enum
 from typing import TYPE_CHECKING, TypeVar
 
 from celery import current_app
 
 from unstract.core.data_models import ContinuationSpec, TaskPayload
 
+from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
 from .liveness import LivenessServer as _BaseLivenessServer
@@ -92,25 +94,43 @@ def _json_safe(value: object) -> object:
     return json.loads(json.dumps(value, default=str))
 
 
+class _PoisonMarkOutcome(Enum):
+    """Result of trying to mark a poison-dropped execution ERROR (drives whether
+    the consumer drops the message now or re-parks it).
+    """
+
+    CONFIRMED = "confirmed"  # marked terminal → safe to drop the message
+    UNMARKABLE = "unmarkable"  # permanent (no org) → drop now; re-park can't help
+    TRANSIENT = "transient"  # backend down / client build failed → re-park
+
+
 def _pipeline_identity(payload: TaskPayload) -> tuple[str | None, str]:
     """Best-effort ``(execution_id, organization_id)`` from a fire-and-forget
     payload, for marking the execution ERROR on a poison drop.
 
-    Barrier callbacks carry both directly in ``kwargs`` (the sharpest strand
-    case). Pipeline headers carry ``execution_id`` in the injected
-    ``_barrier_context`` and the org on the ``fairness`` payload. Returns
-    ``(None, "")`` when the payload isn't a pipeline message — nothing to mark.
-    ``organization_id`` may be ``""`` even with an ``execution_id`` (the caller
-    logs and skips the mark, since the status API is org-scoped).
+    The identity lives in one of three places, tried in order: directly on a
+    callback payload's ``kwargs`` (the aggregating-callback case — the sharpest
+    strand); on the injected ``_barrier_context``'s callback descriptor (a
+    pipeline header); or the org on the ``fairness`` payload. The callback-
+    descriptor dig goes through :func:`callback_recovery_identity` so it can't
+    drift from the barrier abort site. Returns ``(None, "")`` when the payload
+    isn't a pipeline message — nothing to mark. ``organization_id`` may be ``""``
+    even with an ``execution_id`` (the caller drops, since the status API is
+    org-scoped and re-parking can't conjure an org).
     """
     kwargs = payload.get("kwargs") or {}
     barrier_ctx = kwargs.get("_barrier_context") or {}
-    execution_id = kwargs.get("execution_id") or barrier_ctx.get("execution_id")
-    organization_id = kwargs.get("organization_id") or (
-        (barrier_ctx.get("callback_descriptor") or {}).get("kwargs") or {}
-    ).get("organization_id")
-    if not organization_id:
-        organization_id = (payload.get("fairness") or {}).get("org_id")
+    cb_execution_id, cb_org = callback_recovery_identity(
+        barrier_ctx.get("callback_descriptor") or {}
+    )
+    execution_id = (
+        kwargs.get("execution_id") or barrier_ctx.get("execution_id") or cb_execution_id
+    )
+    organization_id = (
+        kwargs.get("organization_id")
+        or cb_org
+        or (payload.get("fairness") or {}).get("org_id")
+    )
     return (
         str(execution_id) if execution_id else None,
         str(organization_id or ""),
@@ -251,66 +271,7 @@ class PgQueueConsumer:
         # it (with the payload, so it's recoverable from logs) instead of
         # redelivering on every vt expiry forever.
         if message.read_ct > self.max_attempts:
-            execution_id, organization_id = _pipeline_identity(payload)
-            logger.error(
-                "PG-queue consumer: task %r (msg_id=%s) exceeded max_attempts=%s "
-                "(read_ct=%s, execution_id=%s) — poison; full payload: %r",
-                task_name,
-                message.msg_id,
-                self.max_attempts,
-                message.read_ct,
-                execution_id,
-                payload,
-            )
-            # Messages with a failure channel (request-reply / on_error callback)
-            # surface the failure there — existing behavior, drop after.
-            if reply_key or on_error:
-                self._fail_dispatch(
-                    payload,
-                    error=f"task {task_name} exceeded max_attempts={self.max_attempts}",
-                )
-                self._client.delete(message.msg_id)
-                return
-            # No failure channel. A pipeline header / barrier callback carries an
-            # execution_id but neither reply_key nor on_error, so a bare delete
-            # silently strands the execution EXECUTING-forever (barrier row already
-            # gone → the reaper has no handle). Mark it ERROR first so the failure
-            # is visible and re-runnable.
-            if execution_id is None:
-                # Not a pipeline message and no failure channel — nothing to mark.
-                self._client.delete(message.msg_id)
-                return
-            if self._mark_poison_execution_error(
-                execution_id, organization_id, task_name
-            ):
-                self._client.delete(message.msg_id)  # terminal → safe to drop
-                return
-            # Mark unconfirmed (backend down): re-park with a long vt rather than
-            # delete into a void, so the poison drop never races a dead backend —
-            # bounded so a permanently-unmarkable message can't re-park forever.
-            if message.read_ct > self.max_attempts + self._poison_repark_budget:
-                logger.error(
-                    "PG-queue consumer: exhausted poison re-park budget for "
-                    "execution %s (msg_id=%s, read_ct=%s) — dropping despite an "
-                    "unconfirmed ERROR mark; the reaper is the last net. Full "
-                    "payload: %r",
-                    execution_id,
-                    message.msg_id,
-                    message.read_ct,
-                    payload,
-                )
-                self._client.delete(message.msg_id)
-                return
-            self._client.set_vt(message.msg_id, self._poison_repark_vt_seconds)
-            logger.warning(
-                "PG-queue consumer: could not confirm ERROR mark for poison "
-                "execution %s (msg_id=%s, read_ct=%s) — re-parked for %ss "
-                "(backend down?) instead of dropping.",
-                execution_id,
-                message.msg_id,
-                message.read_ct,
-                self._poison_repark_vt_seconds,
-            )
+            self._drop_poison_message(message, payload, task_name)
             return
 
         task = self._app.tasks.get(task_name)
@@ -534,6 +495,94 @@ class PgQueueConsumer:
                 error=error,
             )
 
+    def _drop_poison_message(
+        self, message: QueueMessage, payload: TaskPayload, task_name: str | None
+    ) -> None:
+        """Handle a message that exceeded ``max_attempts`` (poison).
+
+        A message with a failure channel (``reply_key`` / ``on_error``) surfaces
+        the failure there and is dropped — existing behavior. A pipeline header /
+        barrier callback has neither but carries an ``execution_id``: a bare delete
+        would silently strand the execution EXECUTING-forever (the barrier row is
+        already gone → the reaper has no handle), so mark it ERROR first. The mark
+        has three outcomes (see :class:`_PoisonMarkOutcome`): confirmed → drop;
+        permanently unmarkable (no org) → drop now, since re-parking can never
+        help; transient (backend down / client build failed) → re-park with a long
+        vt rather than delete into a void, bounded by ``poison_repark_budget``.
+        """
+        execution_id, organization_id = _pipeline_identity(payload)
+        logger.error(
+            "PG-queue consumer: task %r (msg_id=%s) exceeded max_attempts=%s "
+            "(read_ct=%s, execution_id=%s) — poison; full payload: %r",
+            task_name,
+            message.msg_id,
+            self.max_attempts,
+            message.read_ct,
+            execution_id,
+            payload,
+        )
+        # Failure channel (request-reply / on_error) → surface there, then drop.
+        if payload.get("reply_key") or payload.get("on_error"):
+            self._fail_dispatch(
+                payload,
+                error=f"task {task_name} exceeded max_attempts={self.max_attempts}",
+            )
+            self._client.delete(message.msg_id)
+            return
+        # No failure channel and not a pipeline message → nothing to mark; drop.
+        if execution_id is None:
+            self._client.delete(message.msg_id)
+            return
+        # Pipeline strand: mark ERROR so the failure is visible and re-runnable.
+        outcome = self._mark_poison_execution_error(
+            execution_id, organization_id, task_name
+        )
+        if outcome is _PoisonMarkOutcome.CONFIRMED:
+            self._client.delete(message.msg_id)  # terminal → safe to drop
+            return
+        if outcome is _PoisonMarkOutcome.UNMARKABLE:
+            # Permanent (no org): re-parking can never change the outcome, so drop
+            # now rather than burn the whole budget. The full payload was logged
+            # above for manual recovery.
+            self._client.delete(message.msg_id)
+            return
+        # TRANSIENT (backend down / client build failed): re-park rather than
+        # delete into a void, bounded so a permanently-stuck message can't re-park
+        # forever. NOTE: the reaper only recovers executions that still have a
+        # pg_barrier_state row; an aggregating-callback message is enqueued AFTER
+        # that row is deleted, so on budget exhaustion here it has no reaper handle
+        # and needs manual replay from the logged payload — the bound is a
+        # backstop, not a guaranteed reaper recovery for the callback case.
+        if message.read_ct > self.max_attempts + self._poison_repark_budget:
+            logger.error(
+                "PG-queue consumer: exhausted poison re-park budget for execution "
+                "%s (msg_id=%s, read_ct=%s) — dropping with an unconfirmed ERROR "
+                "mark. If this was an aggregating callback its barrier row is "
+                "already gone, so the reaper cannot recover it: manual replay from "
+                "the full payload logged above may be required.",
+                execution_id,
+                message.msg_id,
+                message.read_ct,
+            )
+            self._client.delete(message.msg_id)
+            return
+        if not self._client.set_vt(message.msg_id, self._poison_repark_vt_seconds):
+            # Row already gone (vt expired and another reader deleted it) — nothing
+            # to re-park; don't log a re-park that didn't happen.
+            logger.info(
+                "PG-queue consumer: poison message %s already gone before re-park.",
+                message.msg_id,
+            )
+            return
+        logger.warning(
+            "PG-queue consumer: could not confirm ERROR mark for poison execution "
+            "%s (msg_id=%s, read_ct=%s) — re-parked for %ss instead of dropping.",
+            execution_id,
+            message.msg_id,
+            message.read_ct,
+            self._poison_repark_vt_seconds,
+        )
+
     def _get_api_client(self) -> InternalAPIClient:
         # Lazy import + build (mirrors the reaper): keeps a fire-and-forget
         # consumer that never poisons free of the HTTP/env client, and avoids a
@@ -546,33 +595,37 @@ class PgQueueConsumer:
 
     def _mark_poison_execution_error(
         self, execution_id: str, organization_id: str, task_name: str | None
-    ) -> bool:
+    ) -> _PoisonMarkOutcome:
         """Best-effort: mark a poison-dropped pipeline execution ERROR (+cascade).
 
-        Returns ``True`` iff the mark is confirmed (safe to delete the message);
-        ``False`` when it can't be confirmed (no org, or the backend is down) so
-        the caller re-parks instead of dropping into a void.
+        Returns a :class:`_PoisonMarkOutcome`: ``CONFIRMED`` when the backend
+        confirmed the mark (safe to drop); ``UNMARKABLE`` when it can never be
+        marked (no org to scope the status API — re-parking is pointless, drop
+        now); ``TRANSIENT`` when the mark failed for a possibly-recoverable reason
+        (backend down, or the API client couldn't be built) so the caller re-parks
+        rather than dropping into a void.
         """
         if not organization_id:
             logger.error(
                 "PG-queue consumer: poison message for execution %s carries no "
                 "organization_id — cannot mark it ERROR via the org-scoped API; "
-                "dropping (the reaper is the recovery net).",
+                "dropping now (re-parking cannot help). Manual recovery from the "
+                "logged payload may be required.",
                 execution_id,
             )
-            return False
+            return _PoisonMarkOutcome.UNMARKABLE
         try:
             api_client = self._get_api_client()
         except Exception:
             logger.exception(
                 "PG-queue consumer: could not build the internal API client to "
-                "mark poison execution %s ERROR",
+                "mark poison execution %s ERROR — will re-park",
                 execution_id,
             )
-            return False
+            return _PoisonMarkOutcome.TRANSIENT
         from .recovery import mark_execution_error
 
-        return mark_execution_error(
+        confirmed = mark_execution_error(
             api_client,
             execution_id,
             organization_id,
@@ -581,6 +634,7 @@ class PgQueueConsumer:
                 f"max_attempts={self.max_attempts}."
             ),
         )
+        return _PoisonMarkOutcome.CONFIRMED if confirmed else _PoisonMarkOutcome.TRANSIENT
 
     def _fail_reply(self, reply_key: str | None, error: str) -> None:
         """Best-effort failure reply for a request-reply message that can't run
