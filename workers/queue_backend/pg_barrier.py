@@ -74,6 +74,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, NamedTuple
 
 import psycopg2
+import psycopg2.errors
 import psycopg2.extensions
 
 from unstract.core.data_models import (
@@ -303,6 +304,132 @@ def clear_execution_batches(execution_id: str) -> int:
             (execution_id,),
         )
         return cur.rowcount
+
+
+def try_claim_orchestration(execution_id: str) -> bool:
+    """Try to claim the orchestration slot for ``execution_id`` — the
+    execution-level idempotency gate mirroring :func:`claim_batch`, one level up.
+    The ``try_`` prefix signals the return is "did I win": ``True`` = claimed
+    (proceed), ``False`` = already claimed (a duplicate/redelivery — no-op).
+
+    Atomically inserts the single ``pg_orchestration_claim`` row via
+    ``INSERT … ON CONFLICT DO NOTHING RETURNING`` (a single statement, so two
+    replicas racing the same orchestration resolve to exactly one ``True`` — the
+    row's existence is the token).
+
+    Claimed BEFORE the orchestration work (arm barrier / dispatch batches). The
+    claim is **released on failure** (see :func:`release_orchestration_claim`,
+    called from the orchestrator's error path) so a redelivery/retry can
+    re-orchestrate; it persists only after a SUCCESSFUL orchestration, as a
+    tombstone that blocks a redelivery AFTER the execution completes (when the
+    barrier row is already gone) from re-arming and re-dispatching.
+
+    **Recovery gaps (tracked as follow-up — flag stays off until then):** unlike
+    :func:`claim_batch`, whose barrier is always armed before any batch runs (so
+    the reaper always has a ``pg_barrier_state`` handle), this claim is taken
+    BEFORE the barrier is armed. A hard crash (SIGKILL / eviction) in the
+    claim→arm window leaves a claim with no barrier row, which the reaper's
+    barrier sweep cannot see. And ``sweep_orphan_dedup`` reclaims only
+    ``pg_batch_dedup`` — nothing GCs ``pg_orchestration_claim`` yet, so a
+    successful claim's tombstone currently lives forever. Both are addressed by
+    extending the reaper to sweep this table (GC terminal/aged claims; mark a
+    non-terminal orphan-claim execution ERROR).
+
+    PG path only — the caller gates on the transport (Celery has no redelivery, so
+    no double-orchestration to guard).
+
+    **Stale-connection resilience (phase-split, like :func:`_apply_decrement`).**
+    This is the FIRST DB write of the orchestration task, so on a worker that has
+    been idle it is the one most likely to meet a PgBouncer-reaped connection. The
+    INSERT is retried ONCE, but ONLY on an execute-phase failure of a *cached*
+    connection: the statement never committed (non-autocommit → rolled back on
+    disconnect), so re-running it lands exactly once and the retry's ``RETURNING``
+    answer is authoritative — no won/lost flip. A *commit*-phase failure is
+    AMBIGUOUS (the server may have committed) and is NEVER retried — a re-run could
+    flip a real winner to a loser and strand the execution — so it propagates (the
+    orchestrator marks ERROR and the redelivery re-orchestrates). This is why the
+    idempotent-pre-dispatch helper (``-> None``, no RETURNING) can't be reused here.
+    """
+    # Sample cached-ness BEFORE _get_conn() below materialises a connection: only a
+    # cached handle can be a stale idle-reap, so a fresh-conn failure is a genuine
+    # DB error, not a reap (mirrors _apply_decrement / pg_queue.client.send).
+    reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
+    try:
+        for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
+            conn = _get_conn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"INSERT INTO {qualified('pg_orchestration_claim')} "
+                        "(execution_id, claimed_at) VALUES (%s, now()) "
+                        "ON CONFLICT (execution_id) DO NOTHING "
+                        "RETURNING execution_id",
+                        (execution_id,),
+                    )
+                    won = cur.fetchone() is not None
+            except Exception as exc:
+                conn_dead = _recover_after_error(conn, exc)
+                # Retry ONLY a reused-conn death on the execute phase: it never
+                # committed, so the retry (on a fresh conn) is authoritative.
+                if conn_dead and reused and attempt < _BARRIER_WRITE_ATTEMPTS:
+                    logger.warning(
+                        "[exec:%s] orchestration claim: execute failed on a cached "
+                        "connection (%s) — reconnecting and retrying once "
+                        "(attempt %d/%d); the INSERT never committed.",
+                        execution_id,
+                        type(exc).__name__,
+                        attempt,
+                        _BARRIER_WRITE_ATTEMPTS,
+                        exc_info=True,
+                    )
+                    time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
+                    continue
+                raise
+            try:
+                conn.commit()
+            except Exception as exc:
+                # AMBIGUOUS commit — the row may be persisted. Re-running could flip
+                # a real winner to a loser (→ strand), so NEVER retry; propagate.
+                _recover_after_error(conn, exc)
+                logger.warning(
+                    "[exec:%s] orchestration claim: commit failed (%s) — NOT "
+                    "retrying (the server may already have committed; a re-run "
+                    "could flip the winner). Propagating.",
+                    execution_id,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+                raise
+            return won
+        # Unreachable: the loop either returns or raises.
+        raise AssertionError("try_claim_orchestration loop fell through")
+    except psycopg2.errors.UndefinedTable as exc:
+        # Fail fast with an actionable message instead of a generic per-execution
+        # stack trace: the table is missing because migration 0012 hasn't run.
+        # NOT swallowed to a "table missing → proceed" fallback — that would
+        # reopen the double-orchestration window this guard exists to close.
+        raise RuntimeError(
+            "pg_orchestration_claim table is missing — migration "
+            "0012_pgorchestrationclaim has not been applied. Run backend "
+            "migrations before enabling PG transport (pg_queue_enabled)."
+        ) from exc
+
+
+def release_orchestration_claim(execution_id: str) -> None:
+    """Release the orchestration claim so a redelivery/retry can re-orchestrate.
+
+    Called from the orchestrator's failure path: the claim is taken before the
+    work, so without this a transient first-attempt failure would leave the claim
+    committed and make every redelivery permanently no-op (a silently-lost
+    execution). Deleting it on failure restores the retry/redelivery path. A
+    successful orchestration does NOT call this — its claim persists as the
+    post-completion tombstone. Safe when no row exists (deletes nothing).
+    """
+    with _cursor() as cur:
+        cur.execute(
+            f"DELETE FROM {qualified('pg_orchestration_claim')} WHERE execution_id = %s",
+            (execution_id,),
+        )
 
 
 def _dispatch_pg(

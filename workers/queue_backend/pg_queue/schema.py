@@ -1,8 +1,9 @@
 """Schema-qualified table names for the bespoke PG queue.
 
 The queue's tables (``pg_queue_message``, ``pg_task_result``,
-``pg_barrier_state``, ``pg_batch_dedup``, ``pg_orchestrator_lock``,
-``pg_periodic_schedule``) live in the schema the backend manages
+``pg_barrier_state``, ``pg_batch_dedup``, ``pg_orchestration_claim``,
+``pg_orchestrator_lock``, ``pg_periodic_schedule``) live in the schema the
+backend manages
 (``DB_SCHEMA`` — ``unstract`` on-prem, a per-developer schema such as ``ali``
 in cloud dev).
 
@@ -47,6 +48,7 @@ QUEUE_TABLES = frozenset(
         "pg_task_result",
         "pg_barrier_state",
         "pg_batch_dedup",
+        "pg_orchestration_claim",
         "pg_orchestrator_lock",
         "pg_periodic_schedule",
     }
