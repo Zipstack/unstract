@@ -70,11 +70,33 @@ curl http://localhost:8083/health  # Callback worker
 
 ### Metrics (Prometheus)
 
-Workers expose metrics on their health ports at `/metrics`:
-- Task execution counts
-- Processing times
-- Queue depths
-- Error rates
+**PG-queue processes** serve Prometheus text-format metrics at `/metrics` on
+their existing health port (`WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT` for
+consumers, `WORKER_PG_REAPER_HEALTH_PORT` for the reaper — same server as
+`/health`; no port configured means neither endpoint):
+
+- Every PG worker (per-pod): `pg_consumer_heartbeat_age_seconds` (poll-loop
+  freshness — the same signal `/health` verdicts on); the fleet supervisor adds
+  `pg_consumer_alive_children` / `pg_consumer_configured_concurrency`.
+- Reaper only (the leader-elected singleton — queue-WIDE state comes from one
+  process): `pg_queue_depth{queue}`, `pg_queue_oldest_message_age_seconds{queue}`,
+  `pg_barrier_live` / `pg_barrier_stranded`, recovery outcome counters
+  (`pg_reaper_barrier_recovered_total`, `pg_reaper_claim_*_total`,
+  `pg_reaper_sweep_failures_total{table}`) and `pg_reaper_is_leader`.
+  Queue gauges are cached snapshots refreshed on the reaper's own cadence —
+  scrapes never touch the DB; `pg_queue_gauges_age_seconds` exposes staleness.
+
+```bash
+curl http://localhost:8090/metrics  # PG consumer / supervisor
+curl http://localhost:8086/metrics  # PG reaper
+```
+
+Nothing scrapes these in cloud yet (no PodMonitoring/alerts — deferred);
+they're for direct curl during incidents, dashboards-to-come, and the
+load-test harness.
+
+**Celery workers** expose no app-level `/metrics`; their queue observability
+comes from RabbitMQ's Prometheus plugin and Flower (below).
 
 ### Logging
 

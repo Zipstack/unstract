@@ -69,6 +69,7 @@ from ..barrier import barrier_stuck_timeout_seconds
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
+from .metrics import ReaperMetrics
 from .pg_scheduler import dispatch_due_schedules
 from .recovery import mark_execution_error
 from .schema import qualified
@@ -474,6 +475,7 @@ def recover_expired_barriers(
     conn: PgConnection,
     api_client: InternalAPIClient,
     stuck_timeout_seconds: int | None = None,
+    metrics: ReaperMetrics | None = None,
 ) -> list[str]:
     """Recover stranded executions. Returns recovered ids.
 
@@ -540,6 +542,9 @@ def recover_expired_barriers(
                 execution_id,
             )
 
+    if metrics is not None:
+        metrics.barrier_recovered.inc(len(recovered))
+        metrics.barrier_recovery_failures.inc(failed)
     if rows:
         skipped = len(rows) - len(recovered) - failed
         summary = (
@@ -727,6 +732,7 @@ def sweep_orphan_claims(
     conn: PgConnection,
     api_client: InternalAPIClient,
     stuck_timeout_seconds: int | None = None,
+    metrics: ReaperMetrics | None = None,
 ) -> int:
     """GC / recover orphaned ``pg_orchestration_claim`` rows (UN-3679). Returns the
     number of claim rows removed (terminal-tombstone GCs + crash-window recoveries).
@@ -785,6 +791,10 @@ def sweep_orphan_claims(
             )
 
     removed = gc_count + recovered
+    if metrics is not None:
+        metrics.claim_recovered.inc(recovered)
+        metrics.claim_gc.inc(gc_count)
+        metrics.claim_recovery_failures.inc(failed)
     if removed:
         logger.info(
             "Reaper: orphan-claim sweep removed %d of %d claim(s) — %d GC'd "
@@ -814,6 +824,56 @@ def sweep_orphan_claims(
             removed,
         )
     return removed
+
+
+# Queue-gauge snapshot cadence. Deliberately a module constant, not an env knob:
+# it only bounds metrics staleness (the tick already runs every ~5s), and the
+# snapshot is two cheap aggregate reads.
+_GAUGE_REFRESH_INTERVAL_SECONDS: Final = 60.0
+
+
+def refresh_queue_gauges(
+    conn: PgConnection, metrics: ReaperMetrics, stuck_timeout_seconds: int
+) -> None:
+    """Take one queue-wide snapshot into ``metrics`` (leader-only caller).
+
+    Two aggregate reads: per-queue depth + oldest-message age over
+    ``pg_queue_message`` (all rows — ready and in-flight — since a backlog is a
+    backlog either way), and live/stranded counts over ``pg_barrier_state``
+    (stranded = what the next recovery pass would pick up, same predicate).
+
+    ``conn`` runs in manual-commit mode; on any error we roll back before
+    re-raising so the connection isn't left in an aborted-txn state (the caller
+    counts the failure and discards an owned connection).
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT queue_name, count(*), "
+                "COALESCE(EXTRACT(EPOCH FROM now() - min(enqueued_at)), 0) "
+                f"FROM {qualified('pg_queue_message')} GROUP BY queue_name"
+            )
+            depth_rows = cur.fetchall()
+            cur.execute(
+                "SELECT count(*), "
+                f"count(*) FILTER (WHERE {_STRANDED_PREDICATE}) "
+                f"FROM {qualified('pg_barrier_state')}",
+                (stuck_timeout_seconds,),
+            )
+            barriers_live, barriers_stranded = cur.fetchone()
+        conn.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            conn.rollback()
+        raise
+    metrics.set_queue_snapshot(
+        depths={
+            queue: (int(depth), float(oldest_age))
+            for queue, depth, oldest_age in depth_rows
+        },
+        barriers_live=int(barriers_live),
+        barriers_stranded=int(barriers_stranded),
+    )
 
 
 class PgReaper:
@@ -894,6 +954,18 @@ class PgReaper:
         # standby tick counts as progress too (the loop is alive), so this tracks
         # loop liveness, not leadership.
         self._last_tick_monotonic = time.monotonic()
+        # Queue-wide metrics snapshot cadence (same None-sentinel pattern as the
+        # sweep gate: first leader tick refreshes immediately).
+        self._last_gauge_refresh_monotonic: float | None = None
+        self._metrics = ReaperMetrics(
+            heartbeat_fn=self.seconds_since_last_tick,
+            is_leader_fn=lambda: self._is_leader,
+        )
+
+    @property
+    def metrics(self) -> ReaperMetrics:
+        """This process's metrics exporter (served at ``/metrics``)."""
+        return self._metrics
 
     @property
     def is_leader(self) -> bool:
@@ -951,6 +1023,7 @@ class PgReaper:
                 # A raised renew == "leadership unknown": stop acting (honour the
                 # lease's documented contract) before letting it propagate.
                 self._is_leader = False
+                self._metrics.clear_queue_snapshot()
                 raise
             if not still_leader:
                 logger.warning(
@@ -958,6 +1031,9 @@ class PgReaper:
                     "to standby"
                 )
                 self._is_leader = False
+                # A standby must not keep exporting a frozen queue snapshot as if
+                # it were live — the new leader owns those series now.
+                self._metrics.clear_queue_snapshot()
         if not self._is_leader and self._lease.try_acquire():
             self._is_leader = True
             logger.info("Reaper: acquired leadership")
@@ -969,6 +1045,7 @@ class PgReaper:
                     self._get_sweep_conn(),
                     self._get_api_client(),
                     self._stuck_timeout_seconds,
+                    metrics=self._metrics,
                 )
             )
         except Exception:
@@ -987,6 +1064,9 @@ class PgReaper:
         # Orchestrator's third job: retention cleanup (cadence-gated, so it does
         # NOT run every tick). Last so a sweep error can't skip recovery/schedules.
         self._maybe_sweep()
+        # Queue-wide metrics snapshot (cadence-gated, best-effort — a metrics
+        # failure must never fail the tick). After all real work.
+        self._maybe_refresh_gauges()
         return TickOutcome(was_leader=True, reclaimed=reclaimed)
 
     def _maybe_sweep(self) -> None:
@@ -1020,7 +1100,10 @@ class PgReaper:
         claims = self._run_sweep(
             "pg_orchestration_claim",
             lambda conn: sweep_orphan_claims(
-                conn, self._get_api_client(), self._stuck_timeout_seconds
+                conn,
+                self._get_api_client(),
+                self._stuck_timeout_seconds,
+                metrics=self._metrics,
             ),
         )
         if results or dedup or claims:
@@ -1047,6 +1130,7 @@ class PgReaper:
         except Exception:
             streak = self._sweep_fail_streak.get(table, 0) + 1
             self._sweep_fail_streak[table] = streak
+            self._metrics.sweep_failures.labels(table=table).inc()
             logger.exception(
                 "Reaper: retention sweep of %s failed (%s consecutive) — will retry "
                 "after the next sweep interval",
@@ -1057,6 +1141,35 @@ class PgReaper:
             return 0
         self._sweep_fail_streak[table] = 0
         return count
+
+    def _maybe_refresh_gauges(self) -> None:
+        """Refresh the queue-wide metrics snapshot at most once per
+        :data:`_GAUGE_REFRESH_INTERVAL_SECONDS` (leader-only, called from
+        :meth:`tick`). Best-effort: metrics must never fail the tick, so a
+        failure is counted + logged and the snapshot simply goes stale
+        (``pg_queue_gauges_age_seconds`` exposes exactly that). The cadence is
+        advanced BEFORE the read so a persistent failure retries once per
+        interval rather than every tick — same pattern as :meth:`_maybe_sweep`.
+        """
+        now = time.monotonic()
+        if (
+            self._last_gauge_refresh_monotonic is not None
+            and now - self._last_gauge_refresh_monotonic < _GAUGE_REFRESH_INTERVAL_SECONDS
+        ):
+            return
+        self._last_gauge_refresh_monotonic = now
+        try:
+            refresh_queue_gauges(
+                self._get_sweep_conn(), self._metrics, self._stuck_timeout_seconds
+            )
+        except Exception:
+            self._metrics.gauge_refresh_failures.inc()
+            logger.warning(
+                "Reaper: queue-gauge snapshot refresh failed — metrics go stale "
+                "until the next interval; the queue itself is unaffected",
+                exc_info=True,
+            )
+            self._discard_owned_sweep_conn()
 
     def run(self, *, install_signals: bool = True) -> None:
         """Lease-maintenance + recovery loop until stopped; releases on exit."""
@@ -1144,6 +1257,7 @@ class ReaperLivenessServer(_BaseLivenessServer):
             check_name="pg_reaper_tick",
             age_key="seconds_since_last_tick",
             extra_status_fn=lambda: {"is_leader": reaper.is_leader},
+            metrics_fn=reaper.metrics.render,
             thread_name="pg-reaper-liveness",
             log_label="pg-queue reaper",
         )
