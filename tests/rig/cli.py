@@ -21,6 +21,7 @@ import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 from xml.sax import saxutils
 
 from tests.rig import critical_paths as cp
@@ -32,7 +33,12 @@ from tests.rig.groups import (
     load_groups,
 )
 from tests.rig.reporting import GroupResult, parse_junit, write_summary
-from tests.rig.runtime import PlatformEndpoints, PlatformRuntime, pick_runtime
+from tests.rig.runtime import (
+    PlatformEndpoints,
+    PlatformRuntime,
+    TestcontainersRuntime,
+    pick_runtime,
+)
 from tests.rig.selection import resolve
 
 # Pytest exit codes that the rig treats as non-failure for aggregation:
@@ -349,6 +355,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     needs_platform = any(manifest.get(n).requires_platform for n in runnable)
+    # A group can declare `requires_services` (stateful infra like Postgres/
+    # Redis) without needing the whole platform — provision just that infra via
+    # testcontainers instead of standing up every compose service. Platform wins
+    # when both are set.
+    needs_services = any(manifest.get(n).requires_services for n in runnable)
     runtime: PlatformRuntime | None = None
     endpoints: PlatformEndpoints | None = None
     group_results: list[GroupResult] = []
@@ -360,6 +371,14 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"[rig] bringing platform up via runtime={runtime.name}")
             # `up()` is inside the try so a failure here still triggers `down()`
             # in the finally, cleaning up any partial stack.
+            endpoints = runtime.up()
+        elif needs_services and not args.dry_run:
+            # Infra-only: testcontainers Postgres/Redis/etc., no platform
+            # services. ponytail: up() starts the full infra set even if a run
+            # only needs Postgres; trim to the requested services if startup
+            # cost ever matters.
+            runtime = TestcontainersRuntime()
+            print(f"[rig] bringing infra up via runtime={runtime.name} (requires_services)")
             endpoints = runtime.up()
 
         # TODO(runtime-gate-skip): groups run unconditionally in topo order;
@@ -486,11 +505,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         if overall_exit == 0:
             overall_exit = 1
 
+    # Only in-scope gaps gate: a declared covering group ran in this tier but
+    # not green. Out-of-scope gaps (covered only by other tiers, or undeclared)
+    # are reported but must not fail a tier for coverage it can't produce.
     gaps = [s for s in statuses if s.state == "gap"]
-    if gaps and args.fail_on_critical_gap:
+    in_scope_gaps = [s for s in gaps if s.in_scope]
+    out_of_scope_gaps = [s for s in gaps if not s.in_scope]
+    if out_of_scope_gaps:
+        ids = ", ".join(s.path.id for s in out_of_scope_gaps)
         print(
-            f"\n[rig] ⚠️  {len(gaps)} critical-path gap(s) detected "
-            f"(fail-on-critical-gap)",
+            f"[rig] ℹ️  {len(out_of_scope_gaps)} critical-path gap(s) out of scope "
+            f"for this run (warn-only, not covered by any group in this tier): "
+            f"{ids}",
+            file=sys.stderr,
+        )
+    if in_scope_gaps and args.fail_on_critical_gap:
+        ids = ", ".join(s.path.id for s in in_scope_gaps)
+        print(
+            f"\n[rig] ⚠️  {len(in_scope_gaps)} critical-path gap(s) detected "
+            f"(fail-on-critical-gap): {ids}",
             file=sys.stderr,
         )
         if overall_exit == 0:
@@ -508,6 +541,55 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 # ── execution helpers ─────────────────────────────────────────────────────────
+
+
+def _db_env_from_postgres_url(url: str) -> dict[str, str]:
+    """Translate a provisioned Postgres URL into the discrete ``DB_*`` vars
+    Django reads (``backend/settings/base.py``).
+
+    The rig provisions a throwaway Postgres via testcontainers for groups
+    declaring ``requires_services: [postgres]``. Without this translation the
+    backend falls back to the compose hostname ``backend-db-1``, unreachable
+    from the host-side pytest, and every ``django_db`` test errors on connect.
+    """
+    # e.g. postgresql+psycopg2://user:pass@host:49153/dbname
+    parts = urlsplit(url)
+    return {
+        "DB_HOST": parts.hostname or "localhost",
+        "DB_PORT": str(parts.port or 5432),
+        "DB_USER": parts.username or "test",
+        "DB_PASSWORD": parts.password or "test",
+        "DB_NAME": parts.path.lstrip("/") or "test",
+    }
+
+
+def _inject_infra_env(
+    env: dict[str, str],
+    group: GroupDefinition,
+    endpoints: PlatformEndpoints | None,
+) -> None:
+    # Postgres/Redis override so a stale shell value can't shadow the
+    # provisioned testcontainer; MinIO uses setdefault so a developer's own
+    # endpoint wins.
+    if endpoints is None:
+        return
+    infra = endpoints.infra
+    if "postgres" in group.requires_services and infra.postgres_url:
+        env.update(_db_env_from_postgres_url(infra.postgres_url))
+    if "minio" in group.requires_services and infra.minio_endpoint:
+        # http: this is a local, throwaway testcontainers MinIO with no TLS.
+        env.setdefault(
+            "MINIO_ENDPOINT_URL", f"http://{infra.minio_endpoint}"  # NOSONAR
+        )
+        if infra.minio_access_key:
+            env.setdefault("MINIO_ACCESS_KEY_ID", infra.minio_access_key)
+        if infra.minio_secret_key:
+            env.setdefault("MINIO_SECRET_ACCESS_KEY", infra.minio_secret_key)
+    if "redis" in group.requires_services and infra.redis_host:
+        redis_port = str(infra.redis_port or 6379)
+        env["REDIS_HOST"] = infra.redis_host
+        env["REDIS_PORT"] = redis_port
+        env["CELERY_BROKER_BASE_URL"] = f"redis://{infra.redis_host}:{redis_port}"
 
 
 def _green_group_names(results: list[GroupResult]) -> set[str]:
@@ -553,6 +635,7 @@ def _execute_group(
         # leaked in". `setdefault` would let a leaked sentinel win, which
         # defeats the purpose — set unconditionally.
         env["UNSTRACT_RIG_SESSION_ID"] = _rig_session_id()
+    _inject_infra_env(env, group, endpoints)
     if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 
@@ -628,13 +711,8 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
             env=env,
             check=False,
         )
-    if group.install_editable:
-        subprocess.run(
-            ["uv", "pip", "install", "-e", "."],
-            cwd=workdir,
-            env=env,
-            check=False,
-        )
+    # install_editable is handled in _pytest_command via `--with-editable`;
+    # installing it here would be wiped by `uv run`'s venv re-sync.
     if group.pip_install:
         subprocess.run(
             ["uv", "pip", "install", *group.pip_install],
@@ -645,6 +723,20 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # NOTE: rig pytest plugins (pytest-timeout, pytest-md-report, etc.) are
     # injected via `uv run --with ...` in _pytest_command, not installed here.
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
+
+
+def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
+    if not shutil.which("uv"):
+        return [sys.executable, "-m", "pytest"]
+    # `uv run` re-syncs the venv each call, wiping anything from `uv pip
+    # install`. `--with`/`--with-editable` inject plugins + the project into the
+    # ephemeral run env instead, surviving the sync.
+    with_args: list[str] = []
+    for spec in RIG_PYTEST_PLUGINS:
+        with_args += ["--with", spec]
+    if group.install_editable:
+        with_args += ["--with-editable", str(workdir)]
+    return ["uv", "run", *with_args, "pytest"]
 
 
 def _pytest_command(
@@ -660,17 +752,7 @@ def _pytest_command(
     workers: str,
     timeout: int,
 ) -> list[str]:
-    use_uv = shutil.which("uv") is not None
-    if use_uv:
-        # `uv run` re-syncs the project's venv each call, which would wipe any
-        # plugins added via `uv pip install`. `--with` injects them into the
-        # ephemeral run environment, surviving the sync.
-        with_args: list[str] = []
-        for spec in RIG_PYTEST_PLUGINS:
-            with_args += ["--with", spec]
-        base: list[str] = ["uv", "run", *with_args, "pytest"]
-    else:
-        base = [sys.executable, "-m", "pytest"]
+    base = _pytest_base_cmd(group, workdir)
 
     cmd = [
         *base,

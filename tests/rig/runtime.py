@@ -51,6 +51,8 @@ class InfraEndpoints:
     rabbitmq_host: str | None = None
     rabbitmq_port: int | None = None
     minio_endpoint: str | None = None
+    minio_access_key: str | None = None
+    minio_secret_key: str | None = None
 
     def __post_init__(self) -> None:
         for host, port, label in (
@@ -205,6 +207,10 @@ class TestcontainersRuntime:
                     minio_endpoint=(
                         f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}"
                     ),
+                    # Default testcontainers MinIO root creds; surfaced so the
+                    # rig can inject them into connector integration tests.
+                    minio_access_key=getattr(minio, "access_key", "minioadmin"),
+                    minio_secret_key=getattr(minio, "secret_key", "minioadmin"),
                 ),
             )
         except Exception:

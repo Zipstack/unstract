@@ -5,69 +5,34 @@ from the per-model usage breakdown.  The filter prevents a malformed
 bare ``"llm"`` bucket from leaking into API deployment responses when
 a producer-side LLM call site forgets to set ``llm_usage_reason``.
 
-The tests deliberately do not require a live Django database — the
-backend test environment has no ``pytest-django``, no SQLite fallback,
-and uses ``django-tenants`` against Postgres in production.  Instead
-the tests stub ``account_usage.models`` and ``usage_v2.models`` in
-``sys.modules`` *before* importing the helper, so the helper module
-loads cleanly without triggering Django's app registry checks.  The
-fake ``Usage.objects.filter`` chain returns a deterministic list of
-row dicts shaped exactly like the real ``.values(...).annotate(...)``
-queryset rows the helper iterates over.
+The tests exercise only the helper's in-memory aggregation logic, not
+the ORM.  We rebind the ``Usage`` symbol the helper resolved at import
+to a fake whose ``objects.filter`` chain returns a deterministic list
+of row dicts shaped exactly like the real
+``.values(...).annotate(...)`` queryset rows the helper iterates over.
 """
 
 from __future__ import annotations
 
-import sys
-import types
 from typing import Any
 from unittest.mock import MagicMock
 
-
-# ---------------------------------------------------------------------------
-# Module-level stubs.  Must run BEFORE ``usage_v2.helper`` is imported, so we
-# do it at import time and capture the helper reference for the tests below.
-# ---------------------------------------------------------------------------
+import pytest
+import usage_v2.helper as helper_mod
+from usage_v2.helper import UsageHelper
 
 
-def _install_stubs() -> tuple[Any, Any]:
-    """Install fake ``account_usage.models`` and ``usage_v2.models`` modules
-    so that ``usage_v2.helper`` can be imported without Django being set up.
-
-    Returns ``(UsageHelper, FakeUsage)`` — the helper class to test and the
-    fake Usage class whose ``objects.filter`` we will swap per-test.
-    """
-    # Fake account_usage package + models module
-    if "account_usage" not in sys.modules:
-        account_usage_pkg = types.ModuleType("account_usage")
-        account_usage_pkg.__path__ = []  # mark as package
-        sys.modules["account_usage"] = account_usage_pkg
-    if "account_usage.models" not in sys.modules:
-        account_usage_models = types.ModuleType("account_usage.models")
-        account_usage_models.PageUsage = MagicMock(name="PageUsage")
-        sys.modules["account_usage.models"] = account_usage_models
-
-    # Fake usage_v2.models with a Usage class whose ``objects`` is a
-    # MagicMock (so each test can rebind ``filter.return_value``).
-    if "usage_v2.models" not in sys.modules or not hasattr(
-        sys.modules["usage_v2.models"], "_is_test_stub"
-    ):
-        usage_v2_models = types.ModuleType("usage_v2.models")
-        usage_v2_models._is_test_stub = True
-
-        class _FakeUsage:
-            objects = MagicMock(name="Usage.objects")
-
-        usage_v2_models.Usage = _FakeUsage
-        sys.modules["usage_v2.models"] = usage_v2_models
-
-    # Now import the helper — this picks up our stubs.
-    from usage_v2.helper import UsageHelper
-
-    return UsageHelper, sys.modules["usage_v2.models"].Usage
+class FakeUsage:
+    # objects is a MagicMock so each test can rebind filter.return_value.
+    objects = MagicMock(name="Usage.objects")
 
 
-UsageHelper, FakeUsage = _install_stubs()
+@pytest.fixture(autouse=True)
+def _swap_usage(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Swap the symbol get_usage_by_model resolves, per-test, so monkeypatch
+    # restores the real model afterwards — a module-level rebind would leak
+    # FakeUsage into every later test in the same process.
+    monkeypatch.setattr(helper_mod, "Usage", FakeUsage)
 
 
 # ---------------------------------------------------------------------------

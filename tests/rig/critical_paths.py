@@ -65,6 +65,12 @@ class CriticalPathStatus:
     state: CriticalPathState
     covering_groups_run: tuple[str, ...]
     notes: str = ""
+    # True when a declared covering group is in this run's scope (or scoping is
+    # off). An out-of-scope gap (coverage only in an unrun tier, or none
+    # declared) must not gate under --fail-on-critical-gap. Defaults False so a
+    # regression that forgets to pass it can only under-gate (spurious warning),
+    # never over-gate (spurious build block).
+    in_scope: bool = False
 
     def __post_init__(self) -> None:
         # Make the contradictory states unrepresentable rather than relying on
@@ -123,13 +129,12 @@ def evaluate(
         groups_run_green: names of groups that ran AND passed in this build.
         baseline: parsed previous-summary.json from the main-branch cache, or None.
                   Expected shape: ``{"covered_paths": ["auth-login", ...]}``.
-        scope_groups: collection of every group the caller considered running
-                  this invocation (including dep-expanded deps and skipped
-                  optional placeholders). When a critical path's ``covered_by``
-                  is fully outside ``scope_groups``, the path is classified as
-                  ``gap`` rather than ``regression`` — running only the unit
-                  tier shouldn't flag e2e-tier paths as regressed. If ``None``,
-                  no scoping is applied (back-compat).
+        scope_groups: the groups this invocation actually runs (dep-expanded).
+                  When a critical path's ``covered_by`` is fully outside
+                  ``scope_groups``, the path is classified as ``gap`` rather than
+                  ``regression`` — running only the unit tier shouldn't flag
+                  e2e-tier paths as regressed. If ``None``, no scoping is applied
+                  (back-compat).
 
     Returns:
         Statuses in the original registry order.
@@ -164,6 +169,7 @@ def evaluate(
                 state=state,
                 covering_groups_run=covering,
                 notes=note,
+                in_scope=in_scope,
             )
         )
     return statuses
