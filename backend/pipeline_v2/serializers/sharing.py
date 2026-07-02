@@ -13,6 +13,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
     created_by = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by_email = SerializerMethodField()
 
     class Meta:
@@ -21,6 +22,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "id",
             "pipeline_name",
             "shared_users",
+            "co_owners",
             "shared_to_org",
             "shared_groups",
             "created_by",
@@ -32,6 +34,10 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         return UserSerializer(
             obj.shared_users.filter(is_service_account=False), many=True
         ).data
+
+    def get_co_owners(self, obj):
+        """Get list of co-owners with their details."""
+        return [{"id": u.id, "email": u.email} for u in obj.co_owners.all()]
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)

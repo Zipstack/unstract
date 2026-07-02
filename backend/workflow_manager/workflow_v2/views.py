@@ -7,6 +7,7 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
@@ -19,7 +20,10 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
-from utils.organization_utils import filter_queryset_by_organization, resolve_organization
+from utils.organization_utils import (
+    filter_queryset_by_organization,
+    resolve_organization,
+)
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -69,11 +73,25 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
-class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class WorkflowViewSet(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
+    notification_resource_name_field = "workflow_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.WORKFLOW.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -91,7 +109,7 @@ class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             Workflow.objects.for_user(self.request.user).filter(**filter_args)
             if filter_args
             else Workflow.objects.for_user(self.request.user)
-        )
+        ).prefetch_related("co_owners")
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
             queryset = queryset.order_by("-modified_at")
@@ -309,7 +327,7 @@ class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
 
     def activate(self, request: Request, pk: str) -> Response:
         workflow = WorkflowHelper.active_project_workflow(pk)
-        serializer = WorkflowSerializer(workflow)
+        serializer = WorkflowSerializer(workflow, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
@@ -387,9 +405,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # Build comprehensive context
             context_data = {
                 "execution": WorkflowExecutionSerializer(execution).data,
-                "workflow_definition": execution.workflow.workflow_definition
-                if execution.workflow
-                else {},
+                "workflow_definition": (
+                    execution.workflow.workflow_definition if execution.workflow else {}
+                ),
                 "source_config": self._get_source_config(execution),
                 "destination_config": self._get_destination_config(execution),
                 "organization_context": self._get_organization_context(execution),
@@ -711,7 +729,11 @@ def file_history_by_cache_key_internal(request, cache_key=None):
             serializer = FileHistorySerializer(file_history)
 
             return Response(
-                {"found": True, "cache_key": cache_key, "file_history": serializer.data},
+                {
+                    "found": True,
+                    "cache_key": cache_key,
+                    "file_history": serializer.data,
+                },
                 status=status.HTTP_200_OK,
             )
         else:
@@ -1296,9 +1318,11 @@ def create_file_history_internal(request):
             workflow_id=str(workflow_id),
             cache_key=file_history_record.cache_key,
             provider_file_uuid=file_history_record.provider_file_uuid,
-            status=file_history_record.status.value
-            if hasattr(file_history_record.status, "value")
-            else str(file_history_record.status),
+            status=(
+                file_history_record.status.value
+                if hasattr(file_history_record.status, "value")
+                else str(file_history_record.status)
+            ),
             result=file_history_record.result,
             metadata=file_history_record.metadata,
             error=file_history_record.error,
@@ -1397,9 +1421,11 @@ def reserve_file_processing_internal(request):
                 workflow_id=str(workflow_id),
                 cache_key=existing_history.cache_key,
                 provider_file_uuid=existing_history.provider_file_uuid,
-                status=existing_history.status.value
-                if hasattr(existing_history.status, "value")
-                else str(existing_history.status),
+                status=(
+                    existing_history.status.value
+                    if hasattr(existing_history.status, "value")
+                    else str(existing_history.status)
+                ),
                 result=existing_history.result,
                 metadata=existing_history.metadata,
                 error=existing_history.error,
@@ -1471,9 +1497,11 @@ def reserve_file_processing_internal(request):
                         workflow_id=str(workflow_id),
                         cache_key=file_history.cache_key,
                         provider_file_uuid=file_history.provider_file_uuid,
-                        status=file_history.status.value
-                        if hasattr(file_history.status, "value")
-                        else str(file_history.status),
+                        status=(
+                            file_history.status.value
+                            if hasattr(file_history.status, "value")
+                            else str(file_history.status)
+                        ),
                         result=file_history.result,
                         metadata=file_history.metadata,
                         error=file_history.error,
@@ -1600,12 +1628,16 @@ def get_file_history_internal(request):
                 "file_path": file_history.file_path,
                 "status": file_history.status,
                 "is_completed": file_history.is_completed(),
-                "created_at": file_history.created_at.isoformat()
-                if file_history.created_at
-                else None,
-                "completed_at": file_history.modified_at.isoformat()
-                if file_history.modified_at
-                else None,
+                "created_at": (
+                    file_history.created_at.isoformat()
+                    if file_history.created_at
+                    else None
+                ),
+                "completed_at": (
+                    file_history.modified_at.isoformat()
+                    if file_history.modified_at
+                    else None
+                ),
             }
 
             logger.info(

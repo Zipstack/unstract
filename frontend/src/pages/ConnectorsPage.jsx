@@ -1,19 +1,21 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
+import { groupsService } from "../components/groups/groups-service.js";
+import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
+import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
+import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
+import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
+import { useCoOwnerManagement } from "../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
 import { useListSearch } from "../hooks/useListSearch";
 import useRequestUrl from "../hooks/useRequestUrl";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
-import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
-import { groupsService } from "../components/groups/groups-service.js";
-import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
-import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
-import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 
 function ConnectorsPage() {
   const [loading, setLoading] = useState(false);
@@ -32,6 +34,48 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+
+  const connectorCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () => axiosPrivate.get(getUrl("users/")),
+      getSharedUsers: (id) =>
+        axiosPrivate.get(getUrl(`connector/users/${id}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate.post(
+          getUrl(`connector/${id}/owners/`),
+          { user_id: userId },
+          {
+            headers: {
+              "X-CSRFToken": sessionDetails?.csrfToken,
+              "Content-Type": "application/json",
+            },
+          },
+        ),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [sessionDetails?.csrfToken],
+  );
+
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: connectorCoOwnerService,
+    setAlertDetails,
+    onListRefresh: () => fetchConnectors(),
+  });
   const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
     useListSearch("connector_name");
 
@@ -144,6 +188,11 @@ function ConnectorsPage() {
     }
   };
 
+  const handleCoOwner = (_event, connector) => {
+    if (!connector?.id) return;
+    handleCoOwnerAction(connector.id);
+  };
+
   const handleConnectorSaved = () => {
     setModalVisible(false);
     setEditingConnector(null);
@@ -183,6 +232,7 @@ function ConnectorsPage() {
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
             handleShare={handleShareConnector}
+            handleCoOwner={handleCoOwner}
             setOpenAddTool={setModalVisible}
             idProp="id"
             titleProp="connector_name"
@@ -207,13 +257,25 @@ function ConnectorsPage() {
       <SharePermission
         open={shareModalVisible}
         setOpen={setShareModalVisible}
-        adapter={sharingConnector}
+        sharedItem={sharingConnector}
         allUsers={userList}
         allGroups={groupList}
         onApply={handleShareSave}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Connector"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </div>
   );

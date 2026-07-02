@@ -49,7 +49,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
+                models.Q(co_owners=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
@@ -144,6 +144,12 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_adapters",
+        blank=True,
+        help_text="Users with full ownership privileges",
+    )
     description = models.TextField(blank=True, null=True, default=None)
 
     # ``shared_groups`` is stored polymorphically in

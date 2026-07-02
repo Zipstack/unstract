@@ -9,6 +9,7 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
@@ -43,9 +44,23 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PipelineViewSet(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
+    notification_resource_name_field = "pipeline_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        """Return the ResourceType value based on pipeline type."""
+        from plugins.notification.constants import ResourceType
+
+        type_map = {
+            "ETL": ResourceType.ETL.value,
+            "TASK": ResourceType.TASK.value,
+        }
+        return type_map.get(resource.pipeline_type)
+
     pagination_class = CustomPagination
     filter_backends = [OrderingFilter]
     ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
@@ -53,7 +68,13 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     # DRF's ordering attribute doesn't support nulls_last natively
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -90,7 +111,7 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             F("created_at").desc(),
         )
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":

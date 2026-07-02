@@ -29,7 +29,7 @@ API_ENDPOINT_MAX_LENGTH = 255
 class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter API deployments that the user can access:
-        - API deployments created by the user
+        - API deployments co-owned by the user
         - API deployments shared with the user
         - API deployments shared with the entire organization
         - API deployments shared with any group the user is a member of
@@ -46,7 +46,7 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return self.filter(
-            Q(created_by=user)  # Owned by user
+            Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
@@ -108,6 +108,12 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
     # Sharing fields
     shared_users = models.ManyToManyField(
         User, related_name="shared_api_deployments", blank=True
+    )
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_api_deployments",
+        blank=True,
+        help_text="Users with full ownership privileges",
     )
     shared_to_org = models.BooleanField(
         default=False,

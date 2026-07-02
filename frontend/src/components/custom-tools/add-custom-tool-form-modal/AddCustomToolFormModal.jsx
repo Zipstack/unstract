@@ -78,6 +78,15 @@ function AddCustomToolFormModal({
         navigate(success?.tool_id);
       })
       .catch((err) => {
+        if (err?.response?.status === 404) {
+          setOpen(false);
+          setAlertDetails({
+            type: "error",
+            content:
+              "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+          });
+          return;
+        }
         handleException(err, "", setBackendErrors);
       })
       .finally(() => {

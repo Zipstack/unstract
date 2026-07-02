@@ -1,19 +1,20 @@
 import { Col, Row } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 import { DocumentManager } from "../document-manager/DocumentManager";
 import { ExportReminderBar } from "../export-reminder-bar/ExportReminderBar";
 import { Header } from "../header/Header";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
 import "./ToolIde.css";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 
 let PromptShareModal;
 let PromptShareLink;
@@ -89,6 +90,7 @@ function ToolIde() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const navigate = useNavigate();
   const [openShareLink, setOpenShareLink] = useState(false);
   const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
   const [openShareModal, setOpenShareModal] = useState(false);
@@ -322,6 +324,15 @@ function ToolIde() {
         return res;
       })
       .catch((err) => {
+        if (err?.response?.status === 404) {
+          setAlertDetails({
+            type: "error",
+            content:
+              "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+          });
+          navigate(`/${sessionDetails?.orgName}/tools`);
+          return;
+        }
         throw err;
       });
   };

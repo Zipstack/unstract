@@ -17,6 +17,7 @@ from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
@@ -120,12 +121,20 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.TEXT_EXTRACTOR.value  # type: ignore
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -136,10 +145,13 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         if self.action == "destroy":
             return [IsOwner()]
 
+        if self.action in ["add_co_owner", "remove_co_owner"]:
+            return [IsOwner()]
+
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user)
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related("co_owners")
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()
             prompt_count_sq = (
@@ -1051,8 +1063,10 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                     file_data = uploaded_file
                 # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
-            logger.info("Uploading file: %s", file_name) if file_name else logger.info(
-                "Uploading file"
+            (
+                logger.info("Uploading file: %s", file_name)
+                if file_name
+                else logger.info("Uploading file")
             )
 
             # Store original file in main dir (always the original)

@@ -42,7 +42,7 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
+                models.Q(co_owners=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
@@ -109,6 +109,12 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(
         User, related_name="shared_connectors", blank=True
+    )
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_connectors",
+        blank=True,
+        help_text="Users with full ownership privileges",
     )
 
     # ``shared_groups`` is stored polymorphically in

@@ -11,7 +11,10 @@ class AuditSerializer(ModelSerializer):
         if request:
             validated_data[RequestKey.CREATED_BY] = request.user
             validated_data[RequestKey.MODIFIED_BY] = request.user
-        return super().create(validated_data)
+        instance = super().create(validated_data)
+        if hasattr(instance, "co_owners") and instance.created_by:
+            instance.co_owners.add(instance.created_by)
+        return instance
 
     def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
         if self.context.get(RequestKey.REQUEST):

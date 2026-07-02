@@ -6,6 +6,10 @@ from urllib.parse import urlparse
 
 from django.apps import apps
 from django.core.validators import RegexValidator
+from permissions.co_owner_serializers import (
+    CoOwnerRepresentationMixin,
+    SharedUserListMixin,
+)
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers
@@ -450,9 +454,11 @@ class ExecutionQuerySerializer(Serializer):
         return str(uuid_obj)
 
 
-class APIDeploymentListSerializer(ModelSerializer):
+class APIDeploymentListSerializer(CoOwnerRepresentationMixin, ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
+    co_owners_count = SerializerMethodField()
+    is_owner = SerializerMethodField()
     last_5_run_statuses = SerializerMethodField()
     run_count = SerializerMethodField()
     last_run_time = SerializerMethodField()
@@ -470,14 +476,30 @@ class APIDeploymentListSerializer(ModelSerializer):
             "api_name",
             "created_by",
             "created_by_email",
+            "co_owners_count",
+            "is_owner",
             "last_5_run_statuses",
             "run_count",
             "last_run_time",
         ]
 
     def get_created_by_email(self, obj):
-        """Get the email of the creator."""
+        """Get the email of the primary owner (first co-owner)."""
+        first_co_owner = obj.co_owners.first()
+        if first_co_owner:
+            return first_co_owner.email
         return obj.created_by.email if obj.created_by else None
+
+    def get_co_owners_count(self, obj):
+        """Get the number of co-owners."""
+        return obj.co_owners.count()
+
+    def get_is_owner(self, obj):
+        """Check if the current user is a co-owner."""
+        request = self.context.get("request")
+        if request and hasattr(request, "user"):
+            return obj.co_owners.filter(pk=request.user.pk).exists()
+        return False
 
     def get_run_count(self, instance) -> int:
         """Get total execution count for this API deployment."""
@@ -529,11 +551,12 @@ class APIExecutionResponseSerializer(Serializer):
     result = JSONField()
 
 
-class SharedUserListSerializer(ModelSerializer):
+class SharedUserListSerializer(SharedUserListMixin, ModelSerializer):
     """Serializer for returning API deployment with shared user + group details."""
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
@@ -541,6 +564,7 @@ class SharedUserListSerializer(ModelSerializer):
         fields = [
             "id",
             "display_name",
+            "co_owners",
             "shared_users",
             "shared_to_org",
             "shared_groups",

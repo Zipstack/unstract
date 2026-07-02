@@ -59,7 +59,7 @@ def _is_organization_admin(request: Request) -> bool:
 
 
 class IsOwner(permissions.BasePermission):
-    """Allow owners and org admins.
+    """Allow owners, org admins and co-owners.
 
     Org admins can manage every resource in their organization regardless of
     ``created_by``. This matches the "admin role manages everything" model
@@ -68,11 +68,16 @@ class IsOwner(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if _is_service_account(request):
-            return True
         if obj.created_by == request.user:
             return True
+        if _is_service_account(request):
+            return True
         if _is_organization_admin(request):
+            return True
+        if (
+            hasattr(obj, "co_owners")
+            and obj.co_owners.filter(pk=request.user.pk).exists()
+        ):
             return True
         return False
 
@@ -80,14 +85,17 @@ class IsOwner(permissions.BasePermission):
 def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     """Whether the request user may mutate ``workflow`` or its sub-resources.
 
-    Admits the workflow's owner, an org admin, or a service account. Shared
-    access (direct/group/org) grants read only, never mutate. Shared by the
-    object-level gate (``IsParentWorkflowOwner``) and the collection-level
-    ``reorder`` action, which can't use an object-permission class.
+    Admits the workflow's owner, its co-owners, an org admin, or a service
+    account. Shared access (direct/group/org) grants read only, never mutate.
+    Shared by the object-level gate (``IsParentWorkflowOwner``) and the
+    collection-level ``reorder`` action, which can't use an object-permission
+    class.
     """
     if _is_service_account(request):
         return True
     if workflow.created_by == request.user:
+        return True
+    if workflow.co_owners.filter(pk=request.user.pk).exists():
         return True
     return _is_organization_admin(request)
 
@@ -124,6 +132,10 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
             or obj.shared_users.filter(pk=request.user.pk).exists()
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
+            or (
+                hasattr(obj, "co_owners")
+                and obj.co_owners.filter(pk=request.user.pk).exists()
+            )
         )
 
 
@@ -139,6 +151,10 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
             or obj.shared_to_org
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
+            or (
+                hasattr(obj, "co_owners")
+                and obj.co_owners.filter(pk=request.user.pk).exists()
+            )
         )
 
 
@@ -160,7 +176,9 @@ class IsFrictionLessAdapter(permissions.BasePermission):
             return True
         if obj.created_by == request.user:
             return True
-        return _is_organization_admin(request)
+        if _is_organization_admin(request):
+            return True
+        return IsOwner().has_object_permission(request, view, obj)
 
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
@@ -175,4 +193,6 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
             return True
         if obj.created_by == request.user:
             return True
-        return _is_organization_admin(request)
+        if _is_organization_admin(request):
+            return True
+        return IsOwner().has_object_permission(request, view, obj)

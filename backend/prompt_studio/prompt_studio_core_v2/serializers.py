@@ -211,6 +211,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
         data[TSKeys.PROMPTS] = output
 
+        # Co-owner information
+        request = self.context.get("request")
+        self.add_co_owner_fields(instance, data, request)
+
         return data
 
 
@@ -237,6 +241,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "tool_id",
             "tool_name",
             "created_by",
+            "co_owners",
             "shared_users",
             "shared_to_org",
             "shared_groups",

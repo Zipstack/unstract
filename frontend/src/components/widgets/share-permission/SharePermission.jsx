@@ -1,4 +1,10 @@
 import {
+  DeleteOutlined,
+  QuestionCircleOutlined,
+  TeamOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import {
   Avatar,
   Checkbox,
   List,
@@ -7,15 +13,9 @@ import {
   Select,
   Typography,
 } from "antd";
-import "./SharePermission.css";
-import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import "./SharePermission.css";
 
 import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
@@ -24,6 +24,7 @@ function SharePermission({
   open,
   setOpen,
   adapter,
+  sharedItem,
   permissionEdit,
   loading,
   allUsers,
@@ -64,7 +65,7 @@ function SharePermission({
         return true;
       });
       setFilteredUsers(users);
-      setShareWithEveryone(adapter?.shared_to_org || false);
+      setShareWithEveryone(sharedItem?.shared_to_org || false);
     }
   }, [
     permissionEdit,
@@ -76,9 +77,9 @@ function SharePermission({
   ]);
 
   useEffect(() => {
-    if (adapter?.shared_users) {
+    if (sharedItem?.shared_users) {
       setSelectedUsers(
-        adapter.shared_users.map((user) => {
+        sharedItem.shared_users.map((user) => {
           if (user?.id !== undefined) {
             return user.id.toString();
           } else {
@@ -202,7 +203,7 @@ function SharePermission({
   }
 
   return (
-    adapter && (
+    sharedItem && (
       <Modal
         title="Share access"
         open={open}
@@ -291,7 +292,7 @@ function SharePermission({
 SharePermission.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  adapter: PropTypes.object,
+  sharedItem: PropTypes.object,
   permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,

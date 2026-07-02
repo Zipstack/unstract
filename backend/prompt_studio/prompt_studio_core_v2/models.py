@@ -38,7 +38,7 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
+                models.Q(co_owners=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
@@ -164,6 +164,12 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_custom_tools")
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_custom_tools",
+        blank=True,
+        help_text="Users with full ownership privileges",
+    )
 
     # Field to enable organization-level sharing
     shared_to_org = models.BooleanField(
