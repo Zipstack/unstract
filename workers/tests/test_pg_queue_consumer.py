@@ -217,12 +217,16 @@ class TestRunLoop:
         consumer.run(install_signals=False)  # must not raise
         assert client.read.call_count == 2  # kept polling after the error
 
-    def test_run_refuses_to_start_with_empty_registry(self):
+    def test_run_refuses_to_start_with_empty_registry(self, isolated_celery_registry):
         # A non-bootstrapped consumer would drop every message as "unknown" —
-        # fail loudly instead.
+        # fail loudly instead. isolated_celery_registry makes "empty" genuinely
+        # empty (Celery's global shared_task backlog would otherwise leak the
+        # worker's tasks in and let the guard pass → infinite poll loop / hang).
         from celery import Celery
 
-        empty_app = Celery("empty-no-tasks")  # only celery.* built-ins
+        # No tasks at all: isolated_celery_registry cleared the finalizer backlog,
+        # which holds the worker's shared tasks *and* Celery's celery.* built-ins.
+        empty_app = Celery("empty-no-tasks", set_as_current=False)
         consumer = PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)
         with pytest.raises(RuntimeError, match="no application tasks"):
             consumer.run(install_signals=False)
@@ -239,12 +243,14 @@ class TestRunLoop:
         consumer.run(install_signals=False)  # must not raise
         assert client.read.called
 
-    def test_run_bypasses_guard_when_require_tasks_false(self, monkeypatch):
+    def test_run_bypasses_guard_when_require_tasks_false(
+        self, monkeypatch, isolated_celery_registry
+    ):
         # require_tasks=False skips the guard even on an empty registry (lets a
         # caller opt out, e.g. a deliberately task-less smoke run).
         from celery import Celery
 
-        empty_app = Celery("empty-no-tasks")
+        empty_app = Celery("empty-no-tasks", set_as_current=False)
         client = MagicMock()
         client.read.return_value = []
         consumer = PgQueueConsumer(["q"], client=client, app=empty_app)
@@ -254,25 +260,32 @@ class TestRunLoop:
         consumer.run(install_signals=False, require_tasks=False)  # must not raise
         assert client.read.called
 
-    def test_registered_task_count_excludes_celery_builtins(self):
-        # The guard counts application tasks only — celery.* built-ins (present
-        # in every app) must not mask an un-bootstrapped registry.
+    def test_registered_task_count_excludes_celery_builtins(
+        self, isolated_celery_registry
+    ):
+        # The guard counts *application* tasks only — a celery.*-named task must
+        # not count toward the total. isolated_celery_registry clears the
+        # finalizer backlog so the app starts genuinely empty; we then register
+        # one celery.*-named task and one application task and assert only the
+        # latter is counted (exercising the exclusion filter under test).
         from celery import Celery
 
-        empty_app = Celery("empty-no-tasks")
-        assert (
-            PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)._registered_task_count()
-            == 0
-        )
+        empty_app = Celery("empty-no-tasks", set_as_current=False)
+        consumer = PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)
+        assert consumer._registered_task_count() == 0  # genuinely empty
+
+        @empty_app.task(name="celery.builtin_like")
+        def _builtin_like():
+            return 0
+
+        # A celery.*-named task is excluded → still zero application tasks.
+        assert consumer._registered_task_count() == 0
 
         @empty_app.task(name="test_pg_consumer.demo")
         def _demo():
             return 1
 
-        assert (
-            PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)._registered_task_count()
-            == 1
-        )
+        assert consumer._registered_task_count() == 1
 
 
 # --- Liveness heartbeat (drives the health endpoint) ---

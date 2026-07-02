@@ -63,6 +63,7 @@ test = [
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
+    "pytest-timeout>=2.3.1",
     "factory-boy>=3.3.0",
     "responses>=0.23.0"
 ]
@@ -158,6 +159,11 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--verbose",
+    # Hang safety net: no single test should run for minutes. Catches a wedged
+    # poll loop / deadlock in CI instead of hanging the job until it times out.
+    # Generous enough (120s) that only a genuine hang trips it, not a slow test.
+    "--timeout=120",
+    "--timeout-method=thread",
     "--cov=shared",
     "--cov=api_deployment",
     "--cov=general",

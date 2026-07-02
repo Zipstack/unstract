@@ -38,6 +38,9 @@ from tests.rig.selection import resolve
 # Pytest exit codes that the rig treats as non-failure for aggregation:
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
+#       NOTE: exit-5 is non-failing here for *optional* groups only. A required
+#       group that collects nothing (exit 5) is caught by the explicit guard in
+#       cmd_run ("Empty collection (exit 5) is a failure…") and fails loudly.
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 
 
@@ -409,6 +412,14 @@ def cmd_run(args: argparse.Namespace) -> int:
                 and not group.optional
                 and overall_exit == 0
             ):
+                overall_exit = exit_code
+            # Empty collection (exit 5) is a *failure* for a required group: a
+            # marker filter or path that matches nothing (e.g. the `unit-workers`
+            # regression where `-m "unit"` matched zero tests) would otherwise
+            # pass silently with an empty junit — the whole suite "green" having
+            # run nothing. Optional groups (placeholders / infra-gated) keep
+            # exit 5 as a pass; that's what `not group.optional` guards.
+            if exit_code == 5 and not group.optional and overall_exit == 0:
                 overall_exit = exit_code
             # Belt-and-braces: if the junit attests to errors/failures the exit
             # code didn't (truncated junit → errors=1 with exit 0), the report

@@ -629,7 +629,12 @@ class TestSanityResponseContracts:
         mock_index_cls.return_value = mock_index
 
         mock_emb_cls = MagicMock()
-        mock_emb_cls.return_value = MagicMock()
+        mock_emb = MagicMock()
+        # Production records embedding usage via flush_pending_usage() into the
+        # result metadata; stub it to a JSON-serialisable value so the round-trip
+        # below doesn't choke on a bare MagicMock.
+        mock_emb.flush_pending_usage.return_value = []
+        mock_emb_cls.return_value = mock_emb
         mock_vdb_cls = MagicMock()
         mock_vdb_cls.return_value = MagicMock()
 

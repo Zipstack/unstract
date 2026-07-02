@@ -22,10 +22,21 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
-    """Ensure a clean executor registry for every test."""
+    """Give each test a clean executor registry, then restore the prior state.
+
+    ``ExecutorRegistry`` is a process-global singleton that worker modules
+    populate at import (e.g. ``executor.worker`` registers ``legacy``). A bare
+    ``clear()`` on teardown would wipe those registrations for every later test
+    in the suite — breaking structure-tool/dispatch tests that rely on a
+    populated registry, and causing "already registered" collisions. Snapshot
+    the registry, clear it for this test, then restore the snapshot so the global
+    state is left exactly as we found it.
+    """
+    saved = dict(ExecutorRegistry._registry)
     ExecutorRegistry.clear()
     yield
-    ExecutorRegistry.clear()
+    ExecutorRegistry._registry.clear()
+    ExecutorRegistry._registry.update(saved)
 
 
 def _register_legacy():
@@ -254,18 +265,31 @@ class TestExceptions:
         import importlib
         import sys
 
-        # Ensure fresh import
+        # Reload to re-run the module's imports so a stray Flask import would
+        # re-populate sys.modules. But reloading rebinds the module's classes
+        # (LegacyExecutorError etc.) to new objects, which breaks ``isinstance``
+        # / ``pytest.raises`` identity for every other test/module that imported
+        # them earlier. So snapshot the module namespace and restore it in a
+        # ``finally`` — the exception classes stay identical for the rest of the
+        # suite.
         mod_name = "executor.executors.exceptions"
-        if mod_name in sys.modules:
-            importlib.reload(sys.modules[mod_name])
-        else:
-            importlib.import_module(mod_name)
+        mod = sys.modules.get(mod_name)
+        saved = dict(mod.__dict__) if mod is not None else None
+        try:
+            if mod is not None:
+                importlib.reload(mod)
+            else:
+                importlib.import_module(mod_name)
 
-        # Check that no flask modules were pulled in
-        flask_modules = [m for m in sys.modules if m.startswith("flask")]
-        assert flask_modules == [], (
-            f"Flask modules imported: {flask_modules}"
-        )
+            # Check that no flask modules were pulled in
+            flask_modules = [m for m in sys.modules if m.startswith("flask")]
+            assert flask_modules == [], (
+                f"Flask modules imported: {flask_modules}"
+            )
+        finally:
+            if saved is not None:
+                mod.__dict__.clear()
+                mod.__dict__.update(saved)
 
     def test_custom_data_error_signature(self):
         from executor.executors.exceptions import CustomDataError

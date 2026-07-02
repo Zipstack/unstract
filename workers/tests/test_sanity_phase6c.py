@@ -432,8 +432,20 @@ class TestHandleAnswerPromptHighlight:
             result = executor._handle_answer_prompt(ctx)
 
         assert result.success
-        # Plugin loader should NOT have been called
-        mock_plugin_get.assert_not_called()
+        # The highlight plugin must NOT be loaded when highlight is disabled.
+        # Other plugins (e.g. lookup-enrichment) load independently of highlight,
+        # so assert on the highlight plugin specifically rather than "never
+        # called". Read the plugin name from positional *or* keyword args so the
+        # check can't silently pass if the call form changes.
+        loaded_plugins = [
+            (call.args[0] if call.args else call.kwargs.get("name"))
+            for call in mock_plugin_get.call_args_list
+        ]
+        assert "highlight-data" not in loaded_plugins
+        # Guard against a vacuous pass: the loader IS exercised on this path —
+        # lookup-enrichment loads regardless of highlight — so if nothing shows
+        # up here the filter above would be meaningless.
+        assert "lookup-enrichment" in loaded_plugins
         # process_text should be None
         llm_complete_call = mock_llm.complete.call_args
         assert llm_complete_call.kwargs.get("process_text") is None

@@ -287,16 +287,22 @@ class TestPublicSurface:
         # Phase 8a adds QueueBackend + select_backend — the queue-transport
         # routing gate that the WORKER_PG_QUEUE_ENABLED_TASKS allow-list
         # drives.
+        # The PG-queue barrier work adds the Postgres barrier surface:
+        # PgBarrier + its barrier_pg_decr_and_check / barrier_pg_abort tasks,
+        # selected when WORKER_BARRIER_BACKEND routes to the PG backend.
         assert set(queue_backend.__all__) == {
             "Barrier",
             "BarrierBackend",
             "BarrierHandle",
             "CeleryChordBarrier",
             "FairnessKey",
+            "PgBarrier",
             "QueueBackend",
             "RedisDecrBarrier",
             "barrier_abort",
             "barrier_decr_and_check",
+            "barrier_pg_abort",
+            "barrier_pg_decr_and_check",
             "dispatch",
             "get_barrier",
             "select_backend",
