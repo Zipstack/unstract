@@ -306,7 +306,7 @@ def clear_execution_batches(execution_id: str) -> int:
         return cur.rowcount
 
 
-def try_claim_orchestration(execution_id: str) -> bool:
+def try_claim_orchestration(execution_id: str, organization_id: str) -> bool:
     """Try to claim the orchestration slot for ``execution_id`` — the
     execution-level idempotency gate mirroring :func:`claim_batch`, one level up.
     The ``try_`` prefix signals the return is "did I win": ``True`` = claimed
@@ -315,7 +315,9 @@ def try_claim_orchestration(execution_id: str) -> bool:
     Atomically inserts the single ``pg_orchestration_claim`` row via
     ``INSERT … ON CONFLICT DO NOTHING RETURNING`` (a single statement, so two
     replicas racing the same orchestration resolve to exactly one ``True`` — the
-    row's existence is the token).
+    row's existence is the token). ``organization_id`` is stamped on the row so the
+    reaper's ``sweep_orphan_claims`` can call the org-scoped status/mark API when it
+    recovers or GCs the claim (``""`` if the caller has no org).
 
     Claimed BEFORE the orchestration work (arm barrier / dispatch batches). The
     claim is **released on failure** (see :func:`release_orchestration_claim`,
@@ -324,16 +326,13 @@ def try_claim_orchestration(execution_id: str) -> bool:
     tombstone that blocks a redelivery AFTER the execution completes (when the
     barrier row is already gone) from re-arming and re-dispatching.
 
-    **Recovery gaps (tracked as follow-up — flag stays off until then):** unlike
+    **Recovery + GC (the reaper's ``sweep_orphan_claims``).** Unlike
     :func:`claim_batch`, whose barrier is always armed before any batch runs (so
     the reaper always has a ``pg_barrier_state`` handle), this claim is taken
     BEFORE the barrier is armed. A hard crash (SIGKILL / eviction) in the
-    claim→arm window leaves a claim with no barrier row, which the reaper's
-    barrier sweep cannot see. And ``sweep_orphan_dedup`` reclaims only
-    ``pg_batch_dedup`` — nothing GCs ``pg_orchestration_claim`` yet, so a
-    successful claim's tombstone currently lives forever. Both are addressed by
-    extending the reaper to sweep this table (GC terminal/aged claims; mark a
-    non-terminal orphan-claim execution ERROR).
+    claim→arm window leaves a claim with no barrier row; the reaper sweeps such
+    orphan claims older than the stuck-timeout — GC'ing a terminal execution's
+    tombstone and marking a non-terminal (crash-window) execution ERROR.
 
     PG path only — the caller gates on the transport (Celery has no redelivery, so
     no double-orchestration to guard).
@@ -361,10 +360,11 @@ def try_claim_orchestration(execution_id: str) -> bool:
                 with conn.cursor() as cur:
                     cur.execute(
                         f"INSERT INTO {qualified('pg_orchestration_claim')} "
-                        "(execution_id, claimed_at) VALUES (%s, now()) "
+                        "(execution_id, organization_id, claimed_at) "
+                        "VALUES (%s, %s, now()) "
                         "ON CONFLICT (execution_id) DO NOTHING "
                         "RETURNING execution_id",
-                        (execution_id,),
+                        (execution_id, organization_id),
                     )
                     won = cur.fetchone() is not None
             except Exception as exc:

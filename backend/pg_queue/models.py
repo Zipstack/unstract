@@ -368,17 +368,19 @@ class PgOrchestrationClaim(models.Model):
     completion (when the barrier row is already gone) can't re-orchestrate a
     finished execution.
 
-    **Recovery gaps (follow-up — the gate stays off until then):** unlike
+    **Recovery + GC (the reaper's ``sweep_orphan_claims``, UN-3679).** Unlike
     ``pg_batch_dedup`` — whose barrier is always armed before any batch runs, so
     the reaper always has a ``pg_barrier_state`` handle — this claim is taken
-    BEFORE the barrier is armed. A hard crash in the claim→arm window leaves a
-    claim with no barrier row, invisible to the reaper's barrier sweep. And the
-    live ``sweep_orphan_dedup`` reclaims only ``pg_batch_dedup`` (it never touches
-    this table), so a successful claim's tombstone currently has NO GC and lives
-    forever. Both are addressed by extending the reaper to sweep this table by
-    ``claimed_at`` age (GC terminal/aged claims; mark a non-terminal orphan-claim
-    execution ERROR). Bounded meanwhile: one row per execution, and the gate is
-    off.
+    BEFORE the barrier is armed, so a hard crash in the claim→arm window leaves a
+    claim with no barrier row that the barrier sweep can't see, and a successful
+    claim's tombstone has no natural GC. The reaper sweeps this table for claims
+    with **no matching ``pg_barrier_state`` row** older than the stuck-timeout: a
+    terminal execution → delete the claim (GC of a completed/failed tombstone); a
+    non-terminal execution → mark it ERROR (crash-window recovery) via the
+    org-scoped API, then delete. A claim younger than the stuck-timeout, or one
+    whose barrier is armed (live run), is left alone. This is why
+    ``organization_id`` is stamped below — the reaper needs it for the org-scoped
+    status/mark API, exactly like ``pg_barrier_state``.
 
     Only written on the PG transport (``is_pg_transport``) — the Celery path never
     touches it. Managed=True / generated migration, extension-free — same posture
@@ -389,11 +391,20 @@ class PgOrchestrationClaim(models.Model):
     # single-winner invariant (the worker SQL can't import this model). Tombstone:
     # deliberately never deleted at barrier finalise (there is no orchestration-
     # claim analog of clear_execution_batches) — that is what blocks a
-    # post-completion redelivery from re-orchestrating. A future maintainer must
-    # NOT add a finalise-time DELETE here.
+    # post-completion redelivery from re-orchestrating. Only the reaper's
+    # sweep_orphan_claims deletes it (GC terminal / recover crash-window); a future
+    # maintainer must NOT add a finalise-time DELETE here.
     execution_id = models.TextField(primary_key=True)
-    # Observability/debugging today (when the orchestration was claimed). The
-    # planned reaper sweep would reclaim by this column's age and add an index then.
+    # Owning org, stamped at claim time. The reaper needs it to call the org-scoped
+    # internal status/mark API when recovering or GC'ing an orphan claim — it has
+    # only the execution_id off the row otherwise. "" = unknown (the reaper then
+    # can't mark and skips). Same no-NULL-text convention as PgBarrierState.
+    organization_id = models.TextField(blank=True, default="")
+    # When the orchestration was claimed. The reaper's sweep_orphan_claims gates on
+    # this column's age (only claims older than the stuck-timeout are swept, so a
+    # just-claimed live orchestration that hasn't armed its barrier is left alone).
+    # Deliberately UNINDEXED — a near-empty table swept at the 5-min retention
+    # cadence is a cheap seq scan; add an index if it ever grows.
     claimed_at = models.DateTimeField(default=timezone.now)
 
     class Meta:

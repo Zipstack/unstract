@@ -496,7 +496,7 @@ class TestClaimOrchestrationRetry:
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
 
         with caplog.at_level("WARNING"):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
 
         assert dead.executes == 1 and healthy.executes == 1  # exactly one extra try
         assert dead.commits == 0  # the reaped attempt never committed
@@ -519,7 +519,7 @@ class TestClaimOrchestrationRetry:
             lambda **_k: pytest.fail("must not reconnect on a commit-phase failure"),
         )
         with pytest.raises(psycopg2.OperationalError):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
         assert conn.executes == 1 and conn.commits == 1  # tried once, no retry
         assert sleeps == []  # no backoff → no retry
 
@@ -532,7 +532,7 @@ class TestClaimOrchestrationRetry:
         pg_barrier._local.conn = None  # → reused False
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: dead)
         with pytest.raises(psycopg2.OperationalError):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
         assert dead.executes == 1  # no retry
         assert sleeps == []
 

@@ -33,6 +33,7 @@ from queue_backend.pg_queue.reaper import (
     reaper_sweep_interval_from_env,
     recover_expired_barriers,
     sweep_expired_results,
+    sweep_orphan_claims,
     sweep_orphan_dedup,
 )
 from queue_backend.pg_queue.schema import qualified
@@ -59,9 +60,11 @@ def stub_scheduler_tick(monkeypatch):
 def stub_retention_sweep(monkeypatch):
     results = MagicMock(return_value=0)
     dedup = MagicMock(return_value=0)
+    claims = MagicMock(return_value=0)
     monkeypatch.setattr(reaper_mod, "sweep_expired_results", results)
     monkeypatch.setattr(reaper_mod, "sweep_orphan_dedup", dedup)
-    return SimpleNamespace(results=results, dedup=dedup)
+    monkeypatch.setattr(reaper_mod, "sweep_orphan_claims", claims)
+    return SimpleNamespace(results=results, dedup=dedup, claims=claims)
 
 
 # --- Layer 1: env + construction (no DB) ---
@@ -406,6 +409,10 @@ class TestRetentionSweepTick:
             reaper.tick()
         stub_retention_sweep.results.assert_called_once_with(conn)
         stub_retention_sweep.dedup.assert_called_once_with(conn, 86400)
+        # Orphan-claim sweep (UN-3679) is wired with the api client + stuck-timeout.
+        stub_retention_sweep.claims.assert_called_once_with(
+            conn, reaper._get_api_client(), reaper._stuck_timeout_seconds
+        )
 
     def test_standby_does_not_sweep(self, stub_retention_sweep):
         reaper = self._reaper(_FakeLease(acquires=False))
@@ -485,7 +492,10 @@ class TestRetentionSweepTick:
             caplog.at_level(logging.INFO, logger="queue_backend.pg_queue.reaper"),
         ):
             reaper.tick()
-        assert "deleted 0 pg_task_result + 4 pg_batch_dedup row(s)" in caplog.text
+        assert (
+            "deleted 0 pg_task_result + 4 pg_batch_dedup + 0 pg_orchestration_claim "
+            "row(s)" in caplog.text
+        )
 
     def test_no_log_when_nothing_deleted(self, stub_retention_sweep, caplog):
         reaper = self._reaper(_FakeLease(acquires=True, renews=True))
@@ -835,7 +845,12 @@ class TestRecoverExpiredBarriers:
         # to now() between the sweep SELECT and the mark → the barrier is no longer
         # stranded and the reaper must NOT mark its live run ERROR (mirrors the
         # expires_at re-arm test, but via last_progress_at).
-        _seed(barrier_conn, "lp-rearm", expired=False, last_progress="now() - interval '1 hour'")
+        _seed(
+            barrier_conn,
+            "lp-rearm",
+            expired=False,
+            last_progress="now() - interval '1 hour'",
+        )
 
         def refresh(execution_id):
             with barrier_conn.cursor() as cur:
@@ -882,9 +897,9 @@ class TestRecoverExpiredBarriers:
         _seed(barrier_conn, "exp-noorg", expired=True, organization_id="")
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.reaper"):
             recover_expired_barriers(barrier_conn, _FakeApiClient())
-        assert not any(
-            "systemic" in r.message for r in caplog.records
-        ), "all-skipped sweep should not escalate to a systemic-failure error"
+        assert not any("systemic" in r.message for r in caplog.records), (
+            "all-skipped sweep should not escalate to a systemic-failure error"
+        )
 
     def test_reclaims_dedup_markers(self, barrier_conn):
         _seed(barrier_conn, "exp-d", expired=True)
@@ -1157,6 +1172,139 @@ class TestEntryPoint:
 
         module = importlib.import_module("pg_queue_reaper.__main__")
         assert module.main is real_main
+
+
+# --- Layer 6: orphan orchestration-claim sweep (real Postgres, UN-3679) ---
+
+
+@pytest.fixture
+def claim_conn():
+    try:
+        conn = _new_conn()
+    except psycopg2.OperationalError as exc:
+        pytest.skip(f"Postgres not reachable: {exc}")
+    with conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('pg_orchestration_claim')")
+        if cur.fetchone()[0] is None:
+            conn.close()
+            pytest.skip("pg_orchestration_claim migration not applied (run migrate)")
+        cur.execute("DELETE FROM pg_orchestration_claim")
+        cur.execute("DELETE FROM pg_barrier_state")
+    conn.commit()
+    yield conn
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM pg_orchestration_claim")
+        cur.execute("DELETE FROM pg_barrier_state")
+    conn.commit()
+    conn.close()
+
+
+# Stuck-timeout used by these tests (seconds): claims OLDER than this are swept.
+_CLAIM_STUCK = 60
+
+
+def _seed_claim(conn, execution_id, *, old, organization_id="org-1"):
+    # ``old`` seeds claimed_at past/within the stuck-timeout so a test exercises
+    # the swept vs left-alone branches; committed so it's durable like a real claim.
+    claimed_sql = "now() - interval '2 minutes'" if old else "now()"
+    with conn.cursor() as cur:
+        cur.execute(
+            "INSERT INTO pg_orchestration_claim "
+            f"(execution_id, organization_id, claimed_at) VALUES (%s, %s, {claimed_sql})",
+            (execution_id, organization_id),
+        )
+    conn.commit()
+
+
+def _claim_ids(conn):
+    with conn.cursor() as cur:
+        cur.execute("SELECT execution_id FROM pg_orchestration_claim ORDER BY 1")
+        rows = [r[0] for r in cur.fetchall()]
+    conn.commit()
+    return rows
+
+
+@pytest.mark.integration
+class TestSweepOrphanClaims:
+    def test_gc_terminal_tombstone(self, claim_conn):
+        # A completed execution's tombstone (old, no barrier) → GC'd, no ERROR mark.
+        _seed_claim(claim_conn, "done-1", old=True)
+        api = _FakeApiClient(status="COMPLETED")
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 1
+        assert _claim_ids(claim_conn) == []  # GC'd
+        assert api.update_calls == []  # terminal → no mark
+
+    def test_recovers_crash_window_marks_error(self, claim_conn):
+        # Crash in the claim→arm window: old claim, no barrier, execution still
+        # non-terminal → mark ERROR (+cascade) then delete the claim.
+        _seed_claim(claim_conn, "strand-1", old=True)
+        api = _FakeApiClient(status="EXECUTING")
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 1
+        (call,) = api.update_calls
+        assert call.execution_id == "strand-1"
+        assert call.status == "ERROR"
+        assert call.organization_id == "org-1"
+        assert call.cascade_terminal_files is True
+        assert "never armed" in call.error_message
+        assert _claim_ids(claim_conn) == []  # deleted after the confirmed mark
+
+    def test_leaves_young_claim(self, claim_conn):
+        # A just-claimed live orchestration (claimed_at within the stuck-timeout)
+        # must be left alone — not even a status read.
+        _seed_claim(claim_conn, "live-1", old=False)
+        api = _FakeApiClient(status="EXECUTING")
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0
+        assert api.get_calls == []  # not even inspected
+        assert _claim_ids(claim_conn) == ["live-1"]
+
+    def test_leaves_claim_with_armed_barrier(self, claim_conn):
+        # A claim WITH a barrier row is a live/armed run — the barrier sweep owns
+        # it; the claim sweep must skip it entirely (no status read).
+        _seed_claim(claim_conn, "armed-1", old=True)
+        _seed(claim_conn, "armed-1", expired=False)  # barrier row present
+        api = _FakeApiClient(status="EXECUTING")
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0
+        assert api.get_calls == []
+        assert _claim_ids(claim_conn) == ["armed-1"]
+
+    def test_unconfirmed_mark_leaves_claim(self, claim_conn):
+        # The status API reports success=False on the mark → do NOT delete the claim
+        # (it's the only recovery handle); leave it for the next sweep.
+        _seed_claim(claim_conn, "strand-2", old=True)
+        api = _FakeApiClient(status="EXECUTING", update_success=False)
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0
+        assert len(api.update_calls) == 1  # mark attempted
+        assert _claim_ids(claim_conn) == ["strand-2"]  # but kept
+
+    def test_no_org_leaves_claim_without_api_call(self, claim_conn):
+        # A claim with no org can't be recovered via the org-scoped API — leave it,
+        # don't read status.
+        _seed_claim(claim_conn, "no-org-1", old=True, organization_id="")
+        api = _FakeApiClient(status="EXECUTING")
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 0
+        assert api.get_calls == []
+        assert _claim_ids(claim_conn) == ["no-org-1"]
+
+    def test_one_failure_does_not_block_others(self, claim_conn):
+        # A per-claim exception (here: a status read that raises) is caught and the
+        # row left; the other claim is still swept in the same pass.
+        _seed_claim(claim_conn, "aaa-done", old=True)
+        _seed_claim(claim_conn, "zzz-boom", old=True)
+
+        def _raise_for_boom(eid):
+            if eid == "zzz-boom":
+                raise RuntimeError("read boom")
+
+        api = _FakeApiClient(status="COMPLETED", on_get=_raise_for_boom)
+        removed = sweep_orphan_claims(claim_conn, api, _CLAIM_STUCK)
+        assert removed == 1  # aaa-done GC'd despite zzz-boom raising
+        assert _claim_ids(claim_conn) == ["zzz-boom"]  # left for the next sweep
 
 
 if __name__ == "__main__":
