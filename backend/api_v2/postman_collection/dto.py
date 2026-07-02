@@ -19,6 +19,24 @@ class HeaderItem:
 
 
 @dataclass
+class ScriptItem:
+    exec: list[str]
+    type: str = "text/javascript"
+
+
+@dataclass
+class EventItem:
+    listen: str
+    script: ScriptItem
+
+
+@dataclass
+class VariableItem:
+    key: str
+    value: str
+
+
+@dataclass
 class FormDataItem:
     key: str
     type: str
@@ -55,6 +73,7 @@ class RequestItem:
 class PostmanItem:
     name: str
     request: RequestItem
+    event: list[EventItem] | None = None
 
 
 @dataclass
@@ -68,6 +87,12 @@ class APIBase(ABC):
     @abstractmethod
     def get_form_data_items(self) -> list[FormDataItem]:
         pass
+
+    def get_collection_variables(self) -> list["VariableItem"]:
+        """Collection-level variables; only needed when a request
+        references them.
+        """
+        return []
 
     @abstractmethod
     def get_api_endpoint(self) -> str:
@@ -137,20 +162,52 @@ class APIDeploymentDto(APIBase):
     def _get_status_api_request(self) -> RequestItem:
         header_list = [HeaderItem(key="Authorization", value=f"Bearer {self.api_key}")]
         status_query_param = {
-            "execution_id": CollectionKey.STATUS_EXEC_ID_DEFAULT,
+            "execution_id": CollectionKey.STATUS_EXEC_ID_VARIABLE,
             ApiExecution.INCLUDE_METADATA: "False",
             ApiExecution.INCLUDE_METRICS: "False",
         }
-        status_query_str = urlencode(status_query_param)
+        # Keep {{...}} unescaped so Postman resolves the collection variable
+        status_query_str = urlencode(status_query_param, safe="{}")
         abs_api_endpoint = urljoin(settings.WEB_APP_ORIGIN_URL, self.api_endpoint)
         status_url = urljoin(abs_api_endpoint, "?" + status_query_str)
         return RequestItem(method=HTTPMethod.GET, header=header_list, url=status_url)
+
+    def get_collection_variables(self) -> list[VariableItem]:
+        return [
+            VariableItem(
+                key=CollectionKey.EXEC_ID_VARIABLE_NAME,
+                value=CollectionKey.STATUS_EXEC_ID_DEFAULT,
+            )
+        ]
+
+    def _get_execute_capture_event(self) -> EventItem:
+        """Post-response script that stores the execution_id from the execute
+        response into a collection variable, so the status request can use it
+        without manual copy-pasting.
+        """
+        return EventItem(
+            listen="test",
+            script=ScriptItem(
+                exec=[
+                    "let response = null;",
+                    "try {",
+                    "    response = pm.response.json();",
+                    "} catch (error) {",
+                    "    // Non-JSON response (e.g. gateway error); nothing to capture",
+                    "}",
+                    "if (response && response.message && response.message.execution_id) {",  # noqa: E501
+                    f'    pm.collectionVariables.set("{CollectionKey.EXEC_ID_VARIABLE_NAME}", response.message.execution_id);',  # noqa: E501
+                    "}",
+                ]
+            ),
+        )
 
     def get_postman_items(self) -> list[PostmanItem]:
         postman_item_list = [
             PostmanItem(
                 name=CollectionKey.EXECUTE_API_KEY,
                 request=self.get_create_api_request(),
+                event=[self._get_execute_capture_event()],
             ),
             PostmanItem(
                 name=CollectionKey.STATUS_API_KEY,
@@ -192,6 +249,7 @@ class PipelineDto(APIBase):
 class PostmanCollection:
     info: PostmanInfo
     item: list[PostmanItem] = field(default_factory=list)
+    variable: list[VariableItem] = field(default_factory=list)
 
     @classmethod
     def create(
@@ -228,7 +286,11 @@ class PostmanCollection:
             )
         postman_info: PostmanInfo = data_object.get_postman_info()
         postman_item_list = data_object.get_postman_items()
-        return cls(info=postman_info, item=postman_item_list)
+        return cls(
+            info=postman_info,
+            item=postman_item_list,
+            variable=data_object.get_collection_variables(),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert PostmanCollection instance to a dict.
@@ -237,4 +299,8 @@ class PostmanCollection:
             dict[str, Any]: PostmanCollection as a dict
         """
         collection_dict = asdict(self)
+        # Drop null event blocks; Postman expects "event" to be a list
+        for item in collection_dict.get("item", []):
+            if item.get("event") is None:
+                item.pop("event", None)
         return collection_dict
