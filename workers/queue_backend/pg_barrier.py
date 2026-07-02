@@ -305,6 +305,39 @@ def clear_execution_batches(execution_id: str) -> int:
         return cur.rowcount
 
 
+def claim_orchestration(execution_id: str) -> bool:
+    """Claim the orchestration slot for ``execution_id`` — the execution-level
+    idempotency gate mirroring :func:`claim_batch`, one level up.
+
+    Atomically inserts the single ``pg_orchestration_claim`` row; returns ``True``
+    if THIS call inserted it (first delivery — the caller orchestrates) and
+    ``False`` if it already existed (a duplicate / redelivered orchestration — the
+    caller must no-op). ``ON CONFLICT DO NOTHING`` makes the check-and-set a single
+    statement, so two replicas racing the same orchestration resolve to exactly
+    one ``True`` (the row's existence is the token).
+
+    Claimed BEFORE the orchestration work (arm barrier / dispatch batches), so a
+    crash mid-orchestration leaves the claim, a redelivery no-ops, and the reaper
+    recovers the stranded execution — the same crash-window semantics as
+    :func:`claim_batch`. Unlike the per-batch markers, this claim is a tombstone:
+    it is deliberately NOT cleared at barrier finalise, so a redelivery AFTER the
+    execution completes can't re-orchestrate a finished execution. It is reclaimed
+    by the (future) dedup-orphan sweep, same as ``pg_batch_dedup``.
+
+    PG path only — the caller gates on the transport (Celery has no redelivery, so
+    no double-orchestration to guard).
+    """
+    with _cursor() as cur:
+        cur.execute(
+            f"INSERT INTO {qualified('pg_orchestration_claim')} "
+            "(execution_id, claimed_at) VALUES (%s, now()) "
+            "ON CONFLICT (execution_id) DO NOTHING "
+            "RETURNING execution_id",
+            (execution_id,),
+        )
+        return cur.fetchone() is not None
+
+
 def _dispatch_pg(
     task_name: str,
     *,

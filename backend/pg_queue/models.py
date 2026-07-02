@@ -343,3 +343,46 @@ class PgTaskResult(models.Model):
             # expires_at <= now()); no sweeper reads it yet (see class docstring).
             models.Index(fields=["expires_at"], name="pg_task_result_expires_idx"),
         ]
+
+
+class PgOrchestrationClaim(models.Model):
+    """Per-execution idempotency claim for the orchestration task (PG transport).
+
+    The PG queue is at-least-once: the orchestration task ``async_execute_bin``
+    can be redelivered (it runs longer than the consumer's visibility timeout and
+    a sibling replica re-claims the message) or delivered to two replicas. Re-
+    running the orchestration is destructive — it re-arms the barrier (resets
+    ``remaining = N`` and wipes the ``pg_batch_dedup`` markers mid-flight),
+    dispatches a second set of N batch headers, and races the decrements. This
+    table is the durable single-winner token that closes that window: one row per
+    ``execution_id``.
+
+    The worker claims by inserting its row atomically
+    (``INSERT … ON CONFLICT DO NOTHING RETURNING``): a fresh insert means "first
+    delivery — orchestrate"; a conflict means "already claimed — a duplicate /
+    redelivery → no-op". Claimed BEFORE the work, so a crash mid-orchestration
+    leaves the claim and the redelivery no-ops; the reaper recovers the stranded
+    execution (same crash-window semantics as ``pg_batch_dedup``). The claim is a
+    tombstone — it deliberately persists past barrier finalise (unlike the
+    per-batch markers, which ``clear_execution_batches`` reclaims), so a
+    redelivery AFTER completion can't re-orchestrate a finished execution.
+
+    Reclaim: like ``pg_batch_dedup``, rows are not cascaded by the reaper; the
+    intended dedup-orphan sweep (by ``claimed_at`` age) will reclaim them. One row
+    per execution makes the leak strictly smaller than the per-batch table's.
+
+    Only written on the PG transport (``is_pg_transport``) — the Celery path never
+    touches it. Managed=True / generated migration, extension-free — same posture
+    as the siblings.
+    """
+
+    # One row per execution; the claim's ON CONFLICT target and the writer-proof
+    # single-winner invariant (the worker SQL can't import this model).
+    execution_id = models.TextField(primary_key=True)
+    # Observability/debugging today (when the orchestration was claimed); the
+    # intended dedup-orphan sweep (see the class docstring) would reclaim by this
+    # column's age and add an index then.
+    claimed_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pg_orchestration_claim"

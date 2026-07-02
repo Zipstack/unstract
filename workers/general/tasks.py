@@ -9,6 +9,7 @@ from typing import Any
 
 from queue_backend import FairnessKey, worker_task
 from queue_backend.fairness import WorkloadType
+from queue_backend.pg_barrier import claim_orchestration
 from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
@@ -138,6 +139,36 @@ def _log_batch_creation_statistics(
         )
 
 
+def _should_skip_duplicate_orchestration(execution_id: str, transport: str) -> bool:
+    """PG-only: claim the execution's orchestration slot; ``True`` iff THIS
+    delivery lost the claim (a duplicate / redelivered orchestration) and must
+    no-op.
+
+    On the PG queue the orchestration task can be redelivered — it runs longer
+    than the consumer's visibility timeout and a sibling replica re-claims the
+    message — and re-running it re-arms the barrier (resets ``remaining`` and
+    wipes the dedup markers mid-flight) and dispatches a second set of batch
+    headers. :func:`claim_orchestration` is the single-winner gate: the first
+    delivery inserts the claim and proceeds; a duplicate finds it and this returns
+    ``True`` so the caller no-ops.
+
+    No-op on Celery (returns ``False`` — always proceeds): Celery has no
+    at-least-once redelivery, and the router owns terminal status there, so there
+    is no double-orchestration to guard. Gated exactly like the terminal guard so
+    the Celery path is behaviorally unchanged.
+    """
+    if not is_pg_transport(transport):
+        return False
+    if claim_orchestration(execution_id):
+        return False  # first delivery — this replica owns the orchestration
+    logger.info(
+        f"[exec:{execution_id}] orchestration already claimed — duplicate/"
+        f"redelivered orchestration on the PG queue; skipping (no barrier re-arm, "
+        f"no re-dispatch)."
+    )
+    return True
+
+
 @worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_GENERAL,
@@ -196,6 +227,17 @@ def async_execute_bin_general(
         )
 
         try:
+            # PG-only idempotency gate (claim-before-work): a duplicate /
+            # redelivered orchestration no-ops here BEFORE any setup, barrier arm,
+            # or batch dispatch — so exactly one delivery orchestrates the
+            # execution even with replicas > 1. No-op on Celery.
+            if _should_skip_duplicate_orchestration(execution_id, transport):
+                return {
+                    "status": "skipped_duplicate_orchestration",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                }
+
             # Initialize execution context with shared utility
             config, api_client = WorkerExecutionContext.setup_execution_context(
                 schema_name, execution_id, workflow_id
