@@ -9,7 +9,10 @@ from typing import Any
 
 from queue_backend import FairnessKey, worker_task
 from queue_backend.fairness import WorkloadType
-from queue_backend.pg_barrier import claim_orchestration
+from queue_backend.pg_barrier import (
+    release_orchestration_claim,
+    try_claim_orchestration,
+)
 from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
@@ -139,7 +142,9 @@ def _log_batch_creation_statistics(
         )
 
 
-def _should_skip_duplicate_orchestration(execution_id: str, transport: str) -> bool:
+def _should_skip_duplicate_orchestration(
+    execution_id: str, transport: str, retries: int = 0
+) -> bool:
     """PG-only: claim the execution's orchestration slot; ``True`` iff THIS
     delivery lost the claim (a duplicate / redelivered orchestration) and must
     no-op.
@@ -148,9 +153,15 @@ def _should_skip_duplicate_orchestration(execution_id: str, transport: str) -> b
     than the consumer's visibility timeout and a sibling replica re-claims the
     message — and re-running it re-arms the barrier (resets ``remaining`` and
     wipes the dedup markers mid-flight) and dispatches a second set of batch
-    headers. :func:`claim_orchestration` is the single-winner gate: the first
+    headers. :func:`try_claim_orchestration` is the single-winner gate: the first
     delivery inserts the claim and proceeds; a duplicate finds it and this returns
     ``True`` so the caller no-ops.
+
+    ``retries`` (``self.request.retries``) only sharpens the log: a skip on a
+    *first* delivery is a benign duplicate, but a skip when ``retries > 0`` means
+    a prior attempt claimed and did not release it (a hard crash after the claim,
+    before the failure-path release) — a suppressed retry, logged at ERROR with an
+    errorId so it's distinguishable from a normal duplicate.
 
     No-op on Celery (returns ``False`` — always proceeds): Celery has no
     at-least-once redelivery, and the router owns terminal status there, so there
@@ -159,13 +170,21 @@ def _should_skip_duplicate_orchestration(execution_id: str, transport: str) -> b
     """
     if not is_pg_transport(transport):
         return False
-    if claim_orchestration(execution_id):
+    if try_claim_orchestration(execution_id):
         return False  # first delivery — this replica owns the orchestration
-    logger.info(
-        f"[exec:{execution_id}] orchestration already claimed — duplicate/"
-        f"redelivered orchestration on the PG queue; skipping (no barrier re-arm, "
-        f"no re-dispatch)."
-    )
+    if retries > 0:
+        logger.error(
+            f"[exec:{execution_id}] orchestration claim already held on retry "
+            f"{retries} — a prior attempt claimed but never released it (crash "
+            f"before the failure-path release); this retry is being SUPPRESSED and "
+            f"the execution may be stranded. errorId=ORCH_CLAIM_SUPPRESSED_RETRY"
+        )
+    else:
+        logger.info(
+            f"[exec:{execution_id}] orchestration already claimed — duplicate/"
+            f"redelivered orchestration on the PG queue; skipping (no barrier "
+            f"re-arm, no re-dispatch)."
+        )
     return True
 
 
@@ -231,7 +250,9 @@ def async_execute_bin_general(
             # redelivered orchestration no-ops here BEFORE any setup, barrier arm,
             # or batch dispatch — so exactly one delivery orchestrates the
             # execution even with replicas > 1. No-op on Celery.
-            if _should_skip_duplicate_orchestration(execution_id, transport):
+            if _should_skip_duplicate_orchestration(
+                execution_id, transport, self.request.retries
+            ):
                 return {
                     "status": "skipped_duplicate_orchestration",
                     "execution_id": execution_id,
@@ -361,6 +382,20 @@ def async_execute_bin_general(
 
         except Exception as e:
             logger.error(f"General workflow execution failed for {execution_id}: {e}")
+
+            # Release the orchestration claim (PG path) so a redelivery/retry can
+            # re-orchestrate. The claim is taken before the work, so without this a
+            # transient failure would leave it committed and make every redelivery
+            # permanently no-op — a silently-lost execution. Best-effort: a failed
+            # release just means the redelivery skips and the execution stays ERROR.
+            if is_pg_transport(transport):
+                try:
+                    release_orchestration_claim(execution_id)
+                except Exception as release_error:
+                    logger.warning(
+                        f"[exec:{execution_id}] failed to release orchestration "
+                        f"claim on error path: {release_error}"
+                    )
 
             # Try to update execution status to failed
             try:

@@ -360,16 +360,25 @@ class PgOrchestrationClaim(models.Model):
     The worker claims by inserting its row atomically
     (``INSERT … ON CONFLICT DO NOTHING RETURNING``): a fresh insert means "first
     delivery — orchestrate"; a conflict means "already claimed — a duplicate /
-    redelivery → no-op". Claimed BEFORE the work, so a crash mid-orchestration
-    leaves the claim and the redelivery no-ops; the reaper recovers the stranded
-    execution (same crash-window semantics as ``pg_batch_dedup``). The claim is a
-    tombstone — it deliberately persists past barrier finalise (unlike the
-    per-batch markers, which ``clear_execution_batches`` reclaims), so a
-    redelivery AFTER completion can't re-orchestrate a finished execution.
+    redelivery → no-op". Claimed BEFORE the work; the claim is **released on
+    failure** (the orchestrator's error path deletes it) so a redelivery/retry can
+    re-orchestrate. It persists only after a SUCCESSFUL orchestration, as a
+    tombstone — deliberately kept past barrier finalise (unlike the per-batch
+    markers, which ``clear_execution_batches`` reclaims), so a redelivery AFTER
+    completion (when the barrier row is already gone) can't re-orchestrate a
+    finished execution.
 
-    Reclaim: like ``pg_batch_dedup``, rows are not cascaded by the reaper; the
-    intended dedup-orphan sweep (by ``claimed_at`` age) will reclaim them. One row
-    per execution makes the leak strictly smaller than the per-batch table's.
+    **Recovery gaps (follow-up — the gate stays off until then):** unlike
+    ``pg_batch_dedup`` — whose barrier is always armed before any batch runs, so
+    the reaper always has a ``pg_barrier_state`` handle — this claim is taken
+    BEFORE the barrier is armed. A hard crash in the claim→arm window leaves a
+    claim with no barrier row, invisible to the reaper's barrier sweep. And the
+    live ``sweep_orphan_dedup`` reclaims only ``pg_batch_dedup`` (it never touches
+    this table), so a successful claim's tombstone currently has NO GC and lives
+    forever. Both are addressed by extending the reaper to sweep this table by
+    ``claimed_at`` age (GC terminal/aged claims; mark a non-terminal orphan-claim
+    execution ERROR). Bounded meanwhile: one row per execution, and the gate is
+    off.
 
     Only written on the PG transport (``is_pg_transport``) — the Celery path never
     touches it. Managed=True / generated migration, extension-free — same posture
@@ -377,11 +386,14 @@ class PgOrchestrationClaim(models.Model):
     """
 
     # One row per execution; the claim's ON CONFLICT target and the writer-proof
-    # single-winner invariant (the worker SQL can't import this model).
+    # single-winner invariant (the worker SQL can't import this model). Tombstone:
+    # deliberately never deleted at barrier finalise (there is no orchestration-
+    # claim analog of clear_execution_batches) — that is what blocks a
+    # post-completion redelivery from re-orchestrating. A future maintainer must
+    # NOT add a finalise-time DELETE here.
     execution_id = models.TextField(primary_key=True)
-    # Observability/debugging today (when the orchestration was claimed); the
-    # intended dedup-orphan sweep (see the class docstring) would reclaim by this
-    # column's age and add an index then.
+    # Observability/debugging today (when the orchestration was claimed). The
+    # planned reaper sweep would reclaim by this column's age and add an index then.
     claimed_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
