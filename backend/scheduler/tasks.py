@@ -4,13 +4,93 @@ import traceback
 from typing import Any
 
 from celery import shared_task
+from django.db import transaction
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from pg_queue.models import PgPeriodicSchedule
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# pg_periodic_schedule mirror (Phase 9, ②a) — INERT.
+# Dual-writes the schedule definition into pg_periodic_schedule alongside the
+# django_celery_beat PeriodicTask, so a future PG-backed scheduler (folded into
+# the reaper/orchestrator loop) can fire due schedules without Celery Beat.
+# Nothing reads the table yet. Every write is best-effort: a mirror failure must
+# NEVER break the existing Beat scheduling path.
+#
+# The upsert is driven from SchedulerHelper._schedule_task_job (which holds the
+# Pipeline object, so it sources the real pipeline_name + clean ids — no parsing
+# of the serialized PeriodicTask args). The enable/disable/delete toggles are
+# keyed by pipeline_id only, so they live here next to the functions that mutate
+# the PeriodicTask.
+# ---------------------------------------------------------------------------
+
+
+def mirror_periodic_schedule_upsert(
+    *,
+    pipeline_id: str,
+    organization_id: str,
+    workflow_id: str | None,
+    pipeline_name: str,
+    cron_string: str,
+    enabled: bool,
+) -> None:
+    try:
+        PgPeriodicSchedule.objects.update_or_create(
+            pipeline_id=pipeline_id,
+            defaults={
+                "organization_id": organization_id or "",
+                "workflow_id": workflow_id or None,
+                "pipeline_name": pipeline_name or "",
+                "cron_string": cron_string,
+                "enabled": enabled,
+            },
+        )
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror upsert failed for pipeline {pipeline_id} "
+            "(inert mirror — Beat scheduling unaffected)"
+        )
+
+
+def _mirror_periodic_schedule_set_enabled(pipeline_id: str, enabled: bool) -> None:
+    try:
+        # Bump updated_at explicitly: queryset .update() does NOT trigger the
+        # field's auto_now, so without this a pause/resume would change enabled
+        # without advancing the "last changed" timestamp.
+        matched = PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(
+            enabled=enabled, updated_at=timezone.now()
+        )
+        if matched == 0:
+            # No mirror row — e.g. a pipeline scheduled before this shipped, or
+            # whose upsert was swallowed. .update() can't self-heal (it only
+            # touches existing rows); the backfill of such rows lands with the
+            # scheduler that reads this table (②b). Log so the gap is visible.
+            logger.info(
+                f"pg_periodic_schedule mirror enabled={enabled} matched 0 rows for "
+                f"pipeline {pipeline_id} (not yet mirrored — backfilled in ②b)"
+            )
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror enabled={enabled} failed for pipeline "
+            f"{pipeline_id} (inert mirror — Beat scheduling unaffected)"
+        )
+
+
+def _mirror_periodic_schedule_delete(pipeline_id: str) -> None:
+    try:
+        PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).delete()
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror delete failed for pipeline {pipeline_id} "
+            "(inert mirror — Beat scheduling unaffected)"
+        )
 
 
 def create_or_update_periodic_task(
@@ -49,6 +129,9 @@ def create_or_update_periodic_task(
         logger.info(f"Created periodic task {periodic_task}")
     else:
         logger.info(f"Updated periodic task {periodic_task}")
+    # The inert PG mirror upsert is driven by the caller
+    # (SchedulerHelper._schedule_task_job), which has the Pipeline object and so
+    # sources the real pipeline_name + ids directly (no positional arg parsing).
 
 
 # TODO: Remove unused args with a migration
@@ -145,6 +228,8 @@ def delete_periodic_task(task_name: str) -> None:
         logger.info(f"Deleted periodic task: {task_name}")
     except PeriodicTask.DoesNotExist:
         logger.error(f"Periodic task does not exist: {task_name}")
+    # Clean the inert PG mirror regardless of whether the PeriodicTask existed.
+    _mirror_periodic_schedule_delete(task_name)
 
 
 def get_periodic_task(task_name: str) -> PeriodicTask | None:
@@ -158,11 +243,29 @@ def disable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = False
     task.save()
+    # Mirror the PeriodicTask.enabled state right after save (before the pipeline
+    # status update, so a failure there can't desync the inert mirror).
+    _mirror_periodic_schedule_set_enabled(task_name, False)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
 
 
 def enable_task(task_name: str) -> None:
-    task = PeriodicTask.objects.get(name=task_name)
-    task.enabled = True
-    task.save()
+    PeriodicTask.objects.get(name=task_name)  # preserve DoesNotExist on a bad name
+    # Resume → the schedule is active again, but Beat must fire it ONLY when it's
+    # not handed to PG — else a pg_owned schedule would fire from both Beat and PG
+    # (the ②c ownership invariant; reconcile sets the same on create/update, but
+    # resume takes this path). Lock the mirror row + write only the `enabled`
+    # column (not a full task.save() of stale state) so a concurrent
+    # reconcile_ownership_for can't be clobbered into a double-fire.
+    with transaction.atomic():
+        pg_owned = (
+            PgPeriodicSchedule.objects.select_for_update()
+            .filter(pipeline_id=task_name)
+            .values_list("pg_owned", flat=True)
+            .first()
+            or False
+        )
+        PeriodicTask.objects.filter(name=task_name).update(enabled=not pg_owned)
+    # mirror.enabled tracks pipeline.active (True on resume) regardless of owner.
+    _mirror_periodic_schedule_set_enabled(task_name, True)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)

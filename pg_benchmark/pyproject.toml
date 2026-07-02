@@ -1,0 +1,14 @@
+[project]
+name = "pg_benchmark"
+version = "0.1.0"
+description = "PG-queue vs Celery execution benchmark harness for Unstract"
+requires-python = ">=3.10"
+dependencies = ["psycopg2-binary>=2.9", "requests>=2.31"]
+
+[tool.pytest.ini_options]
+# Root pytest here so it does not inherit the backend's Django pytest config.
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 90

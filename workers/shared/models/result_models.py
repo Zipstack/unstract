@@ -3,6 +3,7 @@
 Dataclasses for task execution results.
 """
 
+import logging
 import os
 import sys
 import time
@@ -18,6 +19,8 @@ from unstract.core.worker_models import FileExecutionResult
 
 # Import worker enums
 from ..enums import WebhookStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -223,6 +226,15 @@ class QueueResult:
     file_content: str | None = None
     whisper_hash: str | None = None
     file_execution_id: str | None = None
+    # Workflow execution id — carried into the HITL queue message so the
+    # manual-review consumer (pluggable_apps.manual_review_v2, a separate
+    # codebase) can populate hitl_queue.execution_id. The durable local fact is
+    # that to_dict() always emits this key (None when unset); the key name must
+    # stay in sync with that consumer. Optional with a None default because the
+    # connector's execution_id is itself nullable on some paths — a missing
+    # value is logged in __post_init__ rather than raised, so an unexpected NULL
+    # is visible without breaking the HITL enqueue.
+    execution_id: str | None = None
     enqueued_at: float | None = None
     ttl_seconds: int | None = None
     extracted_text: str | None = None
@@ -241,6 +253,16 @@ class QueueResult:
             raise ValueError("QueueResult requires a valid workflow_id")
         if self.status is None:
             raise ValueError("QueueResult requires a valid status")
+        # execution_id should always be set on the HITL enqueue path; it's not a
+        # hard requirement (the connector's value is nullable on some paths and a
+        # raise would break manual-review enqueue), so surface a missing value
+        # rather than silently writing a NULL hitl_queue.execution_id.
+        if not self.execution_id:
+            logger.warning(
+                "QueueResult for file=%r has no execution_id; "
+                "hitl_queue.execution_id will be NULL",
+                self.file,
+            )
 
     def to_dict(self) -> Any:
         result_dict = {
@@ -251,6 +273,7 @@ class QueueResult:
             "workflow_id": self.workflow_id,
             "file_content": self.file_content,
             "file_execution_id": self.file_execution_id,
+            "execution_id": self.execution_id,
             "enqueued_at": self.enqueued_at,
             "ttl_seconds": self.ttl_seconds,
             "extracted_text": self.extracted_text,

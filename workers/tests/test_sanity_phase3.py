@@ -19,7 +19,7 @@ from unstract.sdk1.execution.result import ExecutionResult
 # ---------------------------------------------------------------------------
 
 _PATCH_DISPATCHER = (
-    "file_processing.structure_tool_task.ExecutionDispatcher"
+    "file_processing.structure_tool_task.get_executor_dispatcher"
 )
 _PATCH_PLATFORM_HELPER = (
     "file_processing.structure_tool_task._create_platform_helper"
