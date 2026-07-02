@@ -448,13 +448,18 @@ class TestDecrementPhaseSplitRetry:
         assert sleeps == []  # a fresh-conn death is not retried → no backoff
 
 
+@pytest.mark.integration
 def test_create_pg_connection_is_non_autocommit():
     """The decrement phase-split's exactly-once safety rests on the connection
     being non-autocommit (an uncommitted UPDATE rolls back on disconnect, so an
     execute-phase failure is never durable). Pin that at its SOURCE — a future
     ``conn.autocommit = True`` in ``create_pg_connection`` would silently
     reintroduce the double-count the split exists to prevent, and no other test
-    would catch it (the barrier_db fixture sets autocommit itself)."""
+    would catch it (the barrier_db fixture sets autocommit itself).
+
+    Opens a real connection inline (no fixture), so it's marked ``integration``
+    explicitly — the collection hook keys off fixture names and wouldn't catch
+    it, which would otherwise leave it in the DB-free unit lane."""
     os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
     try:
         conn = create_pg_connection(env_prefix="TEST_DB_")

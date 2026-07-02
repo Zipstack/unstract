@@ -6,6 +6,8 @@ shared/constants/api_endpoints.py raises ValueError at import
 time if INTERNAL_API_BASE_URL is not set.
 """
 
+import contextlib
+import importlib
 import os
 from pathlib import Path
 
@@ -54,6 +56,37 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if pg_fixtures & set(getattr(item, "fixturenames", ())):
             item.add_marker(pytest.mark.integration)
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """Under ``REQUIRE_PG_TESTS``, a *skipped* integration test is a failure.
+
+    The integration lane sets ``REQUIRE_PG_TESTS`` precisely so it can't pass
+    having run nothing. Real-Postgres fixtures skip when the DB is unreachable or
+    unmigrated, and not all of them route through ``_skip_or_fail_no_pg`` (some
+    call ``pytest.skip`` directly). Rather than depend on every fixture — present
+    and future — using the right helper, enforce the guarantee centrally: any
+    ``integration``-marked test that skips during setup while the flag is set is
+    turned into a failure. This closes the "green having exercised none of them"
+    gap for the barrier / leader-election / reaper suites regardless of skip
+    mechanism.
+    """
+    outcome = yield
+    if not os.getenv("REQUIRE_PG_TESTS"):
+        return
+    report = outcome.get_result()
+    if (
+        report.when == "setup"
+        and report.skipped
+        and item.get_closest_marker("integration") is not None
+    ):
+        report.outcome = "failed"
+        report.longrepr = (
+            f"REQUIRE_PG_TESTS is set but integration test skipped "
+            f"(Postgres unreachable/unmigrated): {item.nodeid}. The integration "
+            f"lane must exercise the real-Postgres paths, not skip them."
+        )
 
 
 # --- Isolation: keep the suite deterministic in a single process ---
@@ -166,8 +199,10 @@ def isolated_celery_registry():
     enters its poll loop, and the test hangs).
 
     This fixture snapshots and clears that backlog for the test's duration, so a
-    ``Celery(...)`` created inside the test starts with only ``celery.*``
-    built-ins, then restores it so the backlog isn't mutated for other tests.
+    ``Celery(...)`` created inside the test starts with *no tasks at all* —
+    neither the worker's shared tasks nor Celery's own ``celery.*`` built-ins,
+    since both are registered through this same finalizer backlog — then restores
+    it so the backlog isn't mutated for other tests.
     """
     import celery._state as celery_state
 
@@ -192,29 +227,36 @@ def _reset_queue_backend_state():
     order-dependent (green alone, failing in a full run). Reset on teardown so
     each test starts from the same clean module state regardless of order.
 
-    Each reset is guarded independently: a module that fails to import (missing
-    optional dep in a given lane) must not break the autouse fixture for the
-    whole suite.
+    Only the *import* is guarded (a module absent in a given lane must not break
+    the autouse fixture). The resets run outside that guard on purpose: if a
+    reset target is ever renamed/removed, the resulting AttributeError surfaces
+    loudly here rather than turning the whole fixture into a silent no-op — which
+    would let order-dependence and hangs creep back with no failing test.
     """
     yield
-    try:
+    with contextlib.suppress(ImportError):
         import queue_backend.routing as _routing
 
         _routing._allow_list_logged = False
-    except Exception:
-        pass
-    try:
-        import queue_backend.dispatch as _dispatch
+    with contextlib.suppress(ImportError):
+        # queue_backend re-exports a ``dispatch`` *function*, which shadows the
+        # submodule as a package attribute — so ``import queue_backend.dispatch``
+        # would bind the function, not the module. Load the module explicitly.
+        _dispatch = importlib.import_module("queue_backend.dispatch")
 
         _dispatch._pg_routing_logged.clear()
-        if hasattr(_dispatch._pg_local, "client"):
+        client = getattr(_dispatch._pg_local, "client", None)
+        if client is not None:
+            # Close before dropping so a real libpq connection isn't leaked to
+            # GC/__del__ (matters in a large real-Postgres run).
+            with contextlib.suppress(Exception):
+                client.close()
             del _dispatch._pg_local.client
-    except Exception:
-        pass
-    try:
+    with contextlib.suppress(ImportError):
         import queue_backend.pg_barrier as _pg_barrier
 
-        if hasattr(_pg_barrier._local, "conn"):
-            del _pg_barrier._local.conn
-    except Exception:
-        pass
+        conn = getattr(_pg_barrier._local, "conn", None)
+        if conn is not None:
+            with contextlib.suppress(Exception):
+                conn.close()
+            _pg_barrier._local.conn = None
