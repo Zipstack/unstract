@@ -38,6 +38,9 @@ from tests.rig.selection import resolve
 # Pytest exit codes that the rig treats as non-failure for aggregation:
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
+#       NOTE: exit-5 is non-failing here for *optional* groups only. A required
+#       group that collects nothing (exit 5) is caught by the explicit guard in
+#       cmd_run ("Empty collection (exit 5) is a failure…") and fails loudly.
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 
 

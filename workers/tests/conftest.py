@@ -58,7 +58,7 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(pytest.mark.integration)
 
 
-@pytest.hookimpl(hookwrapper=True)
+@pytest.hookimpl(wrapper=True)
 def pytest_runtest_makereport(item, call):
     """Under ``REQUIRE_PG_TESTS``, a *skipped* integration test is a failure.
 
@@ -71,13 +71,14 @@ def pytest_runtest_makereport(item, call):
     turned into a failure. This closes the "green having exercised none of them"
     gap for the barrier / leader-election / reaper suites regardless of skip
     mechanism.
+
+    Uses the modern ``wrapper=True`` hook (pytest>=8) — ``yield`` returns the
+    report directly, and the wrapper returns it back.
     """
-    outcome = yield
-    if not os.getenv("REQUIRE_PG_TESTS"):
-        return
-    report = outcome.get_result()
+    report = yield
     if (
-        report.when == "setup"
+        os.getenv("REQUIRE_PG_TESTS")
+        and report.when == "setup"
         and report.skipped
         and item.get_closest_marker("integration") is not None
     ):
@@ -87,6 +88,7 @@ def pytest_runtest_makereport(item, call):
             f"(Postgres unreachable/unmigrated): {item.nodeid}. The integration "
             f"lane must exercise the real-Postgres paths, not skip them."
         )
+    return report
 
 
 # --- Isolation: keep the suite deterministic in a single process ---
