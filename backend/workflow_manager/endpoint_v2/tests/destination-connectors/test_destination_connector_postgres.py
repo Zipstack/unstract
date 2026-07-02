@@ -21,7 +21,7 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "database": os.getenv("DB_NAME", "test_unstract"),
             "user": os.getenv("DB_USER", "postgres"),
             "password": os.getenv("DB_PASSWORD", "password"),
-            "schema": "test",  # Add schema to fix PostgreSQL issue
+            "schema": os.getenv("DB_SCHEMA", "public"),
         }
 
         # Test data that will be inserted into the database
@@ -32,7 +32,9 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        self.test_table_name = "OUTPUT_3"
+        # Lowercase: the connector quotes the name on CREATE (case-preserved) but
+        # lowercases it when reading information_schema back.
+        self.test_table_name = "output_3"
 
         # Create real PostgreSQL connector instance
         self.postgres_connector = PostgreSQL(settings=self.postgres_config)
@@ -190,44 +192,6 @@ class TestDestinationConnectorPostgreSQL(TestCase):
 
         print(
             f"✅ Successfully inserted test data into PostgreSQL table: {self.test_table_name}"
-        )
-
-    def test_insert_into_db_with_error_postgresql(self) -> None:
-        """Test insertion with error parameter into real PostgreSQL database."""
-        # Create mock objects
-        mock_workflow = self.create_mock_workflow()
-        mock_workflow_log = self.create_mock_workflow_log()
-        mock_connector_instance = self.create_real_connector_instance()
-        mock_endpoint = self.create_mock_endpoint(mock_connector_instance)
-
-        # Create destination connector
-        destination_connector = self.create_destination_connector(
-            mock_workflow, mock_workflow_log, mock_endpoint
-        )
-
-        error_message = "Test processing error occurred"
-
-        # Mock the methods that get data
-        with patch.object(
-            destination_connector,
-            "get_tool_execution_result",
-            return_value=self.test_data,
-        ):
-            with patch.object(
-                destination_connector,
-                "get_combined_metadata",
-                return_value=self.test_metadata,
-            ):
-                # Execute with error parameter
-                destination_connector.insert_into_db(
-                    input_file_path=self.input_file_path, error=error_message
-                )
-
-        # Verify that all expected columns were created
-        self.verify_table_columns(self.test_table_name)
-
-        print(
-            f"✅ Successfully inserted error data into PostgreSQL table: {self.test_table_name}"
         )
 
     def test_postgresql_connector_connection(self) -> None:

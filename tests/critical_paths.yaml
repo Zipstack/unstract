@@ -29,10 +29,7 @@ paths:
   - id: adapter-register-llm
     description: "Register and validate an LLM adapter."
     entry: "POST /api/v1/adapter/"
-    # unit-sdk1 covers adapter registration + parameter validation at the SDK
-    # layer (the logic the endpoint delegates to). The HTTP round-trip stays an
-    # e2e concern; promote when an e2e adapter group exists.
-    covered_by: [unit-sdk1]
+    covered_by: [integration-backend]
 
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."

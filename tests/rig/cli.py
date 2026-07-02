@@ -355,12 +355,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     needs_platform = any(manifest.get(n).requires_platform for n in runnable)
-    # Groups can declare `requires_services` (e.g. unit-backend needs Postgres)
-    # without needing the whole platform. Provision just the stateful infra via
-    # testcontainers in that case — compose would bring up every service for a
-    # unit-tier run. needs_platform wins when both are set (e2e/all runs go
-    # through compose); tiers run as separate rig invocations in CI, so the
-    # unit tier only ever hits the services-only branch.
+    # A group can declare `requires_services` (stateful infra like Postgres/
+    # Redis) without needing the whole platform — provision just that infra via
+    # testcontainers instead of standing up every compose service. Platform wins
+    # when both are set.
     needs_services = any(manifest.get(n).requires_services for n in runnable)
     runtime: PlatformRuntime | None = None
     endpoints: PlatformEndpoints | None = None

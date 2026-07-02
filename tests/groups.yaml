@@ -80,6 +80,9 @@ groups:
       SYSTEM_ADMIN_USERNAME: admin
       SYSTEM_ADMIN_PASSWORD: admin
       SYSTEM_ADMIN_EMAIL: admin@example.com
+      # ExecutionFileHandler builds execution-dir paths from this at init; only
+      # constructed, never written to in these tests.
+      WORKFLOW_EXECUTION_DIR_PREFIX: /tmp/unstract-workflow-exec
     coverage_source: .
 
   unit-connectors:
@@ -104,13 +107,18 @@ groups:
   integration-backend:
     tier: integration
     workdir: backend
-    # Backend ORM tests — need a live Postgres. The rig provisions one via
-    # testcontainers (requires_services) and injects DB_HOST + credentials into
-    # the pytest env (tests/rig/cli.py:_db_env_from_postgres_url). Not optional:
-    # these gate the integration tier.
+    # Backend ORM tests — need live infra. The rig provisions the declared
+    # requires_services via testcontainers and injects their connection env into
+    # pytest (tests/rig/cli.py:_inject_infra_env). Not optional: these gate the
+    # integration tier.
     paths:
+      - adapter_processor_v2/tests/test_adapter_api.py
       - dashboard_metrics/tests
       - prompt_studio/prompt_studio_registry_v2/tests
+      # Destination DB-writer tests (BE orchestration over the connector lib —
+      # superset of the connector-lib DB tests). Postgres runs against the
+      # provisioned testcontainer; the other engines skipTest without creds.
+      - workflow_manager/endpoint_v2/tests/destination-connectors
     uv_sync_group: test
     env: *backend_test_env
     requires_services: [postgres, redis]
