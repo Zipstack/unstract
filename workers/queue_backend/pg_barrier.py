@@ -1082,7 +1082,10 @@ def _mark_execution_error_on_abort(
     same values the enqueue stamped onto ``pg_barrier_state``.
     """
     execution_id = str(barrier_context["execution_id"])
-    _, org = callback_recovery_identity(barrier_context["callback_descriptor"])
+    # .get(): this runs inside run_batch_with_barrier's except block, so a missing
+    # callback_descriptor (a future/legacy dispatch path) must not raise a KeyError
+    # that would mask the original batch exception before the re-raise.
+    _, org = callback_recovery_identity(barrier_context.get("callback_descriptor") or {})
     organization_id = str(org or "")
     if not organization_id:
         logger.error(
