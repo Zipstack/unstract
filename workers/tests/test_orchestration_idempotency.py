@@ -108,6 +108,65 @@ class TestOrchestratorShortCircuit:
             "workflow_id": "wf",
         }
 
+    @staticmethod
+    def _task_globals():
+        fn = tasks.async_execute_bin_general
+        while hasattr(fn, "__wrapped__"):
+            fn = fn.__wrapped__
+        return fn.__globals__
+
+    def test_no_release_when_claim_never_acquired(self):
+        # G2: if the claim's own INSERT raises, the failure path must NOT call
+        # release — nothing was acquired, and a spurious DELETE would reconnect just
+        # to delete nothing and muddy the log.
+        released: list[str] = []
+
+        def _boom(_eid):
+            raise psycopg2.OperationalError("db down")
+
+        with patch.dict(
+            self._task_globals(),
+            {
+                "try_claim_orchestration": _boom,
+                "release_orchestration_claim": lambda eid: released.append(eid),
+            },
+        ):
+            with pytest.raises(psycopg2.OperationalError):
+                tasks.async_execute_bin_general(
+                    schema_name="org",
+                    workflow_id="wf",
+                    execution_id="e-x",
+                    hash_values_of_files={},
+                    transport="pg_queue",
+                )
+        assert released == []  # claim never acquired → nothing released
+
+    def test_release_called_when_claimed_and_work_fails(self):
+        # The claim was won (gate proceeds) but the work fails → release it so the
+        # redelivery/retry can re-orchestrate.
+        released: list[str] = []
+        with patch.dict(
+            self._task_globals(),
+            {
+                "try_claim_orchestration": lambda _eid: True,  # won the claim
+                "release_orchestration_claim": lambda eid: released.append(eid),
+            },
+        ):
+            with patch.object(
+                tasks.WorkerExecutionContext,
+                "setup_execution_context",
+                side_effect=RuntimeError("setup boom"),
+            ):
+                with pytest.raises(RuntimeError):
+                    tasks.async_execute_bin_general(
+                        schema_name="org",
+                        workflow_id="wf",
+                        execution_id="e-y",
+                        hash_values_of_files={},
+                        transport="pg_queue",
+                    )
+        assert released == ["e-y"]  # claimed then failed → released
+
 
 # --- Layer 2: claim primitive against real Postgres ---
 

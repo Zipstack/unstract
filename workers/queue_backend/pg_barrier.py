@@ -337,17 +337,72 @@ def try_claim_orchestration(execution_id: str) -> bool:
 
     PG path only — the caller gates on the transport (Celery has no redelivery, so
     no double-orchestration to guard).
+
+    **Stale-connection resilience (phase-split, like :func:`_apply_decrement`).**
+    This is the FIRST DB write of the orchestration task, so on a worker that has
+    been idle it is the one most likely to meet a PgBouncer-reaped connection. The
+    INSERT is retried ONCE, but ONLY on an execute-phase failure of a *cached*
+    connection: the statement never committed (non-autocommit → rolled back on
+    disconnect), so re-running it lands exactly once and the retry's ``RETURNING``
+    answer is authoritative — no won/lost flip. A *commit*-phase failure is
+    AMBIGUOUS (the server may have committed) and is NEVER retried — a re-run could
+    flip a real winner to a loser and strand the execution — so it propagates (the
+    orchestrator marks ERROR and the redelivery re-orchestrates). This is why the
+    idempotent-pre-dispatch helper (``-> None``, no RETURNING) can't be reused here.
     """
+    # Sample cached-ness BEFORE _get_conn() below materialises a connection: only a
+    # cached handle can be a stale idle-reap, so a fresh-conn failure is a genuine
+    # DB error, not a reap (mirrors _apply_decrement / pg_queue.client.send).
+    reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
     try:
-        with _cursor() as cur:
-            cur.execute(
-                f"INSERT INTO {qualified('pg_orchestration_claim')} "
-                "(execution_id, claimed_at) VALUES (%s, now()) "
-                "ON CONFLICT (execution_id) DO NOTHING "
-                "RETURNING execution_id",
-                (execution_id,),
-            )
-            return cur.fetchone() is not None
+        for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
+            conn = _get_conn()
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"INSERT INTO {qualified('pg_orchestration_claim')} "
+                        "(execution_id, claimed_at) VALUES (%s, now()) "
+                        "ON CONFLICT (execution_id) DO NOTHING "
+                        "RETURNING execution_id",
+                        (execution_id,),
+                    )
+                    won = cur.fetchone() is not None
+            except Exception as exc:
+                conn_dead = _recover_after_error(conn, exc)
+                # Retry ONLY a reused-conn death on the execute phase: it never
+                # committed, so the retry (on a fresh conn) is authoritative.
+                if conn_dead and reused and attempt < _BARRIER_WRITE_ATTEMPTS:
+                    logger.warning(
+                        "[exec:%s] orchestration claim: execute failed on a cached "
+                        "connection (%s) — reconnecting and retrying once "
+                        "(attempt %d/%d); the INSERT never committed.",
+                        execution_id,
+                        type(exc).__name__,
+                        attempt,
+                        _BARRIER_WRITE_ATTEMPTS,
+                        exc_info=True,
+                    )
+                    time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
+                    continue
+                raise
+            try:
+                conn.commit()
+            except Exception as exc:
+                # AMBIGUOUS commit — the row may be persisted. Re-running could flip
+                # a real winner to a loser (→ strand), so NEVER retry; propagate.
+                _recover_after_error(conn, exc)
+                logger.warning(
+                    "[exec:%s] orchestration claim: commit failed (%s) — NOT "
+                    "retrying (the server may already have committed; a re-run "
+                    "could flip the winner). Propagating.",
+                    execution_id,
+                    type(exc).__name__,
+                    exc_info=True,
+                )
+                raise
+            return won
+        # Unreachable: the loop either returns or raises.
+        raise AssertionError("try_claim_orchestration loop fell through")
     except psycopg2.errors.UndefinedTable as exc:
         # Fail fast with an actionable message instead of a generic per-execution
         # stack trace: the table is missing because migration 0012 hasn't run.

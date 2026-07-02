@@ -245,6 +245,11 @@ def async_execute_bin_general(
             f"Starting general workflow execution for workflow {workflow_id}, execution {execution_id}"
         )
 
+        # Tracks whether THIS delivery won the PG orchestration claim, so the
+        # error path releases the claim only when we actually acquired it (not, for
+        # instance, when the claim's own INSERT raised). Set below only after the
+        # gate returns "proceed" on the PG path.
+        claimed_orchestration = False
         try:
             # PG-only idempotency gate (claim-before-work): a duplicate /
             # redelivered orchestration no-ops here BEFORE any setup, barrier arm,
@@ -258,6 +263,9 @@ def async_execute_bin_general(
                     "execution_id": execution_id,
                     "workflow_id": workflow_id,
                 }
+            # Gate returned "proceed": on PG that means this delivery just won the
+            # claim (Celery never claims), so the error path owns releasing it.
+            claimed_orchestration = is_pg_transport(transport)
 
             # Initialize execution context with shared utility
             config, api_client = WorkerExecutionContext.setup_execution_context(
@@ -383,12 +391,15 @@ def async_execute_bin_general(
         except Exception as e:
             logger.error(f"General workflow execution failed for {execution_id}: {e}")
 
-            # Release the orchestration claim (PG path) so a redelivery/retry can
+            # Release the orchestration claim so a redelivery/retry can
             # re-orchestrate. The claim is taken before the work, so without this a
             # transient failure would leave it committed and make every redelivery
-            # permanently no-op — a silently-lost execution. Best-effort: a failed
-            # release just means the redelivery skips and the execution stays ERROR.
-            if is_pg_transport(transport):
+            # permanently no-op — a silently-lost execution. Only when THIS delivery
+            # actually won the claim (not, e.g., when the claim's own INSERT raised —
+            # nothing to release, and a spurious DELETE would just reconnect to
+            # delete nothing and muddy the log). Best-effort: a failed release just
+            # means the redelivery skips and the execution stays ERROR.
+            if claimed_orchestration:
                 try:
                     release_orchestration_claim(execution_id)
                 except Exception as release_error:
