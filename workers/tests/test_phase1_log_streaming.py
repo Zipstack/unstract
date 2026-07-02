@@ -347,11 +347,18 @@ class TestLegacyExecutorLogPassthrough:
         result = executor.execute(ctx)
 
         assert result.success
-        mock_shim_cls.assert_called_once_with(
-            platform_api_key="sk-test",
-            log_events_id="session-abc",
-            component={"tool_id": "t1", "run_id": "r1", "doc_name": "test.pdf"},
-        )
+        # Assert the log-info kwargs specifically (the point of this test) rather
+        # than the full constructor — the shim gained execution/org/file-exec ids
+        # unrelated to log passthrough.
+        mock_shim_cls.assert_called_once()
+        shim_kwargs = mock_shim_cls.call_args.kwargs
+        assert shim_kwargs["platform_api_key"] == "sk-test"
+        assert shim_kwargs["log_events_id"] == "session-abc"
+        assert shim_kwargs["component"] == {
+            "tool_id": "t1",
+            "run_id": "r1",
+            "doc_name": "test.pdf",
+        }
 
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
@@ -389,11 +396,13 @@ class TestLegacyExecutorLogPassthrough:
         result = executor.execute(ctx)
 
         assert result.success
-        mock_shim_cls.assert_called_once_with(
-            platform_api_key="sk-test",
-            log_events_id="",
-            component={},
-        )
+        # Assert the log-info kwargs specifically (see sibling test); the shim's
+        # other constructor args are unrelated to this test's concern.
+        mock_shim_cls.assert_called_once()
+        shim_kwargs = mock_shim_cls.call_args.kwargs
+        assert shim_kwargs["platform_api_key"] == "sk-test"
+        assert shim_kwargs["log_events_id"] == ""
+        assert shim_kwargs["component"] == {}
 
     @patch(
         "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"

@@ -224,6 +224,7 @@ class TestStructureToolAgenticRouting:
             dispatcher=mock_dispatcher,
             shim=MagicMock(),
             file_execution_id="exec-001",
+            execution_id="wf-exec-001",
             organization_id="org-001",
             source_file_name="test.pdf",
             fs=MagicMock(),

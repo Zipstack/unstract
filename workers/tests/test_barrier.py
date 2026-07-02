@@ -93,6 +93,7 @@ class TestBarrierProtocolShape:
         tests pass identically even if ``BarrierHandle`` were
         deleted; this one is load-bearing.
         """
+        from celery import Celery
         from celery.result import AsyncResult
 
         # Assert against a real ``AsyncResult`` *instance* — that's
@@ -101,6 +102,14 @@ class TestBarrierProtocolShape:
         # a property, or set in ``__init__``; the instance check is
         # the smallest-blast-radius equivalent of "production sees
         # this object and reads ``.id``".
+        #
+        # Bind to an explicit backend-less probe app (not the ambient
+        # ``current_app``): whichever worker app happens to be current in a
+        # full-suite run may carry a real ``db+postgresql://`` result backend,
+        # and binding ``AsyncResult`` to it would try to connect. ``.id`` is the
+        # constructor argument and needs no backend, so this stays a pure
+        # protocol-shape check.
+        probe_app = Celery("barrier-protocol-probe", set_as_current=False)
         #
         # ``required_attrs`` is hand-maintained: if a future refactor
         # adds a required attribute to ``TaskHandle`` /
@@ -111,7 +120,7 @@ class TestBarrierProtocolShape:
         # ``__annotations__`` introspection would also work (and
         # doesn't require ``@runtime_checkable``), but the explicit
         # tuple keeps the contract surface explicit.
-        async_result_instance = AsyncResult("placeholder-task-id")
+        async_result_instance = AsyncResult("placeholder-task-id", app=probe_app)
         required_attrs = ("id",)
         missing = [
             a for a in required_attrs if not hasattr(async_result_instance, a)

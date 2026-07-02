@@ -866,7 +866,7 @@ class TestStructureToolSingleDispatch:
         "file_processing.structure_tool_task._create_platform_helper"
     )
     @patch(
-        "file_processing.structure_tool_task.ExecutionDispatcher"
+        "file_processing.structure_tool_task.get_executor_dispatcher"
     )
     def test_single_dispatch_normal(
         self,
