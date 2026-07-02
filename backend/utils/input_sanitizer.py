@@ -1,6 +1,10 @@
+import logging
 import re
+from typing import NoReturn
 
 from rest_framework.serializers import ValidationError
+
+logger = logging.getLogger(__name__)
 
 # Pattern to detect HTML/script tags (closed tags and unclosed tags starting with a letter)
 # The second alternative catches unclosed tags like "<script" or "<img src=x" that could
@@ -26,14 +30,34 @@ _DOM_EVENTS = (
 EVENT_HANDLER_PATTERN = re.compile(rf"\bon({_DOM_EVENTS})\s*=", re.IGNORECASE)
 
 
+def _reject(field_name: str, reason: str, message: str) -> NoReturn:
+    logger.warning(
+        "input_validation_rejected",
+        extra={"field": field_name, "reason": reason},
+    )
+    raise ValidationError(message)
+
+
 def validate_no_html_tags(value: str, field_name: str = "This field") -> str:
     """Reject values containing HTML/script tags."""
     if HTML_TAG_PATTERN.search(value):
-        raise ValidationError(f"{field_name} must not contain HTML or script tags.")
+        _reject(
+            field_name,
+            "html_tag",
+            f"{field_name} must not contain HTML or script tags.",
+        )
     if JS_PROTOCOL_PATTERN.search(value):
-        raise ValidationError(f"{field_name} must not contain dangerous URI protocols.")
+        _reject(
+            field_name,
+            "js_protocol",
+            f"{field_name} must not contain dangerous URI protocols.",
+        )
     if EVENT_HANDLER_PATTERN.search(value):
-        raise ValidationError(f"{field_name} must not contain event handler attributes.")
+        _reject(
+            field_name,
+            "event_handler",
+            f"{field_name} must not contain event handler attributes.",
+        )
     return value
 
 
