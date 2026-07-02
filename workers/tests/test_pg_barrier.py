@@ -496,7 +496,7 @@ class TestClaimOrchestrationRetry:
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
 
         with caplog.at_level("WARNING"):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
 
         assert dead.executes == 1 and healthy.executes == 1  # exactly one extra try
         assert dead.commits == 0  # the reaped attempt never committed
@@ -519,7 +519,7 @@ class TestClaimOrchestrationRetry:
             lambda **_k: pytest.fail("must not reconnect on a commit-phase failure"),
         )
         with pytest.raises(psycopg2.OperationalError):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
         assert conn.executes == 1 and conn.commits == 1  # tried once, no retry
         assert sleeps == []  # no backoff → no retry
 
@@ -532,9 +532,22 @@ class TestClaimOrchestrationRetry:
         pg_barrier._local.conn = None  # → reused False
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: dead)
         with pytest.raises(psycopg2.OperationalError):
-            try_claim_orchestration("exec-1")
+            try_claim_orchestration("exec-1", "org-1")
         assert dead.executes == 1  # no retry
         assert sleeps == []
+
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn],
+        ids=["table-missing (0012)", "column-missing (0013)"],
+    )
+    def test_schema_behind_raises_actionable_error(self, _clean_local, exc_cls):
+        # A schema behind the code — 0012 not run (no table) OR 0012-but-not-0013
+        # (table, no organization_id column) — must fail fast with an actionable
+        # message, NOT the generic per-execution stack trace, and NOT proceed.
+        pg_barrier._local.conn = _FakeConn(execute_error=exc_cls("schema behind"))
+        with pytest.raises(RuntimeError, match="schema is out of date"):
+            try_claim_orchestration("exec-1", "org-1")
 
 
 # --- Layer 2: enqueue + link/abort with a real injected connection ---

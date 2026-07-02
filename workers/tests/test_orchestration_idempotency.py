@@ -41,17 +41,17 @@ class TestOrchestrationGate:
         # The whole guard is PG-only: on Celery it must not even consult the claim
         # (proves the Celery path is behaviorally untouched).
         with patch("general.tasks.try_claim_orchestration") as claim:
-            assert _should_skip_duplicate_orchestration("e1", "celery") is False
+            assert _should_skip_duplicate_orchestration("e1", "org1", "celery") is False
             claim.assert_not_called()
 
     def test_pg_first_delivery_proceeds(self):
         with patch("general.tasks.try_claim_orchestration", return_value=True) as claim:
-            assert _should_skip_duplicate_orchestration("e1", "pg_queue") is False
-            claim.assert_called_once_with("e1")
+            assert _should_skip_duplicate_orchestration("e1", "org1", "pg_queue") is False
+            claim.assert_called_once_with("e1", "org1")  # org stamped for the reaper
 
     def test_pg_duplicate_delivery_skips(self):
         with patch("general.tasks.try_claim_orchestration", return_value=False):
-            assert _should_skip_duplicate_orchestration("e1", "pg_queue") is True
+            assert _should_skip_duplicate_orchestration("e1", "org1", "pg_queue") is True
 
     def test_claim_error_propagates(self):
         # A DB error in the claim must PROPAGATE, not be swallowed — a swallow-and-
@@ -62,7 +62,7 @@ class TestOrchestrationGate:
             side_effect=psycopg2.OperationalError("db down"),
         ):
             with pytest.raises(psycopg2.OperationalError):
-                _should_skip_duplicate_orchestration("e1", "pg_queue")
+                _should_skip_duplicate_orchestration("e1", "org1", "pg_queue")
 
     def test_skip_on_retry_logs_error_with_errorid(self, caplog):
         # A skip when retries > 0 is a SUPPRESSED retry (a prior attempt claimed
@@ -70,7 +70,10 @@ class TestOrchestrationGate:
         # with an errorId so alerting can distinguish the two.
         with patch("general.tasks.try_claim_orchestration", return_value=False):
             with caplog.at_level(logging.ERROR, logger="general.tasks"):
-                assert _should_skip_duplicate_orchestration("e1", "pg_queue", 2) is True
+                assert (
+                    _should_skip_duplicate_orchestration("e1", "org1", "pg_queue", 2)
+                    is True
+                )
         assert "ORCH_CLAIM_SUPPRESSED_RETRY" in caplog.text
 
 
@@ -94,7 +97,9 @@ class TestOrchestratorShortCircuit:
         fn = tasks.async_execute_bin_general
         while hasattr(fn, "__wrapped__"):
             fn = fn.__wrapped__
-        with patch.dict(fn.__globals__, {"try_claim_orchestration": lambda _eid: False}):
+        with patch.dict(
+            fn.__globals__, {"try_claim_orchestration": lambda _eid, _org: False}
+        ):
             out = tasks.async_execute_bin_general(
                 schema_name="org",
                 workflow_id="wf",
@@ -121,7 +126,7 @@ class TestOrchestratorShortCircuit:
         # to delete nothing and muddy the log.
         released: list[str] = []
 
-        def _boom(_eid):
+        def _boom(_eid, _org):
             raise psycopg2.OperationalError("db down")
 
         with patch.dict(
@@ -148,7 +153,7 @@ class TestOrchestratorShortCircuit:
         with patch.dict(
             self._task_globals(),
             {
-                "try_claim_orchestration": lambda _eid: True,  # won the claim
+                "try_claim_orchestration": lambda _eid, _org: True,  # won the claim
                 "release_orchestration_claim": lambda eid: released.append(eid),
             },
         ):
@@ -210,32 +215,34 @@ def _claim_count(conn, execution_id):
 @pytest.mark.integration
 class TestClaimOrchestration:
     def test_first_claim_wins(self, claim_db):
-        assert try_claim_orchestration("exec-1") is True
+        assert try_claim_orchestration("exec-1", "org-1") is True
 
     def test_duplicate_claim_loses(self, claim_db):
-        assert try_claim_orchestration("exec-1") is True
-        assert try_claim_orchestration("exec-1") is False  # redelivery / sibling
+        assert try_claim_orchestration("exec-1", "org-1") is True
+        assert try_claim_orchestration("exec-1", "org-1") is False  # redelivery / sibling
 
     def test_distinct_executions_are_independent(self, claim_db):
-        assert try_claim_orchestration("exec-1") is True
-        assert try_claim_orchestration("exec-2") is True  # keyed on execution_id
+        assert try_claim_orchestration("exec-1", "org-1") is True
+        assert try_claim_orchestration("exec-2", "org-1") is True  # keyed on execution_id
 
     def test_claim_persists_as_tombstone(self, claim_db):
         # NOT cleared at finalise (unlike per-batch markers): a post-completion
         # redelivery still finds it, so a finished execution can't be re-orchestrated.
-        assert try_claim_orchestration("exec-keep") is True
+        assert try_claim_orchestration("exec-keep", "org-1") is True
         assert _claim_count(claim_db, "exec-keep") == 1
-        assert try_claim_orchestration("exec-keep") is False
+        assert try_claim_orchestration("exec-keep", "org-1") is False
 
     def test_release_allows_reclaim(self, claim_db):
         # The failure-path release frees the slot so a redelivery/retry can
         # re-orchestrate (this is what stops a transient failure permanently
         # no-oping every redelivery).
-        assert try_claim_orchestration("exec-rel") is True
-        assert try_claim_orchestration("exec-rel") is False  # held
+        assert try_claim_orchestration("exec-rel", "org-1") is True
+        assert try_claim_orchestration("exec-rel", "org-1") is False  # held
         release_orchestration_claim("exec-rel")
         assert _claim_count(claim_db, "exec-rel") == 0
-        assert try_claim_orchestration("exec-rel") is True  # reclaimable after release
+        assert (
+            try_claim_orchestration("exec-rel", "org-1") is True
+        )  # reclaimable after release
 
     def test_release_is_safe_when_absent(self, claim_db):
         release_orchestration_claim("never-claimed")  # no row → no error
@@ -265,7 +272,7 @@ class TestClaimOrchestration:
                     pg_barrier._local.conn = conn
                     try:
                         gate.wait()  # align all claims at the same instant
-                        won = try_claim_orchestration(eid)
+                        won = try_claim_orchestration(eid, "org-1")
                         with lock:
                             results.append(won)
                     finally:

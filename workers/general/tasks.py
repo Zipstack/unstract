@@ -143,11 +143,14 @@ def _log_batch_creation_statistics(
 
 
 def _should_skip_duplicate_orchestration(
-    execution_id: str, transport: str, retries: int = 0
+    execution_id: str, organization_id: str, transport: str, retries: int = 0
 ) -> bool:
     """PG-only: claim the execution's orchestration slot; ``True`` iff THIS
     delivery lost the claim (a duplicate / redelivered orchestration) and must
     no-op.
+
+    ``organization_id`` (the org schema_name) is stamped onto the claim row so the
+    reaper can call the org-scoped API when it recovers or GCs an orphan claim.
 
     On the PG queue the orchestration task can be redelivered — it runs longer
     than the consumer's visibility timeout and a sibling replica re-claims the
@@ -170,7 +173,7 @@ def _should_skip_duplicate_orchestration(
     """
     if not is_pg_transport(transport):
         return False
-    if try_claim_orchestration(execution_id):
+    if try_claim_orchestration(execution_id, organization_id):
         return False  # first delivery — this replica owns the orchestration
     if retries > 0:
         logger.error(
@@ -256,7 +259,7 @@ def async_execute_bin_general(
             # or batch dispatch — so exactly one delivery orchestrates the
             # execution even with replicas > 1. No-op on Celery.
             if _should_skip_duplicate_orchestration(
-                execution_id, transport, self.request.retries
+                execution_id, schema_name, transport, self.request.retries
             ):
                 return {
                     "status": "skipped_duplicate_orchestration",

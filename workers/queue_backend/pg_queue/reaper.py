@@ -26,6 +26,15 @@ on** — without it the un-catchable strand windows (a worker SIGKILL mid-batch,
 a crash after the final decrement but before the callback enqueues) would bottom
 out silently at the ~6h barrier expiry.
 
+**Orchestration-claim GC + recovery (UN-3679).** The orchestration idempotency
+claim (``pg_orchestration_claim``) is taken BEFORE the barrier is armed, so a
+crash in the claim→arm window leaves a claim with no barrier row — invisible to
+the barrier sweep above — and a successful claim's tombstone has no natural GC.
+The retention sweep's :func:`sweep_orphan_claims` closes both: for a claim with no
+matching barrier row older than the stuck-timeout, it GC's a terminal execution's
+tombstone and marks a non-terminal (crash-window) execution ERROR (org-scoped,
+same best-effort per-row posture).
+
 **Deferred (follow-up).** *Callback re-fire* for the ``remaining==0`` strand
 (heal → COMPLETED instead of ERROR) needs the ``callback_descriptor`` stored on
 the barrier row; until then those strands are marked ERROR. Per-stage re-enqueue
@@ -52,7 +61,7 @@ import signal
 import threading
 import time
 from collections.abc import Callable
-from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
+from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, TypeVar
 
 from unstract.core.data_models import ExecutionStatus
 
@@ -61,6 +70,7 @@ from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
 from .pg_scheduler import dispatch_due_schedules
+from .recovery import mark_execution_error
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -92,6 +102,14 @@ _STRANDED_PREDICATE = (
 )
 
 _N = TypeVar("_N", int, float)
+
+# Orphan-claim recovery outcomes (a closed domain — a typo in a returned literal
+# or a caller comparison would otherwise silently fall through to the skip path
+# and mis-count the sweep). Shared by _recover_one_claim (producer) and
+# sweep_orphan_claims (consumer).
+_CLAIM_RECOVERED: Final = "recovered"  # execution marked ERROR (crash-window)
+_CLAIM_GC: Final = "gc"  # terminal execution's tombstone deleted
+_ClaimOutcome = Literal["recovered", "gc"]
 
 
 class LeaderLeaseLike(Protocol):
@@ -543,6 +561,261 @@ def recover_expired_barriers(
     return recovered
 
 
+def _orphan_claim_where(claim_alias: str) -> str:
+    """WHERE clause selecting orphan ``pg_orchestration_claim`` rows.
+
+    A claim is an orphan when it has NO matching ``pg_barrier_state`` row (never
+    armed — the crash-window strand — OR armed-then-finalised — a completed/failed
+    tombstone) AND is older than the stuck-timeout (so a just-claimed live
+    orchestration that hasn't armed its barrier yet is left alone). Binds one
+    ``%s`` — the stuck-timeout seconds. Defined once so the sweep SELECT, the
+    pre-mark re-check, and the cleanup DELETE can't drift (like
+    :data:`_STRANDED_PREDICATE` for barriers).
+    """
+    return (
+        f"{claim_alias}.claimed_at < now() - make_interval(secs => %s) "
+        f"AND NOT EXISTS (SELECT 1 FROM {qualified('pg_barrier_state')} b "
+        f"WHERE b.execution_id = {claim_alias}.execution_id)"
+    )
+
+
+def _claim_still_orphan(
+    conn: PgConnection, execution_id: str, stuck_timeout_seconds: int
+) -> bool:
+    """True iff the claim is STILL an orphan (no barrier, still old) right now.
+
+    Re-checked immediately before the ERROR mark: between the sweep's SELECT and
+    the mark, a slow-but-live orchestration could finally arm its barrier (making
+    it the reaper's barrier-recovery concern, not a crash-window strand), or the
+    claim could have been released and re-claimed with a fresh ``claimed_at``. In
+    either case its live run must NOT be marked ERROR.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            f"SELECT 1 FROM {qualified('pg_orchestration_claim')} AS c "
+            f"WHERE c.execution_id = %s AND {_orphan_claim_where('c')}",
+            (execution_id, stuck_timeout_seconds),
+        )
+        found = cur.fetchone() is not None
+    conn.commit()
+    return found
+
+
+def _delete_orphan_claim(
+    conn: PgConnection, execution_id: str, stuck_timeout_seconds: int
+) -> int:
+    """Delete a claim, re-guarded on still-orphan-and-old so a concurrent re-claim
+    (release + redelivery inserting a fresh ``claimed_at``) or a freshly-armed
+    barrier is never torn out from under a live run. Returns the number of rows
+    deleted (0 when the WHERE no longer matched — a concurrent re-claim / barrier
+    arm won the race, so the caller must not count or log a removal).
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            f"DELETE FROM {qualified('pg_orchestration_claim')} AS c "
+            f"WHERE c.execution_id = %s AND {_orphan_claim_where('c')}",
+            (execution_id, stuck_timeout_seconds),
+        )
+        deleted = cur.rowcount
+    conn.commit()
+    return deleted
+
+
+def _recover_one_claim(
+    conn: PgConnection,
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str,
+    stuck_timeout_seconds: int,
+) -> _ClaimOutcome | None:
+    """Recover or GC one orphan claim; return :data:`_CLAIM_RECOVERED` (execution
+    marked ERROR — a crash-window recovery), :data:`_CLAIM_GC` (a terminal
+    execution's tombstone deleted), or ``None`` (a benign skip). The claim row is
+    deleted on GC and on a confirmed recovery; it is LEFT for the next sweep on any
+    unconfirmed step (no org, unreadable status, re-armed during recovery, an
+    unconfirmed mark, or a 0-row delete lost to a concurrent re-claim) so nothing
+    is lost and nothing is mis-counted.
+
+    A terminal execution (per :meth:`ExecutionStatus.is_completed` — COMPLETED /
+    STOPPED / ERROR, the single source of truth) → GC the tombstone. A non-terminal
+    one is the claim→arm crash window (the orchestrator committed the claim then
+    died before arming the barrier; the reaper's barrier sweep can't see it because
+    there is no barrier row) → mark it ERROR so it reaches a terminal state instead
+    of stranding EXECUTING forever, then delete the claim.
+    """
+    if not organization_id:
+        logger.error(
+            "Reaper: orphan orchestration claim for execution %s has NO "
+            "organization_id — cannot call the org-scoped status/mark API; leaving "
+            "the row. A claim was written without an org — investigate.",
+            execution_id,
+        )
+        return None
+
+    status = _execution_status(api_client, execution_id, organization_id)
+    if status is None:
+        logger.warning(
+            "Reaper: status read for orphan-claim execution %s returned no status "
+            "— leaving the claim for the next sweep.",
+            execution_id,
+        )
+        return None
+
+    if ExecutionStatus.is_completed(status):
+        # Terminal: the claim is a tombstone with no live run behind it — GC it.
+        # (A terminal execution's orchestration message was acked on completion or
+        # on the first skip-redelivery, so there is nothing left to re-orchestrate
+        # once the row is gone.) A 0-row delete means a concurrent release+re-claim
+        # replaced the row in the window since the SELECT — leave the fresh one.
+        if not _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds):
+            logger.warning(
+                "Reaper: orphan-claim execution %s was re-claimed during GC — "
+                "leaving the fresh claim (its new run owns it).",
+                execution_id,
+            )
+            return None
+        logger.info(
+            "Reaper: GC'd orphan orchestration claim for terminal execution %s (%s).",
+            execution_id,
+            status,
+        )
+        return _CLAIM_GC
+
+    # Non-terminal → crash-window strand. Re-check it's STILL an orphan right before
+    # marking, so a slow orchestration that just armed its barrier (or a fresh
+    # re-claim) isn't flagged ERROR while live.
+    if not _claim_still_orphan(conn, execution_id, stuck_timeout_seconds):
+        logger.warning(
+            "Reaper: orphan-claim execution %s armed a barrier or was re-claimed "
+            "during recovery — leaving it (its live run owns the claim).",
+            execution_id,
+        )
+        return None
+
+    if not mark_execution_error(
+        api_client,
+        execution_id,
+        organization_id,
+        error_message=(
+            "[reaper-recovery] Execution stranded: the orchestration claimed its "
+            "slot but the barrier was never armed (crash before dispatch)."
+        ),
+    ):
+        # Unconfirmed mark — do NOT delete the claim (it is the only recovery
+        # handle); leave it for the next sweep to retry.
+        return None
+
+    # Safe to delete the tombstone now that the execution is terminal: the same
+    # ack argument as the GC branch holds (the message was acked on the first
+    # skip-redelivery). The re-guarded DELETE additionally protects the rare race
+    # where the claim was re-armed between the mark and here — a 0-row delete then
+    # leaves the fresh claim. (Residual: if the ENTIRE worker fleet were down
+    # longer than the stuck-timeout so no consumer ever hit the skip-and-ack path,
+    # the message could still be un-acked and a later redelivery would re-win the
+    # claim — an accepted tradeoff for a catastrophic multi-hour outage.)
+    if not _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds):
+        logger.warning(
+            "Reaper: orphan-claim execution %s was re-claimed between the ERROR "
+            "mark and the delete — leaving the fresh claim.",
+            execution_id,
+        )
+        return None
+    return _CLAIM_RECOVERED
+
+
+def sweep_orphan_claims(
+    conn: PgConnection,
+    api_client: InternalAPIClient,
+    stuck_timeout_seconds: int | None = None,
+) -> int:
+    """GC / recover orphaned ``pg_orchestration_claim`` rows (UN-3679). Returns the
+    number of claim rows removed (terminal-tombstone GCs + crash-window recoveries).
+
+    The orchestration claim is taken BEFORE the barrier is armed, so — unlike
+    ``pg_batch_dedup``, whose barrier always exists — a crash in the claim→arm
+    window leaves a claim with no barrier row that the barrier sweep can't see, and
+    a successful claim's tombstone has no natural GC. This sweep closes both: for
+    each orphan claim (no barrier row, older than the stuck-timeout; see
+    :func:`_orphan_claim_where`) it GC's a terminal execution's tombstone and marks
+    a non-terminal (crash-window) execution ERROR. One claim failing (API down,
+    unreadable status) is logged and skipped — its row is left for the next sweep —
+    so it never blocks the others.
+
+    ``conn`` runs in manual-commit mode; on any error we roll back before
+    continuing / re-raising so the connection isn't left in an aborted-txn state.
+    """
+    if stuck_timeout_seconds is None:
+        stuck_timeout_seconds = barrier_stuck_timeout_seconds()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"SELECT c.execution_id, c.organization_id "
+                f"FROM {qualified('pg_orchestration_claim')} AS c "
+                f"WHERE {_orphan_claim_where('c')}",
+                (stuck_timeout_seconds,),
+            )
+            rows = cur.fetchall()
+        conn.commit()
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_orchestration_claim")
+        raise
+
+    gc_count = 0
+    recovered = 0
+    failed = 0  # genuine per-row failures (exceptions) — NOT benign skips
+    for execution_id, organization_id in rows:
+        try:
+            outcome = _recover_one_claim(
+                conn, api_client, execution_id, organization_id, stuck_timeout_seconds
+            )
+            if outcome == _CLAIM_RECOVERED:
+                recovered += 1
+            elif outcome == _CLAIM_GC:
+                gc_count += 1
+            # None = a benign skip (no org / no status / re-armed / unconfirmed
+            # mark) — logged per-row inside; the row is left for the next sweep.
+        except Exception:
+            failed += 1
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            logger.exception(
+                "Reaper: failed to recover/GC orphan orchestration claim for "
+                "execution %s — leaving the row for the next sweep.",
+                execution_id,
+            )
+
+    removed = gc_count + recovered
+    if removed:
+        logger.info(
+            "Reaper: orphan-claim sweep removed %d of %d claim(s) — %d GC'd "
+            "(terminal), %d recovered (marked ERROR).",
+            removed,
+            len(rows),
+            gc_count,
+            recovered,
+        )
+    # A non-empty sweep that accomplished NOTHING because every row raised is
+    # systemic (internal API down / bad migration). Raise so _run_sweep records it
+    # on the consecutive-failure streak — a clean return would reset that streak
+    # and hide "the crash-window recovery net is completely down". Mirrors
+    # recover_expired_barriers' failed-and-nothing-recovered escalation. A PARTIAL
+    # failure (some rows swept) is only a warning — the net is working.
+    if failed and not removed:
+        raise RuntimeError(
+            f"orphan-claim sweep: all {failed} row(s) failed and nothing was "
+            f"swept — likely systemic (internal API down / bad migration)"
+        )
+    if failed:
+        logger.warning(
+            "Reaper: orphan-claim sweep — %d of %d row(s) failed (left for the next "
+            "sweep); %d swept.",
+            failed,
+            len(rows),
+            removed,
+        )
+    return removed
+
+
 class PgReaper:
     """Leader-elected recovery loop. Only the lease holder runs recovery work."""
 
@@ -739,12 +1012,24 @@ class PgReaper:
             "pg_batch_dedup",
             lambda conn: sweep_orphan_dedup(conn, self._dedup_retention),
         )
-        if results or dedup:
+        # Orphan orchestration-claim GC + crash-window recovery (UN-3679). Runs
+        # here (cadence-gated) rather than every tick: orphan claims are rare and
+        # already older than the stuck-timeout, and this does a per-row status API
+        # read, so the 5-min cadence keeps it off the hot path. Independent of the
+        # other sweeps (its own _run_sweep) so a fault in one can't skip it.
+        claims = self._run_sweep(
+            "pg_orchestration_claim",
+            lambda conn: sweep_orphan_claims(
+                conn, self._get_api_client(), self._stuck_timeout_seconds
+            ),
+        )
+        if results or dedup or claims:
             logger.info(
                 "Reaper: retention sweep deleted %s pg_task_result + "
-                "%s pg_batch_dedup row(s)",
+                "%s pg_batch_dedup + %s pg_orchestration_claim row(s)",
                 results,
                 dedup,
+                claims,
             )
 
     def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
