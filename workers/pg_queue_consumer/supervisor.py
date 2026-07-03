@@ -450,6 +450,13 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
             "liveness_probe_bound": True,
         }
 
+    from queue_backend.pg_queue.metrics import ConsumerMetrics
+
+    metrics = ConsumerMetrics(
+        freshness_fn=fleet.freshness,
+        alive_children_fn=lambda: float(fleet.alive_count()),
+        concurrency_fn=lambda: float(fleet.concurrency),
+    )
     server = LivenessServer(
         freshness_fn=fleet.freshness,
         stale_after=stale_after,
@@ -457,6 +464,7 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
         check_name="pg_queue_fleet",
         age_key="oldest_child_seconds_since_poll",
         extra_status_fn=_extra_status,
+        metrics_fn=metrics.render,
         thread_name="pg-supervisor-liveness",
         log_label="pg-queue supervisor",
     )

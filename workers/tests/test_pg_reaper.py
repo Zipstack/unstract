@@ -301,7 +301,7 @@ class TestSchedulerTick:
         with patch.object(
             reaper_mod,
             "recover_expired_barriers",
-            side_effect=lambda *_: order.append("recover") or [],
+            side_effect=lambda *_, **__: order.append("recover") or [],
         ):
             reaper.tick()
         assert order == ["recover", "schedule"]
@@ -409,9 +409,13 @@ class TestRetentionSweepTick:
             reaper.tick()
         stub_retention_sweep.results.assert_called_once_with(conn)
         stub_retention_sweep.dedup.assert_called_once_with(conn, 86400)
-        # Orphan-claim sweep (UN-3679) is wired with the api client + stuck-timeout.
+        # Orphan-claim sweep (UN-3679) is wired with the api client + stuck-timeout
+        # (+ the metrics exporter, so claim outcomes surface as counters).
         stub_retention_sweep.claims.assert_called_once_with(
-            conn, reaper._get_api_client(), reaper._stuck_timeout_seconds
+            conn,
+            reaper._get_api_client(),
+            reaper._stuck_timeout_seconds,
+            metrics=reaper.metrics,
         )
 
     def test_standby_does_not_sweep(self, stub_retention_sweep):
@@ -440,7 +444,7 @@ class TestRetentionSweepTick:
         with patch.object(
             reaper_mod,
             "recover_expired_barriers",
-            side_effect=lambda *_: order.append("recover") or [],
+            side_effect=lambda *_, **__: order.append("recover") or [],
         ):
             reaper.tick()
         assert order == ["recover", "schedule", "sweep"]
