@@ -38,7 +38,6 @@ class BaseAdapterSerializer(AuditSerializer):
         # auto-validator that 400s on re-save before the view can handle it.
         validators = []
         extra_kwargs = {
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -241,9 +240,8 @@ class SharedUserListSerializer(BaseAdapterSerializer):
         )  # type: ignore
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)

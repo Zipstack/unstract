@@ -43,7 +43,6 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
 
         return self.filter(
             Q(members=user)  # Owner or direct viewer (created_by is audit-only)
-            | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
@@ -120,12 +119,6 @@ class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
         blank=True,
     )
     # Sharing fields
-    shared_users = models.ManyToManyField(
-        User,
-        related_name="shared_pipelines",
-        blank=True,
-        db_comment="Users with whom this pipeline is shared",
-    )
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",

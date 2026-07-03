@@ -1,6 +1,10 @@
 from typing import Any
 
-from permissions.permission import _is_resource_owner, has_group_access
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -11,7 +15,7 @@ class PromptAcesssToUser(permissions.BasePermission):
     """Is the crud to Prompt/Notes allowed to user.
 
     A user qualifies when they own the parent ``CustomTool``, are a direct
-    ``shared_users`` member, reach the project via group sharing
+    viewer (VIEWER membership, UN-2202), reach the project via group sharing
     (``ResourceGroupShare`` on the parent tool), or are an org admin
     (org-wide admin override, UN-3479).
     """
@@ -22,7 +26,7 @@ class PromptAcesssToUser(permissions.BasePermission):
         tool = obj.tool_id
         if _is_resource_owner(request.user, tool):
             return True
-        if tool.shared_users.filter(pk=request.user.pk).exists():
+        if _is_resource_viewer(request.user, tool):
             return True
         if has_group_access(request.user, tool):
             return True

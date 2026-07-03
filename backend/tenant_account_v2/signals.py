@@ -3,9 +3,10 @@ import logging
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
-from django.db.models.fields.related import ManyToManyRel
+from django.db.models import ManyToManyField
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from permissions.roles import ResourceRole
 
 from tenant_account_v2.models import GroupMembership, OrganizationMember
 from tenant_account_v2.shareable_resources import SHAREABLE_RESOURCES
@@ -22,9 +23,11 @@ def cleanup_user_org_access(
     Two cleanups:
     1. Group memberships for that org (group-derived access goes away live
        via ``for_user()``).
-    2. Direct ``shared_users`` M2M entries on every shareable resource of
-       that org — closes the rejoin backdoor where a re-invited user would
-       silently regain direct access.
+    2. Direct VIEWER membership rows on every shareable resource of that org
+       — closes the rejoin backdoor where a re-invited user would silently
+       regain direct access. OWNER rows are left intact (parity with the old
+       ``shared_users``-only purge, where ``created_by`` ownership survived
+       re-invite); a departing owner's resources stay admin-manageable.
 
     Uses a signal (not DB CASCADE) so notification / audit hooks can attach
     here later without a schema change. The whole purge runs in one
@@ -51,31 +54,32 @@ def cleanup_user_org_access(
                 # App not installed in this deployment (e.g. cloud-only
                 # agentic_studio_v1 in pure OSS). Skip cleanly.
                 continue
-            # Delete via the M2M through table, not ``model.objects``: the
-            # default manager is org-scoped on ``UserContext`` (None outside
+            # Delete via the membership through table, not ``model.objects``:
+            # the default manager is org-scoped on ``UserContext`` (None outside
             # an HTTP request), so it would match zero rows in tests /
             # management commands. The through manager is unscoped; scope it
             # explicitly by the resource's own organization.
             try:
-                m2m_rel = model._meta.get_field("shared_users").remote_field
+                members_field = model._meta.get_field("members")
             except FieldDoesNotExist:
-                # A registered model can legitimately lack the sharing field
+                # A registered model can legitimately lack the membership field
                 # during the OSS<->cloud sync window (e.g. AgenticProject
-                # before #1508 applies its migration). Group memberships were
-                # already purged above; skip the direct-share purge here.
+                # before its migration applies). Group memberships were already
+                # purged above; skip the direct-share purge here.
                 continue
-            assert isinstance(m2m_rel, ManyToManyRel)
-            through = m2m_rel.through
-            source_fk = model._meta.model_name
+            assert isinstance(members_field, ManyToManyField)
+            through = members_field.remote_field.through
+            source_fk = members_field.m2m_field_name()  # e.g. "adapter"
             try:
                 removed, _ = through.objects.filter(
                     user=instance.user,
+                    role=ResourceRole.VIEWER,
                     **{f"{source_fk}__organization": instance.organization},
                 ).delete()
             except Exception:
                 logger.exception(
-                    "Failed purging shared_users for user=%s on %s.%s org=%s; "
-                    "rolling back the whole purge",
+                    "Failed purging VIEWER memberships for user=%s on %s.%s "
+                    "org=%s; rolling back the whole purge",
                     instance.user_id,
                     resource.app_label,
                     resource.model_name,
@@ -84,9 +88,9 @@ def cleanup_user_org_access(
                 raise
             if removed:
                 logger.info(
-                    "Removed user=%s from shared_users on %s %s.%s rows in org=%s",
-                    instance.user_id,
+                    "Removed %s VIEWER memberships for user=%s on %s.%s in org=%s",
                     removed,
+                    instance.user_id,
                     resource.app_label,
                     resource.model_name,
                     instance.organization_id,

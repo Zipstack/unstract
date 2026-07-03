@@ -51,7 +51,6 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
             self.get_queryset()
             .filter(
                 models.Q(members=user)
-                | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
                 | models.Q(pk__in=group_shared_ids)
@@ -142,11 +141,9 @@ class AdapterInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
         db_comment="Metadata about adapter deprecation (reason, date, replacement)",
     )
 
-    # Introduced field to establish M2M relation between users and adapters.
-    # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
-    # Owner (and, later, viewer) access lives here via the AdapterMember
-    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    # Owner + direct-viewer access lives here via the AdapterMember through
+    # model (UN-2202); ``created_by`` is audit-only. VIEWER rows are the
+    # successor to the former ``shared_users`` M2M.
     members = models.ManyToManyField(
         User,
         through="AdapterMember",

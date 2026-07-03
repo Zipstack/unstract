@@ -17,10 +17,11 @@ from account_v2.models import Organization, User
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.test import TestCase
+from permissions.roles import ResourceRole
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
-from workflow_manager.workflow_v2.models.workflow import Workflow
+from workflow_manager.workflow_v2.models.workflow import Workflow, WorkflowMember
 
 from tenant_account_v2.group_views import OrganizationGroupViewSet
 from tenant_account_v2.models import (
@@ -49,7 +50,20 @@ def _shared_group_ids(resource) -> set[int]:
 
 
 def _shared_user_ids(resource) -> set[int]:
-    return set(resource.shared_users.values_list("id", flat=True))
+    """Direct-viewer user ids (VIEWER memberships, UN-2202)."""
+    return set(
+        resource.memberships.filter(role=ResourceRole.VIEWER).values_list(
+            "user_id", flat=True
+        )
+    )
+
+
+def _add_viewers(resource, *users) -> None:
+    """Add direct viewers as VIEWER rows (successor to ``shared_users.add``)."""
+    for user in users:
+        resource.memberships.get_or_create(
+            user=user, defaults={"role": ResourceRole.VIEWER}
+        )
 
 
 class GroupSharingTestBase(TestCase):
@@ -80,6 +94,10 @@ class GroupSharingTestBase(TestCase):
 
         self.workflow = Workflow.objects.create(
             workflow_name="wf-1", organization=self.org, created_by=self.owner
+        )
+        # Creator's access flows through an OWNER membership row (UN-2202).
+        WorkflowMember.objects.create(
+            workflow=self.workflow, user=self.owner, role=ResourceRole.OWNER
         )
 
 
@@ -116,12 +134,12 @@ class ShareAuthorizationServiceTests(GroupSharingTestBase):
         self.assertTrue(self.workflow.shared_to_org)
 
     def test_admin_can_remove_users(self) -> None:
-        self.workflow.shared_users.add(self.member)
+        _add_viewers(self.workflow, self.member)
         self._authorize(self.admin, {"shared_users": []})
         self.assertEqual(_shared_user_ids(self.workflow), set())
 
     def test_unprivileged_cannot_remove_users(self) -> None:
-        self.workflow.shared_users.add(self.member, self.outsider)
+        _add_viewers(self.workflow, self.member, self.outsider)
         with self.assertRaises(PermissionDenied):
             # outsider (a shared user, not owner/admin) tries to drop member
             self._authorize(self.outsider, {"shared_users": [self.outsider.id]})
@@ -156,7 +174,7 @@ class ShareAuthorizationServiceTests(GroupSharingTestBase):
 
     def test_authorize_is_atomic_on_partial_denial(self) -> None:
         """A denial on any axis must leave every axis uncommitted."""
-        self.workflow.shared_users.add(self.outsider)
+        _add_viewers(self.workflow, self.outsider)
         with self.assertRaises(PermissionDenied):
             # users add is allowed for a shared user, but the org toggle isn't
             self._authorize(
@@ -229,7 +247,7 @@ class SignalCleanupTests(GroupSharingTestBase):
     """The two ``post_delete`` cleanups: rejoin-backdoor and orphan prevention."""
 
     def test_org_member_removal_purges_memberships_and_direct_shares(self) -> None:
-        self.workflow.shared_users.add(self.member)
+        _add_viewers(self.workflow, self.member)
         set_resource_share_groups(self.workflow, [self.group.id])
 
         OrganizationMember.objects.get(user=self.member).delete()

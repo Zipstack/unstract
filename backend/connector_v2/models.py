@@ -44,7 +44,6 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
             self.get_queryset()
             .filter(
                 models.Q(members=user)
-                | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
@@ -104,12 +103,6 @@ class ConnectorInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Is the connector shared to entire org",
-    )
-
-    # Introduced field to establish M2M relation between users and connectors.
-    # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_connectors", blank=True
     )
 
     # ``shared_groups`` is stored polymorphically in

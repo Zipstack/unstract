@@ -46,6 +46,17 @@ class HasMembersMixin:
     def owners(self) -> list[Any]:
         return [membership.user for membership in self.owner_memberships()]
 
+    def viewer_memberships(self) -> "models.QuerySet[Any]":
+        return self.memberships.filter(  # type: ignore[attr-defined]
+            role=ResourceRole.VIEWER
+        ).select_related("user")
+
+    def viewers(self) -> list[Any]:
+        """Direct viewers (VIEWER role) — the membership successor to the old
+        ``shared_users`` M2M (UN-2202 Phase 2).
+        """
+        return [membership.user for membership in self.viewer_memberships()]
+
     def co_owners_count(self) -> int:
         return self.memberships.filter(  # type: ignore[attr-defined]
             role=ResourceRole.OWNER

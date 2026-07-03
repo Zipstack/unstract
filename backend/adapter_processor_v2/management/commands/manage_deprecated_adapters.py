@@ -235,8 +235,8 @@ class Command(BaseCommand):
                 default_x2text_adapter=adapter
             ).count()
 
-        # Check if shared with users
-        usage_count += adapter.shared_users.count()
+        # Check if shared with direct viewers (VIEWER memberships, UN-2202)
+        usage_count += len(adapter.viewers())
 
         # Check if shared to organization
         if adapter.shared_to_org:

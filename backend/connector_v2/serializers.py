@@ -47,7 +47,6 @@ class ConnectorInstanceSerializer(AuditSerializer):
             "connector_name": {"required": False},
             # connector_mode is derived from the catalog in to_representation.
             "connector_mode": {"read_only": True},
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -201,7 +200,8 @@ class SharedUserListSerializer(ModelSerializer):
     def get_shared_users(self, obj):
         return [
             {"id": u.id, "email": u.email}
-            for u in obj.shared_users.filter(is_service_account=False)
+            for u in obj.viewers()
+            if not u.is_service_account
         ]
 
     def get_shared_groups(self, obj):

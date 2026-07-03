@@ -48,7 +48,6 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,
             },
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -206,10 +205,11 @@ class SharedUserListSerializer(ModelSerializer):
         ]
 
     def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
+        """Return direct viewers (VIEWER members) with id and email."""
         return [
             {"id": user.id, "email": user.email}
-            for user in obj.shared_users.filter(is_service_account=False)
+            for user in obj.viewers()
+            if not user.is_service_account
         ]
 
     def get_shared_groups(self, obj):

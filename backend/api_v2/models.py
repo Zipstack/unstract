@@ -48,7 +48,6 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return self.filter(
             Q(members=user)  # Owner or direct viewer (created_by is audit-only)
-            | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
@@ -107,9 +106,6 @@ class APIDeployment(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
         editable=False,
     )
     # Sharing fields
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_api_deployments", blank=True
-    )
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this API deployment is shared with the entire organization",
@@ -124,8 +120,9 @@ class APIDeployment(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
 
         return get_resource_share_groups(self)
 
-    # Owner (and, later, viewer) access lives here via the APIDeploymentMember
-    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    # Owner + direct-viewer access lives here via the APIDeploymentMember
+    # through model (UN-2202); ``created_by`` is audit-only. VIEWER rows are
+    # the successor to the former ``shared_users`` M2M.
     members = models.ManyToManyField(
         User,
         through="APIDeploymentMember",

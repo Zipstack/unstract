@@ -87,9 +87,9 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
-    # Share mutations go through ``POST /prompt-studio/{id}/share/``;
-    # both axes are read-only on this serializer (UN-2977 plan §B).
-    shared_users = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # Share mutations go through ``POST /prompt-studio/{id}/share/``; the
+    # groups axis is read-only here (UN-2977 plan §B). Direct viewers live in
+    # the membership table (UN-2202) and surface via the share-modal serializer.
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
@@ -256,9 +256,8 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         )
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)

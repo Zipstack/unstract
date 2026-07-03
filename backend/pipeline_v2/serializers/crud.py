@@ -44,7 +44,6 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         # that 400s on re-save before the view can map a friendly message.
         validators = []
         extra_kwargs = {
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 

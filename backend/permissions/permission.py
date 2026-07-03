@@ -74,6 +74,23 @@ def _is_resource_owner(user: Any, obj: Any) -> bool:
     return memberships.filter(user=user, role=ResourceRole.OWNER).exists()
 
 
+def _is_resource_viewer(user: Any, obj: Any) -> bool:
+    """True if ``user`` has direct viewer access to ``obj``.
+
+    Symmetric to :func:`_is_resource_owner`. Resources migrated to the
+    membership model expose ``memberships`` — a direct viewer is a VIEWER-role
+    row (the successor to the old ``shared_users`` M2M, UN-2202 Phase 2).
+    Resources not yet migrated fall back to the ``shared_users`` M2M so the
+    shared permission classes keep working for both.
+    """
+    memberships = getattr(obj, "memberships", None)
+    if memberships is None:
+        return obj.shared_users.filter(pk=user.pk).exists()
+    from permissions.roles import ResourceRole
+
+    return memberships.filter(user=user, role=ResourceRole.VIEWER).exists()
+
+
 class IsOwner(permissions.BasePermission):
     """Allow owners and org admins.
 
@@ -137,7 +154,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
             return True
         return (
             _is_resource_owner(request.user, obj)
-            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or _is_resource_viewer(request.user, obj)
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
         )
@@ -151,7 +168,7 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
             return True
         return (
             _is_resource_owner(request.user, obj)
-            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or _is_resource_viewer(request.user, obj)
             or obj.shared_to_org
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)

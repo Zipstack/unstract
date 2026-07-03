@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import models, transaction
 from tenant_account_v2.models import OrganizationMember
 
@@ -15,7 +16,7 @@ if TYPE_CHECKING:
 
     from platform_api.models import PlatformApiKey
 
-# Business app labels whose models may have created_by / shared_users fields.
+# Business app labels whose models may carry created_by / membership rows.
 # Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
 _BUSINESS_APP_LABELS = {
     "adapter_processor_v2",
@@ -73,11 +74,18 @@ def _get_user_fk_fields(model: type) -> list[str]:
 
 
 def _get_user_m2m_fields(model: type) -> list[str]:
-    """Return names of all ManyToManyField fields pointing to User."""
+    """Return names of ManyToMany-to-User fields safe to mutate via ``.add()``.
+
+    Membership M2Ms (UN-2202) use a custom through model with a ``role``
+    column, which Django forbids mutating with ``.add()``/``.remove()``. Those
+    are excluded here and transferred by :func:`_transfer_membership_rows`.
+    """
     return [
         f.name
         for f in model._meta.get_fields()
-        if isinstance(f, models.ManyToManyField) and f.related_model is User
+        if isinstance(f, models.ManyToManyField)
+        and f.related_model is User
+        and f.remote_field.through._meta.auto_created
     ]
 
 
@@ -106,17 +114,47 @@ def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> No
             getattr(instance, field_name).add(to_user)
             getattr(instance, field_name).remove(from_user)
 
+    _transfer_membership_rows(model, from_user, to_user)
+
+
+def _transfer_membership_rows(model: type, from_user: User, to_user: User) -> None:
+    """Re-point OWNER/VIEWER membership rows from one user to another.
+
+    Membership M2Ms use a custom through model (UN-2202) that ``.add()`` can't
+    touch. ``unique_together(user, resource)`` means a resource already held by
+    ``to_user`` can't gain a second row — drop ``from_user``'s row there instead.
+    """
+    try:
+        members_field = model._meta.get_field("members")
+    except FieldDoesNotExist:
+        return
+    if not (
+        isinstance(members_field, models.ManyToManyField)
+        and members_field.related_model is User
+    ):
+        return
+    through = members_field.remote_field.through
+    source_fk_id = f"{members_field.m2m_field_name()}_id"  # e.g. "adapter_id"
+    held_resource_ids = set(
+        through.objects.filter(user=to_user).values_list(source_fk_id, flat=True)
+    )
+    for row in through.objects.filter(user=from_user):
+        if getattr(row, source_fk_id) in held_resource_ids:
+            row.delete()  # to_user already has a role on this resource
+        else:
+            row.user = to_user
+            row.save(update_fields=["user"])
+
 
 def transfer_ownership(from_user: User, to_user: User | None) -> None:
     """Transfer all resource ownership from one user to another.
 
     Replaces from_user with to_user across business models:
     - created_by / modified_by ForeignKey fields
-    - shared_users ManyToMany fields
-
-    Also cleans up redundancy: if to_user becomes created_by (owner),
-    they are removed from shared_users on that record since ownership
-    already grants full access.
+    - auto-through ManyToMany fields to User
+    - OWNER/VIEWER membership rows (custom-through, UN-2202) — re-pointed with
+      ``unique_together`` dedup so a resource to_user already holds isn't
+      duplicated.
     """
     if not to_user:
         return

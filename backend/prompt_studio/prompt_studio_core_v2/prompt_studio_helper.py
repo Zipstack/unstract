@@ -11,7 +11,11 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
-from permissions.permission import has_group_access
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -86,6 +90,20 @@ CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
+
+
+def _adapter_accessible_by(adapter: AdapterInstance, user: User) -> bool:
+    """Whether ``user`` may use ``adapter`` (owner, direct viewer, org, or group).
+
+    ``created_by`` is audit-only since UN-2202 — access is owner/viewer role
+    based via the membership bridges.
+    """
+    return (
+        adapter.shared_to_org
+        or _is_resource_owner(user, adapter)
+        or _is_resource_viewer(user, adapter)
+        or has_group_access(user, adapter)
+    )
 
 
 class PromptStudioHelper:
@@ -204,38 +222,15 @@ class PromptStudioHelper:
         if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
             return
 
-        is_llm_owned = (
-            profile_manager.llm.shared_to_org
-            or profile_manager.llm.created_by == profile_manager_owner
-            or profile_manager.llm.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.llm)
+        owner = profile_manager_owner
+        is_llm_owned = _adapter_accessible_by(profile_manager.llm, owner)
+        is_vector_store_owned = _adapter_accessible_by(
+            profile_manager.vector_store, owner
         )
-        is_vector_store_owned = (
-            profile_manager.vector_store.shared_to_org
-            or profile_manager.vector_store.created_by == profile_manager_owner
-            or profile_manager.vector_store.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.vector_store)
+        is_embedding_model_owned = _adapter_accessible_by(
+            profile_manager.embedding_model, owner
         )
-        is_embedding_model_owned = (
-            profile_manager.embedding_model.shared_to_org
-            or profile_manager.embedding_model.created_by == profile_manager_owner
-            or profile_manager.embedding_model.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.embedding_model)
-        )
-        is_x2text_owned = (
-            profile_manager.x2text.shared_to_org
-            or profile_manager.x2text.created_by == profile_manager_owner
-            or profile_manager.x2text.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.x2text)
-        )
+        is_x2text_owned = _adapter_accessible_by(profile_manager.x2text, owner)
 
         if not (
             is_llm_owned

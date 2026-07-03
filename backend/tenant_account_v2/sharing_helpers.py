@@ -218,17 +218,17 @@ def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     """
     seen: dict[int, dict[str, Any]] = {}
 
-    # Direct shares
-    direct_users = list(
-        resource_obj.shared_users.filter(is_service_account=False).values(
-            "id", "email", "first_name", "last_name"
-        )
-    )
-    for u in direct_users:
-        seen[u["id"]] = {
-            "user_id": u["id"],
-            "email": u["email"],
-            "display_name": _display_name(u),
+    # Direct shares — VIEWER membership rows (UN-2202 Phase 2 successor to the
+    # old ``shared_users`` M2M). Owners are excluded here: they hold the
+    # resource, they are not "shared with" it (parity with prior behavior).
+    for membership in resource_obj.viewer_memberships():
+        user = membership.user
+        if getattr(user, "is_service_account", False):
+            continue
+        seen[user.id] = {
+            "user_id": user.id,
+            "email": user.email,
+            "display_name": _user_display_name(user),
             "access_via": "direct",
             "group_id": None,
             "group_name": None,
@@ -283,15 +283,6 @@ def _add_org_members(seen: dict[int, dict[str, Any]], resource_obj: Any) -> None
             "group_id": None,
             "group_name": None,
         }
-
-
-def _display_name(user_dict: dict[str, Any]) -> str:
-    parts = [
-        (user_dict.get("first_name") or "").strip(),
-        (user_dict.get("last_name") or "").strip(),
-    ]
-    full = " ".join(p for p in parts if p)
-    return full or user_dict.get("email") or ""
 
 
 def _user_display_name(user: User) -> str:
@@ -371,7 +362,9 @@ class ShareAuthorizationService:
             cls._commit(resource, desired)
             return
 
-        is_owner = resource.created_by_id == actor.pk
+        # Ownership is role-based (OWNER membership), not ``created_by``, since
+        # UN-2202 — ``created_by`` is audit-only.
+        is_owner = resource.is_owner(actor)
         is_admin = is_org_admin(actor)
         cls._authorize(actor, resource, desired, is_owner, is_admin)
         cls._commit(resource, desired)
@@ -533,9 +526,22 @@ class ShareAuthorizationService:
 
     @staticmethod
     def _current_ids(resource: Any, axis: str) -> set[int]:
+        if axis == ShareAuthorizationService.USERS_AXIS:
+            return ShareAuthorizationService._current_viewer_ids(resource)
         if axis == ShareAuthorizationService.GROUPS_AXIS:
             return set(get_resource_share_groups(resource).values_list("id", flat=True))
         return set(getattr(resource, axis).values_list("pk", flat=True))
+
+    @staticmethod
+    def _current_viewer_ids(resource: Any) -> set[int]:
+        """User ids holding a VIEWER membership row on ``resource``."""
+        from permissions.roles import ResourceRole
+
+        return set(
+            resource.memberships.filter(role=ResourceRole.VIEWER).values_list(
+                "user_id", flat=True
+            )
+        )
 
     # ----------------------------------------------------------------- write
 
@@ -543,7 +549,7 @@ class ShareAuthorizationService:
     @transaction.atomic
     def _commit(cls, resource: Any, desired: dict[str, Any]) -> None:
         if cls.USERS_AXIS in desired:
-            getattr(resource, cls.USERS_AXIS).set(desired[cls.USERS_AXIS] or [])
+            cls._set_viewer_members(resource, desired[cls.USERS_AXIS] or [])
         if cls.GROUPS_AXIS in desired:
             set_resource_share_groups(resource, desired[cls.GROUPS_AXIS] or [])
         if cls.ORG_AXIS in desired:
@@ -551,6 +557,31 @@ class ShareAuthorizationService:
             if bool(getattr(resource, cls.ORG_AXIS)) != new_value:
                 setattr(resource, cls.ORG_AXIS, new_value)
                 resource.save(update_fields=[cls.ORG_AXIS, "modified_at"])
+
+    @staticmethod
+    def _set_viewer_members(resource: Any, desired_ids: Iterable[int]) -> None:
+        """Replace ``resource``'s VIEWER membership rows to match ``desired_ids``.
+
+        Mirrors M2M ``.set()`` semantics over the membership table. OWNER rows
+        are never touched: a desired id that is already an OWNER is left as-is
+        (``unique_together`` forbids a second row), so owners are never demoted
+        or duplicated (UN-2202 Phase 2).
+        """
+        from permissions.roles import ResourceRole
+
+        desired = {int(pk) for pk in desired_ids or ()}
+        memberships = resource.memberships
+        current_viewer_ids = set(
+            memberships.filter(role=ResourceRole.VIEWER).values_list("user_id", flat=True)
+        )
+        to_remove = current_viewer_ids - desired
+        if to_remove:
+            memberships.filter(role=ResourceRole.VIEWER, user_id__in=to_remove).delete()
+        for user_id in desired - current_viewer_ids:
+            # get_or_create: an existing OWNER row is returned untouched.
+            memberships.get_or_create(
+                user_id=user_id, defaults={"role": ResourceRole.VIEWER}
+            )
 
     # ------------------------------------------------------------ exceptions
 

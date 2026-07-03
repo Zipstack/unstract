@@ -30,10 +30,9 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         ]
 
     def get_shared_users(self, obj):
-        """Get list of shared users with their details."""
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        """Get direct viewers (VIEWER members) with their details."""
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
