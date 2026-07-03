@@ -3,7 +3,7 @@
 The callback (``process_batch_callback`` / ``_api``) re-runs status update,
 subscription-usage billing and customer webhooks wholesale; on the PG path it can
 be REDELIVERED (the ``PgQueueClient.send`` commit-retry double-enqueue, an
-idle-reaped ack, a vt overrun). When a prior delivery already finalized the
+idle-reaped ack, a vt overrun). When a prior delivery already COMPLETED the
 execution, the redelivery must SKIP its side effects. The guard is PG-gated by the
 ``_pg_transport`` marker the barrier stamps on the PG dispatch, so the Celery
 ``.link`` path (no redelivery) is a strict no-op.
@@ -11,6 +11,7 @@ execution, the redelivery must SKIP its side effects. The guard is PG-gated by t
 
 from __future__ import annotations
 
+import pytest
 from unittest.mock import MagicMock, patch
 
 import callback.tasks as cb
@@ -18,88 +19,80 @@ from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 from unstract.core.data_models import ExecutionStatus
 
 
-def _exec_response(status: str, *, success: bool = True):
-    return MagicMock(success=success, data={"execution": {"status": status}})
+class TestCallbackAlreadyRan:
+    """The pure predicate: COMPLETED only (a status a prior callback alone sets)."""
 
+    def test_completed_is_true(self):
+        assert cb._callback_already_ran(ExecutionStatus.COMPLETED.value) is True
 
-class TestExecutionAlreadyFinalized:
-    def test_terminal_is_true(self):
-        api = MagicMock()
-        api.get_workflow_execution.return_value = _exec_response(
-            ExecutionStatus.COMPLETED.value
-        )
-        assert cb._pg_execution_already_finalized(api, "e1") is True
-
-    def test_non_terminal_is_false(self):
-        api = MagicMock()
-        api.get_workflow_execution.return_value = _exec_response(
-            ExecutionStatus.EXECUTING.value
-        )
-        assert cb._pg_execution_already_finalized(api, "e1") is False
-
-    def test_unsuccessful_fetch_proceeds(self):
-        api = MagicMock()
-        api.get_workflow_execution.return_value = _exec_response("x", success=False)
-        assert cb._pg_execution_already_finalized(api, "e1") is False
-
-    def test_fetch_error_proceeds_not_raises(self):
-        # Best-effort: a fetch failure must proceed (tolerable duplicate), never
-        # raise (which would fail the callback) or wrongly skip a real callback.
-        api = MagicMock()
-        api.get_workflow_execution.side_effect = RuntimeError("api down")
-        assert cb._pg_execution_already_finalized(api, "e1") is False
+    @pytest.mark.parametrize(
+        "status",
+        [
+            ExecutionStatus.EXECUTING.value,
+            ExecutionStatus.PENDING.value,
+            # ERROR / STOPPED can be set by OTHER paths → NOT "a prior callback ran".
+            ExecutionStatus.ERROR.value,
+            ExecutionStatus.STOPPED.value,
+            None,
+        ],
+    )
+    def test_non_completed_is_false(self, status):
+        assert cb._callback_already_ran(status) is False
 
 
 class TestCoreCallbackGuard:
     """``_process_batch_callback_core`` short-circuits a PG duplicate before any
-    side effect, and only on the PG path.
+    side effect (using the status the context already carries), and only on PG.
     """
 
-    def _context(self):
+    def _context(self, status):
         ctx = MagicMock()
         ctx.organization_id = "org-1"
         ctx.api_client = MagicMock()
         ctx.execution_id = "e1"
+        ctx.execution_status = status
         return ctx
 
-    def _run(self, *, is_pg: bool, terminal: bool):
+    def _run(self, *, is_pg: bool, status: str):
         kwargs = {"execution_id": "e1"}
         if is_pg:
             kwargs[PG_TRANSPORT_CALLBACK_KWARG] = True
+        extract = MagicMock(return_value=self._context(status))
         with (
             patch.object(cb, "_initialize_performance_managers"),
-            patch.object(cb, "_extract_callback_parameters", return_value=self._context()),
-            patch.object(
-                cb, "_pg_execution_already_finalized", return_value=terminal
-            ) as finalized,
+            patch.object(cb, "_extract_callback_parameters", extract),
             patch.object(cb, "_determine_execution_status_unified") as determine,
         ):
             determine.side_effect = AssertionError("side effects must not run")
             out = cb._process_batch_callback_core(MagicMock(), [], **kwargs)
-        return out, finalized, determine
+        return out, extract, determine
 
     def test_pg_duplicate_skips_side_effects(self):
-        out, finalized, determine = self._run(is_pg=True, terminal=True)
+        out, extract, determine = self._run(
+            is_pg=True, status=ExecutionStatus.COMPLETED.value
+        )
         assert out["status"] == "skipped_duplicate_callback"
         assert out["duplicate_callback_skipped"] is True
-        finalized.assert_called_once()
         determine.assert_not_called()  # no status update / billing / webhooks
+        # The marker must be popped BEFORE extraction — never leak into the context.
+        assert PG_TRANSPORT_CALLBACK_KWARG not in extract.call_args.args[2]
 
-    def test_pg_non_terminal_proceeds(self):
-        # Not yet finalized → the guard must let the callback run (reaches the
-        # side-effect step, which we stubbed to raise as the proof-of-reach).
-        import pytest
-
+    def test_pg_non_completed_proceeds(self):
+        # Not COMPLETED → the guard lets the callback run (reaches the side-effect
+        # step, stubbed to raise as the proof-of-reach).
         with pytest.raises(AssertionError, match="side effects must not run"):
-            self._run(is_pg=True, terminal=False)
+            self._run(is_pg=True, status=ExecutionStatus.EXECUTING.value)
 
-    def test_celery_never_checks_or_skips(self):
-        # No marker → the guard is skipped entirely (finalized never called) and
-        # the callback proceeds — proving zero Celery regression.
-        import pytest
-
+    def test_pg_error_status_proceeds(self):
+        # ERROR is excluded (may be external) → the first callback must still run.
         with pytest.raises(AssertionError, match="side effects must not run"):
-            _, finalized, _ = self._run(is_pg=False, terminal=True)
+            self._run(is_pg=True, status=ExecutionStatus.ERROR.value)
+
+    def test_celery_never_skips(self):
+        # No marker → guard skipped entirely; the callback proceeds even on a
+        # COMPLETED status — proving zero Celery regression.
+        with pytest.raises(AssertionError, match="side effects must not run"):
+            self._run(is_pg=False, status=ExecutionStatus.COMPLETED.value)
 
 
 class TestApiCallbackGuard:
@@ -107,10 +100,7 @@ class TestApiCallbackGuard:
     execution status it already fetches (no extra round-trip).
     """
 
-    def _run(self, *, is_pg: bool, terminal: bool):
-        status = (
-            ExecutionStatus.COMPLETED.value if terminal else ExecutionStatus.EXECUTING.value
-        )
+    def _run(self, *, is_pg: bool, status: str):
         api = MagicMock()
         api.get_workflow_execution.return_value = MagicMock(
             success=True,
@@ -126,21 +116,21 @@ class TestApiCallbackGuard:
         task.request.id = "t1"
         with (
             patch.object(cb, "create_api_client", return_value=api),
-            patch.object(
-                cb, "_determine_execution_status_unified"
-            ) as determine,
+            patch.object(cb, "_determine_execution_status_unified") as determine,
         ):
             determine.side_effect = AssertionError("side effects must not run")
             out = cb.process_batch_callback_api(task, [], **kwargs)
         return out, determine
 
     def test_pg_duplicate_skips_side_effects(self):
-        out, determine = self._run(is_pg=True, terminal=True)
+        out, determine = self._run(is_pg=True, status=ExecutionStatus.COMPLETED.value)
         assert out["status"] == "skipped_duplicate_callback"
         determine.assert_not_called()
 
-    def test_celery_never_skips(self):
-        import pytest
-
+    def test_pg_non_completed_proceeds(self):
         with pytest.raises(AssertionError, match="side effects must not run"):
-            self._run(is_pg=False, terminal=True)
+            self._run(is_pg=True, status=ExecutionStatus.EXECUTING.value)
+
+    def test_celery_never_skips(self):
+        with pytest.raises(AssertionError, match="side effects must not run"):
+            self._run(is_pg=False, status=ExecutionStatus.COMPLETED.value)

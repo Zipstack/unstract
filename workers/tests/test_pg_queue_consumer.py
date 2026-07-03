@@ -217,7 +217,7 @@ class TestPipelineIdentity:
 
     def test_from_positional_orchestration_args(self):
         # async_execute_bin passes identity POSITIONALLY: args=[schema, workflow,
-        # execution_id, hash]. The fallback needs the task_name to apply.
+        # execution_id, hash]. The fallback keys off the payload's own task_name.
         from queue_backend.pg_queue.consumer import _pipeline_identity
 
         payload = {
@@ -225,19 +225,25 @@ class TestPipelineIdentity:
             "args": ["org-schema", "wf-1", "exec-9", {}],
             "kwargs": {"pipeline_id": "p"},
         }
-        assert _pipeline_identity(payload, "async_execute_bin") == (
-            "exec-9",
-            "org-schema",
-        )
-        # Without the task_name the positional map is inert (unknown task).
-        assert _pipeline_identity(payload) == (None, "")
+        assert _pipeline_identity(payload) == ("exec-9", "org-schema")
+        # An unknown task_name leaves the positional map inert.
+        assert _pipeline_identity({**payload, "task_name": "some.other"}) == (None, "")
 
     def test_positional_short_args_no_indexerror(self):
-        # A malformed/short args list must not IndexError on the poison-drop path.
+        # A short args list (missing the execution_id index) must not IndexError;
+        # it yields no identity — harmless, since with no execution_id the poison
+        # drop bare-deletes anyway (the org is only used alongside an execution_id).
         from queue_backend.pg_queue.consumer import _pipeline_identity
 
         payload = {"task_name": "async_execute_bin", "args": ["org-schema"]}
-        assert _pipeline_identity(payload, "async_execute_bin") == (None, "org-schema")
+        assert _pipeline_identity(payload) == (None, "")
+
+    def test_positional_non_sequence_args_no_crash(self):
+        # A non-list args (malformed payload) must not TypeError/IndexError.
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {"task_name": "async_execute_bin", "args": {"not": "a list"}}
+        assert _pipeline_identity(payload) == (None, "")
 
 
 class TestPoisonDropMarksExecution:

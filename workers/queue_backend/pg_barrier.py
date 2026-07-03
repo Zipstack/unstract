@@ -193,9 +193,9 @@ _BARRIER_RETRY_BACKOFF_SECONDS: Final = 0.5
 
 # Callback kwarg the PG barrier stamps on the aggregating callback's dispatch so
 # the callback can PG-gate its at-least-once duplicate guard (see
-# _fire_barrier_callback). Matched by the same literal in callback/tasks.py — a
-# drift is caught by the callback's PG-guard test (the guard silently stops
-# firing). Underscore-prefixed so it can't collide with a real task kwarg.
+# _fire_barrier_callback). callback/tasks.py IMPORTS this symbol (not a re-typed
+# literal), so the producer and consumer can't drift. Underscore-prefixed so it
+# can't collide with a real task kwarg.
 PG_TRANSPORT_CALLBACK_KWARG: Final = "_pg_transport"
 
 # One retry for the NON-idempotent barrier DECREMENT — but only on an

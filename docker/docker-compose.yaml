@@ -603,7 +603,7 @@ services:
       # bounded-minutes orchestration, and idempotency-guarded (UN-3671) so a vt
       # overrun can't double-orchestrate. Without an explicit vt the consumer
       # defaults to 30s and a slow dispatch redelivers mid-run. 600/660 mirrors the
-      # k8s chart (grace-equivalent handled by restart:unless-stopped here).
+      # k8s deployment defaults (grace-equivalent handled by restart:unless-stopped here).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_ORCHESTRATOR_VT_SECONDS:-600}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_ORCHESTRATOR_HEALTH_STALE_SECONDS:-660}
     labels:
@@ -636,7 +636,7 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       # Orchestration is bounded-minutes + claim-guarded (see orchestrator-api).
-      # Without an explicit vt it defaults to 30s. 600/660 mirrors the k8s chart.
+      # Without an explicit vt it defaults to 30s. 600/660 matches our k8s deployment defaults (workerPg* values, separate chart repo).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_ORCHESTRATOR_VT_SECONDS:-600}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_ORCHESTRATOR_HEALTH_STALE_SECONDS:-660}
     labels:
@@ -713,7 +713,7 @@ services:
       # The aggregating callback (fan-in) runs after all batches: aggregate results,
       # update status, push destination, notify. Without an explicit vt it defaults
       # to 30s and a >30s callback redelivers — re-firing webhooks + subscription
-      # billing. 3660/3720 mirrors the k8s chart.
+      # billing. 3660/3720 matches our k8s deployment defaults (separate chart repo).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_CALLBACK_VT_SECONDS:-3660}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_CALLBACK_HEALTH_STALE_SECONDS:-3720}
     labels:
@@ -750,7 +750,7 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=scheduler
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       # Scheduled-trigger dispatch is quick (enqueue the execution). Without an
-      # explicit vt it defaults to 30s. 180/240 mirrors the k8s chart.
+      # explicit vt it defaults to 30s. 180/240 matches our k8s deployment defaults (separate chart repo).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_SCHEDULER_VT_SECONDS:-180}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_SCHEDULER_HEALTH_STALE_SECONDS:-240}
     labels:
