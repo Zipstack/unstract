@@ -104,14 +104,52 @@ class _PoisonMarkOutcome(Enum):
     TRANSIENT = "transient"  # backend down / client build failed → re-park
 
 
+# Fire-and-forget tasks that carry their identity POSITIONALLY (in ``args``, not
+# ``kwargs`` / ``_barrier_context``), mapped to ``(execution_id_index,
+# organization_id_index)``. ``async_execute_bin`` is dispatched
+# ``args=[schema_name, workflow_id, execution_id, hash_values]`` by the backend
+# (workflow_helper._dispatch_orchestrator_task) — keep this map in step with that
+# arg layout. Its poison drop happens BEFORE the barrier is armed AND before the
+# orchestration claim is taken (a circuit-breaker-open drop, or repeated pre-claim
+# failures), so the strand has NO ``pg_barrier_state`` row and NO
+# ``pg_orchestration_claim`` row: it is invisible to every reaper sweep. Without
+# recovering the execution_id here the poison drop can only bare-delete → the
+# execution hangs EXECUTING forever with no handle. ``args[0]`` (org schema)
+# doubles as the org.
+_POSITIONAL_IDENTITY_ARGS: dict[str, tuple[int, int]] = {
+    "async_execute_bin": (2, 0),
+}
+
+
+def _positional_identity(payload: TaskPayload) -> tuple[str | None, str | None]:
+    """``(execution_id, organization_id)`` from a positional-args orchestration
+    payload, keyed off the payload's own ``task_name`` (no separate arg to drift
+    from it). ``(None, None)`` when the task doesn't carry identity positionally, or
+    ``args`` is not a sequence / is too short (defensive — a malformed payload must
+    not ``IndexError`` on the poison-drop path). See :data:`_POSITIONAL_IDENTITY_ARGS`.
+    """
+    indices = _POSITIONAL_IDENTITY_ARGS.get(payload.get("task_name") or "")
+    if indices is None:
+        return (None, None)
+    args = payload.get("args") or []
+    exec_idx, org_idx = indices
+    # Bounds- AND type-check before ANY indexing: a short or non-sequence ``args``
+    # returns (None, None) rather than indexing (no IndexError/TypeError path).
+    if not isinstance(args, (list, tuple)) or len(args) <= max(exec_idx, org_idx):
+        return (None, None)
+    return (args[exec_idx], args[org_idx])
+
+
 def _pipeline_identity(payload: TaskPayload) -> tuple[str | None, str]:
     """Best-effort ``(execution_id, organization_id)`` from a fire-and-forget
     payload, for marking the execution ERROR on a poison drop.
 
-    The identity lives in one of three places, tried in order: directly on a
+    The identity lives in one of four places, tried in order: directly on a
     callback payload's ``kwargs`` (the aggregating-callback case — the sharpest
     strand); on the injected ``_barrier_context``'s callback descriptor (a
-    pipeline header); or the org on the ``fairness`` payload. The callback-
+    pipeline header); the org on the ``fairness`` payload; or — for orchestration
+    messages, which pass identity POSITIONALLY — the task's ``args`` (see
+    :func:`_positional_identity`). The callback-
     descriptor dig goes through :func:`callback_recovery_identity` so it can't
     drift from the barrier abort site. Returns ``(None, "")`` when the payload
     isn't a pipeline message — nothing to mark. ``organization_id`` may be ``""``
@@ -123,13 +161,18 @@ def _pipeline_identity(payload: TaskPayload) -> tuple[str | None, str]:
     cb_execution_id, cb_org = callback_recovery_identity(
         barrier_ctx.get("callback_descriptor") or {}
     )
+    pos_execution_id, pos_org = _positional_identity(payload)
     execution_id = (
-        kwargs.get("execution_id") or barrier_ctx.get("execution_id") or cb_execution_id
+        kwargs.get("execution_id")
+        or barrier_ctx.get("execution_id")
+        or cb_execution_id
+        or pos_execution_id
     )
     organization_id = (
         kwargs.get("organization_id")
         or cb_org
         or (payload.get("fairness") or {}).get("org_id")
+        or pos_org
     )
     return (
         str(execution_id) if execution_id else None,

@@ -550,6 +550,44 @@ class TestClaimOrchestrationRetry:
             try_claim_orchestration("exec-1", "org-1")
 
 
+class TestReleaseOrchestrationClaimRetry:
+    """``release_orchestration_claim`` is a first-write-after-idle on the failure
+    path whose raise the caller swallows — an un-retried idle-reap would leave the
+    claim committed and suppress every redelivery. Its DELETE is idempotent, so it
+    reuses the retry-once helper.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_sleep(self, monkeypatch):
+        monkeypatch.setattr(pg_barrier.time, "sleep", lambda *_a, **_k: None)
+
+    def test_retries_once_on_reaped_cached_conn(self, _clean_local, monkeypatch, caplog):
+        dead = _FakeConn(
+            execute_error=psycopg2.InterfaceError("connection already closed")
+        )
+        healthy = _FakeConn()
+        pg_barrier._local.conn = dead
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
+
+        with caplog.at_level("WARNING"):
+            pg_barrier.release_orchestration_claim("exec-1")
+
+        assert dead.executes == 1 and healthy.executes == 1  # exactly one retry
+        assert dead.closed is True  # stale conn discarded
+        assert healthy.commits == 1  # committed on the retry
+        assert "release orchestration claim" in caplog.text
+
+    def test_non_connection_error_surfaces(self, _clean_local, monkeypatch):
+        # A real (non-connection) error must not be silently retried away — it
+        # propagates so the best-effort caller logs it.
+        pg_barrier._local.conn = _FakeConn(execute_error=ValueError("logic"))
+        monkeypatch.setattr(
+            pg_barrier, "create_pg_connection", lambda **_k: pytest.fail("no reconnect")
+        )
+        with pytest.raises(ValueError, match="logic"):
+            pg_barrier.release_orchestration_claim("exec-1")
+
+
 # --- Layer 2: enqueue + link/abort with a real injected connection ---
 
 
@@ -1315,6 +1353,27 @@ class TestPgFireAndForgetMode:
         assert cb_id == "pg-cb-1"
         assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
         assert mock_dispatch.call_args.kwargs["args"] == [[{"r": 1}]]
+
+    def test_fire_barrier_callback_pg_tags_transport_marker(self):
+        # The PG callback carries the _pg_transport marker so the aggregating
+        # callback can gate its at-least-once duplicate guard on it. The shared
+        # descriptor must NOT be mutated (a copy is dispatched).
+        descriptor = {**_CALLBACK, "transport": "pg_queue"}
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="pg-cb")
+            _fire_barrier_callback(descriptor, [{"r": 1}])
+        dispatched = mock_dispatch.call_args.kwargs["kwargs"]
+        assert dispatched.get(pg_barrier.PG_TRANSPORT_CALLBACK_KWARG) is True
+        assert pg_barrier.PG_TRANSPORT_CALLBACK_KWARG not in descriptor["kwargs"]
+
+    def test_fire_barrier_callback_legacy_omits_transport_marker(self):
+        # The Celery .link path must NOT inject the marker → the callback's PG
+        # guard stays a no-op on Celery (no redelivery to guard).
+        with patch("celery.current_app.signature") as sig:
+            sig.return_value.apply_async.return_value = MagicMock(id="celery-cb")
+            _fire_barrier_callback(_CALLBACK, [{"r": 1}])
+        passed = sig.call_args.kwargs["kwargs"]
+        assert pg_barrier.PG_TRANSPORT_CALLBACK_KWARG not in passed
 
     def test_fire_barrier_callback_pg_carries_fairness(self):
         # greptile: the PG callback must ride the producer's org/priority (parity

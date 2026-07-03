@@ -306,6 +306,29 @@ def async_execute_bin_general(
             workflow_id = execution_data.get("workflow_id")
 
             logger.info(f"Execution {execution_id} status: {current_status}")
+            # PG redelivery guard (defense-in-depth): the orchestration claim
+            # tombstone normally blocks re-orchestrating a COMPLETED execution, but
+            # if that tombstone was GC'd (e.g. the reaper's stuck-timeout was lowered
+            # to test) a redelivery could reach here, win a fresh claim, and re-arm +
+            # re-dispatch a finished execution — duplicate (costly) destination
+            # writes when use_file_history=False. Skip if already terminal, keeping
+            # the freshly-won claim so it re-establishes the tombstone. PG only:
+            # Celery has no redelivery, so the orchestrator only ever runs on a
+            # non-terminal execution — the check is a no-op there.
+            if (
+                is_pg_transport(transport)
+                and current_status in ExecutionStatus.terminal_values()
+            ):
+                logger.warning(
+                    f"Execution {execution_id} already terminal ({current_status}) "
+                    f"at orchestration entry — skipping re-orchestration (a PG "
+                    f"redelivery of a finished execution)."
+                )
+                return {
+                    "status": "skipped_terminal_execution",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                }
             # Note: We allow PENDING executions to continue - they should process available files
 
             # NOTE: Concurrent executions are allowed - individual active files are filtered out

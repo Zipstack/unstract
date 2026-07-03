@@ -338,6 +338,104 @@ class TestSendReconnectRetry:
         sleep.assert_not_called()
 
 
+class TestDeleteReconnectRetry:
+    """``delete()``'s (ack) one-shot reconnect-retry — the systematic first-write-
+    after-idle site: the consumer connection idles for the whole task wall-clock,
+    so a reaped conn kills the ack and redelivers an ALREADY-COMPLETED message
+    (duplicate work / double-fired callback). Unlike ``send()`` the DELETE is
+    idempotent, so retrying is safe even post-commit.
+    """
+
+    @staticmethod
+    def _conn(*, execute_side_effect=None, rowcount=1):
+        cur = MagicMock()
+        if execute_side_effect is not None:
+            cur.execute.side_effect = execute_side_effect
+        cur.rowcount = rowcount
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        return conn, cur
+
+    @staticmethod
+    def _no_sleep(monkeypatch):
+        sleep = MagicMock()
+        monkeypatch.setattr("queue_backend.pg_queue.client.time.sleep", sleep)
+        return sleep
+
+    @pytest.mark.parametrize(
+        "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
+    )
+    def test_reused_stale_conn_retries_and_acks(self, monkeypatch, caplog, exc_type):
+        dead, _ = self._conn(execute_side_effect=exc_type("idle reap"))
+        fresh, fresh_cur = self._conn(rowcount=1)
+        factory = MagicMock(return_value=fresh)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+        client._conn = dead  # cached (reused) connection
+
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.client"):
+            assert client.delete(42) is True  # ack landed on the retry
+        dead.close.assert_called_once()  # stale conn discarded
+        factory.assert_called_once()  # reconnected exactly once
+        sleep.assert_called_once_with(_SEND_RETRY_BACKOFF_SECONDS)
+        _, params = fresh_cur.execute.call_args.args
+        assert params == (42,)  # the msg_id passed through to the retry
+        assert "retrying the ack once" in caplog.text
+
+    def test_fresh_conn_failure_does_not_retry(self, monkeypatch):
+        dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("down"))
+        factory = MagicMock(return_value=dead)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.delete(1)
+        factory.assert_called_once()  # created once, NOT retried
+        sleep.assert_not_called()
+
+    def test_injected_conn_not_retried(self, monkeypatch):
+        conn, _ = self._conn(execute_side_effect=psycopg2.OperationalError("dead"))
+        self._no_sleep(monkeypatch)
+        client = PgQueueClient(conn=conn)
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.delete(1)
+        conn.close.assert_not_called()  # caller's connection untouched
+
+    def test_reused_conn_non_connection_error_not_retried(self, monkeypatch):
+        # A logical error (not Operational/Interface) on a reused conn is not a
+        # stale-connection symptom → re-raise, no reconnect (parity with send()).
+        bad, _ = self._conn(execute_side_effect=RuntimeError("logic"))
+        factory = MagicMock()
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        sleep = self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+        client._conn = bad
+
+        with pytest.raises(RuntimeError):
+            client.delete(1)
+        factory.assert_not_called()
+        sleep.assert_not_called()
+
+    def test_retry_failure_reraises_once(self, monkeypatch):
+        # The retry is bounded to exactly one reconnect: if the reconnected conn
+        # also dies, re-raise (no loop) — parity with send().
+        dead1, _ = self._conn(execute_side_effect=psycopg2.OperationalError("reap"))
+        dead2, _ = self._conn(execute_side_effect=psycopg2.OperationalError("still"))
+        factory = MagicMock(return_value=dead2)
+        monkeypatch.setattr("queue_backend.pg_queue.client.create_pg_connection", factory)
+        self._no_sleep(monkeypatch)
+        client = PgQueueClient()
+        client._conn = dead1
+
+        with pytest.raises(psycopg2.OperationalError):
+            client.delete(1)
+        factory.assert_called_once()  # one reconnect only, no loop
+
+
 class TestCreatePgConnection:
     """Unit coverage for the connection factory (no real DB)."""
 
