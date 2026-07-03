@@ -4,18 +4,20 @@ import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { groupsService } from "../../groups/groups-service.js";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
+import { ImportTool } from "../import-tool/ImportTool";
 import { ViewTools } from "../view-tools/ViewTools";
 import "./ListOfTools.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import { ImportTool } from "../import-tool/ImportTool";
 
 const DefaultCustomButtons = ({
   setOpenImportTool,
@@ -71,6 +73,54 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const promptStudioCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+      getSharedUsers: (id) =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${id}`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: { user_id: userId },
+        }),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "DELETE",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/${userId}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [axiosPrivate, sessionDetails?.orgId, sessionDetails?.csrfToken],
+  );
+
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: promptStudioCoOwnerService,
+    setAlertDetails,
+    onListRefresh: () => getListOfTools(),
+  });
   const [allGroupList, setAllGroupList] = useState([]);
 
   useEffect(() => {
@@ -84,7 +134,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const getListOfTools = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/ `,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -354,6 +404,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       });
   };
 
+  const handleCoOwner = (_event, tool) => {
+    handleCoOwnerAction(tool.tool_id);
+  };
+
   const defaultContent = (
     <div className="list-of-tools-body">
       <ViewTools
@@ -369,6 +423,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         idProp="tool_id"
         type="Prompt Project"
         handleShare={handleShare}
+        handleCoOwner={handleCoOwner}
       />
     </div>
   );
@@ -425,6 +480,18 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         allGroups={allGroupList}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Prompt Project"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

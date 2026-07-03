@@ -5,8 +5,10 @@ from typing import Any
 
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -237,11 +239,25 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class APIDeploymentViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     pagination_class = CustomPagination
+    notification_resource_name_field = "display_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -297,6 +313,11 @@ class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}

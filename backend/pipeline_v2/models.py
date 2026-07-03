@@ -4,6 +4,7 @@ from account_v2.models import User
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
+from permissions.models import HasMembersMixin, ResourceMemberBase
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
@@ -41,14 +42,14 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
 
         return self.filter(
-            Q(created_by=user)  # Owned by user
+            Q(members=user)  # Owner or direct viewer (created_by is audit-only)
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
-class Pipeline(DefaultOrganizationMixin, BaseModel):
+class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     """Model to hold data related to Pipelines."""
 
     class PipelineType(models.TextChoices):
@@ -139,6 +140,15 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
 
         return get_resource_share_groups(self)
 
+    # Owner (and, later, viewer) access lives here via the PipelineMember
+    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    members = models.ManyToManyField(
+        User,
+        through="PipelineMember",
+        related_name="pipelines_member_of",
+        help_text="Users with a role (owner/viewer) on this pipeline.",
+    )
+
     # Manager
     objects = PipelineModelManager()
 
@@ -179,3 +189,20 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
 
     def is_active(self) -> bool:
         return bool(self.active)
+
+
+class PipelineMember(ResourceMemberBase):
+    """Per-user role (owner/viewer) on a ``Pipeline``."""
+
+    pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+
+    class Meta:
+        db_table = "pipeline_member"
+        unique_together = [("user", "pipeline")]
+        indexes = [
+            models.Index(fields=["pipeline", "role"], name="pipeline_member_role_idx")
+        ]

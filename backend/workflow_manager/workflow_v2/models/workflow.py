@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
 from django.db.models import Q
+from permissions.models import HasMembersMixin, ResourceMemberBase
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
@@ -37,14 +38,14 @@ class WorkflowModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return self.filter(
-            Q(created_by=user)  # Owned by user
+            Q(members=user)  # Owner or direct viewer (created_by is audit-only)
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
-class Workflow(DefaultOrganizationMixin, BaseModel):
+class Workflow(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     class WorkflowType(models.TextChoices):
         DEFAULT = "DEFAULT", "Not ready yet"
         ETL = "ETL", "ETL pipeline"
@@ -122,6 +123,15 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
 
         return get_resource_share_groups(self)
 
+    # Owner (and, later, viewer) access lives here via the WorkflowMember
+    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    members = models.ManyToManyField(
+        User,
+        through="WorkflowMember",
+        related_name="workflows_member_of",
+        help_text="Users with a role (owner/viewer) on this workflow.",
+    )
+
     # Manager
     objects = WorkflowModelManager()
 
@@ -152,4 +162,21 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
                 fields=["workflow_name", "organization"],
                 name="unique_workflow_name",
             ),
+        ]
+
+
+class WorkflowMember(ResourceMemberBase):
+    """Per-user role (owner/viewer) on a ``Workflow``."""
+
+    workflow = models.ForeignKey(
+        Workflow,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+
+    class Meta:
+        db_table = "workflow_member"
+        unique_together = [("user", "workflow")]
+        indexes = [
+            models.Index(fields=["workflow", "role"], name="workflow_member_role_idx")
         ]

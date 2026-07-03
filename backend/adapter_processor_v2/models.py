@@ -8,6 +8,7 @@ from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
+from permissions.models import HasMembersMixin, ResourceMemberBase
 from tenant_account_v2.models import OrganizationMember
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.exceptions import InvalidEncryptionKey
@@ -49,7 +50,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
+                models.Q(members=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
@@ -59,7 +60,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         )
 
 
-class AdapterInstance(DefaultOrganizationMixin, BaseModel):
+class AdapterInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -144,6 +145,14 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
+    # Owner (and, later, viewer) access lives here via the AdapterMember
+    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    members = models.ManyToManyField(
+        User,
+        through="AdapterMember",
+        related_name="adapters_member_of",
+        help_text="Users with a role (owner/viewer) on this adapter.",
+    )
     description = models.TextField(blank=True, null=True, default=None)
 
     # ``shared_groups`` is stored polymorphically in
@@ -199,6 +208,23 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         except SdkError as e:
             logger.warning(f"Unable to retrieve context window size: {e}")
         return 0
+
+
+class AdapterMember(ResourceMemberBase):
+    """Per-user role (owner/viewer) on an ``AdapterInstance``."""
+
+    adapter = models.ForeignKey(
+        AdapterInstance,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+
+    class Meta:
+        db_table = "adapter_member"
+        unique_together = [("user", "adapter")]
+        indexes = [
+            models.Index(fields=["adapter", "role"], name="adapter_member_role_idx")
+        ]
 
 
 class UserDefaultAdapter(BaseModel):

@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
     IsFrictionLessAdapter,
     IsFrictionLessAdapterDelete,
@@ -13,6 +14,7 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -137,8 +139,21 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
-class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
+class AdapterInstanceViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
+):
     serializer_class = AdapterInstanceSerializer
+    notification_resource_name_field = "adapter_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return {
+            "LLM": ResourceType.LLM.value,
+            "EMBEDDING": ResourceType.EMBEDDING.value,
+            "VECTOR_DB": ResourceType.VECTOR_DB.value,
+            "X2TEXT": ResourceType.X2TEXT.value,
+        }.get(resource.adapter_type, ResourceType.LLM.value)
 
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: hidden from non-owners (update/retrieve),
@@ -200,6 +215,11 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
                 )
 
             instance = serializer.save()
+            # ``created_by`` is audit-only; the creator's access flows through
+            # an OWNER membership row (UN-2202 co-owners).
+            instance.memberships.get_or_create(
+                user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+            )
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )

@@ -9,7 +9,13 @@ from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
 from rest_framework import serializers
-from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
+from rest_framework.serializers import (
+    CharField,
+    ModelSerializer,
+    SerializerMethodField,
+    ValidationError,
+)
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
 
@@ -165,4 +171,46 @@ class ConnectorInstanceSerializer(AuditSerializer):
         # Remove sensitive connector auth from the response
         rep.pop(CIKey.CONNECTOR_AUTH)
 
+        request = self.context.get("request")
+        rep["is_owner"] = instance.is_owner(request.user) if request else False
+        rep["co_owners_count"] = instance.co_owners_count()
+
         return rep
+
+
+class SharedUserListSerializer(ModelSerializer):
+    """Connector with shared user + group + co-owner details."""
+
+    shared_users = SerializerMethodField()
+    shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
+    created_by = SerializerMethodField()
+
+    class Meta:
+        model = ConnectorInstance
+        fields = [
+            "id",
+            "connector_name",
+            "shared_users",
+            "shared_to_org",
+            "shared_groups",
+            "co_owners",
+            "created_by",
+        ]
+
+    def get_shared_users(self, obj):
+        return [
+            {"id": u.id, "email": u.email}
+            for u in obj.shared_users.filter(is_service_account=False)
+        ]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return [{"id": u.id, "email": u.email} for u in obj.owners()]
+
+    def get_created_by(self, obj):
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None

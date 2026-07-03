@@ -80,6 +80,9 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         representation["created_by_email"] = (
             instance.created_by.email if instance.created_by else None
         )
+        request = self.context.get("request")
+        representation["is_owner"] = instance.is_owner(request.user) if request else False
+        representation["co_owners_count"] = instance.co_owners_count()
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:
@@ -187,6 +190,7 @@ class SharedUserListSerializer(ModelSerializer):
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
@@ -197,6 +201,7 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
             "created_by",
         ]
 
@@ -209,6 +214,9 @@ class SharedUserListSerializer(ModelSerializer):
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return [{"id": u.id, "email": u.email} for u in obj.owners()]
 
     def get_created_by(self, obj):
         """Return creator details."""

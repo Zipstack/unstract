@@ -63,14 +63,15 @@ class WorkflowExecutionManager(BaseModelManager):
                 return self.filter(workflow__organization=org)
             return self.all()
 
-        # Filter for workflow access
-        workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
+        # Filter for workflow access (owner via membership, or shared user).
+        # ``created_by`` is audit-only (UN-2202 co-owners).
+        workflow_filter = Q(workflow__members=user) | Q(workflow__shared_users=user)
 
         # Filter for API deployments the user can access
         api_filter = Q(
             pipeline_id__in=models.Subquery(
                 APIDeployment.objects.filter(
-                    Q(created_by=user) | Q(shared_users=user)
+                    Q(members=user) | Q(shared_users=user)
                 ).values("id")
             )
         )
@@ -78,7 +79,7 @@ class WorkflowExecutionManager(BaseModelManager):
         # Filter for Pipelines the user can access
         pipeline_filter = Q(
             pipeline_id__in=models.Subquery(
-                Pipeline.objects.filter(Q(created_by=user) | Q(shared_users=user)).values(
+                Pipeline.objects.filter(Q(members=user) | Q(shared_users=user)).values(
                     "id"
                 )
             )

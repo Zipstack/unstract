@@ -43,6 +43,8 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
     created_by_email = serializers.SerializerMethodField()
     prompt_count = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
+    co_owners_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -58,10 +60,19 @@ class CustomToolListSerializer(serializers.ModelSerializer):
             "icon",
             "created_by_email",
             "prompt_count",
+            "is_owner",
+            "co_owners_count",
         ]
 
     def get_created_by_email(self, instance):
         return instance.created_by.email if instance.created_by else ""
+
+    def get_is_owner(self, instance) -> bool:
+        request = self.context.get("request")
+        return instance.is_owner(request.user) if request else False
+
+    def get_co_owners_count(self, instance) -> int:
+        return instance.co_owners_count()
 
     def get_prompt_count(self, instance):
         if hasattr(instance, "_prompt_count"):
@@ -230,6 +241,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     created_by = UserSerializer()
     shared_users = serializers.SerializerMethodField()
     shared_groups = serializers.SerializerMethodField()
+    co_owners = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -240,6 +252,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
         )
 
     def get_shared_users(self, obj):
@@ -249,6 +262,9 @@ class SharedUserListSerializer(serializers.ModelSerializer):
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return UserSerializer(obj.owners(), many=True).data
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

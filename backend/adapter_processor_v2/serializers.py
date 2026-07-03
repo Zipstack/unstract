@@ -208,6 +208,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         else:
             rep["created_by_email"] = instance.created_by.email
 
+        request = self.context.get("request")
+        rep["is_owner"] = instance.is_owner(request.user) if request else False
+        rep["co_owners_count"] = instance.co_owners_count()
+
         return rep
 
 
@@ -219,6 +223,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
 
     shared_users = serializers.SerializerMethodField()
     shared_groups = serializers.SerializerMethodField()
+    co_owners = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -232,6 +237,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
         )  # type: ignore
 
     def get_shared_users(self, obj):
@@ -241,6 +247,9 @@ class SharedUserListSerializer(BaseAdapterSerializer):
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return UserSerializer(obj.owners(), many=True).data
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

@@ -1,6 +1,6 @@
 from typing import Any
 
-from permissions.permission import has_group_access
+from permissions.permission import _is_resource_owner, has_group_access
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -20,7 +20,7 @@ class PromptAcesssToUser(permissions.BasePermission):
         if getattr(request.user, "is_service_account", False):
             return True
         tool = obj.tool_id
-        if tool.created_by == request.user:
+        if _is_resource_owner(request.user, tool):
             return True
         if tool.shared_users.filter(pk=request.user.pk).exists():
             return True

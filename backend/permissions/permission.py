@@ -58,6 +58,22 @@ def _is_organization_admin(request: Request) -> bool:
     return is_admin
 
 
+def _is_resource_owner(user: Any, obj: Any) -> bool:
+    """True if ``user`` owns ``obj``.
+
+    Resources migrated to the membership model expose ``memberships`` — owner
+    means an OWNER-role row (creator + co-owners). Resources not yet migrated
+    fall back to ``created_by`` (co-owners rollout, UN-2202). ``created_by`` is
+    no longer consulted once a resource adopts the membership model.
+    """
+    memberships = getattr(obj, "memberships", None)
+    if memberships is None:
+        return obj.created_by == user
+    from permissions.roles import ResourceRole
+
+    return memberships.filter(user=user, role=ResourceRole.OWNER).exists()
+
+
 class IsOwner(permissions.BasePermission):
     """Allow owners and org admins.
 
@@ -70,7 +86,7 @@ class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         if _is_organization_admin(request):
             return True
@@ -87,7 +103,7 @@ def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     """
     if _is_service_account(request):
         return True
-    if workflow.created_by == request.user:
+    if _is_resource_owner(request.user, workflow):
         return True
     return _is_organization_admin(request)
 
@@ -120,7 +136,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            obj.created_by == request.user
+            _is_resource_owner(request.user, obj)
             or obj.shared_users.filter(pk=request.user.pk).exists()
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
@@ -134,7 +150,7 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            obj.created_by == request.user
+            _is_resource_owner(request.user, obj)
             or obj.shared_users.filter(pk=request.user.pk).exists()
             or obj.shared_to_org
             or has_group_access(request.user, obj)
@@ -158,7 +174,7 @@ class IsFrictionLessAdapter(permissions.BasePermission):
             return False
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         return _is_organization_admin(request)
 
@@ -173,6 +189,6 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         return _is_organization_admin(request)

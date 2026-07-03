@@ -9,8 +9,10 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -43,7 +45,9 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PipelineViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
     pagination_class = CustomPagination
@@ -51,9 +55,24 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
     # Note: Default ordering with nulls_last is applied in get_queryset()
     # DRF's ordering attribute doesn't support nulls_last natively
+    notification_resource_name_field = "pipeline_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        # Only ETL/TASK pipelines map to a notification ResourceType.
+        if not notification_plugin:
+            return None
+        if resource.pipeline_type in (ResourceType.ETL.value, ResourceType.TASK.value):
+            return resource.pipeline_type
+        return None
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -132,6 +151,11 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        pipeline_instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: Pipeline) -> None:

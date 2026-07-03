@@ -456,6 +456,8 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_5_run_statuses = SerializerMethodField()
     run_count = SerializerMethodField()
     last_run_time = SerializerMethodField()
+    is_owner = SerializerMethodField()
+    co_owners_count = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -473,11 +475,20 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_5_run_statuses",
             "run_count",
             "last_run_time",
+            "is_owner",
+            "co_owners_count",
         ]
 
     def get_created_by_email(self, obj):
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return obj.is_owner(request.user) if request else False
+
+    def get_co_owners_count(self, obj) -> int:
+        return obj.co_owners_count()
 
     def get_run_count(self, instance) -> int:
         """Get total execution count for this API deployment."""
@@ -534,6 +545,7 @@ class SharedUserListSerializer(ModelSerializer):
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
@@ -544,6 +556,7 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
             "created_by",
         ]
 
@@ -562,3 +575,7 @@ class SharedUserListSerializer(ModelSerializer):
         if obj.created_by:
             return {"id": obj.created_by.id, "email": obj.created_by.email}
         return None
+
+    def get_co_owners(self, obj):
+        """Return co-owners (OWNER members) with id and email."""
+        return [{"id": u.id, "email": u.email} for u in obj.owners()]

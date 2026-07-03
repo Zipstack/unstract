@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from permissions.models import HasMembersMixin, ResourceMemberBase
 from pipeline_v2.models import Pipeline
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel, BaseModelManager
@@ -46,14 +47,14 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return self.filter(
-            Q(created_by=user)  # Owned by user
+            Q(members=user)  # Owner or direct viewer (created_by is audit-only)
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
-class APIDeployment(DefaultOrganizationMixin, BaseModel):
+class APIDeployment(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     display_name = models.CharField(
         max_length=API_NAME_MAX_LENGTH,
@@ -123,6 +124,15 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
 
         return get_resource_share_groups(self)
 
+    # Owner (and, later, viewer) access lives here via the APIDeploymentMember
+    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
+    members = models.ManyToManyField(
+        User,
+        through="APIDeploymentMember",
+        related_name="api_deployments_member_of",
+        help_text="Users with a role (owner/viewer) on this API deployment.",
+    )
+
     # Manager
     objects = APIDeploymentModelManager()
 
@@ -173,6 +183,23 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
                 fields=["api_name", "organization"],
                 name="unique_api_name",
             ),
+        ]
+
+
+class APIDeploymentMember(ResourceMemberBase):
+    """Per-user role (owner/viewer) on an ``APIDeployment``."""
+
+    api_deployment = models.ForeignKey(
+        APIDeployment,
+        on_delete=models.CASCADE,
+        related_name="memberships",
+    )
+
+    class Meta:
+        db_table = "api_deployment_member"
+        unique_together = [("user", "api_deployment")]
+        indexes = [
+            models.Index(fields=["api_deployment", "role"], name="apidep_member_role_idx")
         ]
 
 

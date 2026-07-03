@@ -12,6 +12,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
     created_by_email = SerializerMethodField()
 
@@ -23,6 +24,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
             "created_by",
             "created_by_email",
         ]
@@ -35,6 +37,9 @@ class SharedUserListSerializer(serializers.ModelSerializer):
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return UserSerializer(obj.owners(), many=True).data
 
     def get_created_by(self, obj):
         """Get the creator's username."""
