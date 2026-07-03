@@ -191,6 +191,13 @@ _BARRIER_WRITE_ATTEMPTS: Final = 2  # total attempts: 1 initial + 1 retry
 # errors the broad psycopg2.OperationalError catch also covers.
 _BARRIER_RETRY_BACKOFF_SECONDS: Final = 0.5
 
+# Callback kwarg the PG barrier stamps on the aggregating callback's dispatch so
+# the callback can PG-gate its at-least-once duplicate guard (see
+# _fire_barrier_callback). Matched by the same literal in callback/tasks.py — a
+# drift is caught by the callback's PG-guard test (the guard silently stops
+# firing). Underscore-prefixed so it can't collide with a real task kwarg.
+PG_TRANSPORT_CALLBACK_KWARG: Final = "_pg_transport"
+
 # One retry for the NON-idempotent barrier DECREMENT — but only on an
 # execute-phase failure on a reused connection (see :func:`_apply_decrement`),
 # never on commit (ambiguous). Same one-shot bound as the idempotent write.
@@ -427,12 +434,27 @@ def release_orchestration_claim(execution_id: str) -> None:
     execution). Deleting it on failure restores the retry/redelivery path. A
     successful orchestration does NOT call this — its claim persists as the
     post-completion tombstone. Safe when no row exists (deletes nothing).
+
+    Stale-connection resilience: the claim is taken at orchestration START and
+    released only on the failure path, so the pg_barrier thread-local connection
+    has idled through the entire orchestration attempt — this DELETE is a
+    first-write-after-idle, the one most likely to meet a PgBouncer-reaped
+    connection, in exactly the scenario the release exists for. The caller
+    swallows a raise here (best-effort), so without a retry a single idle-reap
+    leaves the claim committed and suppresses every redelivery. The DELETE is
+    idempotent (deleting an absent row is a no-op), so it reuses the retry-once
+    helper verbatim.
     """
-    with _cursor() as cur:
+
+    def _op(cur: PgCursor) -> None:
         cur.execute(
             f"DELETE FROM {qualified('pg_orchestration_claim')} WHERE execution_id = %s",
             (execution_id,),
         )
+
+    _run_idempotent_pre_dispatch_write(
+        _op, what=f"release orchestration claim [exec:{execution_id}]"
+    )
 
 
 def _dispatch_pg(
@@ -756,12 +778,23 @@ def _fire_barrier_callback(
     - absent / anything else (legacy ``.link`` path): dispatch via
       ``current_app.signature(...).apply_async()`` — byte-identical to pre-9e,
       preserving the ``fairness_headers`` the producer attached.
+
+    On the PG path the callback kwargs carry :data:`PG_TRANSPORT_CALLBACK_KWARG`
+    so the aggregating callback can PG-gate its at-least-once duplicate guard (the
+    callback is unguarded against the redelivery its own dispatch admits; the
+    Celery ``.link`` path never injects it, so the guard is a no-op there).
     """
     if is_pg_transport(callback_descriptor.get("transport")):
+        # Copy (don't mutate the shared descriptor) + tag the PG transport so the
+        # callback can gate its duplicate guard on it.
+        pg_kwargs = {
+            **callback_descriptor["kwargs"],
+            PG_TRANSPORT_CALLBACK_KWARG: True,
+        }
         handle = _dispatch_pg(
             callback_descriptor["task_name"],
             args=[all_results],
-            kwargs=callback_descriptor["kwargs"],
+            kwargs=pg_kwargs,
             queue=callback_descriptor["queue"],
             fairness=_fairness_from_headers(callback_descriptor.get("fairness_headers")),
         )

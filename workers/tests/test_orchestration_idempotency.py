@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import psycopg2
 import pytest
@@ -171,6 +171,83 @@ class TestOrchestratorShortCircuit:
                         transport="pg_queue",
                     )
         assert released == ["e-y"]  # claimed then failed → released
+
+    def test_terminal_execution_skips_and_keeps_claim(self):
+        # L1: a PG redelivery that WON a fresh claim (the tombstone had been GC'd)
+        # but finds the execution already terminal must skip re-orchestration
+        # WITHOUT releasing the claim (re-establishing the tombstone), and never
+        # reach the status-update / arm / dispatch below the guard.
+        released: list[str] = []
+        api_client = MagicMock()
+        api_client.get_workflow_execution.return_value = MagicMock(
+            success=True,
+            data={
+                "execution": {
+                    "status": tasks.ExecutionStatus.COMPLETED.value,
+                    "workflow_id": "wf",
+                }
+            },
+        )
+        with patch.dict(
+            self._task_globals(),
+            {
+                "try_claim_orchestration": lambda _eid, _org: True,  # won the claim
+                "release_orchestration_claim": lambda eid: released.append(eid),
+            },
+        ):
+            with patch.object(
+                tasks.WorkerExecutionContext,
+                "setup_execution_context",
+                return_value=(MagicMock(), api_client),
+            ):
+                out = tasks.async_execute_bin_general(
+                    schema_name="org",
+                    workflow_id="wf",
+                    execution_id="e-term",
+                    hash_values_of_files={},
+                    transport="pg_queue",
+                )
+        assert out["status"] == "skipped_terminal_execution"
+        assert released == []  # claim kept → tombstone re-established
+        api_client.update_workflow_execution_status.assert_not_called()  # never re-armed
+
+    def test_terminal_execution_not_skipped_on_celery(self):
+        # Celery has no redelivery, so the terminal guard is is_pg-gated → a no-op.
+        # A terminal status on the Celery path must NOT short-circuit: we prove the
+        # task runs PAST the guard by making the next step (tool validation, called
+        # right after the guard) raise a sentinel. Patched via the task's own
+        # globals — the bare-``tasks`` module the worker bootstrap loads, not
+        # ``general.tasks`` (the sys.path quirk; a module-attr patch would miss it).
+        api_client = MagicMock()
+        api_client.get_workflow_execution.return_value = MagicMock(
+            success=True,
+            data={
+                "execution": {
+                    "status": tasks.ExecutionStatus.COMPLETED.value,
+                    "workflow_id": "wf",
+                }
+            },
+        )
+
+        def _sentinel(**_kwargs):
+            raise RuntimeError("reached past the guard")
+
+        with patch.dict(
+            self._task_globals(), {"validate_workflow_tool_instances": _sentinel}
+        ):
+            with patch.object(
+                tasks.WorkerExecutionContext,
+                "setup_execution_context",
+                return_value=(MagicMock(), api_client),
+            ):
+                with pytest.raises(RuntimeError, match="reached past the guard"):
+                    tasks.async_execute_bin_general(
+                        schema_name="org",
+                        workflow_id="wf",
+                        execution_id="e-term-celery",
+                        hash_values_of_files={},
+                        transport="celery",
+                    )
 
 
 # --- Layer 2: claim primitive against real Postgres ---

@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from queue_backend import worker_task
+from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -1360,6 +1361,37 @@ def _track_subscription_usage_if_available(
         }
 
 
+def _pg_execution_already_finalized(
+    api_client: InternalAPIClient, execution_id: str
+) -> bool:
+    """PG at-least-once duplicate guard: ``True`` if the execution is already
+    terminal — a previous delivery of this aggregating callback already ran to
+    completion (the callback is what SETS the terminal status). A redelivered
+    callback (the ``PgQueueClient.send`` commit-retry double-enqueue, an
+    idle-reaped ack, or a vt overrun) must then SKIP its side effects — re-running
+    them re-fires customer webhooks and double-counts subscription-usage billing.
+
+    Best-effort: on any fetch failure return ``False`` (proceed). A missed guard is
+    a tolerable duplicate (the pre-existing behaviour); a wrongful skip would drop a
+    real callback's side effects, which is worse. PG only — the caller gates on the
+    transport marker, so the Celery path never reaches here.
+    """
+    try:
+        response = api_client.get_workflow_execution(execution_id, file_execution=False)
+        if not response.success:
+            return False
+        status = (response.data.get("execution") or {}).get("status")
+        return status in ExecutionStatus.terminal_values()
+    except Exception:
+        logger.warning(
+            "PG callback duplicate-guard: could not read status for execution %s "
+            "— proceeding (a tolerable duplicate beats a wrongful skip).",
+            execution_id,
+            exc_info=True,
+        )
+        return False
+
+
 def _process_batch_callback_core(
     task_instance, results, *args, **kwargs
 ) -> dict[str, Any]:
@@ -1378,6 +1410,10 @@ def _process_batch_callback_core(
     """
     # Initialize performance optimizations
     _initialize_performance_managers()
+
+    # PG at-least-once duplicate guard (see _pg_execution_already_finalized).
+    # Popped BEFORE parameter extraction so the marker never flows into the context.
+    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
 
     # Extract and validate all parameters using single source of truth
     context = _extract_callback_parameters(task_instance, results, kwargs)
@@ -1400,6 +1436,23 @@ def _process_batch_callback_core(
             logger.info(
                 f"Starting batch callback processing for execution {context.execution_id}"
             )
+
+            # Skip a redelivered callback whose execution a prior delivery already
+            # finalized — don't re-fire webhooks / re-count billing. (Returns
+            # through the outer finally, which closes the api_client.)
+            if is_pg and _pg_execution_already_finalized(
+                context.api_client, context.execution_id
+            ):
+                logger.warning(
+                    f"PG callback: execution {context.execution_id} already terminal "
+                    f"— a previous callback completed; skipping duplicate side effects "
+                    f"(status update, subscription billing, webhooks)."
+                )
+                return {
+                    "status": "skipped_duplicate_callback",
+                    "execution_id": context.execution_id,
+                    "duplicate_callback_skipped": True,
+                }
 
             try:
                 # Use unified status determination with timeout detection (shared with API callback)
@@ -1575,6 +1628,8 @@ def process_batch_callback_api(
     execution_id = kwargs.get("execution_id")
     pipeline_id = kwargs.get("pipeline_id")
     organization_id = kwargs.get("organization_id")
+    # PG at-least-once duplicate guard marker (see _pg_execution_already_finalized).
+    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
 
     if not execution_id:
         raise ValueError("execution_id is required in kwargs")
@@ -1602,6 +1657,25 @@ def process_batch_callback_api(
         execution_context = execution_response.data
         workflow_execution = execution_context.get("execution", {})
         workflow = execution_context.get("workflow", {})
+
+        # PG at-least-once duplicate guard: a redelivered callback whose execution a
+        # prior delivery already finalized must skip its side effects. Reuses the
+        # status just fetched — no extra round-trip. (Returns through the finally
+        # below, which closes the api_client.)
+        if (
+            is_pg
+            and workflow_execution.get("status") in ExecutionStatus.terminal_values()
+        ):
+            logger.warning(
+                f"PG API callback: execution {execution_id} already terminal — a "
+                f"previous callback completed; skipping duplicate side effects "
+                f"(status update, subscription billing, webhooks)."
+            )
+            return {
+                "status": "skipped_duplicate_callback",
+                "execution_id": execution_id,
+                "duplicate_callback_skipped": True,
+            }
 
         # Extract schema_name and workflow_id from context
         schema_name = organization_id  # For API callbacks, schema_name = organization_id

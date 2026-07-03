@@ -215,6 +215,30 @@ class TestPipelineIdentity:
         payload = {"kwargs": {"execution_id": "e4"}}
         assert _pipeline_identity(payload) == ("e4", "")
 
+    def test_from_positional_orchestration_args(self):
+        # async_execute_bin passes identity POSITIONALLY: args=[schema, workflow,
+        # execution_id, hash]. The fallback needs the task_name to apply.
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {
+            "task_name": "async_execute_bin",
+            "args": ["org-schema", "wf-1", "exec-9", {}],
+            "kwargs": {"pipeline_id": "p"},
+        }
+        assert _pipeline_identity(payload, "async_execute_bin") == (
+            "exec-9",
+            "org-schema",
+        )
+        # Without the task_name the positional map is inert (unknown task).
+        assert _pipeline_identity(payload) == (None, "")
+
+    def test_positional_short_args_no_indexerror(self):
+        # A malformed/short args list must not IndexError on the poison-drop path.
+        from queue_backend.pg_queue.consumer import _pipeline_identity
+
+        payload = {"task_name": "async_execute_bin", "args": ["org-schema"]}
+        assert _pipeline_identity(payload, "async_execute_bin") == (None, "org-schema")
+
 
 class TestPoisonDropMarksExecution:
     """UN-3670: a poison drop with no reply channel marks the execution ERROR
@@ -238,6 +262,29 @@ class TestPoisonDropMarksExecution:
         assert marks == [("exec-1", "org-1")]  # marked ERROR
         client.delete.assert_called_once_with(5)  # then dropped
         client.set_vt.assert_not_called()
+
+    def test_positional_orchestration_poison_marks_error(self, monkeypatch):
+        # H2 regression: a poisoned async_execute_bin carries execution_id
+        # POSITIONALLY (args[2]) with no _barrier_context and — since its poison
+        # precedes barrier arm + claim — no reaper handle at all. It must still
+        # recover its identity and mark ERROR, not bare-delete into a silent strand.
+        marks = []
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda client, eid, org, *, error_message: marks.append((eid, org)) or True,
+        )
+        payload = {
+            "task_name": "async_execute_bin",
+            "args": ["org-schema", "wf-1", "exec-9", {}],
+            "kwargs": {"pipeline_id": "p"},
+        }
+        client = MagicMock()
+        client.read.return_value = [_msg(7, payload, read_ct=6)]
+        PgQueueConsumer(
+            ["q"], client=client, api_client=MagicMock(), max_attempts=5
+        ).poll_once()
+        assert marks == [("exec-9", "org-schema")]  # recovered + marked
+        client.delete.assert_called_once_with(7)  # then dropped
 
     def test_reparks_when_mark_unconfirmed(self, monkeypatch):
         monkeypatch.setattr(

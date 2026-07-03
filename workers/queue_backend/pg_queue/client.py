@@ -392,7 +392,41 @@ class PgQueueClient:
         i.e. the work may be processed twice. Logged at DEBUG here; the
         consumer emits the contextual WARNING (it names the task), so this
         avoids a duplicate warning per double-run.
+
+        Reconnect-retry (mirrors :meth:`send`): the consumer connection idles for
+        the ENTIRE wall-clock of the in-process task before this ack — minutes for
+        a file-processing batch — so the ack is the single statement most likely to
+        meet a PgBouncer-reaped connection. Without a retry the ack is lost and an
+        ALREADY-COMPLETED message redelivers at vt expiry: duplicate work (a re-run
+        of the leaf, or the sharp case — re-firing the aggregating callback's
+        webhooks + subscription-usage billing). We retry ONCE, on ``_CONN_DEAD_
+        ERRORS`` and only when the failing connection was **reused** (a fresh conn
+        failing is a genuine error). Unlike :meth:`send`'s at-least-once INSERT this
+        DELETE is idempotent — a re-run can only no-op (the row is already gone),
+        never duplicate — so the retry is safe even in the ambiguous post-commit
+        case (it just returns ``False``, "already gone", within the contract above).
         """
+        reused = self._conn is not None and self._owns_conn
+        try:
+            return self._delete_row(msg_id)
+        except _CONN_DEAD_ERRORS as exc:
+            if not reused:
+                raise
+            logger.warning(
+                "PG-queue: delete(msg_id=%s) failed with a connection-level error "
+                "on a reused cached connection (%s: %s); dropping it and retrying "
+                "the ack once so the completed message isn't redelivered",
+                msg_id,
+                type(exc).__name__,
+                exc,
+                exc_info=True,
+            )
+            time.sleep(_SEND_RETRY_BACKOFF_SECONDS)
+            # _cursor already dropped the dead owned conn, so this reconnects.
+            return self._delete_row(msg_id)
+
+    def _delete_row(self, msg_id: int) -> bool:
+        """One DELETE of a queue row by ``msg_id`` (see :meth:`delete`)."""
         with self._cursor() as cur:
             cur.execute(
                 f"DELETE FROM {qualified('pg_queue_message')} WHERE msg_id = %s",
