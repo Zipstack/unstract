@@ -827,7 +827,8 @@ def sweep_orphan_claims(
 
 
 # Queue-gauge snapshot cadence. Deliberately a module constant, not an env knob:
-# it only bounds metrics staleness (the tick already runs every ~5s), and the
+# it only bounds metrics staleness (the tick already runs every
+# _DEFAULT_REAPER_INTERVAL_SECONDS by default), and the
 # snapshot is two cheap aggregate reads.
 _GAUGE_REFRESH_INTERVAL_SECONDS: Final = 60.0
 
@@ -840,7 +841,9 @@ def refresh_queue_gauges(
     Two aggregate reads: per-queue depth + oldest-message age over
     ``pg_queue_message`` (all rows — ready and in-flight — since a backlog is a
     backlog either way), and live/stranded counts over ``pg_barrier_state``
-    (stranded = what the next recovery pass would pick up, same predicate).
+    (live = ``remaining > 0`` in-flight fan-outs; stranded = what the next
+    recovery pass would pick up — same predicate, unfiltered by ``remaining``,
+    so it includes ``remaining==0`` delete-failure lingerers).
 
     ``conn`` runs in manual-commit mode; on any error we roll back before
     re-raising so the connection isn't left in an aborted-txn state (the caller
@@ -855,7 +858,7 @@ def refresh_queue_gauges(
             )
             depth_rows = cur.fetchall()
             cur.execute(
-                "SELECT count(*), "
+                "SELECT count(*) FILTER (WHERE remaining > 0), "
                 f"count(*) FILTER (WHERE {_STRANDED_PREDICATE}) "
                 f"FROM {qualified('pg_barrier_state')}",
                 (stuck_timeout_seconds,),
@@ -1023,7 +1026,7 @@ class PgReaper:
                 # A raised renew == "leadership unknown": stop acting (honour the
                 # lease's documented contract) before letting it propagate.
                 self._is_leader = False
-                self._metrics.clear_queue_snapshot()
+                self._step_down_metrics()
                 raise
             if not still_leader:
                 logger.warning(
@@ -1031,9 +1034,7 @@ class PgReaper:
                     "to standby"
                 )
                 self._is_leader = False
-                # A standby must not keep exporting a frozen queue snapshot as if
-                # it were live — the new leader owns those series now.
-                self._metrics.clear_queue_snapshot()
+                self._step_down_metrics()
         if not self._is_leader and self._lease.try_acquire():
             self._is_leader = True
             logger.info("Reaper: acquired leadership")
@@ -1142,6 +1143,16 @@ class PgReaper:
         self._sweep_fail_streak[table] = 0
         return count
 
+    def _step_down_metrics(self) -> None:
+        """On losing leadership: drop the queue snapshot AND reset the refresh
+        cadence. Resetting the cadence is load-bearing — without it, a lease
+        flap that re-acquires within the refresh interval would gate the next
+        refresh out, leaving a re-elected leader exporting the just-cleared
+        (false "empty queue") snapshot for up to a full interval.
+        """
+        self._metrics.clear_queue_snapshot()
+        self._last_gauge_refresh_monotonic = None
+
     def _maybe_refresh_gauges(self) -> None:
         """Refresh the queue-wide metrics snapshot at most once per
         :data:`_GAUGE_REFRESH_INTERVAL_SECONDS` (leader-only, called from
@@ -1190,6 +1201,10 @@ class PgReaper:
                     # A transient DB blip must not tear the loop down — the lease
                     # connection rolls back + discards a dead handle, and a failed
                     # sweep discards its owned connection, so log and keep cycling.
+                    # Counted: the heartbeat is stamped at tick START, so /health
+                    # stays 200 through every-tick failures (schema/grant faults) —
+                    # this counter is the only machine-readable signal for that.
+                    self._metrics.tick_failures.inc()
                     logger.exception("Reaper: cycle failed; continuing")
                 time.sleep(self._interval)
         finally:

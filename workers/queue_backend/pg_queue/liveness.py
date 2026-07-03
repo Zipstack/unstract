@@ -21,6 +21,7 @@ Bind ``port=0`` to let the OS pick a free port (read back via :attr:`bound_port`
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -137,10 +138,13 @@ class LivenessServer:
                     }
                 )
                 body = json.dumps(payload).encode()
-                self.send_response(503 if stale else 200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
+                # Headers too, not just the body write: a client that hangs up
+                # before headers go out would otherwise raise into socketserver's
+                # handle_error, which prints an unattributed traceback to stderr.
                 try:
+                    self.send_response(503 if stale else 200)
+                    self.send_header("Content-Type", "application/json")
+                    self.end_headers()
                     self.wfile.write(body)
                 except (BrokenPipeError, ConnectionResetError):
                     pass  # client (probe) hung up mid-response — not our problem
@@ -152,13 +156,15 @@ class LivenessServer:
                     body = metrics_fn()  # type: ignore[misc]  # guarded by caller
                 except Exception:
                     logger.exception("%s: /metrics render failed", log_label)
-                    self.send_response(500)
-                    self.end_headers()
+                    with contextlib.suppress(BrokenPipeError, ConnectionResetError):
+                        self.send_response(500)
+                        self.end_headers()
                     return
-                self.send_response(200)
-                self.send_header("Content-Type", metrics_content_type)
-                self.end_headers()
+                # Same hung-up-client guard as the /health path above.
                 try:
+                    self.send_response(200)
+                    self.send_header("Content-Type", metrics_content_type)
+                    self.end_headers()
                     self.wfile.write(body)
                 except (BrokenPipeError, ConnectionResetError):
                     pass  # scraper hung up mid-response — not our problem

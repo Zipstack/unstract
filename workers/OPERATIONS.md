@@ -75,16 +75,22 @@ their existing health port (`WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT` for
 consumers, `WORKER_PG_REAPER_HEALTH_PORT` for the reaper — same server as
 `/health`; no port configured means neither endpoint):
 
-- Every PG worker (per-pod): `pg_consumer_heartbeat_age_seconds` (poll-loop
-  freshness — the same signal `/health` verdicts on); the fleet supervisor adds
-  `pg_consumer_alive_children` / `pg_consumer_configured_concurrency`.
+- Every PG consumer / the fleet supervisor (per-pod):
+  `pg_consumer_heartbeat_age_seconds` (poll-loop freshness — the same signal
+  `/health` verdicts on); the supervisor adds `pg_consumer_alive_children` /
+  `pg_consumer_configured_concurrency`.
 - Reaper only (the leader-elected singleton — queue-WIDE state comes from one
-  process): `pg_queue_depth{queue}`, `pg_queue_oldest_message_age_seconds{queue}`,
-  `pg_barrier_live` / `pg_barrier_stranded`, recovery outcome counters
-  (`pg_reaper_barrier_recovered_total`, `pg_reaper_claim_*_total`,
-  `pg_reaper_sweep_failures_total{table}`) and `pg_reaper_is_leader`.
-  Queue gauges are cached snapshots refreshed on the reaper's own cadence —
-  scrapes never touch the DB; `pg_queue_gauges_age_seconds` exposes staleness.
+  process): `pg_reaper_heartbeat_age_seconds` (tick-loop freshness),
+  `pg_queue_depth{queue}`, `pg_queue_oldest_message_age_seconds{queue}`,
+  `pg_barrier_live` / `pg_barrier_stranded`, outcome + failure counters
+  (`pg_reaper_barrier_*_total`, `pg_reaper_claim_*_total`,
+  `pg_reaper_sweep_failures_total{table}`, `pg_reaper_tick_failures_total`,
+  `pg_reaper_gauge_refresh_failures_total`) and `pg_reaper_is_leader`.
+  Queue gauges are cached snapshots refreshed on the reaper's own cadence
+  (60s — `_GAUGE_REFRESH_INTERVAL_SECONDS` in `reaper.py`) — scrapes never
+  touch the DB; `pg_queue_gauges_age_seconds` exposes snapshot staleness and
+  keeps growing while refreshes fail or the pod is a standby (alert on it
+  together with `pg_reaper_is_leader == 1`).
 
 ```bash
 curl http://localhost:8090/metrics  # PG consumer / supervisor
