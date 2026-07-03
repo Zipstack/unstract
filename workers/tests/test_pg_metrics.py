@@ -225,6 +225,17 @@ class TestReaperMetrics:
         age = _sample(metrics, "pg_queue_gauges_age_seconds")
         assert age is not None and 0.0 <= age < 5.0
 
+    def test_collector_describe_lists_names_without_samples(self):
+        # Registration protocol: describe() must expose the same names as
+        # collect() (registry duplicate-checking) but with NO samples — so
+        # register() never runs the render path (clock read) as a side effect.
+        metrics = _reaper_metrics()
+        collector = metrics._queue_collector
+        described = {m.name: m for m in collector.describe()}
+        collected = {m.name for m in collector.collect()}
+        assert set(described) == collected
+        assert all(not m.samples for m in described.values())
+
     def test_scrape_is_atomic_snapshot(self):
         # The collector renders from ONE snapshot reference: a replace() during
         # a render can't mix old and new values. Simulate by capturing the

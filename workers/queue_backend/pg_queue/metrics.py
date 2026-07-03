@@ -140,41 +140,57 @@ class _QueueSnapshotCollector:
     def replace(self, snapshot: _QueueSnapshot) -> None:
         self._snapshot = snapshot  # atomic reference swap
 
-    def collect(self) -> Iterable[Metric]:
+    @staticmethod
+    def _families() -> tuple[Metric, ...]:
+        """The five empty metric families — one builder so ``describe`` (names
+        only) and ``collect`` (names + samples) can never drift.
+        """
         from prometheus_client.core import GaugeMetricFamily
 
+        return (
+            GaugeMetricFamily(
+                "pg_queue_depth",
+                "Messages currently in pg_queue_message, by queue (cached "
+                "snapshot; a drained queue's series is absent, not 0)",
+                labels=["queue"],
+            ),
+            GaugeMetricFamily(
+                "pg_queue_oldest_message_age_seconds",
+                "Age of the oldest message in the queue (cached snapshot)",
+                labels=["queue"],
+            ),
+            GaugeMetricFamily(
+                "pg_barrier_live",
+                "pg_barrier_state rows with remaining > 0 (in-flight fan-outs)",
+            ),
+            GaugeMetricFamily(
+                "pg_barrier_stranded",
+                "Barrier rows past the stuck-timeout / expiry — what the next "
+                "recovery pass picks up (includes remaining==0 lingerers)",
+            ),
+            GaugeMetricFamily(
+                "pg_queue_gauges_age_seconds",
+                "Seconds since the queue gauges were last refreshed (since "
+                "process start / leadership step-down if never) — alert on "
+                "this AND pg_reaper_is_leader==1; a standby's age grows by "
+                "design",
+            ),
+        )
+
+    def describe(self) -> Iterable[Metric]:
+        # Registration protocol: with describe() present, register() checks
+        # names against these descriptors instead of invoking the full
+        # collect() render path (and its clock read) as a side effect.
+        return self._families()
+
+    def collect(self) -> Iterable[Metric]:
         snapshot = self._snapshot  # single read — the consistency point
-        depth = GaugeMetricFamily(
-            "pg_queue_depth",
-            "Messages currently in pg_queue_message, by queue (cached snapshot; "
-            "a drained queue's series is absent, not 0)",
-            labels=["queue"],
-        )
-        oldest = GaugeMetricFamily(
-            "pg_queue_oldest_message_age_seconds",
-            "Age of the oldest message in the queue (cached snapshot)",
-            labels=["queue"],
-        )
+        depth, oldest, live, stranded, age = self._families()
         for queue, (msg_count, oldest_age) in snapshot.depths.items():
             depth.add_metric([queue], msg_count)
             oldest.add_metric([queue], oldest_age)
-        live = GaugeMetricFamily(
-            "pg_barrier_live",
-            "pg_barrier_state rows with remaining > 0 (in-flight fan-outs)",
-        )
         live.add_metric([], snapshot.barriers_live)
-        stranded = GaugeMetricFamily(
-            "pg_barrier_stranded",
-            "Barrier rows past the stuck-timeout / expiry — what the next "
-            "recovery pass picks up (includes remaining==0 lingerers)",
-        )
         stranded.add_metric([], snapshot.barriers_stranded)
-        age = GaugeMetricFamily(
-            "pg_queue_gauges_age_seconds",
-            "Seconds since the queue gauges were last refreshed (since process "
-            "start / leadership step-down if never) — alert on this AND "
-            "pg_reaper_is_leader==1; a standby's age grows by design",
-        )
         age.add_metric([], time.monotonic() - snapshot.reference_monotonic)
         return (depth, oldest, live, stranded, age)
 
@@ -230,7 +246,7 @@ class ReaperMetrics(_Exporter):
         )
         self.claim_gc = Counter(
             "pg_reaper_claim_gc_total",
-            "Orphan orchestration-claim tombstones GC'd (execution already " "terminal)",
+            "Orphan orchestration-claim tombstones GC'd (execution terminal)",
             registry=self.registry,
         )
         self.claim_recovery_failures = Counter(
