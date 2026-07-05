@@ -204,9 +204,12 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
+        # Fail fast on the admin restriction before validating the payload —
+        # the check depends only on the request/org, not on validated data, so
+        # a denied caller shouldn't get input-validation feedback first.
+        self._enforce_connector_creation_restriction(request)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        self._enforce_connector_creation_restriction(request)
         try:
             self.perform_create(serializer)
         except IntegrityError:
