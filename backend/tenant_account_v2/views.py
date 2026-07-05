@@ -95,12 +95,15 @@ def organization_settings(request: Request) -> Response:
                     )
                 },
             )
+        # Validate everything before mutating so a bad value in a later flag
+        # doesn't leave the in-memory org partially updated.
         for flag, value in provided.items():
             if not isinstance(value, bool):
                 return Response(
                     status=status.HTTP_400_BAD_REQUEST,
                     data={"message": f"{flag} must be a boolean"},
                 )
+        for flag, value in provided.items():
             setattr(organization, flag, value)
         organization.modified_by = request.user
         organization.save(update_fields=[*provided, "modified_by", "modified_at"])

@@ -185,11 +185,12 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
-        # Bind the connector to the request-scoped organization, overriding any
-        # client-supplied `organization` in the payload (the serializer exposes
-        # it via fields="__all__"). Keeps the row's org consistent with the org
-        # the controlled-mode check evaluated, so the per-org restriction can't
-        # be sidestepped via the payload.
+        # Explicitly bind the connector to the request-scoped organization.
+        # Defense-in-depth: DefaultOrganizationMixin already declares
+        # `organization` as editable=False (so DRF drops any client-supplied
+        # value) and its save() backfills the org from UserContext when unset.
+        # Binding here makes that explicit at the callsite and keeps the row's
+        # org consistent with the org the controlled-mode check evaluated.
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
