@@ -26,9 +26,9 @@ def backfill_memberships(apps, app_label: str, model_name: str) -> None:
     is skipped (the resource has no owner and stays reachable only via
     org-admin / service-account overrides).
     """
-    Resource = apps.get_model(app_label, model_name)
-    Membership = apps.get_model("tenant_account_v2", "ResourceMembership")
-    ContentType = apps.get_model("contenttypes", "ContentType")
+    Resource = apps.get_model(app_label, model_name)  # NOSONAR
+    Membership = apps.get_model("tenant_account_v2", "ResourceMembership")  # NOSONAR
+    ContentType = apps.get_model("contenttypes", "ContentType")  # NOSONAR
 
     content_type = ContentType.objects.get_for_model(Resource)
     owners = viewers = skipped = skipped_org = 0

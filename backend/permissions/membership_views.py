@@ -28,7 +28,9 @@ class OwnerManagementMixin:
 
     notification_resource_name_field: str | None = None
 
-    def get_notification_resource_type(self, resource: Any) -> str | None:
+    def get_notification_resource_type(self, resource: Any) -> str | None:  # NOSONAR
+        # Overridable hook: subclasses dispatch on ``resource`` (e.g. adapter
+        # type, pipeline type); the base default ignores it.
         return None
 
     @action(detail=True, methods=["post"], url_path="owners")
