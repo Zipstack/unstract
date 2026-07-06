@@ -46,6 +46,13 @@ class Organization(models.Model):
             "LLM adapters in this org. Default False preserves open creation."
         ),
     )
+    restrict_connector_creation = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Controlled mode: when True, only organization admins may create "
+            "connectors in this org. Default False preserves open creation."
+        ),
+    )
 
     class Meta:
         verbose_name = "Organization"

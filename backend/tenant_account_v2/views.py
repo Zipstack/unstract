@@ -55,13 +55,22 @@ def reset_password(request: Request) -> Response:
         )
 
 
+# Boolean org-level controlled-mode flags exposed by ``organization_settings``.
+# Each maps a request/response key to the ``Organization`` field it updates.
+ORGANIZATION_SETTING_FLAGS = (
+    "restrict_llm_adapter_creation",
+    "restrict_connector_creation",
+)
+
+
 @api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated, IsOrganizationAdmin])
 def organization_settings(request: Request) -> Response:
     """Read or update org-level settings. Admin-only.
 
-    Currently exposes the ``restrict_llm_adapter_creation`` controlled-mode
-    flag. GET returns the current value; PATCH updates it.
+    Exposes the controlled-mode flags in ``ORGANIZATION_SETTING_FLAGS``
+    (``restrict_llm_adapter_creation``, ``restrict_connector_creation``). GET
+    returns the current values; PATCH updates any subset of them.
     """
     organization = UserContext.get_organization()
     if not organization:
@@ -71,27 +80,37 @@ def organization_settings(request: Request) -> Response:
         )
 
     if request.method == "PATCH":
-        value = request.data.get("restrict_llm_adapter_creation")
-        if not isinstance(value, bool):
+        provided = {
+            flag: request.data[flag]
+            for flag in ORGANIZATION_SETTING_FLAGS
+            if flag in request.data
+        }
+        if not provided:
             return Response(
                 status=status.HTTP_400_BAD_REQUEST,
-                data={"message": "restrict_llm_adapter_creation must be a boolean"},
+                data={
+                    "message": (
+                        "Provide at least one of: "
+                        f"{', '.join(ORGANIZATION_SETTING_FLAGS)}"
+                    )
+                },
             )
-        organization.restrict_llm_adapter_creation = value
+        # Validate everything before mutating so a bad value in a later flag
+        # doesn't leave the in-memory org partially updated.
+        for flag, value in provided.items():
+            if not isinstance(value, bool):
+                return Response(
+                    status=status.HTTP_400_BAD_REQUEST,
+                    data={"message": f"{flag} must be a boolean"},
+                )
+        for flag, value in provided.items():
+            setattr(organization, flag, value)
         organization.modified_by = request.user
-        organization.save(
-            update_fields=[
-                "restrict_llm_adapter_creation",
-                "modified_by",
-                "modified_at",
-            ]
-        )
+        organization.save(update_fields=[*provided, "modified_by", "modified_at"])
 
     return Response(
         status=status.HTTP_200_OK,
-        data={
-            "restrict_llm_adapter_creation": (organization.restrict_llm_adapter_creation)
-        },
+        data={flag: getattr(organization, flag) for flag in ORGANIZATION_SETTING_FLAGS},
     )
 
 

@@ -102,6 +102,11 @@ function PlatformSettings() {
   // Controlled-mode flag: only admins can create LLM adapters when true.
   const [restrictLlmCreation, setRestrictLlmCreation] = useState(false);
   const [isSavingRestriction, setIsSavingRestriction] = useState(false);
+  // Controlled-mode flag: only admins can create connectors when true.
+  const [restrictConnectorCreation, setRestrictConnectorCreation] =
+    useState(false);
+  const [isSavingConnectorRestriction, setIsSavingConnectorRestriction] =
+    useState(false);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -155,9 +160,12 @@ function PlatformSettings() {
         setRestrictLlmCreation(
           Boolean(res?.data?.restrict_llm_adapter_creation),
         );
+        setRestrictConnectorCreation(
+          Boolean(res?.data?.restrict_connector_creation),
+        );
       })
       .catch((err) => {
-        console.warn("Failed to load LLM adapter creation setting", err);
+        console.warn("Failed to load organization settings", err);
       });
   }, [sessionDetails?.orgId, sessionDetails?.isAdmin]);
 
@@ -189,6 +197,37 @@ function PlatformSettings() {
       })
       .finally(() => {
         setIsSavingRestriction(false);
+      });
+  };
+
+  const handleToggleConnectorRestriction = (checked) => {
+    const previous = restrictConnectorCreation;
+    setRestrictConnectorCreation(checked); // optimistic
+    setIsSavingConnectorRestriction(true);
+    axiosPrivate({
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: { restrict_connector_creation: checked },
+    })
+      .then((res) => {
+        setRestrictConnectorCreation(
+          Boolean(res?.data?.restrict_connector_creation),
+        );
+        setAlertDetails({
+          type: "success",
+          content: "Connector creation setting updated.",
+        });
+      })
+      .catch((err) => {
+        setRestrictConnectorCreation(previous); // revert on failure
+        setAlertDetails(handleException(err, "Failed to update setting"));
+      })
+      .finally(() => {
+        setIsSavingConnectorRestriction(false);
       });
   };
 
@@ -577,6 +616,32 @@ function PlatformSettings() {
                       />
                       <Typography.Text>
                         Only admins can create LLM adapters
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {isEnterpriseBuild && sessionDetails?.isAdmin && (
+                <div className="plt-set-section">
+                  <Typography.Title level={5}>
+                    Connector Creation
+                  </Typography.Title>
+                  <Typography.Text
+                    type="secondary"
+                    className="plt-set-section-subtitle"
+                  >
+                    Restrict creation of connectors to organization admins. When
+                    enabled, non-admin users cannot create connectors.
+                  </Typography.Text>
+                  <div className="plt-set-inner-card">
+                    <div className="plt-set-notif-field-row">
+                      <Switch
+                        checked={restrictConnectorCreation}
+                        loading={isSavingConnectorRestriction}
+                        onChange={handleToggleConnectorRestriction}
+                      />
+                      <Typography.Text>
+                        Only admins can create connectors
                       </Typography.Text>
                     </div>
                   </div>
