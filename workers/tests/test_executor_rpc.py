@@ -323,6 +323,35 @@ class TestWorkersAdapter:
         with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
             assert PgClientQueueTransport().wait_for_result("rk", 5) is None
 
+    def test_wait_for_result_forgets_payload_after_consume(self):
+        # Once the reply is read, drop the payload so PII doesn't linger in
+        # pg_task_result for the full retention TTL (reaper is the backstop).
+        rb = MagicMock()
+        rb.__enter__.return_value = rb
+        rb.wait_for_result.return_value = {
+            "status": "completed",
+            "result": {"a": 1},
+            "error": "",
+        }
+        with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
+            PgClientQueueTransport().wait_for_result("rk", 5)
+        rb.forget.assert_called_once_with("rk")
+        # forget MUST run inside the `with` (before __exit__): moving it after the
+        # block would clear the payload against a reopened owned connection that
+        # nothing closes — a per-dispatch connection leak invisible to the mock.
+        names = [c[0] for c in rb.mock_calls]
+        assert names.index("forget") < names.index("__exit__")
+
+    def test_wait_for_result_timeout_does_not_forget(self):
+        # On timeout nothing was consumed — leave the row for the reaper (the
+        # executor may still write it under this reply_key); do not clear.
+        rb = MagicMock()
+        rb.__enter__.return_value = rb
+        rb.wait_for_result.return_value = None
+        with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
+            PgClientQueueTransport().wait_for_result("rk", 5)
+        rb.forget.assert_not_called()
+
     def test_resolve_delegates_to_shared_flipt_resolver_true(self):
         with patch(f"{_WMOD}.resolve_pg_transport", return_value=True) as r:
             assert resolve_executor_transport(self._ctx()) is True

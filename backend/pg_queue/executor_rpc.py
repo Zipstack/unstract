@@ -13,6 +13,7 @@ delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from django.db import close_old_connections
@@ -33,6 +34,8 @@ from unstract.workflow_execution.executor_rpc import (
 if TYPE_CHECKING:
     from unstract.core.data_models import ContinuationSpec
     from unstract.sdk1.execution.context import ExecutionContext
+
+logger = logging.getLogger(__name__)
 
 # Re-exported so existing ``from pg_queue.executor_rpc import …`` imports keep working.
 __all__ = [
@@ -99,7 +102,24 @@ class DjangoQueueTransport(QueueTransport):
                 return None
             return ExecResultRow(status=row.status, result=row.result, error=row.error)
 
-        return poll_for_row(_fetch, timeout, between_polls=close_old_connections)
+        row = poll_for_row(_fetch, timeout, between_polls=close_old_connections)
+        if row is not None:
+            # Reply consumed: clear the payload (result + error) so PII doesn't sit
+            # in pg_task_result for the full retention TTL — mirrors the workers
+            # transport's PgResultBackend.forget so both dispatch paths behave alike.
+            # Best-effort: runs after the caller holds the result, inside
+            # PgExecutionDispatcher.dispatch's never-raises guard, so a cleanup miss
+            # must not fail a good RPC; the reaper's retention sweep is the backstop.
+            try:
+                PgTaskResult.objects.filter(pk=reply_key).update(result=None, error="")
+            except Exception:
+                logger.warning(
+                    "DjangoQueueTransport: could not clear pg_task_result for "
+                    "reply_key=%s after consume; the retention sweep will flush it",
+                    reply_key,
+                    exc_info=True,
+                )
+        return row
 
 
 def get_executor_dispatcher(

@@ -96,6 +96,10 @@ class PgClientQueueTransport(QueueTransport):
         """
         with PgResultBackend() as rb:
             row = rb.wait_for_result(reply_key, timeout)
+            if row is not None:
+                # Reply consumed: drop the payload now so PII doesn't sit in
+                # pg_task_result for the full retention TTL. Best-effort (see forget()).
+                rb.forget(reply_key)
         if row is None:
             return None
         return ExecResultRow(

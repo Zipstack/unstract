@@ -11,6 +11,11 @@ A row appears ONLY when the task finishes — ``status="completed"`` carrying th
 text if the task raised. Absence of a row means "not done yet"; there is
 deliberately no ``pending`` state to maintain.
 
+Once the blocking caller consumes the reply, :meth:`PgResultBackend.forget` nulls
+the payload in place — a third legal shape: ``completed``/``failed`` with
+``result`` and ``error`` cleared (a tombstone the reaper deletes at
+``expires_at``). Readers must not assume a finished row still carries a payload.
+
 Two deliberate properties:
 
 - **Idempotent writes** (``INSERT … ON CONFLICT DO NOTHING``): the PG queue is
@@ -83,6 +88,20 @@ def _get_sql() -> str:
     )
 
 
+def _forget_sql() -> str:
+    # Null BOTH payload channels but KEEP the row: ``result`` (success payload) and
+    # ``error`` (failure text — an extraction error can embed document content too),
+    # so the PII scrub covers the failure channel, not just the success one. The
+    # tombstone makes a redelivered ``store_result`` a ``ON CONFLICT DO NOTHING``
+    # no-op (can't re-insert the payload); ``status`` still distinguishes the outcome
+    # and ``expires_at`` is left untouched so the reaper still deletes the row at
+    # retention.
+    return (
+        f"UPDATE {qualified('pg_task_result')} "
+        "SET result = NULL, error = '' WHERE task_id = %s"
+    )
+
+
 # Poll cadence for wait_for_result: start tight (low latency for fast tasks),
 # back off to a ceiling so a long-running task doesn't hammer the DB.
 _POLL_INITIAL_SECONDS = 0.2
@@ -142,7 +161,7 @@ class PgResultBackend:
             raise
 
     def _store_with_reconnect(self, operation: Callable[[Any], None]) -> None:
-        """Run an idempotent store ``operation(cur)`` in a committed cursor,
+        """Run an idempotent write ``operation(cur)`` in a committed cursor,
         retrying ONCE if the cached connection was reaped while idle.
 
         The executor consumer caches one ``PgResultBackend`` for its lifetime
@@ -162,9 +181,13 @@ class PgResultBackend:
         executor consumer constructs ``PgResultBackend()``).
 
         Safe to retry unconditionally (no reused-vs-fresh guard needed, unlike
-        the non-idempotent ``PgQueueClient.send``): the write is
-        ``INSERT … ON CONFLICT (task_id) DO NOTHING``, so re-running after an
-        ambiguous failure can neither duplicate nor clobber a recorded result.
+        the non-idempotent ``PgQueueClient.send``) because **every** write routed
+        through here is idempotent: ``store_result``'s
+        ``INSERT … ON CONFLICT (task_id) DO NOTHING`` and ``forget``'s
+        ``UPDATE … SET result = NULL, error = ''`` (re-nulling an already-nulled
+        tombstone is a no-op). Re-running either after an ambiguous failure can
+        neither duplicate nor clobber a recorded result. Keep this invariant if a
+        third caller is added — a non-idempotent write must NOT use this helper.
         """
         for attempt in range(1, _STORE_RETRY_ATTEMPTS + 1):
             try:
@@ -217,7 +240,11 @@ class PgResultBackend:
         """Return ``{status, result, error}`` if the row exists, else ``None``.
 
         ``result`` is the decoded JSONB dict (psycopg2 parses ``jsonb`` to a
-        Python ``dict``); ``None`` means the task has not finished yet.
+        Python ``dict``) or ``None``. A *missing* row (this returns ``None``) means
+        the task has not finished. A *present* row with ``result is None`` is either
+        a ``failed`` outcome or a ``completed`` **tombstone** whose payload was
+        already cleared by :meth:`forget` post-consume — ``status`` distinguishes
+        them, so a payload-poll must not treat a completed row as carrying a result.
 
         No reconnect-retry here (unlike :meth:`store_result`). The invariant it
         relies on: the sole entry point into a wait (``executor_rpc.wait_for_result``
@@ -257,6 +284,43 @@ class PgResultBackend:
             initial=poll_interval,
             maximum=_POLL_MAX_SECONDS,
         )
+
+    def forget(self, task_id: str) -> None:
+        """Drop the stored payload once the blocking caller has consumed it.
+
+        Nulls both payload columns (``result`` and ``error``) but keeps the row as a
+        tombstone (see :func:`_forget_sql`), so a redelivered executor message can't
+        re-insert the payload and the reaper still flushes the empty row at
+        ``expires_at``. Cutting the payload here shrinks the window that customer
+        extraction data (PII) sits in ``pg_task_result`` from the full retention TTL
+        down to the read-and-clear latency; the TTL sweep remains the backstop for
+        any result that is never consumed (caller crash / timeout).
+
+        Runs through :meth:`_store_with_reconnect` because the UPDATE is idempotent
+        (same rationale as ``store_result``): a transient dead-connection blip
+        self-heals on the one-shot retry rather than silently costing the full TTL.
+
+        **Best-effort by contract — never raises.** Every caller must sit under a
+        never-raises guard (today: ``PgExecutionDispatcher.dispatch``'s
+        ``except Exception -> failure``), because ``forget`` runs AFTER the caller
+        already holds the result — a raise here would turn a successful RPC into a
+        failure. A failure that survives the retry is logged and swallowed; the
+        retention sweep still bounds the exposure. A *systematic* failure (revoked
+        UPDATE privilege, recurring errors) is therefore observable only as a stream
+        of this WARNING — alert on the ``"could not clear result"`` string until a
+        ``forget_failures`` metric is wired (deferred to the pg_queue metrics work).
+        """
+        try:
+            self._store_with_reconnect(
+                lambda cur: cur.execute(_forget_sql(), (str(task_id),))
+            )
+        except Exception:
+            logger.warning(
+                "PgResultBackend.forget: could not clear result for task_id=%s "
+                "after retry; the retention sweep will flush it at expires_at",
+                task_id,
+                exc_info=True,
+            )
 
     def close(self) -> None:
         """Close an owned connection (injected connections are the caller's)."""
