@@ -6,8 +6,9 @@ from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
-from permissions.models import HasMembersMixin, ResourceMemberBase
+from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.fields import EncryptedBinaryField
 from utils.models.base_model import BaseModel, BaseModelManager
@@ -43,7 +44,7 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         return (
             self.get_queryset()
             .filter(
-                models.Q(members=user)
+                models.Q(memberships__user=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
@@ -114,14 +115,10 @@ class ConnectorInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
 
         return get_resource_share_groups(self)
 
-    # Owner (and, later, viewer) access lives here via the ConnectorMember
-    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
-    members = models.ManyToManyField(
-        User,
-        through="ConnectorMember",
-        related_name="connectors_member_of",
-        help_text="Users with a role (owner/viewer) on this connector.",
-    )
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     objects = ConnectorInstanceModelManager()
 
@@ -172,21 +169,4 @@ class ConnectorInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
                 fields=["connector_name", "organization"],
                 name="unique_organization_connector",
             ),
-        ]
-
-
-class ConnectorMember(ResourceMemberBase):
-    """Per-user role (owner/viewer) on a ``ConnectorInstance``."""
-
-    connector = models.ForeignKey(
-        ConnectorInstance,
-        on_delete=models.CASCADE,
-        related_name="memberships",
-    )
-
-    class Meta:
-        db_table = "connector_member"
-        unique_together = [("user", "connector")]
-        indexes = [
-            models.Index(fields=["connector", "role"], name="connector_member_role_idx")
         ]

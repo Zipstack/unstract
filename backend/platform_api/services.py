@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
-from django.core.exceptions import FieldDoesNotExist
 from django.db import models, transaction
 from tenant_account_v2.models import OrganizationMember
 
@@ -76,9 +75,11 @@ def _get_user_fk_fields(model: type) -> list[str]:
 def _get_user_m2m_fields(model: type) -> list[str]:
     """Return names of ManyToMany-to-User fields safe to mutate via ``.add()``.
 
-    Membership M2Ms (UN-2202) use a custom through model with a ``role``
-    column, which Django forbids mutating with ``.add()``/``.remove()``. Those
-    are excluded here and transferred by :func:`_transfer_membership_rows`.
+    Only auto-created (implicit) through tables qualify. A custom through model
+    can't be mutated with ``.add()`` / ``.remove()``, so it is excluded — the
+    sole such data (resource memberships, UN-2202) now lives in the polymorphic
+    ``ResourceMembership`` table and is transferred by
+    :func:`_transfer_membership_rows`.
     """
     return [
         f.name
@@ -114,32 +115,23 @@ def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> No
             getattr(instance, field_name).add(to_user)
             getattr(instance, field_name).remove(from_user)
 
-    _transfer_membership_rows(model, from_user, to_user)
 
+def _transfer_membership_rows(from_user: User, to_user: User) -> None:
+    """Re-point OWNER/VIEWER ``ResourceMembership`` rows across all resources.
 
-def _transfer_membership_rows(model: type, from_user: User, to_user: User) -> None:
-    """Re-point OWNER/VIEWER membership rows from one user to another.
-
-    Membership M2Ms use a custom through model (UN-2202) that ``.add()`` can't
-    touch. ``unique_together(user, resource)`` means a resource already held by
-    ``to_user`` can't gain a second row — drop ``from_user``'s row there instead.
+    One polymorphic table covers every resource (UN-2202). ``unique_together
+    (user, content_type, object_id)`` means a resource ``to_user`` already has
+    a role on can't gain a second row — drop ``from_user``'s row there instead.
     """
-    try:
-        members_field = model._meta.get_field("members")
-    except FieldDoesNotExist:
-        return
-    if not (
-        isinstance(members_field, models.ManyToManyField)
-        and members_field.related_model is User
-    ):
-        return
-    through = members_field.remote_field.through
-    source_fk_id = f"{members_field.m2m_field_name()}_id"  # e.g. "adapter_id"
-    held_resource_ids = set(
-        through.objects.filter(user=to_user).values_list(source_fk_id, flat=True)
+    from tenant_account_v2.models import ResourceMembership
+
+    held = set(
+        ResourceMembership.objects.filter(user=to_user).values_list(
+            "content_type_id", "object_id"
+        )
     )
-    for row in through.objects.filter(user=from_user):
-        if getattr(row, source_fk_id) in held_resource_ids:
+    for row in ResourceMembership.objects.filter(user=from_user):
+        if (row.content_type_id, row.object_id) in held:
             row.delete()  # to_user already has a role on this resource
         else:
             row.user = to_user
@@ -164,6 +156,8 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
             if model._meta.app_label not in _BUSINESS_APP_LABELS:
                 continue
             _transfer_model_ownership(model, from_user, to_user)
+        # Memberships live in one polymorphic table — transfer once, not per model.
+        _transfer_membership_rows(from_user, to_user)
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:

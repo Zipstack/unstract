@@ -1,41 +1,15 @@
 from typing import Any
 
-from django.conf import settings
 from django.db import models
 
 from permissions.roles import ResourceRole
 
 
-class ResourceMemberBase(models.Model):
-    """Abstract membership row linking a user to a resource with a role.
-
-    Concrete per-resource subclasses add the resource FK with
-    ``related_name="memberships"`` plus ``unique_together`` and an index.
-    Ownership (and, later, viewer access) lives here; the resource's
-    ``created_by`` becomes audit-only.
-    """
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        on_delete=models.CASCADE,
-        related_name="+",  # queried from the resource side only
-    )
-    role = models.CharField(
-        max_length=16,
-        choices=ResourceRole.choices,
-        default=ResourceRole.VIEWER,
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        abstract = True
-
-
 class HasMembersMixin:
-    """Owner accessors for resource models backed by the membership table.
+    """Owner / viewer accessors for resource models.
 
-    Requires the resource to expose the ``memberships`` reverse relation from
-    its per-resource membership through model.
+    Requires the resource to expose a ``memberships`` relation — a
+    ``GenericRelation`` to :class:`tenant_account_v2.ResourceMembership`.
     """
 
     def owner_memberships(self) -> "models.QuerySet[Any]":

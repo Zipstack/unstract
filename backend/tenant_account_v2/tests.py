@@ -21,7 +21,7 @@ from permissions.roles import ResourceRole
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
-from workflow_manager.workflow_v2.models.workflow import Workflow, WorkflowMember
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from tenant_account_v2.group_views import OrganizationGroupViewSet
 from tenant_account_v2.models import (
@@ -96,9 +96,7 @@ class GroupSharingTestBase(TestCase):
             workflow_name="wf-1", organization=self.org, created_by=self.owner
         )
         # Creator's access flows through an OWNER membership row (UN-2202).
-        WorkflowMember.objects.create(
-            workflow=self.workflow, user=self.owner, role=ResourceRole.OWNER
-        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
 
 
 class ShareAuthorizationServiceTests(GroupSharingTestBase):

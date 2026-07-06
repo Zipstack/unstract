@@ -4,9 +4,10 @@ from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import QuerySet
-from permissions.models import HasMembersMixin, ResourceMemberBase
+from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
@@ -39,7 +40,7 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         return (
             self.get_queryset()
             .filter(
-                models.Q(members=user)
+                models.Q(memberships__user=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
@@ -185,14 +186,10 @@ class CustomTool(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
         db_comment="Timestamp of the last successful export; NULL if never exported since the field was introduced.",
     )
 
-    # Owner (and, later, viewer) access lives here via the CustomToolMember
-    # through model; ``created_by`` is audit-only (UN-2202 co-owners).
-    members = models.ManyToManyField(
-        User,
-        through="CustomToolMember",
-        related_name="custom_tools_member_of",
-        help_text="Users with a role (owner/viewer) on this custom tool.",
-    )
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     objects = CustomToolModelManager()
 
@@ -225,23 +222,4 @@ class CustomTool(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
                 fields=["tool_name", "organization"],
                 name="unique_tool_name",
             ),
-        ]
-
-
-class CustomToolMember(ResourceMemberBase):
-    """Per-user role (owner/viewer) on a ``CustomTool``."""
-
-    custom_tool = models.ForeignKey(
-        CustomTool,
-        on_delete=models.CASCADE,
-        related_name="memberships",
-    )
-
-    class Meta:
-        db_table = "custom_tool_member"
-        unique_together = [("user", "custom_tool")]
-        indexes = [
-            models.Index(
-                fields=["custom_tool", "role"], name="custom_tool_member_role_idx"
-            )
         ]
