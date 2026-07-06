@@ -17,6 +17,7 @@ const config = {
     import.meta.env.VITE_FAVICON_PATH ||
     "/favicon.ico",
   logoUrl: runtimeConfig.logoUrl || import.meta.env.VITE_CUSTOM_LOGO_URL,
+  version: runtimeConfig.version || import.meta.env.VITE_VERSION,
   // Add more values as OR case, if needed for fallback.
 };
 
