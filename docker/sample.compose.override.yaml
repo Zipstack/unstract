@@ -139,38 +139,6 @@ services:
           path: ../platform-service/uv.lock
 
   #########################################################################################################
-  # Prompt Service (memory optimized: 1 worker, 2 threads)
-  prompt-service:
-    image: unstract/prompt-service:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/prompt.Dockerfile
-      context: ..
-    entrypoint: ["bash", "-c"]
-    command: [
-      "uv run python -Xfrozen_modules=off .venv/bin/gunicorn
-        --bind 0.0.0.0:3003
-        --workers 1
-        --threads 2
-        --worker-class gthread
-        --log-level debug
-        --timeout 900
-        --access-logfile -
-        --graceful-timeout 5 unstract.prompt_service.run:app"
-    ]
-    develop:
-      watch:
-        - action: sync+restart
-          path: ../prompt-service/
-          target: /app
-          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/, node_modules/]
-        - action: sync+restart
-          path: ../unstract/
-          target: /unstract
-          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-        - action: rebuild
-          path: ../prompt-service/uv.lock
-
-  #########################################################################################################
   # X2Text Service
   x2text-service:
     image: unstract/x2text-service:${VERSION}
