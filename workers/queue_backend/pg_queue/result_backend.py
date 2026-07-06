@@ -161,7 +161,7 @@ class PgResultBackend:
             raise
 
     def _store_with_reconnect(self, operation: Callable[[Any], None]) -> None:
-        """Run an idempotent store ``operation(cur)`` in a committed cursor,
+        """Run an idempotent write ``operation(cur)`` in a committed cursor,
         retrying ONCE if the cached connection was reaped while idle.
 
         The executor consumer caches one ``PgResultBackend`` for its lifetime
@@ -181,9 +181,13 @@ class PgResultBackend:
         executor consumer constructs ``PgResultBackend()``).
 
         Safe to retry unconditionally (no reused-vs-fresh guard needed, unlike
-        the non-idempotent ``PgQueueClient.send``): the write is
-        ``INSERT … ON CONFLICT (task_id) DO NOTHING``, so re-running after an
-        ambiguous failure can neither duplicate nor clobber a recorded result.
+        the non-idempotent ``PgQueueClient.send``) because **every** write routed
+        through here is idempotent: ``store_result``'s
+        ``INSERT … ON CONFLICT (task_id) DO NOTHING`` and ``forget``'s
+        ``UPDATE … SET result = NULL, error = ''`` (re-nulling an already-nulled
+        tombstone is a no-op). Re-running either after an ambiguous failure can
+        neither duplicate nor clobber a recorded result. Keep this invariant if a
+        third caller is added — a non-idempotent write must NOT use this helper.
         """
         for attempt in range(1, _STORE_RETRY_ATTEMPTS + 1):
             try:
