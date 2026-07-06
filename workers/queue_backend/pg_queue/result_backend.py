@@ -83,6 +83,14 @@ def _get_sql() -> str:
     )
 
 
+def _forget_sql() -> str:
+    # Null the payload but KEEP the row: the tombstone makes a redelivered
+    # ``store_result`` a ``ON CONFLICT DO NOTHING`` no-op (can't re-insert the
+    # payload), and ``expires_at`` is left untouched so the reaper still deletes
+    # the empty row at retention.
+    return f"UPDATE {qualified('pg_task_result')} SET result = NULL WHERE task_id = %s"
+
+
 # Poll cadence for wait_for_result: start tight (low latency for fast tasks),
 # back off to a ceiling so a long-running task doesn't hammer the DB.
 _POLL_INITIAL_SECONDS = 0.2
@@ -257,6 +265,34 @@ class PgResultBackend:
             initial=poll_interval,
             maximum=_POLL_MAX_SECONDS,
         )
+
+    def forget(self, task_id: str) -> None:
+        """Drop the stored payload once the blocking caller has consumed it.
+
+        Nulls the ``result`` column but keeps the row as a tombstone (see
+        :func:`_forget_sql`), so a redelivered executor message can't re-insert
+        the payload and the reaper still flushes the empty row at ``expires_at``.
+        Cutting the payload here shrinks the window that customer extraction data
+        (PII) sits in ``pg_task_result`` from the full retention TTL down to the
+        read-and-clear latency; the TTL sweep remains the backstop for any result
+        that is never consumed (caller crash / timeout).
+
+        **Best-effort by contract — never raises.** It runs AFTER the caller
+        already holds the result, and its call site is inside
+        ``PgExecutionDispatcher.dispatch``'s ``except Exception -> failure`` guard;
+        a raise here would turn a successful RPC into a failure. Any error is
+        logged and swallowed — the retention sweep still bounds the exposure.
+        """
+        try:
+            with self._cursor() as cur:
+                cur.execute(_forget_sql(), (str(task_id),))
+        except Exception:
+            logger.warning(
+                "PgResultBackend.forget: could not clear result for task_id=%s; "
+                "the retention sweep will flush it at expires_at",
+                task_id,
+                exc_info=True,
+            )
 
     def close(self) -> None:
         """Close an owned connection (injected connections are the caller's)."""

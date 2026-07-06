@@ -106,6 +106,45 @@ class TestWait:
         assert row["result"] == {"late": True}
 
 
+class TestForget:
+    """forget() drops the consumed payload but keeps the row as a tombstone, so a
+    redelivery can't re-insert it and the reaper still flushes it at expires_at.
+    """
+
+    def test_forget_nulls_result_keeps_row(self, result_backend):
+        k = _key()
+        result_backend.store_result(k, result={"data": {"pii": "secret"}})
+        result_backend.forget(k)
+        row = result_backend.get_result(k)
+        assert row is not None  # row kept (tombstone), not deleted
+        assert row["result"] is None  # payload dropped
+        assert row["status"] == STATUS_COMPLETED  # status preserved
+
+    def test_forget_absent_is_noop(self, result_backend):
+        result_backend.forget(_key())  # must not raise; UPDATE matches no row
+
+    def test_forget_blocks_redelivery_repopulation(self, result_backend):
+        """After forget, an at-least-once redelivery of the executor message must
+        not bring the payload back — the tombstone wins ON CONFLICT DO NOTHING.
+        """
+        k = _key()
+        result_backend.store_result(k, result={"pii": "first"})
+        result_backend.forget(k)
+        result_backend.store_result(k, result={"pii": "again"})  # redelivery
+        assert result_backend.get_result(k)["result"] is None  # stays cleared
+
+    def test_forget_is_best_effort_swallows_errors(self, monkeypatch):
+        """A cleanup failure must not propagate: forget runs inside
+        PgExecutionDispatcher.dispatch's ``except -> failure`` guard AFTER the
+        caller already holds the result, so a raise would fail a good RPC.
+        """
+        rb = PgResultBackend()
+        monkeypatch.setattr(
+            rb, "_cursor", MagicMock(side_effect=psycopg2.OperationalError("dead"))
+        )
+        rb.forget("k")  # must NOT raise
+
+
 # --- Unit: store_result reconnect-retry on a stale cached connection (UN-3659) ---
 
 

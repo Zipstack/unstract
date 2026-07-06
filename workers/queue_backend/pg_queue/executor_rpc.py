@@ -96,6 +96,13 @@ class PgClientQueueTransport(QueueTransport):
         """
         with PgResultBackend() as rb:
             row = rb.wait_for_result(reply_key, timeout)
+            if row is not None:
+                # Reply consumed: drop the payload now so customer extraction data
+                # (PII) doesn't sit in pg_task_result for the whole retention TTL.
+                # Keep the row as a tombstone (blocks at-least-once re-insert); the
+                # reaper deletes it at expires_at. Best-effort — forget never raises,
+                # so a cleanup miss can't fail an otherwise successful dispatch.
+                rb.forget(reply_key)
         if row is None:
             return None
         return ExecResultRow(
