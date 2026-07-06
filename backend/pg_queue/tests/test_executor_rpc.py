@@ -93,6 +93,28 @@ class TestDjangoQueueTransportWait:
         cl.assert_called_once()  # between_polls released the conn on the miss
         slp.assert_called_once()  # slept once between the two polls
 
+    def test_present_row_clears_payload_after_consume(self):
+        # Mirrors the workers' PgResultBackend.forget: once the reply is read, both
+        # payload channels are nulled so PII doesn't sit for the full retention TTL.
+        row = MagicMock(status="completed", result={"a": 1}, error="")
+        qs = MagicMock()
+        qs.filter.return_value.first.return_value = row
+        with patch(f"{_MOD}.PgTaskResult", MagicMock(objects=qs)):
+            DjangoQueueTransport().wait_for_result("rk", timeout=5)
+        qs.filter.return_value.update.assert_called_once_with(result=None, error="")
+
+    def test_timeout_does_not_clear(self):
+        # Nothing consumed on timeout — no clear (the executor may still write the
+        # row under this reply_key; the reaper sweeps the orphan at TTL).
+        qs = MagicMock()
+        qs.filter.return_value.first.return_value = None
+        with (
+            patch(f"{_MOD}.PgTaskResult", MagicMock(objects=qs)),
+            patch(f"{_MOD}.close_old_connections"),
+        ):
+            DjangoQueueTransport().wait_for_result("rk", timeout=0)
+        qs.filter.return_value.update.assert_not_called()
+
 
 class TestResolveExecutorTransport:
     def test_delegates_to_shared_flipt_resolver_true(self):

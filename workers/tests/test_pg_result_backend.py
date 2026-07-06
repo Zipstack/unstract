@@ -7,6 +7,7 @@ wait returns when present, wait times out, and wait picks up a late write from
 *another* connection (the cross-process request-reply path).
 """
 
+import logging
 import os
 import threading
 import time
@@ -28,6 +29,15 @@ _MARK = "pgtaskresult-test"
 
 def _key() -> str:
     return f"{_MARK}-{uuid.uuid4()}"
+
+
+def _expires_at(pg_conn, task_id):
+    with pg_conn.cursor() as cur:
+        cur.execute(
+            "SELECT expires_at FROM pg_task_result WHERE task_id = %s", (task_id,)
+        )
+        row = cur.fetchone()
+    return row[0] if row else None
 
 
 @pytest.fixture
@@ -111,17 +121,42 @@ class TestForget:
     redelivery can't re-insert it and the reaper still flushes it at expires_at.
     """
 
-    def test_forget_nulls_result_keeps_row(self, result_backend):
+    def test_forget_nulls_result_keeps_row_and_preserves_expiry(
+        self, result_backend, pg_conn
+    ):
         k = _key()
         result_backend.store_result(k, result={"data": {"pii": "secret"}})
+        before = _expires_at(pg_conn, k)
         result_backend.forget(k)
         row = result_backend.get_result(k)
         assert row is not None  # row kept (tombstone), not deleted
         assert row["result"] is None  # payload dropped
         assert row["status"] == STATUS_COMPLETED  # status preserved
+        # expires_at untouched — the reaper must still delete at the ORIGINAL TTL,
+        # so a future edit that also SETs expires_at would (correctly) fail this.
+        assert _expires_at(pg_conn, k) == before
 
-    def test_forget_absent_is_noop(self, result_backend):
-        result_backend.forget(_key())  # must not raise; UPDATE matches no row
+    def test_forget_clears_error_channel_too(self, result_backend):
+        """Failed replies store error text that can embed document content, so the
+        PII scrub must clear ``error`` as well — not just the success payload.
+        """
+        k = _key()
+        result_backend.store_result(k, error="boom: <customer doc snippet>")
+        result_backend.forget(k)
+        row = result_backend.get_result(k)
+        assert row is not None
+        assert row["error"] == ""  # error text scrubbed
+        assert row["result"] is None
+        assert row["status"] == STATUS_FAILED  # status still distinguishes outcome
+
+    def test_forget_absent_is_clean_noop(self, result_backend, caplog):
+        """An absent row is a clean UPDATE-matches-nothing, NOT a swallowed error:
+        because forget() catches Exception, a broken UPDATE would look identical to
+        success — so pin that NO warning fires here (the UPDATE really ran).
+        """
+        with caplog.at_level(logging.WARNING):
+            result_backend.forget(_key())  # must not raise
+        assert "could not clear result" not in caplog.text
 
     def test_forget_blocks_redelivery_repopulation(self, result_backend):
         """After forget, an at-least-once redelivery of the executor message must
@@ -133,16 +168,23 @@ class TestForget:
         result_backend.store_result(k, result={"pii": "again"})  # redelivery
         assert result_backend.get_result(k)["result"] is None  # stays cleared
 
-    def test_forget_is_best_effort_swallows_errors(self, monkeypatch):
-        """A cleanup failure must not propagate: forget runs inside
-        PgExecutionDispatcher.dispatch's ``except -> failure`` guard AFTER the
-        caller already holds the result, so a raise would fail a good RPC.
+    def test_forget_is_best_effort_logs_and_swallows(self, monkeypatch, caplog):
+        """Contract is *logged AND swallowed*: a failure that survives the retry
+        must not propagate (it runs inside dispatch's except->failure guard AFTER
+        the caller holds the result) AND must emit the WARNING — a silent
+        ``contextlib.suppress`` refactor would break the log-based alert and this
+        pins against it.
         """
         rb = PgResultBackend()
         monkeypatch.setattr(
-            rb, "_cursor", MagicMock(side_effect=psycopg2.OperationalError("dead"))
+            rb,
+            "_store_with_reconnect",
+            MagicMock(side_effect=psycopg2.OperationalError("dead")),
         )
-        rb.forget("k")  # must NOT raise
+        with caplog.at_level(logging.WARNING):
+            rb.forget("task-xyz")  # must NOT raise
+        assert "could not clear result" in caplog.text
+        assert "task-xyz" in caplog.text
 
 
 # --- Unit: store_result reconnect-retry on a stale cached connection (UN-3659) ---

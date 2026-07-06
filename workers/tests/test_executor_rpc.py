@@ -336,6 +336,11 @@ class TestWorkersAdapter:
         with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
             PgClientQueueTransport().wait_for_result("rk", 5)
         rb.forget.assert_called_once_with("rk")
+        # forget MUST run inside the `with` (before __exit__): moving it after the
+        # block would clear the payload against a reopened owned connection that
+        # nothing closes — a per-dispatch connection leak invisible to the mock.
+        names = [c[0] for c in rb.mock_calls]
+        assert names.index("forget") < names.index("__exit__")
 
     def test_wait_for_result_timeout_does_not_forget(self):
         # On timeout nothing was consumed — leave the row for the reaper (the
