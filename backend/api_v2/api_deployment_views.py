@@ -269,8 +269,11 @@ class APIDeploymentViewSet(
             .values("created_at")[:1]
         )
 
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             APIDeployment.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships")
             .annotate(last_run_time_annotated=Subquery(last_run_subquery))
             .order_by(F("last_run_time_annotated").desc(nulls_last=True))
         )

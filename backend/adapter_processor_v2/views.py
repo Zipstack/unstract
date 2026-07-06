@@ -172,7 +172,12 @@ class AdapterInstanceViewSet(
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = AdapterInstance.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            AdapterInstance.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships")
+        )
         if filter_args := FilterHelper.build_filter_args(
             self.request,
             constant.ADAPTER_TYPE,

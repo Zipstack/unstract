@@ -32,13 +32,16 @@ class HasMembersMixin:
         return [membership.user for membership in self.viewer_memberships()]
 
     def co_owners_count(self) -> int:
-        return self.memberships.filter(  # type: ignore[attr-defined]
-            role=ResourceRole.OWNER
-        ).count()
+        # ``.all()`` hits the prefetch cache in list views; 1 query otherwise.
+        return sum(
+            m.role == ResourceRole.OWNER
+            for m in self.memberships.all()  # type: ignore[attr-defined]
+        )
 
     def is_owner(self, user: Any) -> bool:
         if user is None:
             return False
-        return self.memberships.filter(  # type: ignore[attr-defined]
-            user=user, role=ResourceRole.OWNER
-        ).exists()
+        return any(
+            m.user_id == user.id and m.role == ResourceRole.OWNER
+            for m in self.memberships.all()  # type: ignore[attr-defined]
+        )

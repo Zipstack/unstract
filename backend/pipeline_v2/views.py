@@ -80,7 +80,12 @@ class PipelineViewSet(
 
     def get_queryset(self) -> QuerySet:
         # Use for_user manager method to include shared pipelines
-        queryset = Pipeline.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            Pipeline.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships")
+        )
 
         # Apply type filter if specified
         pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
