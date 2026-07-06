@@ -10,6 +10,7 @@ import {
   Input,
   InputNumber,
   Row,
+  Switch,
   Tag,
   Typography,
 } from "antd";
@@ -27,6 +28,19 @@ import "../settings/Settings.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
+
+// The "restrict LLM creation" control is enterprise/cloud-only: org admin
+// roles and user management don't exist in OSS, so this setting is meaningless
+// there. Detect the enterprise build by probing for an enterprise-only plugin
+// (absent in OSS) and hide the control entirely otherwise. Mirrors the
+// plugin-gating idiom used in SideNavBar.
+let isEnterpriseBuild = false;
+try {
+  await import("../../../plugins/store/unstract-subscription-plan-store");
+  isEnterpriseBuild = true;
+} catch {
+  // OSS build — enterprise plugins are not bundled.
+}
 
 const defaultKeys = [
   {
@@ -85,6 +99,9 @@ function PlatformSettings() {
   // UI shows minutes; wire format (and ConfigSpec.value) is seconds.
   const [batchIntervalMinutes, setBatchIntervalMinutes] = useState(null);
   const [isSavingInterval, setIsSavingInterval] = useState(false);
+  // Controlled-mode flag: only admins can create LLM adapters when true.
+  const [restrictLlmCreation, setRestrictLlmCreation] = useState(false);
+  const [isSavingRestriction, setIsSavingRestriction] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -118,6 +135,62 @@ function PlatformSettings() {
         console.warn("Failed to load notification batch interval", err);
       });
   }, [sessionDetails?.orgId]);
+
+  useEffect(() => {
+    // Enterprise/cloud-only + admin-only setting; skip the call in OSS and for
+    // non-admins (the endpoint is admin-gated and would 403) and before
+    // session hydration.
+    if (
+      !isEnterpriseBuild ||
+      !sessionDetails?.orgId ||
+      !sessionDetails?.isAdmin
+    ) {
+      return;
+    }
+    axiosPrivate({
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
+    })
+      .then((res) => {
+        setRestrictLlmCreation(
+          Boolean(res?.data?.restrict_llm_adapter_creation),
+        );
+      })
+      .catch((err) => {
+        console.warn("Failed to load LLM adapter creation setting", err);
+      });
+  }, [sessionDetails?.orgId, sessionDetails?.isAdmin]);
+
+  const handleToggleRestriction = (checked) => {
+    const previous = restrictLlmCreation;
+    setRestrictLlmCreation(checked); // optimistic
+    setIsSavingRestriction(true);
+    axiosPrivate({
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: { restrict_llm_adapter_creation: checked },
+    })
+      .then((res) => {
+        setRestrictLlmCreation(
+          Boolean(res?.data?.restrict_llm_adapter_creation),
+        );
+        setAlertDetails({
+          type: "success",
+          content: "LLM adapter creation setting updated.",
+        });
+      })
+      .catch((err) => {
+        setRestrictLlmCreation(previous); // revert on failure
+        setAlertDetails(handleException(err, "Failed to update setting"));
+      })
+      .finally(() => {
+        setIsSavingRestriction(false);
+      });
+  };
 
   const handleSaveInterval = () => {
     if (
@@ -483,6 +556,32 @@ function PlatformSettings() {
                   </Typography.Text>
                 </div>
               </div>
+              {isEnterpriseBuild && sessionDetails?.isAdmin && (
+                <div className="plt-set-section">
+                  <Typography.Title level={5}>
+                    LLM Adapter Creation
+                  </Typography.Title>
+                  <Typography.Text
+                    type="secondary"
+                    className="plt-set-section-subtitle"
+                  >
+                    Restrict creation of LLM connections to organization admins.
+                    When enabled, non-admin users cannot create LLM adapters.
+                  </Typography.Text>
+                  <div className="plt-set-inner-card">
+                    <div className="plt-set-notif-field-row">
+                      <Switch
+                        checked={restrictLlmCreation}
+                        loading={isSavingRestriction}
+                        onChange={handleToggleRestriction}
+                      />
+                      <Typography.Text>
+                        Only admins can create LLM adapters
+                      </Typography.Text>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </IslandLayout>
         </div>
