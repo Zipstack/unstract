@@ -236,13 +236,41 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
 
-        hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
-            pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            file_objs=file_objs,
-            use_file_history=use_file_history,
-        )
+        # Staging runs synchronously, before async dispatch. Scope it to its own
+        # try/except so a failure marks the still-PENDING execution ERROR (else the
+        # row is orphaned and the UI shows the run as stuck), and so error-marking
+        # never runs in the post-dispatch path where it could overwrite the status
+        # of an already-running execution.
+        try:
+            hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
+                pipeline_id=pipeline_id,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                file_objs=file_objs,
+                use_file_history=use_file_history,
+            )
+        except Exception as error:
+            # Isolate the DB error-marking so cleanup still runs if it raises.
+            try:
+                WorkflowExecutionServiceHelper.update_execution_err(
+                    str(execution_id), str(error)
+                )
+            except Exception:
+                logger.exception(f"Failed to mark execution {execution_id} as ERROR")
+
+            # Async job never started — release the rate limit slot and clean up.
+            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            DestinationConnector.delete_api_storage_dir(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+            return APIExecutionResponseSerializer(
+                ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=ExecutionStatus.ERROR.value,
+                    error=str(error),
+                )
+            ).data
 
         try:
             result = WorkflowHelper.execute_workflow_async(
@@ -287,7 +315,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
-            # Release rate limit slot (workflow setup/dispatch failed, async job not started)
+            # Dispatch failures are marked ERROR internally by execute_workflow_async;
+            # post-dispatch failures (enrichment/config) must not overwrite a running
+            # execution's status, so only release the slot and clean up storage here.
             APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
 
             # Clean up storage
