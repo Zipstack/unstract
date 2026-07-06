@@ -18,6 +18,7 @@ from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
@@ -26,6 +27,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -193,6 +195,28 @@ class AdapterInstanceViewSet(
             return AdapterListSerializer
         return AdapterInstanceSerializer
 
+    @staticmethod
+    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
+        """Controlled mode (UN-3584): only org admins may create LLM adapters
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) and non-LLM adapter types bypass; the default
+        (flag off) keeps creation open for everyone.
+        """
+        if adapter_type != AdapterKeys.LLM:
+            return
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_llm_adapter_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "LLM adapter creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
+
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
 
@@ -204,9 +228,10 @@ class AdapterInstanceViewSet(
             use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
-        try:
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        self._enforce_llm_creation_restriction(request, adapter_type)
 
+        try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
@@ -219,7 +244,12 @@ class AdapterInstanceViewSet(
                     adapter_metadata_b
                 )
 
-            instance = serializer.save()
+            # Bind the adapter to the request-scoped organization, overriding any
+            # client-supplied `organization` in the payload (the serializer
+            # exposes it via fields="__all__"). This keeps the row's org
+            # consistent with the org the controlled-mode check above evaluated,
+            # so the per-org restriction can't be sidestepped via the payload.
+            instance = serializer.save(organization=UserContext.get_organization())
             # ``created_by`` is audit-only; the creator's access flows through
             # an OWNER membership row (UN-2202 co-owners).
             instance.memberships.get_or_create(
