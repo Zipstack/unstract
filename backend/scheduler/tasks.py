@@ -34,6 +34,49 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _retargeted_next_run_at(pipeline_id: str, cron_string: str) -> datetime | None:
+    """The ``next_run_at`` a cron EDIT should set for Beat parity, or ``None`` to
+    leave it as the PG scheduler's baseline owns it.
+
+    Returns a recomputed next-match ONLY when ``cron_string`` differs from an
+    already-baselined mirror row (``next_run_at`` set). Returns ``None`` for a
+    brand-new row (no mirror yet) and a not-yet-baselined one (``next_run_at``
+    NULL) so the scheduler's no-burst baseline records the first next-time.
+
+    Fully guarded on purpose: this is an OPTIONAL enhancement over the mandatory
+    ``cron_string``/``enabled`` mirror write, so a read failure, a ``None``/invalid
+    cron (normally rejected upstream by ``PipelineSerializer.validate_cron_string``
+    in ``pipeline_v2``), or a croniter error must degrade to ``None`` — never take
+    the base mirror write down with it.
+    """
+    try:
+        existing = (
+            PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id)
+            .values("cron_string", "next_run_at")
+            .first()
+        )
+        if (
+            existing is None
+            or existing["next_run_at"] is None
+            or existing["cron_string"] == cron_string
+        ):
+            return None
+        return croniter(cron_string, timezone.now()).get_next(datetime)
+    except Exception as exc:
+        # Log the ACTUAL cause (bad read; cron=None → AttributeError;
+        # CroniterBadCronError / CroniterBadDateError; a croniter API change) — a
+        # generic "could not recompute" is a dead end when debugging a stale fire.
+        logger.warning(
+            "pg_periodic_schedule: could not retarget next_run_at for pipeline %s "
+            "(cron %r): %s",
+            pipeline_id,
+            cron_string,
+            exc,
+            exc_info=True,
+        )
+        return None
+
+
 def mirror_periodic_schedule_upsert(
     *,
     pipeline_id: str,
@@ -44,46 +87,26 @@ def mirror_periodic_schedule_upsert(
     enabled: bool,
 ) -> None:
     try:
-        defaults: dict = {
+        defaults: dict[str, Any] = {
             "organization_id": organization_id or "",
             "workflow_id": workflow_id or None,
             "pipeline_name": pipeline_name or "",
             "cron_string": cron_string,
             "enabled": enabled,
         }
-        # Beat parity: when the cron CHANGES on an already-baselined row
-        # (next_run_at set), retarget next_run_at to the new cron's next match so
-        # the edit takes effect this cycle. The PG scheduler fires on the
-        # materialised next_run_at; Beat instead recomputes due-ness live from the
-        # crontab each tick, so without this the pipeline fires once more at the
-        # STALE old-cron time and the edit is ignored for a cycle (UN-3690).
-        # Deliberately left untouched (NULL) for a brand-new row — the scheduler's
-        # no-burst baseline is correct there (a new schedule fires at its next
-        # match) — and for a Beat→PG hand-over, where ownership nulls it.
-        existing = (
-            PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id)
-            .values("cron_string", "next_run_at")
-            .first()
-        )
-        if (
-            existing is not None
-            and existing["next_run_at"] is not None
-            and existing["cron_string"] != cron_string
-        ):
-            try:
-                defaults["next_run_at"] = croniter(cron_string, timezone.now()).get_next(
-                    datetime
-                )
-            except Exception:
-                # Unparseable cron (should be caught by the serializer's validation
-                # upstream) — leave next_run_at stale rather than block the mirror;
-                # the scheduler quiesces a bad cron on its own tick.
-                logger.warning(
-                    "pg_periodic_schedule: could not recompute next_run_at for "
-                    "pipeline %s (cron %r) — leaving the existing value",
-                    pipeline_id,
-                    cron_string,
-                )
+        # Beat parity: a cron EDIT on an already-baselined row must retarget
+        # next_run_at to the new cron's next match, else the PG scheduler fires
+        # once more at the STALE old-cron time — Beat has no such staleness, it
+        # recomputes due-ness live from the crontab each tick (UN-3690). Left
+        # untouched (NULL) for a brand-new row — the scheduler's no-burst baseline
+        # is correct there (a new schedule fires at its next match) — and for a
+        # Beat→PG hand-over, where next_run_at is already NULL (never set while
+        # Beat-owned; ownership clears it only on rollback to Beat, see
+        # reconcile_ownership_for). Computed via a fully-guarded helper so it can
+        # never take down the mandatory cron_string/enabled mirror write below.
+        next_run_at = _retargeted_next_run_at(pipeline_id, cron_string)
+        if next_run_at is not None:
+            defaults["next_run_at"] = next_run_at
         PgPeriodicSchedule.objects.update_or_create(
             pipeline_id=pipeline_id,
             defaults=defaults,
