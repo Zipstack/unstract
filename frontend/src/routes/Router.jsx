@@ -59,6 +59,14 @@ const MarketplaceStripeConflictEntry = lazyPlugin(
   () => import("../plugins/marketplace"),
   "MarketplaceStripeConflictPage",
 );
+// LLMWhisperer buyers get their own entry point: the LLMWhisperer Tackle
+// listings redirect here, and the page claims against the PORTAL backend
+// (/api/v1/llmwhisperer/...) — routing them to /marketplace-landing would
+// fire the Unstract claim instead.
+const LlmWhispererMarketplaceLandingEntry = lazyPlugin(
+  () => import("../plugins/llm-whisperer/pages/MarketplaceLandingPage.jsx"),
+  "MarketplaceLandingPage",
+);
 
 // Simple Prompt Studio pages.
 const SimplePromptStudioHelper = lazyPlugin(
@@ -215,6 +223,12 @@ function Router() {
               <Route
                 path="/marketplace-stripe-conflict"
                 element={<MarketplaceStripeConflictEntry />}
+              />
+            )}
+            {LlmWhispererMarketplaceLandingEntry && (
+              <Route
+                path="/llm-whisperer/marketplace-landing"
+                element={<LlmWhispererMarketplaceLandingEntry />}
               />
             )}
             {CustomPlanCheckoutPage && (
