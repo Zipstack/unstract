@@ -526,12 +526,19 @@ class TestReturningClaimReconnect:
         monkeypatch.setattr(pg_barrier.time, "sleep", calls.append)
         return calls
 
+    @pytest.mark.parametrize(
+        "exc_cls",
+        [psycopg2.OperationalError, psycopg2.InterfaceError],
+        ids=["OperationalError", "InterfaceError"],
+    )
     def test_execute_phase_reaped_cached_conn_retries_once(
-        self, claim, _clean_local, monkeypatch, caplog, sleeps
+        self, claim, exc_cls, _clean_local, monkeypatch, caplog, sleeps
     ):
-        dead = _FakeConn(
-            execute_error=psycopg2.OperationalError("server closed the connection")
-        )
+        # Both _CONN_DEAD_ERRORS symptoms of an idle reap must be recognised and
+        # retried: OperationalError ("server closed …") and InterfaceError
+        # ("connection already closed") — libpq surfaces the broken socket either
+        # way depending on timing (mirrors TestDecrementPhaseSplitRetry).
+        dead = _FakeConn(execute_error=exc_cls("connection already closed"))
         healthy = _FakeConn()
         pg_barrier._local.conn = dead  # cached → "reused"
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
