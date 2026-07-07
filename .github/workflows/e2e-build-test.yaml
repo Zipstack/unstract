@@ -1,0 +1,109 @@
+name: Build images + run e2e tests (rig + docker compose)
+
+# Successor to ci-container-build.yaml (build + boot check) and
+# ci-test-e2e.yaml (e2e tier, previously unrunnable for lack of images).
+# One job so the e2e tier runs against the images built moments earlier on
+# the same runner — images don't travel across jobs, and pushing throwaway
+# PR images to a registry is bloat we don't want. The rig's compose boot
+# (`up -d --wait` + endpoint readiness) subsumes the old exited-container
+# check.
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  e2e-build-test:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # One tag end to end: docker-compose.build.yaml tags images with
+      # VERSION, the base compose boots ${VERSION}, and the test overlay
+      # (tests/compose/docker-compose.test.yaml) pins its services via
+      # UNSTRACT_TEST_VERSION. Keep them identical.
+      VERSION: ${{ github.sha }}
+      UNSTRACT_TEST_VERSION: ${{ github.sha }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Login to Docker Hub
+        # Authenticated pulls of base images avoid the anonymous rate limit
+        # shared by all GitHub runners. Forks have no access to secrets.
+        if: github.event.pull_request == null || github.event.pull_request.head.repo.fork == false
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.6.14"
+          python-version: 3.12.9
+
+      - name: Install tox with UV
+        run: uv tool install tox --with tox-uv
+
+      - name: Validate test manifests
+        # Cheap pre-flight before the multi-minute image build.
+        run: tox -e rig -- validate
+
+      - name: Set up env files
+        run: ./run-platform.sh -e
+
+      - name: Build service images
+        run: docker compose -f docker/docker-compose.build.yaml build
+
+      - name: Restore main-branch test baseline (for regression detection)
+        # Namespaced per-workflow; see ci-test.yaml for the rationale.
+        uses: actions/cache@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-e2e-main-${{ github.run_id }}
+          restore-keys: |
+            unstract-test-baseline-e2e-main-
+            unstract-test-baseline-e2e-
+
+      - name: Run e2e tier (rig boots the platform via compose)
+        env:
+          UNSTRACT_E2E_RUNTIME: compose
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e e2e -- --fail-on-critical-gap --update-baseline
+          else
+            tox -e e2e
+          fi
+
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: |
+          mkdir -p reports
+          docker compose -p unstract-test \
+            -f docker/docker-compose.yaml \
+            -f tests/compose/docker-compose.test.yaml \
+            logs --no-color > reports/docker-compose-logs.txt || true
+
+      - name: Output e2e report to job summary
+        if: always() && hashFiles('reports/summary.md') != ''
+        shell: bash
+        run: |
+          cat reports/summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload e2e reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-e2e
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 30
