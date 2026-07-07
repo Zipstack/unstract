@@ -4,9 +4,10 @@ on:
   push:
     branches:
       - main
+  # No base-branch filter: `branches: [main]` would skip PRs targeting a
+  # feature branch, leaving stacked PRs untested until the stack hits main.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
 
 jobs:
   # Path filtering lives at the JOB level, not as trigger paths-ignore: a
