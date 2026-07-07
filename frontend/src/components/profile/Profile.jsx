@@ -11,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 import "./Profile.css";
 
 import { OrganizationIcon } from "../../assets";
+import config from "../../config";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../store/alert-store.js";
 import { useSessionStore } from "../../store/session-store.js";
@@ -232,6 +233,18 @@ function Profile() {
                         <CheckCircleOutlined />
                         {role}
                       </Typography.Text>
+                    </div>
+                  )}
+                  {config.version && (
+                    <div className="field-group">
+                      <Typography.Text type="secondary" className="field-label">
+                        Platform Version
+                      </Typography.Text>
+                      <div className="field-box">
+                        <Typography.Text className="field-value">
+                          {config.version}
+                        </Typography.Text>
+                      </div>
                     </div>
                   )}
                 </Space>

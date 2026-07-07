@@ -7,8 +7,7 @@ Provides Redis-based caching, exponential backoff, and circuit breaker patterns 
 import time
 from typing import Any
 
-# Use Celery current_app to avoid circular imports
-from celery import current_app as app
+from queue_backend import worker_task
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -381,12 +380,16 @@ def _update_execution_status_unified(
     try:
         # Consistent workflow execution status update across all callback types
         total_files = aggregated_results.get("total_files", 0)
+        successful_files = aggregated_results.get("successful_files", 0)
+        failed_files = aggregated_results.get("failed_files", 0)
 
         # Make the unified API call
         api_client.update_workflow_execution_status(
             execution_id=execution_id,
             status=final_status,
             total_files=total_files,
+            successful_files=successful_files,
+            failed_files=failed_files,
             organization_id=organization_id,
             error_message=error_message,
         )
@@ -1512,7 +1515,7 @@ def _process_batch_callback_core(
             logger.warning("api_client.close() failed during callback cleanup: %s", e)
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.PROCESS_BATCH_CALLBACK,
     max_retries=0,  # Match Django backend pattern
@@ -1536,7 +1539,7 @@ def process_batch_callback(self, results, *args, **kwargs) -> dict[str, Any]:
     return _process_batch_callback_core(self, results, *args, **kwargs)
 
 
-@app.task(
+@worker_task(
     bind=True,
     name="process_batch_callback_api",
     autoretry_for=(Exception,),
@@ -1932,7 +1935,7 @@ def _publish_final_workflow_ui_logs_api(
         )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name="workflow_manager.workflow_v2.file_execution_tasks.process_batch_callback",
     max_retries=0,

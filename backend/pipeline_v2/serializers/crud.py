@@ -30,10 +30,21 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     created_by_email = SerializerMethodField()
     last_5_run_statuses = SerializerMethodField()
     next_run_time = SerializerMethodField()
+    # ``shared_groups`` is no longer an M2M on Pipeline — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /pipeline/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = Pipeline
         fields = "__all__"
+        # IntegrityErrorMixin / view own uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the view can map a friendly message.
+        validators = []
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_pipeline_name": {

@@ -6,6 +6,7 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -25,9 +26,21 @@ class TestAdapterSerializer(serializers.Serializer):
 
 
 class BaseAdapterSerializer(AuditSerializer):
+    # ``shared_groups`` is no longer an M2M on AdapterInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /adapter/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData); drop the DRF
+        # auto-validator that 400s on re-save before the view can handle it.
+        validators = []
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     def validate(self, data):
         data = super().validate(data)
@@ -205,6 +218,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     """
 
     shared_users = serializers.SerializerMethodField()
+    shared_groups = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -217,12 +231,16 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "created_by",
             "shared_users",
             "shared_to_org",
+            "shared_groups",
         )  # type: ignore
 
     def get_shared_users(self, obj):
         return UserSerializer(
             obj.shared_users.filter(is_service_account=False), many=True
         ).data
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

@@ -5,8 +5,7 @@ No Django dependencies, works in pure worker environment.
 """
 
 import logging
-
-from celery import current_app
+from typing import Any
 
 # Import shared data models from @unstract/core
 from unstract.core.data_models import (
@@ -18,85 +17,93 @@ from unstract.core.data_models import (
 
 logger = logging.getLogger(__name__)
 
-
-def get_webhook_headers(
-    auth_type: str, auth_key: str | None, auth_header: str | None
-) -> dict[str, str]:
-    """Generate webhook headers based on authorization configuration."""
-    headers = {"Content-Type": "application/json"}
-
-    try:
-        if auth_type and auth_key:
-            auth_type_upper = auth_type.upper()
-
-            if auth_type_upper == "BEARER":
-                headers["Authorization"] = f"Bearer {auth_key}"
-            elif auth_type_upper == "API_KEY":
-                headers["Authorization"] = auth_key
-            elif auth_type_upper == "CUSTOM_HEADER" and auth_header:
-                headers[auth_header] = auth_key
-            # NONE type just uses Content-Type header
-    except Exception as e:
-        logger.warning(f"Error generating webhook headers: {e}")
-        # Use default headers if auth config is invalid
-
-    return headers
+ENQUEUE_BUFFER_ENDPOINT = "v1/webhook/buffer/enqueue/"
 
 
-def send_notification_to_worker(
-    url: str,
+def _enqueue_to_buffer(
+    api_client: Any,
+    notification: dict[str, Any],
     payload: NotificationPayload,
-    auth_type: str,
-    auth_key: str | None,
-    auth_header: str | None,
-    max_retries: int = 0,
-    platform: str | None = None,
-) -> bool:
-    """Send a single notification to the notification worker queue.
+) -> None:
+    """POST a single execution event to the backend's buffer endpoint.
 
-    Args:
-        url: Webhook URL to send notification to
-        payload: Structured notification payload
-        auth_type: Authorization type (NONE, BEARER, API_KEY, CUSTOM_HEADER)
-        auth_key: Authorization key/token
-        auth_header: Custom header name for CUSTOM_HEADER auth type
-        max_retries: Maximum number of retry attempts
-        platform: Platform type from notification config (SLACK, API, etc.)
-
-    Returns:
-        True if task was successfully queued, False otherwise
+    Worker writes nothing to the DB itself — the backend owns NotificationBuffer
+    rows. Raises on any failure so the outer trigger_* caller's except block
+    logs the drop instead of silently treating BATCHED delivery as successful.
     """
+    # Forward the full per-event shape so the backend can buffer it and the
+    # shared clubbed renderer can format each event consistently. Older backend
+    # builds that ignore the extra fields stay unaffected.
+    payload_type = payload.type.value if hasattr(payload.type, "value") else payload.type
+    payload_status = (
+        payload.status.value if hasattr(payload.status, "value") else payload.status
+    )
+    payload_timestamp = payload.timestamp.isoformat() if payload.timestamp else None
     try:
-        headers = get_webhook_headers(auth_type, auth_key, auth_header)
-
-        # Convert payload to webhook format (excludes internal fields)
-        payload_dict = payload.to_webhook_payload()
-
-        # Send task to notification worker
-        current_app.send_task(
-            "send_webhook_notification",
-            args=[
-                url,
-                payload_dict,
-                headers,
-                10,  # timeout
-            ],
-            kwargs={
-                "max_retries": max_retries,
-                "retry_delay": 10,
-                "platform": platform,
+        api_client._make_request(
+            method="POST",
+            endpoint=ENQUEUE_BUFFER_ENDPOINT,
+            data={
+                "notification_id": notification["id"],
+                "type": payload_type,
+                "execution_id": payload.execution_id,
+                "pipeline_id": payload.pipeline_id,
+                "pipeline_name": payload.pipeline_name,
+                "status": payload_status,
+                "error_message": payload.error_message,
+                "platform": notification.get("platform"),
+                "timestamp": payload_timestamp,
+                "additional_data": payload.additional_data or {},
             },
-            queue="notifications",
+            timeout=10,
         )
-
-        logger.info(
-            f"Sent webhook notification to worker queue for {url} (pipeline: {payload.pipeline_id})"
+    # Propagate any failure; caller decides whether to continue iteration.
+    except Exception:  # noqa: BLE001
+        logger.exception(
+            "Failed to enqueue BATCHED notification %s for pipeline %s",
+            notification["id"],
+            payload.pipeline_id,
         )
-        return True
+        raise
+    logger.info(
+        "Enqueued BATCHED notification %s for pipeline %s execution %s",
+        notification["id"],
+        payload.pipeline_id,
+        payload.execution_id,
+    )
 
-    except Exception as e:
-        logger.error(f"Failed to send notification to {url}: {e}")
-        return False
+
+def _route_notification(
+    api_client: Any,
+    notification: dict[str, Any],
+    payload: NotificationPayload,
+) -> None:
+    """Forward webhook notifications to the backend buffer-enqueue endpoint.
+
+    Single dispatch path: the backend owns the buffer and the periodic
+    flush ships clubbed messages. Non-webhook notification types are
+    skipped at this layer. An enqueue failure is logged but doesn't abort
+    the outer trigger_* loop so sibling notifications still get their
+    chance.
+    """
+    if notification.get("notification_type") != "WEBHOOK":
+        logger.debug(
+            "Skipping non-webhook notification type: %s",
+            notification.get("notification_type"),
+        )
+        return
+
+    try:
+        _enqueue_to_buffer(api_client, notification, payload)
+    # Already logged with stack inside _enqueue_to_buffer; broad catch keeps
+    # sibling notifications going. Emit a metric so a dropped failure alert is
+    # observable here (this is the path's final swallow point).
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "metric=notification_dropped_total notification_id=%s; "
+            "buffer enqueue failed, continuing with others",
+            notification.get("id"),
+        )
 
 
 def trigger_notification(
@@ -104,6 +111,7 @@ def trigger_notification(
     pipeline_id: str,
     pipeline_name: str,
     notification_payload: NotificationPayload,
+    execution_id: str | None = None,
 ) -> None:
     """Trigger notifications for pipeline status updates.
 
@@ -111,10 +119,13 @@ def trigger_notification(
     Uses API client to fetch notification configuration.
     """
     try:
-        # Fetch pipeline notifications via API
+        # Pass execution_id so the backend filter respects notify_on_failures
+        # (see trigger_pipeline_notifications for the rationale).
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
             method="GET",
             endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
+            params=params,
             timeout=10,
         )
 
@@ -135,20 +146,7 @@ def trigger_notification(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=notification_payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, notification_payload)
 
     except Exception as e:
         logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
@@ -176,10 +174,14 @@ def trigger_pipeline_notifications(
         return
 
     try:
-        # Fetch pipeline notifications via API
+        # Pass execution_id so the backend can drop notify_on_failures=True rows
+        # on success runs. Without it the endpoint is a no-op and we'd fire on
+        # every active row regardless of trigger preference.
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
             method="GET",
             endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
+            params=params,
             timeout=10,
         )
 
@@ -204,7 +206,9 @@ def trigger_pipeline_notifications(
         else:
             workflow_type = WorkflowType.ETL  # Default fallback
 
-        # Create notification payload using dataclass
+        # File counts come from WorkflowExecution via the same endpoint so
+        # webhook receivers (Slack, raw API) see partial-success breakdowns.
+        counts = response_data.get("execution_counts") or {}
         payload = NotificationPayload.from_execution_status(
             pipeline_id=pipeline_id,
             pipeline_name=pipeline_name,
@@ -213,6 +217,9 @@ def trigger_pipeline_notifications(
             source=NotificationSource.CALLBACK_WORKER,
             execution_id=execution_id,
             error_message=error_message,
+            total_files=counts.get("total_files", 0),
+            successful_files=counts.get("successful_files", 0),
+            failed_files=counts.get("failed_files", 0),
         )
 
         logger.info(
@@ -221,20 +228,7 @@ def trigger_pipeline_notifications(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, payload)
 
     except Exception as e:
         logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
@@ -261,9 +255,14 @@ def trigger_api_notifications(
         return
 
     try:
-        # Fetch API notifications via API
+        # See trigger_pipeline_notifications: execution_id powers the backend
+        # filter that respects notify_on_failures.
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
-            method="GET", endpoint=f"v1/webhook/api/{api_id}/notifications/", timeout=10
+            method="GET",
+            endpoint=f"v1/webhook/api/{api_id}/notifications/",
+            params=params,
+            timeout=10,
         )
 
         # _make_request already handles status codes and returns parsed data
@@ -277,7 +276,7 @@ def trigger_api_notifications(
             logger.info(f"No active notifications found for API {api_id}")
             return
 
-        # Create notification payload using dataclass
+        counts = response_data.get("execution_counts") or {}
         payload = NotificationPayload.from_execution_status(
             pipeline_id=api_id,
             pipeline_name=api_name,
@@ -286,6 +285,9 @@ def trigger_api_notifications(
             source=NotificationSource.CALLBACK_WORKER,
             execution_id=execution_id,
             error_message=error_message,
+            total_files=counts.get("total_files", 0),
+            successful_files=counts.get("successful_files", 0),
+            failed_files=counts.get("failed_files", 0),
         )
 
         logger.info(
@@ -294,27 +296,14 @@ def trigger_api_notifications(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, payload)
 
     except Exception as e:
         logger.error(f"Error triggering API notifications for {api_id}: {e}")
 
 
 def handle_status_notifications(
-    api_client,
+    api_client: Any,
     pipeline_id: str,
     status: str,
     execution_id: str | None = None,
@@ -444,3 +433,63 @@ def handle_status_notifications(
         import traceback
 
         traceback.print_exc()
+
+
+def notify_execution_failure(
+    api_client: Any,
+    pipeline_id: str,
+    execution_id: str,
+    organization_id: str,
+    error_message: str | None = None,
+) -> None:
+    """Dispatch a failure notification for a run that errored *before* the
+    file-processing callback ran.
+
+    ETL/Task notifications normally fire from the callback worker's
+    ``handle_status_notifications`` once files finish processing. Build/setup
+    failures — missing-tool / tool-registry errors, tool validation, source
+    connector errors — halt the run before any file is processed, so that
+    callback never runs and a "notify on failures" subscriber hears nothing.
+    This resolves the pipeline's name/type from the backend and reuses the
+    standard dispatch with a terminal ERROR status, so the failure-filter and
+    the clubbed payload are identical to the normal path.
+
+    Mutually exclusive with the callback: a run that reaches file processing
+    returns normally from the worker and is notified by the callback instead.
+    API deployments are intentionally not handled here — they already dispatch
+    early failures through the backend ``update_pipeline_status`` path.
+    """
+    try:
+        api_client.set_organization_context(organization_id)
+        response = api_client.get_pipeline_data(
+            pipeline_id=pipeline_id, check_active=False
+        )
+        if not (getattr(response, "success", False) and response.data):
+            logger.warning(
+                "Skipping early-failure notification for %s: pipeline data unavailable",
+                pipeline_id,
+            )
+            return
+        # Unified endpoint nests the record under "pipeline"; fall back to the
+        # flat shape for older builds.
+        pdata = response.data.get("pipeline", response.data)
+        pipeline_name = pdata.get("pipeline_name") or pdata.get("api_name")
+        pipeline_type = pdata.get("pipeline_type", WorkflowType.ETL.value)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Could not resolve pipeline %s for early-failure notification: %s",
+            pipeline_id,
+            e,
+        )
+        return
+
+    handle_status_notifications(
+        api_client=api_client,
+        pipeline_id=pipeline_id,
+        status=ExecutionStatus.ERROR.value,
+        execution_id=execution_id,
+        error_message=error_message,
+        pipeline_name=pipeline_name,
+        pipeline_type=pipeline_type,
+        organization_id=organization_id,
+    )

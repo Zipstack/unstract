@@ -29,6 +29,7 @@ import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import { groupsService } from "../../groups/groups-service.js";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { pipelineService } from "../pipeline-service.js";
@@ -93,15 +94,18 @@ function Pipelines({ type }) {
     setAlertDetails,
   });
 
+  const groupsApi = groupsService();
   const {
     openShareModal,
     setOpenShareModal,
     allUsers,
+    allGroups,
     isLoadingShare,
     handleShare,
     onShare,
   } = useShareModal({
     apiService: pipelineApiService,
+    groupsApi,
     setSelectedItem: setSelectedPorD,
     setAlertDetails,
     handleException,
@@ -433,6 +437,7 @@ function Pipelines({ type }) {
           permissionEdit={true}
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}
+          allGroups={Array.isArray(allGroups) ? allGroups : []}
           onApply={onShare}
           isSharableToOrg={true}
         />
