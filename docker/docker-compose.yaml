@@ -144,6 +144,10 @@ services:
       - reverse-proxy
     environment:
       - ENVIRONMENT=development
+      # Running platform version, surfaced on the profile page. Reuses the same
+      # ${VERSION} that tags the image, so it always matches what's deployed
+      # (and updates on RC->stable promotion, which only retags — doesn't rebuild).
+      - UNSTRACT_APPS_VERSION=${VERSION}
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`)
