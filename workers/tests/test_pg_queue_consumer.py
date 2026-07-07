@@ -978,3 +978,80 @@ class TestSelfChain:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestRecordTaskStatus:
+    """UN-3693: a dispatch_with_callback task's terminal status is recorded in
+    pg_task_result so the REST PromptStudio.task_status poll resolves under PG.
+    completed unless the run raised (error) or the executor reported success=False
+    (completed rows are status-only; failed rows carry the executor error text). TTL'd
+    + best-effort — never wedges the ack."""
+
+    _RB = "queue_backend.pg_queue.consumer.PgResultBackend"
+    _RET = 86400
+
+    @staticmethod
+    def _consumer(client=None):
+        return PgQueueConsumer(["q"], client=client or MagicMock())
+
+    @staticmethod
+    def _entered_rb(patched):  # object bound by `with PgResultBackend() as rb:`
+        return patched.return_value.__enter__.return_value
+
+    def test_success_records_completed(self):
+        with patch(self._RB) as RB:
+            self._consumer()._record_task_status(
+                {"task_id": "tid"}, error=None, executor_result={"success": True, "data": {}}
+            )
+        self._entered_rb(RB).store_result.assert_called_once_with(
+            "tid", result={}, retention_seconds=self._RET
+        )
+
+    def test_executor_reported_failure_records_failed(self):
+        with patch(self._RB) as RB:
+            self._consumer()._record_task_status(
+                {"task_id": "tid"}, error=None,
+                executor_result={"success": False, "error": "boom"},
+            )
+        self._entered_rb(RB).store_result.assert_called_once_with(
+            "tid", error="boom", retention_seconds=self._RET
+        )
+
+    def test_run_raised_records_failed(self):
+        with patch(self._RB) as RB:
+            self._consumer()._record_task_status(
+                {"task_id": "tid"}, error="RuntimeError: kaboom", executor_result="tid"
+            )
+        self._entered_rb(RB).store_result.assert_called_once_with(
+            "tid", error="RuntimeError: kaboom", retention_seconds=self._RET
+        )
+
+    def test_no_task_id_is_noop(self):
+        with patch(self._RB) as RB:
+            self._consumer()._record_task_status(
+                {}, error=None, executor_result={"success": True}
+            )
+        RB.assert_not_called()
+
+    def test_backend_error_is_swallowed(self):
+        with patch(self._RB) as RB:
+            RB.side_effect = RuntimeError("pg down")
+            self._consumer()._record_task_status(
+                {"task_id": "tid"}, error=None, executor_result={"success": True}
+            )  # must not raise
+
+    def test_chain_continuation_records_status_even_if_enqueue_fails(self):
+        # Single-site wiring: status is recorded before the enqueue, so a REST poll
+        # resolves even when the callback continuation is lost.
+        client = MagicMock()
+        client.send.side_effect = RuntimeError("enqueue down")
+        with patch(self._RB) as RB:
+            ok = self._consumer(client)._chain_continuation(
+                {"task_name": "cb.done", "queue": "ide_callback", "kwargs": {}},
+                prepend={"success": True},
+                payload={"task_id": "tid", "args": [{}]},
+            )
+        assert ok is False
+        self._entered_rb(RB).store_result.assert_called_once_with(
+            "tid", result={}, retention_seconds=self._RET
+        )
