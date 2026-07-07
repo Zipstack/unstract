@@ -4,17 +4,13 @@ on:
   push:
     branches:
       - main
-  # No base-branch filter: `branches: [main]` would skip PRs targeting a
-  # feature branch, leaving stacked PRs untested until the stack hits main.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
 jobs:
-  # Path filtering lives at the JOB level, not as trigger paths-ignore: a
-  # workflow that never triggers creates no check run, so a required status
-  # check would block the PR forever ("Expected — waiting for status"). A job
-  # skipped via `if:` still reports a check run (conclusion: skipped), which
-  # required checks treat as passing.
+  # Path filtering at job level, not trigger paths-ignore: an untriggered
+  # workflow reports no check run, so a required check waits forever; a job
+  # skipped via `if:` reports conclusion `skipped`, which passes.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -37,9 +33,8 @@ jobs:
               - "!frontend/**"
               - "!docs/**"
 
-  # The two tiers share no state (separate runners, disjoint groups), so they
-  # run as parallel matrix legs. Anything that needs both tiers' results —
-  # report aggregation, coverage union, baseline update — happens in `report`.
+  # Tiers share no state (separate runners, disjoint groups), so they run as
+  # parallel matrix legs; whatever needs both tiers' results happens in `report`.
   test:
     needs: changes
     if: needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false
@@ -75,15 +70,11 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Restore main-branch test baseline (for regression detection)
-        # Restore-only: a save here would claim this run's key with an
-        # unmerged baseline before the report job's save. The report job owns
-        # the write.
-        #
-        # The unit/integration lane keeps a SEPARATE baseline from the e2e
-        # workflow because their `scope_groups` don't overlap — restoring an
-        # e2e-tier baseline here would flag every e2e-covered path as a
-        # regression in this lane (and vice versa). Each workflow is the
-        # source of truth for the paths covered by its own tiers.
+        # Restore-only: the report job is the sole baseline writer (a save
+        # here would claim this run's key with an unmerged file). Baseline is
+        # separate from the e2e workflow's — their scope_groups don't overlap,
+        # and a cross-lane restore would flag the other lane's paths as
+        # regressions.
         uses: actions/cache/restore@v5
         with:
           path: reports/previous-summary.json
@@ -101,17 +92,15 @@ jobs:
         run: tox -e rig -- validate
 
       - name: Run ${{ matrix.tier }} tier
-        # --fail-on-critical-gap on PRs too: with main enforced gap-free and
-        # PR CI running the merge ref, it can only fail a PR that itself
-        # introduces the gap — catching it before merge instead of on main.
-        # No --update-baseline here: parallel per-tier writes would race the
-        # cache. The report job merges once over both tiers (main only).
+        # Gap check on PRs too: main is gap-free and PRs test the merge ref,
+        # so a gap here can only be PR-introduced. No --update-baseline:
+        # parallel writes would race; the report job merges once (main only).
         run: tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
 
       - name: Suffix coverage data for cross-tier merge
         # Both tiers emit a bare reports/.coverage that would clobber on
-        # download; a suffix makes it match the `.coverage.*` glob
-        # `report combine` unions.
+        # download; suffixed names match the `.coverage.*` glob `report
+        # combine` unions.
         if: always()
         run: |
           if [ -f reports/.coverage ]; then
@@ -187,9 +176,8 @@ jobs:
           tox -e rig -- report combine $flags
 
       - name: Save updated baseline
-        # actions/cache only saves on a cache miss; the run id in the key
-        # makes each main build a fresh entry, and restore-keys' prefix match
-        # pulls the most recent one next run.
+        # actions/cache saves only on a miss; the run id keys each main build
+        # a fresh entry, and restore-keys' prefix pulls the latest next run.
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v5
         with:
@@ -220,9 +208,8 @@ jobs:
           retention-days: 14
 
       - name: Fail if any tier failed
-        # Makes this job the single branch-protection check: for a matrix
-        # job, `result` is `success` only when every leg passed, so either
-        # tier failing (or being cancelled) turns `report` red too.
+        # Lets this job serve as the single branch-protection check: a matrix
+        # `result` is success only when every leg passed.
         if: always()
         run: |
           [ "${{ needs.test.result }}" = "success" ] || exit 1
