@@ -139,13 +139,21 @@ class TestEnqueueShortCircuits:
 # --- Idempotent-write reconnect-retry (no DB) ---
 
 
+_UNSET = object()
+
+
 class _FakeCursorCtx:
-    def __init__(self, on_execute):
+    def __init__(self, on_execute, fetchone_result=_UNSET):
         self._on_execute = on_execute
+        self._fetchone_result = fetchone_result
 
     def __enter__(self):
         cur = MagicMock(name="cursor")
         cur.execute.side_effect = self._on_execute
+        # Default (unset): fetchone() returns a truthy MagicMock (claim won). Pass
+        # fetchone_result=None to exercise the "lost" answer (claim already held).
+        if self._fetchone_result is not _UNSET:
+            cur.fetchone.return_value = self._fetchone_result
         return cur
 
     def __exit__(self, *exc):
@@ -159,10 +167,11 @@ class _FakeConn:
     the ambiguous "reaped during commit" case the decrement must NOT retry.
     """
 
-    def __init__(self, *, execute_error=None, commit_error=None):
+    def __init__(self, *, execute_error=None, commit_error=None, fetchone_result=_UNSET):
         self.closed = False
         self._execute_error = execute_error
         self._commit_error = commit_error
+        self._fetchone_result = fetchone_result
         self.commits = 0
         self.rollbacks = 0
         self.executes = 0
@@ -173,7 +182,7 @@ class _FakeConn:
             if self._execute_error is not None:
                 raise self._execute_error
 
-        return _FakeCursorCtx(_on_execute)
+        return _FakeCursorCtx(_on_execute, self._fetchone_result)
 
     def commit(self):
         self.commits += 1
@@ -551,14 +560,15 @@ class TestClaimOrchestrationRetry:
 
 
 class TestClaimBatchRetry:
-    """``claim_batch`` is a RETURNING claim, sibling to ``try_claim_orchestration``
-    one level up, so it self-heals ONLY the provably-safe case: an execute-phase
-    failure on a *cached* connection (the idle reap that stranded scheduled ETL
-    batches — the ~30-min-idle barrier connection past ``server_idle_timeout``; the
-    INSERT never committed, so the retry's claim answer is authoritative). A
-    commit-phase failure is ambiguous and a fresh-conn failure is a real error —
-    neither is retried, else a claim could flip ``True``→``False`` and strand the
-    barrier (or double-decrement).
+    """``claim_batch`` is a RETURNING claim (via the shared
+    ``_run_returning_claim_with_reconnect``), so it self-heals ONLY the
+    provably-safe case: an execute-phase failure on a *cached* connection — the idle
+    reap that stranded scheduled ETL batches (UN-3684: a barrier connection idle
+    ~30 min between pipeline runs, past ``server_idle_timeout``; the INSERT never
+    committed, so the retry's claim answer is authoritative). NOT retried, for two
+    distinct reasons: a **commit-phase** failure is ambiguous — a re-run could flip
+    ``True``→``False`` and strand the barrier; a **fresh-conn** failure is a real DB
+    error — reconnecting buys nothing.
     """
 
     @pytest.fixture
@@ -618,6 +628,50 @@ class TestClaimBatchRetry:
             claim_batch("exec-1", 0)
         assert dead.executes == 1  # no retry
         assert sleeps == []
+
+    def test_second_conn_dead_failure_propagates(self, _clean_local, monkeypatch, sleeps):
+        # Retry is bounded to ONE: a cached reap retries onto a fresh conn that also
+        # dies → propagate (don't loop, don't hit the AssertionError fall-through).
+        # Pins the boundary that `attempt < _BARRIER_WRITE_ATTEMPTS` enforces.
+        dead1 = _FakeConn(execute_error=psycopg2.OperationalError("reaped"))
+        dead2 = _FakeConn(execute_error=psycopg2.OperationalError("still down"))
+        pg_barrier._local.conn = dead1  # cached → reused
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: dead2)
+        with pytest.raises(psycopg2.OperationalError):
+            claim_batch("exec-1", 0)
+        assert dead1.executes == 1 and dead2.executes == 1  # exactly one retry
+        assert sleeps == [pg_barrier._BARRIER_RETRY_BACKOFF_SECONDS]
+
+    def test_non_connection_execute_error_on_reused_conn_not_retried(
+        self, _clean_local, monkeypatch, sleeps
+    ):
+        # The `conn_dead` conjunct is the only guard against retrying a real SQL
+        # error on a cached conn — a regression dropping it would silently re-run a
+        # DataError. Pin: reused conn, non-conn error → NOT retried.
+        bad = _FakeConn(execute_error=psycopg2.DataError("invalid byte 0x00"))
+        pg_barrier._local.conn = bad  # cached → reused True
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: pytest.fail("must not reconnect on a non-connection error"),
+        )
+        with pytest.raises(psycopg2.DataError):
+            claim_batch("exec-1", 0)
+        assert bad.executes == 1  # no retry
+        assert sleeps == []
+
+    def test_retry_returns_the_lost_answer_authoritatively(
+        self, _clean_local, monkeypatch, sleeps
+    ):
+        # The "win/LOST answer is authoritative" half: after a reaped-conn retry, a
+        # fresh conn whose RETURNING yields no row → claim already held → returns
+        # False (not the truthy MagicMock default the happy-path test can only see).
+        dead = _FakeConn(execute_error=psycopg2.OperationalError("reaped"))
+        healthy = _FakeConn(fetchone_result=None)  # ON CONFLICT DO NOTHING: no row
+        pg_barrier._local.conn = dead
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
+        assert claim_batch("exec-1", 0) is False  # authoritative "lost" from retry
+        assert healthy.commits == 1
 
 
 class TestReleaseOrchestrationClaimRetry:
