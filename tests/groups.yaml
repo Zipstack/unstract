@@ -111,14 +111,11 @@ groups:
     # requires_services via testcontainers and injects their connection env into
     # pytest (tests/rig/cli.py:_inject_infra_env). Not optional: these gate the
     # integration tier.
-    paths:
-      - adapter_processor_v2/tests/test_adapter_api.py
-      - dashboard_metrics/tests
-      - prompt_studio/prompt_studio_registry_v2/tests
-      # Destination DB-writer tests (BE orchestration over the connector lib —
-      # superset of the connector-lib DB tests). Postgres runs against the
-      # provisioned testcontainer; the other engines skipTest without creds.
-      - workflow_manager/endpoint_v2/tests/destination-connectors
+    # Marker-only selection — exact complement of unit-backend: conftest.py
+    # auto-marks DB-bound tests `integration`, so new DB tests join this
+    # group with no edit here. Tests needing external creds skip without them.
+    paths: ["."]
+    markers: "integration"
     uv_sync_group: test
     env: *backend_test_env
     requires_services: [postgres, redis]
