@@ -100,14 +100,12 @@ jobs:
         run: tox -e rig -- validate
 
       - name: Run ${{ matrix.tier }} tier
+        # --fail-on-critical-gap on PRs too: with main enforced gap-free and
+        # PR CI running the merge ref, it can only fail a PR that itself
+        # introduces the gap — catching it before merge instead of on main.
         # No --update-baseline here: parallel per-tier writes would race the
-        # cache. The report job merges once over both tiers.
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
-          else
-            tox -e ${{ matrix.tier }}
-          fi
+        # cache. The report job merges once over both tiers (main only).
+        run: tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
 
       - name: Suffix coverage data for cross-tier merge
         # Both tiers emit a bare reports/.coverage that would clobber on
