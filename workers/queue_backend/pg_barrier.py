@@ -183,7 +183,11 @@ def _cursor() -> Iterator[Any]:
 # dead conn, so a single retry runs against a freshly reconnected one. This turns
 # a transient blip (which previously aborted the whole execution at barrier
 # enqueue) into a self-heal. Kept a literal (not env-driven) so the idempotency
-# bound can't be weakened operationally.
+# bound can't be weakened operationally. Also bounds the phase-split RETURNING
+# claims (``claim_batch`` / ``try_claim_orchestration`` via
+# :func:`_run_returning_claim_with_reconnect`); they are non-idempotent but retry
+# ONLY the provably-uncommitted execute phase, so the same one-retry bound holds
+# without reopening a claim-flip.
 _BARRIER_WRITE_ATTEMPTS: Final = 2  # total attempts: 1 initial + 1 retry
 # Small fixed pause before the retry. The idle-reap case reconnects instantly
 # regardless; this only widens the self-heal window for a brief DB failover, and
@@ -223,8 +227,11 @@ def _run_idempotent_pre_dispatch_write(
     remaining - 1``): it is not idempotent — a re-applied decrement can fire the
     callback **prematurely with incomplete results**, or skip past 0 and
     **strand the barrier** to expiry — so it stays on the plain :func:`_cursor`
-    (recover-but-don't-retry). Same for ``claim_batch``, whose ``RETURNING``
-    answer flips on a retry.
+    (recover-but-don't-retry). The RETURNING claims (``claim_batch`` /
+    ``try_claim_orchestration``) are likewise non-idempotent — a committed claim's
+    win/lost answer flips on a naive re-run — so they retry via
+    :func:`_run_returning_claim_with_reconnect`, which retries ONLY the
+    provably-uncommitted execute phase.
     """
     for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
         try:
@@ -261,6 +268,77 @@ def _delete_barrier(execution_id: str) -> None:
         )
 
 
+def _run_returning_claim_with_reconnect(
+    operation: Callable[[PgCursor], bool], *, what: str
+) -> bool:
+    """Run a single ``INSERT … ON CONFLICT DO NOTHING RETURNING`` claim
+    (``operation(cur)`` → did-I-win), with the **phase-split reconnect-retry**
+    shared by :func:`claim_batch` and :func:`try_claim_orchestration`.
+
+    These are the FIRST DB write of their task, so on an idle worker they most
+    often meet a PgBouncer-reaped *cached* connection. The claim is retried ONCE,
+    but ONLY on an **execute-phase** failure of a cached connection: the statement
+    never committed (rolled back on disconnect), so re-running lands exactly once
+    and the retry's ``RETURNING`` answer is authoritative — no win→lost flip.
+
+    NOT retried (each propagates):
+    - **commit-phase** failure — AMBIGUOUS (the server may have committed). A re-run
+      could flip ``True`` → ``False`` → the caller skips and the barrier/claim
+      strands; and if the row *did* persist, the redelivery's claim likewise returns
+      ``False``, so the reaper recovers at expiry either way.
+    - **fresh-conn** failure — a real DB error; reconnecting buys nothing.
+
+    (This is why the idempotent ``-> None`` pre-dispatch helper can't be reused: a
+    RETURNING claim is non-idempotent.) ``what`` is a caller-formatted log label,
+    e.g. ``[exec:<id>] claim_batch(<n>)``.
+    """
+    # Only a CACHED handle can be a stale idle-reap; sample before _get_conn()
+    # materialises one, so a fresh-conn failure isn't misread as a reap.
+    reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
+    for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
+        conn = _get_conn()
+        try:
+            with conn.cursor() as cur:
+                won = operation(cur)
+        except Exception as exc:
+            conn_dead = _recover_after_error(conn, exc)
+            if conn_dead and reused and attempt < _BARRIER_WRITE_ATTEMPTS:
+                logger.warning(
+                    "%s: execute failed on a cached connection (%s) — reconnecting "
+                    "and retrying once (attempt %d/%d); the INSERT never committed.",
+                    what,
+                    type(exc).__name__,
+                    attempt,
+                    _BARRIER_WRITE_ATTEMPTS,
+                    exc_info=True,
+                )
+                # The dead handle was discarded, so the next _get_conn() reconnects
+                # — clear `reused` so a fresh-conn death on a later attempt is never
+                # retried. Keeps the invariant structural, not merely masked by
+                # _BARRIER_WRITE_ATTEMPTS == 2.
+                reused = False
+                time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
+                continue
+            raise
+        try:
+            conn.commit()
+        except Exception as exc:
+            _recover_after_error(conn, exc)
+            logger.warning(
+                "%s: commit failed (%s) — NOT retrying (the server may already have "
+                "committed; a re-run could flip the claim → the caller skips and the "
+                "barrier strands; if the row persisted, the redelivery skips and the "
+                "reaper recovers at expiry). Propagating.",
+                what,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            raise
+        return won
+    # Unreachable: the loop either returns or raises.
+    raise AssertionError(f"{what}: claim loop fell through")
+
+
 def claim_batch(execution_id: str, batch_index: int) -> bool:
     """Claim ``(execution_id, batch_index)`` for processing — the per-batch
     idempotency gate for the at-least-once PG pipeline.
@@ -278,8 +356,16 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
     Called on the in-body PG path from :func:`run_batch_with_barrier` (claim at
     batch start), alongside the in-body decrement. The companion
     :func:`clear_execution_batches` reclaims the markers at barrier finalise.
+
+    Runs through the shared phase-split reconnect-retry
+    (:func:`_run_returning_claim_with_reconnect`): the module's thread-local
+    connection sits idle **between pipeline runs** (a scheduled pipeline can idle
+    for tens of minutes, past PgBouncer's ``server_idle_timeout``), so the FIRST
+    ``INSERT`` of a run can hit an idle-reaped handle; that execute-phase reap
+    self-heals on one reconnect (UN-3684). See the helper for the full rationale.
     """
-    with _cursor() as cur:
+
+    def _op(cur: PgCursor) -> bool:
         cur.execute(
             f"INSERT INTO {qualified('pg_batch_dedup')} "
             "(execution_id, batch_index, created_at) "
@@ -289,6 +375,10 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
             (execution_id, batch_index),
         )
         return cur.fetchone() is not None
+
+    return _run_returning_claim_with_reconnect(
+        _op, what=f"[exec:{execution_id}] claim_batch({batch_index})"
+    )
 
 
 def clear_execution_batches(execution_id: str) -> int:
@@ -356,60 +446,22 @@ def try_claim_orchestration(execution_id: str, organization_id: str) -> bool:
     orchestrator marks ERROR and the redelivery re-orchestrates). This is why the
     idempotent-pre-dispatch helper (``-> None``, no RETURNING) can't be reused here.
     """
-    # Sample cached-ness BEFORE _get_conn() below materialises a connection: only a
-    # cached handle can be a stale idle-reap, so a fresh-conn failure is a genuine
-    # DB error, not a reap (mirrors _apply_decrement / pg_queue.client.send).
-    reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
+
+    def _op(cur: PgCursor) -> bool:
+        cur.execute(
+            f"INSERT INTO {qualified('pg_orchestration_claim')} "
+            "(execution_id, organization_id, claimed_at) "
+            "VALUES (%s, %s, now()) "
+            "ON CONFLICT (execution_id) DO NOTHING "
+            "RETURNING execution_id",
+            (execution_id, organization_id),
+        )
+        return cur.fetchone() is not None
+
     try:
-        for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
-            conn = _get_conn()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(
-                        f"INSERT INTO {qualified('pg_orchestration_claim')} "
-                        "(execution_id, organization_id, claimed_at) "
-                        "VALUES (%s, %s, now()) "
-                        "ON CONFLICT (execution_id) DO NOTHING "
-                        "RETURNING execution_id",
-                        (execution_id, organization_id),
-                    )
-                    won = cur.fetchone() is not None
-            except Exception as exc:
-                conn_dead = _recover_after_error(conn, exc)
-                # Retry ONLY a reused-conn death on the execute phase: it never
-                # committed, so the retry (on a fresh conn) is authoritative.
-                if conn_dead and reused and attempt < _BARRIER_WRITE_ATTEMPTS:
-                    logger.warning(
-                        "[exec:%s] orchestration claim: execute failed on a cached "
-                        "connection (%s) — reconnecting and retrying once "
-                        "(attempt %d/%d); the INSERT never committed.",
-                        execution_id,
-                        type(exc).__name__,
-                        attempt,
-                        _BARRIER_WRITE_ATTEMPTS,
-                        exc_info=True,
-                    )
-                    time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
-                    continue
-                raise
-            try:
-                conn.commit()
-            except Exception as exc:
-                # AMBIGUOUS commit — the row may be persisted. Re-running could flip
-                # a real winner to a loser (→ strand), so NEVER retry; propagate.
-                _recover_after_error(conn, exc)
-                logger.warning(
-                    "[exec:%s] orchestration claim: commit failed (%s) — NOT "
-                    "retrying (the server may already have committed; a re-run "
-                    "could flip the winner). Propagating.",
-                    execution_id,
-                    type(exc).__name__,
-                    exc_info=True,
-                )
-                raise
-            return won
-        # Unreachable: the loop either returns or raises.
-        raise AssertionError("try_claim_orchestration loop fell through")
+        return _run_returning_claim_with_reconnect(
+            _op, what=f"[exec:{execution_id}] orchestration claim"
+        )
     except (psycopg2.errors.UndefinedTable, psycopg2.errors.UndefinedColumn) as exc:
         # Fail fast with an actionable message instead of a generic per-execution
         # stack trace when the schema is behind: UndefinedTable (0012 missing) OR
