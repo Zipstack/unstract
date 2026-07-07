@@ -165,6 +165,23 @@ def _build_parser() -> argparse.ArgumentParser:
     pre = sub.add_parser("report", help="Re-aggregate existing reports/.")
     pre.add_argument("action", choices=["combine"])
     pre.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")
+    pre.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="Baseline path (default: <reports-dir>/previous-summary.json).",
+    )
+    pre.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=(
+            "Merge the combined build's covered paths into the baseline. "
+            "Exists so tiers can run as parallel CI jobs: per-tier "
+            "`run --update-baseline` writes would race, so the merge happens "
+            "once here over all tiers' reports. Refused (exit 1) if any "
+            "non-optional group is red or the baseline is corrupt."
+        ),
+    )
     pre.set_defaults(func=cmd_report)
 
     return p
@@ -296,9 +313,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         if result is not None:
             group_results.append(result)
     green = _green_group_names(group_results)
+    baseline_path = args.baseline or reports_dir / "previous-summary.json"
     baseline_corrupt = False
     try:
-        baseline = cp.load_baseline(reports_dir / "previous-summary.json")
+        baseline = cp.load_baseline(baseline_path)
     except cp.BaselineCorruptError as exc:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
@@ -311,6 +329,20 @@ def cmd_report(args: argparse.Namespace) -> int:
         baseline_corrupt=baseline_corrupt,
     )
     print(f"Wrote {reports_dir / 'summary.md'}")
+    if args.update_baseline:
+        red = [
+            r.name
+            for r in group_results
+            if r.status not in ("pass", "empty") and not manifest.get(r.name).optional
+        ]
+        if baseline_corrupt or red:
+            reason = (
+                "corrupt baseline" if baseline_corrupt else f"red groups: {', '.join(red)}"
+            )
+            print(f"[rig] ❌ baseline update refused ({reason})", file=sys.stderr)
+            return 1
+        cp.merge_into_baseline(statuses, baseline_path)
+        print(f"[rig] merged into baseline: {baseline_path}")
     return 0
 
 
