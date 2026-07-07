@@ -12,7 +12,7 @@ services:
   backend:
     # Defaults to `latest` so contributors can run without setting
     # UNSTRACT_TEST_VERSION. CI pins it to the commit SHA of the images built
-    # in the same run (see .github/workflows/e2e-build-test.yaml).
+    # in the same run (see .github/workflows/ci-e2e-build-test.yaml).
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
       - ENVIRONMENT=test
