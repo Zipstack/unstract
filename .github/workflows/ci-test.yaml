@@ -4,21 +4,41 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - "docker/**"
-      - "frontend/**"
-      - "docs/**"
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
-    paths-ignore:
-      - "docker/**"
-      - "frontend/**"
-      - "docs/**"
 
 jobs:
+  # Path filtering lives at the JOB level, not as trigger paths-ignore: a
+  # workflow that never triggers creates no check run, so a required status
+  # check would block the PR forever ("Expected — waiting for status"). A job
+  # skipped via `if:` still reports a check run (conclusion: skipped), which
+  # required checks treat as passing.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - name: Checkout repository
+        # paths-filter needs the local git history for push events.
+        uses: actions/checkout@v6
+
+      - name: Check for changes outside ignored paths
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          # `every`: a file counts as relevant only if it matches ALL the
+          # negated globs, i.e. lies outside every ignored dir.
+          predicate-quantifier: every
+          filters: |
+            relevant:
+              - "!docker/**"
+              - "!frontend/**"
+              - "!docs/**"
+
   test:
-    if: github.event.pull_request.draft == false
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
 
     steps:
@@ -64,9 +84,7 @@ jobs:
 
       - name: Validate test manifests
         # Cheap pre-flight: catches groups.yaml / critical_paths.yaml schema
-        # errors before we spend minutes on tier runs. Also catches malformed
-        # manifests on PRs that only touch paths-ignored files (because this
-        # step always runs).
+        # errors before we spend minutes on tier runs.
         run: tox -e rig -- validate
 
       - name: Run unit tier
