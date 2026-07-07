@@ -9,6 +9,8 @@ path — without a test database.
 """
 
 from contextlib import nullcontext
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from unittest.mock import MagicMock, patch
 
 from scheduler import tasks
@@ -24,9 +26,18 @@ class _DoesNotExist(Exception):
     """Stand-in for PeriodicTask.DoesNotExist when the model is mocked."""
 
 
+def _stub_existing_row(sched, row=None):
+    """Stub the ``.filter().values().first()`` read of the existing mirror row
+    (``None`` = no row yet). The one place the read shape lives, so a change to how
+    the code reads the row (e.g. ``.only()`` instead of ``.values()``) is a
+    one-line edit here."""
+    sched.objects.filter.return_value.values.return_value.first.return_value = row
+
+
 class TestUpsertMirror:
     def test_upserts_with_given_fields(self):
         with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            _stub_existing_row(sched)
             tasks.mirror_periodic_schedule_upsert(
                 pipeline_id=_PIPELINE_ID,
                 organization_id=_ORG,
@@ -46,6 +57,7 @@ class TestUpsertMirror:
 
     def test_disabled_pipeline_mirrors_enabled_false(self):
         with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            _stub_existing_row(sched)
             tasks.mirror_periodic_schedule_upsert(
                 pipeline_id=_PIPELINE_ID,
                 organization_id=_ORG,
@@ -58,6 +70,7 @@ class TestUpsertMirror:
 
     def test_failure_is_swallowed(self):
         with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            _stub_existing_row(sched)
             sched.objects.update_or_create.side_effect = RuntimeError("db down")
             # Must not raise.
             tasks.mirror_periodic_schedule_upsert(
@@ -68,6 +81,95 @@ class TestUpsertMirror:
                 cron_string="0 9 * * *",
                 enabled=True,
             )
+
+
+class TestUpsertNextRunRecompute:
+    """UN-3690 — a cron EDIT must retarget ``next_run_at`` (Beat parity), so the
+    new time takes effect this cycle instead of the pipeline firing once more at
+    the stale old-cron time. Only for an already-baselined row: a fresh row and a
+    Beat→PG hand-over keep ``next_run_at`` NULL for the scheduler's no-burst
+    baseline.
+    """
+
+    _OLD = datetime(2026, 1, 1, 9, 0, tzinfo=dt_timezone.utc)
+
+    @staticmethod
+    def _mock_existing(sched, *, cron_string, next_run_at):
+        _stub_existing_row(
+            sched,
+            None
+            if cron_string is None
+            else {"cron_string": cron_string, "next_run_at": next_run_at},
+        )
+
+    @staticmethod
+    def _upsert(cron):
+        tasks.mirror_periodic_schedule_upsert(
+            pipeline_id=_PIPELINE_ID,
+            organization_id=_ORG,
+            workflow_id=_WORKFLOW_ID,
+            pipeline_name=_REAL_NAME,
+            cron_string=cron,
+            enabled=True,
+        )
+
+    @staticmethod
+    def _defaults(sched):
+        return sched.objects.update_or_create.call_args.kwargs["defaults"]
+
+    def test_cron_change_on_baselined_row_retargets_next_run_at(self):
+        now = datetime(2026, 1, 1, 8, 0, tzinfo=dt_timezone.utc)
+        with (
+            patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+            patch("scheduler.tasks.timezone.now", return_value=now),
+        ):
+            self._mock_existing(sched, cron_string="0 9 * * *", next_run_at=self._OLD)
+            self._upsert("0 10 * * *")  # edited to a new time
+        defaults = self._defaults(sched)
+        # Assert the concrete constant (not a croniter self-echo) — pins both the
+        # value AND tz-awareness: the next 10:00 UTC after 08:00, off the NEW cron.
+        assert defaults["next_run_at"] == datetime(2026, 1, 1, 10, 0, tzinfo=dt_timezone.utc)
+        assert defaults["cron_string"] == "0 10 * * *"  # retarget ships with new cron
+
+    def test_unchanged_cron_leaves_next_run_at_untouched(self):
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(sched, cron_string="0 9 * * *", next_run_at=self._OLD)
+            self._upsert("0 9 * * *")  # same cron (e.g. a rename)
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_null_next_run_at_left_for_baseline(self):
+        # Not-yet-baselined row (fresh mirror / Beat→PG hand-over) → keep NULL so
+        # the scheduler baseline records the first next-time (no double-retarget).
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(sched, cron_string="0 9 * * *", next_run_at=None)
+            self._upsert("0 10 * * *")
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_new_row_does_not_set_next_run_at(self):
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(sched, cron_string=None, next_run_at=None)  # → None
+            self._upsert("0 10 * * *")
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_invalid_cron_leaves_stale_next_run_at_but_still_upserts(self):
+        # An unparseable cron must not block the mirror write; next_run_at is left
+        # as-is (the scheduler quiesces a bad cron on its own tick).
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(sched, cron_string="0 9 * * *", next_run_at=self._OLD)
+            self._upsert("not a cron")
+        assert sched.objects.update_or_create.called
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_read_failure_degrades_to_plain_upsert(self):
+        # The optional next_run_at recompute must NEVER take down the mandatory
+        # cron_string/enabled mirror write: a failure in the existing-row read
+        # degrades to exactly the pre-PR behaviour (plain upsert, no next_run_at)
+        # and never raises (the "never break Beat" guarantee) — UN-3690.
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            sched.objects.filter.side_effect = RuntimeError("db down")
+            self._upsert("0 10 * * *")  # must not raise
+        assert sched.objects.update_or_create.called  # base mirror write still ran
+        assert "next_run_at" not in self._defaults(sched)
 
 
 class TestHelperWiringSourcesRealName:
