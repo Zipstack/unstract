@@ -32,7 +32,7 @@ jobs:
       UNSTRACT_TEST_VERSION: ${{ github.sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
 
@@ -40,7 +40,7 @@ jobs:
         # Authenticated pulls of base images avoid the anonymous rate limit
         # shared by all GitHub runners. Forks have no access to secrets.
         if: github.event.pull_request == null || github.event.pull_request.head.repo.fork == false
-        uses: docker/login-action@v4
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -66,7 +66,7 @@ jobs:
 
       - name: Restore main-branch test baseline (for regression detection)
         # Namespaced per-workflow; see ci-test.yaml for the rationale.
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: reports/previous-summary.json
           key: unstract-test-baseline-e2e-main-${{ github.run_id }}
@@ -101,7 +101,7 @@ jobs:
 
       - name: Upload e2e reports artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: test-reports-e2e
           path: reports/
