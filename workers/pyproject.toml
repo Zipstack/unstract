@@ -146,7 +146,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py", "*_tests.py"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "strict"
