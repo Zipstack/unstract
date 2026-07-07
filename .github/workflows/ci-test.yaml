@@ -221,3 +221,11 @@ jobs:
           path: reports/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Fail if any tier failed
+        # Makes this job the single branch-protection check: for a matrix
+        # job, `result` is `success` only when every leg passed, so either
+        # tier failing (or being cancelled) turns `report` red too.
+        if: always()
+        run: |
+          [ "${{ needs.test.result }}" = "success" ] || exit 1
