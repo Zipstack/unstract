@@ -175,11 +175,9 @@ def _build_parser() -> argparse.ArgumentParser:
         "--update-baseline",
         action="store_true",
         help=(
-            "Merge the combined build's covered paths into the baseline. "
-            "Exists so tiers can run as parallel CI jobs: per-tier "
-            "`run --update-baseline` writes would race, so the merge happens "
-            "once here over all tiers' reports. Refused (exit 1) if any "
-            "non-optional group is red or the baseline is corrupt."
+            "Merge covered paths from all tiers' reports into the baseline in "
+            "one write (parallel per-tier writes would race). Refused (exit 1) "
+            "if any non-optional group is red or the baseline is corrupt."
         ),
     )
     pre.set_defaults(func=cmd_report)

@@ -66,18 +66,17 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox/
-          # Tier in the key: the legs build different tox envs, and parallel
-          # saves to one key would race (first save wins, the other is lost).
+          # Tier in the key: legs build different tox envs, and parallel
+          # saves to one key race (first save wins).
           key: ${{ runner.os }}-tox-uv-${{ matrix.tier }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
           restore-keys: |
             ${{ runner.os }}-tox-uv-${{ matrix.tier }}-
             ${{ runner.os }}-tox-uv-
 
       - name: Restore main-branch test baseline (for regression detection)
-        # Restore-only: tier legs read the baseline to detect regressions but
-        # never write it. A full cache action here would save the unchanged
-        # file under this run's key first and block the report job's merged
-        # save of the same key. The report job owns the write.
+        # Restore-only: a save here would claim this run's key with an
+        # unmerged baseline before the report job's save. The report job owns
+        # the write.
         #
         # The unit/integration lane keeps a SEPARATE baseline from the e2e
         # workflow because their `scope_groups` don't overlap — restoring an
@@ -101,8 +100,8 @@ jobs:
         run: tox -e rig -- validate
 
       - name: Run ${{ matrix.tier }} tier
-        # Baseline updates moved to the report job (`report combine
-        # --update-baseline`): parallel per-tier writes would race the cache.
+        # No --update-baseline here: parallel per-tier writes would race the
+        # cache. The report job merges once over both tiers.
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
@@ -111,9 +110,9 @@ jobs:
           fi
 
       - name: Suffix coverage data for cross-tier merge
-        # Each tier ends with a bare reports/.coverage; two artifacts with the
-        # same bare name would clobber on download. A suffixed name matches
-        # the `.coverage.*` glob `report combine` unions.
+        # Both tiers emit a bare reports/.coverage that would clobber on
+        # download; a suffix makes it match the `.coverage.*` glob
+        # `report combine` unions.
         if: always()
         run: |
           if [ -f reports/.coverage ]; then
@@ -179,9 +178,8 @@ jobs:
           merge-multiple: true
 
       - name: Combine reports from both tiers
-        # On green main builds, also merge covered paths into the baseline —
-        # the single writer replacing the per-tier --update-baseline runs.
-        # The rig refuses the merge itself if any group is red.
+        # On green main builds also merge covered paths into the baseline
+        # (single writer; the rig refuses the merge if any group is red).
         run: |
           flags=""
           if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ needs.test.result }}" = "success" ]; then

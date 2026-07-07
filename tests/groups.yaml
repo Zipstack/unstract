@@ -66,8 +66,7 @@ groups:
       # base.py resolves these at import time with no default; supply test-safe
       # values here.
       DJANGO_SECRET_KEY: test-secret-key-not-for-production
-      # All-zero Fernet key: valid format, zero entropy so it reads as the
-      # obvious test placeholder it is (not a real secret).
+      # All-zero Fernet key: valid format, obviously a placeholder.
       ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
       CELERY_BROKER_BASE_URL: redis://localhost:6379
       CELERY_BROKER_USER: guest

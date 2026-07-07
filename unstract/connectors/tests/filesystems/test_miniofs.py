@@ -23,10 +23,8 @@ class TestMinoFS(unittest.TestCase):
         "Integration test requires a live MinIO and MINIO_ACCESS_KEY_ID + MINIO_SECRET_ACCESS_KEY",
     )
     def test_minio(self) -> None:
-        # Endpoint comes from the rig (testcontainers MinIO) via
-        # MINIO_ENDPOINT_URL; falls back to the local run-platform MinIO so a
-        # developer can run this by hand. Real round-trip: create a bucket and
-        # prove it shows up through the access-filtered listing.
+        # Endpoint from the rig's testcontainers MinIO via MINIO_ENDPOINT_URL;
+        # falls back to the local platform MinIO for manual runs.
         self.assertEqual(MinioFS.requires_oauth(), False)
         fs = MinioFS(
             {
