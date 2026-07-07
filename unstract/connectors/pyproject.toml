@@ -64,6 +64,7 @@ unstract-filesystem = { path = "../filesystem", editable = true }
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py"]
 markers = [
     "integration: needs live infra or external credentials; runs in the rig's integration tier, not unit (select with -m integration / exclude with -m 'not integration')",
 ]

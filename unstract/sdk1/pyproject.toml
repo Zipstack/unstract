@@ -172,7 +172,7 @@ keep-dict-typing = true
 
 
 [tool.pytest.ini_options]
-python_files = ["tests.py", "test_*.py", "*_tests.py"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py"]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 markers = [
