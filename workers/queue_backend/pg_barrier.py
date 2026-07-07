@@ -278,17 +278,77 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
     Called on the in-body PG path from :func:`run_batch_with_barrier` (claim at
     batch start), alongside the in-body decrement. The companion
     :func:`clear_execution_batches` reclaims the markers at barrier finalise.
+
+    **Execute-phase reconnect-retry** (mirrors :func:`try_claim_orchestration`,
+    the execution-level claim one level up). This module's thread-local connection
+    sits idle between batches — a scheduled pipeline fires one only ~every 30 min,
+    well past PgBouncer's ``server_idle_timeout`` — so the FIRST ``INSERT`` after
+    the gap can hit an idle-reaped handle (``server closed the connection
+    unexpectedly``). Retrying a **reused-conn execute-phase** death is safe: the
+    INSERT never committed, so the retry's win/lost ``RETURNING`` answer is
+    authoritative. A **commit-phase** failure is ambiguous (the row may be
+    persisted) — re-running could flip the claim (``True`` → ``False`` → the caller
+    skips and strands the barrier, or a re-claim double-decrements), so it is NOT
+    retried; it propagates to vt-expiry redelivery. A fresh-conn failure is a real
+    DB error, likewise not retried.
     """
-    with _cursor() as cur:
-        cur.execute(
-            f"INSERT INTO {qualified('pg_batch_dedup')} "
-            "(execution_id, batch_index, created_at) "
-            "VALUES (%s, %s, now()) "
-            "ON CONFLICT (execution_id, batch_index) DO NOTHING "
-            "RETURNING execution_id",
-            (execution_id, batch_index),
-        )
-        return cur.fetchone() is not None
+    # Only a CACHED handle can be a stale idle-reap; sample before _get_conn()
+    # below materialises one, so a fresh-conn failure isn't misread as a reap
+    # (mirrors try_claim_orchestration / the decrement phase-split).
+    reused = getattr(_local, "conn", None) is not None and not _local.conn.closed
+    for attempt in range(1, _BARRIER_WRITE_ATTEMPTS + 1):
+        conn = _get_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"INSERT INTO {qualified('pg_batch_dedup')} "
+                    "(execution_id, batch_index, created_at) "
+                    "VALUES (%s, %s, now()) "
+                    "ON CONFLICT (execution_id, batch_index) DO NOTHING "
+                    "RETURNING execution_id",
+                    (execution_id, batch_index),
+                )
+                claimed = cur.fetchone() is not None
+        except Exception as exc:
+            conn_dead = _recover_after_error(conn, exc)
+            # Reused-conn execute-phase death (idle reap): the INSERT never
+            # committed, so the retry on a fresh conn is authoritative. A
+            # fresh-conn failure or a non-conn error propagates.
+            if conn_dead and reused and attempt < _BARRIER_WRITE_ATTEMPTS:
+                logger.warning(
+                    "[exec:%s] claim_batch(%d): execute failed on a cached "
+                    "connection (%s) — reconnecting and retrying once (attempt "
+                    "%d/%d); the INSERT never committed.",
+                    execution_id,
+                    batch_index,
+                    type(exc).__name__,
+                    attempt,
+                    _BARRIER_WRITE_ATTEMPTS,
+                    exc_info=True,
+                )
+                time.sleep(_BARRIER_RETRY_BACKOFF_SECONDS)
+                continue
+            raise
+        try:
+            conn.commit()
+        except Exception as exc:
+            # AMBIGUOUS commit — the dedup row may be persisted. Re-running could
+            # flip the RETURNING claim (skip-and-strand, or double-decrement), so
+            # NEVER retry; propagate to redelivery.
+            _recover_after_error(conn, exc)
+            logger.warning(
+                "[exec:%s] claim_batch(%d): commit failed (%s) — NOT retrying (the "
+                "server may already have committed; a re-run could flip the claim). "
+                "Propagating.",
+                execution_id,
+                batch_index,
+                type(exc).__name__,
+                exc_info=True,
+            )
+            raise
+        return claimed
+    # Unreachable: the loop either returns or raises.
+    raise AssertionError("claim_batch loop fell through")
 
 
 def clear_execution_batches(execution_id: str) -> int:

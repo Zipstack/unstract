@@ -550,6 +550,76 @@ class TestClaimOrchestrationRetry:
             try_claim_orchestration("exec-1", "org-1")
 
 
+class TestClaimBatchRetry:
+    """``claim_batch`` is a RETURNING claim, sibling to ``try_claim_orchestration``
+    one level up, so it self-heals ONLY the provably-safe case: an execute-phase
+    failure on a *cached* connection (the idle reap that stranded scheduled ETL
+    batches — the ~30-min-idle barrier connection past ``server_idle_timeout``; the
+    INSERT never committed, so the retry's claim answer is authoritative). A
+    commit-phase failure is ambiguous and a fresh-conn failure is a real error —
+    neither is retried, else a claim could flip ``True``→``False`` and strand the
+    barrier (or double-decrement).
+    """
+
+    @pytest.fixture
+    def sleeps(self, monkeypatch):
+        calls: list[float] = []
+        monkeypatch.setattr(pg_barrier.time, "sleep", calls.append)
+        return calls
+
+    def test_execute_phase_reaped_cached_conn_retries_once(
+        self, _clean_local, monkeypatch, caplog, sleeps
+    ):
+        dead = _FakeConn(
+            execute_error=psycopg2.OperationalError("server closed the connection")
+        )
+        healthy = _FakeConn()
+        pg_barrier._local.conn = dead  # cached → "reused"
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: healthy)
+
+        with caplog.at_level("WARNING"):
+            claimed = claim_batch("exec-1", 0)
+
+        assert claimed is True  # authoritative answer taken from the retry
+        assert dead.executes == 1 and healthy.executes == 1  # exactly one extra try
+        assert dead.commits == 0  # the reaped attempt never committed
+        assert dead.closed is True  # stale conn discarded
+        assert healthy.commits == 1  # committed exactly once, on the retry
+        assert pg_barrier._local.conn is healthy
+        assert sleeps == [pg_barrier._BARRIER_RETRY_BACKOFF_SECONDS]
+        assert "execute failed on a cached connection" in caplog.text
+
+    def test_commit_phase_failure_is_not_retried(self, _clean_local, monkeypatch, sleeps):
+        # Ambiguous commit (server may have committed) → NOT retried, or a re-run
+        # could flip the claim and strand the barrier. Propagates; no reconnect.
+        conn = _FakeConn(
+            commit_error=psycopg2.OperationalError("server closed during commit")
+        )
+        pg_barrier._local.conn = conn
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: pytest.fail("must not reconnect on a commit-phase failure"),
+        )
+        with pytest.raises(psycopg2.OperationalError):
+            claim_batch("exec-1", 0)
+        assert conn.executes == 1 and conn.commits == 1  # tried once, no retry
+        assert sleeps == []  # no backoff → no retry
+
+    def test_fresh_conn_execute_failure_is_not_retried(
+        self, _clean_local, monkeypatch, sleeps
+    ):
+        # A freshly-created connection failing is a real DB error, not an idle reap
+        # (reused is False when _local.conn starts empty) → not retried.
+        dead = _FakeConn(execute_error=psycopg2.OperationalError("connection refused"))
+        pg_barrier._local.conn = None  # → reused False
+        monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: dead)
+        with pytest.raises(psycopg2.OperationalError):
+            claim_batch("exec-1", 0)
+        assert dead.executes == 1  # no retry
+        assert sleeps == []
+
+
 class TestReleaseOrchestrationClaimRetry:
     """``release_orchestration_claim`` is a first-write-after-idle on the failure
     path whose raise the caller swallows — an un-retried idle-reap would leave the
