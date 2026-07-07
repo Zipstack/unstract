@@ -250,22 +250,23 @@ class TestExceptions:
         assert err.code == 500
 
     def test_no_flask_import(self):
-        """Verify exceptions module does NOT import Flask."""
-        import importlib
+        """Verify exceptions module does NOT (transitively) import Flask.
+
+        Runs in a fresh interpreter: an in-process check would be polluted
+        by whatever sibling tests already imported, and reloading the
+        module in place would swap class identities under other tests.
+        """
+        import os
+        import subprocess
         import sys
 
-        # Ensure fresh import
-        mod_name = "executor.executors.exceptions"
-        if mod_name in sys.modules:
-            importlib.reload(sys.modules[mod_name])
-        else:
-            importlib.import_module(mod_name)
-
-        # Check that no flask modules were pulled in
-        flask_modules = [m for m in sys.modules if m.startswith("flask")]
-        assert flask_modules == [], (
-            f"Flask modules imported: {flask_modules}"
+        code = (
+            "import sys; import executor.executors.exceptions; "
+            "flask = [m for m in sys.modules if m.startswith('flask')]; "
+            "assert not flask, f'Flask modules imported: {flask}'"
         )
+        env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
+        subprocess.run([sys.executable, "-c", code], check=True, env=env)
 
     def test_custom_data_error_signature(self):
         from executor.executors.exceptions import CustomDataError
