@@ -27,7 +27,8 @@ integers.
 | Env suffix | One-line | Default |
 |---|---|---|
 | `CONCURRENCY` | Prefork consumer children per pod (1 = plain single process) | `1` |
-| `VT_SECONDS` | **Visibility timeout** — how long a claimed message stays hidden before it can redeliver | `30` (chart: `9060` for file-processing ≈ 2.5h) |
+| `VT_SECONDS` | Since PR C, the **drain / max-runtime bound** (drives `SHUTDOWN_GRACE`, `HEALTH_STALE`, the chart guards) — the *claim* window is `LEASE_SECONDS`, not this | `30` (chart: `9060` for file-processing ≈ 2.5h) |
+| `LEASE_SECONDS` | **Renewable claim window** — a claimed message is hidden only this long and renewed every ~LEASE/3 while the task runs; a dead worker's claim expires in ~LEASE → fast redelivery (capped at VT) | `120` |
 | `SHUTDOWN_GRACE_SECONDS` | Graceful-drain budget (shared across all children) on SIGTERM before SIGKILL | `= VT` (floored at `30`) |
 | `QUEUE` | Queue name(s) this consumer polls (comma-separated) | `default` |
 | `BATCH` | Messages claimed per poll | `1` |
@@ -64,10 +65,19 @@ integers.
 ## 2. Concepts — glossary
 
 **Visibility timeout (VT)** — when a consumer *claims* a message it becomes invisible
-to other consumers for `VT` seconds. If the worker finishes and deletes (acks) it, it's
-gone; if the worker dies without acking, the VT expires and the message **redelivers**.
-VT is the queue's only "worker died" signal (there's no live broker connection like
-RabbitMQ), so recovery latency ≈ VT.
+to other consumers until its `vt` passes. If the worker finishes and deletes (acks) it,
+it's gone; if the worker dies without acking, the `vt` expires and the message
+**redelivers**. There's no live broker connection like RabbitMQ, so the `vt` is the
+queue's only "worker died" signal — recovery latency ≈ how far out the `vt` is.
+
+**Renewable lease (`LEASE_SECONDS`, UN-3695 PR C)** — rather than claim for the full
+`VT` (up to 2.5h), the consumer claims for a **short** `LEASE` and a background thread
+**renews** it (`set_vt`) every ~`LEASE/3` while the task runs. A live-but-slow task
+keeps its claim; a **dead** worker's renewal stops, so its `vt` expires in ~`LEASE` →
+redelivery in **minutes, not hours**. `VT_SECONDS` is retained as the *drain /
+max-runtime bound* (grace, health-stale), and the lease is capped at it. The renewal
+uses its own DB connection and is best-effort (a transient failure retries within the
+`~2×` slack the `LEASE/3` interval leaves before expiry).
 
 **Claim** — an atomic `SELECT … FOR UPDATE SKIP LOCKED` that hides up to `BATCH`
 ready rows for `VT` seconds and hands them to one consumer. `SKIP LOCKED` distributes

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -1055,3 +1056,65 @@ class TestRecordTaskStatus:
         self._entered_rb(RB).store_result.assert_called_once_with(
             "tid", result={}, retention_seconds=self._RET
         )
+
+
+class TestLeaseRenewal:
+    """UN-3695 PR C: the claim is taken for the short lease and renewed while the
+    task runs, so a dead worker's claim expires in ~lease (fast redelivery) instead
+    of the full VT. VT_SECONDS stays the drain/max-runtime bound.
+    """
+
+    def test_lease_capped_at_vt(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), vt_seconds=100, lease_seconds=200)
+        assert c.lease_seconds == 100  # capped — the lease is the shorter window
+
+    def test_lease_and_renew_interval(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), vt_seconds=9060, lease_seconds=120)
+        assert c.lease_seconds == 120
+        assert c._lease_renew_interval == 40  # lease // 3 → 2 attempts of slack
+
+    def test_poll_claims_with_lease_not_vt(self):
+        client = MagicMock()
+        client.read.return_value = []
+        c = PgQueueConsumer(["q"], client=client, vt_seconds=9060, lease_seconds=120)
+        c.poll_once()
+        client.read.assert_called_with("q", vt_seconds=120, qty=c.batch_size)
+
+    def test_renew_loop_renews_until_stopped(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        c._renew_client = MagicMock()
+        c._renew_client.set_vt.return_value = True
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]  # renew twice, then stop
+        c._renew_lease_loop(99, stop)
+        assert c._renew_client.set_vt.call_count == 2
+        c._renew_client.set_vt.assert_called_with(99, 3)  # renews with the lease
+        stop.wait.assert_called_with(c._lease_renew_interval)
+
+    def test_renew_loop_stops_when_row_gone(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        c._renew_client = MagicMock()
+        c._renew_client.set_vt.return_value = False  # row already acked/expired
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]
+        c._renew_lease_loop(99, stop)
+        assert c._renew_client.set_vt.call_count == 1  # stopped after the first gone
+
+    def test_renew_loop_swallows_transient_error_and_retries(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        c._renew_client = MagicMock()
+        c._renew_client.set_vt.side_effect = [RuntimeError("db blip"), True]
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]
+        c._renew_lease_loop(99, stop)  # must NOT raise
+        assert c._renew_client.set_vt.call_count == 2  # retried after the error
+
+    def test_lease_renewal_ctx_runs_loop_and_sets_stop_on_exit(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        with patch.object(c, "_renew_lease_loop") as loop:
+            with c._lease_renewal(42):
+                pass
+        loop.assert_called_once()
+        msg_id, stop = loop.call_args.args
+        assert msg_id == 42
+        assert isinstance(stop, threading.Event) and stop.is_set()  # stopped on exit
