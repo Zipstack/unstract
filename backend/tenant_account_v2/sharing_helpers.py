@@ -41,6 +41,7 @@ from tenant_account_v2.models import (
     OrganizationGroup,
     OrganizationMember,
     ResourceGroupShare,
+    ResourceMembership,
 )
 
 logger = logging.getLogger(__name__)
@@ -196,6 +197,25 @@ def resources_visible_via_groups(
     raw_ids = ResourceGroupShare.objects.filter(
         content_type=ContentType.objects.get_for_model(model),
         group_id__in=user_group_ids,
+    ).values_list("object_id", flat=True)
+    if isinstance(model._meta.pk, models.UUIDField):
+        return _safe_uuids(raw_ids)
+    return list(raw_ids)
+
+
+def resources_visible_via_memberships(model: type[Model], user: Any) -> list[Any]:
+    """PKs of ``model`` rows on which ``user`` holds a ``ResourceMembership``
+    (OWNER or VIEWER).
+
+    Per-user analogue of :func:`resources_visible_via_groups`.
+    ``ResourceMembership.object_id`` is varchar, so a ``memberships__user`` JOIN
+    makes Postgres refuse the implicit ``uuid = character varying`` comparison;
+    we materialise the ids and cast in Python instead. Bounded by the rows the
+    user is a member of.
+    """
+    raw_ids = ResourceMembership.objects.filter(
+        content_type=ContentType.objects.get_for_model(model),
+        user=user,
     ).values_list("object_id", flat=True)
     if isinstance(model._meta.pk, models.UUIDField):
         return _safe_uuids(raw_ids)
