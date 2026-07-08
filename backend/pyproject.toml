@@ -31,10 +31,10 @@ dependencies = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.2.2",
     "python-magic==0.4.27", # For file upload/download
-    "python-socketio==5.9.0", # For log_events
+    "python-socketio==5.16.2", # For log_events
     "social-auth-app-django==5.3.0", # For OAuth
     "social-auth-core==4.4.2", # For OAuth
-    "azure-identity==1.16.0",
+    "azure-identity==1.16.1",
     "azure-mgmt-apimanagement==3.0.0",
     "croniter>=3.0.3",
     "django-filter>=24.3",
