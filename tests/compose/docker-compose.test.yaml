@@ -17,11 +17,6 @@ services:
     environment:
       - ENVIRONMENT=test
 
-  prompt-service:
-    image: unstract/prompt-service:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
-
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
     environment:

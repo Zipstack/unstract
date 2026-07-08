@@ -1,11 +1,11 @@
 """Unit tests for Dashboard Metrics Celery tasks."""
 
-import uuid
 from datetime import datetime, timedelta
 
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 
+from account_v2.models import Organization
 from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
@@ -86,7 +86,10 @@ class TestCleanupTasks(TransactionTestCase):
 
     def setUp(self):
         """Set up test fixtures."""
-        self.org_id = str(uuid.uuid4())
+        # organization FK targets Organization's int PK, not a UUID.
+        self.org = Organization.objects.create(
+            organization_id="test-org", name="test-org", display_name="Test Org"
+        )
 
     def test_cleanup_hourly_metrics_deletes_old_records(self):
         """Test that cleanup deletes hourly records older than retention."""
@@ -96,7 +99,7 @@ class TestCleanupTasks(TransactionTestCase):
 
         # Create old record
         EventMetricsHourly.objects.create(
-            organization_id=self.org_id,
+            organization=self.org,
             timestamp=old_timestamp,
             metric_name="old_metric",
             metric_type=MetricType.COUNTER,
@@ -107,7 +110,7 @@ class TestCleanupTasks(TransactionTestCase):
 
         # Create recent record
         EventMetricsHourly.objects.create(
-            organization_id=self.org_id,
+            organization=self.org,
             timestamp=recent_timestamp,
             metric_name="recent_metric",
             metric_type=MetricType.COUNTER,
@@ -122,9 +125,10 @@ class TestCleanupTasks(TransactionTestCase):
         assert result["deleted"] == 1
         assert result["retention_days"] == 30
 
-        # Verify old is deleted, recent remains
-        assert not EventMetricsHourly.objects.filter(metric_name="old_metric").exists()
-        assert EventMetricsHourly.objects.filter(metric_name="recent_metric").exists()
+        # _base_manager bypasses the org-scoped default manager, which filters
+        # by UserContext.get_organization() — None here, so .objects sees nothing.
+        assert not EventMetricsHourly._base_manager.filter(metric_name="old_metric").exists()
+        assert EventMetricsHourly._base_manager.filter(metric_name="recent_metric").exists()
 
     def test_cleanup_daily_metrics_deletes_old_records(self):
         """Test that cleanup deletes daily records older than retention."""
@@ -134,7 +138,7 @@ class TestCleanupTasks(TransactionTestCase):
 
         # Create old record
         EventMetricsDaily.objects.create(
-            organization_id=self.org_id,
+            organization=self.org,
             date=old_date,
             metric_name="old_daily_metric",
             metric_type=MetricType.COUNTER,
@@ -145,7 +149,7 @@ class TestCleanupTasks(TransactionTestCase):
 
         # Create recent record
         EventMetricsDaily.objects.create(
-            organization_id=self.org_id,
+            organization=self.org,
             date=recent_date,
             metric_name="recent_daily_metric",
             metric_type=MetricType.COUNTER,
@@ -160,10 +164,10 @@ class TestCleanupTasks(TransactionTestCase):
         assert result["deleted"] == 1
 
         # Verify old is deleted, recent remains
-        assert not EventMetricsDaily.objects.filter(
+        assert not EventMetricsDaily._base_manager.filter(
             metric_name="old_daily_metric"
         ).exists()
-        assert EventMetricsDaily.objects.filter(
+        assert EventMetricsDaily._base_manager.filter(
             metric_name="recent_daily_metric"
         ).exists()
 
@@ -173,7 +177,7 @@ class TestCleanupTasks(TransactionTestCase):
         old_timestamp = now - timedelta(days=10)
 
         EventMetricsHourly.objects.create(
-            organization_id=self.org_id,
+            organization=self.org,
             timestamp=old_timestamp,
             metric_name="custom_retention_metric",
             metric_type=MetricType.COUNTER,

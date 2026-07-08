@@ -21,6 +21,7 @@ import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 from xml.sax import saxutils
 
 from tests.rig import critical_paths as cp
@@ -31,14 +32,28 @@ from tests.rig.groups import (
     GroupDefinition,
     load_groups,
 )
-from tests.rig.reporting import GroupResult, parse_junit, write_summary
-from tests.rig.runtime import PlatformEndpoints, PlatformRuntime, pick_runtime
+from tests.rig.reporting import (
+    GroupResult,
+    parse_junit,
+    passed_critical_path_ids,
+    write_summary,
+)
+from tests.rig.runtime import (
+    PlatformEndpoints,
+    PlatformRuntime,
+    TestcontainersRuntime,
+    pick_runtime,
+)
 from tests.rig.selection import resolve
 
 # Pytest exit codes that the rig treats as non-failure for aggregation:
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
+
+# Injected into every group's pytest run (PYTHONPATH + -p) so
+# @pytest.mark.critical_path marker args land in junit properties.
+_PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
 
 @lru_cache(maxsize=1)
@@ -159,6 +174,21 @@ def _build_parser() -> argparse.ArgumentParser:
     pre = sub.add_parser("report", help="Re-aggregate existing reports/.")
     pre.add_argument("action", choices=["combine"])
     pre.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")
+    pre.add_argument(
+        "--baseline",
+        type=Path,
+        default=None,
+        help="Baseline path (default: <reports-dir>/previous-summary.json).",
+    )
+    pre.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=(
+            "Merge covered paths from all tiers' reports into the baseline in "
+            "one write (parallel per-tier writes would race). Refused (exit 1) "
+            "if any non-optional group is red or the baseline is corrupt."
+        ),
+    )
     pre.set_defaults(func=cmd_report)
 
     return p
@@ -289,15 +319,21 @@ def cmd_report(args: argparse.Namespace) -> int:
         result = parse_junit(name, tier, reports_dir)
         if result is not None:
             group_results.append(result)
-    green = _green_group_names(group_results)
+    green = _coverage_attesting_groups(group_results)
+    proven, unknown_marker_ids = _marker_proven_paths(
+        registry, group_results, reports_dir
+    )
+    baseline_path = args.baseline or reports_dir / "previous-summary.json"
     baseline_corrupt = False
     try:
-        baseline = cp.load_baseline(reports_dir / "previous-summary.json")
+        baseline = cp.load_baseline(baseline_path)
     except cp.BaselineCorruptError as exc:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
-    statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
+    statuses = cp.evaluate(
+        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+    )
     write_summary(
         reports_dir=reports_dir,
         group_results=group_results,
@@ -305,7 +341,30 @@ def cmd_report(args: argparse.Namespace) -> int:
         baseline_corrupt=baseline_corrupt,
     )
     print(f"Wrote {reports_dir / 'summary.md'}")
-    return 0
+    if unknown_marker_ids:
+        print(
+            f"[rig] ❌ @pytest.mark.critical_path references unknown path "
+            f"id(s): {', '.join(unknown_marker_ids)} "
+            f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+    if args.update_baseline:
+        red = [
+            r.name
+            for r in group_results
+            if r.status not in ("pass", "empty") and not manifest.get(r.name).optional
+        ]
+        if baseline_corrupt or red:
+            reason = (
+                "corrupt baseline"
+                if baseline_corrupt
+                else f"red groups: {', '.join(red)}"
+            )
+            print(f"[rig] ❌ baseline update refused ({reason})", file=sys.stderr)
+            return 1
+        cp.merge_into_baseline(statuses, baseline_path)
+        print(f"[rig] merged into baseline: {baseline_path}")
+    return 1 if unknown_marker_ids else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -349,6 +408,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     needs_platform = any(manifest.get(n).requires_platform for n in runnable)
+    # A group can declare `requires_services` (stateful infra like Postgres/
+    # Redis) without needing the whole platform — provision just that infra via
+    # testcontainers instead of standing up every compose service. Platform wins
+    # when both are set.
+    needs_services = any(manifest.get(n).requires_services for n in runnable)
     runtime: PlatformRuntime | None = None
     endpoints: PlatformEndpoints | None = None
     group_results: list[GroupResult] = []
@@ -360,6 +424,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             print(f"[rig] bringing platform up via runtime={runtime.name}")
             # `up()` is inside the try so a failure here still triggers `down()`
             # in the finally, cleaning up any partial stack.
+            endpoints = runtime.up()
+        elif needs_services and not args.dry_run:
+            # Infra-only: testcontainers Postgres/Redis/etc., no platform
+            # services. ponytail: up() starts the full infra set even if a run
+            # only needs Postgres; trim to the requested services if startup
+            # cost ever matters.
+            runtime = TestcontainersRuntime()
+            print(
+                f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
+            )
             endpoints = runtime.up()
 
         # TODO(runtime-gate-skip): groups run unconditionally in topo order;
@@ -437,7 +511,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.coverage and not args.dry_run:
         combine_and_report(reports_dir)
 
-    green = _green_group_names(group_results)
+    green = _coverage_attesting_groups(group_results)
+    proven, unknown_marker_ids = _marker_proven_paths(
+        registry, group_results, reports_dir
+    )
+    if unknown_marker_ids:
+        print(
+            f"[rig] ❌ @pytest.mark.critical_path references unknown path "
+            f"id(s): {', '.join(unknown_marker_ids)} "
+            f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+        if overall_exit == 0:
+            overall_exit = 1
     # A corrupt baseline can't be silently treated as empty (that would turn
     # the next build into a regression festival once a one-tier baseline gets
     # written back). But we must still write the per-group summary so the
@@ -456,6 +542,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         groups_run_green=green,
         baseline=baseline,
         scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -486,11 +573,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         if overall_exit == 0:
             overall_exit = 1
 
+    # Only in-scope gaps gate: a declared covering group ran in this tier but
+    # not green. Out-of-scope gaps (covered only by other tiers, or undeclared)
+    # are reported but must not fail a tier for coverage it can't produce.
     gaps = [s for s in statuses if s.state == "gap"]
-    if gaps and args.fail_on_critical_gap:
+    in_scope_gaps = [s for s in gaps if s.in_scope]
+    out_of_scope_gaps = [s for s in gaps if not s.in_scope]
+    if out_of_scope_gaps:
+        ids = ", ".join(s.path.id for s in out_of_scope_gaps)
         print(
-            f"\n[rig] ⚠️  {len(gaps)} critical-path gap(s) detected "
-            f"(fail-on-critical-gap)",
+            f"[rig] ℹ️  {len(out_of_scope_gaps)} critical-path gap(s) out of scope "
+            f"for this run (warn-only, not covered by any group in this tier): "
+            f"{ids}",
+            file=sys.stderr,
+        )
+    if in_scope_gaps and args.fail_on_critical_gap:
+        ids = ", ".join(s.path.id for s in in_scope_gaps)
+        print(
+            f"\n[rig] ⚠️  {len(in_scope_gaps)} critical-path gap(s) detected "
+            f"(fail-on-critical-gap): {ids}",
             file=sys.stderr,
         )
         if overall_exit == 0:
@@ -510,8 +611,78 @@ def cmd_run(args: argparse.Namespace) -> int:
 # ── execution helpers ─────────────────────────────────────────────────────────
 
 
-def _green_group_names(results: list[GroupResult]) -> set[str]:
-    return {r.name for r in results if r.status in ("pass", "empty")}
+def _db_env_from_postgres_url(url: str) -> dict[str, str]:
+    """Translate a provisioned Postgres URL into the discrete ``DB_*`` vars
+    Django reads (``backend/settings/base.py``).
+
+    The rig provisions a throwaway Postgres via testcontainers for groups
+    declaring ``requires_services: [postgres]``. Without this translation the
+    backend falls back to the compose hostname ``backend-db-1``, unreachable
+    from the host-side pytest, and every ``django_db`` test errors on connect.
+    """
+    # e.g. postgresql+psycopg2://user:pass@host:49153/dbname
+    parts = urlsplit(url)
+    return {
+        "DB_HOST": parts.hostname or "localhost",
+        "DB_PORT": str(parts.port or 5432),
+        "DB_USER": parts.username or "test",
+        "DB_PASSWORD": parts.password or "test",
+        "DB_NAME": parts.path.lstrip("/") or "test",
+    }
+
+
+def _inject_infra_env(
+    env: dict[str, str],
+    group: GroupDefinition,
+    endpoints: PlatformEndpoints | None,
+) -> None:
+    # Postgres/Redis override so a stale shell value can't shadow the
+    # provisioned testcontainer; MinIO uses setdefault so a developer's own
+    # endpoint wins.
+    if endpoints is None:
+        return
+    infra = endpoints.infra
+    if "postgres" in group.requires_services and infra.postgres_url:
+        env.update(_db_env_from_postgres_url(infra.postgres_url))
+    if "minio" in group.requires_services and infra.minio_endpoint:
+        # http: this is a local, throwaway testcontainers MinIO with no TLS.
+        env.setdefault(
+            "MINIO_ENDPOINT_URL",
+            f"http://{infra.minio_endpoint}",  # NOSONAR
+        )
+        if infra.minio_access_key:
+            env.setdefault("MINIO_ACCESS_KEY_ID", infra.minio_access_key)
+        if infra.minio_secret_key:
+            env.setdefault("MINIO_SECRET_ACCESS_KEY", infra.minio_secret_key)
+    if "redis" in group.requires_services and infra.redis_host:
+        redis_port = str(infra.redis_port or 6379)
+        env["REDIS_HOST"] = infra.redis_host
+        env["REDIS_PORT"] = redis_port
+        env["CELERY_BROKER_BASE_URL"] = f"redis://{infra.redis_host}:{redis_port}"
+
+
+def _coverage_attesting_groups(results: list[GroupResult]) -> set[str]:
+    # "empty" (exit 5) stays non-failing for the build, but a covering group
+    # that collected zero tests must not attest critical-path coverage — a
+    # broken marker expression would otherwise report ✅ with zero tests run.
+    return {r.name for r in results if r.status == "pass"}
+
+
+def _marker_proven_paths(
+    registry: cp.CriticalPathRegistry,
+    group_results: list[GroupResult],
+    reports_dir: Path,
+) -> tuple[set[str], list[str]]:
+    """Union critical-path ids attested by passing marked tests across groups.
+
+    Returns ``(known_ids, unknown_ids)`` — unknown ids (marker typos) must fail
+    the build or the marked test silently attests nothing.
+    """
+    registry_ids = {p.id for p in registry.paths}
+    proven: set[str] = set()
+    for r in group_results:
+        proven |= passed_critical_path_ids(r.name, reports_dir)
+    return proven & registry_ids, sorted(proven - registry_ids)
 
 
 def _is_missing_placeholder(group: GroupDefinition) -> bool:
@@ -541,6 +712,9 @@ def _execute_group(
     md_report = group_reports / "report.md"
 
     env = _subprocess_env()
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(_PYTEST_PLUGIN_DIR), env.get("PYTHONPATH")) if p
+    )
     env.update(group.env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
@@ -553,6 +727,7 @@ def _execute_group(
         # leaked in". `setdefault` would let a leaked sentinel win, which
         # defeats the purpose — set unconditionally.
         env["UNSTRACT_RIG_SESSION_ID"] = _rig_session_id()
+    _inject_infra_env(env, group, endpoints)
     if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 
@@ -628,13 +803,8 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
             env=env,
             check=False,
         )
-    if group.install_editable:
-        subprocess.run(
-            ["uv", "pip", "install", "-e", "."],
-            cwd=workdir,
-            env=env,
-            check=False,
-        )
+    # install_editable is handled in _pytest_command via `--with-editable`;
+    # installing it here would be wiped by `uv run`'s venv re-sync.
     if group.pip_install:
         subprocess.run(
             ["uv", "pip", "install", *group.pip_install],
@@ -645,6 +815,20 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # NOTE: rig pytest plugins (pytest-timeout, pytest-md-report, etc.) are
     # injected via `uv run --with ...` in _pytest_command, not installed here.
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
+
+
+def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
+    if not shutil.which("uv"):
+        return [sys.executable, "-m", "pytest"]
+    # `uv run` re-syncs the venv each call, wiping anything from `uv pip
+    # install`. `--with`/`--with-editable` inject plugins + the project into the
+    # ephemeral run env instead, surviving the sync.
+    with_args: list[str] = []
+    for spec in RIG_PYTEST_PLUGINS:
+        with_args += ["--with", spec]
+    if group.install_editable:
+        with_args += ["--with-editable", str(workdir)]
+    return ["uv", "run", *with_args, "pytest"]
 
 
 def _pytest_command(
@@ -660,23 +844,21 @@ def _pytest_command(
     workers: str,
     timeout: int,
 ) -> list[str]:
-    use_uv = shutil.which("uv") is not None
-    if use_uv:
-        # `uv run` re-syncs the project's venv each call, which would wipe any
-        # plugins added via `uv pip install`. `--with` injects them into the
-        # ephemeral run environment, surviving the sync.
-        with_args: list[str] = []
-        for spec in RIG_PYTEST_PLUGINS:
-            with_args += ["--with", spec]
-        base: list[str] = ["uv", "run", *with_args, "pytest"]
-    else:
-        base = [sys.executable, "-m", "pytest"]
+    base = _pytest_base_cmd(group, workdir)
 
     cmd = [
         *base,
         "-v",
         f"--junitxml={junit}",
         f"--timeout={timeout}",
+        # Marker→junit-property plugin (dir added to PYTHONPATH in
+        # _execute_group). junit_family=legacy: the default xunit2 schema
+        # rejects per-testcase <properties>, which the coverage attestation
+        # reads.
+        "-p",
+        "rig_critical_path",
+        "-o",
+        "junit_family=legacy",
     ]
     # pytest-md-report does not aggregate worker output reliably under xdist.
     # Emit markdown only on serial runs; junit + reporting.py's _render_markdown
