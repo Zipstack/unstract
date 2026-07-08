@@ -463,7 +463,7 @@ def _join_children(fleet: _Fleet, grace_seconds: float) -> None:
             continue
         logger.warning(
             "PG-queue consumer: child slot=%s pid=%s did not drain within the "
-            "shared %ss grace — SIGKILL",
+            "shared %.0fs grace — SIGKILL",
             slot,
             pid,
             grace_seconds,
