@@ -70,6 +70,15 @@ _DEFAULT_POISON_REPARK_VT_SECONDS = 300
 # last net) after this many extra reads past max_attempts, so a permanently
 # unmarkable pipeline message can't re-park forever.
 _DEFAULT_POISON_REPARK_BUDGET = 5
+# Retention for the pg_task_result rows the REST task_status poll reads (UN-3693).
+# 24h (Celery's default result_expires) — the 1h default would expire a completed
+# task's row while a late poll (a browser resumed from sleep, an API client checking
+# back) is still querying it. Completed rows are status-only (no payload); FAILED rows
+# carry the executor error text, which can embed document content (cf. the _forget_sql
+# note in result_backend.py / UN-3683) — accepted at this horizon because that same
+# text is already shown to the owner via the WebSocket event + the task_status
+# response, and the row is TTL'd.
+_TASK_STATUS_RETENTION_SECONDS = 86400
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
 # unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
 # during task execution, so this threshold doubles as an UPPER BOUND on a single
@@ -434,6 +443,56 @@ class PgQueueConsumer:
             self._result_backend = PgResultBackend()
         self._result_backend.store_result(reply_key, result=result, error=error)
 
+    def _record_task_status(
+        self, payload: TaskPayload, *, error: str | None, executor_result: object
+    ) -> None:
+        """Record a ``dispatch_with_callback`` task's terminal status in
+        ``pg_task_result`` so the REST ``PromptStudio.task_status`` poll resolves
+        under the PG transport (UN-3693) — the eager PG executor never writes a Celery
+        result backend under the dispatch id, so ``AsyncResult`` alone would poll
+        "processing" forever.
+
+        Keyed by the dispatch ``task_id``; ``completed`` unless the run raised
+        (``error`` set) or the executor reported an application failure
+        (``executor_result["success"]`` false). Status-only + PII-free (no payload
+        stored) + TTL'd. Best-effort — never raises, so it can't wedge the ack.
+        """
+        task_id = payload.get("task_id")
+        if not task_id:
+            return
+        executor_failed = isinstance(executor_result, dict) and not executor_result.get(
+            "success", True
+        )
+        try:
+            with PgResultBackend() as rb:
+                if error is not None or executor_failed:
+                    msg = (
+                        error
+                        or (
+                            executor_result.get("error")
+                            if isinstance(executor_result, dict)
+                            else None
+                        )
+                        or "Task failed"
+                    )
+                    rb.store_result(
+                        task_id,
+                        error=msg,
+                        retention_seconds=_TASK_STATUS_RETENTION_SECONDS,
+                    )
+                else:
+                    rb.store_result(
+                        task_id,
+                        result={},  # status-only → completed (PII-free)
+                        retention_seconds=_TASK_STATUS_RETENTION_SECONDS,
+                    )
+        except Exception:
+            logger.exception(
+                "PG-queue consumer: could not record pg_task_result status for task "
+                "%s — the REST task_status poll may report 'processing'",
+                task_id,
+            )
+
     def _chain_continuation(
         self,
         spec: ContinuationSpec,
@@ -467,6 +526,18 @@ class PgQueueConsumer:
         its user-facing WebSocket event — is lost, logged loud with the run/task/org
         so the stranded session is correlatable).
         """
+        # Record the terminal status for the REST PromptStudio.task_status poll
+        # (UN-3693) before the enqueue, so it resolves under PG even if the callback
+        # enqueue below fails. This self-chain is the single terminal choke point for
+        # both success (``error`` None) and failure (``error`` set) of a callback
+        # dispatch. The recorded status reflects the EXECUTOR outcome, not callback
+        # delivery: on a rare on_success-enqueue-failure ``_fail_dispatch`` re-enters
+        # here with on_error, but ``store_result`` is first-write-wins (ON CONFLICT DO
+        # NOTHING) so the "completed" already written stands — a REST poll then reads
+        # "completed" (the executor did succeed) even though the callback's socket
+        # event / bookkeeping was lost. Accepted (the browser also relies on that
+        # socket event, so this window is REST-poll-only and rare).
+        self._record_task_status(payload, error=error, executor_result=prepend)
         try:
             queue = spec["queue"]
             kwargs = dict(spec.get("kwargs") or {})

@@ -66,6 +66,17 @@ class TestStoreGet:
         assert row["error"] == "boom"
         assert row["result"] is None
 
+    def test_store_empty_dict_result_is_completed(self, result_backend):
+        # UN-3693: ide-callback status-only writes pass result={} (a non-None empty
+        # dict). store_result must record COMPLETED (its `result is not None` check),
+        # not FAILED — an `if result:` regression would flip every successful PG
+        # prompt to failed with the REST task_status poll reading "failed".
+        k = _key()
+        result_backend.store_result(k, result={})
+        row = result_backend.get_result(k)
+        assert row["status"] == STATUS_COMPLETED
+        assert row["result"] == {}
+
     def test_absent_returns_none(self, result_backend):
         assert result_backend.get_result(_key()) is None
 
