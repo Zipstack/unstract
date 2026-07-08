@@ -1086,8 +1086,9 @@ class TestLeaseRenewal:
         assert c._lease_renew_interval == 1  # max(1, 2 // 3)
 
     def test_non_positive_lease_rejected(self):
+        client = MagicMock()
         with pytest.raises(ValueError, match="lease_seconds must be positive"):
-            PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=0)
+            PgQueueConsumer(["q"], client=client, lease_seconds=0)
 
     def test_batch_forced_to_1_when_lease_shorter_than_vt(self, caplog):
         with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.consumer"):
@@ -1204,6 +1205,7 @@ class TestLeaseRenewal:
 
     def test_ctx_logs_when_thread_wedged_past_join_timeout(self, caplog):
         c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        entered = False
         # A loop that ignores stop → join times out → the thread is still alive.
         with patch.object(c, "_renew_lease_loop", lambda mid, s: time.sleep(0.3)):
             with patch(
@@ -1213,7 +1215,8 @@ class TestLeaseRenewal:
                     logging.ERROR, logger="queue_backend.pg_queue.consumer"
                 ):
                     with c._lease_renewal(7):
-                        pass
+                        entered = True  # CM body runs even though the thread wedges
+        assert entered
         assert "did not stop within" in caplog.text  # wedged thread is not silent
 
     def test_handle_wraps_task_run_in_lease_renewal(self):

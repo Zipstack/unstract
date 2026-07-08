@@ -404,14 +404,13 @@ class PgQueueConsumer:
                 except CONN_DEAD_ERRORS:
                     down_for = time.monotonic() - last_ok
                     if down_for >= self.lease_seconds:
-                        logger.error(
+                        logger.exception(
                             "PG-queue consumer: lease renewal for msg_id=%s failing for "
                             "%.0fs (>= lease %ss) — the lease has likely expired and "
                             "this task may double-run",
                             msg_id,
                             down_for,
                             self.lease_seconds,
-                            exc_info=True,
                         )
                     else:
                         logger.warning(
