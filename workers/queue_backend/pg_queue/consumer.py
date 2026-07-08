@@ -20,12 +20,14 @@ resolve in ``current_app.tasks``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 import signal
+import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from enum import Enum
 from typing import TYPE_CHECKING, TypeVar
 
@@ -36,6 +38,7 @@ from unstract.core.data_models import ContinuationSpec, TaskPayload
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
+from .connection import CONN_DEAD_ERRORS
 from .liveness import LivenessServer as _BaseLivenessServer
 from .result_backend import PgResultBackend
 from .task_payload import to_payload
@@ -57,6 +60,15 @@ _DEFAULT_QUEUE = "default"
 # raise it, keep vt_seconds > batch_size x worst-case task duration.
 _DEFAULT_BATCH = 1
 _DEFAULT_VT_SECONDS = 30
+# Renewable-lease claim window (UN-3695). A claimed message is hidden for only
+# this long; a background thread renews it (~every LEASE/3) while the task runs, so a
+# live-but-slow task stays claimed but a DEAD worker's claim expires in ~LEASE →
+# redelivery in minutes instead of the full VT. VT_SECONDS is now the drain /
+# max-runtime bound (grace, health-stale), NOT the claim window.
+_DEFAULT_LEASE_SECONDS = 120
+# Bounded join so a wedged renewal thread can't block the ack — it's a daemon and
+# dies with the process regardless.
+_LEASE_JOIN_TIMEOUT_SECONDS = 10.0
 _DEFAULT_POLL_INTERVAL = 0.1
 _DEFAULT_BACKOFF_MAX = 2.0
 # A task claimed more than this many times keeps failing — drop it (poison)
@@ -201,6 +213,7 @@ class PgQueueConsumer:
         api_client: InternalAPIClient | None = None,
         batch_size: int = _DEFAULT_BATCH,
         vt_seconds: int = _DEFAULT_VT_SECONDS,
+        lease_seconds: int = _DEFAULT_LEASE_SECONDS,
         poll_interval: float = _DEFAULT_POLL_INTERVAL,
         backoff_max: float = _DEFAULT_BACKOFF_MAX,
         max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
@@ -212,6 +225,7 @@ class PgQueueConsumer:
         for name, value in (
             ("batch_size", batch_size),
             ("vt_seconds", vt_seconds),
+            ("lease_seconds", lease_seconds),
             ("poll_interval", poll_interval),
             ("backoff_max", backoff_max),
             ("max_attempts", max_attempts),
@@ -245,6 +259,33 @@ class PgQueueConsumer:
         self._api_client = api_client
         self.batch_size = batch_size
         self.vt_seconds = vt_seconds
+        # Renewable lease (UN-3695): the claim is taken for a short LEASE and renewed
+        # every ~lease/3 while a task runs, so a dead worker's claim expires in ~LEASE
+        # (fast redelivery) but a live one is never redelivered. VT_SECONDS is the
+        # drain / max-runtime bound; a lease longer than it is meaningless, so clamp —
+        # loudly, since a lease > VT is a misconfig, not a silent no-op.
+        self.lease_seconds = min(lease_seconds, vt_seconds)
+        if lease_seconds > vt_seconds:
+            logger.warning(
+                "WORKER_PG_QUEUE_CONSUMER_LEASE_SECONDS=%s > VT_SECONDS=%s; clamped the "
+                "claim window to %ss (the lease can't outlast the max-runtime bound)",
+                lease_seconds,
+                vt_seconds,
+                self.lease_seconds,
+            )
+        self._lease_renew_interval = max(1, self.lease_seconds // 3)
+        # The renewal only extends the IN-FLIGHT message; a batch tail sits claimed but
+        # unrenewed, so with batch>1 a slow head lets the tail's lease lapse and another
+        # consumer double-runs it. Force serial claims whenever the lease is the short
+        # (renewed) claim window; batch>1 stays available when lease == vt (no renewal).
+        if self.batch_size > 1 and self.lease_seconds < vt_seconds:
+            logger.warning(
+                "WORKER_PG_QUEUE_CONSUMER_BATCH_SIZE=%s forced to 1: the renewable lease "
+                "only covers the in-flight message, so a batch tail could lapse and "
+                "double-run (UN-3695)",
+                self.batch_size,
+            )
+            self.batch_size = 1
         self.poll_interval = poll_interval
         self.backoff_max = backoff_max
         self.max_attempts = max_attempts
@@ -276,7 +317,7 @@ class PgQueueConsumer:
         for queue_name in self.queue_names:
             try:
                 messages = self._client.read(
-                    queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
+                    queue_name, vt_seconds=self.lease_seconds, qty=self.batch_size
                 )
                 for message in messages:
                     self._handle(message)
@@ -288,6 +329,104 @@ class PgQueueConsumer:
                     queue_name,
                 )
         return total
+
+    @contextlib.contextmanager
+    def _lease_renewal(self, msg_id: int) -> Iterator[None]:
+        """Keep ``msg_id``'s claim alive while a task runs (UN-3695).
+
+        Starts a daemon thread that renews the short lease (``set_vt``) every
+        ``lease/3`` — so a live-but-slow task stays claimed — then signals stop and
+        joins on exit, before the caller acks. If the worker DIES, the thread dies
+        with it → the lease expires in ~``lease_seconds`` → the message redelivers in
+        minutes instead of the full VT. The join is bounded by
+        ``_LEASE_JOIN_TIMEOUT_SECONDS``; a thread still alive after that (wedged in a
+        stalled ``set_vt``) is logged and abandoned — it owns its own connection (see
+        the loop), so it can't corrupt the ack path, and a late ``set_vt`` on the
+        about-to-be-acked row is a benign no-op.
+        """
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=self._renew_lease_loop,
+            args=(msg_id, stop),
+            name=f"pg-lease-{msg_id}",
+            daemon=True,
+        )
+        thread.start()
+        try:
+            yield
+        finally:
+            stop.set()
+            thread.join(timeout=_LEASE_JOIN_TIMEOUT_SECONDS)
+            if thread.is_alive():
+                logger.error(
+                    "PG-queue consumer: lease-renewal thread for msg_id=%s did not "
+                    "stop within %ss — proceeding to ack; its connection is abandoned "
+                    "until the process exits",
+                    msg_id,
+                    _LEASE_JOIN_TIMEOUT_SECONDS,
+                )
+
+    def _make_renew_client(self) -> PgQueueClient:
+        """Factory for the renewal thread's own connection (patched in tests)."""
+        return PgQueueClient()
+
+    def _renew_lease_loop(self, msg_id: int, stop: threading.Event) -> None:
+        """Renew ``msg_id``'s claim every ``_lease_renew_interval`` until ``stop``.
+
+        Waits *then* renews (the initial claim already set the lease), so a task
+        shorter than the interval never renews and opens no second connection. Owns its
+        connection start-to-finish (closed on exit) — never shared with the main
+        thread's claim/ack client. Best-effort: a connection death is retried next tick
+        (the interval leaves ~2x slack before expiry), but if it keeps failing past
+        ``lease_seconds`` the lease is genuinely lost (the row can be reclaimed) and it
+        escalates to ERROR. A ``False`` return means the row was already deleted — and
+        since the ack runs only after this thread is joined, that means another consumer
+        reclaimed + acked it, i.e. this task is double-running: logged, then stop. A
+        non-connection error is left to propagate (fail loud, not swallowed forever).
+        """
+        client: PgQueueClient | None = None
+        last_ok = time.monotonic()
+        try:
+            while not stop.wait(self._lease_renew_interval):
+                try:
+                    # Built on the FIRST renewal (not on thread start), so a task
+                    # shorter than the interval opens no second connection.
+                    if client is None:
+                        client = self._make_renew_client()
+                    if not client.set_vt(msg_id, self.lease_seconds):
+                        logger.warning(
+                            "PG-queue consumer: lease for msg_id=%s lost (row already "
+                            "gone) — it was reclaimed and this task may double-run",
+                            msg_id,
+                        )
+                        return
+                    last_ok = time.monotonic()
+                except CONN_DEAD_ERRORS:
+                    down_for = time.monotonic() - last_ok
+                    if down_for >= self.lease_seconds:
+                        logger.exception(
+                            "PG-queue consumer: lease renewal for msg_id=%s failing for "
+                            "%.0fs (>= lease %ss) — the lease has likely expired and "
+                            "this task may double-run",
+                            msg_id,
+                            down_for,
+                            self.lease_seconds,
+                        )
+                    else:
+                        logger.warning(
+                            "PG-queue consumer: lease renewal for msg_id=%s failed "
+                            "(retry in %ss; %.0fs of %ss slack used) — a dead "
+                            "connection self-heals on the next tick",
+                            msg_id,
+                            self._lease_renew_interval,
+                            down_for,
+                            self.lease_seconds,
+                            exc_info=True,
+                        )
+        finally:
+            if client is not None:
+                with contextlib.suppress(Exception):
+                    client.close()
 
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
@@ -343,12 +482,15 @@ class PgQueueConsumer:
             # header so a PG-routed run mirrors the Celery dispatch path.
             fairness = payload.get("fairness")
             headers = {FAIRNESS_HEADER_NAME: fairness} if fairness else None
-            eager = task.apply(
-                args=payload.get("args") or [],
-                kwargs=payload.get("kwargs") or {},
-                headers=headers,
-                throw=True,
-            )
+            # Renew the short lease while the (possibly long) task runs, so a dead
+            # worker's claim expires fast but a live one is never redelivered (UN-3695).
+            with self._lease_renewal(message.msg_id):
+                eager = task.apply(
+                    args=payload.get("args") or [],
+                    kwargs=payload.get("kwargs") or {},
+                    headers=headers,
+                    throw=True,
+                )
         except Exception as exc:
             if reply_key or on_success or on_error:
                 # Request-reply / async-callback dispatch: surface the failure on
@@ -826,10 +968,11 @@ class PgQueueConsumer:
             name for name in self._app.tasks if not name.startswith("celery.")
         )
         logger.info(
-            "PG-queue consumer started (queues=%r, batch=%s, vt=%ss) — "
+            "PG-queue consumer started (queues=%r, batch=%s, lease=%ss, vt=%ss) — "
             "%d application task(s) registered: %s",
             self.queue_names,
             self.batch_size,
+            self.lease_seconds,
             self.vt_seconds,
             len(app_tasks),
             ", ".join(app_tasks) or "(none)",
@@ -917,6 +1060,7 @@ def build_consumer_from_env() -> PgQueueConsumer:
         queue_names=consumer_env("QUEUE", [_DEFAULT_QUEUE], _parse_queue_list),
         batch_size=consumer_env("BATCH", _DEFAULT_BATCH, int),
         vt_seconds=consumer_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
+        lease_seconds=consumer_env("LEASE_SECONDS", _DEFAULT_LEASE_SECONDS, int),
         poll_interval=consumer_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
         backoff_max=consumer_env("BACKOFF_MAX", _DEFAULT_BACKOFF_MAX, float),
         max_attempts=consumer_env("MAX_ATTEMPTS", _DEFAULT_MAX_ATTEMPTS, int),

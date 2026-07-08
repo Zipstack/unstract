@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,6 +19,7 @@ from celery import shared_task
 from queue_backend.fairness import FAIRNESS_HEADER_NAME
 from queue_backend.pg_queue import to_payload
 from queue_backend.pg_queue.client import QueueMessage
+from queue_backend.pg_queue.connection import CONN_DEAD_ERRORS
 from queue_backend.pg_queue.consumer import PgQueueConsumer
 
 # Registered test tasks (namespaced). apply() runs their bodies in-process.
@@ -1055,3 +1058,175 @@ class TestRecordTaskStatus:
         self._entered_rb(RB).store_result.assert_called_once_with(
             "tid", result={}, retention_seconds=self._RET
         )
+
+
+class TestLeaseRenewal:
+    """UN-3695: the claim is taken for the short lease and renewed while the task
+    runs, so a dead worker's claim expires in ~lease (fast redelivery) instead of the
+    full VT. VT_SECONDS stays the drain/max-runtime bound.
+    """
+
+    # --- construction / config ---
+
+    def test_lease_clamped_to_vt_loudly(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.consumer"):
+            c = PgQueueConsumer(
+                ["q"], client=MagicMock(), vt_seconds=100, lease_seconds=200
+            )
+        assert c.lease_seconds == 100  # clamped — the lease can't outlast VT
+        assert "clamped the claim window" in caplog.text  # loud, not silent
+
+    def test_lease_and_renew_interval(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), vt_seconds=9060, lease_seconds=120)
+        assert c.lease_seconds == 120
+        assert c._lease_renew_interval == 40  # lease // 3 → 2 attempts of slack
+
+    def test_tiny_lease_renew_interval_floored_at_1(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), vt_seconds=2, lease_seconds=2)
+        assert c._lease_renew_interval == 1  # max(1, 2 // 3)
+
+    def test_non_positive_lease_rejected(self):
+        client = MagicMock()
+        with pytest.raises(ValueError, match="lease_seconds must be positive"):
+            PgQueueConsumer(["q"], client=client, lease_seconds=0)
+
+    def test_batch_forced_to_1_when_lease_shorter_than_vt(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.consumer"):
+            c = PgQueueConsumer(
+                ["q"], client=MagicMock(), vt_seconds=9060, lease_seconds=120, batch_size=8
+            )
+        assert c.batch_size == 1  # renewal only covers the in-flight message
+        assert "forced to 1" in caplog.text
+
+    def test_batch_kept_when_lease_equals_vt(self):
+        # lease == vt → no short renewal window → batch>1 is safe, left untouched.
+        c = PgQueueConsumer(
+            ["q"], client=MagicMock(), vt_seconds=50, lease_seconds=50, batch_size=4
+        )
+        assert c.lease_seconds == 50 and c.batch_size == 4
+
+    def test_env_wires_lease_seconds(self, monkeypatch):
+        from queue_backend.pg_queue import consumer as mod
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_LEASE_SECONDS", "77")
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_VT_SECONDS", "9060")
+        with patch.object(mod, "PgQueueClient"):  # no real DB connection
+            c = mod.build_consumer_from_env()
+        assert c.lease_seconds == 77
+
+    def test_poll_claims_with_lease_not_vt(self):
+        client = MagicMock()
+        client.read.return_value = []
+        c = PgQueueConsumer(["q"], client=client, vt_seconds=9060, lease_seconds=120)
+        c.poll_once()
+        client.read.assert_called_with("q", vt_seconds=120, qty=c.batch_size)
+
+    # --- the renewal loop (own connection via the _make_renew_client factory) ---
+
+    def _renewing(self, renew_client, lease_seconds=3):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=lease_seconds)
+        c._make_renew_client = MagicMock(return_value=renew_client)
+        return c
+
+    def test_renews_until_stopped_then_closes_own_client(self):
+        rc = MagicMock()
+        rc.set_vt.return_value = True
+        c = self._renewing(rc)
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]  # renew twice, then stop
+        c._renew_lease_loop(99, stop)
+        assert rc.set_vt.call_count == 2
+        rc.set_vt.assert_called_with(99, 3)  # renews with the lease
+        stop.wait.assert_called_with(c._lease_renew_interval)
+        rc.close.assert_called_once()  # own connection released on exit
+
+    def test_no_client_built_for_sub_interval_task(self):
+        c = self._renewing(MagicMock())
+        stop = MagicMock()
+        stop.wait.side_effect = [True]  # stopped before the first renewal tick
+        c._renew_lease_loop(99, stop)
+        c._make_renew_client.assert_not_called()  # short task opens no 2nd connection
+
+    def test_row_gone_logs_double_run_and_stops(self, caplog):
+        rc = MagicMock()
+        rc.set_vt.return_value = False  # reclaimed + acked elsewhere (we ack later)
+        c = self._renewing(rc)
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.consumer"):
+            c._renew_lease_loop(99, stop)
+        assert rc.set_vt.call_count == 1  # stopped after the first gone
+        assert "may double-run" in caplog.text  # the lost-lease signal is logged
+        rc.close.assert_called_once()
+
+    def test_conn_death_retried_then_escalates_past_lease(self, caplog):
+        rc = MagicMock()
+        rc.set_vt.side_effect = CONN_DEAD_ERRORS[0]("db down")
+        c = self._renewing(rc, lease_seconds=3)
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]
+        # last_ok=0; 1st failure at t=0 (< lease → WARNING); 2nd at t=10 (≥ lease → ERROR)
+        with patch(
+            "queue_backend.pg_queue.consumer.time.monotonic",
+            side_effect=[0.0, 0.0, 10.0],
+        ):
+            with caplog.at_level(
+                logging.WARNING, logger="queue_backend.pg_queue.consumer"
+            ):
+                c._renew_lease_loop(99, stop)  # must NOT raise
+        assert rc.set_vt.call_count == 2
+        assert "self-heals" in caplog.text  # within-slack retry
+        assert "may double-run" in caplog.text  # escalated once past the lease
+
+    def test_non_connection_error_propagates(self):
+        # A programming bug is NOT swallowed as a "self-healing blip" forever.
+        rc = MagicMock()
+        rc.set_vt.side_effect = AttributeError("bug")
+        c = self._renewing(rc)
+        stop = MagicMock()
+        stop.wait.side_effect = [False, False, True]
+        with pytest.raises(AttributeError):
+            c._renew_lease_loop(99, stop)
+        rc.close.assert_called_once()  # still released via finally
+
+    # --- the context manager + _handle wiring ---
+
+    def test_ctx_runs_loop_and_sets_stop_on_exit(self):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        entered = False
+        with patch.object(c, "_renew_lease_loop") as loop:
+            with c._lease_renewal(42):
+                entered = True  # CM body runs while the renewal thread is live
+        assert entered
+        loop.assert_called_once()
+        msg_id, stop = loop.call_args.args
+        assert msg_id == 42
+        assert isinstance(stop, threading.Event) and stop.is_set()  # stopped on exit
+
+    def test_ctx_logs_when_thread_wedged_past_join_timeout(self, caplog):
+        c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        entered = False
+        # A loop that ignores stop → join times out → the thread is still alive.
+        with patch.object(c, "_renew_lease_loop", lambda mid, s: time.sleep(0.3)):
+            with patch(
+                "queue_backend.pg_queue.consumer._LEASE_JOIN_TIMEOUT_SECONDS", 0.01
+            ):
+                with caplog.at_level(
+                    logging.ERROR, logger="queue_backend.pg_queue.consumer"
+                ):
+                    with c._lease_renewal(7):
+                        entered = True  # CM body runs even though the thread wedges
+        assert entered
+        assert "did not stop within" in caplog.text  # wedged thread is not silent
+
+    def test_handle_wraps_task_run_in_lease_renewal(self):
+        # Integration: a real run goes through _lease_renewal (dropping the `with`
+        # in _handle would keep the unit tests green — this guards that regression).
+        client = MagicMock()
+        client.read.return_value = [_msg(1, _ok_payload(3, 4))]
+        c = PgQueueConsumer(["q"], client=client)
+        with patch.object(c, "_lease_renewal", wraps=c._lease_renewal) as lease:
+            c.poll_once()
+        lease.assert_called_once_with(1)  # the in-flight msg_id was leased
+        assert _calls == [(3, 4)]  # task still ran
+        client.delete.assert_called_once_with(1)  # and acked
