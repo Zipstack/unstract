@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -512,6 +513,7 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 
 
@@ -526,6 +528,17 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class MiniMaxLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for MiniMax models."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _MINIMAX_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(adapter_metadata, _MINIMAX_API_BASE)
 
 
 class OpenRouterLLMParameters(BaseChatCompletionParameters):

@@ -1,7 +1,9 @@
 import json
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
+    MiniMaxLLMParameters,
     NvidiaBuildEmbeddingParameters,
     NvidiaBuildLLMParameters,
     OpenAICompatibleEmbeddingParameters,
@@ -14,11 +16,13 @@ from unstract.sdk1.adapters.embedding1.openai_compatible import (
     OpenAICompatibleEmbeddingAdapter,
 )
 from unstract.sdk1.adapters.llm1 import adapters as llm_adapters
+from unstract.sdk1.adapters.llm1.minimax import MiniMaxLLMAdapter
 from unstract.sdk1.adapters.llm1.nvidia_build import NvidiaBuildLLMAdapter
 from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 
 
 # --- Branded LLM adapters -------------------------------------------------
@@ -26,7 +30,7 @@ _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 
 @pytest.mark.parametrize(
     "adapter",
-    [NvidiaBuildLLMAdapter, OpenRouterLLMAdapter],
+    [MiniMaxLLMAdapter, NvidiaBuildLLMAdapter, OpenRouterLLMAdapter],
 )
 def test_branded_llm_adapter_is_registered(adapter: type) -> None:
     adapter_id = adapter.get_id()
@@ -39,6 +43,13 @@ def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
 
     assert validated["model"] == "custom_openai/some-model"
     assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
+
+
+def test_minimax_llm_prefixes_model_via_custom_openai() -> None:
+    validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
+
+    assert validated["model"] == "custom_openai/MiniMax-M3"
+    assert validated["api_base"] == _MINIMAX_API_BASE
 
 
 def test_openrouter_llm_routes_via_native_openrouter_provider() -> None:
@@ -106,6 +117,7 @@ def test_openrouter_reasoning_survives_revalidation() -> None:
 @pytest.mark.parametrize(
     ("params", "default_base"),
     [
+        (MiniMaxLLMParameters, _MINIMAX_API_BASE),
         (NvidiaBuildLLMParameters, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMParameters, _OPENROUTER_API_BASE),
     ],
@@ -120,7 +132,7 @@ def test_branded_llm_blank_api_base_falls_back_to_default(
 
 @pytest.mark.parametrize(
     "params",
-    [NvidiaBuildLLMParameters, OpenRouterLLMParameters],
+    [MiniMaxLLMParameters, NvidiaBuildLLMParameters, OpenRouterLLMParameters],
 )
 def test_branded_llm_honours_api_base_override(params: type) -> None:
     validated = params.validate(
@@ -133,6 +145,7 @@ def test_branded_llm_honours_api_base_override(params: type) -> None:
 @pytest.mark.parametrize(
     ("adapter", "default_base"),
     [
+        (MiniMaxLLMAdapter, _MINIMAX_API_BASE),
         (NvidiaBuildLLMAdapter, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMAdapter, _OPENROUTER_API_BASE),
     ],

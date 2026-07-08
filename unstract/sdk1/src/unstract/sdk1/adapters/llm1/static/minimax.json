@@ -1,0 +1,113 @@
+{
+  "title": "MiniMax",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: minimax-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your MiniMax API key from [platform.minimax.io](https://platform.minimax.io)."
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "MiniMax-M3",
+      "description": "The MiniMax model name. Example: MiniMax-M3"
+    },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://api.minimax.io/v1",
+      "description": "MiniMax OpenAI-compatible endpoint. Pre-filled with the default; change only if MiniMax moves the base URL or you use a regional endpoint."
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "default": 4096,
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds."
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Toggle on for reasoning models to route reasoning_effort via the OpenAI-compatible request body."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Sets the reasoning strength when Enable Reasoning is on."
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
+}
