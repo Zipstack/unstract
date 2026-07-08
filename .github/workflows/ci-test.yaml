@@ -121,10 +121,14 @@ jobs:
           retention-days: 14
 
   report:
-    needs: test
-    # `always()` so a red tier still gets a PR report; skip only when the
-    # tiers were themselves skipped (irrelevant paths / draft).
-    if: always() && needs.test.result != 'skipped'
+    needs: [changes, test]
+    # `always()` so a red tier still gets a PR report. Skip only a legitimate
+    # skip — irrelevant paths / draft, decided by a *successful* changes job.
+    # A failed changes job skips the tiers, so this must run and go red
+    # (final step) instead of green-skipping the required check.
+    if: >-
+      always() && (needs.changes.result != 'success'
+      || (needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false))
     runs-on: ubuntu-latest
 
     steps:

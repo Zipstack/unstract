@@ -1,11 +1,11 @@
 import os
 from unittest.mock import Mock, patch
 
+import pytest
 from django.test import TestCase
+from unstract.connectors.databases.postgresql import PostgreSQL
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-
-from unstract.connectors.databases.postgresql import PostgreSQL
 
 
 class TestDestinationConnectorPostgreSQL(TestCase):
@@ -13,7 +13,6 @@ class TestDestinationConnectorPostgreSQL(TestCase):
 
     def setUp(self) -> None:
         """Set up test data and real PostgreSQL configuration."""
-
         # Real PostgreSQL connection settings for testing
         self.postgres_config = {
             "host": os.getenv("DB_HOST", "localhost"),
@@ -193,6 +192,44 @@ class TestDestinationConnectorPostgreSQL(TestCase):
         print(
             f"✅ Successfully inserted test data into PostgreSQL table: {self.test_table_name}"
         )
+
+    @pytest.mark.xfail(
+        reason=(
+            "get_sql_values_for_query serializes data=None as the literal "
+            "string 'None', which is invalid JSON for the jsonb data column "
+            "(PR #2115 review). Remove this marker once None maps to SQL NULL."
+        ),
+        strict=True,
+    )
+    def test_insert_into_db_with_error_postgresql(self) -> None:
+        """Test insertion with error parameter into real PostgreSQL database."""
+        mock_workflow = self.create_mock_workflow()
+        mock_workflow_log = self.create_mock_workflow_log()
+        mock_connector_instance = self.create_real_connector_instance()
+        mock_endpoint = self.create_mock_endpoint(mock_connector_instance)
+
+        destination_connector = self.create_destination_connector(
+            mock_workflow, mock_workflow_log, mock_endpoint
+        )
+
+        error_message = "Test processing error occurred"
+
+        with patch.object(
+            destination_connector,
+            "get_tool_execution_result",
+            return_value=self.test_data,
+        ):
+            with patch.object(
+                destination_connector,
+                "get_combined_metadata",
+                return_value=self.test_metadata,
+            ):
+                destination_connector.insert_into_db(
+                    input_file_path=self.input_file_path, error=error_message
+                )
+
+        # Verify that all expected columns were created
+        self.verify_table_columns(self.test_table_name)
 
     def test_postgresql_connector_connection(self) -> None:
         """Test that the PostgreSQL connector can establish a connection."""
