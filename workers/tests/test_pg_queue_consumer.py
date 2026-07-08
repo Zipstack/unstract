@@ -1111,9 +1111,11 @@ class TestLeaseRenewal:
 
     def test_lease_renewal_ctx_runs_loop_and_sets_stop_on_exit(self):
         c = PgQueueConsumer(["q"], client=MagicMock(), lease_seconds=3)
+        entered = False
         with patch.object(c, "_renew_lease_loop") as loop:
             with c._lease_renewal(42):
-                pass
+                entered = True  # CM body runs while the renewal thread is live
+        assert entered
         loop.assert_called_once()
         msg_id, stop = loop.call_args.args
         assert msg_id == 42
