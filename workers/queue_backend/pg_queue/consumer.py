@@ -968,10 +968,11 @@ class PgQueueConsumer:
             name for name in self._app.tasks if not name.startswith("celery.")
         )
         logger.info(
-            "PG-queue consumer started (queues=%r, batch=%s, vt=%ss) — "
+            "PG-queue consumer started (queues=%r, batch=%s, lease=%ss, vt=%ss) — "
             "%d application task(s) registered: %s",
             self.queue_names,
             self.batch_size,
+            self.lease_seconds,
             self.vt_seconds,
             len(app_tasks),
             ", ".join(app_tasks) or "(none)",
