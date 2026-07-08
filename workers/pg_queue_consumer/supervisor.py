@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import multiprocessing
 import os
 import signal
@@ -63,8 +64,13 @@ _RESTART_MAX_BACKOFF_SECONDS = 30.0
 _MIN_HEALTHY_UPTIME_SECONDS = 10.0
 # Consecutive immediate crashes after which the fleet probe is forced unhealthy.
 _CRASH_LOOP_THRESHOLD = 3
-# How long to wait per child for a graceful drain on shutdown before SIGKILL.
-_SHUTDOWN_GRACE_SECONDS = 30.0
+# Fallback graceful-drain budget (s, shared across all children) on shutdown, used
+# only when neither an explicit override nor the consumer VT is set — see
+# shutdown_grace_from_env().
+# This is NOT the live value: the live grace defaults to the consumer's visibility
+# timeout so a SIGTERM (deploy / HPA scale-down) lets an in-flight batch finish
+# instead of a mid-flight SIGKILL that orphans it (UN-3695).
+_DEFAULT_SHUTDOWN_GRACE_SECONDS = 30.0
 
 
 def concurrency_from_env() -> int:
@@ -91,6 +97,41 @@ def concurrency_from_env() -> int:
         )
         n = _MAX_CONCURRENCY
     return n
+
+
+def shutdown_grace_from_env() -> float:
+    """Graceful-drain budget (seconds) on shutdown, shared across all children,
+    before SIGKILL.
+
+    Defaults to the consumer's visibility timeout (``WORKER_PG_QUEUE_CONSUMER_VT_SECONDS``)
+    — the by-design upper bound on a single task's runtime — so a graceful SIGTERM
+    (deploy / HPA scale-down) lets an in-flight batch finish rather than being
+    SIGKILLed mid-flight and orphaned (UN-3695). The chart sets the pod's
+    ``terminationGracePeriodSeconds`` to VT + a buffer, so even a genuinely-wedged
+    child is SIGKILLed here just BEFORE k8s reaps the pod. An explicit
+    ``WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS`` overrides (and is honoured
+    as-is, e.g. a short dev drain); otherwise the VT is floored at
+    ``_DEFAULT_SHUTDOWN_GRACE_SECONDS`` so a tiny/unset VT still gets a sane drain.
+
+    A hardcoded 30s here previously undercut the chart's ~2.5h budget by ~300×,
+    SIGKILLing in-flight batches on every scale-down/rollout.
+    """
+    from queue_backend.pg_queue.consumer import _DEFAULT_VT_SECONDS, consumer_env
+
+    override: float | None = consumer_env("SHUTDOWN_GRACE_SECONDS", None, float)
+    if override is not None:
+        # A negative / non-finite drain budget is never intentional and would
+        # re-introduce the exact failure this module prevents: <0 or nan → 0 → every
+        # child SIGKILLed with no drain; inf → shutdown hangs until k8s hard-kills the
+        # pod. Fail fast at startup, mirroring concurrency_from_env()'s validation.
+        if not math.isfinite(override) or override < 0:
+            raise ValueError(
+                "WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS must be a finite "
+                f"number >= 0, got {override!r}"
+            )
+        return override
+    vt = consumer_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int)
+    return max(_DEFAULT_SHUTDOWN_GRACE_SECONDS, float(vt))
 
 
 class _Fleet:
@@ -332,6 +373,12 @@ def run_supervised(concurrency: int) -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
     fleet = _Fleet(concurrency)
+    grace_seconds = shutdown_grace_from_env()
+    logger.info(
+        "PG-queue consumer supervisor: shutdown drain grace = %.0fs (shared across "
+        "children)",
+        grace_seconds,
+    )
     stopping = threading.Event()
 
     def _signal_children(sig: int) -> None:
@@ -357,7 +404,7 @@ def run_supervised(concurrency: int) -> None:
         if not _try_fork_child(fleet, slot):
             stopping.set()
             _signal_children(signal.SIGTERM)
-            _join_children(fleet, _SHUTDOWN_GRACE_SECONDS)
+            _join_children(fleet, grace_seconds)
             raise RuntimeError(
                 f"PG-queue consumer: os.fork() failed starting child {slot}/"
                 f"{concurrency} — reduce WORKER_PG_QUEUE_CONSUMER_CONCURRENCY or "
@@ -373,7 +420,7 @@ def run_supervised(concurrency: int) -> None:
     finally:
         stopping.set()
         _signal_children(signal.SIGTERM)
-        _join_children(fleet, _SHUTDOWN_GRACE_SECONDS)
+        _join_children(fleet, grace_seconds)
         if health is not None:
             health.stop()
         logger.info("PG-queue consumer supervisor: stopped")
@@ -382,28 +429,41 @@ def run_supervised(concurrency: int) -> None:
 def _wait_for_exit(pid: int, deadline: float) -> bool:
     """Poll ``pid`` until it exits or ``deadline`` (monotonic) passes. True if it
     exited (or was already reaped).
+
+    Polls ``waitpid`` at least once regardless of the deadline: with the single
+    SHARED shutdown deadline, a child iterated after the window has already elapsed
+    would otherwise be reported "did not drain" and SIGKILLed — a false hard-kill
+    alarm — even though it exited cleanly within the grace.
     """
-    while time.monotonic() < deadline:
+    while True:
         try:
             reaped, _status = os.waitpid(pid, os.WNOHANG)
         except ChildProcessError:
             return True
         if reaped != 0:
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(0.1)
-    return False
 
 
 def _join_children(fleet: _Fleet, grace_seconds: float) -> None:
-    """Wait up to ``grace_seconds`` *per child* for a graceful drain; SIGKILL +
-    reap any straggler. The budget is per-child (not a single shared deadline) so
-    one slow-draining child can't starve the others of their grace.
+    """Wait up to ``grace_seconds`` TOTAL for all children to drain, then SIGKILL +
+    reap any straggler. A SINGLE shared deadline (not per-child): the children are
+    all SIGTERM'd together *before* this call and drain in parallel, so one shared
+    window still gives every child its full grace from that common SIGTERM — while
+    bounding the total wait to ~``grace_seconds``. A per-child deadline would instead
+    sum to N×grace and, at grace≈VT (thousands of seconds), blow past the pod's
+    ``terminationGracePeriodSeconds`` — so k8s SIGKILLs the whole pod, hard-killing
+    siblings that were still draining cleanly (UN-3695 / debate H2).
     """
+    deadline = time.monotonic() + grace_seconds
     for slot, pid in fleet.alive_items():
-        if _wait_for_exit(pid, time.monotonic() + grace_seconds):
+        if _wait_for_exit(pid, deadline):
             continue
         logger.warning(
-            "PG-queue consumer: child slot=%s pid=%s did not stop in %ss — SIGKILL",
+            "PG-queue consumer: child slot=%s pid=%s did not drain within the "
+            "shared %.0fs grace — SIGKILL",
             slot,
             pid,
             grace_seconds,

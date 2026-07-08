@@ -16,6 +16,7 @@ import pytest
 from pg_queue_consumer import supervisor as sup
 from pg_queue_consumer.supervisor import (
     _CRASH_LOOP_THRESHOLD,
+    _DEFAULT_SHUTDOWN_GRACE_SECONDS,
     _MAX_CONCURRENCY,
     _MIN_HEALTHY_UPTIME_SECONDS,
     _Fleet,
@@ -26,10 +27,74 @@ from pg_queue_consumer.supervisor import (
     _try_fork_child,
     _wait_for_exit,
     concurrency_from_env,
+    shutdown_grace_from_env,
 )
 
 _MOD = "pg_queue_consumer.supervisor"
 _ENV = "WORKER_PG_QUEUE_CONSUMER_CONCURRENCY"
+
+
+_VT = "WORKER_PG_QUEUE_CONSUMER_VT_SECONDS"
+_GRACE = "WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS"
+
+
+class TestShutdownGraceFromEnv:
+    """UN-3695: the shutdown drain grace must track the consumer VT (not a hardcoded
+    30s), so a SIGTERM drains an in-flight batch instead of SIGKILLing it mid-flight.
+    """
+
+    def test_unset_vt_and_override_defaults_to_fallback(self, monkeypatch):
+        monkeypatch.delenv(_VT, raising=False)
+        monkeypatch.delenv(_GRACE, raising=False)
+        assert shutdown_grace_from_env() == pytest.approx(_DEFAULT_SHUTDOWN_GRACE_SECONDS)
+
+    def test_tracks_vt_when_set(self, monkeypatch):
+        # The fileproc chart sets VT=9060 → grace must follow it, not stay at 30.
+        monkeypatch.delenv(_GRACE, raising=False)
+        monkeypatch.setenv(_VT, "9060")
+        assert shutdown_grace_from_env() == pytest.approx(9060.0)
+
+    def test_vt_below_fallback_is_floored(self, monkeypatch):
+        monkeypatch.delenv(_GRACE, raising=False)
+        monkeypatch.setenv(_VT, "10")
+        assert shutdown_grace_from_env() == pytest.approx(_DEFAULT_SHUTDOWN_GRACE_SECONDS)
+
+    def test_explicit_override_wins_over_vt(self, monkeypatch):
+        monkeypatch.setenv(_VT, "9060")
+        monkeypatch.setenv(_GRACE, "120")
+        assert shutdown_grace_from_env() == pytest.approx(120.0)
+
+    def test_override_honoured_as_is_even_below_fallback(self, monkeypatch):
+        # An explicit short dev drain is respected (not floored) — only the VT path floors.
+        monkeypatch.delenv(_VT, raising=False)
+        monkeypatch.setenv(_GRACE, "5")
+        assert shutdown_grace_from_env() == pytest.approx(5.0)
+
+    def test_negative_override_raises(self, monkeypatch):
+        # A negative drain budget would collapse to 0 → SIGKILL with no drain (the
+        # orphan bug this module prevents). Must fail fast, not silently.
+        monkeypatch.setenv(_GRACE, "-5")
+        with pytest.raises(ValueError, match="SHUTDOWN_GRACE_SECONDS"):
+            shutdown_grace_from_env()
+
+    def test_non_finite_override_raises(self, monkeypatch):
+        # inf would make the join deadline now+inf → shutdown hangs until k8s
+        # hard-kills the pod; nan collapses to 0. Reject both.
+        monkeypatch.setenv(_GRACE, "inf")
+        with pytest.raises(ValueError, match="finite"):
+            shutdown_grace_from_env()
+
+    def test_malformed_override_raises(self, monkeypatch):
+        monkeypatch.setenv(_GRACE, "abc")
+        with pytest.raises(ValueError, match="SHUTDOWN_GRACE_SECONDS"):
+            shutdown_grace_from_env()
+
+    def test_malformed_vt_raises(self, monkeypatch):
+        # Fail-fast-at-startup contract: a bad VT surfaces the offending var name.
+        monkeypatch.delenv(_GRACE, raising=False)
+        monkeypatch.setenv(_VT, "9060s")
+        with pytest.raises(ValueError, match="VT_SECONDS"):
+            shutdown_grace_from_env()
 
 
 class TestConcurrencyFromEnv:
@@ -257,6 +322,51 @@ class TestJoinChildren:
 
         kill.assert_called_once_with(111, _signal.SIGKILL)
         waitpid.assert_called_once_with(111, 0)
+
+    def test_shared_deadline_not_per_child(self):
+        # UN-3695 / debate H2: all children waited against ONE shared deadline (a
+        # per-child deadline serializes N wedged children to N×grace and blows past
+        # the pod terminationGracePeriodSeconds → siblings hard-killed). Advancing
+        # time.monotonic pins it: shared → the deadline is computed once (105 for
+        # all three); a per-child recompute would yield 105/205/305.
+        f = _Fleet(3)
+        for slot, pid in enumerate((111, 222, 333)):
+            f.record_fork(slot, pid)
+        deadlines: list[float] = []
+
+        def _record_drained(_pid, deadline):
+            deadlines.append(deadline)
+            return True  # child exited within the window
+
+        with (
+            patch(f"{_MOD}.time.monotonic", side_effect=[100.0, 200.0, 300.0, 400.0]),
+            patch(f"{_MOD}._wait_for_exit", side_effect=_record_drained),
+        ):
+            _join_children(f, grace_seconds=5)
+        assert deadlines == pytest.approx([105.0, 105.0, 105.0])  # computed once, shared
+
+    def test_multi_child_stragglers_share_deadline_and_all_sigkilled(self):
+        # 3 wedged children (none drain) → each SIGKILLed + reaped against the SAME
+        # shared deadline. Kill-count alone wouldn't catch a per-child regression,
+        # so also assert the deadline handed to every child was identical.
+        f = _Fleet(3)
+        for slot, pid in enumerate((111, 222, 333)):
+            f.record_fork(slot, pid)
+        seen: list[float] = []
+
+        def _record_wedged(_pid, deadline):
+            seen.append(deadline)
+            return False  # never drains → forces SIGKILL
+
+        with (
+            patch(f"{_MOD}._wait_for_exit", side_effect=_record_wedged),
+            patch(f"{_MOD}.os.kill") as kill,
+            patch(f"{_MOD}.os.waitpid") as waitpid,
+        ):
+            _join_children(f, grace_seconds=5)
+        assert kill.call_count == 3
+        assert waitpid.call_count == 3
+        assert len(set(seen)) == 1  # one shared deadline across all three
 
 
 class TestSupervisorHealth:
