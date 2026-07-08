@@ -138,6 +138,26 @@ class IsParentWorkflowOwner(permissions.BasePermission):
         return is_workflow_mutator(request, obj.workflow)
 
 
+class IsParentToolOwner(permissions.BasePermission):
+    """Mutation gate for Prompt Studio sub-resources owned via the parent tool.
+
+    A ``ProfileManager`` is not a membership resource, so its access is
+    inherited from the parent ``CustomTool``. Admits the tool's owner (creator +
+    co-owners), org admin, or service account -- mirrors ``IsParentWorkflowOwner``
+    (UN-2202). Falls back to the object's own owner when it has no parent tool
+    (``prompt_studio_tool`` is nullable) to preserve legacy behaviour for
+    orphan rows.
+    """
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if _is_service_account(request):
+            return True
+        owner_resource = obj.prompt_studio_tool or obj
+        if _is_resource_owner(request.user, owner_resource):
+            return True
+        return _is_organization_admin(request)
+
+
 class IsOrganizationMember(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         user_organization = UserContext.get_organization()
