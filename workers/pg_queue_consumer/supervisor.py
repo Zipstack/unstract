@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 import multiprocessing
 import os
 import signal
@@ -63,8 +64,9 @@ _RESTART_MAX_BACKOFF_SECONDS = 30.0
 _MIN_HEALTHY_UPTIME_SECONDS = 10.0
 # Consecutive immediate crashes after which the fleet probe is forced unhealthy.
 _CRASH_LOOP_THRESHOLD = 3
-# Fallback per-child graceful-drain budget (s) on shutdown, used only when neither
-# an explicit override nor the consumer VT is set — see shutdown_grace_from_env().
+# Fallback graceful-drain budget (s, shared across all children) on shutdown, used
+# only when neither an explicit override nor the consumer VT is set — see
+# shutdown_grace_from_env().
 # This is NOT the live value: the live grace defaults to the consumer's visibility
 # timeout so a SIGTERM (deploy / HPA scale-down) lets an in-flight batch finish
 # instead of a mid-flight SIGKILL that orphans it (UN-3695).
@@ -98,7 +100,8 @@ def concurrency_from_env() -> int:
 
 
 def shutdown_grace_from_env() -> float:
-    """Per-child graceful-drain budget (seconds) on shutdown, before SIGKILL.
+    """Graceful-drain budget (seconds) on shutdown, shared across all children,
+    before SIGKILL.
 
     Defaults to the consumer's visibility timeout (``WORKER_PG_QUEUE_CONSUMER_VT_SECONDS``)
     — the by-design upper bound on a single task's runtime — so a graceful SIGTERM
@@ -115,11 +118,20 @@ def shutdown_grace_from_env() -> float:
     """
     from queue_backend.pg_queue.consumer import _DEFAULT_VT_SECONDS, consumer_env
 
-    override = consumer_env("SHUTDOWN_GRACE_SECONDS", None, float)
+    override: float | None = consumer_env("SHUTDOWN_GRACE_SECONDS", None, float)
     if override is not None:
-        return max(0.0, override)
+        # A negative / non-finite drain budget is never intentional and would
+        # re-introduce the exact failure this module prevents: <0 or nan → 0 → every
+        # child SIGKILLed with no drain; inf → shutdown hangs until k8s hard-kills the
+        # pod. Fail fast at startup, mirroring concurrency_from_env()'s validation.
+        if not math.isfinite(override) or override < 0:
+            raise ValueError(
+                "WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS must be a finite "
+                f"number >= 0, got {override!r}"
+            )
+        return override
     vt = consumer_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int)
-    return max(float(_DEFAULT_SHUTDOWN_GRACE_SECONDS), float(vt))
+    return max(_DEFAULT_SHUTDOWN_GRACE_SECONDS, float(vt))
 
 
 class _Fleet:
@@ -363,7 +375,9 @@ def run_supervised(concurrency: int) -> None:
     fleet = _Fleet(concurrency)
     grace_seconds = shutdown_grace_from_env()
     logger.info(
-        "PG-queue consumer supervisor: shutdown drain grace = %.0fs/child", grace_seconds
+        "PG-queue consumer supervisor: shutdown drain grace = %.0fs (shared across "
+        "children)",
+        grace_seconds,
     )
     stopping = threading.Event()
 
@@ -415,16 +429,22 @@ def run_supervised(concurrency: int) -> None:
 def _wait_for_exit(pid: int, deadline: float) -> bool:
     """Poll ``pid`` until it exits or ``deadline`` (monotonic) passes. True if it
     exited (or was already reaped).
+
+    Polls ``waitpid`` at least once regardless of the deadline: with the single
+    SHARED shutdown deadline, a child iterated after the window has already elapsed
+    would otherwise be reported "did not drain" and SIGKILLed — a false hard-kill
+    alarm — even though it exited cleanly within the grace.
     """
-    while time.monotonic() < deadline:
+    while True:
         try:
             reaped, _status = os.waitpid(pid, os.WNOHANG)
         except ChildProcessError:
             return True
         if reaped != 0:
             return True
+        if time.monotonic() >= deadline:
+            return False
         time.sleep(0.1)
-    return False
 
 
 def _join_children(fleet: _Fleet, grace_seconds: float) -> None:

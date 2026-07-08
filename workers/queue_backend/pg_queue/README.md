@@ -28,7 +28,7 @@ integers.
 |---|---|---|
 | `CONCURRENCY` | Prefork consumer children per pod (1 = plain single process) | `1` |
 | `VT_SECONDS` | **Visibility timeout** — how long a claimed message stays hidden before it can redeliver | `30` (chart: `9060` for file-processing ≈ 2.5h) |
-| `SHUTDOWN_GRACE_SECONDS` | Per-child graceful-drain budget on SIGTERM before SIGKILL | `= VT` (floored at `30`) |
+| `SHUTDOWN_GRACE_SECONDS` | Graceful-drain budget (shared across all children) on SIGTERM before SIGKILL | `= VT` (floored at `30`) |
 | `QUEUE` | Queue name(s) this consumer polls (comma-separated) | `default` |
 | `BATCH` | Messages claimed per poll | `1` |
 | `POLL_INTERVAL` | Time between polls when the queue is empty | `0.1` |
