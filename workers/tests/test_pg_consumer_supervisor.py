@@ -16,6 +16,7 @@ import pytest
 from pg_queue_consumer import supervisor as sup
 from pg_queue_consumer.supervisor import (
     _CRASH_LOOP_THRESHOLD,
+    _DEFAULT_SHUTDOWN_GRACE_SECONDS,
     _MAX_CONCURRENCY,
     _MIN_HEALTHY_UPTIME_SECONDS,
     _Fleet,
@@ -26,10 +27,48 @@ from pg_queue_consumer.supervisor import (
     _try_fork_child,
     _wait_for_exit,
     concurrency_from_env,
+    shutdown_grace_from_env,
 )
 
 _MOD = "pg_queue_consumer.supervisor"
 _ENV = "WORKER_PG_QUEUE_CONSUMER_CONCURRENCY"
+
+
+_VT = "WORKER_PG_QUEUE_CONSUMER_VT_SECONDS"
+_GRACE = "WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS"
+
+
+class TestShutdownGraceFromEnv:
+    """UN-3695: the shutdown drain grace must track the consumer VT (not a hardcoded
+    30s), so a SIGTERM drains an in-flight batch instead of SIGKILLing it mid-flight.
+    """
+
+    def test_unset_vt_and_override_defaults_to_fallback(self, monkeypatch):
+        monkeypatch.delenv(_VT, raising=False)
+        monkeypatch.delenv(_GRACE, raising=False)
+        assert shutdown_grace_from_env() == _DEFAULT_SHUTDOWN_GRACE_SECONDS
+
+    def test_tracks_vt_when_set(self, monkeypatch):
+        # The fileproc chart sets VT=9060 → grace must follow it, not stay at 30.
+        monkeypatch.delenv(_GRACE, raising=False)
+        monkeypatch.setenv(_VT, "9060")
+        assert shutdown_grace_from_env() == 9060.0
+
+    def test_vt_below_fallback_is_floored(self, monkeypatch):
+        monkeypatch.delenv(_GRACE, raising=False)
+        monkeypatch.setenv(_VT, "10")
+        assert shutdown_grace_from_env() == _DEFAULT_SHUTDOWN_GRACE_SECONDS
+
+    def test_explicit_override_wins_over_vt(self, monkeypatch):
+        monkeypatch.setenv(_VT, "9060")
+        monkeypatch.setenv(_GRACE, "120")
+        assert shutdown_grace_from_env() == 120.0
+
+    def test_override_honoured_as_is_even_below_fallback(self, monkeypatch):
+        # An explicit short dev drain is respected (not floored) — only the VT path floors.
+        monkeypatch.delenv(_VT, raising=False)
+        monkeypatch.setenv(_GRACE, "5")
+        assert shutdown_grace_from_env() == 5.0
 
 
 class TestConcurrencyFromEnv:
@@ -257,6 +296,25 @@ class TestJoinChildren:
 
         kill.assert_called_once_with(111, _signal.SIGKILL)
         waitpid.assert_called_once_with(111, 0)
+
+    def test_shared_deadline_not_per_child(self):
+        # UN-3695 / debate H2: all children must be waited against ONE shared
+        # deadline. A per-child deadline serializes N wedged children to N×grace,
+        # which at grace≈VT blows past the pod's terminationGracePeriodSeconds and
+        # gets siblings hard-killed by k8s. Assert a single shared deadline is used.
+        f = _Fleet(3)
+        for slot, pid in enumerate((111, 222, 333)):
+            f.record_fork(slot, pid)
+        deadlines: list[float] = []
+
+        def _capture(_pid, deadline):
+            deadlines.append(deadline)
+            return True  # each child exits cleanly
+
+        with patch(f"{_MOD}._wait_for_exit", side_effect=_capture):
+            _join_children(f, grace_seconds=5)
+        assert len(deadlines) == 3
+        assert len(set(deadlines)) == 1  # one shared deadline, not three per-child
 
 
 class TestSupervisorHealth:
