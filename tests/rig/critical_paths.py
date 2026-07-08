@@ -170,40 +170,50 @@ def evaluate(
     green = set(groups_run_green)
     proven = set(marker_proven)
     scope = None if scope_groups is None else set(scope_groups)
-    statuses: list[CriticalPathStatus] = []
-    for path in registry.paths:
-        covering = tuple(g for g in path.covered_by if g in green)
-        if path.proof == "marker" and path.id not in proven:
-            covering = ()
-        in_scope = scope is None or any(g in scope for g in path.covered_by)
-        state: CriticalPathState
-        if covering:
-            state = "covered"
-            note = ""
-        elif path.id in previously_covered and in_scope:
-            state = "regression"
-            note = "Was covered on the cached baseline; not covered in this build."
-        else:
-            state = "gap"
-            if not in_scope:
-                note = "Out of scope for this invocation."
-            elif path.proof == "marker" and any(g in green for g in path.covered_by):
-                note = (
-                    "Covering group ran green but no passing "
-                    "@pytest.mark.critical_path test attested this path."
-                )
-            else:
-                note = "No group covering this path ran green in this build."
-        statuses.append(
-            CriticalPathStatus(
-                path=path,
-                state=state,
-                covering_groups_run=covering,
-                notes=note,
-                in_scope=in_scope,
-            )
+    return [
+        _status_for(path, green, proven, previously_covered, scope)
+        for path in registry.paths
+    ]
+
+
+def _status_for(
+    path: CriticalPath,
+    green: set[str],
+    proven: set[str],
+    previously_covered: set[str],
+    scope: set[str] | None,
+) -> CriticalPathStatus:
+    covering = tuple(g for g in path.covered_by if g in green)
+    if path.proof == "marker" and path.id not in proven:
+        covering = ()
+    in_scope = scope is None or any(g in scope for g in path.covered_by)
+    if covering:
+        state: CriticalPathState = "covered"
+        note = ""
+    elif path.id in previously_covered and in_scope:
+        state = "regression"
+        note = "Was covered on the cached baseline; not covered in this build."
+    else:
+        state = "gap"
+        note = _gap_note(path, green, in_scope)
+    return CriticalPathStatus(
+        path=path,
+        state=state,
+        covering_groups_run=covering,
+        notes=note,
+        in_scope=in_scope,
+    )
+
+
+def _gap_note(path: CriticalPath, green: set[str], in_scope: bool) -> str:
+    if not in_scope:
+        return "Out of scope for this invocation."
+    if path.proof == "marker" and any(g in green for g in path.covered_by):
+        return (
+            "Covering group ran green but no passing "
+            "@pytest.mark.critical_path test attested this path."
         )
-    return statuses
+    return "No group covering this path ran green in this build."
 
 
 def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -> None:

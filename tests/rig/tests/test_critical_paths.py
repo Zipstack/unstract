@@ -294,11 +294,11 @@ def test_load_parses_proof_field(tmp_path: Path) -> None:
 
 def test_validate_rejects_marker_proof_without_covered_by() -> None:
     from tests.rig.critical_paths import validate_registry_against_manifest
+    from tests.rig.groups import GroupDefinition, GroupManifest
 
-    class _Manifest:
-        def names(self) -> list[str]:
-            return ["g1"]
-
+    manifest = GroupManifest(
+        groups={"g1": GroupDefinition(name="g1", tier="unit", paths=())}
+    )
     registry = CriticalPathRegistry(paths=(_marker_path("p1", ()),))
-    errors = validate_registry_against_manifest(registry, _Manifest())
+    errors = validate_registry_against_manifest(registry, manifest)
     assert errors and "marker" in errors[0]

@@ -21,7 +21,8 @@ def pytest_configure(config):
     )
 
 
-def pytest_collection_modifyitems(config, items):
+# pytest matches hook args by name, so unused params can be omitted.
+def pytest_collection_modifyitems(items):
     for item in items:
         for marker in item.iter_markers("critical_path"):
             for path_id in marker.args:
