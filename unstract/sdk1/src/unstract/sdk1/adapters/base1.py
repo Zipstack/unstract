@@ -1641,3 +1641,30 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
         if not model.startswith("gemini/"):
             model = f"gemini/{model}"
         return model
+
+
+class MistralEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/mistral."""
+
+    api_key: str
+    embed_batch_size: int | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = MistralEmbeddingParameters.validate_model(metadata_copy)
+
+        return MistralEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Mistral embedding adapter. "
+                "Example: 'mistral-embed'"
+            )
+        if not model.startswith("mistral/"):
+            model = f"mistral/{model}"
+        return model
