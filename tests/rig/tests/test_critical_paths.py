@@ -158,6 +158,43 @@ def test_scope_demotes_out_of_scope_regressions_to_gaps() -> None:
     assert by_id["straddle-path"].state == "regression"  # partially in scope
 
 
+def test_in_scope_flag_distinguishes_gap_flavours() -> None:
+    """The ``in_scope`` flag on a status is what lets --fail-on-critical-gap
+    gate only on coverage that this tier was actually responsible for. An
+    out-of-scope gap (e2e path during the unit tier, or a path with no declared
+    coverage) must report ``in_scope=False``; an in-scope gap (a declared
+    in-tier group that didn't run green) must report ``in_scope=True``.
+    """
+    registry = _registry(
+        ("in-scope", ("unit-g",)),  # declared group is in scope, but not green
+        ("e2e-only", ("e2e-g",)),  # declared group is out of scope this run
+        ("undeclared", ()),  # no declared coverage anywhere
+    )
+    statuses = evaluate(
+        registry,
+        groups_run_green=set(),  # nothing passed → all three are gaps
+        baseline=None,
+        scope_groups={"unit-g"},
+    )
+    by_id = {s.path.id: s for s in statuses}
+    assert all(s.state == "gap" for s in statuses)
+    assert by_id["in-scope"].in_scope is True
+    assert by_id["e2e-only"].in_scope is False
+    assert by_id["undeclared"].in_scope is False
+
+
+def test_covered_path_is_in_scope() -> None:
+    registry = _registry(("p1", ("g1",)))
+    statuses = evaluate(
+        registry,
+        groups_run_green={"g1"},
+        baseline=None,
+        scope_groups={"g1"},
+    )
+    assert statuses[0].state == "covered"
+    assert statuses[0].in_scope is True
+
+
 def test_scope_none_preserves_legacy_behavior() -> None:
     """scope_groups=None disables scope-filtering so callers that don't pass it
     keep the old "everything in baseline counts" semantics.
@@ -170,3 +207,98 @@ def test_scope_none_preserves_legacy_behavior() -> None:
         scope_groups=None,
     )
     assert statuses[0].state == "regression"
+
+
+def _marker_path(path_id: str, covers: tuple[str, ...]) -> CriticalPath:
+    return CriticalPath(
+        id=path_id, description="", entry="", covered_by=covers, proof="marker"
+    )
+
+
+def test_marker_proof_covered_when_group_green_and_proven() -> None:
+    registry = CriticalPathRegistry(paths=(_marker_path("p1", ("g1",)),))
+    statuses = evaluate(
+        registry, groups_run_green={"g1"}, baseline=None, marker_proven={"p1"}
+    )
+    assert statuses[0].state == "covered"
+    assert statuses[0].covering_groups_run == ("g1",)
+
+
+def test_marker_proof_gap_when_group_green_but_unproven() -> None:
+    """The whole point of proof=marker: a green covering group alone (e.g. the
+    marked test was deleted and the rest of the group still passes) must not
+    attest coverage.
+    """
+    registry = CriticalPathRegistry(paths=(_marker_path("p1", ("g1",)),))
+    statuses = evaluate(
+        registry, groups_run_green={"g1"}, baseline=None, marker_proven=set()
+    )
+    assert statuses[0].state == "gap"
+    assert "critical_path" in statuses[0].notes
+
+
+def test_marker_proof_regression_when_baseline_covered_but_unproven() -> None:
+    registry = CriticalPathRegistry(paths=(_marker_path("p1", ("g1",)),))
+    statuses = evaluate(
+        registry,
+        groups_run_green={"g1"},
+        baseline={"covered_paths": ["p1"]},
+        marker_proven=set(),
+    )
+    assert statuses[0].state == "regression"
+
+
+def test_marker_proof_requires_green_group_too() -> None:
+    """A passing marked test inside an overall-red group proves nothing —
+    coverage needs both the proof and a green covering group.
+    """
+    registry = CriticalPathRegistry(paths=(_marker_path("p1", ("g1",)),))
+    statuses = evaluate(
+        registry, groups_run_green=set(), baseline=None, marker_proven={"p1"}
+    )
+    assert statuses[0].state == "gap"
+
+
+def test_marker_proof_does_not_affect_group_proof_paths() -> None:
+    registry = _registry(("p1", ("g1",)))
+    statuses = evaluate(
+        registry, groups_run_green={"g1"}, baseline=None, marker_proven=set()
+    )
+    assert statuses[0].state == "covered"
+
+
+def test_load_rejects_unknown_proof(tmp_path: Path) -> None:
+    from tests.rig.critical_paths import load_critical_paths
+
+    reg = tmp_path / "critical_paths.yaml"
+    reg.write_text(
+        "paths:\n  - id: p1\n    covered_by: [g1]\n    proof: junit\n"
+    )
+    with pytest.raises(ValueError, match="proof"):
+        load_critical_paths(reg)
+
+
+def test_load_parses_proof_field(tmp_path: Path) -> None:
+    from tests.rig.critical_paths import load_critical_paths
+
+    reg = tmp_path / "critical_paths.yaml"
+    reg.write_text(
+        "paths:\n"
+        "  - id: p1\n    covered_by: [g1]\n    proof: marker\n"
+        "  - id: p2\n    covered_by: [g1]\n"
+    )
+    loaded = load_critical_paths(reg)
+    assert loaded.by_id("p1").proof == "marker"
+    assert loaded.by_id("p2").proof == "group"
+
+
+def test_validate_rejects_marker_proof_without_covered_by() -> None:
+    from tests.rig.critical_paths import validate_registry_against_manifest
+    from tests.rig.groups import GroupDefinition, GroupManifest
+
+    manifest = GroupManifest(
+        groups={"g1": GroupDefinition(name="g1", tier="unit", paths=())}
+    )
+    registry = CriticalPathRegistry(paths=(_marker_path("p1", ()),))
+    errors = validate_registry_against_manifest(registry, manifest)
+    assert errors and "marker" in errors[0]
