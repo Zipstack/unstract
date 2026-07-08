@@ -219,7 +219,9 @@ Developers can scope local runs however they like via positional args, `--from-f
 ### Backend: no registration needed
 
 1. Write a normal test in `backend/<app>/tests/test_<name>.py`. The filename
-   **must** match `test_*.py` — anything else is silently never collected.
+   **must** match `test_*.py`, `*_test.py`, `*_tests.py`, or Django's per-app
+   `tests.py` — anything else is silently never collected. Prefer `test_*.py`
+   for consistency.
 2. Tier is inferred, not declared. A test that touches the database (subclasses
    Django `TestCase`/`APITestCase`, or uses `@pytest.mark.django_db`) is
    auto-marked `integration` by `backend/conftest.py` and runs in

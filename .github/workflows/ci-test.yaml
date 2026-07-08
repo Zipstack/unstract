@@ -6,14 +6,11 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
 
 jobs:
-  # Path filtering lives at the JOB level, not as trigger paths-ignore: a
-  # workflow that never triggers creates no check run, so a required status
-  # check would block the PR forever ("Expected — waiting for status"). A job
-  # skipped via `if:` still reports a check run (conclusion: skipped), which
-  # required checks treat as passing.
+  # Path filtering at job level, not trigger paths-ignore: an untriggered
+  # workflow reports no check run, so a required check waits forever; a job
+  # skipped via `if:` reports conclusion `skipped`, which passes.
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -36,10 +33,18 @@ jobs:
               - "!frontend/**"
               - "!docs/**"
 
+  # Tiers share no state (separate runners, disjoint groups), so they run as
+  # parallel matrix legs; whatever needs both tiers' results happens in `report`.
   test:
     needs: changes
     if: needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    strategy:
+      # One tier failing must not cancel the other; the report job needs
+      # whatever results exist from both.
+      fail-fast: false
+      matrix:
+        tier: [unit, integration]
 
     steps:
       - name: Checkout repository
@@ -57,21 +62,20 @@ jobs:
         uses: actions/cache@v5
         with:
           path: .tox/
-          key: ${{ runner.os }}-tox-uv-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+          # Tier in the key: legs build different tox envs, and parallel
+          # saves to one key race (first save wins).
+          key: ${{ runner.os }}-tox-uv-${{ matrix.tier }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
           restore-keys: |
+            ${{ runner.os }}-tox-uv-${{ matrix.tier }}-
             ${{ runner.os }}-tox-uv-
 
       - name: Restore main-branch test baseline (for regression detection)
-        # actions/cache only saves on a cache miss. Include the run id in the
-        # key so each main build writes a fresh cache entry; the prefix in
-        # restore-keys pulls the most recent baseline.
-        #
-        # The unit/integration lane keeps a SEPARATE baseline from the e2e
-        # workflow because their `scope_groups` don't overlap — restoring an
-        # e2e-tier baseline here would flag every e2e-covered path as a
-        # regression in this lane (and vice versa). Each workflow is the
-        # source of truth for the paths covered by its own tiers.
-        uses: actions/cache@v5
+        # Restore-only: the report job is the sole baseline writer (a save
+        # here would claim this run's key with an unmerged file). Baseline is
+        # separate from the e2e workflow's — their scope_groups don't overlap,
+        # and a cross-lane restore would flag the other lane's paths as
+        # regressions.
+        uses: actions/cache/restore@v5
         with:
           path: reports/previous-summary.json
           key: unstract-test-baseline-ut-main-${{ github.run_id }}
@@ -87,30 +91,102 @@ jobs:
         # errors before we spend minutes on tier runs.
         run: tox -e rig -- validate
 
-      - name: Run unit tier
-        # Each tier runs as a separate rig invocation so its results land in
-        # reports/<group>/ before the next tier starts. --update-baseline (on
-        # main only) merges this tier's covered paths into the cached
-        # previous-summary.json; later tiers union on top.
-        run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e unit -- --fail-on-critical-gap --update-baseline
-          else
-            tox -e unit
-          fi
+      - name: Run ${{ matrix.tier }} tier
+        # Gap check on PRs too: main is gap-free and PRs test the merge ref,
+        # so a gap here can only be PR-introduced. No --update-baseline:
+        # parallel writes would race; the report job merges once (main only).
+        run: tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
 
-      - name: Run integration tier
+      - name: Suffix coverage data for cross-tier merge
+        # Both tiers emit a bare reports/.coverage that would clobber on
+        # download; suffixed names match the `.coverage.*` glob `report
+        # combine` unions.
         if: always()
         run: |
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e integration -- --fail-on-critical-gap --update-baseline
-          else
-            tox -e integration
+          if [ -f reports/.coverage ]; then
+            mv reports/.coverage "reports/.coverage.tier-${{ matrix.tier }}"
           fi
 
-      - name: Re-aggregate reports from both tiers
+      - name: Upload tier reports artifact
         if: always()
-        run: tox -e rig -- report combine
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports-${{ matrix.tier }}
+          # Baseline excluded: it's cache-managed, and a stale copy inside the
+          # artifact would overwrite the report job's freshly restored one.
+          path: |
+            reports/
+            !reports/previous-summary.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    needs: [changes, test]
+    # `always()` so a red tier still gets a PR report. Skip only a legitimate
+    # skip — irrelevant paths / draft, decided by a *successful* changes job.
+    # A failed changes job skips the tiers, so this must run and go red
+    # (final step) instead of green-skipping the required check.
+    if: >-
+      always() && (needs.changes.result != 'success'
+      || (needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false))
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.6.14"
+          python-version: 3.12.9
+
+      - name: Cache tox environments
+        uses: actions/cache@v5
+        with:
+          path: .tox/
+          key: ${{ runner.os }}-tox-uv-rig-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-tox-uv-rig-
+            ${{ runner.os }}-tox-uv-
+
+      - name: Restore main-branch test baseline
+        uses: actions/cache/restore@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-ut-main-${{ github.run_id }}
+          restore-keys: |
+            unstract-test-baseline-ut-main-
+            unstract-test-baseline-ut-
+
+      - name: Install tox with UV
+        run: uv tool install tox --with tox-uv
+
+      - name: Download tier reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: reports-*
+          path: reports/
+          merge-multiple: true
+
+      - name: Combine reports from both tiers
+        # On green main builds also merge covered paths into the baseline
+        # (single writer; the rig refuses the merge if any group is red).
+        run: |
+          flags=""
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ needs.test.result }}" = "success" ]; then
+            flags="--update-baseline"
+          fi
+          tox -e rig -- report combine $flags
+
+      - name: Save updated baseline
+        # actions/cache saves only on a miss; the run id keys each main build
+        # a fresh entry, and restore-keys' prefix pulls the latest next run.
+        if: github.ref == 'refs/heads/main'
+        uses: actions/cache/save@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-ut-main-${{ github.run_id }}
 
       - name: Render combined test report to PR
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
@@ -134,3 +210,10 @@ jobs:
           path: reports/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Fail if any tier failed
+        # Lets this job serve as the single branch-protection check: a matrix
+        # `result` is success only when every leg passed.
+        if: always()
+        run: |
+          [ "${{ needs.test.result }}" = "success" ] || exit 1
