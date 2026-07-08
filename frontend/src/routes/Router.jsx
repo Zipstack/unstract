@@ -60,9 +60,9 @@ const MarketplaceStripeConflictEntry = lazyPlugin(
   "MarketplaceStripeConflictPage",
 );
 // LLMWhisperer buyers get their own entry point: the LLMWhisperer Tackle
-// listings redirect here, and the page claims against the PORTAL backend
-// (/api/v1/llmwhisperer/...) — routing them to /marketplace-landing would
-// fire the Unstract claim instead.
+// listings redirect here, and the page claims against the LLMWhisperer portal
+// backend (a different endpoint than the Unstract claim) — routing them to
+// /marketplace-landing would fire the Unstract claim instead.
 const LlmWhispererMarketplaceLandingEntry = lazyPlugin(
   () => import("../plugins/llm-whisperer/pages/MarketplaceLandingPage.jsx"),
   "MarketplaceLandingPage",
