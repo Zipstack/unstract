@@ -9,6 +9,7 @@ from __future__ import annotations
 import secrets
 from unittest.mock import patch
 
+import pytest
 from account_v2.models import Organization, User
 from django.test import TestCase
 from rest_framework import status
@@ -36,6 +37,7 @@ class AdapterRegisterLLMAPITest(TestCase):
         )
         self.create_view = AdapterInstanceViewSet.as_view({"post": "create"})
 
+    @pytest.mark.critical_path("adapter-register-llm")
     @patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
     def test_register_llm_adapter_persists_encrypted(self, _ctx_window) -> None:
         payload = {

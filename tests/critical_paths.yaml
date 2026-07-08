@@ -14,6 +14,13 @@
 # Only wire `covered_by` to a group that really exercises the path — a bogus
 # mapping fails the build when that group breaks, for the wrong reason.
 #
+# `proof` (default: group):
+#   • group  — covered when any covered_by group runs green. Coarse: survives
+#              the covering test being deleted.
+#   • marker — additionally requires ≥1 passing test carrying
+#              @pytest.mark.critical_path("<id>") in this build. Flip each
+#              path to marker once its tests are marked.
+#
 # We intentionally do NOT chase 100% coverage. Focus on filling these gaps first.
 version: 1
 
@@ -30,6 +37,7 @@ paths:
     description: "Register and validate an LLM adapter."
     entry: "POST /api/v1/adapter/"
     covered_by: [integration-backend]
+    proof: marker
 
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."

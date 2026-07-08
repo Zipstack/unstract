@@ -107,6 +107,7 @@ addopts = "-s"
 python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 markers = [
     "integration: needs live infra (Postgres/Redis); runs in the rig's integration tier, not unit (select with -m integration / exclude with -m 'not integration')",
+    "critical_path(path_id): attests coverage of declared critical path(s) from tests/critical_paths.yaml when this test passes",
 ]
 
 [tool.poe]

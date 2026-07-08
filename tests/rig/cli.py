@@ -32,7 +32,12 @@ from tests.rig.groups import (
     GroupDefinition,
     load_groups,
 )
-from tests.rig.reporting import GroupResult, parse_junit, write_summary
+from tests.rig.reporting import (
+    GroupResult,
+    parse_junit,
+    passed_critical_path_ids,
+    write_summary,
+)
 from tests.rig.runtime import (
     PlatformEndpoints,
     PlatformRuntime,
@@ -45,6 +50,10 @@ from tests.rig.selection import resolve
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
+
+# Injected into every group's pytest run (PYTHONPATH + -p) so
+# @pytest.mark.critical_path marker args land in junit properties.
+_PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
 
 @lru_cache(maxsize=1)
@@ -310,7 +319,10 @@ def cmd_report(args: argparse.Namespace) -> int:
         result = parse_junit(name, tier, reports_dir)
         if result is not None:
             group_results.append(result)
-    green = _green_group_names(group_results)
+    green = _coverage_attesting_groups(group_results)
+    proven, unknown_marker_ids = _marker_proven_paths(
+        registry, group_results, reports_dir
+    )
     baseline_path = args.baseline or reports_dir / "previous-summary.json"
     baseline_corrupt = False
     try:
@@ -319,7 +331,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
-    statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
+    statuses = cp.evaluate(
+        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+    )
     write_summary(
         reports_dir=reports_dir,
         group_results=group_results,
@@ -327,6 +341,13 @@ def cmd_report(args: argparse.Namespace) -> int:
         baseline_corrupt=baseline_corrupt,
     )
     print(f"Wrote {reports_dir / 'summary.md'}")
+    if unknown_marker_ids:
+        print(
+            f"[rig] ❌ @pytest.mark.critical_path references unknown path "
+            f"id(s): {', '.join(unknown_marker_ids)} "
+            f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
     if args.update_baseline:
         red = [
             r.name
@@ -335,13 +356,15 @@ def cmd_report(args: argparse.Namespace) -> int:
         ]
         if baseline_corrupt or red:
             reason = (
-                "corrupt baseline" if baseline_corrupt else f"red groups: {', '.join(red)}"
+                "corrupt baseline"
+                if baseline_corrupt
+                else f"red groups: {', '.join(red)}"
             )
             print(f"[rig] ❌ baseline update refused ({reason})", file=sys.stderr)
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 0
+    return 1 if unknown_marker_ids else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -408,7 +431,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             # only needs Postgres; trim to the requested services if startup
             # cost ever matters.
             runtime = TestcontainersRuntime()
-            print(f"[rig] bringing infra up via runtime={runtime.name} (requires_services)")
+            print(
+                f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
+            )
             endpoints = runtime.up()
 
         # TODO(runtime-gate-skip): groups run unconditionally in topo order;
@@ -486,7 +511,19 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.coverage and not args.dry_run:
         combine_and_report(reports_dir)
 
-    green = _green_group_names(group_results)
+    green = _coverage_attesting_groups(group_results)
+    proven, unknown_marker_ids = _marker_proven_paths(
+        registry, group_results, reports_dir
+    )
+    if unknown_marker_ids:
+        print(
+            f"[rig] ❌ @pytest.mark.critical_path references unknown path "
+            f"id(s): {', '.join(unknown_marker_ids)} "
+            f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+        if overall_exit == 0:
+            overall_exit = 1
     # A corrupt baseline can't be silently treated as empty (that would turn
     # the next build into a regression festival once a one-tier baseline gets
     # written back). But we must still write the per-group summary so the
@@ -505,6 +542,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         groups_run_green=green,
         baseline=baseline,
         scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -609,7 +647,8 @@ def _inject_infra_env(
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.
         env.setdefault(
-            "MINIO_ENDPOINT_URL", f"http://{infra.minio_endpoint}"  # NOSONAR
+            "MINIO_ENDPOINT_URL",
+            f"http://{infra.minio_endpoint}",  # NOSONAR
         )
         if infra.minio_access_key:
             env.setdefault("MINIO_ACCESS_KEY_ID", infra.minio_access_key)
@@ -622,8 +661,28 @@ def _inject_infra_env(
         env["CELERY_BROKER_BASE_URL"] = f"redis://{infra.redis_host}:{redis_port}"
 
 
-def _green_group_names(results: list[GroupResult]) -> set[str]:
-    return {r.name for r in results if r.status in ("pass", "empty")}
+def _coverage_attesting_groups(results: list[GroupResult]) -> set[str]:
+    # "empty" (exit 5) stays non-failing for the build, but a covering group
+    # that collected zero tests must not attest critical-path coverage — a
+    # broken marker expression would otherwise report ✅ with zero tests run.
+    return {r.name for r in results if r.status == "pass"}
+
+
+def _marker_proven_paths(
+    registry: cp.CriticalPathRegistry,
+    group_results: list[GroupResult],
+    reports_dir: Path,
+) -> tuple[set[str], list[str]]:
+    """Union critical-path ids attested by passing marked tests across groups.
+
+    Returns ``(known_ids, unknown_ids)`` — unknown ids (marker typos) must fail
+    the build or the marked test silently attests nothing.
+    """
+    registry_ids = {p.id for p in registry.paths}
+    proven: set[str] = set()
+    for r in group_results:
+        proven |= passed_critical_path_ids(r.name, reports_dir)
+    return proven & registry_ids, sorted(proven - registry_ids)
 
 
 def _is_missing_placeholder(group: GroupDefinition) -> bool:
@@ -653,6 +712,9 @@ def _execute_group(
     md_report = group_reports / "report.md"
 
     env = _subprocess_env()
+    env["PYTHONPATH"] = os.pathsep.join(
+        p for p in (str(_PYTEST_PLUGIN_DIR), env.get("PYTHONPATH")) if p
+    )
     env.update(group.env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
@@ -789,6 +851,14 @@ def _pytest_command(
         "-v",
         f"--junitxml={junit}",
         f"--timeout={timeout}",
+        # Marker→junit-property plugin (dir added to PYTHONPATH in
+        # _execute_group). junit_family=legacy: the default xunit2 schema
+        # rejects per-testcase <properties>, which the coverage attestation
+        # reads.
+        "-p",
+        "rig_critical_path",
+        "-o",
+        "junit_family=legacy",
     ]
     # pytest-md-report does not aggregate worker output reliably under xdist.
     # Emit markdown only on serial runs; junit + reporting.py's _render_markdown
