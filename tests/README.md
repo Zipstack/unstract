@@ -216,11 +216,48 @@ Developers can scope local runs however they like via positional args, `--from-f
 | `tests/e2e/<flow>/` | HTTP-level tests against a running platform. |
 | `tests/e2e/hurl/` | Hurl-based HTTP suites. |
 
-After adding tests, either:
-1. Reuse an existing group whose `paths` already cover your file, **or**
-2. Add a new group to `groups.yaml` (and, if relevant, a `critical_paths.yaml` entry that lists it in `covered_by`).
+### Backend: no registration needed
 
-Validate with `python -m tests.rig validate` before pushing.
+1. Write a normal test in `backend/<app>/tests/test_<name>.py`. The filename
+   **must** match `test_*.py`, `*_test.py`, `*_tests.py`, or Django's per-app
+   `tests.py` — anything else is silently never collected. Prefer `test_*.py`
+   for consistency.
+2. Tier is inferred, not declared. A test that touches the database (subclasses
+   Django `TestCase`/`APITestCase`, or uses `@pytest.mark.django_db`) is
+   auto-marked `integration` by `backend/conftest.py` and runs in
+   `integration-backend` against a rig-provisioned Postgres/Redis. Everything
+   else runs in `unit-backend`. No marker, no `groups.yaml` edit.
+3. Don't stub the environment. The rig runs the whole backend tree in one
+   pytest session with Django fully loaded — tests that patch `sys.modules`,
+   assume import order, or assume they run alone will break under collection.
+   Use `unittest.mock.patch` on real modules; mock only true externals
+   (LLM SDKs, third-party APIs) — never the ORM or serializers.
+4. Seed data per test in `setUp` via the ORM. Schema comes from migrations
+   (run once per session); each test's writes roll back automatically.
+5. Needs credentials CI doesn't have (external DB/SaaS)? Guard with
+   `self.skipTest("<CRED_VAR> not set")` in `setUp` — it skips in CI and runs
+   locally when the env vars are exported.
+
+Run it locally:
+
+```bash
+tox -e groups -- unit-backend --no-coverage          # pure tests
+tox -e groups -- integration-backend --no-coverage   # DB tests (needs Docker)
+```
+
+List what a group would run (no DB required):
+
+```bash
+cd backend && uv run --group test pytest . -m integration --collect-only -q
+```
+
+### Other services / new areas
+
+Outside backend, markers are manual (`workers` enforces `--strict-markers`).
+Either reuse an existing group whose `paths` already cover your file, or add a
+group to `groups.yaml` (and, if relevant, list it in a `critical_paths.yaml`
+entry's `covered_by`). Validate with `python -m tests.rig validate` before
+pushing.
 
 ---
 
