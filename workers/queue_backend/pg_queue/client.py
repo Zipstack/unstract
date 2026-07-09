@@ -9,14 +9,18 @@ runs a single atomic statement — candidate rows are locked in a CTE
 the ``UPDATE … FROM locked`` (the EvalPlanQual-safe shape; see
 ``_DEQUEUE_SQL``) — committed immediately, the caller
 processes the message *outside* the transaction, then
-:meth:`PgQueueClient.delete` acks on success. A crash before delete
-leaves the row to reappear once its ``vt`` expires — **at-least-once**
-delivery: SKIP LOCKED stops two *concurrent* readers from claiming the
-same visible row, but a message can still be delivered more than once if
-a reader crashes before ``delete()`` and the row's ``vt`` expires, so the
-consumer must be idempotent. The whole queue contract lives here, in one place;
-the schema (``pg_queue_message`` table + dequeue index) is a plain
-Django migration with no DB-side function.
+:meth:`PgQueueClient.delete` acks on success. Claiming sets
+``state='claimed'``; on a crash before ``delete()`` the row stays
+``claimed`` with an expired ``vt`` (its lease) and is re-armed to
+``state='ready'`` by the reaper (``reaper.rearm_expired_claims``, UN-3445)
+— **at-least-once** delivery: SKIP LOCKED stops two *concurrent* readers
+from claiming the same visible row, but a message can still be delivered
+more than once if a reader crashes before ``delete()`` and the reaper
+re-arms its expired lease, so the consumer must be idempotent. (Redelivery
+is the reaper's job now — not implicit in the claim, which keys off
+``state`` and ignores ``vt``.) The whole queue contract lives here, in one
+place; the schema (``pg_queue_message`` table + partial claim index) is a
+plain Django migration with no DB-side function.
 
 The cached connection is kept usable across calls: every operation rolls
 back on error, and a connection that goes bad (dropped socket / PgBouncer
@@ -377,16 +381,18 @@ class PgQueueClient:
         ]
 
     def set_vt(self, msg_id: int, vt_seconds: int) -> bool:
-        """Re-park a claimed message: hide it for another ``vt_seconds``.
+        """Re-park a claimed message: extend its lease by another ``vt_seconds``.
 
-        Returns ``True`` if a row was updated (``False`` = the row is already gone,
-        e.g. its vt expired and another reader deleted it). Does NOT touch
-        ``read_ct`` — the increment happens on the next :meth:`read` when the row
-        reappears, so a re-park loop is naturally bounded by ``read_ct`` climbing.
+        Bumps only ``vt`` (leaves ``state='claimed'`` and ``read_ct``). Returns
+        ``True`` if a row was updated (``False`` = the row is already gone, e.g. it
+        was acked/deleted). ``read_ct`` is untouched — it increments on the next
+        :meth:`read` after the reaper re-arms the expired lease to ``ready``, so a
+        re-park loop is naturally bounded by ``read_ct`` climbing.
 
-        Used by the consumer to defer a poison message whose terminal-ERROR mark
-        could not be confirmed (backend down), so the drop never races a dead
-        backend and the payload isn't discarded into a void.
+        Two callers: the lease-renewal thread (keeps a live claim's ``vt`` in the
+        future so the reaper never re-arms it), and the consumer deferring a poison
+        message whose terminal-ERROR mark could not be confirmed (backend down), so
+        the drop never races a dead backend and the payload isn't discarded.
         """
         if vt_seconds <= 0:
             raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")

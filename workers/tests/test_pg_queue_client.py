@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 import psycopg2
@@ -689,6 +690,34 @@ class TestPgQueueClientIntegration:
         with pytest.raises(psycopg2.errors.CheckViolation):  # anything else rejected
             _set_state("bogus")
         pg_conn.rollback()
+
+    def test_inflight_backfill_sql_classifies_by_vt(self, pg_conn, queue_name):
+        # Behavioural half of migration 0014's deploy-safety backfill (the
+        # structural guard is backend/pg_queue/tests/test_migration_0014_backfill).
+        # After AddField sets every row 'ready', the backfill re-classifies genuinely
+        # in-flight (future-vt) rows to 'claimed'; idle (past-vt) rows stay 'ready'.
+        tbl = qualified("pg_queue_message")
+        with pg_conn.cursor() as cur:
+            insert = (
+                f"INSERT INTO {tbl} "
+                "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct, "
+                "state) VALUES (%s, '{}'::jsonb, '', 5, now(), now() + %s, 0, 'ready')"
+                " RETURNING msg_id"
+            )
+            cur.execute(insert, (queue_name, timedelta(hours=1)))  # in-flight
+            inflight = cur.fetchone()[0]
+            cur.execute(insert, (queue_name, timedelta(hours=-1)))  # idle
+            idle = cur.fetchone()[0]
+            # the exact statement migration 0014 runs
+            cur.execute(f"UPDATE {tbl} SET state = 'claimed' WHERE vt > now()")
+            cur.execute(
+                f"SELECT msg_id, state FROM {tbl} WHERE msg_id = ANY(%s)",
+                ([inflight, idle],),
+            )
+            states = dict(cur.fetchall())
+        pg_conn.rollback()
+        assert states[inflight] == "claimed"  # future vt → invisible until lease ends
+        assert states[idle] == "ready"  # past vt → immediately claimable
 
     def test_claim_writes_state_claimed_for_the_whole_batch(self, pg_conn, queue_name):
         # The write half of the machine: a batch claim (qty>1) sets EVERY returned
