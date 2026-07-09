@@ -280,11 +280,8 @@ def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
 def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
     """Poll each service's health endpoint until all respond or timeout.
 
-    If ``requests`` isn't importable (e.g. running the rig on a bare interpreter
-    just to list groups), readiness probing is skipped. That's safe because the
-    only caller, ``ComposeRuntime.up``, is on the e2e path where requests is in
-    the rig's deps; getting here without requests installed implies a broken
-    install and the developer will surface it shortly.
+    Skips probing if ``requests`` isn't importable — the rig may run on a bare
+    interpreter just to list groups. The e2e path always has requests installed.
     """
     try:
         import requests

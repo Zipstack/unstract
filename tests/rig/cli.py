@@ -779,10 +779,9 @@ def _execute_group(
     return parse_junit(group.name, group.tier, reports_dir), exit_code
 
 
-# Injected into every group's ephemeral `uv run` env via --with (survives the
-# per-call venv re-sync, unlike `uv pip install`). Not only plugins: pytest
-# itself and requests (e2e HTTP tests hit the platform over HTTP) live here
-# because they must be present regardless of the workdir project's own deps.
+# Injected into every group's ephemeral `uv run` env via --with, so they
+# survive the per-call venv re-sync (unlike `uv pip install`). Includes pytest
+# and requests themselves — needed regardless of the workdir project's deps.
 RIG_PYTEST_PLUGINS = (
     "pytest>=8.0.1",
     "pytest-md-report>=0.6.2",

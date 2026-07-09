@@ -1,12 +1,9 @@
 name: Build images + run e2e tests (rig + docker compose)
 
-# Successor to ci-container-build.yaml (build + boot check) and
-# ci-test-e2e.yaml (e2e tier, previously unrunnable for lack of images).
-# One job so the e2e tier runs against the images built moments earlier on
-# the same runner — images don't travel across jobs, and pushing throwaway
-# PR images to a registry is bloat we don't want. The rig's compose boot
-# (`up -d --wait` + endpoint readiness) subsumes the old exited-container
-# check.
+# Merges the old ci-container-build (build + boot check) and ci-test-e2e
+# (e2e tier) workflows. Single job because images don't travel across jobs:
+# the e2e tier must run on the runner that built them. The rig's compose boot
+# (`up -d --wait` + endpoint readiness) replaces the old container check.
 
 on:
   push:
@@ -35,6 +32,9 @@ jobs:
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
+          # No git push/fetch after checkout needs the token, and reports/ is
+          # uploaded as an artifact — don't persist creds into .git/config.
+          persist-credentials: false
 
       - name: Login to Docker Hub
         # Authenticated pulls of base images avoid the anonymous rate limit
