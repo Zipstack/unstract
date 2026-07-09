@@ -1,10 +1,11 @@
 name: Run tests (unit + integration + e2e)
 
-# One job runs every tier via `rig run all`: unit + integration in-process,
-# then the e2e tier against the service images built in the same job (images
-# don't travel across jobs, so build + e2e must share a runner). A single rig
-# invocation evaluates all critical paths together and renders one PR comment,
-# so e2e coverage (e.g. auth-login) shows up in the same report as the rest.
+# One job runs every tier, then combines them into a single PR comment so e2e
+# coverage (e.g. auth-login) shows up alongside unit/integration. Build + e2e
+# must share a runner (images don't travel across jobs). Tiers run as separate
+# rig invocations — NOT `rig run all` — because the rig picks one infra mode per
+# invocation: mixing compose-platform e2e with testcontainers integration in one
+# call points the backend at the compose DB hostname, unreachable from pytest.
 on:
   push:
     branches:
@@ -82,20 +83,37 @@ jobs:
           restore-keys: |
             unstract-test-baseline-main-
 
-      - name: Run all tiers (rig boots the platform via compose for e2e)
+      - name: Run tiers (unit/integration on testcontainers, e2e on compose)
         env:
           UNSTRACT_E2E_RUNTIME: compose
-        # `all` = unit + integration + e2e in one invocation; the rig writes
-        # summary.md + combined-test-report.md and evaluates every critical path
-        # together. Gap check on PRs too (main is gap-free, PRs test the merge
-        # ref, so an in-scope gap here is PR-introduced). --update-baseline is
-        # main-only — a PR must not write main's regression baseline.
+        # One invocation per tier so each gets its own infra and compose is up
+        # only for e2e. Per-tier --fail-on-critical-gap gates in-scope gaps; the
+        # combine step below merges every tier's junit into one evaluation. Don't
+        # abort on a red tier — the combine + comment must still run.
         run: |
-          flags="--fail-on-critical-gap"
-          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            flags="$flags --update-baseline"
+          set +e
+          rc=0
+          for tier in unit integration e2e; do
+            tox -e "$tier" -- --fail-on-critical-gap || rc=1
+            # Suffix per tier: a bare reports/.coverage would clobber across
+            # tiers; `report combine` unions the `.coverage.*` glob.
+            if [ -f reports/.coverage ]; then
+              mv reports/.coverage "reports/.coverage.tier-$tier"
+            fi
+          done
+          echo "TIERS_RC=$rc" >> "$GITHUB_ENV"
+
+      - name: Combine tiers into one report
+        if: always()
+        # Unifies all tiers' junit into a single critical-path evaluation + PR
+        # comment. --update-baseline is main-only and green-only — a PR must not
+        # write main's regression baseline, nor a red build a partial one.
+        run: |
+          flags=""
+          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${TIERS_RC:-1}" = "0" ]; then
+            flags="--update-baseline"
           fi
-          tox -e groups -- all $flags
+          tox -e rig -- report combine $flags
 
       - name: Save updated baseline
         # actions/cache saves only on a miss; the run id keys each main build a
@@ -136,3 +154,9 @@ jobs:
           path: reports/
           if-no-files-found: ignore
           retention-days: 14
+
+      - name: Fail if any tier failed
+        # Runs after the report/comment so a red tier still posts its results;
+        # this step makes the job (and its required check) red.
+        if: always()
+        run: '[ "${TIERS_RC:-1}" = "0" ] || exit 1'
