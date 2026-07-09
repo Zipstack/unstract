@@ -89,13 +89,27 @@ class KeyHelper:
             # UUIDField coerces/validates the key string via to_python, raising
             # ValidationError for a malformed value — the same pattern
             # ``validate_api_key`` relies on, so no manual uuid parsing is needed.
-            global_key = GlobalApiDeploymentKey.objects.select_related(
-                "organization"
-            ).get(key=api_key, is_active=True)
+            global_key = GlobalApiDeploymentKey.objects.get(key=api_key, is_active=True)
         except (GlobalApiDeploymentKey.DoesNotExist, ValidationError):
-            raise UnauthorizedKey()
+            # Unknown, inactive, or malformed key. Log the reason for
+            # observability; the client still gets a generic 401 (we don't
+            # leak which condition failed).
+            logger.warning(
+                "Global API key rejected (unknown/inactive/malformed) for "
+                "deployment %s (key ...%s).",
+                api_deployment.id,
+                str(api_key)[-4:],
+            )
+            raise UnauthorizedKey() from None
 
         if not global_key.has_access_to_deployment(api_deployment):
+            logger.warning(
+                "Global API key '%s' (%s) rejected: no access to deployment %s "
+                "(out of scope or different organization).",
+                global_key.name,
+                global_key.id,
+                api_deployment.id,
+            )
             raise UnauthorizedKey()
 
         return global_key

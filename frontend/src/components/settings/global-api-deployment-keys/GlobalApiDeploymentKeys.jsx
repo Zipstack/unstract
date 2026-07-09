@@ -125,9 +125,11 @@ function GlobalApiDeploymentKeys() {
     }
     axiosPrivate({ method: "GET", url: `${basePath}/deployments/` })
       .then((res) => setDeployments(res?.data || []))
-      .catch(() => {
-        /* Silent fail - deployments list is non-critical */
-      });
+      .catch((err) =>
+        // Surface it: a scoped key requires picking from this list, so a silent
+        // empty picker would leave the admin unable to create one with no clue why.
+        setAlertDetails(handleException(err, "Failed to load API deployments")),
+      );
   }, [basePath, sessionDetails?.orgId]);
 
   useEffect(() => {
