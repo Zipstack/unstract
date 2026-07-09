@@ -51,6 +51,17 @@ def stub_scheduler_tick(monkeypatch):
     return mock
 
 
+# The leader tick also re-arms expired queue claims every tick (UN-3445 crash
+# redelivery). Stub it by default so the leadership / connection tests don't run a
+# real UPDATE on their dummy connections; the SQL-contract test imports the real
+# helper directly, and any wiring test opts in via the returned mock.
+@pytest.fixture(autouse=True)
+def stub_queue_rearm(monkeypatch):
+    mock = MagicMock(return_value=0)
+    monkeypatch.setattr(reaper_mod, "rearm_expired_claims", mock)
+    return mock
+
+
 # The leader tick also runs the retention sweep (UN-3610). Stub the two sweep
 # helpers by default so the leadership / connection tests don't hit a real DELETE
 # on their dummy connections; the SQL-contract tests import the real helpers

@@ -44,6 +44,7 @@ WORKER_SCHEMA_CONTRACT = {
         "vt",
         "read_ct",
         "priority",
+        "state",
     },
     "pg_task_result": {
         "task_id",

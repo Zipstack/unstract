@@ -629,14 +629,41 @@ class TestPgQueueClientIntegration:
                 _raw_insert(prio)
             pg_conn.rollback()
 
-    def test_vt_expiry_redelivers(self, pg_conn, queue_name):
+    def test_vt_expiry_redelivers_via_reaper(self, pg_conn, queue_name):
+        # UN-3445: redelivery is now EXPLICIT (reaper re-arm), not implicit in the
+        # claim. A claimed row whose vt expired is state='claimed' and INVISIBLE to
+        # the state='ready' claim — so a bare re-read returns nothing — until the
+        # reaper's rearm_expired_claims flips it back to 'ready'. This replaces the
+        # old implicit `vt<=now()` self-heal in _dequeue_sql.
+        from queue_backend.pg_queue.reaper import rearm_expired_claims
+
         client = PgQueueClient(conn=pg_conn)
         client.send(queue_name, {"n": 1})
         claimed = client.read(queue_name, vt_seconds=1, qty=10)
         assert len(claimed) == 1
-        time.sleep(1.3)  # let vt expire
+        time.sleep(1.3)  # let the lease (vt) expire — worker is "dead"
+
+        # Before re-arm: the expired-but-claimed row is not claimable.
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []
+
+        # Reaper re-arms the expired claim → row returns to 'ready'.
+        assert rearm_expired_claims(pg_conn) == 1
+
+        # Now the next consumer re-claims it (crash redelivery restored).
         again = client.read(queue_name, vt_seconds=30, qty=10)
         assert [m.msg_id for m in again] == [c.msg_id for c in claimed]
+
+    def test_reaper_does_not_rearm_a_live_lease(self, pg_conn, queue_name):
+        # A live worker keeps vt in the future (renewal), so the re-arm's
+        # `vt<=now()` predicate never matches it — no premature redelivery.
+        from queue_backend.pg_queue.reaper import rearm_expired_claims
+
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_name, {"n": 1})
+        claimed = client.read(queue_name, vt_seconds=30, qty=10)  # long lease
+        assert len(claimed) == 1
+        assert rearm_expired_claims(pg_conn) == 0  # vt not expired → untouched
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []  # still claimed
 
     def test_no_double_delivery_across_readers(self, pg_conn, queue_name):
         """Two readers never claim the same message (SKIP LOCKED + vt)."""

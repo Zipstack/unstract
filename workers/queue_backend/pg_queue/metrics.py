@@ -238,6 +238,13 @@ class ReaperMetrics(_Exporter):
             "Stranded-barrier recovery attempts that raised (row left for retry)",
             registry=self.registry,
         )
+        self.queue_rearmed = Counter(
+            "pg_reaper_queue_rearmed_total",
+            "Expired in-flight queue messages re-armed to 'ready' (UN-3445: "
+            "crashed-worker redelivery — the state-machine equivalent of the old "
+            "implicit vt-expiry self-heal)",
+            registry=self.registry,
+        )
         self.claim_recovered = Counter(
             "pg_reaper_claim_recovered_total",
             "Orphan orchestration claims recovered (crash-window execution "
