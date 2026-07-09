@@ -17,6 +17,7 @@ import logging
 import os
 import time
 import uuid
+from datetime import timedelta
 from unittest.mock import MagicMock
 
 import psycopg2
@@ -25,6 +26,7 @@ from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS
 from queue_backend.pg_queue.connection import create_pg_connection
+from queue_backend.pg_queue.reaper import rearm_expired_claims
 from queue_backend.pg_queue.schema import qualified
 
 # --- Unit: SQL shape against a mocked connection ---
@@ -629,14 +631,112 @@ class TestPgQueueClientIntegration:
                 _raw_insert(prio)
             pg_conn.rollback()
 
-    def test_vt_expiry_redelivers(self, pg_conn, queue_name):
+    def test_vt_expiry_redelivers_via_reaper(self, pg_conn, queue_name):
+        # UN-3445: redelivery is now EXPLICIT (reaper re-arm), not implicit in the
+        # claim. A claimed row whose vt expired is state='claimed' and INVISIBLE to
+        # the state='ready' claim — so a bare re-read returns nothing — until the
+        # reaper's rearm_expired_claims flips it back to 'ready'. This replaces the
+        # old implicit `vt<=now()` self-heal in _dequeue_sql.
         client = PgQueueClient(conn=pg_conn)
         client.send(queue_name, {"n": 1})
         claimed = client.read(queue_name, vt_seconds=1, qty=10)
         assert len(claimed) == 1
-        time.sleep(1.3)  # let vt expire
+        time.sleep(1.3)  # let the lease (vt) expire — worker is "dead"
+
+        # Before re-arm: the expired-but-claimed row is not claimable.
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []
+
+        # Reaper re-arms the expired claim → row returns to 'ready'.
+        assert rearm_expired_claims(pg_conn) == 1
+        # Idempotent: a second tick re-arms nothing (row is 'ready' now) — the
+        # double-tick safety property under overlapping reaper cycles.
+        assert rearm_expired_claims(pg_conn) == 0
+
+        # Now the next consumer re-claims it (crash redelivery restored).
         again = client.read(queue_name, vt_seconds=30, qty=10)
         assert [m.msg_id for m in again] == [c.msg_id for c in claimed]
+
+    def test_reaper_does_not_rearm_a_live_lease(self, pg_conn, queue_name):
+        # A live worker keeps vt in the future (renewal), so the re-arm's
+        # `vt<=now()` predicate never matches it — no premature redelivery.
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_name, {"n": 1})
+        claimed = client.read(queue_name, vt_seconds=30, qty=10)  # long lease
+        assert len(claimed) == 1
+        assert rearm_expired_claims(pg_conn) == 0  # vt not expired → untouched
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []  # still claimed
+
+    def test_state_check_constraint_matches_enum(self, pg_conn, queue_name):
+        # Drift guard (mirrors test_db_check_constraint_matches_fairness_bounds):
+        # the DB CheckConstraint must accept exactly the QueueMessageState values
+        # and reject anything else — the backstop no writer can bypass, and the
+        # cross-codebase contract for the shared enum.
+        from unstract.core.data_models import QueueMessageState
+
+        client = PgQueueClient(conn=pg_conn)
+        mid = client.send(queue_name, {"n": 1})
+
+        def _set_state(value):
+            with pg_conn.cursor() as cur:
+                cur.execute(
+                    f"UPDATE {qualified('pg_queue_message')} "
+                    "SET state = %s WHERE msg_id = %s",
+                    (value, mid),
+                )
+
+        for state in QueueMessageState:  # every enum value accepted
+            _set_state(state.value)
+        pg_conn.commit()
+        with pytest.raises(psycopg2.errors.CheckViolation):  # anything else rejected
+            _set_state("bogus")
+        pg_conn.rollback()
+
+    def test_inflight_backfill_sql_classifies_by_vt(self, pg_conn, queue_name):
+        # Behavioural half of migration 0014's deploy-safety backfill (the
+        # structural guard is backend/pg_queue/tests/test_migration_0014_backfill).
+        # After AddField sets every row 'ready', the backfill re-classifies genuinely
+        # in-flight (future-vt) rows to 'claimed'; idle (past-vt) rows stay 'ready'.
+        tbl = qualified("pg_queue_message")
+        with pg_conn.cursor() as cur:
+            insert = (
+                f"INSERT INTO {tbl} "
+                "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct, "
+                "state) VALUES (%s, '{}'::jsonb, '', 5, now(), now() + %s, 0, 'ready')"
+                " RETURNING msg_id"
+            )
+            cur.execute(insert, (queue_name, timedelta(hours=1)))  # in-flight
+            inflight = cur.fetchone()[0]
+            cur.execute(insert, (queue_name, timedelta(hours=-1)))  # idle
+            idle = cur.fetchone()[0]
+            # the exact statement migration 0014 runs
+            cur.execute(f"UPDATE {tbl} SET state = 'claimed' WHERE vt > now()")
+            cur.execute(
+                f"SELECT msg_id, state FROM {tbl} WHERE msg_id = ANY(%s)",
+                ([inflight, idle],),
+            )
+            states = dict(cur.fetchall())
+        pg_conn.rollback()
+        assert states[inflight] == "claimed"  # future vt → invisible until lease ends
+        assert states[idle] == "ready"  # past vt → immediately claimable
+
+    def test_claim_writes_state_claimed_for_the_whole_batch(self, pg_conn, queue_name):
+        # The write half of the machine: a batch claim (qty>1) sets EVERY returned
+        # row to 'claimed', while an unclaimed row stays 'ready'.
+        client = PgQueueClient(conn=pg_conn)
+        ids = [client.send(queue_name, {"n": i}) for i in range(3)]
+        claimed = client.read(queue_name, vt_seconds=30, qty=2)  # claim 2 of 3
+        assert len(claimed) == 2
+        claimed_ids = {m.msg_id for m in claimed}
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                f"SELECT msg_id, state FROM {qualified('pg_queue_message')} "
+                "WHERE msg_id = ANY(%s)",
+                (ids,),
+            )
+            state_by_id = dict(cur.fetchall())
+        for mid in ids:
+            expected = "claimed" if mid in claimed_ids else "ready"
+            assert state_by_id[mid] == expected
 
     def test_no_double_delivery_across_readers(self, pg_conn, queue_name):
         """Two readers never claim the same message (SKIP LOCKED + vt)."""

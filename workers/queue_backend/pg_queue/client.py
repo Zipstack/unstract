@@ -9,14 +9,18 @@ runs a single atomic statement — candidate rows are locked in a CTE
 the ``UPDATE … FROM locked`` (the EvalPlanQual-safe shape; see
 ``_DEQUEUE_SQL``) — committed immediately, the caller
 processes the message *outside* the transaction, then
-:meth:`PgQueueClient.delete` acks on success. A crash before delete
-leaves the row to reappear once its ``vt`` expires — **at-least-once**
-delivery: SKIP LOCKED stops two *concurrent* readers from claiming the
-same visible row, but a message can still be delivered more than once if
-a reader crashes before ``delete()`` and the row's ``vt`` expires, so the
-consumer must be idempotent. The whole queue contract lives here, in one place;
-the schema (``pg_queue_message`` table + dequeue index) is a plain
-Django migration with no DB-side function.
+:meth:`PgQueueClient.delete` acks on success. Claiming sets
+``state='claimed'``; on a crash before ``delete()`` the row stays
+``claimed`` with an expired ``vt`` (its lease) and is re-armed to
+``state='ready'`` by the reaper (``reaper.rearm_expired_claims``, UN-3445)
+— **at-least-once** delivery: SKIP LOCKED stops two *concurrent* readers
+from claiming the same visible row, but a message can still be delivered
+more than once if a reader crashes before ``delete()`` and the reaper
+re-arms its expired lease, so the consumer must be idempotent. (Redelivery
+is the reaper's job now — not implicit in the claim, which keys off
+``state`` and ignores ``vt``.) The whole queue contract lives here, in one
+place; the schema (``pg_queue_message`` table + partial claim index) is a
+plain Django migration with no DB-side function.
 
 The cached connection is kept usable across calls: every operation rolls
 back on error, and a connection that goes bad (dropped socket / PgBouncer
@@ -34,6 +38,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
+from unstract.core.data_models import QueueMessageState
+
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import create_pg_connection
@@ -43,6 +49,12 @@ if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
 
 logger = logging.getLogger(__name__)
+
+# Claim-state literals sourced from the shared enum (single source of truth with
+# the backend model + reaper) so a typo in the hot-path SQL can't silently break
+# the state machine. Interpolated as trusted constants, never user input.
+_READY = QueueMessageState.READY.value
+_CLAIMED = QueueMessageState.CLAIMED.value
 
 
 # ``_CONN_DEAD_ERRORS`` (the "is this a connection death?" test, shared by
@@ -58,11 +70,11 @@ logger = logging.getLogger(__name__)
 # (at-least-once — a message CAN be processed more than once). No lock held
 # during processing -> VACUUM-safe and PgBouncer txn-pooling compatible.
 #
-# ORDER BY (priority DESC, msg_id) — the (queue_name, priority DESC, msg_id)
-# index drives an indexed top-N: for a fixed queue the index is ordered by
-# (priority DESC, msg_id), so PG walks rows highest-priority-first, applies the
-# vt<=now() visibility filter as it goes, and stops at LIMIT — no sort of the
-# whole visible backlog. Higher priority is claimed sooner; msg_id ASC is the
+# ORDER BY (priority DESC, msg_id) — the partial index
+# ``(queue_name, priority DESC, msg_id) WHERE state='ready'`` drives an indexed
+# top-N: for a fixed queue the index is ordered by (priority DESC, msg_id), so PG
+# walks claimable rows highest-priority-first and stops at LIMIT — no sort of the
+# whole backlog. Higher priority is claimed sooner; msg_id ASC is the
 # FIFO tiebreak within a priority (monotonic, and unlike vt it never moves when
 # a row is re-claimed). Fairness L1 (org tier) / L2 (workload) + burst_max
 # admission are deferred to the fair-admission orchestrator (a later phase).
@@ -81,10 +93,15 @@ logger = logging.getLogger(__name__)
 # locks exactly ``n`` rows once and updates precisely those. The trailing SELECT
 # re-applies the order because UPDATE ... RETURNING is otherwise unordered.
 #
-# Ordering is an index walk over (queue_name, priority DESC, msg_id) with
-# ``vt <= now()`` applied as a per-row filter — not a guaranteed top-N: vt is
-# not in the index, so claimed-but-unacked rows (future vt) at the front of a
-# priority band are scanned past on each claim. Cheap at low in-flight depth.
+# Visibility is now an INDEXED predicate (``state='ready'`` — UN-3445), not the
+# old per-row ``vt <= now()`` filter. Claimed (in-flight) rows are absent from the
+# partial claim index entirely, so there is nothing to scan past: claim cost is
+# independent of in-flight depth (the O(in-flight) scan-past under the old design
+# collapsed throughput at high concurrency). A crashed worker's row stays
+# ``state='claimed'`` with an expired vt until the reaper's re-arm flips it back to
+# ``ready`` (reaper.rearm_expired_claims); vt remains unindexed so lease renewal
+# (set_vt) stays HOT-eligible (actual HOT also needs heap-page free space —
+# fillfactor < 100; see migration 0014's tuning note).
 def _dequeue_sql() -> str:
     """Build the atomic-claim SQL, schema-qualifying ``pg_queue_message``.
 
@@ -100,13 +117,14 @@ WITH locked AS (
     SELECT msg_id
       FROM {msg}
      WHERE queue_name = %s
-       AND vt <= now()
+       AND state = '{_READY}'
      ORDER BY priority DESC, msg_id
        FOR UPDATE SKIP LOCKED
      LIMIT %s
 ), claimed AS (
     UPDATE {msg} q
-       SET vt = now() + make_interval(secs => %s),
+       SET state = '{_CLAIMED}',
+           vt = now() + make_interval(secs => %s),
            read_ct = read_ct + 1
       FROM locked
      WHERE q.msg_id = locked.msg_id
@@ -147,8 +165,8 @@ class QueueMessage:
 def insert_message_sql() -> str:
     return (
         f"INSERT INTO {qualified('pg_queue_message')} "
-        "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
-        "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0)"
+        "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct, state) "
+        f"VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0, '{_READY}')"
     )
 
 
@@ -363,16 +381,18 @@ class PgQueueClient:
         ]
 
     def set_vt(self, msg_id: int, vt_seconds: int) -> bool:
-        """Re-park a claimed message: hide it for another ``vt_seconds``.
+        """Re-park a claimed message: extend its lease by another ``vt_seconds``.
 
-        Returns ``True`` if a row was updated (``False`` = the row is already gone,
-        e.g. its vt expired and another reader deleted it). Does NOT touch
-        ``read_ct`` — the increment happens on the next :meth:`read` when the row
-        reappears, so a re-park loop is naturally bounded by ``read_ct`` climbing.
+        Bumps only ``vt`` (leaves ``state='claimed'`` and ``read_ct``). Returns
+        ``True`` if a row was updated (``False`` = the row is already gone, e.g. it
+        was acked/deleted). ``read_ct`` is untouched — it increments on the next
+        :meth:`read` after the reaper re-arms the expired lease to ``ready``, so a
+        re-park loop is naturally bounded by ``read_ct`` climbing.
 
-        Used by the consumer to defer a poison message whose terminal-ERROR mark
-        could not be confirmed (backend down), so the drop never races a dead
-        backend and the payload isn't discarded into a void.
+        Two callers: the lease-renewal thread (keeps a live claim's ``vt`` in the
+        future so the reaper never re-arms it), and the consumer deferring a poison
+        message whose terminal-ERROR mark could not be confirmed (backend down), so
+        the drop never races a dead backend and the payload isn't discarded.
         """
         if vt_seconds <= 0:
             raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")

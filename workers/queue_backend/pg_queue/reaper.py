@@ -63,7 +63,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, TypeVar
 
-from unstract.core.data_models import ExecutionStatus
+from unstract.core.data_models import ExecutionStatus, QueueMessageState
 
 from ..barrier import barrier_stuck_timeout_seconds
 from .connection import create_pg_connection
@@ -277,6 +277,41 @@ def sweep_orphan_dedup(conn: PgConnection, retention_seconds: int) -> int:
         return deleted
     except Exception:
         _rollback_after_sweep_failure(conn, "pg_batch_dedup")
+        raise
+
+
+def rearm_expired_claims(conn: PgConnection) -> int:
+    """Re-arm crashed-worker queue messages: ``claimed`` + expired vt -> ``ready``.
+
+    UN-3445 crash-redelivery. Under the state-machine claim (``WHERE state='ready'``,
+    client._dequeue_sql), an in-flight row is ``state='claimed'`` and invisible to
+    claimants; its ``vt`` is the renewable lease (UN-3695). If the owning worker
+    dies its renewal stops, ``vt`` lapses, and this sweep flips the row back to
+    ``ready`` so the next consumer re-claims it — the explicit, indexed equivalent
+    of the old design's implicit ``vt <= now()`` self-heal in the claim itself.
+
+    A LIVE worker keeps ``vt`` in the future (renews every ~lease/3), so the
+    ``vt <= now()`` predicate never matches it — only genuinely-dead-worker rows
+    are re-armed. Bounded and cheap: the ``pg_queue_message_claimed_idx`` partial
+    index (state='claimed' only, ~concurrency rows) scopes the scan; redelivered
+    work is absorbed by the unchanged idempotency stack (claim_batch /
+    FileHistory / _callback_already_ran), exactly as an old-design vt-expiry re-run
+    was. Idempotent; rolls back on error. Runs every **leader** tick (redelivery
+    cadence — a standby returns before this), not the retention sweep; see
+    PgReaper.tick for the ordering/placement.
+    """
+    ready, claimed = QueueMessageState.READY.value, QueueMessageState.CLAIMED.value
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {qualified('pg_queue_message')} "
+                f"SET state = '{ready}' WHERE state = '{claimed}' AND vt <= now()"
+            )
+            rearmed = cur.rowcount
+        conn.commit()
+        return rearmed
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_queue_message")
         raise
 
 
@@ -1050,6 +1085,33 @@ class PgReaper:
                 )
             )
         except Exception:
+            self._discard_owned_sweep_conn()
+            raise
+        # Crash-redelivery (UN-3445): re-arm queue messages whose owning worker
+        # died (state='claimed', vt expired) back to 'ready'. Runs EVERY leader tick
+        # (the redelivery cadence), like barrier recovery above and NOT the
+        # retention sweep — a crashed batch must not wait the 5-min sweep interval.
+        # Cheap (partial claimed-index scoped). On failure it increments a DEDICATED
+        # counter (so a persistent redelivery outage is distinguishable from a
+        # barrier/scheduler fault) then re-raises + discards the conn — SAME
+        # semantics as barrier recovery above (recovery work is critical, not
+        # swallow-and-continue like the retention sweeps). A re-arm fault therefore
+        # also defers this tick's schedule dispatch; both recover next tick.
+        try:
+            rearmed = rearm_expired_claims(self._get_sweep_conn())
+            if rearmed:
+                self._metrics.queue_rearmed.inc(rearmed)
+                logger.info(
+                    "Reaper: re-armed %s expired in-flight queue message(s) "
+                    "to 'ready' (crashed-worker redelivery)",
+                    rearmed,
+                )
+        except Exception:
+            self._metrics.queue_rearm_failures.inc()
+            logger.exception(
+                "Reaper: re-arm sweep failed — crashed-worker queue redelivery "
+                "is stalled this tick (see pg_reaper_queue_rearm_failures_total)"
+            )
             self._discard_owned_sweep_conn()
             raise
         # Orchestrator's second job: fire due PG-owned schedules (Beat

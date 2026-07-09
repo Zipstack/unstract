@@ -2,6 +2,13 @@ from django.db import models
 from django.db.models import F
 from django.utils import timezone
 
+from unstract.core.data_models import QueueMessageState
+
+# Local aliases so the model reads cleanly; the enum is the single source of truth
+# shared with the workers' raw SQL (client.py / reaper.py). See QueueMessageState.
+_READY = QueueMessageState.READY.value
+_CLAIMED = QueueMessageState.CLAIMED.value
+
 
 class PgQueueMessage(models.Model):
     """Bespoke extension-free queue table (``SKIP LOCKED`` + visibility timeout).
@@ -41,6 +48,29 @@ class PgQueueMessage(models.Model):
     # (workload) ordering + burst_max admission are deferred to the fair-admission
     # orchestrator. The CheckConstraint is the one backstop no writer can bypass.
     priority = models.SmallIntegerField(default=5)
+    # Claim state (UN-3445 scan-past fix) — QueueMessageState {ready, claimed}.
+    # 'ready' = claimable, 'claimed' = in-flight (a consumer holds it, vt is its
+    # lease). This makes visibility an INDEXED predicate instead of the old per-row
+    # `vt <= now()` filter: the claim walks a partial index that contains ONLY
+    # 'ready' rows, so in-flight rows are no longer physically scanned past on every
+    # claim (the O(in-flight) cost that collapsed throughput at high concurrency).
+    #
+    # REDELIVERY DEPENDENCY: a crashed worker's row (state='claimed', vt expired) is
+    # re-armed to 'ready' by the reaper (reaper.rearm_expired_claims), NOT by the
+    # claim itself (the old `vt<=now()` self-heal is gone). The reaper is therefore
+    # on the crash-redelivery path — it is already the mandatory recovery singleton
+    # for stranded barriers/claims, so this adds queue re-arm to its remit rather
+    # than a new deployment dependency. Alert on its liveness for the queue path
+    # (PG_QUEUE_CLAIM_STATE_RUNBOOK: oldest_claimed_expired_age).
+    #
+    # `vt` is STILL not in any index, so the frequent lease-renewal UPDATE (set_vt)
+    # stays HOT-eligible (actual HOT also needs heap-page free space, i.e.
+    # fillfactor < 100 — see migration 0014); only the once-per-message state
+    # transitions (claim / ack / rare re-arm) are non-HOT — bounded. If a soak shows
+    # partial-index bloat, mitigate with per-environment ops tuning (fillfactor +
+    # aggressive autovacuum) — kept out of the migration so the schema stays
+    # portable across Postgres providers.
+    state = models.TextField(default=_READY)
 
     class Meta:
         db_table = "pg_queue_message"
@@ -49,22 +79,41 @@ class PgQueueMessage(models.Model):
                 check=models.Q(priority__gte=1) & models.Q(priority__lte=10),
                 name="pg_queue_message_priority_range",
             ),
+            # Backstop no writer can bypass: state is a closed enum. Values sourced
+            # from QueueMessageState (single source of truth; drift-tested).
+            models.CheckConstraint(
+                check=models.Q(state__in=[_READY, _CLAIMED]),
+                name="pg_queue_message_state_valid",
+            ),
         ]
         indexes = [
-            # The dequeue walks one queue in (priority DESC, msg_id ASC) order
-            # and applies vt <= now() as a per-row filter during the walk —
-            # claim high-priority first, FIFO (msg_id, monotonic and stable
-            # across re-claims) within a band. Note this is NOT a guaranteed
-            # top-N: vt is intentionally not in the index, so claimed-but-unacked
-            # rows (future vt) sit at the front of their band and are scanned
-            # past on each claim. Fine at low in-flight depth; the orchestrator's
-            # staging→task admission is the answer if that backlog grows large.
+            # CLAIM path — partial index over ONLY claimable rows. The dequeue
+            # (`WHERE queue_name=? AND state='ready' ORDER BY priority DESC, msg_id
+            # FOR UPDATE SKIP LOCKED`) walks this in (priority DESC, msg_id ASC)
+            # order; claimed rows are absent from the index entirely, so claim cost
+            # is INDEPENDENT of in-flight (claimed) depth — it walks O(LIMIT) ready
+            # rows plus any a concurrent claimer momentarily holds under FOR UPDATE
+            # (bounded by concurrency, not backlog). `vt` is deliberately NOT here
+            # (keeps lease renewal HOT-eligible). Replaces the old full
+            # `pg_queue_message_dequeue_idx`.
             models.Index(
                 F("queue_name"),
                 F("priority").desc(),
                 F("msg_id"),
-                name="pg_queue_message_dequeue_idx",
-            )
+                condition=models.Q(state=_READY),
+                name="pg_queue_message_claim_idx",
+            ),
+            # REAPER path — partial index over ONLY in-flight rows (bounded by total
+            # consumer concurrency across the fleet — typically small, ~one in-flight
+            # row per busy worker). The re-arm sweep (`WHERE state='claimed' AND
+            # vt<=now()`) enumerates this small set and filters vt in-scan. `vt` is
+            # intentionally excluded so a lease renewal (which rewrites vt every
+            # ~lease/3) does not maintain this index and stays HOT-eligible.
+            models.Index(
+                F("msg_id"),
+                condition=models.Q(state=_CLAIMED),
+                name="pg_queue_message_claimed_idx",
+            ),
         ]
 
 
