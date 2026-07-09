@@ -1108,10 +1108,9 @@ class PgReaper:
                 )
         except Exception:
             self._metrics.queue_rearm_failures.inc()
-            logger.error(
+            logger.exception(
                 "Reaper: re-arm sweep failed — crashed-worker queue redelivery "
-                "is stalled this tick (see pg_reaper_queue_rearm_failures_total)",
-                exc_info=True,
+                "is stalled this tick (see pg_reaper_queue_rearm_failures_total)"
             )
             self._discard_owned_sweep_conn()
             raise
