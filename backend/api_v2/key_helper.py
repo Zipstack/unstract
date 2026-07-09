@@ -1,19 +1,15 @@
 from __future__ import annotations
 
 import logging
-import uuid as uuid_module
-from typing import TYPE_CHECKING
 
 from django.core.exceptions import ValidationError
+from global_api_deployment_key.models import GlobalApiDeploymentKey
 from pipeline_v2.models import Pipeline
 from rest_framework.request import Request
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 from api_v2.exceptions import UnauthorizedKey
 from api_v2.models import APIDeployment, APIKey
-
-if TYPE_CHECKING:
-    from global_api_deployment_key.models import GlobalApiDeploymentKey
 from api_v2.serializers import APIKeySerializer
 
 logger = logging.getLogger(__name__)
@@ -89,18 +85,14 @@ class KeyHelper:
         Raises:
             UnauthorizedKey: If validation fails
         """
-        from global_api_deployment_key.models import GlobalApiDeploymentKey
-
         try:
-            key_uuid = uuid_module.UUID(api_key)
-        except (ValueError, AttributeError):
-            raise UnauthorizedKey()
-
-        try:
+            # UUIDField coerces/validates the key string via to_python, raising
+            # ValidationError for a malformed value — the same pattern
+            # ``validate_api_key`` relies on, so no manual uuid parsing is needed.
             global_key = GlobalApiDeploymentKey.objects.select_related(
                 "organization"
-            ).get(key=key_uuid, is_active=True)
-        except GlobalApiDeploymentKey.DoesNotExist:
+            ).get(key=api_key, is_active=True)
+        except (GlobalApiDeploymentKey.DoesNotExist, ValidationError):
             raise UnauthorizedKey()
 
         if not global_key.has_access_to_deployment(api_deployment):

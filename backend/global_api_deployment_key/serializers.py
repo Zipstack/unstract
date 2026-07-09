@@ -7,6 +7,28 @@ from backend.serializers import AuditSerializer
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 
 
+def _validate_deployment_scope(allow_all, deployments):
+    """Reject incoherent key scopes.
+
+    - ``allow_all=True`` with an explicit deployment list — the list would be
+      silently ignored, so a caller thinking they scoped the key is wrong.
+    - ``allow_all=False`` with no deployments — a live key that authenticates
+      nothing (fails closed, but a support ticket waiting to happen).
+    """
+    if allow_all and deployments:
+        raise serializers.ValidationError(
+            {"api_deployments": "Leave empty when 'allow all deployments' is enabled."}
+        )
+    if not allow_all and not deployments:
+        raise serializers.ValidationError(
+            {
+                "api_deployments": (
+                    "Select at least one deployment or enable " "'allow all deployments'."
+                )
+            }
+        )
+
+
 class ApiDeploymentMinimalSerializer(serializers.ModelSerializer):
     """Minimal serializer for API deployments used in key assignment."""
 
@@ -44,7 +66,12 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
 
 
 class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
-    """Used for create/rotate responses where the full key is shown once."""
+    """Exposes the full plaintext key.
+
+    Used by the create/rotate responses and by ``retrieve`` (GET keys/<pk>/),
+    so the full key stays retrievable by an org admin for the key's lifetime —
+    consistent with the platform_api key flow (not a one-time reveal).
+    """
 
     class Meta:
         model = GlobalApiDeploymentKey
@@ -90,6 +117,13 @@ class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
     def validate_description(self, value):
         return validate_safe_text(value)
 
+    def validate(self, attrs):
+        _validate_deployment_scope(
+            attrs.get("allow_all_deployments", False),
+            attrs.get("api_deployments") or [],
+        )
+        return attrs
+
 
 class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
     api_deployments = serializers.PrimaryKeyRelatedField(
@@ -127,6 +161,22 @@ class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
 
     def validate_description(self, value):
         return validate_safe_text(value)
+
+    def validate(self, attrs):
+        # Partial updates may omit either field; fall back to the stored value
+        # so the effective scope is always validated as a coherent pair.
+        allow_all = attrs.get(
+            "allow_all_deployments",
+            self.instance.allow_all_deployments if self.instance else False,
+        )
+        if "api_deployments" in attrs:
+            deployments = attrs["api_deployments"] or []
+        elif self.instance is not None:
+            deployments = list(self.instance.api_deployments.all())
+        else:
+            deployments = []
+        _validate_deployment_scope(allow_all, deployments)
+        return attrs
 
     def update(self, instance, validated_data):
         api_deployments = validated_data.pop("api_deployments", None)

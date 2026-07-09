@@ -10,7 +10,9 @@ from utils.models.organization_mixin import DefaultOrganizationMixin
 class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=128)
-    description = models.TextField(max_length=512)
+    # CharField (not TextField) so the 512 cap is a real varchar(512) DB
+    # invariant, not just a Python-layer serializer validator.
+    description = models.CharField(max_length=512)
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     allow_all_deployments = models.BooleanField(
@@ -47,10 +49,14 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
     def __str__(self):
         return f"{self.name} ({self.organization})"
 
-    def has_access_to_deployment(self, api_deployment):
+    def has_access_to_deployment(self, api_deployment: APIDeployment) -> bool:
         """Check if this key can authenticate the given API deployment."""
         if not self.is_active:
             return False
+        # Load-bearing, not defensive: validate_global_api_deployment_key looks
+        # the key up by ``key`` + ``is_active`` with NO org filter, so this is
+        # the only thing preventing a key from authenticating another org's
+        # deployment.
         if self.organization_id != api_deployment.organization_id:
             return False
         if self.allow_all_deployments:

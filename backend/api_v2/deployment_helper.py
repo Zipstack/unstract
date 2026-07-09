@@ -100,8 +100,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
             KeyHelper.validate_api_key(api_key=api_key, instance=api_deployment)
             return False
         except UnauthorizedKey:
-            KeyHelper.validate_global_api_deployment_key(
+            logger.debug(
+                "Deployment-specific key auth failed for API '%s'; falling back "
+                "to global API deployment key validation.",
+                api_deployment.api_name,
+            )
+            global_key = KeyHelper.validate_global_api_deployment_key(
                 api_key=api_key, api_deployment=api_deployment
+            )
+            logger.info(
+                "API '%s' authorized via global API deployment key '%s' (%s).",
+                api_deployment.api_name,
+                global_key.name,
+                global_key.id,
             )
             return True
 

@@ -45,11 +45,19 @@ function DeploymentScopeFields({ form, deployments }) {
       <Form.Item
         name="allow_all_deployments"
         valuePropName="checked"
-        initialValue={true}
+        initialValue={false}
       >
         <Checkbox>Allow all API deployments</Checkbox>
       </Form.Item>
-      <Form.Item name="api_deployments" label="Select API Deployments">
+      <Form.Item
+        name="api_deployments"
+        label="Select API Deployments"
+        rules={
+          allowAll === false
+            ? [{ required: true, message: "Select at least one deployment" }]
+            : []
+        }
+      >
         <Select
           mode="multiple"
           placeholder="Search and select deployments"
@@ -128,72 +136,82 @@ function GlobalApiDeploymentKeys() {
   }, [fetchKeys, fetchDeployments]);
 
   const handleCreate = () => {
-    createForm.validateFields().then((values) => {
-      setIsSaving(true);
-      const payload = {
-        ...values,
-        allow_all_deployments: values?.allow_all_deployments ?? true,
-        api_deployments:
-          values?.allow_all_deployments === false
-            ? values?.api_deployments || []
-            : [],
-      };
-      axiosPrivate({
-        method: "POST",
-        url: `${basePath}/keys/`,
-        headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
-          "Content-Type": "application/json",
-        },
-        data: payload,
-      })
-        .then((res) => {
-          setIsCreateModalOpen(false);
-          createForm.resetFields();
-          fetchKeys();
-          copyToClipboard(res?.data?.key, "API key");
+    createForm
+      .validateFields()
+      .then((values) => {
+        setIsSaving(true);
+        const payload = {
+          ...values,
+          allow_all_deployments: values?.allow_all_deployments ?? false,
+          api_deployments:
+            values?.allow_all_deployments === false
+              ? values?.api_deployments || []
+              : [],
+        };
+        axiosPrivate({
+          method: "POST",
+          url: `${basePath}/keys/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: payload,
         })
-        .catch((err) =>
-          setAlertDetails(handleException(err, "Failed to create key")),
-        )
-        .finally(() => setIsSaving(false));
-    });
+          .then((res) => {
+            setIsCreateModalOpen(false);
+            createForm.resetFields();
+            fetchKeys();
+            copyToClipboard(res?.data?.key, "API key");
+          })
+          .catch((err) =>
+            setAlertDetails(handleException(err, "Failed to create key")),
+          )
+          .finally(() => setIsSaving(false));
+      })
+      .catch(() => {
+        /* Invalid form: antd renders inline field errors; swallow the reject. */
+      });
   };
 
   const handleEdit = () => {
-    editForm.validateFields().then((values) => {
-      setIsSaving(true);
-      const payload = {
-        ...values,
-        api_deployments:
-          values?.allow_all_deployments === false
-            ? values?.api_deployments || []
-            : [],
-      };
-      axiosPrivate({
-        method: "PATCH",
-        url: `${basePath}/keys/${selectedKey?.id}/`,
-        headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
-          "Content-Type": "application/json",
-        },
-        data: payload,
-      })
-        .then(() => {
-          setIsEditModalOpen(false);
-          editForm.resetFields();
-          setSelectedKey(null);
-          fetchKeys();
-          setAlertDetails({
-            type: "success",
-            content: "Key updated successfully",
-          });
+    editForm
+      .validateFields()
+      .then((values) => {
+        setIsSaving(true);
+        const payload = {
+          ...values,
+          api_deployments:
+            values?.allow_all_deployments === false
+              ? values?.api_deployments || []
+              : [],
+        };
+        axiosPrivate({
+          method: "PATCH",
+          url: `${basePath}/keys/${selectedKey?.id}/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: payload,
         })
-        .catch((err) =>
-          setAlertDetails(handleException(err, "Failed to update key")),
-        )
-        .finally(() => setIsSaving(false));
-    });
+          .then(() => {
+            setIsEditModalOpen(false);
+            editForm.resetFields();
+            setSelectedKey(null);
+            fetchKeys();
+            setAlertDetails({
+              type: "success",
+              content: "Key updated successfully",
+            });
+          })
+          .catch((err) =>
+            setAlertDetails(handleException(err, "Failed to update key")),
+          )
+          .finally(() => setIsSaving(false));
+      })
+      .catch(() => {
+        /* Invalid form: antd renders inline field errors; swallow the reject. */
+      });
   };
 
   const handleToggleStatus = (record) => {

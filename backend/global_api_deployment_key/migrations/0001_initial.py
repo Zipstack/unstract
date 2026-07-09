@@ -32,7 +32,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("name", models.CharField(max_length=128)),
-                ("description", models.TextField(max_length=512)),
+                ("description", models.CharField(max_length=512)),
                 ("key", models.UUIDField(default=uuid.uuid4, unique=True)),
                 ("is_active", models.BooleanField(default=True)),
                 (
@@ -73,7 +73,7 @@ class Migration(migrations.Migration):
                     models.ForeignKey(
                         blank=True,
                         db_comment="Foreign key reference to the Organization model.",
-                        default=None,
+                        editable=False,
                         null=True,
                         on_delete=django.db.models.deletion.CASCADE,
                         to="account_v2.organization",
