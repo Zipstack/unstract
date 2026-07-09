@@ -410,8 +410,21 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
 
-        # Global API Keys are org-level; skip per-user ownership check
+        # Global API Keys are org-level (not tied to a single user), so the
+        # per-user ownership check below does not apply. We must still confirm
+        # the profile belongs to the same organization as the deployment,
+        # otherwise a caller could reference another org's profile by UUID.
+        # ``ProfileManager.objects`` is not org-scoped by default, so this
+        # check is load-bearing, not merely defense-in-depth.
         if is_global_key:
+            profile_org_id = (
+                profile.prompt_studio_tool.organization_id
+                if profile.prompt_studio_tool_id
+                else None
+            )
+            if profile_org_id != api.organization_id:
+                # Generic error avoids confirming another org's profile exists.
+                raise ValidationError("Profile not found")
             return value
 
         # Get the specific API key being used

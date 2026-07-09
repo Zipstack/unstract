@@ -43,3 +43,35 @@ def validate_name_field(value: str, field_name: str = "This field") -> str:
     if not value:
         raise ValidationError(f"{field_name} must not be empty.")
     return validate_no_html_tags(value, field_name)
+
+
+# Allow-list of characters permitted in user-facing free text (names,
+# descriptions). Unlike ``validate_no_html_tags`` (which block-lists known
+# dangerous constructs), this is a strict allow-list: alphanumerics, spaces and
+# a small set of common punctuation. Everything else is rejected so no HTML
+# angle brackets (``<``/``>``), quotes, ampersands, backticks or other
+# characters that could break out of an HTML attribute / start a tag / be
+# abused for injection when the value is later rendered in non-React contexts
+# (emails, PDFs, logs) can ever reach storage.
+SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:'()/]+$")
+SAFE_TEXT_ERROR = (
+    "Only alphanumeric characters, spaces, hyphens, underscores, "
+    "periods, commas, colons, apostrophes, parentheses, and forward slashes "
+    "are allowed."
+)
+
+
+def validate_safe_text(value: str) -> str:
+    """Restrict free text to the safe allow-list in ``SAFE_TEXT_PATTERN``.
+
+    Strips surrounding whitespace, rejects empty/whitespace-only input, and
+    rejects any character outside the allow-list (which excludes ``<``, ``>``,
+    quotes, ``&`` and similar injection-prone characters). Returns the
+    stripped value on success.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ValidationError("This field cannot be empty.")
+    if not SAFE_TEXT_PATTERN.match(stripped):
+        raise ValidationError(SAFE_TEXT_ERROR)
+    return stripped

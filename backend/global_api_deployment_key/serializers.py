@@ -1,26 +1,10 @@
-import re
-
 from api_v2.models import APIDeployment
 from rest_framework import serializers
+from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from global_api_deployment_key.models import GlobalApiDeploymentKey
-
-SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:()/]+$")
-SAFE_TEXT_ERROR = (
-    "Only alphanumeric characters, spaces, hyphens, underscores, "
-    "periods, commas, colons, parentheses, and forward slashes are allowed."
-)
-
-
-def validate_safe_text(value):
-    stripped = value.strip()
-    if not stripped:
-        raise serializers.ValidationError("This field cannot be empty.")
-    if not SAFE_TEXT_PATTERN.match(stripped):
-        raise serializers.ValidationError(SAFE_TEXT_ERROR)
-    return stripped
 
 
 class ApiDeploymentMinimalSerializer(serializers.ModelSerializer):

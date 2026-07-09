@@ -1,29 +1,9 @@
-import re
-
 from rest_framework import serializers
+from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
-
-# Alphanumeric, spaces, hyphens, underscores, periods, commas, colons,
-# apostrophes, parentheses, forward slashes. No HTML tags or angle brackets.
-SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:'()/]+$")
-SAFE_TEXT_ERROR = (
-    "Only alphanumeric characters, spaces, hyphens, underscores, "
-    "periods, commas, colons, apostrophes, parentheses, and forward slashes "
-    "are allowed."
-)
-
-
-def validate_safe_text(value):
-    """Reject HTML tags and restrict to safe characters."""
-    stripped = value.strip()
-    if not stripped:
-        raise serializers.ValidationError("This field cannot be empty.")
-    if not SAFE_TEXT_PATTERN.match(stripped):
-        raise serializers.ValidationError(SAFE_TEXT_ERROR)
-    return stripped
 
 
 class PlatformApiKeyListSerializer(serializers.ModelSerializer):
