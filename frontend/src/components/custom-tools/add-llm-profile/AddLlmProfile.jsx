@@ -64,10 +64,6 @@ function AddLlmProfile({
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-
-    return () => {
-      setEditLlmProfileId(null);
-    };
   }, []);
 
   // Load retrieval strategies when tool_id is available (only once)
@@ -163,7 +159,7 @@ function AddLlmProfile({
 
   useEffect(() => {
     if (resetForm) {
-      form.resetFields();
+      form.setFieldsValue(formDetails);
       setResetForm(false);
     }
   }, [formDetails]);
@@ -330,7 +326,7 @@ function AddLlmProfile({
         setPostHogCustomEvent("intent_success_ps_new_llm_profile", {
           info: "Clicked on 'Add' button",
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     }
@@ -457,7 +453,7 @@ function AddLlmProfile({
   };
 
   return (
-    <div className="settings-body-pad-top">
+    <div className="add-llm-profile-body">
       <Form
         form={form}
         layout="vertical"
@@ -637,7 +633,10 @@ function AddLlmProfile({
             />
           </div>
         </SpaceWrapper>
-        <Form.Item className="display-flex-right">
+        <Form.Item
+          className="display-flex-right add-llm-profile-footer"
+          style={{ backgroundColor: token.colorBgContainer }}
+        >
           <Space>
             <CustomButton type="primary" htmlType="submit" loading={loading}>
               {editLlmProfileId ? "Update" : "Add"}

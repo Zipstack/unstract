@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -14,11 +15,23 @@ from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.callback_manager import CallbackManager
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    pop_litellm_retry_kwargs,
+)
 
 if TYPE_CHECKING:
     from unstract.sdk1.tool.base import BaseTool
 
+logger = logging.getLogger(__name__)
+
 litellm.drop_params = True
+
+# Asymmetric embedding models need an input_type (query|passage); other
+# providers reject the field, so it's sent only for this prefix.
+_NVIDIA_NIM_MODEL_PREFIX = "nvidia_nim/"
 
 
 class Embedding:
@@ -94,7 +107,9 @@ class Embedding:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
             self._cost_model: str | None = self.kwargs.pop("cost_model", None)
-        except ValidationError as e:
+            # Client-side batching hint, not an API field — keep it off the wire.
+            self.kwargs.pop("embed_batch_size", None)
+        except (ValidationError, ValueError) as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
         # Test connection - wrap in error handling
@@ -110,55 +125,74 @@ class Embedding:
             return f"{self._adapter_name} ({name})"
         return name
 
-    def get_embedding(self, text: str) -> list[float]:
+    def _prepare_call(self, input_type: str | None) -> tuple[str, dict, int | None]:
+        """Split model/retries out of kwargs and inject input_type when applicable."""
+        kwargs = self.kwargs.copy()
+        model = kwargs.pop("model")
+        max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
+        if input_type and str(model).startswith(_NVIDIA_NIM_MODEL_PREFIX):
+            kwargs["input_type"] = input_type
+        return model, kwargs, max_retries
+
+    def get_embedding(self, text: str, input_type: str = "query") -> list[float]:
         """Return embedding vector for query string."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-
-            resp = litellm.embedding(model=model, input=[text], **kwargs)
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
+            resp = call_with_retry(
+                lambda: litellm.embedding(model=model, input=[text], **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return resp["data"][0]["embedding"]
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    def get_embeddings(self, texts: list[str]) -> list[list[float]]:
+    def get_embeddings(
+        self, texts: list[str], input_type: str = "passage"
+    ) -> list[list[float]]:
         """Return embedding vectors for list of query strings."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-
-            resp = litellm.embedding(model=model, input=texts, **kwargs)
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
+            resp = call_with_retry(
+                lambda: litellm.embedding(model=model, input=texts, **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    async def get_aembedding(self, text: str) -> list[float]:
+    async def get_aembedding(self, text: str, input_type: str = "query") -> list[float]:
         """Return async embedding vector for query string."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-
-            resp = await litellm.aembedding(model=model, input=[text], **kwargs)
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
+            resp = await acall_with_retry(
+                lambda: litellm.aembedding(model=model, input=[text], **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return resp["data"][0]["embedding"]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
+    async def get_aembeddings(
+        self, texts: list[str], input_type: str = "passage"
+    ) -> list[list[float]]:
         """Return async embedding vectors for list of query strings."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-
-            resp = await litellm.aembedding(model=model, input=texts, **kwargs)
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
+            resp = await acall_with_retry(
+                lambda: litellm.aembedding(model=model, input=texts, **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""
@@ -229,28 +263,47 @@ class EmbeddingCompat(BaseEmbedding):
             )
 
     def _get_query_embedding(self, query: str) -> list[float]:
-        return self._embedding_instance.get_embedding(query)
+        return self._embedding_instance.get_embedding(query, input_type="query")
 
     def _get_text_embedding(self, text: str) -> list[float]:
-        return self._embedding_instance.get_embedding(text)
+        return self._embedding_instance.get_embedding(text, input_type="passage")
 
     def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return self._embedding_instance.get_embeddings(texts)
+        return self._embedding_instance.get_embeddings(texts, input_type="passage")
 
     def get_query_embedding(self, query: str) -> list[float]:
         return self._get_query_embedding(query)
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
-        return await self._embedding_instance.get_aembedding(query)
+        return await self._embedding_instance.get_aembedding(query, input_type="query")
 
     async def _aget_text_embedding(self, text: str) -> list[float]:
-        return await self._embedding_instance.get_aembedding(text)
+        return await self._embedding_instance.get_aembedding(text, input_type="passage")
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return await self._embedding_instance.get_aembeddings(texts)
+        return await self._embedding_instance.get_aembeddings(texts, input_type="passage")
 
     async def get_aquery_embedding(self, query: str) -> list[float]:
         return await self._aget_query_embedding(query)
 
     def test_connection(self) -> bool:
         return self._embedding_instance.test_connection()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Drain pending usage rows from registered callback handlers."""
+        if not self.callback_manager:
+            return []
+        records: list[dict] = []
+        for handler in self.callback_manager.handlers:
+            if not hasattr(handler, "flush_pending_usage"):
+                continue
+            # Per-handler guard so one bad handler doesn't drop the rest.
+            try:
+                records.extend(handler.flush_pending_usage())
+            except Exception:
+                logger.warning(
+                    "Failed to flush usage from embedding handler %s",
+                    type(handler).__name__,
+                    exc_info=True,
+                )
+        return records

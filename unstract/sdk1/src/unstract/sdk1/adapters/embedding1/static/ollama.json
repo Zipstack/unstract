@@ -23,14 +23,15 @@
       "type": "string",
       "title": "Base URL",
       "default": "",
-      "description": "Provide the base URL where Ollama server is running. Example: `http://docker.host.internal:11434` or `http://localhost:11434`"
+      "description": "Provide the base URL where Ollama server is running. Example: `http://host.docker.internal:11434` or `http://localhost:11434`"
     },
-    "embed_batch_size": {
+    "max_retries": {
       "type": "number",
       "minimum": 0,
       "multipleOf": 1,
-      "title": "Embed Batch Size",
-      "default": 10
+      "title": "Max Retries",
+      "default": 3,
+      "description": "The maximum number of times to retry a request if it fails."
     }
   }
 }

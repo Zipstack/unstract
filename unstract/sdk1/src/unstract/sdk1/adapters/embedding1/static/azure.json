@@ -54,12 +54,13 @@
       "title": "Dimensions",
       "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions."
     },
-    "embed_batch_size": {
+    "max_retries": {
       "type": "number",
       "minimum": 0,
       "multipleOf": 1,
-      "title": "Embedding Batch Size",
-      "default": 5
+      "title": "Max Retries",
+      "default": 3,
+      "description": "The maximum number of times to retry a request if it fails."
     },
     "timeout": {
       "type": "number",

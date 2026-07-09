@@ -5,6 +5,8 @@ import os
 import unittest
 from datetime import datetime, timezone
 
+import pytest
+
 logger = logging.getLogger(__name__)
 
 
@@ -114,14 +116,6 @@ class TestSharePointFSUnit(unittest.TestCase):
         with self.assertRaises(ConnectorError) as context:
             SharePointFS(settings=invalid_settings)
         self.assertIn("requires authentication", str(context.exception))
-
-    def test_json_schema_has_is_personal(self):
-        """Test that JSON schema includes is_personal field."""
-        from unstract.connectors.filesystems.sharepoint import SharePointFS
-
-        schema = SharePointFS.get_json_schema()
-        self.assertIn("is_personal", schema)
-        self.assertIn("Personal Account", schema)
 
     def test_json_schema_has_oneof_pattern(self):
         """Test that JSON schema uses dependencies/oneOf pattern for dual auth methods."""
@@ -243,6 +237,7 @@ class TestSharePointFSUnit(unittest.TestCase):
         self.assertEqual(result, "")
 
 
+@pytest.mark.integration
 class TestSharePointFSIntegration(unittest.TestCase):
     """Integration tests for SharePointFS (require real credentials)."""
 

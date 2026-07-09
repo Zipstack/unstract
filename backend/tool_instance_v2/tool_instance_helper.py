@@ -9,7 +9,9 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
+from permissions.permission import has_group_access
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 from tool_instance_v2.constants import JsonSchemaKey
@@ -96,26 +98,26 @@ class ToolInstanceHelper:
         """
         if adapter_key in metadata:
             adapter_value = metadata[adapter_key]
-            adapter_id = None
+            if not adapter_value:
+                return
             if ToolInstanceHelper.is_uuid_format(adapter_value):
                 logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
                 adapter = AdapterInstance.objects.get(
                     id=adapter_value, adapter_type=adapter_type.value
                 )
-                adapter_id = str(adapter.id)
-                metadata_key_for_id = adapter_property.get(
-                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-                )
-                metadata[metadata_key_for_id] = adapter_id
             else:
                 adapter = AdapterProcessor.get_adapter_by_name_and_type(
                     adapter_type=adapter_type, adapter_name=adapter_value
                 )
-                adapter_id = str(adapter.id)
-                metadata_key_for_id = adapter_property.get(
-                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-                )
-                metadata[metadata_key_for_id] = adapter_id
+            adapter_id = str(adapter.id)
+            metadata_key_for_id = adapter_property.get(
+                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+            )
+            # Keep adapter_key and adapter_id_key both canonical to the resolved
+            # target UUID; otherwise stale UUID-shaped values at adapter_key
+            # bypass the lazy migrator and fail schema enum validation later.
+            metadata[adapter_key] = adapter_id
+            metadata[metadata_key_for_id] = adapter_id
 
     @staticmethod
     def update_metadata_with_adapter_instances(
@@ -262,16 +264,24 @@ class ToolInstanceHelper:
         return relative_path
 
     @staticmethod
-    def reorder_tool_instances(instances_to_reorder: list[uuid.UUID]) -> None:
+    def reorder_tool_instances(
+        instances_to_reorder: list[uuid.UUID],
+        workflow_id: uuid.UUID | None = None,
+    ) -> None:
         """Reorders tool instances based on the list of tool UUIDs received.
         Saves the instance in the DB.
 
         Args:
             instances_to_reorder (list[uuid.UUID]): Desired order of tool UUIDs
+            workflow_id (uuid.UUID | None): When given, scope the lookup to
+                this workflow so a stray UUID can't reach a foreign row.
         """
-        logger.info(f"Reordering instances: {instances_to_reorder}")
+        logger.info("Reordering instances: %s", instances_to_reorder)
+        queryset = ToolInstance.objects
+        if workflow_id is not None:
+            queryset = queryset.filter(workflow_id=workflow_id)
         for step, tool_instance_id in enumerate(instances_to_reorder):
-            tool_instance = ToolInstance.objects.get(pk=tool_instance_id)
+            tool_instance = queryset.get(pk=tool_instance_id)
             tool_instance.step = step + 1
             tool_instance.save()
 
@@ -482,6 +492,7 @@ class ToolInstanceHelper:
         adapter_ids: set[str],
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
+        is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         for adapter_instance in adapter_instances:
             if not adapter_instance.is_usable:
@@ -494,9 +505,11 @@ class ToolInstanceHelper:
                 raise PermissionDenied(error_msg)
 
             if not (
-                adapter_instance.shared_to_org
+                is_admin
+                or adapter_instance.shared_to_org
                 or adapter_instance.created_by == user
                 or adapter_instance.shared_users.filter(pk=user.pk).exists()
+                or has_group_access(user, adapter_instance)
             ):
                 logger.error(
                     "User %s doesn't have access to adapter %s",
@@ -523,27 +536,33 @@ class ToolInstanceHelper:
         """
         # Try to find the tool in PromptStudioRegistry first
         try:
-            prompt_registry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
-            if (
-                prompt_registry_tool.shared_to_org
-                or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
-            ):
-                return
-            raise PermissionDenied("You don't have permission to perform this action.")
-        except PromptStudioRegistry.DoesNotExist:
-            # Not a prompt studio tool, try agentic studio if available
-            pass
+            if PromptStudioRegistry.objects.filter(pk=tool_uid).exists():
+                # Access derives from the linked project's current share
+                # state, not the export-time snapshot.
+                if (
+                    PromptStudioRegistry.objects.list_tools(user)
+                    .filter(pk=tool_uid)
+                    .exists()
+                ):
+                    return
+                raise PermissionDenied(
+                    "You don't have permission to perform this action."
+                )
         except DjangoValidationError:
             # Invalid UUID format, might be a static tool
             logger.info(f"Not validating tool access for tool: {tool_uid}")
             return
+
+        is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         # Try to find the tool in AgenticStudioRegistry if available
         if IS_AGENTIC_REGISTRY_AVAILABLE:
             try:
                 agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
                 if (
-                    agentic_registry_tool.shared_to_org
+                    is_admin
+                    or agentic_registry_tool.created_by == user
+                    or agentic_registry_tool.shared_to_org
                     or agentic_registry_tool.shared_users.filter(pk=user.pk).exists()
                 ):
                     return

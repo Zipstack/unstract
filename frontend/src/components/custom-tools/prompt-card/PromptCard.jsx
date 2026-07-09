@@ -14,6 +14,19 @@ import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
 
+let useEnforceTypeSwitchGatePlugin;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/useEnforceTypeSwitchGate"
+  );
+  useEnforceTypeSwitchGatePlugin = mod.useEnforceTypeSwitchGate;
+} catch {
+  // Cloud plugin not present; gate falls back to no-op below.
+}
+
+const useEnforceTypeSwitchGate =
+  useEnforceTypeSwitchGatePlugin || (() => () => null);
+
 const PromptCard = memo(
   ({
     promptDetails,
@@ -56,16 +69,33 @@ const PromptCard = memo(
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
     const { setPostHogCustomEvent } = usePostHogEvents();
+    const enforceTypeSwitchGate = useEnforceTypeSwitchGate();
 
     useEffect(() => {
       if (
         isPromptDetailsStateUpdated ||
         !Object.keys(promptDetails || {})?.length
-      )
+      ) {
         return;
+      }
       setPromptDetailsState(promptDetails);
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
+
+    // Initialize promptKey from props so the message filter can match
+    // per-prompt PROGRESS messages (executor sends component.prompt_key).
+    useEffect(() => {
+      if (promptDetailsState?.prompt_key && !promptKey) {
+        setPromptKey(promptDetailsState.prompt_key);
+      }
+    }, [promptDetailsState?.prompt_key]);
+
+    // Clear stale progress text when execution finishes.
+    useEffect(() => {
+      if (!isCoverageLoading) {
+        setProgressMsg({});
+      }
+    }, [isCoverageLoading]);
 
     useEffect(() => {
       // Find the latest message that matches the criteria
@@ -74,7 +104,8 @@ const PromptCard = memo(
         .find(
           (item) =>
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
-              item?.component?.prompt_key === promptKey) &&
+              item?.component?.prompt_key === promptKey ||
+              item?.component?.tool_id === details?.tool_id) &&
             (item?.level === "INFO" || item?.level === "ERROR"),
         );
 
@@ -88,7 +119,7 @@ const PromptCard = memo(
         message: msg?.message || "",
         level: msg?.level || "INFO",
       });
-    }, [messages]);
+    }, [messages, promptDetailsState?.prompt_id, promptKey, details?.tool_id]);
 
     useEffect(() => {
       setSelectedLlmProfileId(
@@ -179,17 +210,17 @@ const PromptCard = memo(
 
     const processNestedArray = (nestedValue, flattened) => {
       if (Array.isArray(nestedValue)) {
-        nestedValue.forEach((coords) =>
-          addCoordsToFlattened(coords, flattened),
-        );
+        nestedValue.forEach((coords) => {
+          addCoordsToFlattened(coords, flattened);
+        });
       }
     };
 
     const processObjectValues = (item, flattened) => {
       if (typeof item === "object" && !Array.isArray(item)) {
-        Object.values(item).forEach((value) =>
-          processNestedArray(value, flattened),
-        );
+        Object.values(item).forEach((value) => {
+          processNestedArray(value, flattened);
+        });
       }
     };
 
@@ -202,12 +233,16 @@ const PromptCard = memo(
     };
 
     const flattenHighlightData = (data) => {
-      if (!data || typeof data !== "object") return data;
+      if (!data || typeof data !== "object") {
+        return data;
+      }
 
       const flattened = [];
       Object.values(data).forEach((value) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => processArrayItem(item, flattened));
+          value.forEach((item) => {
+            processArrayItem(item, flattened);
+          });
         }
       });
       return flattened;
@@ -239,6 +274,11 @@ const PromptCard = memo(
     };
 
     const handleTypeChange = (value) => {
+      const block = enforceTypeSwitchGate(promptDetailsState?.prompt_id, value);
+      if (block) {
+        setAlertDetails({ type: "error", content: block.reason });
+        return;
+      }
       handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
     };
 
@@ -255,8 +295,8 @@ const PromptCard = memo(
         setPostHogCustomEvent("ps_prompt_run", {
           info: "Click on 'Run Prompt' button (Multi Pass)",
         });
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
+      } catch {
+        // Analytics failure should not block prompt execution
       }
 
       const validateInputs = () => {

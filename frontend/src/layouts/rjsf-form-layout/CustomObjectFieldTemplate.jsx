@@ -39,7 +39,9 @@ const CustomObjectFieldTemplate = (props) => {
 
       {fieldOrder.map((fieldName) => {
         const property = propertyMap[fieldName];
-        if (!property) return null;
+        if (!property) {
+          return null;
+        }
 
         // Skip conditional fields when they shouldn't be shown
         if (

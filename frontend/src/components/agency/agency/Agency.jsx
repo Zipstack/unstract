@@ -368,7 +368,7 @@ function Agency() {
       if (!signal?.aborted) {
         setDeploymentInfo(deploymentInfo);
       }
-    } catch (err) {
+    } catch (_err) {
       // Don't show alert for this as it's not critical
       // Also check if error is due to abort
       if (signal?.aborted) {
@@ -433,7 +433,7 @@ function Agency() {
         info: `Clicked on 'Deploy as ${deployType}' button`,
         workflow_name: projectName,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -778,6 +778,16 @@ function Agency() {
       const execIdValue = initialRes?.data?.execution_id;
 
       setExecutionId(execIdValue);
+      if (execIdValue && !isStepExecution) {
+        // Live progress on this page is stale; point users at the logs page.
+        setAlertDetails({
+          type: "info",
+          title: "Workflow run started",
+          content: `[View logs](/logs/WF/${execIdValue}) to track progress`,
+          executionId: execIdValue,
+          duration: 0,
+        });
+      }
       body["execution_id"] = execIdValue;
       if (isStepExecution) {
         body["execution_action"] = wfExecutionTypes[executionAction];
@@ -869,7 +879,7 @@ function Agency() {
           info: "Clicked on 'Run Workflow' button (Normal Execution)",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
     const workflowId = details?.id;
@@ -893,7 +903,9 @@ function Agency() {
       body["execution_action"] = wfExecutionTypes[executionAction];
 
       handleWfExecutionApi(body)
-        .then(() => {})
+        .then(() => {
+          // Intentionally empty: fire-and-forget
+        })
         .catch((err) => {
           setAlertDetails(handleException(err));
         });

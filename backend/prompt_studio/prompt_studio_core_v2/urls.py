@@ -33,10 +33,17 @@ prompt_studio_prompt_response = PromptStudioCoreView.as_view({"post": "fetch_res
 prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
     {"get": "get_adapter_choices"}
 )
+prompt_studio_bulk_fetch_response = PromptStudioCoreView.as_view(
+    {"post": "bulk_fetch_response"}
+)
 prompt_studio_single_pass_extraction = PromptStudioCoreView.as_view(
     {"post": "single_pass_extraction"}
 )
 prompt_studio_users = PromptStudioCoreView.as_view({"get": "list_of_shared_users"})
+prompt_studio_share = PromptStudioCoreView.as_view({"post": "share"})
+prompt_studio_effective_members = PromptStudioCoreView.as_view(
+    {"get": "effective_members"}
+)
 
 
 prompt_studio_file = PromptStudioCoreView.as_view(
@@ -59,6 +66,12 @@ prompt_studio_sync_prompts = PromptStudioCoreView.as_view({"post": "sync_prompts
 
 prompt_studio_deployment_usage = PromptStudioCoreView.as_view(
     {"get": "check_deployment_usage"}
+)
+
+prompt_studio_task_status = PromptStudioCoreView.as_view({"get": "task_status"})
+
+prompt_studio_lookup_validation = PromptStudioCoreView.as_view(
+    {"get": "lookup_validation"}
 )
 
 
@@ -106,6 +119,11 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-prompt-response",
         ),
         path(
+            "prompt-studio/bulk_fetch_response/<uuid:pk>",
+            prompt_studio_bulk_fetch_response,
+            name="prompt-studio-bulk-fetch-response",
+        ),
+        path(
             "prompt-studio/adapter-choices/",
             prompt_studio_adapter_choices,
             name="prompt-studio-adapter-choices",
@@ -119,6 +137,16 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/users/<uuid:pk>",
             prompt_studio_users,
             name="prompt-studio-users",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/share/",
+            prompt_studio_share,
+            name="prompt-studio-share",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/effective-members/",
+            prompt_studio_effective_members,
+            name="prompt-studio-effective-members",
         ),
         path(
             "prompt-studio/file/<uuid:pk>",
@@ -149,6 +177,16 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/check_deployment_usage/",
             prompt_studio_deployment_usage,
             name="prompt_studio_deployment_usage",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/task-status/<str:task_id>",
+            prompt_studio_task_status,
+            name="prompt-studio-task-status",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/lookup-validation/",
+            prompt_studio_lookup_validation,
+            name="prompt-studio-lookup-validation",
         ),
     ]
 )

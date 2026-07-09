@@ -17,4 +17,9 @@ urlpatterns = [
         internal_views.PagesProcessedInternalView.as_view(),
         name="aggregated-pages-processed",
     ),
+    path(
+        "batch/",
+        internal_views.UsageBatchCreateView.as_view(),
+        name="usage-batch-create",
+    ),
 ]

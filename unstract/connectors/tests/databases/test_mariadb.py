@@ -4,7 +4,6 @@ from typing import Any
 from unittest.mock import Mock, patch
 
 import pymysql.err as MysqlError
-
 from unstract.connectors.databases.mariadb.mariadb import MariaDB
 from unstract.connectors.exceptions import ConnectorError
 
@@ -12,7 +11,6 @@ from unstract.connectors.exceptions import ConnectorError
 class TestMariaDB(unittest.TestCase):
     def setUp(self) -> None:
         """Set up test configuration from environment variables"""
-
         # SSL enabled config for testing SSL scenarios
         self.mariadb_config_ssl_enabled = {
             "host": os.getenv("MARIADB_HOST", "localhost"),
@@ -86,7 +84,7 @@ class TestMariaDB(unittest.TestCase):
 
         error_message = str(context.exception)
         self.assertIn("Authentication failed", error_message)
-        self.assertIn("username, password and ssl-settings", error_message)
+        self.assertIn("username, password and SSL SETTINGS", error_message)
         self.assertIn("localhost:3306", error_message)
         self.assertIn("SSL enabled", error_message)
 

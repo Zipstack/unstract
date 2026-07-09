@@ -21,10 +21,13 @@ workflow_execute = WorkflowViewSet.as_view({"post": "execute", "put": "activate"
 execution_entity = WorkflowExecutionViewSet.as_view({"get": "retrieve"})
 execution_list = WorkflowExecutionViewSet.as_view({"get": "list"})
 execution_log_list = WorkflowExecutionLogViewSet.as_view({"get": "list"})
+execution_log_export = WorkflowExecutionLogViewSet.as_view({"get": "export"})
 workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"})
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
 list_shared_users = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+workflow_share = WorkflowViewSet.as_view({"post": "share"})
+workflow_effective_members = WorkflowViewSet.as_view({"get": "effective_members"})
 
 # File History views
 file_history_list = FileHistoryViewSet.as_view({"get": "list"})
@@ -50,6 +53,12 @@ urlpatterns = format_suffix_patterns(
             list_shared_users,
             name="list-shared-users",
         ),
+        path("<uuid:pk>/share/", workflow_share, name="workflow-share"),
+        path(
+            "<uuid:pk>/effective-members/",
+            workflow_effective_members,
+            name="workflow-effective-members",
+        ),
         path("execute/", workflow_execute, name="execute-workflow"),
         path(
             "active/<uuid:pk>/",
@@ -70,6 +79,11 @@ urlpatterns = format_suffix_patterns(
             "execution/<uuid:pk>/logs/",
             execution_log_list,
             name="execution-log",
+        ),
+        path(
+            "execution/<uuid:pk>/logs/export/",
+            execution_log_export,
+            name="execution-log-export",
         ),
         path(
             "schema/",

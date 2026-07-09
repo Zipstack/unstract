@@ -123,7 +123,7 @@ export default defineConfig(({ mode }) => {
         port: Number(env.PORT) || 3000,
         clientPort: env.WDS_SOCKET_PORT
           ? Number(env.WDS_SOCKET_PORT)
-          : (Number(env.PORT) || 3000),
+          : Number(env.PORT) || 3000,
       },
       // Proxy configuration (similar to setupProxy.js in CRA)
       proxy:
@@ -143,6 +143,10 @@ export default defineConfig(({ mode }) => {
       target: "esnext",
       outDir: "build",
       sourcemap: true,
+      // Single stylesheet: per-chunk CSS loads in navigation order, making
+      // equal-specificity cross-component rules resolve unpredictably. JS
+      // splitting is unaffected.
+      cssCodeSplit: false,
       // Chunk size warning limit
       chunkSizeWarningLimit: 1000,
       rollupOptions: {

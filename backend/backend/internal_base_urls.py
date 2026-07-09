@@ -263,4 +263,10 @@ urlpatterns = [
         include("usage_v2.internal_urls"),
         name="usage_internal",
     ),
+    # Prompt Studio IDE callback APIs
+    path(
+        "v1/prompt-studio/",
+        include("prompt_studio.prompt_studio_core_v2.internal_urls"),
+        name="prompt_studio_internal",
+    ),
 ]

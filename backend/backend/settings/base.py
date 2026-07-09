@@ -12,11 +12,19 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
+from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
+from utils.cors_origin import normalize_web_app_origin
+
+# Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
+# temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
+# causing "Enter a valid URL." on the API deployment `presigned_urls` field.
+# Raise the cap globally. No-op on Django 4.2.x (no such attribute is checked).
+URLValidator.max_length = 8192
 
 missing_settings = []
 
@@ -68,10 +76,18 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
 )
 # Maximum number of files allowed per workflow page execution
 WORKFLOW_PAGE_MAX_FILES = int(os.environ.get("WORKFLOW_PAGE_MAX_FILES", 2))
-WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
-parsed_url = urlparse(WEB_APP_ORIGIN_URL)
-WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
+(
+    WEB_APP_ORIGIN_URL,
+    WEB_APP_ORIGIN_URL_WITH_WILD_CARD,
+    _CORS_SUBDOMAIN_REGEX,
+) = normalize_web_app_origin(
+    os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+)
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
+# Wildcard subdomain regex consumed by django-cors-headers and (via the
+# RegexOrigin wrapper in utils/log_events.py) by the SocketIO engine.io
+# handshake — a single source of truth so HTTP and WS CORS cannot diverge.
+CORS_ALLOWED_ORIGIN_REGEXES = [_CORS_SUBDOMAIN_REGEX]
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
@@ -144,8 +160,6 @@ DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")
 PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
-PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
-PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )
@@ -204,12 +218,43 @@ MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
 # Maximum number of times a file can be executed in a workflow
 MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 
+# Org-scoped group sharing (UN-2977 / mfbt UNS-612)
+MAX_GROUPS_PER_ORG = int(os.environ.get("MAX_GROUPS_PER_ORG", 200))
+MAX_MEMBERS_PER_GROUP = int(os.environ.get("MAX_MEMBERS_PER_GROUP", 500))
+
 CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
+# Default batching window (seconds) for clubbing BATCHED notifications — also the
+# flush cadence. Default 300 (5 min). This is only the fallback default; each org
+# can override it from Platform Settings (Configuration key
+# NOTIFICATION_CLUB_INTERVAL), read per-org at enqueue time. Buffer rows
+# precompute flush_after at enqueue, so changes only affect rows enqueued after.
+NOTIFICATION_CLUB_INTERVAL = int(os.environ.get("NOTIFICATION_CLUB_INTERVAL", "300"))
+# Retention for terminal NotificationBuffer rows (DISPATCHED / DEAD_LETTER).
+# PENDING rows are never GC'd regardless of age.
+NOTIFICATION_BUFFER_RETENTION_DAYS = int(
+    os.environ.get("NOTIFICATION_BUFFER_RETENTION_DAYS", "7")
+)
+# Lease (seconds) for a buffer row claimed for dispatch (status=SENDING). If a row
+# stays SENDING longer than this — e.g. the backend crashed between committing the
+# claim and publishing the Celery task — the flush reaper returns it to PENDING for
+# re-dispatch. Must exceed the worst-case retry duration (max_retries * retry_delay)
+# so in-flight dispatches are never reclaimed mid-flight. Default 900 (15 min).
+NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
+    os.environ.get("NOTIFICATION_DISPATCH_LEASE_SECONDS", "900")
+)
+# Hard ceiling on how many times a buffer row may be claimed for dispatch. Each
+# SENDING claim increments NotificationBuffer.dispatch_attempts; once it reaches
+# this cap the row is dead-lettered instead of re-dispatched. Bounds the reaper
+# reclaim loop so a row whose terminal callback never fires (e.g. a crash that
+# recurs in the dispatch->callback window) cannot be redelivered forever.
+NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
+    os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
@@ -426,6 +471,10 @@ MIDDLEWARE = [
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 
+DISABLE_SSO_IDP_AUTHORIZATION = (
+    os.environ.get("DISABLE_SSO_IDP_AUTHORIZATION", "False").strip().lower() == "true"
+)
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
@@ -575,6 +624,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
@@ -627,7 +677,6 @@ for key in [
     "GOOGLE_OAUTH2_SECRET",
     "AZUREAD_TENANT_OAUTH2_KEY",
     "AZUREAD_TENANT_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
@@ -690,4 +739,6 @@ if missing_settings:
     )
     raise ValueError(ERROR_MESSAGE)
 
-ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = CommonUtils.str_to_bool(
+    os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", "False")
+)

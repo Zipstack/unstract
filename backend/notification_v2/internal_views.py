@@ -42,6 +42,8 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = NotificationSerializer
     lookup_field = "id"
+    # Backward compat: remove once all workers pass X-Organization-ID.
+    skip_org_filter = True
 
     def get_queryset(self):
         """Get notifications filtered by organization context."""

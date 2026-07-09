@@ -2,9 +2,21 @@ name: ${COMPOSE_PROJECT_NAME:-docker}
 include:
   - docker-compose-dev-essentials.yaml
 
+# Reusable host-gateway mapping so containers can reach services on the host
+# (e.g. host-installed Ollama at http://host.docker.internal:11434).
+# NOTE: YAML merge (<<:) merges mappings shallowly and does NOT concatenate
+# lists. If a service ever needs additional extra_hosts entries alongside
+# this one, inline ALL entries under that service (including
+# host.docker.internal:host-gateway) instead of using the anchor — a sibling
+# extra_hosts key would silently shadow the anchor's list.
+x-host-gateway: &host_gateway
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
   # Backend service
   backend:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
     restart: unless-stopped
@@ -21,7 +33,6 @@ services:
       - minio
       - minio-bootstrap
       - platform-service
-      - prompt-service
       - x2text-service
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
@@ -32,14 +43,12 @@ services:
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
-      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
-    extra_hosts:
-      # "host-gateway" is a special string that translates to host docker0 i/f IP.
-      - "host.docker.internal:host-gateway"
 
   # Celery worker for dashboard metrics processing
   worker-metrics:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-worker-metrics
     restart: unless-stopped
@@ -57,8 +66,33 @@ services:
     labels:
       - traefik.enable=false
 
+  # Celery worker for Prompt Studio IDE callbacks.
+  # Processes post-execution callbacks via InternalAPIClient (no Django).
+  # Handles: ide_index_complete/error, ide_prompt_complete/error.
+  worker-ide-callback:
+    <<: *host_gateway
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-ide-callback
+    restart: unless-stopped
+    command: ["ide-callback"]
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-ide-callback
+      - WORKER_TYPE=ide_callback
+      - WORKER_NAME=ide-callback-worker
+    labels:
+      - traefik.enable=false
+
   # Celery Flower
   celery-flower:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
     restart: unless-stopped
@@ -82,6 +116,7 @@ services:
 
   # Celery Beat
   celery-beat:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
     restart: unless-stopped
@@ -109,9 +144,13 @@ services:
       - reverse-proxy
     environment:
       - ENVIRONMENT=development
+      # Running platform version, surfaced on the profile page. Reuses the same
+      # ${VERSION} that tags the image, so it always matches what's deployed
+      # (and updates on RC->stable promotion, which only retags — doesn't rebuild).
+      - UNSTRACT_APPS_VERSION=${VERSION}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`)
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`)
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:
@@ -128,25 +167,6 @@ services:
     labels:
       - traefik.enable=false
 
-  prompt-service:
-    image: unstract/prompt-service:${VERSION}
-    container_name: unstract-prompt-service
-    restart: unless-stopped
-    depends_on:
-      - db
-      - minio
-      - minio-bootstrap
-      - rabbitmq
-    ports:
-      - "3003:3003"
-    env_file:
-      - ../prompt-service/.env
-    labels:
-      - traefik.enable=false
-    extra_hosts:
-      # "host-gateway" is a special string that translates to host docker0 i/f IP.
-      - "host.docker.internal:host-gateway"
-
   x2text-service:
     image: unstract/x2text-service:${VERSION}
     container_name: unstract-x2text-service
@@ -161,6 +181,7 @@ services:
       - traefik.enable=false
 
   runner:
+    <<: *host_gateway
     image: unstract/runner:${VERSION}
     container_name: unstract-runner
     restart: unless-stopped
@@ -183,6 +204,7 @@ services:
   # ====================================================================
 
   worker-api-deployment-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-api-deployment-v2
     restart: unless-stopped
@@ -215,6 +237,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-callback-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-callback-v2
     restart: unless-stopped
@@ -241,6 +264,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-file-processing-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
@@ -293,6 +317,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-general-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-general-v2
     restart: unless-stopped
@@ -320,6 +345,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-notification-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-notification-v2
     restart: unless-stopped
@@ -368,6 +394,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-log-consumer-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-consumer-v2
     restart: unless-stopped
@@ -417,6 +444,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-log-history-scheduler-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-history-scheduler-v2
     restart: unless-stopped
@@ -440,6 +468,7 @@ services:
       - traefik.enable=false
 
   worker-scheduler-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-scheduler-v2
     restart: unless-stopped
@@ -482,6 +511,42 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  worker-executor-v2:
+    <<: *host_gateway
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-executor-v2
+    restart: unless-stopped
+    command: ["executor"]
+    ports:
+      - "8092:8088"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-executor-v2
+      - WORKER_TYPE=executor
+      - WORKER_NAME=executor-worker-v2
+      - EXECUTOR_METRICS_PORT=8088
+      - HEALTH_PORT=8088
+      # Configurable Celery options
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table}
+      - CELERY_POOL=${WORKER_EXECUTOR_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_EXECUTOR_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_EXECUTOR_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_EXECUTOR_EXTRA_ARGS:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
 
 volumes:
   prompt_studio_data:

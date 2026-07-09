@@ -1,8 +1,10 @@
-import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+
+import { getRequestIdFromError } from "../helpers/requestId";
 
 const useExceptionHandler = () => {
   const navigate = useNavigate();
+
   const handleException = (
     err,
     errMessage = "Something went wrong",
@@ -10,28 +12,22 @@ const useExceptionHandler = () => {
     title = "Failed",
     duration = 0,
   ) => {
+    const requestId = getRequestIdFromError(err) ?? null;
+    const alert = (content) => ({
+      type: "error",
+      content,
+      title,
+      duration,
+      requestId,
+    });
+
     if (!err) {
-      return {
-        type: "error",
-        content: errMessage,
-        title: title,
-        duration: duration,
-      };
+      return alert(errMessage);
     }
     if (err.code === "ERR_NETWORK" && !navigator.onLine) {
-      return {
-        type: "error",
-        content: "Please check your internet connection.",
-        title: title,
-        duration: duration,
-      };
+      return alert("Please check your internet connection.");
     } else if (err.code === "ERR_CANCELED") {
-      return {
-        type: "error",
-        content: "Request has been canceled.",
-        title: title,
-        duration: duration,
-      };
+      return alert("Request has been canceled.");
     }
 
     if (err?.response?.data) {
@@ -43,12 +39,7 @@ const useExceptionHandler = () => {
         responseData.error || responseData.detail || responseData.message;
 
       if (commonErrorMessage) {
-        return {
-          title: title,
-          type: "error",
-          content: commonErrorMessage,
-          duration: duration,
-        };
+        return alert(commonErrorMessage);
       }
 
       // Then handle specific error types
@@ -57,6 +48,18 @@ const useExceptionHandler = () => {
           // Handle validation errors
           if (setBackendErrors) {
             setBackendErrors(err?.response?.data);
+            // Non-field errors map to no input and would vanish silently;
+            // surface them as a toast. Field-bound errors render inline.
+            const nonFieldErrors = (Array.isArray(errors) ? errors : []).filter(
+              (error) => !error?.attr || error.attr === "non_field_errors",
+            );
+            if (nonFieldErrors.length > 0) {
+              return alert(
+                nonFieldErrors
+                  .map((error) => error?.detail || errMessage)
+                  .join(" • "),
+              );
+            }
           } else {
             // Handle both single error and array of errors
             let errorMessage = "Validation error";
@@ -81,54 +84,24 @@ const useExceptionHandler = () => {
                     .join("\n");
               }
             }
-            return {
-              title: title,
-              type: "error",
-              content: errorMessage,
-              duration: duration,
-            };
+            return alert(errorMessage);
           }
           break;
         case "subscription_error":
           navigate("/subscription-expired");
-          return {
-            title: title,
-            type: "error",
-            content: errors,
-            duration: duration,
-          };
+          return alert(errors);
         case "client_error":
         case "server_error":
-          return {
-            title: title,
-            type: "error",
-            content: errors?.[0]?.detail ? errors[0].detail : errMessage,
-            duration: duration,
-          };
+          return alert(errors?.[0]?.detail ? errors[0].detail : errMessage);
         default:
-          return {
-            title: title,
-            type: "error",
-            content: errMessage,
-            duration: duration,
-          };
+          return alert(errMessage);
       }
     } else {
-      return {
-        title: title,
-        type: "error",
-        content: errMessage,
-        duration: duration,
-      };
+      return alert(errMessage);
     }
   };
 
   return handleException;
-};
-
-useExceptionHandler.propTypes = {
-  err: PropTypes.object, // Assuming err is an object
-  errMessage: PropTypes.string,
 };
 
 export { useExceptionHandler };

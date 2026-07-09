@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
+from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
@@ -13,6 +14,7 @@ from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
 from tags.models import Tag
+from usage_v2.helper import UsageHelper
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -171,6 +173,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         timeout: int,
         include_metadata: bool = False,
         include_metrics: bool = False,
+        include_extracted_text: bool = False,
         use_file_history: bool = False,
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
@@ -251,13 +254,41 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
 
-        hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
-            pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            file_objs=file_objs,
-            use_file_history=use_file_history,
-        )
+        # Staging runs synchronously, before async dispatch. Scope it to its own
+        # try/except so a failure marks the still-PENDING execution ERROR (else the
+        # row is orphaned and the UI shows the run as stuck), and so error-marking
+        # never runs in the post-dispatch path where it could overwrite the status
+        # of an already-running execution.
+        try:
+            hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
+                pipeline_id=pipeline_id,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                file_objs=file_objs,
+                use_file_history=use_file_history,
+            )
+        except Exception as error:
+            # Isolate the DB error-marking so cleanup still runs if it raises.
+            try:
+                WorkflowExecutionServiceHelper.update_execution_err(
+                    str(execution_id), str(error)
+                )
+            except Exception:
+                logger.exception(f"Failed to mark execution {execution_id} as ERROR")
+
+            # Async job never started — release the rate limit slot and clean up.
+            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            DestinationConnector.delete_api_storage_dir(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+            return APIExecutionResponseSerializer(
+                ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=ExecutionStatus.ERROR.value,
+                    error=str(error),
+                )
+            ).data
 
         try:
             result = WorkflowHelper.execute_workflow_async(
@@ -276,11 +307,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            # Check if highlight data should be removed using configuration registry
+            # Ensure workflow identification keys are always in item metadata
             organization = api.organization if api else None
+            org_id = str(organization.organization_id) if organization else ""
+            cls._enrich_result_with_workflow_metadata(result, organization_id=org_id)
+            # Check if highlight data should be removed using configuration registry
             enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
-            from configuration.config_registry import ConfigurationRegistry
-
             if ConfigurationRegistry.is_config_key_available(
                 "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
             ):
@@ -290,13 +322,20 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
-                result.remove_result_metadata_keys(["extracted_text"])
+                if not include_extracted_text:
+                    result.remove_result_metadata_keys(["extracted_text"])
+            if include_extracted_text:
+                result.promote_extracted_text()
+            if include_metadata or include_metrics:
+                cls._enrich_result_with_usage_metadata(result)
             if not include_metadata:
-                result.remove_result_metadata_keys()
+                result.remove_inner_result_metadata()
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
-            # Release rate limit slot (workflow setup/dispatch failed, async job not started)
+            # Dispatch failures are marked ERROR internally by execute_workflow_async;
+            # post-dispatch failures (enrichment/config) must not overwrite a running
+            # execution's status, so only release the slot and clean up storage here.
             APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
 
             # Clean up storage
@@ -312,6 +351,145 @@ class DeploymentHelper(BaseAPIKeyValidator):
         return APIExecutionResponseSerializer(result).data
 
     @staticmethod
+    def _enrich_item_inner_metadata(
+        item: dict, file_exec_id: str, usage_helper: Any
+    ) -> None:
+        """Inject per-model usage breakdown into item['result']['metadata']."""
+        inner_result = item.get("result")
+        if not isinstance(inner_result, dict):
+            return
+        metadata = inner_result.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        usage_by_model = usage_helper.get_usage_by_model(file_exec_id)
+        if usage_by_model:
+            metadata.update(usage_by_model)
+
+    @staticmethod
+    def _enrich_item_top_metadata(
+        item: dict, file_exec_id: str, usage_helper: Any
+    ) -> None:
+        """Inject aggregated usage totals into item['metadata']['usage']."""
+        item_metadata = item.get("metadata")
+        if not isinstance(item_metadata, dict):
+            return
+        aggregated = usage_helper.get_aggregated_token_count(file_exec_id)
+        if aggregated:
+            aggregated["file_execution_id"] = file_exec_id
+            item_metadata["usage"] = aggregated
+
+    @staticmethod
+    def _enrich_result_with_usage_metadata(result: ExecutionResponse) -> None:
+        """Enrich each file result's metadata with usage data.
+
+        For each file_execution_id:
+        1. Injects per-model cost arrays (extraction_llm, challenge_llm,
+           embedding) into item["result"]["metadata"].
+        2. Injects aggregated usage totals into item["metadata"]["usage"],
+           matching the legacy response format.
+        """
+        if not isinstance(result.result, list):
+            return
+
+        for item in result.result:
+            if not isinstance(item, dict):
+                continue
+            file_exec_id = item.get("file_execution_id")
+            if not file_exec_id:
+                continue
+            DeploymentHelper._enrich_item_inner_metadata(item, file_exec_id, UsageHelper)
+            DeploymentHelper._enrich_item_top_metadata(item, file_exec_id, UsageHelper)
+
+    @staticmethod
+    def _enrich_item_workflow_metadata(
+        item: dict,
+        file_exec_id: str,
+        fe_lookup: dict,
+        workflow_execution: Any,
+        organization_id: str,
+        tag_names: list[str],
+    ) -> None:
+        """Populate workflow identification keys into item['metadata']."""
+        if not isinstance(item.get("metadata"), dict):
+            item["metadata"] = {}
+        metadata = item["metadata"]
+        fe = fe_lookup.get(str(file_exec_id))
+        we = fe.workflow_execution if fe else workflow_execution
+        if fe:
+            metadata.setdefault("source_name", fe.file_name)
+            metadata.setdefault("source_hash", fe.file_hash or "")
+            metadata.setdefault("file_execution_id", str(fe.id))
+            metadata.setdefault("total_elapsed_time", fe.execution_time)
+        if we:
+            metadata.setdefault("workflow_id", str(we.workflow_id))
+            metadata.setdefault("execution_id", str(we.id))
+            metadata.setdefault(
+                "workflow_start_time",
+                we.created_at.timestamp() if we.created_at else None,
+            )
+        metadata.setdefault("organization_id", organization_id)
+        metadata.setdefault("tags", tag_names)
+
+    @staticmethod
+    def _enrich_result_with_workflow_metadata(
+        result: ExecutionResponse,
+        organization_id: str,
+    ) -> None:
+        """Ensure workflow identification keys are always present in item metadata.
+
+        Uses setdefault() — fills in MISSING keys only, never overwrites
+        values already present from the workers cache.
+        """
+        if not isinstance(result.result, list):
+            return
+
+        # 1. Collect file_execution_ids
+        file_exec_ids = [
+            item.get("file_execution_id")
+            for item in result.result
+            if isinstance(item, dict) and item.get("file_execution_id")
+        ]
+        if not file_exec_ids:
+            return
+
+        # 2. Batch query (single JOIN query for all file executions)
+        # Local import to avoid circular dependency:
+        # deployment_helper → file_execution.models → workflow_v2.models
+        #   → workflow_v2.models.execution → api_v2.models
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+
+        fe_lookup = {
+            str(fe.id): fe
+            for fe in WorkflowFileExecution.objects.filter(
+                id__in=file_exec_ids
+            ).select_related("workflow_execution")
+        }
+
+        # 3. Get execution-level data (tags) — one M2M query
+        workflow_execution = None
+        tag_names: list[str] = []
+        if fe_lookup:
+            first_fe = next(iter(fe_lookup.values()))
+            workflow_execution = first_fe.workflow_execution
+            tag_names = list(workflow_execution.tags.values_list("name", flat=True))
+
+        # 4. Enrich each item
+        for item in result.result:
+            if not isinstance(item, dict):
+                continue
+            file_exec_id = item.get("file_execution_id")
+            if not file_exec_id:
+                continue
+            DeploymentHelper._enrich_item_workflow_metadata(
+                item=item,
+                file_exec_id=file_exec_id,
+                fe_lookup=fe_lookup,
+                workflow_execution=workflow_execution,
+                organization_id=organization_id,
+                tag_names=tag_names,
+            )
+
+    @staticmethod
     def get_execution_status(execution_id: str) -> ExecutionResponse:
         """Current status of api execution.
 
@@ -325,6 +503,42 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
+
+    @staticmethod
+    def process_completed_execution(
+        response: ExecutionResponse,
+        deployment_execution_dto: Any,
+        include_metadata: bool,
+        include_metrics: bool,
+        include_extracted_text: bool = False,
+    ) -> None:
+        """Enrich and clean up the response for a completed execution."""
+        api_deployment = deployment_execution_dto.api
+        organization = api_deployment.organization if api_deployment else None
+        org_id = str(organization.organization_id) if organization else ""
+        DeploymentHelper._enrich_result_with_workflow_metadata(
+            response, organization_id=org_id
+        )
+        enable_highlight = False
+        if ConfigurationRegistry.is_config_key_available(
+            "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+        ):
+            enable_highlight = Configuration.get_value_by_organization(
+                config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
+                organization=organization,
+            )
+        if not enable_highlight:
+            response.remove_result_metadata_keys(["highlight_data"])
+            if not include_extracted_text:
+                response.remove_result_metadata_keys(["extracted_text"])
+        if include_extracted_text:
+            response.promote_extracted_text()
+        if include_metadata or include_metrics:
+            DeploymentHelper._enrich_result_with_usage_metadata(response)
+        if not include_metadata:
+            response.remove_inner_result_metadata()
+        if not include_metrics:
+            response.remove_result_metrics()
 
     @staticmethod
     def fetch_presigned_file(url: str) -> InMemoryUploadedFile:

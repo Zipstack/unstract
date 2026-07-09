@@ -166,10 +166,10 @@ function getCacheInfo(endpoint, params = {}) {
 }
 
 export {
-  getCached,
-  setCache,
+  CACHE_TTL,
   clearMetricsCache,
   evictExpiredCache,
+  getCached,
   getCacheInfo,
-  CACHE_TTL,
+  setCache,
 };

@@ -9,8 +9,9 @@ from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.exceptions import InvalidEncryptionKey
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -29,13 +30,21 @@ ADAPTER_ID_LENGTH = 128
 logger = logging.getLogger(__name__)
 
 
-class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def get_queryset(self) -> QuerySet[Any]:
         return super().get_queryset()
 
     def for_user(self, user: User) -> QuerySet[Any]:
         if getattr(user, "is_service_account", False):
-            return self.all()
+            return self.get_queryset().filter(is_friction_less=False)
+
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.get_queryset()
+
+        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
+
+        user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+        group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
 
         return (
             self.get_queryset()
@@ -44,6 +53,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, models.Manage
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
+                | models.Q(pk__in=group_shared_ids)
             )
             .distinct("id")
         )
@@ -135,6 +145,15 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
     description = models.TextField(blank=True, null=True, default=None)
+
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
+    # ergonomic read surface for DRF / existing callers.
+    @property
+    def shared_groups(self):
+        from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+        return get_resource_share_groups(self)
 
     objects = AdapterInstanceModelManager()
 

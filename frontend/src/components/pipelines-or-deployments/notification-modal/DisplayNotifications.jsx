@@ -42,31 +42,24 @@ function DisplayNotifications({
       key: "pipeline_id",
       align: "center",
       render: (_, record) => (
-        <>
-          <Space className="actions">
-            <Tooltip title="edit" className="cursorPointer">
-              <Button
-                type="text"
-                size="small"
-                onClick={() => handleEdit(record)}
-              >
-                <EditOutlined />
-              </Button>
-            </Tooltip>
-          </Space>
-          <Space className="actions">
-            <Tooltip title="delete" className="cursorPointer">
-              <ConfirmModal
-                handleConfirm={() => handleDelete(record?.id, record?.name)}
-                content="Are you sure you want to delete?"
-              >
-                <Button type="text" size="small">
-                  <DeleteOutlined />
-                </Button>
-              </ConfirmModal>
-            </Tooltip>
-          </Space>
-        </>
+        <Space>
+          <Tooltip title="edit" className="cursorPointer">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => handleEdit(record)}
+            />
+          </Tooltip>
+          <Tooltip title="delete" className="cursorPointer">
+            <ConfirmModal
+              handleConfirm={() => handleDelete(record?.id, record?.name)}
+              content="Are you sure you want to delete?"
+            >
+              <Button type="text" size="small" icon={<DeleteOutlined />} />
+            </ConfirmModal>
+          </Tooltip>
+        </Space>
       ),
     },
   ];
@@ -94,7 +87,7 @@ function DisplayNotifications({
           indicator: <SpinnerLoader />,
           spinning: isLoading,
         }}
-        pagination={{ pageSize: 5 }}
+        pagination={false}
       />
     </SpaceWrapper>
   );

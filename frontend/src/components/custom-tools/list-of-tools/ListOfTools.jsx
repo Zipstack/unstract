@@ -1,11 +1,12 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { groupsService } from "../../groups/groups-service.js";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
@@ -48,7 +49,7 @@ DefaultCustomButtons.propTypes = {
   handleNewProjectBtnClick: PropTypes.func.isRequired,
 };
 
-function ListOfTools() {
+function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
@@ -59,6 +60,7 @@ function ListOfTools() {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const groupsApi = groupsService();
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
@@ -69,6 +71,7 @@ function ListOfTools() {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const [allGroupList, setAllGroupList] = useState([]);
 
   useEffect(() => {
     getListOfTools();
@@ -208,7 +211,7 @@ function ListOfTools() {
       setPostHogCustomEvent("intent_new_ps_project", {
         info: "Clicked on '+ New Project' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -219,7 +222,7 @@ function ListOfTools() {
         info: "Importing project from projects list",
         file_name: file.name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -280,6 +283,13 @@ function ListOfTools() {
     };
     setIsShareLoading(true);
     getAllUsers();
+    groupsApi
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setAllGroupList(items.map((g) => ({ id: g.id, name: g.name })));
+      })
+      .catch(() => setAllGroupList([]));
     axiosPrivate(requestOptions)
       .then((res) => {
         setOpenSharePermissionModal(true);
@@ -308,6 +318,7 @@ function ListOfTools() {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
+            is_admin: user?.is_admin,
           })),
         );
       })
@@ -319,20 +330,23 @@ function ListOfTools() {
       });
   };
 
-  const onShare = (userIds, adapter, shareWithEveryone) => {
+  const onShare = (userIds, adapter, shareWithEveryone, groupIds = []) => {
     const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/share/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,
+        shared_groups: groupIds,
       },
     };
     axiosPrivate(requestOptions)
-      .then((response) => {
+      .then(() => {
+        // Close only on success; keep the modal open on failure so the user
+        // can see the rejected entries and retry.
         setOpenSharePermissionModal(false);
       })
       .catch((err) => {
@@ -359,7 +373,7 @@ function ListOfTools() {
     </div>
   );
 
-  const CustomButtonsComponent = useCallback(
+  const customButtonsElement = useMemo(
     () => (
       <DefaultCustomButtons
         setOpenImportTool={setOpenImportTool}
@@ -373,12 +387,15 @@ function ListOfTools() {
   return (
     <>
       <ToolNavBar
-        title={"Prompt Studio"}
+        title="Prompt Studio"
         enableSearch
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtonsComponent}
+        customButtons={customButtonsElement}
+        segmentOptions={segmentOptions}
+        segmentValue={segmentValue}
+        segmentFilter={onSegmentChange}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>
@@ -405,11 +422,18 @@ function ListOfTools() {
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={allUserList}
+        allGroups={allGroupList}
         onApply={onShare}
         isSharableToOrg={true}
       />
     </>
   );
 }
+
+ListOfTools.propTypes = {
+  segmentOptions: PropTypes.arrayOf(PropTypes.string),
+  segmentValue: PropTypes.string,
+  onSegmentChange: PropTypes.func,
+};
 
 export { ListOfTools };

@@ -16,6 +16,7 @@ import {
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useBackNavigation } from "../../../hooks/useBackNavigation";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
@@ -49,19 +50,9 @@ function ExecutionLogs() {
   const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
 
-  // Compute back route - use location state if available, otherwise default to logs listing
-  const backRoute = id
-    ? location.state?.from || `/${sessionDetails?.orgName}/logs`
-    : null;
-
-  // State to pass back for scroll restoration
-  const backRouteState =
-    id && location.state?.scrollToCardId
-      ? {
-          scrollToCardId: location.state.scrollToCardId,
-          cardExpanded: location.state.cardExpanded,
-        }
-      : null;
+  const handleNavigateBack = useBackNavigation(
+    `/${sessionDetails?.orgName}/logs`,
+  );
 
   const items = [
     {
@@ -164,16 +155,14 @@ function ExecutionLogs() {
     }
   };
 
-  const customButtons = () => {
-    return (
-      <Tabs
-        activeKey={activeTab}
-        items={items}
-        onChange={onChange}
-        className="log-tab"
-      />
-    );
-  };
+  const logTabs = (
+    <Tabs
+      activeKey={activeTab}
+      items={items}
+      onChange={onChange}
+      className="log-tab"
+    />
+  );
 
   useEffect(() => {
     if (!currentPath) {
@@ -220,10 +209,9 @@ function ExecutionLogs() {
     <>
       <ToolNavBar
         title={"Execution Logs"}
-        CustomButtons={customButtons}
+        customButtons={logTabs}
         enableSearch={false}
-        previousRoute={backRoute}
-        previousRouteState={backRouteState}
+        onNavigateBack={id ? handleNavigateBack : undefined}
       />
       <div className="file-log-layout">
         {id ? (

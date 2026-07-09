@@ -1,0 +1,53 @@
+{
+  "title": "OpenAI Compatible Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "model",
+    "api_base"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: compatible-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "description": "The embedding model name expected by your OpenAI-compatible endpoint. Examples: text-embedding-3-small, BAAI/bge-m3, nomic-embed-text"
+    },
+    "api_key": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "title": "API Key",
+      "format": "password",
+      "description": "API key for your OpenAI-compatible endpoint. Leave empty if the endpoint does not require one."
+    },
+    "api_base": {
+      "type": "string",
+      "format": "uri",
+      "title": "API Base",
+      "description": "Base URL for the OpenAI-compatible embeddings endpoint. Examples: https://gateway.example.com/v1, https://llm.example.net/openai/v1"
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 3,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Timeout in seconds"
+    }
+  }
+}

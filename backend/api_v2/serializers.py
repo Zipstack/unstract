@@ -8,6 +8,7 @@ from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from rest_framework import serializers
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -22,6 +23,7 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -34,9 +36,21 @@ from backend.serializers import AuditSerializer
 
 
 class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
+    # ``shared_groups`` is no longer an M2M on APIDeployment — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
     class Meta:
         model = APIDeployment
         fields = "__all__"
+        # IntegrityErrorMixin owns uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the mixin can map a friendly message.
+        validators = []
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
@@ -210,6 +224,9 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 If -1 it corresponds to async execution. Defaults to -1
             include_metadata (bool): Flag to include metadata in API response
             include_metrics (bool): Flag to include metrics in API response
+            include_extracted_text (bool): Flag to include the full extracted text
+                of the input file in the API response. The extracted text is returned
+                at the top level of each file result, independent of include_metadata.
             use_file_history (bool): Flag to use FileHistory to save and retrieve
                 responses quickly. This is undocumented to the user and can be
                 helpful for demos.
@@ -232,6 +249,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     )
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
 
     presigned_urls = ListField(child=URLField(), required=False)
@@ -413,6 +431,7 @@ class ExecutionQuerySerializer(Serializer):
     execution_id = CharField(required=True)
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
 
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
@@ -516,14 +535,22 @@ class APIExecutionResponseSerializer(Serializer):
 
 
 class SharedUserListSerializer(ModelSerializer):
-    """Serializer for returning API deployment with shared user details."""
+    """Serializer for returning API deployment with shared user + group details."""
 
     shared_users = SerializerMethodField()
+    shared_groups = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
-        fields = ["id", "display_name", "shared_users", "shared_to_org", "created_by"]
+        fields = [
+            "id",
+            "display_name",
+            "shared_users",
+            "shared_to_org",
+            "shared_groups",
+            "created_by",
+        ]
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
@@ -531,6 +558,9 @@ class SharedUserListSerializer(ModelSerializer):
             {"id": user.id, "email": user.email}
             for user in obj.shared_users.filter(is_service_account=False)
         ]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
     def get_created_by(self, obj):
         """Return creator details."""

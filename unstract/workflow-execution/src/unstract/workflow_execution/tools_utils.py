@@ -44,8 +44,6 @@ class ToolsUtils:
         self.platform_service_port = ToolsUtils.get_env(
             ToolRV.PLATFORM_PORT, raise_exception=True
         )
-        self.prompt_host = ToolsUtils.get_env(ToolRV.PROMPT_HOST, raise_exception=True)
-        self.prompt_port = ToolsUtils.get_env(ToolRV.PROMPT_PORT, raise_exception=True)
         self.x2text_host = ToolsUtils.get_env(ToolRV.X2TEXT_HOST, raise_exception=True)
         self.x2text_port = ToolsUtils.get_env(ToolRV.X2TEXT_PORT, raise_exception=True)
         self.llmw_poll_interval = ToolsUtils.get_env(
@@ -232,8 +230,6 @@ class ToolsUtils:
             ToolRV.PLATFORM_HOST: self.platform_service_host,
             ToolRV.PLATFORM_PORT: self.platform_service_port,
             ToolRV.PLATFORM_SERVICE_API_KEY: self.platform_service_api_key,
-            ToolRV.PROMPT_HOST: self.prompt_host,
-            ToolRV.PROMPT_PORT: self.prompt_port,
             ToolRV.X2TEXT_HOST: self.x2text_host,
             ToolRV.X2TEXT_PORT: self.x2text_port,
             ToolRV.EXECUTION_BY_TOOL: True,

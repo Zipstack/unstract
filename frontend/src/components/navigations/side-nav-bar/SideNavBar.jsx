@@ -89,6 +89,12 @@ try {
   // Plugin unavailable
 }
 
+let lookupStudioEnabled = false;
+try {
+  await import("../../../plugins/lookup-studio");
+  lookupStudioEnabled = true;
+} catch {}
+
 let manualReviewSettingsEnabled = false;
 try {
   await import("../../../plugins/manual-review/settings/Settings.jsx");
@@ -122,9 +128,18 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
     label: "User Management",
     path: `/${orgName}/users`,
   },
+  ...(isAdmin
+    ? [
+        {
+          key: "groups",
+          label: "Groups",
+          path: `/${orgName}/groups`,
+        },
+      ]
+    : []),
   {
     key: "triad",
-    label: "Default Triad",
+    label: "Default LLM Profile",
     path: `/${orgName}/settings/triad`,
   },
   ...(manualReviewSettingsEnabled
@@ -151,6 +166,9 @@ const getActiveSettingsKey = () => {
   }
   if (currentPath.includes("/users")) {
     return "users";
+  }
+  if (currentPath.includes("/groups")) {
+    return "groups";
   }
   if (currentPath.includes("/settings/triad")) {
     return "triad";
@@ -469,7 +487,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
               `/${orgName}/settings/global-api-deployment-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
-            globalThis.location.pathname === `/${orgName}/users`,
+            globalThis.location.pathname === `/${orgName}/users` ||
+            globalThis.location.pathname === `/${orgName}/groups`,
         },
       ],
     },
@@ -514,6 +533,19 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       ),
       tag: "BETA",
     });
+  }
+
+  // Keep Prompt Studio highlighted on /lookups. Replace, don't mutate —
+  // `data` may alias the `menu` prop.
+  if (lookupStudioEnabled && isUnstract && data[0]?.subMenu) {
+    const onLookupPath = globalThis.location.pathname.startsWith(
+      `/${orgName}/lookups`,
+    );
+    if (onLookupPath) {
+      data[0].subMenu = data[0].subMenu.map((el) =>
+        el.id === 1.1 ? { ...el, active: true } : el,
+      );
+    }
   }
 
   // Add HITL Review section if plugin is available and user has HITL role

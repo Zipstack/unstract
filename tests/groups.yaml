@@ -1,0 +1,188 @@
+# Unstract test rig — group definitions.
+#
+# Each group is the unit of selection. A group's `paths` are passed to pytest
+# (or another runner). `depends_on` is expanded transitively before execution.
+#
+# Add new groups by appending to this file. Validate with:
+#   python -m tests.rig validate
+#   python -m tests.rig list-groups
+#   python -m tests.rig expand <group>
+version: 1
+
+defaults:
+  timeout_seconds: 600
+  parallel: true
+  runner: pytest
+
+groups:
+  # ── Unit tier: pure pytest, no external services ───────────────────────────
+  unit-rig:
+    # Self-tests for the rig's pure logic (dep-graph, evaluate, junit parse).
+    # Run from the repo root so the `tests.rig` package import resolves.
+    tier: unit
+    workdir: .
+    paths: [tests/rig/tests]
+    coverage_source: tests/rig
+
+  unit-sdk1:
+    tier: unit
+    workdir: unstract/sdk1
+    paths: [tests]
+    markers: "not slow and not integration"
+    uv_sync_group: test
+    coverage_source: src/unstract/sdk1
+
+  unit-platform-service:
+    tier: unit
+    workdir: platform-service
+    paths: [tests]
+    uv_sync_group: test
+    coverage_source: src
+    optional: true   # service has only a couple of tests today
+
+  unit-workers:
+    tier: unit
+    workdir: workers
+    paths: [tests, shared/tests]
+    markers: "unit"
+    uv_sync_group: test
+    coverage_source: shared
+
+  unit-backend:
+    tier: unit
+    workdir: backend
+    # Pure backend tests — no DB. Collect the whole tree and let markers, not a
+    # hand-kept file list, decide membership: tests needing live infra carry
+    # `@pytest.mark.integration` (see integration-backend) and are excluded here.
+    paths: ["."]
+    markers: "not integration"
+    uv_sync_group: test
+    # Anchored: integration-backend reuses the identical Django settings env so
+    # the two halves of the backend suite can't drift apart.
+    env: &backend_test_env
+      DJANGO_SETTINGS_MODULE: backend.settings.test
+      # Tenancy is row-level, not schema-per-tenant; tests run in public.
+      DB_SCHEMA: public
+      # base.py resolves these at import time with no default; supply test-safe
+      # values here.
+      DJANGO_SECRET_KEY: test-secret-key-not-for-production
+      # All-zero Fernet key: valid format, obviously a placeholder.
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CELERY_BROKER_BASE_URL: redis://localhost:6379
+      CELERY_BROKER_USER: guest
+      CELERY_BROKER_PASS: guest
+      INDEXING_FLAG_TTL: "3600"
+      ENABLE_LOG_HISTORY: "False"
+      STRUCTURE_TOOL_IMAGE_URL: docker:test
+      STRUCTURE_TOOL_IMAGE_NAME: test-structure-tool
+      STRUCTURE_TOOL_IMAGE_TAG: test
+      SYSTEM_ADMIN_USERNAME: admin
+      SYSTEM_ADMIN_PASSWORD: admin
+      SYSTEM_ADMIN_EMAIL: admin@example.com
+      # ExecutionFileHandler builds execution-dir paths from this at init; only
+      # constructed, never written to in these tests.
+      WORKFLOW_EXECUTION_DIR_PREFIX: /tmp/unstract-workflow-exec
+    coverage_source: .
+
+  unit-connectors:
+    tier: unit
+    workdir: unstract/connectors
+    paths: [tests]
+    # Pure connector tests only. Credential / live-infra tests are marked
+    # `@pytest.mark.integration` and run in `integration-connectors`.
+    markers: "not integration"
+    uv_sync_group: test
+    coverage_source: src
+
+  unit-core:
+    tier: unit
+    workdir: unstract/core
+    paths: [tests]
+    # No `test` uv group in unstract/core today; rig still injects pytest plugins.
+    install_editable: true
+    coverage_source: src
+
+  # ── Integration tier: needs infra but not full platform ────────────────────
+  integration-backend:
+    tier: integration
+    workdir: backend
+    # Backend ORM tests — need live infra. The rig provisions the declared
+    # requires_services via testcontainers and injects their connection env into
+    # pytest (tests/rig/cli.py:_inject_infra_env). Not optional: these gate the
+    # integration tier.
+    # Marker-only selection — exact complement of unit-backend: conftest.py
+    # auto-marks DB-bound tests `integration`, so new DB tests join this
+    # group with no edit here. Tests needing external creds skip without them.
+    paths: ["."]
+    markers: "integration"
+    uv_sync_group: test
+    env: *backend_test_env
+    requires_services: [postgres, redis]
+    coverage_source: .
+
+  integration-connectors:
+    tier: integration
+    workdir: unstract/connectors
+    paths: [tests]
+    markers: "integration"
+    # Most connector integration tests need real third-party credentials
+    # (Snowflake, GDrive, Box, Dropbox, …) and skip when those are absent. The
+    # MinIO test actually runs: the rig provisions MinIO via testcontainers and
+    # injects MINIO_* creds (tests/rig/cli.py).
+    requires_services: [minio]
+    uv_sync_group: test
+    coverage_source: src
+
+  integration-workflow-execution:
+    tier: integration
+    paths: [tests/integration/workflow_execution]
+    requires_services: [postgres, redis, minio]
+    depends_on: [unit-sdk1, unit-workers]
+    optional: true   # placeholder until tests are authored
+
+  # ── E2E tier: real HTTP against running platform ───────────────────────────
+  # Every group below has `requires_platform: true` and must (transitively)
+  # depend on `e2e-smoke` — the rig's `_validate_platform_groups_depend_on_gate`
+  # enforces this structural invariant so the manifest can't ship a platform
+  # test that bypasses the smoke gate, and so smoke runs first in topo order.
+  # (Runtime skip-on-gate-failure is a future enhancement; see that function's
+  # docstring and the TODO in cmd_run.)
+  e2e-smoke:
+    tier: e2e
+    paths: [tests/e2e/smoke]
+    requires_platform: true
+    critical: true
+    timeout_seconds: 1200
+    depends_on: [unit-sdk1, unit-workers]
+
+  e2e-workflow:
+    tier: e2e
+    paths: [tests/e2e/workflows]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+    optional: true
+
+  e2e-api-deployment:
+    tier: e2e
+    paths: [tests/e2e/api_deployment]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+    optional: true
+
+  e2e-prompt-studio:
+    tier: e2e
+    paths: [tests/e2e/prompt_studio]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+    optional: true
+
+  e2e-hurl:
+    tier: e2e
+    runner: hurl
+    paths: [tests/e2e/hurl]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    optional: true

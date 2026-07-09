@@ -168,7 +168,42 @@ class FileStorage(FileStorageInterface):
         Returns:
             NA
         """
-        return self.fs.rm(path=path, recursive=recursive)
+        try:
+            return self.fs.rm(path=path, recursive=recursive)
+        except Exception as e:
+            if "MissingContentMD5" in str(e) and recursive:
+                logger.warning(
+                    "Bulk delete failed with MissingContentMD5 for path: %s. "
+                    "Falling back to individual file deletion.",
+                    path,
+                )
+                self._rm_files_individually(path)
+            else:
+                raise
+
+    def _rm_files_individually(self, path: str) -> None:
+        """Fallback deletion: delete files one at a time.
+
+        Used when bulk S3 ``DeleteObjects`` fails (e.g., ``MissingContentMD5``
+        with MinIO 2024-12-18+ and other S3-compatible providers).
+
+        ``self.fs.rm()`` — even with ``recursive=False`` for a single path —
+        routes through ``s3fs._rm`` → ``_bulk_delete`` → ``DeleteObjects``,
+        which is exactly what failed upstream. Using ``rm_file()`` instead
+        dispatches to ``s3fs._rm_file`` → singular ``DeleteObject``, which
+        does not require ``Content-MD5``.
+        """
+        files = self.fs.find(path)
+        for file_path in files:
+            try:
+                self.fs.rm_file(file_path)
+            except Exception as e:
+                logger.warning("Failed to delete %s: %s", file_path, e)
+        # Best-effort cleanup of any remaining "directory" prefix
+        try:
+            self.fs.rmdir(path)
+        except Exception:
+            pass  # Directory prefix may already be gone
 
     @skip_local_cache
     def cp(

@@ -1,6 +1,18 @@
 {
   "title": "Bedrock LLM",
   "type": "object",
+  "ui:order": [
+    "adapter_name",
+    "model",
+    "model_id",
+    "auth_type",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_bearer_token",
+    "aws_profile_name",
+    "region_name",
+    "*"
+  ],
   "required": [
     "region_name",
     "model",
@@ -19,32 +31,62 @@
       "default": "amazon.titan-text-express-v1",
       "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
     },
-    "aws_access_key_id": {
+    "model_id": {
       "type": "string",
-      "title": "AWS Access Key ID",
-      "description": "Provide your AWS Access Key ID. Leave empty if using AWS Profile or IAM role.",
-      "format": "password"
+      "title": "Application Inference Profile ARN",
+      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
     },
-    "aws_secret_access_key": {
+    "auth_type": {
       "type": "string",
-      "title": "AWS Secret Access Key",
-      "description": "Provide your AWS Secret Access Key. Leave empty if using AWS Profile or IAM role.",
-      "format": "password"
-    },
-    "region_name": {
-      "type": "string",
-      "title": "AWS Region Name",
-      "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
+      "title": "Authentication Type",
+      "enum": [
+        "access_keys",
+        "iam_role",
+        "bearer_token"
+      ],
+      "enumNames": [
+        "Access Keys",
+        "IAM Role / Instance Profile (on-prem AWS only)",
+        "Bedrock API Key (Bearer Token)"
+      ],
+      "default": "access_keys",
+      "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. Choose **Bedrock API Key (Bearer Token)** to authenticate with an AWS Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). The token is region-scoped — ensure the AWS Region below matches the key's region."
     },
     "aws_profile_name": {
       "type": "string",
       "title": "AWS Profile Name",
       "description": "AWS SSO profile name for authentication. Use this instead of access keys when using AWS SSO. Example: dev-profile"
     },
-    "model_id": {
+    "region_name": {
       "type": "string",
-      "title": "Application Inference Profile ARN",
-      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
+      "title": "AWS Region Name",
+      "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Extended Thinking",
+      "default": false,
+      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+    },
+    "guardrail_identifier": {
+      "type": "string",
+      "title": "Bedrock Guardrail Identifier",
+      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable."
+    },
+    "guardrail_version": {
+      "type": "string",
+      "title": "Bedrock Guardrail Version",
+      "description": "Version of the guardrail to apply. Use `DRAFT` for the working draft or a numeric version like `1`. Required when `Bedrock Guardrail Identifier` is set."
+    },
+    "guardrail_trace": {
+      "type": "string",
+      "title": "Bedrock Guardrail Trace",
+      "enum": [
+        "enabled",
+        "disabled"
+      ],
+      "default": "disabled",
+      "description": "Enable to include guardrail trace info in the response (useful for debugging which rule was triggered)."
     },
     "max_tokens": {
       "type": "number",
@@ -69,12 +111,65 @@
       "title": "Timeout",
       "default": 900,
       "description": "Timeout in seconds"
-    },
-    "enable_thinking": {
-      "type": "boolean",
-      "title": "Enable Extended Thinking",
-      "default": false,
-      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+    }
+  },
+  "dependencies": {
+    "auth_type": {
+      "oneOf": [
+        {
+          "properties": {
+            "auth_type": {
+              "enum": [
+                "access_keys"
+              ]
+            },
+            "aws_access_key_id": {
+              "type": "string",
+              "title": "AWS Access Key ID",
+              "description": "Provide your AWS Access Key ID.",
+              "format": "password"
+            },
+            "aws_secret_access_key": {
+              "type": "string",
+              "title": "AWS Secret Access Key",
+              "description": "Provide your AWS Secret Access Key.",
+              "format": "password"
+            }
+          },
+          "required": [
+            "aws_access_key_id",
+            "aws_secret_access_key"
+          ]
+        },
+        {
+          "properties": {
+            "auth_type": {
+              "enum": [
+                "iam_role"
+              ]
+            }
+          }
+        },
+        {
+          "properties": {
+            "auth_type": {
+              "enum": [
+                "bearer_token"
+              ]
+            },
+            "aws_bearer_token": {
+              "type": "string",
+              "title": "Bedrock API Key",
+              "description": "Paste the Bedrock API key (bearer token) issued for your AWS account. See AWS docs on `AWS_BEARER_TOKEN_BEDROCK`.",
+              "format": "password",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "aws_bearer_token"
+          ]
+        }
+      ]
     }
   },
   "allOf": [
@@ -111,6 +206,24 @@
       },
       "then": {
         "properties": {}
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "guardrail_identifier": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "guardrail_identifier"
+        ]
+      },
+      "then": {
+        "required": [
+          "guardrail_version"
+        ]
       }
     }
   ]
