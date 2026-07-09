@@ -77,12 +77,15 @@ jobs:
       - name: Run e2e tier (rig boots the platform via compose)
         env:
           UNSTRACT_E2E_RUNTIME: compose
+        # Gap check on PRs too: main is kept gap-free and PRs test the merge
+        # ref, so an in-scope gap here is PR-introduced. --update-baseline is
+        # main-only — a PR must not write main's regression baseline.
         run: |
+          flags="--fail-on-critical-gap"
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e e2e -- --fail-on-critical-gap --update-baseline
-          else
-            tox -e e2e
+            flags="$flags --update-baseline"
           fi
+          tox -e e2e -- $flags
 
       - name: Capture docker compose logs on failure
         if: failure()
