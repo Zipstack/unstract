@@ -56,7 +56,12 @@ def authed_session(platform: PlatformEndpoints) -> requests.Session:
     # the following POST needs both as a cookie and echoed in the CSRF header.
     orgs = session.get(f"{base}/api/v1/organization", timeout=10)
     orgs.raise_for_status()
-    org_id = orgs.json()["organizations"][0]["id"]
+    org_list = orgs.json().get("organizations", [])
+    assert org_list, (
+        f"no organizations returned by /api/v1/organization — is seed data "
+        f"loaded? response: {orgs.text}"
+    )
+    org_id = org_list[0]["id"]
     resp = session.post(
         f"{base}/api/v1/organization/{org_id}/set",
         headers={"X-CSRFToken": session.cookies.get("csrftoken", "")},
