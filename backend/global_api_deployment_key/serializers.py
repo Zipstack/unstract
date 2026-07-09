@@ -23,7 +23,7 @@ def _validate_deployment_scope(allow_all, deployments):
         raise serializers.ValidationError(
             {
                 "api_deployments": (
-                    "Select at least one deployment or enable " "'allow all deployments'."
+                    "Select at least one deployment or enable 'allow all deployments'."
                 )
             }
         )
