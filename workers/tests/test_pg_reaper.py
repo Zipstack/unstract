@@ -31,6 +31,7 @@ from queue_backend.pg_queue.reaper import (
     dedup_retention_from_env,
     reaper_interval_from_env,
     reaper_sweep_interval_from_env,
+    rearm_expired_claims,
     recover_expired_barriers,
     sweep_expired_results,
     sweep_orphan_claims,
@@ -337,6 +338,77 @@ class TestSchedulerTick:
         assert reaper._sweep_conn is None  # discarded
 
 
+class TestQueueRearmTick:
+    """UN-3445: the leader (and only the leader) re-arms expired queue claims each
+    cycle, after barrier recovery and before schedule dispatch. Re-arm SQL is in
+    TestRetentionSweepSql; here we assert the wiring, gating, metric guard, and
+    error posture (the autouse ``stub_queue_rearm`` patches the helper).
+    """
+
+    def _reaper(self, lease):
+        return PgReaper(
+            lease, interval_seconds=0.01, sweep_conn=object(), api_client=object()
+        )
+
+    def test_leader_runs_rearm(self, stub_queue_rearm):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            reaper.tick()
+        stub_queue_rearm.assert_called_once()
+
+    def test_standby_does_not_rearm(self, stub_queue_rearm):
+        reaper = self._reaper(_FakeLease(acquires=False))
+        with patch.object(reaper_mod, "recover_expired_barriers"):
+            reaper.tick()
+        stub_queue_rearm.assert_not_called()
+
+    def test_rearm_runs_after_recovery_before_schedule(
+        self, stub_queue_rearm, stub_scheduler_tick
+    ):
+        # Ordering: recovery (safety net) → re-arm (redelivery) → schedule dispatch.
+        order = []
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_queue_rearm.side_effect = lambda *_: order.append("rearm") or 0
+        stub_scheduler_tick.side_effect = lambda *_: order.append("schedule")
+        with patch.object(
+            reaper_mod,
+            "recover_expired_barriers",
+            side_effect=lambda *_, **__: order.append("recover") or [],
+        ):
+            reaper.tick()
+        assert order == ["recover", "rearm", "schedule"]
+
+    def test_metric_incremented_only_when_nonzero(self, stub_queue_rearm):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        counter = reaper.metrics.queue_rearmed
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            stub_queue_rearm.return_value = 0  # nothing crashed
+            reaper.tick()
+            assert counter._value.get() == 0  # guarded by `if rearmed:`
+            stub_queue_rearm.return_value = 3  # three crashed claims re-armed
+            reaper.tick()
+            assert counter._value.get() == 3
+
+    def test_rearm_error_discards_conn_and_counts_failure(self, stub_queue_rearm):
+        # A re-arm DB error must propagate (run() catches + continues), discard the
+        # owned sweep conn (same posture as recovery/scheduler), and bump the
+        # DEDICATED failure counter so a redelivery outage is distinguishable.
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=0.01,
+            api_client=object(),
+        )
+        owned = MagicMock()
+        owned.closed = False  # so _get_sweep_conn returns it, doesn't reconnect
+        reaper._sweep_conn = owned
+        stub_queue_rearm.side_effect = psycopg2.OperationalError("db gone")
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            with pytest.raises(psycopg2.OperationalError):
+                reaper.tick()
+        assert reaper._sweep_conn is None  # discarded
+        assert reaper.metrics.queue_rearm_failures._value.get() == 1
+
+
 class TestRetentionSweepSql:
     """The sweep helpers' SQL contract (mock cursor, no DB). These call the real
     helpers (imported at module load), unaffected by the autouse stub which patches
@@ -370,13 +442,26 @@ class TestRetentionSweepSql:
         assert args[1] == (999,)  # the retention param is bound, not interpolated
         conn.commit.assert_called_once()
 
+    def test_rearm_expired_claims_sql(self):
+        # UN-3445 crash-redelivery helper — same SQL-contract coverage as the
+        # sibling sweeps (its integration test is Postgres-gated).
+        conn, cur = self._conn_cur(2)
+        assert rearm_expired_claims(conn) == 2
+        sql = cur.execute.call_args[0][0]
+        assert f"UPDATE {qualified('pg_queue_message')}" in sql
+        # sources the state literals from the shared enum, not bare strings
+        assert "SET state = 'ready'" in sql
+        assert "WHERE state = 'claimed' AND vt <= now()" in sql
+        conn.commit.assert_called_once()
+
     @pytest.mark.parametrize(
         "sweep",
         [
             lambda conn: sweep_expired_results(conn),
             lambda conn: sweep_orphan_dedup(conn, 60),
+            lambda conn: rearm_expired_claims(conn),
         ],
-        ids=["expired_results", "orphan_dedup"],
+        ids=["expired_results", "orphan_dedup", "rearm_claims"],
     )
     def test_sweep_rolls_back_on_error(self, sweep):
         # Both helpers have their own try/except/rollback — exercise each.

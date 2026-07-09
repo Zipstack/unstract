@@ -63,7 +63,7 @@ import time
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Final, Literal, NamedTuple, Protocol, TypeVar
 
-from unstract.core.data_models import ExecutionStatus
+from unstract.core.data_models import ExecutionStatus, QueueMessageState
 
 from ..barrier import barrier_stuck_timeout_seconds
 from .connection import create_pg_connection
@@ -296,14 +296,16 @@ def rearm_expired_claims(conn: PgConnection) -> int:
     index (state='claimed' only, ~concurrency rows) scopes the scan; redelivered
     work is absorbed by the unchanged idempotency stack (claim_batch /
     FileHistory / _callback_already_ran), exactly as an old-design vt-expiry re-run
-    was. Idempotent; rolls back on error. Runs EVERY tick (redelivery cadence),
-    not the retention sweep — see PgReaper.tick.
+    was. Idempotent; rolls back on error. Runs every **leader** tick (redelivery
+    cadence — a standby returns before this), not the retention sweep; see
+    PgReaper.tick for the ordering/placement.
     """
+    ready, claimed = QueueMessageState.READY.value, QueueMessageState.CLAIMED.value
     try:
         with conn.cursor() as cur:
             cur.execute(
                 f"UPDATE {qualified('pg_queue_message')} "
-                "SET state = 'ready' WHERE state = 'claimed' AND vt <= now()"
+                f"SET state = '{ready}' WHERE state = '{claimed}' AND vt <= now()"
             )
             rearmed = cur.rowcount
         conn.commit()
@@ -1086,11 +1088,15 @@ class PgReaper:
             self._discard_owned_sweep_conn()
             raise
         # Crash-redelivery (UN-3445): re-arm queue messages whose owning worker
-        # died (state='claimed', vt expired) back to 'ready'. Runs EVERY tick (the
-        # redelivery cadence), like barrier recovery above and NOT the retention
-        # sweep — a crashed batch must not wait the 5-min sweep interval. Cheap
-        # (partial claimed-index scoped). Best-effort within the tick's own
-        # discard-conn-on-error guard.
+        # died (state='claimed', vt expired) back to 'ready'. Runs EVERY leader tick
+        # (the redelivery cadence), like barrier recovery above and NOT the
+        # retention sweep — a crashed batch must not wait the 5-min sweep interval.
+        # Cheap (partial claimed-index scoped). On failure it increments a DEDICATED
+        # counter (so a persistent redelivery outage is distinguishable from a
+        # barrier/scheduler fault) then re-raises + discards the conn — SAME
+        # semantics as barrier recovery above (recovery work is critical, not
+        # swallow-and-continue like the retention sweeps). A re-arm fault therefore
+        # also defers this tick's schedule dispatch; both recover next tick.
         try:
             rearmed = rearm_expired_claims(self._get_sweep_conn())
             if rearmed:
@@ -1101,6 +1107,12 @@ class PgReaper:
                     rearmed,
                 )
         except Exception:
+            self._metrics.queue_rearm_failures.inc()
+            logger.error(
+                "Reaper: re-arm sweep failed — crashed-worker queue redelivery "
+                "is stalled this tick (see pg_reaper_queue_rearm_failures_total)",
+                exc_info=True,
+            )
             self._discard_owned_sweep_conn()
             raise
         # Orchestrator's second job: fire due PG-owned schedules (Beat

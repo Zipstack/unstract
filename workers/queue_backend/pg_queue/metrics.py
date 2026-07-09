@@ -245,6 +245,13 @@ class ReaperMetrics(_Exporter):
             "implicit vt-expiry self-heal)",
             registry=self.registry,
         )
+        self.queue_rearm_failures = Counter(
+            "pg_reaper_queue_rearm_failures_total",
+            "Re-arm sweep attempts that raised (crashed-worker redelivery stalled "
+            "this tick; distinguishes a redelivery outage from barrier/scheduler "
+            "faults that share pg_reaper_tick_failures_total)",
+            registry=self.registry,
+        )
         self.claim_recovered = Counter(
             "pg_reaper_claim_recovered_total",
             "Orphan orchestration claims recovered (crash-window execution "

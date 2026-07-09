@@ -273,6 +273,28 @@ class WorkloadType(StrEnum):
     NON_API = "non_api"
 
 
+class QueueMessageState(StrEnum):
+    """Claim state of a ``pg_queue_message`` row (UN-3445 scan-past fix).
+
+    Single source of truth for the closed enum, shared across the two codebases
+    that can't import each other: the backend model (default + CheckConstraint +
+    the two partial-index conditions) and the workers' raw SQL (the claim in
+    ``pg_queue.client`` and the reaper re-arm in ``pg_queue.reaper``). A typo in
+    any one of those bare literals would silently break the state machine (e.g. a
+    mistyped re-arm no-ops → crashed work never redelivers), so every site sources
+    the string from here. A drift test asserts the DB CheckConstraint matches this
+    set, mirroring the ``priority`` (fairness) precedent. ``str`` Enum → serialises
+    to its value and compares equal to the bare string.
+
+    - ``READY``   — claimable: the dequeue's partial claim index holds only these.
+    - ``CLAIMED`` — in-flight: a consumer holds it, ``vt`` is its renewable lease;
+      re-armed back to ``READY`` by the reaper when the lease expires (crash).
+    """
+
+    READY = "ready"
+    CLAIMED = "claimed"
+
+
 # Fairness L3 priority bounds (1..10, higher = claimed sooner). Single source of
 # truth shared by the backend producer and the workers' fairness/queue client —
 # the DB CheckConstraint on pg_queue_message.priority is the writer-proof backstop.

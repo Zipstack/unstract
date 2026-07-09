@@ -34,6 +34,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
+from unstract.core.data_models import QueueMessageState
+
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import create_pg_connection
@@ -43,6 +45,12 @@ if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
 
 logger = logging.getLogger(__name__)
+
+# Claim-state literals sourced from the shared enum (single source of truth with
+# the backend model + reaper) so a typo in the hot-path SQL can't silently break
+# the state machine. Interpolated as trusted constants, never user input.
+_READY = QueueMessageState.READY.value
+_CLAIMED = QueueMessageState.CLAIMED.value
 
 
 # ``_CONN_DEAD_ERRORS`` (the "is this a connection death?" test, shared by
@@ -88,7 +96,8 @@ logger = logging.getLogger(__name__)
 # collapsed throughput at high concurrency). A crashed worker's row stays
 # ``state='claimed'`` with an expired vt until the reaper's re-arm flips it back to
 # ``ready`` (reaper.rearm_expired_claims); vt remains unindexed so lease renewal
-# (set_vt) stays HOT.
+# (set_vt) stays HOT-eligible (actual HOT also needs heap-page free space —
+# fillfactor < 100; see migration 0014's tuning note).
 def _dequeue_sql() -> str:
     """Build the atomic-claim SQL, schema-qualifying ``pg_queue_message``.
 
@@ -104,13 +113,13 @@ WITH locked AS (
     SELECT msg_id
       FROM {msg}
      WHERE queue_name = %s
-       AND state = 'ready'
+       AND state = '{_READY}'
      ORDER BY priority DESC, msg_id
        FOR UPDATE SKIP LOCKED
      LIMIT %s
 ), claimed AS (
     UPDATE {msg} q
-       SET state = 'claimed',
+       SET state = '{_CLAIMED}',
            vt = now() + make_interval(secs => %s),
            read_ct = read_ct + 1
       FROM locked
@@ -153,7 +162,7 @@ def insert_message_sql() -> str:
     return (
         f"INSERT INTO {qualified('pg_queue_message')} "
         "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct, state) "
-        "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0, 'ready')"
+        f"VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0, '{_READY}')"
     )
 
 

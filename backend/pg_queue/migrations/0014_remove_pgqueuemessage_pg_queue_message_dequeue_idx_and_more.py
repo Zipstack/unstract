@@ -18,15 +18,28 @@ class Migration(migrations.Migration):
             name="state",
             field=models.TextField(default="ready"),
         ),
-        # Django's AddField backfills existing rows to 'ready' then DROPs the DB
-        # default (it manages defaults at the ORM layer). Re-add a DB-level default
-        # so the schema is self-protecting: any writer that omits `state` — a future
-        # raw INSERT, an ORM .create() — still lands a valid 'ready' row rather than
-        # a NOT-NULL violation. insert_message_sql() sets it explicitly too (belt +
-        # suspenders). Metadata-only; touches no row data.
+        # Django's AddField backfills every existing row to 'ready' then DROPs the
+        # DB default (it manages defaults at the ORM layer). Re-add a DB-level
+        # default so the schema is self-protecting: a raw INSERT that omits `state`
+        # still lands a valid 'ready' row rather than a NOT-NULL violation.
+        # (The ORM always sends state='ready' via the field default, so this guards
+        # only raw SQL; insert_message_sql() also sets it explicitly — belt +
+        # suspenders.) Metadata-only; touches no row data.
         migrations.RunSQL(
             sql="ALTER TABLE pg_queue_message ALTER COLUMN state SET DEFAULT 'ready'",
             reverse_sql="ALTER TABLE pg_queue_message ALTER COLUMN state DROP DEFAULT",
+        ),
+        # Deploy-safety backfill: the new claim keys off `state` and ignores `vt`,
+        # but AddField set EVERY pre-existing row (including claimed-but-unacked
+        # in-flight rows, which carry a future `vt`) to 'ready'. Without this, a
+        # rolling deploy over a non-empty queue would make a still-processing
+        # message instantly re-claimable → one-time double processing (absorbed by
+        # the idempotency stack, but avoidable). Land genuinely in-flight rows as
+        # 'claimed' so they stay invisible until their lease expires. No-op at the
+        # first enablement (the queue table is empty while the flag is off).
+        migrations.RunSQL(
+            sql="UPDATE pg_queue_message SET state = 'claimed' WHERE vt > now()",
+            reverse_sql=migrations.RunSQL.noop,
         ),
         migrations.AddIndex(
             model_name="pgqueuemessage",
