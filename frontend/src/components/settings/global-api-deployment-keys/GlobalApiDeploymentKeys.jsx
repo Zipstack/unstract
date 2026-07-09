@@ -34,9 +34,9 @@ import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 import "../platform/PlatformSettings.css";
 import "./GlobalApiDeploymentKeys.css";
 
-const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:()/]+$/;
+const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:'()/]+$/;
 const SAFE_TEXT_MESSAGE =
-  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, parentheses, and forward slashes are allowed.";
+  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, apostrophes, parentheses, and forward slashes are allowed.";
 
 function DeploymentScopeFields({ form, deployments }) {
   const allowAll = Form.useWatch("allow_all_deployments", form);

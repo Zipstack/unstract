@@ -64,7 +64,15 @@ class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         organization = UserContext.get_organization()
-        self.fields["api_deployments"].queryset = APIDeployment.objects.filter(
+        # For a many=True relation DRF validates incoming PKs against the
+        # *child* relation's queryset. Setting ``.queryset`` on the
+        # ManyRelatedField wrapper has no effect, leaving validation against the
+        # declared ``APIDeployment.objects.none()`` — which rejects every
+        # deployment ("Invalid pk ... object does not exist"). Scope the child
+        # relation's queryset so same-org deployments are accepted.
+        self.fields[
+            "api_deployments"
+        ].child_relation.queryset = APIDeployment.objects.filter(
             organization=organization
         )
 
@@ -91,7 +99,15 @@ class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         organization = UserContext.get_organization()
-        self.fields["api_deployments"].queryset = APIDeployment.objects.filter(
+        # For a many=True relation DRF validates incoming PKs against the
+        # *child* relation's queryset. Setting ``.queryset`` on the
+        # ManyRelatedField wrapper has no effect, leaving validation against the
+        # declared ``APIDeployment.objects.none()`` — which rejects every
+        # deployment ("Invalid pk ... object does not exist"). Scope the child
+        # relation's queryset so same-org deployments are accepted.
+        self.fields[
+            "api_deployments"
+        ].child_relation.queryset = APIDeployment.objects.filter(
             organization=organization
         )
 

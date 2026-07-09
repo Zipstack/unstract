@@ -27,12 +27,9 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         ).prefetch_related("api_deployments")
 
     def get_serializer_class(self):
-        if self.action == "list":
-            return GlobalApiDeploymentKeyListSerializer
-        if self.action == "create":
-            return GlobalApiDeploymentKeyCreateSerializer
-        if self.action == "partial_update":
-            return GlobalApiDeploymentKeyUpdateSerializer
+        # create/retrieve/partial_update/destroy/rotate are overridden and
+        # instantiate their serializers directly, so only ``list`` (and DRF's
+        # default fallback) routes through here — both use the list serializer.
         return GlobalApiDeploymentKeyListSerializer
 
     def create(self, request, *args, **kwargs):
