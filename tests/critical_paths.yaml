@@ -58,6 +58,11 @@ paths:
     description: "Deploy a workflow as an API, POST a document, receive structured JSON."
     covered_by: [e2e-api-deployment]
 
+  - id: prompt-studio-author
+    description: "Create a Prompt Studio project and add a prompt to it."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: prompt-studio-fetch-response
     description: "Prompt Studio: create project, add prompt, run single-pass, get response."
     covered_by: [e2e-prompt-studio]
