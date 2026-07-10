@@ -35,6 +35,11 @@ paths:
     covered_by: [integration-backend]
     proof: marker
 
+  - id: workflow-author
+    description: "Create a workflow; its source+destination endpoints materialise and are configurable."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."
     covered_by: [e2e-workflow]
