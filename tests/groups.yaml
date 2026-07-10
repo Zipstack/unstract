@@ -117,7 +117,9 @@ groups:
     markers: "integration"
     uv_sync_group: test
     env: *backend_test_env
-    requires_services: [postgres, redis]
+    # MinIO backs the connector credential-validation tests: proving the
+    # platform can actually reach external storage needs a real endpoint.
+    requires_services: [postgres, redis, minio]
     coverage_source: .
 
   integration-connectors:

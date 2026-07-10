@@ -67,6 +67,11 @@ paths:
     description: "Prompt Studio: create project, add prompt, run single-pass, get response."
     covered_by: [e2e-prompt-studio]
 
+  - id: connector-register-test
+    description: "Connector credentials are validated against the live system and stored encrypted."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: pipeline-etl-execute
     description: "Run an ETL pipeline from source connector to destination."
     covered_by: []   # gap
