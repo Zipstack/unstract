@@ -71,6 +71,11 @@ paths:
     description: "Run an ETL pipeline from source connector to destination."
     covered_by: []   # gap
 
+  - id: usage-aggregate-read
+    description: "Per-run token usage aggregates correctly and stays scoped to its organization."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: usage-token-tracking
     description: "Per-execution token usage is recorded and retrievable."
     covered_by: []   # gap
