@@ -148,14 +148,21 @@ curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_
 ### Why This Matters
 
 The cost calculation flow:
-1. `LLM._record_usage()` calls `Audit.push_usage_data()` with provider from `get_provider()`
-2. Platform service receives usage data with provider name
-3. `CostCalculationHelper.calculate_cost()` filters models where `provider in litellm_provider`
-4. If no match found, cost = $0
+1. `LLM._record_usage()` logs tokens — no cost math.
+2. `Audit.push_usage_data()` (LLM) / `UsageHandler` (embedding) calls
+   `litellm.cost_per_token(model=model_name)`, where `model_name` is the **prefixed** model
+   string emitted by `validate_model()`.
+3. No cost-map entry for that string → the call raises → the bare `except` records $0.
 
-**Example bug**: If `get_provider()` returns `"azure_ai_foundry"` but LiteLLM uses `"azure_ai"`:
-- Check: `"azure_ai_foundry" in "azure_ai"` = `False`
-- Result: Cost calculation returns $0
+The `provider` value from `get_provider()` rides along into the usage row's `provider` column
+but is **not** used for pricing.
+
+**Example bug**: a branded OpenAI-compatible adapter emits `custom_openai/MiniMax-M3`. LiteLLM
+prices `minimax/MiniMax-M3` but has no `custom_openai/` keys, so cost silently resolves to $0 —
+even though `get_provider()` correctly returns `"minimax"`.
+
+See `references/adapter_patterns.md` → *Model Prefix Verification* for how to choose a base
+class so the prefix resolves.
 
 ## Models Supporting Advanced Features
 
