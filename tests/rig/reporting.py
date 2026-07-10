@@ -270,9 +270,7 @@ def _render_markdown(
             lines.append("### ❌ Regressions (must be zero)")
             lines.append("")
             for s in regressions:
-                lines.append(
-                    f"- **{s.path.id}** — {s.path.description} (entry: `{s.path.entry}`)"
-                )
+                lines.append(f"- **{s.path.id}** — {s.path.description}")
             lines.append("")
         if gaps:
             lines.append("### ⚠️ Critical paths not yet covered")
@@ -281,7 +279,7 @@ def _render_markdown(
                 covers = ", ".join(s.path.covered_by) or "_no groups declared_"
                 lines.append(
                     f"- **{s.path.id}** — {s.path.description} "
-                    f"(entry: `{s.path.entry}`; declared coverage: {covers})"
+                    f"(declared coverage: {covers})"
                 )
             lines.append("")
         if covered:

@@ -34,7 +34,6 @@ class BaselineCorruptError(RuntimeError):
 class CriticalPath:
     id: str
     description: str
-    entry: str
     covered_by: tuple[str, ...]
     # "group": covered when any covered_by group runs green (coarse — survives
     # the covering test being deleted). "marker": additionally requires ≥1
@@ -103,7 +102,6 @@ def load_critical_paths(path: Path | None = None) -> CriticalPathRegistry:
             CriticalPath(
                 id=str(p["id"]),
                 description=str(p.get("description", "")),
-                entry=str(p.get("entry", "")),
                 covered_by=tuple(p.get("covered_by") or ()),
                 proof=proof,
             )
