@@ -44,6 +44,11 @@ paths:
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."
     covered_by: [e2e-workflow]
 
+  - id: api-deployment-provision
+    description: "Deploying a workflow as an API mints a usable key and a resolvable endpoint."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: api-deployment-auth
     description: "Unauthenticated or mis-scoped API-deployment calls are rejected before dispatch."
     covered_by: [integration-backend]

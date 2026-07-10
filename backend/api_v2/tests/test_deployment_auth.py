@@ -16,6 +16,7 @@ from unittest.mock import patch
 
 import pytest
 from account_v2.models import Organization
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
 from utils.user_context import UserContext
@@ -52,8 +53,9 @@ class APIDeploymentAuthTest(TestCase):
 
     def _post(self, api_name: str, auth: str | None, org: str = ORG_ID):
         headers = {"HTTP_AUTHORIZATION": auth} if auth is not None else {}
+        payload = {"files": SimpleUploadedFile("doc.txt", b"hello")}
         request = self.factory.post(
-            f"/deployment/api/{org}/{api_name}/", {}, format="multipart", **headers
+            f"/deployment/api/{org}/{api_name}/", payload, format="multipart", **headers
         )
         return self.view(request, org_name=org, api_name=api_name)
 
@@ -90,3 +92,18 @@ class APIDeploymentAuthTest(TestCase):
                 assert response.status_code == expected, response.data
 
         execute_workflow.assert_not_called()
+
+    @pytest.mark.critical_path("api-deployment-auth")
+    @patch("api_v2.api_deployment_views.APIDeploymentRateLimiter.check_and_acquire")
+    @patch("api_v2.api_deployment_views.DeploymentHelper.execute_workflow")
+    def test_valid_key_reaches_execution(self, execute_workflow, rate_limit) -> None:
+        """Guard the inverse of the rejection cases: a guard that rejected
+        everything would pass them all.
+        """
+        rate_limit.return_value = (True, {})
+        execute_workflow.return_value = {"execution_status": "COMPLETED"}
+
+        response = self._post("live-api", f"Bearer {self.key.api_key}")
+
+        assert response.status_code == 200, response.data
+        execute_workflow.assert_called_once()
