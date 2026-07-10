@@ -185,6 +185,7 @@ markers = [
     "unit: marks tests as unit (no external services required)",
     "e2e: marks tests as end-to-end (require full platform stack)",
     "critical: marks tests covering a critical path (see tests/critical_paths.yaml)",
+    "critical_path(path_id): attests coverage of the named critical path(s) when this test passes",
 ]
 
 [tool.coverage.run]

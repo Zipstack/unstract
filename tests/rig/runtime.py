@@ -262,14 +262,26 @@ def _run(cmd: list[str], *, check: bool = True) -> None:
         ) from exc
 
 
-def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
-    """Poll each service's /health endpoint until all respond or timeout.
+def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
+    """(service name, health URL) for every HTTP service in the platform.
 
-    If ``requests`` isn't importable (e.g. running the rig on a bare interpreter
-    just to list groups), readiness probing is skipped. That's safe because the
-    only caller, ``ComposeRuntime.up``, is on the e2e path where requests is in
-    the rig's deps; getting here without requests installed implies a broken
-    install and the developer will surface it shortly.
+    Single source of truth for the readiness probe and the e2e smoke test.
+    Paths are service-specific: runner and x2text mount health under blueprint
+    prefixes, and there is no standalone prompt-service (folded into workers).
+    """
+    return [
+        ("backend", endpoints.backend_url.rstrip("/") + "/health"),
+        ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
+        ("runner", endpoints.runner_url.rstrip("/") + "/v1/api/health"),
+        ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
+    ]
+
+
+def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
+    """Poll each service's health endpoint until all respond or timeout.
+
+    Skips probing if ``requests`` isn't importable — the rig may run on a bare
+    interpreter just to list groups. The e2e path always has requests installed.
     """
     try:
         import requests
@@ -277,13 +289,7 @@ def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> 
         log.warning("`requests` not installed; skipping platform readiness probe")
         return
 
-    targets = [
-        endpoints.backend_url.rstrip("/") + "/health/",
-        endpoints.prompt_service_url.rstrip("/") + "/health",
-        endpoints.platform_service_url.rstrip("/") + "/health",
-        endpoints.runner_url.rstrip("/") + "/health",
-        endpoints.x2text_url.rstrip("/") + "/health",
-    ]
+    targets = [url for _, url in health_targets(endpoints)]
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if all(_responds(t, requests) for t in targets):
