@@ -47,7 +47,7 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
-    "black>=23.7.0",
+    "black>=26.3.1",
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.5.0",
@@ -146,7 +146,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 asyncio_mode = "strict"

@@ -41,6 +41,9 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = Workflow
         fields = "__all__"
+        # IntegrityErrorMixin owns uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the mixin can map a friendly message.
+        validators = []
         extra_kwargs = {
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,

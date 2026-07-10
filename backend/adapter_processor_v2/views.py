@@ -16,13 +16,16 @@ from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -172,6 +175,28 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             return AdapterListSerializer
         return AdapterInstanceSerializer
 
+    @staticmethod
+    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
+        """Controlled mode (UN-3584): only org admins may create LLM adapters
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) and non-LLM adapter types bypass; the default
+        (flag off) keeps creation open for everyone.
+        """
+        if adapter_type != AdapterKeys.LLM:
+            return
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_llm_adapter_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "LLM adapter creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
+
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
 
@@ -183,9 +208,10 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
-        try:
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        self._enforce_llm_creation_restriction(request, adapter_type)
 
+        try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
@@ -198,7 +224,12 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
                     adapter_metadata_b
                 )
 
-            instance = serializer.save()
+            # Bind the adapter to the request-scoped organization, overriding any
+            # client-supplied `organization` in the payload (the serializer
+            # exposes it via fields="__all__"). This keeps the row's org
+            # consistent with the org the controlled-mode check above evaluated,
+            # so the per-org restriction can't be sidestepped via the payload.
+            instance = serializer.save(organization=UserContext.get_organization())
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
@@ -244,6 +275,33 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @staticmethod
+    def _adapter_used_in_tool_instance(adapter: AdapterInstance) -> bool:
+        """True if any workflow tool instance in the adapter's org references
+        it via metadata. These refs are JSON values (post lazy-migration the
+        adapter id; before it, the adapter name), so no FK protects them.
+        """
+        needles = {str(adapter.id), adapter.adapter_name}
+
+        # metadata is free-form JSON: walk every nested value so a reference
+        # nested in a sub-object isn't missed, and tolerate non-dict payloads
+        # (list/scalar/None) that would otherwise blow up on .values().
+        def contains_ref(value: Any) -> bool:
+            if isinstance(value, str):
+                return value in needles
+            if isinstance(value, dict):
+                return any(contains_ref(v) for v in value.values())
+            if isinstance(value, list):
+                return any(contains_ref(v) for v in value)
+            return False
+
+        # Linear scan over the org's tool instances — acceptable for an
+        # infrequent, interactive delete.
+        metadatas = ToolInstance.objects.filter(
+            workflow__organization=adapter.organization
+        ).values_list("metadata", flat=True)
+        return any(contains_ref(metadata) for metadata in metadatas)
+
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
@@ -280,6 +338,16 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         except UserDefaultAdapter.DoesNotExist:
             # We can go head and remove adapter here
             logger.info("User default adpater doesnt not exist")
+
+        # Adapter refs inside ToolInstance.metadata are JSON values, not FKs,
+        # so the DB can't PROTECT them — block here to avoid leaving dangling
+        # references. (FK uses are caught by ProtectedError below.)
+        if self._adapter_used_in_tool_instance(adapter_instance):
+            logger.error(
+                f"Cannot delete adapter {adapter_instance.adapter_id}"
+                " — referenced by a workflow tool instance"
+            )
+            raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
 
         try:
             super().perform_destroy(adapter_instance)

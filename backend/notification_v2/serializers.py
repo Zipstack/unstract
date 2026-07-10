@@ -5,6 +5,14 @@ from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
 
 
+class NotificationSettingsSerializer(serializers.Serializer):
+    """Org-scoped notification batching settings."""
+
+    # Bounds (1 min – 2 h) mirror ConfigKey.NOTIFICATION_CLUB_INTERVAL so DRF
+    # returns a structured 400 before ConfigKey.cast_value re-raises.
+    club_interval_seconds = serializers.IntegerField(min_value=60, max_value=7200)
+
+
 class NotificationSerializer(serializers.ModelSerializer):
     notification_type = serializers.ChoiceField(choices=NotificationType.choices())
     authorization_type = serializers.ChoiceField(choices=AuthorizationType.choices())
@@ -12,10 +20,14 @@ class NotificationSerializer(serializers.ModelSerializer):
     max_retries = serializers.IntegerField(
         max_value=4, min_value=0, default=0, required=False
     )
+    notify_on_failures = serializers.BooleanField(default=False, required=False)
 
     class Meta:
         model = Notification
         fields = "__all__"
+        # Custom validate_name already enforces uniqueness with friendly per-field
+        # errors; drop the redundant DRF auto-validator (fragile on partial PATCH).
+        validators = []
 
     def validate(self, data):
         """Validate the data for the NotificationSerializer."""

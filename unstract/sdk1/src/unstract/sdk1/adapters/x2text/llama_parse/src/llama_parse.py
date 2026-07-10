@@ -52,7 +52,8 @@ class LlamaParseAdapter(X2TextAdapter):
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         parser = LlamaParse(
             api_key=self.config.get(LlamaParseConfig.API_KEY),
-            base_url=self.config.get(LlamaParseConfig.BASE_URL),
+            base_url=self.config.get(LlamaParseConfig.BASE_URL)
+            or self.config.get(LlamaParseConfig.LEGACY_BASE_URL),
             result_type=self.config.get(LlamaParseConfig.RESULT_TYPE),
             verbose=self.config.get(LlamaParseConfig.VERBOSE),
             language="en",

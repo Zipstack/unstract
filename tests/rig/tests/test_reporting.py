@@ -104,3 +104,43 @@ def test_status_icon_round_trips() -> None:
     assert pass_result.status_icon == "✅"
     assert fail_result.status_icon == "❌"
     assert empty_result.status_icon == "⚪"
+
+
+def test_passed_critical_path_ids_collects_only_passing_marked_tests(
+    tmp_path: Path,
+) -> None:
+    from tests.rig.reporting import passed_critical_path_ids
+
+    _write_junit(
+        tmp_path / "g1",
+        """<?xml version="1.0"?>
+<testsuites><testsuite name="s" tests="4" failures="1" errors="0" skipped="1" time="1">
+  <testcase classname="c" name="passes">
+    <properties>
+      <property name="critical_path" value="p-pass"/>
+      <property name="critical_path" value="p-second"/>
+    </properties>
+  </testcase>
+  <testcase classname="c" name="fails">
+    <properties><property name="critical_path" value="p-fail"/></properties>
+    <failure message="boom"/>
+  </testcase>
+  <testcase classname="c" name="skips">
+    <properties><property name="critical_path" value="p-skip"/></properties>
+    <skipped/>
+  </testcase>
+  <testcase classname="c" name="unmarked"/>
+</testsuite></testsuites>
+""",
+        exit_code=1,
+    )
+    ids = passed_critical_path_ids("g1", tmp_path)
+    assert ids == {"p-pass", "p-second"}
+
+
+def test_passed_critical_path_ids_missing_or_malformed_junit(tmp_path: Path) -> None:
+    from tests.rig.reporting import passed_critical_path_ids
+
+    assert passed_critical_path_ids("absent", tmp_path) == set()
+    _write_junit(tmp_path / "broken", "<testsuite", exit_code=1)
+    assert passed_critical_path_ids("broken", tmp_path) == set()

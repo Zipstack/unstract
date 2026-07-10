@@ -36,6 +36,49 @@ logger = logging.getLogger(__name__)
 # global mutation in concurrent environments.
 litellm.drop_params = True
 
+# Request-id response headers across providers, checked in order:
+# OpenAI/Azure OpenAI, Anthropic, AWS Bedrock, Azure API Management.
+# litellm forwards these in _hidden_params["additional_headers"]
+# prefixed with "llm_provider-".
+_PROVIDER_REQUEST_ID_HEADERS = (
+    "x-request-id",
+    "request-id",
+    "x-amzn-requestid",
+    "apim-request-id",
+)
+
+
+def extract_provider_ids(response: object) -> tuple[str | None, str | None]:
+    """Extract the provider's response id and request id from a litellm response.
+
+    Returns (response_id, request_id) where response_id is the body-level id
+    (e.g. OpenAI "chatcmpl-...", Anthropic "msg_...") and request_id is the
+    provider's request-id response header — the value providers ask for when
+    troubleshooting a specific API call.
+
+    Either value may be None; some providers (e.g. VertexAI/Gemini) expose
+    neither, in which case litellm generates a synthetic response id.
+    """
+    if response is None:
+        return None, None
+    try:
+        response_id = response.get("id")
+    except (AttributeError, TypeError):
+        response_id = None
+    if response_id is None:
+        response_id = getattr(response, "id", None)
+
+    hidden_params = getattr(response, "_hidden_params", None) or {}
+    headers = hidden_params.get("additional_headers") or {}
+    normalized = {
+        key.lower().removeprefix("llm_provider-"): value for key, value in headers.items()
+    }
+    request_id = next(
+        (normalized[h] for h in _PROVIDER_REQUEST_ID_HEADERS if normalized.get(h)),
+        None,
+    )
+    return response_id, request_id
+
 
 # ── Emulated llama-index types ───────────────────────────────────────────────
 # These types emulate the llama-index interface without requiring the dependency.
@@ -309,6 +352,7 @@ class LLM:
                 messages,
                 response.get("usage"),
                 "complete",
+                response=response,
             )
 
             # Handle refusal or empty content from the LLM provider
@@ -421,6 +465,7 @@ class LLM:
                 messages,
                 response.get("usage"),
                 "complete_vision",
+                response=response,
             )
 
             if response_text is None:
@@ -495,6 +540,7 @@ class LLM:
                         messages,
                         chunk.get("usage"),
                         "stream_complete",
+                        response=chunk,
                     )
 
                 response = self._process_stream_chunk(
@@ -561,6 +607,7 @@ class LLM:
                 messages,
                 response.get("usage"),
                 "acomplete",
+                response=response,
             )
 
             # Handle refusal or empty content from the LLM provider
@@ -680,6 +727,7 @@ class LLM:
         messages: list[dict[str, str]],
         usage: Mapping[str, int] | None,
         llm_api: str,
+        response: object | None = None,
     ) -> None:
         usage_data: Mapping[str, int] = usage or {}
         prompt_tokens = usage_data.get("prompt_tokens", 0)
@@ -700,13 +748,23 @@ class LLM:
                     exc_info=True,
                 )
 
+        # Provider ids ride on the existing per-call usage line to aid
+        # troubleshooting (shareable with the provider) without extra log noise.
+        # Absent ids are omitted so providers without them don't add clutter.
+        response_id, request_id = extract_provider_ids(response)
+        id_suffix = ""
+        if response_id is not None:
+            id_suffix += f" response_id={response_id}"
+        if request_id is not None:
+            id_suffix += f" request_id={request_id}"
         logger.info(
-            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d",
+            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d%s",
             model,
             llm_api,
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            id_suffix,
         )
 
         try:
