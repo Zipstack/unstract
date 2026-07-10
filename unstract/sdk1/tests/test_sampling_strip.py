@@ -1,8 +1,11 @@
-"""Tests for Claude Opus 4.7 sampling-parameter strip.
+"""Tests for the Anthropic sampling-parameter strip.
+
+Covers Claude Opus 4.7 and the Claude 5 family (Opus 4.8, Sonnet 5, Fable 5,
+Mythos 5) — every model that rejects `temperature`/`top_p`/`top_k` with a 400.
 
 Pins the detection regex and the four-adapter wiring against the failure
 modes that surfaced in PR #1934 review:
-- prefix collisions (`claude-opus-4-70`, `-75`, `4-7verbose`)
+- prefix collisions (`claude-opus-4-70`, `-75`, `4-7verbose`, `claude-sonnet-50`)
 - Bedrock Application Inference Profile ARN fallback via `model_id`
 - mutate-and-return regression (input dict must be preserved)
 - silent skip with sampling params present must emit a debug breadcrumb
@@ -68,6 +71,44 @@ def test_has_deprecated_sampling_params_positive(model: str) -> None:
     assert _has_deprecated_sampling_params(model)
 
 
+# Claude 5 family — the deprecation continued from Opus 4.7 to Opus 4.8,
+# Sonnet 5, Fable 5, and Mythos 5. Sonnet 5 on Azure AI Foundry is the
+# reported case that motivated adding these entries.
+CLAUDE_5_POSITIVES: list[str] = [
+    # Opus 4.8
+    "claude-opus-4-8",
+    "anthropic/claude-opus-4-8",
+    "anthropic.claude-opus-4-8-20260101-v1:0",
+    "us.anthropic.claude-opus-4-8-20260101-v1:0",
+    "vertex_ai/claude-opus-4-8@20260101",
+    "azure_ai/claude-opus-4-8",
+    "claude-opus-4-8v1",
+    # Sonnet 5 (reported: Azure AI Foundry)
+    "claude-sonnet-5",
+    "anthropic/claude-sonnet-5",
+    "anthropic.claude-sonnet-5",
+    "us.anthropic.claude-sonnet-5-20260101-v1:0",
+    "vertex_ai/claude-sonnet-5",
+    "azure_ai/claude-sonnet-5",
+    "azure_ai/my-claude-sonnet-5-deployment",
+    "claude.sonnet.5",
+    "claude_sonnet_5",
+    "claude-sonnet-5v1",
+    # Fable 5
+    "claude-fable-5",
+    "anthropic/claude-fable-5",
+    "azure_ai/claude-fable-5",
+    # Mythos 5
+    "claude-mythos-5",
+    "vertex_ai/claude-mythos-5",
+]
+
+
+@pytest.mark.parametrize("model", CLAUDE_5_POSITIVES)
+def test_has_deprecated_sampling_params_claude5_positive(model: str) -> None:
+    assert _has_deprecated_sampling_params(model)
+
+
 # ── detection: negatives ────────────────────────────────────────────────────
 
 NEGATIVES: list[str | None] = [
@@ -92,6 +133,17 @@ NEGATIVES: list[str | None] = [
     "claude-opus-4-7verbose",
     "claude-opus-4-7vnext",
     "claude-opus-4-7variant",
+    "claude-sonnet-5verbose",
+    # Claude 5 prefix collisions — trailing digit is not a boundary.
+    "claude-opus-4-80",
+    "claude-sonnet-50",
+    "claude-fable-50",
+    "claude-mythos-50",
+    # Adjacent Claude families that still accept sampling params.
+    "claude-sonnet-4-6",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-6",
+    "claude-fable-4",
     # Opaque Bedrock Application Inference Profile ARN — model id is not
     # recoverable from the string. Strip-detection is expected to skip;
     # callers must keep the standard id in `model` or `model_id`.
@@ -273,6 +325,31 @@ def test_validate_strips_temperature_for_opus_4_7(
 
 def test_vertex_validate_strips_temperature_for_opus_4_7() -> None:
     result = VertexAILLMParameters.validate(_vertex_metadata("claude-opus-4-7@20260101"))
+    for param in _DEPRECATED_SAMPLING_PARAMS:
+        assert param not in result, f"vertex: {param} should be stripped"
+
+
+@pytest.mark.parametrize(
+    "name,cls,extra",
+    ADAPTER_CASES,
+    ids=lambda v: v if isinstance(v, str) else "",
+)
+def test_validate_strips_temperature_for_sonnet_5(
+    name: str, cls: type, extra: dict[str, Any]
+) -> None:
+    """Reported case: Claude Sonnet 5 on Azure AI Foundry (and its peers)."""
+    model = {
+        "anthropic": "claude-sonnet-5",
+        "bedrock": "anthropic.claude-sonnet-5",
+        "azure_ai_foundry": "claude-sonnet-5",
+    }[name]
+    result = cls.validate({"model": model, "temperature": 0.5, **extra})
+    for param in _DEPRECATED_SAMPLING_PARAMS:
+        assert param not in result, f"{name}: {param} should be stripped"
+
+
+def test_vertex_validate_strips_temperature_for_sonnet_5() -> None:
+    result = VertexAILLMParameters.validate(_vertex_metadata("claude-sonnet-5"))
     for param in _DEPRECATED_SAMPLING_PARAMS:
         assert param not in result, f"vertex: {param} should be stripped"
 

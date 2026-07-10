@@ -18,11 +18,15 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 # Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). The patterns are regex-searched against the model id
-# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
-# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
-# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
-# covers every encoding of the id we have observed:
+# `top_p`, `top_k`) — sending any of them yields a 400. Anthropic began this
+# with Claude Opus 4.7 and continued it across the Claude 5 family (Opus 4.8,
+# Sonnet 5, Fable 5, Mythos 5); adjacent older families (Opus 4.6, Sonnet 4.6,
+# and earlier) still ACCEPT these params and must NOT be listed here.
+# The patterns are regex-searched against the model id after lowercasing and
+# normalizing `.` / `_` to `-`. Each match is anchored at the trailing edge so
+# that unrelated ids (`claude-opus-4-70`, `claude-sonnet-50`,
+# `claude-sonnet-5verbose`) do not match. One entry per model covers every
+# encoding of that id we have observed (shown here for `claude-opus-4-7`):
 #   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
 #   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
 #   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
@@ -44,6 +48,10 @@ logger = logging.getLogger(__name__)
 # See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
 _SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
+    re.compile(r"claude-opus-4-8(?=$|[-:@/]|v\d)"),
+    re.compile(r"claude-sonnet-5(?=$|[-:@/]|v\d)"),
+    re.compile(r"claude-fable-5(?=$|[-:@/]|v\d)"),
+    re.compile(r"claude-mythos-5(?=$|[-:@/]|v\d)"),
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
