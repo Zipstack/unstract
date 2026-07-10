@@ -40,7 +40,7 @@ paths:
   - id: co-owner-manage
     description: "Add/remove co-owners of a shared resource; enforce the last-owner guard."
     entry: "POST /api/v1/workflow/{id}/owners/"
-    covered_by: [integration-backend]
+    covered_by: [integration-backend, e2e-coowners]
     proof: marker
 
   - id: workflow-create-execute
