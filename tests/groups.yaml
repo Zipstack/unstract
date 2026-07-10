@@ -155,6 +155,15 @@ groups:
     timeout_seconds: 1200
     depends_on: [unit-sdk1, unit-workers]
 
+  # Not optional: login is the first e2e critical path we gate on. A red login
+  # test fails the build and (on main) surfaces as an in-scope critical gap.
+  e2e-login:
+    tier: e2e
+    paths: [tests/e2e/auth]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
   e2e-workflow:
     tier: e2e
     paths: [tests/e2e/workflows]
