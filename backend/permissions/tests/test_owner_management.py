@@ -10,6 +10,7 @@ DB-backed (Django ``TestCase``), so ``backend/conftest.py`` auto-marks these
 ``integration`` and the rig runs them in ``integration-backend``.
 """
 
+import pytest
 from account_v2.models import User
 from django.test import TestCase
 from permissions.roles import ResourceRole
@@ -57,6 +58,7 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
             )
         )
 
+    @pytest.mark.critical_path("co-owner-manage")
     def test_owner_adds_co_owner(self) -> None:
         response = self._add(self.owner, self.coowner.pk)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
