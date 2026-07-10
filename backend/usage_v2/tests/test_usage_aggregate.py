@@ -59,6 +59,12 @@ class UsageAggregateReadTest(TestCase):
         self.run_id = uuid.uuid4()
         self.factory = APIRequestFactory()
 
+    def tearDown(self) -> None:
+        # UserContext is thread-local, not rolled back with the test DB; clear it
+        # so the org identifier can't leak into a later manager-filtered query.
+        UserContext.set_organization_identifier(None)
+        super().tearDown()
+
     @pytest.mark.critical_path("usage-aggregate-read")
     def test_token_usage_sums_own_org_only(self) -> None:
         _usage(self.org, self.run_id, tokens=100)

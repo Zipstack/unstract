@@ -14,6 +14,7 @@ import secrets
 
 import pytest
 from account_v2.models import Organization, User
+from django.db import connection
 from django.test import TestCase
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -25,7 +26,14 @@ from connector_v2.models import ConnectorInstance
 MINIO_CONNECTOR_ID = "minio|c799f6e3-2b57-434e-aaac-b5daa415da19"
 
 pytestmark = pytest.mark.skipif(
-    not (os.environ.get("MINIO_ACCESS_KEY_ID") and os.environ.get("MINIO_ENDPOINT_URL")),
+    not all(
+        os.environ.get(var)
+        for var in (
+            "MINIO_ACCESS_KEY_ID",
+            "MINIO_SECRET_ACCESS_KEY",
+            "MINIO_ENDPOINT_URL",
+        )
+    ),
     reason="needs a live MinIO (provisioned by the rig for this group)",
 )
 
@@ -99,5 +107,17 @@ class ConnectorRegisterTest(TestCase):
         assert response.status_code == status.HTTP_201_CREATED, response.data
         instance = ConnectorInstance.objects.get(id=response.data["id"])
         assert instance.organization_id == self.org.id
-        # Stored encrypted at rest; the field decrypts on read.
+        # Decrypts back to the input on read...
         assert instance.connector_metadata["key"] == os.environ["MINIO_ACCESS_KEY_ID"]
+
+        # ...but the raw column must be ciphertext. Read it past the field's
+        # decrypting descriptor, else a regression to plaintext still passes.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT connector_metadata FROM connector_instance WHERE id = %s",
+                [str(instance.id)],
+            )
+            raw = bytes(cursor.fetchone()[0])
+        secret = os.environ["MINIO_SECRET_ACCESS_KEY"].encode()
+        assert secret not in raw
+        assert os.environ["MINIO_ACCESS_KEY_ID"].encode() not in raw
