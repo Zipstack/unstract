@@ -1,7 +1,9 @@
 import json
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
+    MiniMaxLLMParameters,
     NvidiaBuildEmbeddingParameters,
     NvidiaBuildLLMParameters,
     OpenAICompatibleEmbeddingParameters,
@@ -14,11 +16,13 @@ from unstract.sdk1.adapters.embedding1.openai_compatible import (
     OpenAICompatibleEmbeddingAdapter,
 )
 from unstract.sdk1.adapters.llm1 import adapters as llm_adapters
+from unstract.sdk1.adapters.llm1.minimax import MiniMaxLLMAdapter
 from unstract.sdk1.adapters.llm1.nvidia_build import NvidiaBuildLLMAdapter
 from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 
 
 # --- Branded LLM adapters -------------------------------------------------
@@ -26,7 +30,7 @@ _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 
 @pytest.mark.parametrize(
     "adapter",
-    [NvidiaBuildLLMAdapter, OpenRouterLLMAdapter],
+    [MiniMaxLLMAdapter, NvidiaBuildLLMAdapter, OpenRouterLLMAdapter],
 )
 def test_branded_llm_adapter_is_registered(adapter: type) -> None:
     adapter_id = adapter.get_id()
@@ -39,6 +43,55 @@ def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
 
     assert validated["model"] == "custom_openai/some-model"
     assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
+
+
+@pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
+def test_minimax_llm_routes_via_native_provider(model: str) -> None:
+    from litellm import get_llm_provider
+
+    validated = MiniMaxLLMParameters.validate({"model": model, "api_key": "k"})
+
+    assert validated["model"] == f"minimax/{model}"
+    assert validated["api_base"] == _MINIMAX_API_BASE
+    assert get_llm_provider(validated["model"])[1] == "minimax"
+
+
+def test_minimax_model_prefix_is_idempotent() -> None:
+    once = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
+    twice = MiniMaxLLMParameters.validate(dict(once))
+
+    assert twice["model"] == once["model"] == "minimax/MiniMax-M3"
+
+
+def test_minimax_native_routing_resolves_usage_cost() -> None:
+    from litellm import cost_per_token
+
+    prompt_cost, completion_cost = cost_per_token(
+        "minimax/MiniMax-M3", prompt_tokens=1, completion_tokens=1
+    )
+
+    assert prompt_cost > 0
+    assert completion_cost > 0
+
+
+def test_minimax_maps_thinking_toggle_to_native_parameter() -> None:
+    enabled = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M3", "api_key": "k", "enable_thinking": True}
+    )
+    disabled = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M3", "api_key": "k", "enable_thinking": False}
+    )
+
+    assert enabled["thinking"] == {"type": "adaptive"}
+    assert disabled["thinking"] == {"type": "disabled"}
+    assert "enable_thinking" not in enabled
+
+
+def test_minimax_m2_rejects_disabling_thinking() -> None:
+    with pytest.raises(ValueError, match="does not support disabling thinking"):
+        MiniMaxLLMParameters.validate(
+            {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": False}
+        )
 
 
 def test_openrouter_llm_routes_via_native_openrouter_provider() -> None:
@@ -106,6 +159,7 @@ def test_openrouter_reasoning_survives_revalidation() -> None:
 @pytest.mark.parametrize(
     ("params", "default_base"),
     [
+        (MiniMaxLLMParameters, _MINIMAX_API_BASE),
         (NvidiaBuildLLMParameters, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMParameters, _OPENROUTER_API_BASE),
     ],
@@ -120,7 +174,7 @@ def test_branded_llm_blank_api_base_falls_back_to_default(
 
 @pytest.mark.parametrize(
     "params",
-    [NvidiaBuildLLMParameters, OpenRouterLLMParameters],
+    [MiniMaxLLMParameters, NvidiaBuildLLMParameters, OpenRouterLLMParameters],
 )
 def test_branded_llm_honours_api_base_override(params: type) -> None:
     validated = params.validate(
@@ -133,6 +187,7 @@ def test_branded_llm_honours_api_base_override(params: type) -> None:
 @pytest.mark.parametrize(
     ("adapter", "default_base"),
     [
+        (MiniMaxLLMAdapter, _MINIMAX_API_BASE),
         (NvidiaBuildLLMAdapter, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMAdapter, _OPENROUTER_API_BASE),
     ],
@@ -145,6 +200,20 @@ def test_branded_llm_schema_exposes_api_base_with_default(
     assert schema["properties"]["api_base"]["default"] == default_base
     assert "api_base" not in schema["required"]
     assert "model" in schema["required"]
+
+
+def test_minimax_schema_covers_models_thinking_and_regions() -> None:
+    schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
+
+    assert schema["properties"]["model"]["examples"] == [
+        "MiniMax-M3",
+        "MiniMax-M2.7",
+    ]
+    assert schema["properties"]["enable_thinking"]["default"] is True
+    assert (
+        "https://api.minimaxi.com/v1" in schema["properties"]["api_base"]["description"]
+    )
+    assert "reasoning_effort" not in json.dumps(schema)
 
 
 # --- Branded / generic embedding adapters ---------------------------------

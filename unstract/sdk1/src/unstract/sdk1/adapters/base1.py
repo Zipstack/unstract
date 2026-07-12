@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -512,7 +513,9 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+_MINIMAX_PROVIDER_PREFIX = "minimax/"
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -526,6 +529,57 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class MiniMaxLLMParameters(BaseChatCompletionParameters):
+    """Adapter for MiniMax's OpenAI-compatible API."""
+
+    api_key: str
+    api_base: str = _MINIMAX_API_BASE
+    temperature: float | None = 1
+    thinking: dict[str, str] | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _MINIMAX_API_BASE
+
+        adapter_metadata["model"] = MiniMaxLLMParameters.validate_model(adapter_metadata)
+        model_id = adapter_metadata["model"][len(_MINIMAX_PROVIDER_PREFIX) :]
+
+        if "enable_thinking" in adapter_metadata:
+            enable_thinking = adapter_metadata.pop("enable_thinking")
+            if not isinstance(enable_thinking, bool):
+                raise ValueError("enable_thinking must be a boolean.")
+            adapter_metadata["thinking"] = {
+                "type": "adaptive" if enable_thinking else "disabled"
+            }
+
+        thinking = adapter_metadata.get("thinking")
+        if thinking is not None:
+            if not isinstance(thinking, dict) or thinking.get("type") not in {
+                "adaptive",
+                "disabled",
+            }:
+                raise ValueError("thinking.type must be adaptive or disabled.")
+            if (
+                model_id.lower().startswith("minimax-m2")
+                and thinking["type"] == "disabled"
+            ):
+                raise ValueError(f"{model_id} does not support disabling thinking.")
+
+        return MiniMaxLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the MiniMax adapter.")
+        if model.startswith(_MINIMAX_PROVIDER_PREFIX):
+            return model
+        return f"{_MINIMAX_PROVIDER_PREFIX}{model}"
 
 
 class OpenRouterLLMParameters(BaseChatCompletionParameters):
