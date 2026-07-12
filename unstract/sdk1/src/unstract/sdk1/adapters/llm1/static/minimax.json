@@ -23,14 +23,18 @@
       "type": "string",
       "title": "Model",
       "default": "MiniMax-M3",
-      "description": "The MiniMax model name. Example: MiniMax-M3"
+      "examples": [
+        "MiniMax-M3",
+        "MiniMax-M2.7"
+      ],
+      "description": "MiniMax-M3 supports a 1,000,000-token context window and multimodal input. MiniMax-M2.7 supports a 204,800-token context window and text input."
     },
     "api_base": {
       "type": "string",
       "format": "url",
       "title": "API Base",
       "default": "https://api.minimax.io/v1",
-      "description": "MiniMax OpenAI-compatible endpoint. Pre-filled with the default; change only if MiniMax moves the base URL or you use a regional endpoint."
+      "description": "MiniMax OpenAI-compatible endpoint. The default is for global accounts; use https://api.minimaxi.com/v1 for China accounts."
     },
     "max_tokens": {
       "type": "number",
@@ -56,58 +60,11 @@
       "default": 900,
       "description": "Timeout in seconds."
     },
-    "enable_reasoning": {
+    "enable_thinking": {
       "type": "boolean",
-      "title": "Enable Reasoning",
-      "default": false,
-      "description": "Toggle on for reasoning models to route reasoning_effort via the OpenAI-compatible request body."
+      "title": "Enable Thinking",
+      "default": true,
+      "description": "Enable adaptive thinking for MiniMax-M3. MiniMax-M2.7 always keeps thinking enabled."
     }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "enable_reasoning": {
-            "const": true
-          }
-        },
-        "required": [
-          "enable_reasoning"
-        ]
-      },
-      "then": {
-        "properties": {
-          "reasoning_effort": {
-            "type": "string",
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "default": "medium",
-            "title": "Reasoning Effort",
-            "description": "Sets the reasoning strength when Enable Reasoning is on."
-          }
-        },
-        "required": [
-          "reasoning_effort"
-        ]
-      }
-    },
-    {
-      "if": {
-        "properties": {
-          "enable_reasoning": {
-            "const": false
-          }
-        },
-        "required": [
-          "enable_reasoning"
-        ]
-      },
-      "then": {
-        "properties": {}
-      }
-    }
-  ]
+  }
 }
