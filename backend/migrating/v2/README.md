@@ -4,7 +4,7 @@ This folder contains scripts and management commands for performing data migrati
 From version `v0.93.0` onwards, there have been signifcant changes in how data is stored. This warrants a data migration and the below steps can come in handy.
 
 > [!WARNING]
-> If you're updating from a very old version of Unstract and you face issues, its recommended to update to `v0.92.1` with 
+> If you're updating from a very old version of Unstract and you face issues, its recommended to update to `v0.92.1` with
 `./run-platform.sh -u -v v0.92.1` first and then perform this data migration.
 
 ## Performing the migration

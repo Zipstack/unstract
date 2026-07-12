@@ -14,15 +14,15 @@ graph LR
         PS[Prompt Studio<br/>Visual Laboratory]
         WS[Workflow Studio<br/>Production Pipelines]
     end
-    
+
     subgraph "Three-Step Workflow"
         D[📄 Documents] --> PE[🧪 Prompt Engineering]
         PE --> AD[🚀 API/ETL Deployment]
     end
-    
+
     PS --> PE
     WS --> AD
-    
+
     style PS fill:#f0f8ff,color:#333333
     style WS fill:#f5f8f5,color:#333333
     style D fill:#fdf5e6,color:#333333
@@ -45,11 +45,11 @@ graph TB
         CT[Containerized Tools<br/>Least Privilege Sandbox]
         DR[Dynamic Resources<br/>Ephemeral Containers]
     end
-    
+
     MT --> |Persistence Level| DE[(Database)]
     CT --> |Process Level| CR[Execution Environment Isolation]
     DR --> |Lifecycle| LC[Create → Execute → Destroy]
-    
+
     style MT fill:#fdf0f0,color:#333333
     style CT fill:#faf0f5,color:#333333
     style DR fill:#f0f0f8,color:#333333
@@ -70,11 +70,11 @@ graph LR
         AP[Async Processing]
         CF[Container Native]
     end
-    
+
     SI --> HS[Horizontal Scaling]
     AP --> MQ[Message Queuing]
     CF --> K8s[Kubernetes Ready]
-    
+
     style SI fill:#f0f8f0,color:#333333
     style AP fill:#f5f8f2,color:#333333
     style CF fill:#f8faf5,color:#333333
@@ -96,14 +96,14 @@ graph TB
         RN[Runner Service<br/>Container Orchestration]
         X2[X2Text Service<br/>Document Conversion]
     end
-    
+
     subgraph PER["Persistence Layer"]
         PG[(PostgreSQL<br/>Metadata & Embedding vectors)]
         RD[(Redis<br/>Cache & Sessions)]
         RB[RabbitMQ<br/>Task Queuing]
         MN[(MinIO<br/>File Storage)]
     end
-    
+
     subgraph TOOL["Tool Execution Layer"]
         TC[Tool Containers<br/>Text Extractor, Structure Tool,<br/>Classifier Tool, etc.]
     end
@@ -118,7 +118,7 @@ graph TB
     APP <--> PER
     APP --> EXT
     RN --> TC
-    
+
     style LLM fill:#f2f6fd,color:#333333
     style VDB fill:#f2f6fd,color:#333333
     style EMB fill:#f2f6fd,color:#333333
@@ -153,7 +153,7 @@ Unstract's microservices architecture divides responsibilities clearly, with eac
 graph TB
     subgraph "Service Responsibilities"
         direction TB
-        
+
         FES[Frontend Service<br/>React 18 + Ant Design<br/>Port: 3000/80]
         BES[Backend Service<br/>Django 4.2 + DRF<br/>Port: 8000]
         PLS[Platform Service<br/>Flask<br/>Port: 3001]
@@ -162,12 +162,12 @@ graph TB
         SCS[Tool Sidecar<br/>Python<br/>Container Runtime]
         X2S[X2Text Service<br/>Flask<br/>Document Conversion]
     end
-    
+
     FES -->|REST API| BES
     BES -->|REST API| PLS & PRS & RNS
     RNS -->|Orchestrates| SCS
     BES -->|REST API| X2S
-    
+
     style FES fill:#fdf8f0,color:#333333
     style BES fill:#f2f6fd,color:#333333
     style PLS fill:#f8f5f8,color:#333333
@@ -178,15 +178,15 @@ graph TB
 ```
 
 ### Frontend Service
-**Built with React 18 + Ant Design**  
+**Built with React 18 + Ant Design**
 **Ports**: 3000 (development), 80 (production via NGINX)
 
 The Frontend service provides two main environments through a Single Page Application:
 - **Prompt Studio**: Interactive development environment for AI prompts with real-time validation
 - **Workflow Studio**: Drag-and-drop interface for creating production workflows
 
-### Backend Service  
-**Built with Django 4.2 + Django REST Framework**  
+### Backend Service
+**Built with Django 4.2 + Django REST Framework**
 **Port**: 8000
 
 The Backend service exposes the public API to interface with the platform:
@@ -196,7 +196,7 @@ The Backend service exposes the public API to interface with the platform:
 - **Async Task Coordination** via Celery with multiple specialized queues
 
 ### Platform Service
-**Built with Flask**  
+**Built with Flask**
 **Port**: 3001
 
 Acts as a controlled gateway for custom tools providing core services in the platform like connector authentication and usage tracking. This abstraction allows platform evolution without breaking existing tools.
@@ -210,7 +210,7 @@ Encapsulates all LLM-related functionality via the SDK bridge:
 - **Handle Prompt Processing Pipeline**: Document preprocessing through result parsing
 
 ### Runner Service
-**Built with Python + Docker API**  
+**Built with Python + Docker API**
 **Port**: 5002
 
 Manages tool container lifecycles with:
@@ -243,31 +243,31 @@ graph TB
             MD[Metadata Storage]
             VE[Embedding Vectors]
         end
-        
+
         subgraph "Redis - Fast Access Cache"
             SM[Session Management]
             LS[Log Streaming]
             AC[Application Cache]
             RL[Rate Limiting]
         end
-        
+
         subgraph "RabbitMQ - Message Queue Broker"
             CQ[celery logs task]
             AQ[celery api deployments task]
             PQ[celery pipelines task]
             FQ[celery pipeline files task]
         end
-        
+
         subgraph "MinIO/S3 - Object Storage"
             DS[Document Store]
         end
     end
-    
+
     MD --> |Permanent Data| Security[Multi-tenancy]
     VE --> |Search| Semantic[Semantic Search]
     CQ --> |Processing| Async[Async Workflows]
     DS --> |Execution Data| File[File Storage]
-    
+
     style VE fill:#f5f8f5,color:#333333
     style MD fill:#f5f8f5,color:#333333
     style SM fill:#fdf8f0,color:#333333
@@ -289,7 +289,7 @@ graph TB
 - **Migration Strategy**: Django manages schema evolution across all tenant schemas
 
 ### Message Queuing: Orchestrating Async Work
-**Broker**: RabbitMQ  
+**Broker**: RabbitMQ
 **Task Processor**: Celery
 
 Specialized auto-scaling queues handle different workload types:
@@ -306,7 +306,7 @@ Redis serves multiple performance-critical roles:
 - **Rate Limiting** across multiple instances
 
 ### File Storage: S3-Compatible Object Storage
-**Default**: MinIO (S3-compatible)  
+**Default**: MinIO (S3-compatible)
 **Abstraction**: Unified filesystem interface via `fsspec`
 
 - **Tenant Isolation** through path prefixes
@@ -326,7 +326,7 @@ sequenceDiagram
     participant SC as Sidecar
     participant PS as Platform Service
     participant RD as Redis
-    
+
     WF->>RN: Execute Tool Request
     RN->>DC: Create Container
     RN->>SC: Attach Sidecar
@@ -338,7 +338,7 @@ sequenceDiagram
     DC-->>RN: Execution Complete
     RN->>DC: Destroy Container
     RN-->>WF: Return Results
-    
+
     Note over DC,SC: Isolated Execution Environment
     Note over PS: Core Platform API Gateway
     Note over RD: Real-time Logs
@@ -377,9 +377,9 @@ graph LR
         MON[Real-time<br/>Monitoring]
         CLN[Automatic<br/>Cleanup]
     end
-    
+
     REG --> SPN --> IOP --> MON --> CLN
-    
+
     style REG fill:#f2f6fd,color:#333333
     style SPN fill:#f5f8f5,color:#333333
     style IOP fill:#fdf8f0,color:#333333
@@ -442,7 +442,7 @@ graph TB
         CO[Cost Optimization]
         UA[Usage Analytics]
     end
-    
+
     subgraph "Supported Providers"
         OAI[OpenAI<br/>GPT-3.5/4]
         ANT[Anthropic<br/>Claude]
@@ -451,13 +451,13 @@ graph TB
         BD[Bedrock]
         OL[Ollama<br/>Local]
     end
-    
+
     UI --> OAI & ANT & AZ & VX & BD & OL
     SS --> |Extraction| Tokens[Optimal Tokens]
     CH --> |Evaluation| Eval[LLM Judge]
     CO --> |Cost tracking| Savings[Spend Visibility]
     UA --> |Monitoring| Insights[Performance Metrics]
-    
+
     style UI fill:#f2f6fd,color:#333333
     style SS fill:#f5f8f5,color:#333333
     style CH fill:#f5f8f5,color:#333333
@@ -480,7 +480,7 @@ graph LR
         CR[Context Retrieval<br/>for RAG]
         HS[Hybrid Search<br/>Keyword + Vector]
     end
-    
+
     subgraph "Providers"
         QD[Qdrant]
         WV[Weaviate]
@@ -488,9 +488,9 @@ graph LR
         PG[pgvector]
         MV[Milvus]
     end
-    
+
     MP --> QD & WV & PC & PG & MV
-    
+
     style MP fill:#f8f5f8,color:#333333
     style SD fill:#faf2f5,color:#333333
     style CR fill:#faf0f5,color:#333333
@@ -508,15 +508,15 @@ graph TB
         DC[Database<br/>PostgreSQL, MySQL, Snowflake, Redshift, BigQuery, MariaDB, OracleDB]
         AC[API<br/>REST]
     end
-    
+
     subgraph "Capabilities"
         AF[Authentication<br/>Flexibility]
         DT[Data<br/>Transformation]
         EH[Error<br/>Handling]
     end
-    
+
     FC & DC & AC --> AF & DT & EH
-    
+
     style FC fill:#f5f8f5,color:#333333
     style DC fill:#f2f6fd,color:#333333
     style AC fill:#fdf8f0,color:#333333

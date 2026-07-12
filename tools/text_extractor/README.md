@@ -94,7 +94,7 @@ Build the tool docker image from the folder containing the `Dockerfile` with
 docker build -t unstract/tool-example:0.0.1 .
 ```
 
-Make sure the directory pointed by `EXECUTION_DATA_DIR` has the required information for the tool to run and 
+Make sure the directory pointed by `EXECUTION_DATA_DIR` has the required information for the tool to run and
 necessary services like the `platform-service` is up.
 To test the tool from its docker image, run the following command
 

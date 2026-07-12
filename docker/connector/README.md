@@ -1,6 +1,6 @@
 # Docker Run
 
-Useful while running connectors 
+Useful while running connectors
 - Database connectors: Includes db connectors like mysql, mariadb, mssql
 - File system connectors: Includes fs connectors like sftp
 

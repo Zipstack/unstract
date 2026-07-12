@@ -36,5 +36,5 @@ Sample URL:
     "file": <File> "<multiple files>",
     "connector_id": "<Connector Id>",
     "path": "<File location>",
-}   
+}
 ```

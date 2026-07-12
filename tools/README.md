@@ -209,7 +209,7 @@ Message type details:
   "spec": "<SPEC JSON>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
 }
-``` 
+```
 
 The `spec` property contains the json from `spec.json`. Refer to [tool settings section](#tool-settings) for more details.
 
@@ -220,7 +220,7 @@ The `spec` property contains the json from `spec.json`. Refer to [tool settings 
   "type": "PROPERTIES",
   "properties": "<PROPERTIES JSON>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `properties` property contains the json from `properties.json`. Refer to [tool definition](#tool-definition) section for more
@@ -232,7 +232,7 @@ The `properties` property contains the json from `properties.json`. Refer to [to
   "type": "ICON",
   "icon": "<ICON SVG>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `icon` property contains the svg from `icon.svg`. Refer to *tool icon* section for more details. Note that this is
@@ -246,7 +246,7 @@ returns the SVG text itself and not the path to the SVG file.
   "variables": "<VARIABLES JSON>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
 }
-``` 
+```
 
 The `variables` property contains the json from `runtime_variables.json`. Refer to [Tool runtime variables section](#tool-runtime-variables) for more details.
 
@@ -258,7 +258,7 @@ The `variables` property contains the json from `runtime_variables.json`. Refer 
   "level": "<LOG LEVEL>",
   "log": "<LOG MESSAGE>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `log` property contains a log message. The level property can contain one
@@ -272,7 +272,7 @@ of `DEBUG`, `INFO`, `WARN`, `ERROR`, `FATAL`
   "cost": "<COST>",
   "cost_units": "<COST UNITS>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `cost` property contains the cost of the tool run. The `cost` is a floating point number and `cost_units` is a
@@ -289,7 +289,7 @@ string
     "output": "<OUTPUT JSON or STRING>"
   },
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `result` property contains the result of the tool run. The `result` is a json object. The `result` json object has a
@@ -302,7 +302,7 @@ standard format mentioned above.
   "type": "SINGLE_STEP_MESSAGE",
   "message": "<MESSAGE>",
   "emitted_at": "<TIMESTAMP IN ISO FORMAT>"
-} 
+}
 ```
 
 The `message` property contains a message to be displayed to the user. This message is displayed in the platform during
