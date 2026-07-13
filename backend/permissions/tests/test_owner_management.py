@@ -10,6 +10,7 @@ DB-backed (Django ``TestCase``), so ``backend/conftest.py`` auto-marks these
 ``integration`` and the rig runs them in ``integration-backend``.
 """
 
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
@@ -19,10 +20,12 @@ from permissions.roles import ResourceRole
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.views import APIView
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from permissions.membership_serializers import AddOwnerSerializer
+from permissions.permission import IsParentToolOwner
 from permissions.tests.base import (
     RESOURCE_SPECS,
     CoOwnerOrgTestMixin,
@@ -281,3 +284,106 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
             )
         )
         self.assertIn(self.coowner.pk, owner_ids)
+
+
+class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
+    """``IsParentToolOwner`` inherits access from the parent ``CustomTool``
+    (owner/co-owner/admin/service-account allow; viewer/outsider deny) and falls
+    back to the object's own ``created_by`` when there is no parent tool.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+        self.tool = CustomTool.objects.create(
+            tool_name="tool-1",
+            description="co-owner test tool",
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.tool.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.tool.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.tool.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+
+    def _perm(self, user: User, obj: object) -> bool:
+        request = APIRequestFactory().get("/")
+        request.user = user
+        return IsParentToolOwner().has_object_permission(request, APIView(), obj)
+
+    def test_parent_tool_owners_admin_service_account_allowed(self) -> None:
+        child = SimpleNamespace(prompt_studio_tool=self.tool)
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.assertTrue(self._perm(self.owner, child))
+        self.assertTrue(self._perm(self.coowner, child))
+        self.assertTrue(self._perm(self.admin, child))
+        self.assertTrue(self._perm(svc, child))
+
+    def test_parent_tool_viewer_and_outsider_denied(self) -> None:
+        child = SimpleNamespace(prompt_studio_tool=self.tool)
+        self.assertFalse(self._perm(self.viewer, child))
+        self.assertFalse(self._perm(self.outsider, child))
+
+    def test_null_parent_falls_back_to_object_owner(self) -> None:
+        # No parent tool → access derives from the object's own ``created_by``.
+        orphan = SimpleNamespace(prompt_studio_tool=None, created_by=self.owner)
+        self.assertTrue(self._perm(self.owner, orphan))
+        self.assertFalse(self._perm(self.coowner, orphan))
+
+
+class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
+    """A co-owner keeps their default-adapter link when a share-axis change
+    (e.g. a ``shared_to_org`` toggle-off) drops them from *effective* access —
+    all owners, not just the creator, are exempt from the post-share
+    default-adapter cleanup (UN-2202 regression guard).
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from adapter_processor_v2.models import AdapterInstance
+
+        self.adapter = AdapterInstance.objects.create(
+            adapter_name="ad-1",
+            adapter_id="openai|test",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.adapter.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+
+    def test_owner_exempt_from_default_adapter_clear(self) -> None:
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        captured: dict[str, set[int]] = {}
+        # shared_to_org toggle-off drops the co-owner + viewer from effective
+        # access; only the creator survives the recompute.
+        before = {self.owner.pk, self.coowner.pk, self.viewer.pk}
+        after = {self.owner.pk}
+        with (
+            patch.object(
+                AdapterInstanceViewSet, "get_object", return_value=self.adapter
+            ),
+            patch.object(
+                AdapterInstanceViewSet,
+                "_effective_member_ids",
+                side_effect=[before, after],
+            ),
+            patch(
+                "permissions.resource_share_views.ResourceShareManagementMixin.share",
+                return_value=Response(status=status.HTTP_200_OK),
+            ),
+            patch.object(
+                AdapterInstanceViewSet,
+                "_clear_default_adapter_for_removed_users",
+                side_effect=lambda adapter, removed: captured.__setitem__(
+                    "removed", set(removed)
+                ),
+            ),
+        ):
+            AdapterInstanceViewSet().share(Mock(), pk=str(self.adapter.pk))
+        # co-owner (OWNER row, user_id != created_by) is exempt; the viewer
+        # (no owner row) is still cleared.
+        self.assertNotIn(self.coowner.pk, captured["removed"])
+        self.assertIn(self.viewer.pk, captured["removed"])

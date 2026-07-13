@@ -414,10 +414,11 @@ class AdapterInstanceViewSet(
             adapter.refresh_from_db()
             after_user_ids = self._effective_member_ids(adapter)
             removed = before_user_ids - after_user_ids
-            # The owner always retains access via ``created_by``; never clear
-            # their defaults on a share-axis change (e.g. a ``shared_to_org``
-            # toggle-off, which drops the owner from the org-member set).
-            removed.discard(adapter.created_by_id)
+            # Owners (creator + co-owners) keep full access via their OWNER
+            # membership row regardless of the share axes; never clear their
+            # defaults on a share-axis change (e.g. a ``shared_to_org`` toggle-off,
+            # which drops them from the effective org-member set).
+            removed -= {m.user_id for m in adapter.owner_memberships()}
             self._clear_default_adapter_for_removed_users(adapter, removed)
         return response
 

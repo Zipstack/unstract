@@ -18,10 +18,20 @@ class AddOwnerSerializer(serializers.Serializer):
     def validate_user_id(self, value: int) -> int:
         resource = self.context["resource"]
         organization = UserContext.get_organization()
-        if not OrganizationMember.objects.filter(
-            user__id=value, organization=organization
-        ).exists():
+        member = (
+            OrganizationMember.objects.filter(user__id=value, organization=organization)
+            .select_related("user")
+            .first()
+        )
+        if member is None:
             raise serializers.ValidationError("User not found in your organization.")
+        # Service accounts are machine identities excluded from sharing/membership
+        # everywhere else (see ``compute_effective_members``); keep them out of
+        # ownership too.
+        if member.user.is_service_account:
+            raise serializers.ValidationError(
+                "Service accounts cannot be added as owners."
+            )
         if resource.memberships.filter(user_id=value, role=ResourceRole.OWNER).exists():
             raise serializers.ValidationError("User is already an owner.")
         return value

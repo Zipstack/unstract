@@ -23,8 +23,8 @@ def backfill_memberships(apps, app_label: str, model_name: str) -> None:
 
     Creator becomes an OWNER row, each direct ``shared_users`` entry a VIEWER
     row (UN-2202). ``created_by`` is left as audit-only metadata; a null creator
-    is skipped (the resource has no owner and stays reachable only via
-    org-admin / service-account overrides).
+    gets no OWNER row (its ``shared_users`` still become VIEWER rows, so
+    viewer/org/group access is unaffected) — the resource simply has no owner.
     """
     Resource = apps.get_model(app_label, model_name)  # NOSONAR
     Membership = apps.get_model("tenant_account_v2", "ResourceMembership")  # NOSONAR

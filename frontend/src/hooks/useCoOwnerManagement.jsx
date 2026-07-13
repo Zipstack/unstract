@@ -88,24 +88,42 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     async (resourceId, userIdOrIds) => {
       const isBatch = Array.isArray(userIdOrIds);
       const userIds = isBatch ? userIdOrIds : [userIdOrIds];
-      try {
-        for (const userId of userIds) {
+      // Attempt every id independently — a mid-batch failure must not drop the
+      // remaining ids or contradict the refreshed modal state.
+      const failedIds = [];
+      let lastError = null;
+      for (const userId of userIds) {
+        try {
           await service.addCoOwner(resourceId, userId);
+        } catch (err) {
+          failedIds.push(userId);
+          lastError = err;
         }
+      }
+      // Reconverge the modal on true server state regardless of partial outcome.
+      await refreshCoOwnerData(resourceId);
+      onListRefresh?.();
+
+      const succeeded = userIds.length - failedIds.length;
+      if (failedIds.length === 0) {
         setAlertDetails({
           type: "success",
           content: isBatch
             ? "Co-owners added successfully"
             : "Co-owner added successfully",
         });
-        await refreshCoOwnerData(resourceId);
-        onListRefresh?.();
-      } catch (err) {
-        setAlertDetails(handleException(err, "Unable to add co-owner"));
-        if (isBatch) {
-          await refreshCoOwnerData(resourceId);
-          onListRefresh?.();
-        }
+      } else if (succeeded === 0) {
+        setAlertDetails(handleException(lastError, "Unable to add co-owner"));
+      } else {
+        const failedEmails = coOwnerAllUsers
+          .filter((user) => failedIds.includes(user.id))
+          .map((user) => user.email);
+        setAlertDetails({
+          type: "warning",
+          content: `Added ${succeeded} of ${userIds.length} co-owners. Failed for: ${
+            failedEmails.join(", ") || failedIds.join(", ")
+          }`,
+        });
       }
     },
     [
@@ -114,6 +132,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       onListRefresh,
       setAlertDetails,
       handleException,
+      coOwnerAllUsers,
     ],
   );
 
