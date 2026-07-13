@@ -21,10 +21,20 @@ Two deliberate properties:
 - **Idempotent writes** (``INSERT … ON CONFLICT DO NOTHING``): the PG queue is
   at-least-once, so a redelivered executor message must not clobber an already
   recorded result. First write wins.
-- **Poll-based waiting, NOT ``LISTEN``/``NOTIFY``**: ``NOTIFY`` does not survive
-  transaction-pooled PgBouncer (the same constraint that makes the orchestrator
-  lock a TTL lease rather than ``pg_advisory_lock``). Polling with backoff is
-  pooling-safe and needs no persistent listener connection.
+- **Event-driven waiting with a poll fallback** (``PG_RESULT_SIGNAL_BACKEND``):
+  polling ``pg_task_result`` once per in-flight task scales DB load with
+  *concurrency*, not throughput (every waiter SELECTs on a backoff) — which
+  saturated the DB at high concurrency. When ``PG_RESULT_SIGNAL_BACKEND=redis``,
+  :meth:`store_result` RPUSHes a tiny ready-token (the reply key ONLY — never the
+  payload/PII) to a per-key Redis list and :meth:`wait_for_result` BLPOPs it, then
+  does ONE authoritative SELECT — so DB load scales with throughput. The DB stays
+  the source of truth: a slow fallback SELECT still runs, so a lost/absent signal
+  (Redis restart, missed publish) costs only latency, never correctness. PG
+  ``LISTEN``/``NOTIFY`` was rejected because the *receiver* side cannot survive
+  transaction-pooled PgBouncer (a session-scoped registration on a connection the
+  pool reassigns each txn — the same constraint that makes the orchestrator hold a
+  TTL lease rather than ``pg_advisory_lock``). With ``PG_RESULT_SIGNAL_BACKEND=poll``
+  (the default) the behaviour is exactly the historical backoff poll.
 
 Connection discipline mirrors :class:`~queue_backend.pg_queue.client.PgQueueClient`:
 an injected connection is the caller's (tests); otherwise one is created lazily
@@ -41,10 +51,12 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
+import os
 import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.polling import poll_for_row
 
@@ -117,6 +129,98 @@ STATUS_FAILED = PgTaskStatus.FAILED.value
 # Literals (not env-driven) so the one-shot bound can't be widened operationally.
 _STORE_RETRY_ATTEMPTS: Final = 2  # total attempts: 1 initial + 1 retry
 _STORE_RETRY_BACKOFF_SECONDS: Final = 0.5
+
+
+# --- Event-driven result signal (Redis) -------------------------------------
+# ``PG_RESULT_SIGNAL_BACKEND=redis`` swaps the per-task DB poll for a Redis
+# ready-token (RPUSH producer / BLPOP consumer), collapsing DB load from ~N
+# SELECTs per in-flight task to ~1. Default ``poll`` preserves the historical
+# backoff-poll behaviour byte-for-byte, so producer and consumer can be rolled
+# independently — a flag mismatch merely degrades to the fallback poll, never wrong.
+_SIGNAL_BACKEND_ENV: Final = "PG_RESULT_SIGNAL_BACKEND"
+_SIGNAL_REDIS: Final = "redis"
+_SIGNAL_POLL: Final = "poll"
+# BLPOP wakes instantly on the token; this is the SAFETY-NET SELECT cadence for a
+# lost/missed signal (Redis restart, publish before the consumer subscribed). Large
+# because it should almost never fire — the token normally arrives first.
+_REDIS_FALLBACK_POLL_SECONDS: Final = 30.0
+# The ready-token only has to outlive the RPUSH -> BLPOP gap (normally ms). A
+# generous, self-cleaning TTL covers a slow consumer; the fallback SELECT is the
+# real backstop, so this need not match the result retention.
+_READY_TOKEN_TTL_SECONDS: Final = 300
+
+
+def _signal_backend() -> str:
+    """``redis`` or ``poll`` (default), read per call so a flag flip needs no
+    redeploy and producer/consumer roll independently.
+    """
+    value = os.environ.get(_SIGNAL_BACKEND_ENV, _SIGNAL_POLL).strip().lower()
+    return _SIGNAL_REDIS if value == _SIGNAL_REDIS else _SIGNAL_POLL
+
+
+def _ready_key(task_id: str) -> str:
+    """Redis list key carrying the ready-token for one reply key. The task_id (a
+    UUID) is the ONLY thing that ever touches Redis — never the result/PII.
+    """
+    return f"pg_result:ready:{task_id}"
+
+
+# Process-cached Redis client for the ready-signal (redis-py pools are
+# thread-safe; a first-call race just orphans one short-lived pool — not a
+# correctness issue). ``None`` once we've failed to build it, so the caller
+# degrades to the poll path without retrying the build every wait.
+_redis_client_singleton: Any = None
+_redis_client_unavailable = False
+
+
+def _get_result_redis_client() -> Any:
+    """Return the process-cached Redis client, or ``None`` if it can't be built.
+
+    Mirrors ``redis_barrier._get_redis_client``: use the canonical ``REDIS_``
+    prefix so Sentinel/SSL config is inherited (``create_redis_client``'s getenv
+    fallback does NOT cross-fall-back SENTINEL_MODE/SSL). The token value is
+    ignored — only its arrival matters — so ``decode_responses`` is irrelevant.
+    """
+    global _redis_client_singleton, _redis_client_unavailable
+    if _redis_client_singleton is None and not _redis_client_unavailable:
+        try:
+            _redis_client_singleton = create_redis_client(
+                env_prefix="REDIS_",
+                socket_timeout=5,
+                socket_connect_timeout=5,
+            )
+        except Exception:
+            _redis_client_unavailable = True
+            logger.warning(
+                "PgResultBackend: could not build the Redis client for the result "
+                "signal; result waits fall back to poll",
+                exc_info=True,
+            )
+    return _redis_client_singleton
+
+
+def _signal_ready(task_id: str) -> None:
+    """Best-effort wake-up: RPUSH a ready-token + (re)set its TTL. NEVER raises —
+    the result is already durably committed to ``pg_task_result``, so a failed
+    signal only means the waiter falls back to its slow poll. Only the reply key is
+    sent to Redis (no result payload / PII).
+    """
+    client = _get_result_redis_client()
+    if client is None:
+        return
+    key = _ready_key(task_id)
+    try:
+        pipe = client.pipeline()
+        pipe.rpush(key, b"1")
+        pipe.expire(key, _READY_TOKEN_TTL_SECONDS)
+        pipe.execute()
+    except Exception:
+        logger.warning(
+            "PgResultBackend: result ready-signal RPUSH failed for task_id=%s; the "
+            "waiter's fallback poll will still deliver the result",
+            task_id,
+            exc_info=True,
+        )
 
 
 class PgResultBackend:
@@ -224,6 +328,12 @@ class PgResultBackend:
         for the same key (at-least-once redelivery) is a no-op. Survives a stale
         cached connection via a one-shot reconnect-retry (see
         :meth:`_store_with_reconnect`).
+
+        In ``PG_RESULT_SIGNAL_BACKEND=redis`` mode, once the row is committed it
+        RPUSHes a ready-token so the blocking waiter wakes immediately instead of
+        polling. Best-effort: a signal failure only slows the waiter (its fallback
+        poll still delivers). A redelivery re-signals harmlessly — a stale token
+        just expires.
         """
         if result is not None:
             status, result_json, error_text = STATUS_COMPLETED, json.dumps(result), ""
@@ -235,6 +345,9 @@ class PgResultBackend:
                 (str(task_id), status, result_json, error_text, retention_seconds),
             )
         )
+        # Row is committed above → wake any blocking waiter (redis mode only).
+        if _signal_backend() == _SIGNAL_REDIS:
+            _signal_ready(str(task_id))
 
     def get_result(self, task_id: str) -> dict[str, Any] | None:
         """Return ``{status, result, error}`` if the row exists, else ``None``.
@@ -247,13 +360,13 @@ class PgResultBackend:
         them, so a payload-poll must not treat a completed row as carrying a result.
 
         No reconnect-retry here (unlike :meth:`store_result`). The invariant it
-        relies on: the sole entry point into a wait (``executor_rpc.wait_for_result``
-        → this class's :meth:`wait_for_result` → ``get_result``) constructs a
-        FRESH ``PgResultBackend`` per wait and polls it every ~0.2–2s, so this
-        connection is new and kept warm — no idle window to be reaped, and a
-        failure on a fresh connection is a genuine error, not a stale reap. If a
-        long-lived backend ever gains a one-shot ``get_result`` lookup, revisit
-        this.
+        relies on: the connection is never idle long enough to be reaped when
+        ``get_result`` runs. In ``poll`` mode the wait polls every ~0.2–2s so the
+        connection stays warm; in ``redis`` mode :meth:`_wait_via_redis` ``close``s
+        the connection before each (possibly long) ``BLPOP``, so every
+        ``get_result`` runs on a freshly-opened connection. Either way a failure
+        here is a genuine error, not a stale reap. If a long-lived backend ever
+        gains a one-shot ``get_result`` lookup that can sit idle, revisit this.
         """
         with self._cursor() as cur:
             cur.execute(_get_sql(), (str(task_id),))
@@ -272,11 +385,26 @@ class PgResultBackend:
     ) -> dict[str, Any] | None:
         """Block until the result row appears or *timeout* seconds elapse.
 
-        Returns the ``{status, result, error}`` dict, or ``None`` on timeout. Uses
-        the shared :func:`~unstract.core.polling.poll_for_row` backoff (capped
-        exponential, PgBouncer-safe; the final sleep is clamped to the deadline) — the
-        same skeleton the backend's ``DjangoQueueTransport`` poller uses, so the
-        backoff lives in one place.
+        Returns the ``{status, result, error}`` dict, or ``None`` on timeout.
+
+        ``PG_RESULT_SIGNAL_BACKEND=redis`` waits on a Redis ready-token (``BLPOP``)
+        and does one authoritative :meth:`get_result` on wake — DB load scales with
+        throughput, not concurrency. The DB stays the source of truth: an immediate
+        check closes the publish-before-wait race, a slow fallback ``get_result``
+        every ``_REDIS_FALLBACK_POLL_SECONDS`` backstops a lost signal, and any Redis
+        error degrades to the poll path for the rest of the wait. ``=poll`` (default)
+        is exactly the historical capped-exponential backoff poll (PgBouncer-safe),
+        shared with the backend's ``DjangoQueueTransport`` poller.
+        """
+        if _signal_backend() != _SIGNAL_REDIS:
+            return self._poll_for_result(task_id, timeout, poll_interval)
+        return self._wait_via_redis(task_id, timeout, poll_interval)
+
+    def _poll_for_result(
+        self, task_id: str, timeout: float, poll_interval: float
+    ) -> dict[str, Any] | None:
+        """The historical backoff poll — primary path in ``poll`` mode and the
+        degradation target when Redis is unavailable mid-wait.
         """
         return poll_for_row(
             lambda: self.get_result(task_id),
@@ -321,6 +449,57 @@ class PgResultBackend:
                 task_id,
                 exc_info=True,
             )
+
+    def _wait_via_redis(
+        self, task_id: str, timeout: float, poll_interval: float
+    ) -> dict[str, Any] | None:
+        """Redis ``BLPOP`` fast-path + DB-source-of-truth fallback poll.
+
+        Correctness never depends on the signal: every wake does an authoritative
+        ``get_result``, and a missed/absent token is caught by the fallback SELECT
+        (bounded by ``_REDIS_FALLBACK_POLL_SECONDS``) or the final check at deadline.
+        """
+        deadline = time.monotonic() + timeout
+        # Close the publish-before-wait race: the row may already be committed
+        # (executor finished + RPUSHed before we started waiting).
+        row = self.get_result(task_id)
+        if row is not None:
+            return row
+        client = _get_result_redis_client()
+        if client is None:
+            return self._poll_for_result(task_id, timeout, poll_interval)
+        key = _ready_key(task_id)
+        while True:
+            # Do NOT pin the DB connection across the (possibly long) BLPOP: an
+            # idle server connection would be reaped by PgBouncer and the next
+            # get_result (no reconnect-retry) would fail. Closing here means each
+            # get_result below runs on a freshly-opened connection — preserving the
+            # "fresh, never idle-reaped" invariant get_result relies on.
+            self.close()
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return self.get_result(task_id)  # final authoritative check
+            # BLPOP wakes instantly on the token; cap the block at the fallback
+            # cadence so a missed signal still triggers a backstop SELECT. Timeout
+            # is > 0 here (remaining > 0), and 0 would mean "block forever".
+            block = min(remaining, _REDIS_FALLBACK_POLL_SECONDS)
+            try:
+                client.blpop([key], timeout=block)
+            except Exception:
+                # Redis blip mid-wait → degrade to the poll path for the remainder.
+                logger.warning(
+                    "PgResultBackend: BLPOP failed for task_id=%s; falling back to "
+                    "poll for the rest of the wait",
+                    task_id,
+                    exc_info=True,
+                )
+                return self._poll_for_result(
+                    task_id, max(0.0, deadline - time.monotonic()), poll_interval
+                )
+            row = self.get_result(task_id)
+            if row is not None:
+                return row
+            # Woken but row not yet visible (rare) or a fallback tick → loop.
 
     def close(self) -> None:
         """Close an owned connection (injected connections are the caller's)."""
