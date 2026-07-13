@@ -27,14 +27,24 @@
         "MiniMax-M3",
         "MiniMax-M2.7"
       ],
-      "description": "MiniMax-M3 supports a 1,000,000-token context window and multimodal input. MiniMax-M2.7 supports a 204,800-token context window and text input."
+      "description": "MiniMax-M3 supports a 1,000,000-token context window with text, image, and video input. MiniMax-M2.7 supports a 204,800-token context window with text input."
     },
     "api_base": {
       "type": "string",
       "format": "url",
       "title": "API Base",
       "default": "https://api.minimax.io/v1",
-      "description": "MiniMax OpenAI-compatible endpoint. The default is for global accounts; use https://api.minimaxi.com/v1 for China accounts."
+      "description": "The default https://api.minimax.io/v1 is the global OpenAI-compatible endpoint. Other supported bases are https://api.minimax.io/anthropic for global Anthropic-compatible requests, https://api.minimaxi.com/v1 for China OpenAI-compatible requests, and https://api.minimaxi.com/anthropic for China Anthropic-compatible requests."
+    },
+    "service_tier": {
+      "type": "string",
+      "title": "Service Tier",
+      "enum": [
+        "standard",
+        "priority"
+      ],
+      "default": "standard",
+      "description": "Priority requests receive priority admission and use the provider's priority pricing."
     },
     "max_tokens": {
       "type": "number",
@@ -42,7 +52,7 @@
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
       "default": 4096,
-      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
+      "description": "Maximum output length. MiniMax-M3 allows up to 524,288 tokens and MiniMax-M2.7 allows up to 204,800 tokens."
     },
     "max_retries": {
       "type": "number",

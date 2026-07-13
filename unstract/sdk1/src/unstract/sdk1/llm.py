@@ -725,11 +725,11 @@ class LLM:
         self,
         model: str,
         messages: list[dict[str, str]],
-        usage: Mapping[str, int] | None,
+        usage: Mapping[str, Any] | None,
         llm_api: str,
         response: object | None = None,
     ) -> None:
-        usage_data: Mapping[str, int] = usage or {}
+        usage_data: Mapping[str, Any] = usage or {}
         prompt_tokens = usage_data.get("prompt_tokens", 0)
         completion_tokens = usage_data.get("completion_tokens", 0)
         total_tokens = usage_data.get("total_tokens", 0)
@@ -768,12 +768,20 @@ class LLM:
         )
 
         try:
-            prompt_cost, compl_cost = litellm.cost_per_token(
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            cost = prompt_cost + compl_cost
+            cost = None
+            # Adapters can opt in to provider-specific billing when LiteLLM lacks it.
+            adapter_namespace = getattr(self.adapter, "__dict__", {})
+            if "calculate_usage_cost" in adapter_namespace:
+                calculate_usage_cost = self.adapter.calculate_usage_cost
+                service_tier = getattr(self, "kwargs", {}).get("service_tier")
+                cost = calculate_usage_cost(model, usage_data, service_tier)
+            if cost is None:
+                prompt_cost, compl_cost = litellm.cost_per_token(
+                    model=model,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                cost = prompt_cost + compl_cost
         except Exception:
             logger.warning(
                 "Failed to compute cost for model=%s; recording as 0.0",

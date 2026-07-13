@@ -515,6 +515,14 @@ _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 _MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 _MINIMAX_PROVIDER_PREFIX = "minimax/"
+_MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
+
+
+def _minimax_provider_prefix(api_base: str) -> str:
+    path = urlparse(api_base).path.rstrip("/").lower()
+    if path.endswith("/anthropic"):
+        return _MINIMAX_ANTHROPIC_PROVIDER_PREFIX
+    return _MINIMAX_PROVIDER_PREFIX
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -531,12 +539,13 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
 
 
 class MiniMaxLLMParameters(BaseChatCompletionParameters):
-    """Adapter for MiniMax's OpenAI-compatible API."""
+    """Adapter for MiniMax's OpenAI- and Anthropic-compatible APIs."""
 
     api_key: str
     api_base: str = _MINIMAX_API_BASE
-    temperature: float | None = 1
+    temperature: float | None = Field(default=1, ge=0, le=2)
     thinking: dict[str, str] | None = None
+    service_tier: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -546,7 +555,11 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
             adapter_metadata["api_base"] = _MINIMAX_API_BASE
 
         adapter_metadata["model"] = MiniMaxLLMParameters.validate_model(adapter_metadata)
-        model_id = adapter_metadata["model"][len(_MINIMAX_PROVIDER_PREFIX) :]
+        model_id = adapter_metadata["model"].split("/", 1)[-1]
+
+        service_tier = adapter_metadata.get("service_tier")
+        if service_tier not in {None, "standard", "priority"}:
+            raise ValueError("service_tier must be standard or priority.")
 
         if "enable_thinking" in adapter_metadata:
             enable_thinking = adapter_metadata.pop("enable_thinking")
@@ -569,16 +582,25 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
             ):
                 raise ValueError(f"{model_id} does not support disabling thinking.")
 
-        return MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
+        validated["allowed_openai_params"] = ["service_tier", "thinking"]
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = str(adapter_metadata.get("model", "")).strip()
         if not model:
             raise ValueError("model is required for the MiniMax adapter.")
-        if model.startswith(_MINIMAX_PROVIDER_PREFIX):
-            return model
-        return f"{_MINIMAX_PROVIDER_PREFIX}{model}"
+        for prefix in (
+            _MINIMAX_PROVIDER_PREFIX,
+            _MINIMAX_ANTHROPIC_PROVIDER_PREFIX,
+        ):
+            if model.startswith(prefix):
+                model = model[len(prefix) :]
+                break
+        api_base = str(adapter_metadata.get("api_base") or _MINIMAX_API_BASE)
+        return f"{_minimax_provider_prefix(api_base)}{model}"
 
 
 class OpenRouterLLMParameters(BaseChatCompletionParameters):

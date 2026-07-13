@@ -22,6 +22,9 @@ from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 _MINIMAX_API_BASE = "https://api.minimax.io/v1"
+_MINIMAX_ANTHROPIC_API_BASE = "https://api.minimax.io/anthropic"
+_MINIMAX_CN_API_BASE = "https://api.minimaxi.com/v1"
+_MINIMAX_CN_ANTHROPIC_API_BASE = "https://api.minimaxi.com/anthropic"
 
 
 # --- Branded LLM adapters -------------------------------------------------
@@ -45,32 +48,187 @@ def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
 
 
 @pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
-def test_minimax_llm_routes_via_native_provider(model: str) -> None:
+@pytest.mark.parametrize(
+    ("api_base", "provider"),
+    [
+        (_MINIMAX_API_BASE, "minimax"),
+        (_MINIMAX_CN_API_BASE, "minimax"),
+        (_MINIMAX_ANTHROPIC_API_BASE, "anthropic"),
+        (_MINIMAX_CN_ANTHROPIC_API_BASE, "anthropic"),
+    ],
+)
+def test_minimax_llm_routes_by_api_protocol(
+    model: str, api_base: str, provider: str
+) -> None:
     from litellm import get_llm_provider
 
-    validated = MiniMaxLLMParameters.validate({"model": model, "api_key": "k"})
+    validated = MiniMaxLLMParameters.validate(
+        {"model": model, "api_key": "k", "api_base": api_base}
+    )
 
-    assert validated["model"] == f"minimax/{model}"
-    assert validated["api_base"] == _MINIMAX_API_BASE
-    assert get_llm_provider(validated["model"])[1] == "minimax"
+    assert validated["model"] == f"{provider}/{model}"
+    assert validated["api_base"] == api_base
+    assert validated["cost_model"] == f"minimax/{model}"
+    assert get_llm_provider(validated["model"])[1] == provider
+    assert validated["allowed_openai_params"] == ["service_tier", "thinking"]
 
 
-def test_minimax_model_prefix_is_idempotent() -> None:
-    once = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
+@pytest.mark.parametrize("api_base", [_MINIMAX_API_BASE, _MINIMAX_ANTHROPIC_API_BASE])
+def test_minimax_model_prefix_is_idempotent(api_base: str) -> None:
+    once = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M3", "api_key": "k", "api_base": api_base}
+    )
     twice = MiniMaxLLMParameters.validate(dict(once))
 
-    assert twice["model"] == once["model"] == "minimax/MiniMax-M3"
+    assert twice["model"] == once["model"]
 
 
-def test_minimax_native_routing_resolves_usage_cost() -> None:
+def test_minimax_model_prefix_follows_changed_protocol() -> None:
+    openai = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
+    anthropic = MiniMaxLLMParameters.validate(
+        {**openai, "api_base": _MINIMAX_ANTHROPIC_API_BASE}
+    )
+
+    assert anthropic["model"] == "anthropic/MiniMax-M3"
+
+
+@pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
+def test_minimax_native_routing_resolves_usage_cost(model: str) -> None:
     from litellm import cost_per_token
 
     prompt_cost, completion_cost = cost_per_token(
-        "minimax/MiniMax-M3", prompt_tokens=1, completion_tokens=1
+        f"minimax/{model}", prompt_tokens=1, completion_tokens=1
     )
 
     assert prompt_cost > 0
     assert completion_cost > 0
+
+
+@pytest.mark.parametrize(
+    ("model", "context_window", "max_output_tokens", "supports_vision"),
+    [
+        ("MiniMax-M3", 1_000_000, 524_288, True),
+        ("MiniMax-M2.7", 204_800, 204_800, False),
+    ],
+)
+def test_minimax_model_metadata_matches_official_limits(
+    model: str,
+    context_window: int,
+    max_output_tokens: int,
+    supports_vision: bool,
+) -> None:
+    from litellm import get_max_tokens, get_model_info
+
+    model_name = f"minimax/{model}"
+    info = get_model_info(model_name)
+
+    assert info["max_input_tokens"] == context_window
+    assert info["max_output_tokens"] == max_output_tokens
+    assert info["supports_vision"] is supports_vision
+    assert get_max_tokens(model_name) == max_output_tokens
+
+
+def test_minimax_m3_usage_cost_preserves_context_and_service_tiers() -> None:
+    base_usage = {
+        "prompt_tokens": 512_000,
+        "completion_tokens": 1,
+        "total_tokens": 512_001,
+    }
+    long_usage = {
+        "prompt_tokens": 512_001,
+        "completion_tokens": 1,
+        "total_tokens": 512_002,
+    }
+
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M3", base_usage
+    ) == pytest.approx(512_000 * 0.3e-6 + 1.2e-6)
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M3", long_usage
+    ) == pytest.approx(512_001 * 0.6e-6 + 2.4e-6)
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M3", base_usage, "priority"
+    ) == pytest.approx(512_000 * 0.45e-6 + 1.8e-6)
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M3", long_usage, "priority"
+    ) == pytest.approx(512_001 * 0.9e-6 + 3.6e-6)
+
+
+def test_minimax_usage_cost_preserves_cache_rates() -> None:
+    m3_cache_read = {
+        "prompt_tokens": 10,
+        "completion_tokens": 0,
+        "total_tokens": 10,
+        "prompt_tokens_details": {"cached_tokens": 10},
+    }
+    m27_cache_write = {
+        "prompt_tokens": 10,
+        "completion_tokens": 0,
+        "total_tokens": 10,
+        "cache_creation_input_tokens": 10,
+    }
+
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "anthropic/MiniMax-M3", m3_cache_read, "priority"
+    ) == pytest.approx(10 * 0.09e-6)
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M2.7", m27_cache_write
+    ) == pytest.approx(10 * 0.375e-6)
+    assert MiniMaxLLMAdapter.calculate_usage_cost(
+        "minimax/MiniMax-M2.7", m27_cache_write, "priority"
+    ) == pytest.approx(10 * 0.5625e-6)
+
+
+def test_minimax_registered_metadata_preserves_tiered_prices() -> None:
+    from litellm import model_cost
+
+    info = model_cost["minimax/MiniMax-M3"]
+
+    assert info["input_cost_per_token_above_512k_tokens"] == pytest.approx(0.6e-6)
+    assert info["output_cost_per_token_above_512k_tokens"] == pytest.approx(2.4e-6)
+    assert info["input_cost_per_token_priority"] == pytest.approx(0.45e-6)
+    assert info["output_cost_per_token_above_512k_tokens_priority"] == pytest.approx(
+        3.6e-6
+    )
+
+
+def test_minimax_temperature_uses_official_default_and_range() -> None:
+    validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
+
+    assert validated["temperature"] == pytest.approx(1)
+    for temperature in (-0.1, 2.1):
+        with pytest.raises(ValueError):
+            MiniMaxLLMParameters.validate(
+                {
+                    "model": "MiniMax-M3",
+                    "api_key": "k",
+                    "temperature": temperature,
+                }
+            )
+
+
+@pytest.mark.parametrize("service_tier", ["standard", "priority"])
+def test_minimax_forwards_supported_service_tiers(service_tier: str) -> None:
+    validated = MiniMaxLLMParameters.validate(
+        {
+            "model": "MiniMax-M3",
+            "api_key": "k",
+            "service_tier": service_tier,
+        }
+    )
+
+    assert validated["service_tier"] == service_tier
+
+
+def test_minimax_rejects_unknown_service_tier() -> None:
+    with pytest.raises(ValueError, match="service_tier"):
+        MiniMaxLLMParameters.validate(
+            {
+                "model": "MiniMax-M3",
+                "api_key": "k",
+                "service_tier": "unsupported",
+            }
+        )
 
 
 def test_minimax_maps_thinking_toggle_to_native_parameter() -> None:
@@ -209,9 +367,18 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
         "MiniMax-M2.7",
     ]
     assert schema["properties"]["enable_thinking"]["default"] is True
-    assert (
-        "https://api.minimaxi.com/v1" in schema["properties"]["api_base"]["description"]
-    )
+    endpoint_description = schema["properties"]["api_base"]["description"]
+    for endpoint in (
+        _MINIMAX_API_BASE,
+        _MINIMAX_ANTHROPIC_API_BASE,
+        _MINIMAX_CN_API_BASE,
+        _MINIMAX_CN_ANTHROPIC_API_BASE,
+    ):
+        assert endpoint in endpoint_description
+    assert schema["properties"]["service_tier"]["enum"] == [
+        "standard",
+        "priority",
+    ]
     assert "reasoning_effort" not in json.dumps(schema)
 
 
