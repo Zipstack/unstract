@@ -356,6 +356,7 @@ match `litellm_provider` exactly, and still bill $0 because its model string car
 `custom_openai/` prefix.
 
 **Common provider names:**
+
 | Display Name | `get_provider()` Value |
 |--------------|------------------------|
 | OpenAI | `openai` |

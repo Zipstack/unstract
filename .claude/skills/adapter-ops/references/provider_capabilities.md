@@ -132,17 +132,19 @@ api_key, api_base, model, max_tokens, max_retries, timeout
 
 ### Verification Command
 
-Always verify the provider name before implementing an adapter:
+Always verify the provider name before implementing an adapter — against the **pinned** LiteLLM
+in the sdk1 venv, not upstream `main`, since `main` may price models the pinned version doesn't:
 
 ```bash
-# Check all unique litellm_provider values
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.value.litellm_provider != null)) |
-      map(.value.litellm_provider) | unique | sort'
-
-# Check specific provider (e.g., for azure_ai models)
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0].value.litellm_provider'
+cd unstract/sdk1 && uv run python -c "
+import litellm
+# All unique litellm_provider values in the pinned cost map
+print(sorted({v['litellm_provider'] for v in litellm.model_cost.values()
+              if isinstance(v, dict) and v.get('litellm_provider')}))
+# Provider for a specific model-key prefix (e.g. azure_ai)
+print([v['litellm_provider'] for k, v in litellm.model_cost.items()
+       if k.startswith('azure_ai')][:1])
+"
 ```
 
 ### Why This Matters
