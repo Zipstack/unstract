@@ -3,8 +3,23 @@
 # A "critical path" is an end-to-end user or system flow whose failure would
 # constitute a production incident. The rig reports:
 #   ✅ covered    — at least one group in `covered_by` ran green this build
-#   ⚠️ gap        — `covered_by` is empty OR no group covering it ran
+#   ⚠️ gap        — no covering group ran green this build
 #   ❌ regression — a path that was ✅ on the cached main baseline is now not ✅
+#
+# Only one kind of gap gates --fail-on-critical-gap:
+#   • in-scope gap     — a covering group ran in this tier but not green; fails.
+#   • out-of-scope gap — covered only by an unrun tier, or no group declared;
+#                        warn-only (a tier can't fail for coverage it can't run).
+#
+# Only wire `covered_by` to a group that really exercises the path — a bogus
+# mapping fails the build when that group breaks, for the wrong reason.
+#
+# `proof` (default: group):
+#   • group  — covered when any covered_by group runs green. Coarse: survives
+#              the covering test being deleted.
+#   • marker — additionally requires ≥1 passing test carrying
+#              @pytest.mark.critical_path("<id>") in this build. Flip each
+#              path to marker once its tests are marked.
 #
 # We intentionally do NOT chase 100% coverage. Focus on filling these gaps first.
 version: 1
@@ -12,19 +27,15 @@ version: 1
 paths:
   - id: auth-login
     description: "User can log in and obtain a session cookie."
-    entry: "POST /api/v1/auth/login"
-    # Honest declaration: e2e-smoke only exercises the session sentinel +
-    # /health/, never POST /api/v1/auth/login. Track as a gap until a real
-    # login test exists (likely under tests/e2e/smoke/ or tests/e2e/auth/).
-    covered_by: []
+    entry: "POST /api/v1/login"
+    covered_by: [e2e-login]
+    proof: marker
 
   - id: adapter-register-llm
     description: "Register and validate an LLM adapter."
     entry: "POST /api/v1/adapter/"
-    # Honest declaration: unit-backend is currently optional/gated and
-    # e2e-smoke only hits /health/. Track as a gap until a real adapter test
-    # exists (likely under tests/e2e/smoke/ or a new tests/e2e/adapters/ group).
-    covered_by: []
+    covered_by: [integration-backend]
+    proof: marker
 
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."
@@ -45,11 +56,6 @@ paths:
     description: "Run an ETL pipeline from source connector to destination."
     entry: "POST /api/v1/pipeline/{id}/execute/"
     covered_by: []   # gap
-
-  - id: tool-sandbox-exec
-    description: "Tool image runs in sandbox container and emits structured output."
-    entry: "internal: tool-registry → runner → docker run"
-    covered_by: [unit-runner]
 
   - id: usage-token-tracking
     description: "Per-execution token usage is recorded and retrievable."

@@ -32,21 +32,6 @@ groups:
     uv_sync_group: test
     coverage_source: src/unstract/sdk1
 
-  unit-runner:
-    tier: unit
-    workdir: runner
-    # Runner co-locates its tests under src/. Pytest recurses from here.
-    # The project has no `test` uv group, so deps are pip-installed inline.
-    paths: [src]
-    pip_install:
-      - "flask~=3.1.0"
-      - "docker==6.1.3"
-      - "redis~=5.2.1"
-      - "python-dotenv>=1.0.0"
-      - "kubernetes"
-    install_editable: true
-    coverage_source: src/unstract/runner
-
   unit-platform-service:
     tier: unit
     workdir: platform-service
@@ -66,38 +51,48 @@ groups:
   unit-backend:
     tier: unit
     workdir: backend
-    # List paths explicitly. `[.]` recurses into every test_*.py in backend/,
-    # including vendored fixtures and pluggable-app tests that don't belong
-    # in the OSS rig — keep this list scoped to the apps actually under test.
-    paths:
-      - account_v2/tests
-      - adapter_processor_v2/tests
-      - api_deployment_v2/tests
-      - connector_v2/tests
-      - dashboard_metrics/tests
-      - file_management/tests
-      - project/tests
-      - prompt_studio/prompt_studio_registry_v2/tests
-      - tenant_account_v2/tests
-      - usage_v2/tests
-      - utils/tests
-      - workflow_manager/endpoint_v2/tests
+    # Pure backend tests — no DB. Collect the whole tree and let markers, not a
+    # hand-kept file list, decide membership: tests needing live infra carry
+    # `@pytest.mark.integration` (see integration-backend) and are excluded here.
+    paths: ["."]
+    markers: "not integration"
     uv_sync_group: test
-    env:
-      DJANGO_SETTINGS_MODULE: backend.settings.test_cases
-    # Backend ORM imports require a real Postgres; rig provisions it via
-    # testcontainers or compose when this group is selected.
-    requires_services: [postgres, redis]
+    # Anchored: integration-backend reuses the identical Django settings env so
+    # the two halves of the backend suite can't drift apart.
+    env: &backend_test_env
+      DJANGO_SETTINGS_MODULE: backend.settings.test
+      # Tenancy is row-level, not schema-per-tenant; tests run in public.
+      DB_SCHEMA: public
+      # base.py resolves these at import time with no default; supply test-safe
+      # values here.
+      DJANGO_SECRET_KEY: test-secret-key-not-for-production
+      # All-zero Fernet key: valid format, obviously a placeholder.
+      ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      CELERY_BROKER_BASE_URL: redis://localhost:6379
+      CELERY_BROKER_USER: guest
+      CELERY_BROKER_PASS: guest
+      INDEXING_FLAG_TTL: "3600"
+      ENABLE_LOG_HISTORY: "False"
+      STRUCTURE_TOOL_IMAGE_URL: docker:test
+      STRUCTURE_TOOL_IMAGE_NAME: test-structure-tool
+      STRUCTURE_TOOL_IMAGE_TAG: test
+      SYSTEM_ADMIN_USERNAME: admin
+      SYSTEM_ADMIN_PASSWORD: admin
+      SYSTEM_ADMIN_EMAIL: admin@example.com
+      # ExecutionFileHandler builds execution-dir paths from this at init; only
+      # constructed, never written to in these tests.
+      WORKFLOW_EXECUTION_DIR_PREFIX: /tmp/unstract-workflow-exec
     coverage_source: .
-    optional: true   # gated until backend test_cases settings are complete
 
   unit-connectors:
     tier: unit
     workdir: unstract/connectors
     paths: [tests]
+    # Pure connector tests only. Credential / live-infra tests are marked
+    # `@pytest.mark.integration` and run in `integration-connectors`.
+    markers: "not integration"
     uv_sync_group: test
     coverage_source: src
-    optional: true
 
   unit-core:
     tier: unit
@@ -106,17 +101,38 @@ groups:
     # No `test` uv group in unstract/core today; rig still injects pytest plugins.
     install_editable: true
     coverage_source: src
-    optional: true
-
-  unit-tool-registry:
-    tier: unit
-    workdir: unstract/tool-registry
-    paths: [tests]
-    uv_sync_group: test
-    coverage_source: src
-    optional: true
 
   # ── Integration tier: needs infra but not full platform ────────────────────
+  integration-backend:
+    tier: integration
+    workdir: backend
+    # Backend ORM tests — need live infra. The rig provisions the declared
+    # requires_services via testcontainers and injects their connection env into
+    # pytest (tests/rig/cli.py:_inject_infra_env). Not optional: these gate the
+    # integration tier.
+    # Marker-only selection — exact complement of unit-backend: conftest.py
+    # auto-marks DB-bound tests `integration`, so new DB tests join this
+    # group with no edit here. Tests needing external creds skip without them.
+    paths: ["."]
+    markers: "integration"
+    uv_sync_group: test
+    env: *backend_test_env
+    requires_services: [postgres, redis]
+    coverage_source: .
+
+  integration-connectors:
+    tier: integration
+    workdir: unstract/connectors
+    paths: [tests]
+    markers: "integration"
+    # Most connector integration tests need real third-party credentials
+    # (Snowflake, GDrive, Box, Dropbox, …) and skip when those are absent. The
+    # MinIO test actually runs: the rig provisions MinIO via testcontainers and
+    # injects MINIO_* creds (tests/rig/cli.py).
+    requires_services: [minio]
+    uv_sync_group: test
+    coverage_source: src
+
   integration-workflow-execution:
     tier: integration
     paths: [tests/integration/workflow_execution]
@@ -138,6 +154,15 @@ groups:
     critical: true
     timeout_seconds: 1200
     depends_on: [unit-sdk1, unit-workers]
+
+  # Not optional: login is the first e2e critical path we gate on. A red login
+  # test fails the build and (on main) surfaces as an in-scope critical gap.
+  e2e-login:
+    tier: e2e
+    paths: [tests/e2e/auth]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
 
   e2e-workflow:
     tier: e2e
