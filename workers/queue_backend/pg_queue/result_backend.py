@@ -3,8 +3,9 @@
 Replaces Celery's ``AsyncResult`` / result backend for the *blocking* executor
 dispatch when it rides the PG transport. The PG executor consumer
 (``worker-pg-executor``) writes a finished task's outcome here, keyed by the
-caller-chosen reply key; the blocking caller polls :meth:`wait_for_result`
-until the row appears or its timeout elapses.
+caller-chosen reply key; the blocking caller waits on :meth:`wait_for_result`
+until the row appears or its timeout elapses. That wait is event-driven when the
+Redis signal is enabled (below) and a capped backoff poll otherwise.
 
 A row appears ONLY when the task finishes — ``status="completed"`` carrying the
 ``ExecutionResult.to_dict()`` payload, or ``status="failed"`` carrying the error
@@ -27,7 +28,9 @@ Two deliberate properties:
   saturated the DB at high concurrency. When ``PG_RESULT_SIGNAL_BACKEND=redis``,
   :meth:`store_result` RPUSHes a tiny ready-token (the reply key ONLY — never the
   payload/PII) to a per-key Redis list and :meth:`wait_for_result` BLPOPs it, then
-  does ONE authoritative SELECT — so DB load scales with throughput. The DB stays
+  does an authoritative SELECT on wake — collapsing the per-task DB reads to a small
+  constant (a race-check SELECT before the BLPOP plus one after the wake, versus the
+  poll's many) so DB load scales with throughput. The DB stays
   the source of truth: a slow fallback SELECT still runs, so a lost/absent signal
   (Redis restart, missed publish) costs only latency, never correctness. PG
   ``LISTEN``/``NOTIFY`` was rejected because the *receiver* side cannot survive
@@ -55,6 +58,8 @@ import os
 import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
+
+import redis
 
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
@@ -144,10 +149,21 @@ _SIGNAL_POLL: Final = "poll"
 # lost/missed signal (Redis restart, publish before the consumer subscribed). Large
 # because it should almost never fire — the token normally arrives first.
 _REDIS_FALLBACK_POLL_SECONDS: Final = 30.0
+# Socket read timeout for the SIGNAL client. MUST exceed the longest BLPOP block
+# (``_REDIS_FALLBACK_POLL_SECONDS``): redis-py enforces ``socket_timeout`` on the
+# blocking read, so a shorter value would raise ``redis.TimeoutError`` and abort
+# every BLPOP mid-block — degrading each wait to poll and defeating the signal.
+# The +5s headroom keeps the socket timeout strictly above the server-side block.
+_REDIS_SOCKET_TIMEOUT_SECONDS: Final = _REDIS_FALLBACK_POLL_SECONDS + 5
 # The ready-token only has to outlive the RPUSH -> BLPOP gap (normally ms). A
 # generous, self-cleaning TTL covers a slow consumer; the fallback SELECT is the
 # real backstop, so this need not match the result retention.
 _READY_TOKEN_TTL_SECONDS: Final = 300
+# Cooldown before retrying a failed signal-client build. A transient blip (Redis
+# restart/failover) must NOT permanently disable the signal for the process life,
+# but we also don't want to re-attempt the build on every wait — so we skip the
+# rebuild only within this window after the last failure, then try again.
+_REDIS_CLIENT_RETRY_COOLDOWN_SECONDS: Final = 30.0
 
 
 def _signal_backend() -> str:
@@ -167,35 +183,53 @@ def _ready_key(task_id: str) -> str:
 
 # Process-cached Redis client for the ready-signal (redis-py pools are
 # thread-safe; a first-call race just orphans one short-lived pool — not a
-# correctness issue). ``None`` once we've failed to build it, so the caller
-# degrades to the poll path without retrying the build every wait.
-_redis_client_singleton: Any = None
-_redis_client_unavailable = False
+# correctness issue). Stays ``None`` between build attempts; a build failure is
+# recorded as a monotonic timestamp (not a permanent latch) so a transient blip
+# only suppresses the rebuild for ``_REDIS_CLIENT_RETRY_COOLDOWN_SECONDS``, after
+# which the next wait retries — Redis restart/failover self-heals.
+_redis_client_singleton: redis.Redis | None = None
+_redis_client_last_failure: float | None = None
 
 
-def _get_result_redis_client() -> Any:
+def _get_result_redis_client() -> redis.Redis | None:
     """Return the process-cached Redis client, or ``None`` if it can't be built.
 
     Mirrors ``redis_barrier._get_redis_client``: use the canonical ``REDIS_``
     prefix so Sentinel/SSL config is inherited (``create_redis_client``'s getenv
     fallback does NOT cross-fall-back SENTINEL_MODE/SSL). The token value is
     ignored — only its arrival matters — so ``decode_responses`` is irrelevant.
+
+    ``socket_timeout`` MUST exceed the longest BLPOP block — see
+    ``_REDIS_SOCKET_TIMEOUT_SECONDS``. A build failure is not permanent: it's
+    time-stamped and retried once the cooldown elapses, so a Redis restart doesn't
+    disable the signal for the rest of the process life.
     """
-    global _redis_client_singleton, _redis_client_unavailable
-    if _redis_client_singleton is None and not _redis_client_unavailable:
-        try:
-            _redis_client_singleton = create_redis_client(
-                env_prefix="REDIS_",
-                socket_timeout=5,
-                socket_connect_timeout=5,
-            )
-        except Exception:
-            _redis_client_unavailable = True
-            logger.warning(
-                "PgResultBackend: could not build the Redis client for the result "
-                "signal; result waits fall back to poll",
-                exc_info=True,
-            )
+    global _redis_client_singleton, _redis_client_last_failure
+    if _redis_client_singleton is not None:
+        return _redis_client_singleton
+    if (
+        _redis_client_last_failure is not None
+        and time.monotonic() - _redis_client_last_failure
+        < _REDIS_CLIENT_RETRY_COOLDOWN_SECONDS
+    ):
+        # Still inside the post-failure cooldown — don't hammer the rebuild.
+        return None
+    try:
+        _redis_client_singleton = create_redis_client(
+            env_prefix="REDIS_",
+            # Long enough that a full BLPOP block never trips the socket read
+            # timeout (which would abort the block and force a fallback poll).
+            socket_timeout=_REDIS_SOCKET_TIMEOUT_SECONDS,
+            socket_connect_timeout=5,
+        )
+        _redis_client_last_failure = None
+    except Exception:
+        _redis_client_last_failure = time.monotonic()
+        logger.warning(
+            "PgResultBackend: could not build the Redis client for the result "
+            "signal; result waits fall back to poll (retry after cooldown)",
+            exc_info=True,
+        )
     return _redis_client_singleton
 
 
@@ -362,11 +396,13 @@ class PgResultBackend:
         No reconnect-retry here (unlike :meth:`store_result`). The invariant it
         relies on: the connection is never idle long enough to be reaped when
         ``get_result`` runs. In ``poll`` mode the wait polls every ~0.2–2s so the
-        connection stays warm; in ``redis`` mode :meth:`_wait_via_redis` ``close``s
-        the connection before each (possibly long) ``BLPOP``, so every
-        ``get_result`` runs on a freshly-opened connection. Either way a failure
-        here is a genuine error, not a stale reap. If a long-lived backend ever
-        gains a one-shot ``get_result`` lookup that can sit idle, revisit this.
+        connection stays warm; in ``redis`` mode the immediate race-check runs on a
+        just-used connection, and every in-loop ``get_result`` is preceded by a
+        :meth:`close` before the (possibly long) ``BLPOP`` — so each in-loop read
+        reconnects fresh rather than reusing a connection idled across the block.
+        Either way a failure here is a genuine error, not a stale reap. If a
+        long-lived backend ever gains a one-shot ``get_result`` lookup that can sit
+        idle, revisit this.
         """
         with self._cursor() as cur:
             cur.execute(_get_sql(), (str(task_id),))
@@ -485,8 +521,11 @@ class PgResultBackend:
             block = min(remaining, _REDIS_FALLBACK_POLL_SECONDS)
             try:
                 client.blpop([key], timeout=block)
-            except Exception:
-                # Redis blip mid-wait → degrade to the poll path for the remainder.
+            except redis.exceptions.RedisError:
+                # A Redis-level error (blip, disconnect, ...) → degrade to the poll
+                # path for the remainder. Narrowed to ``RedisError`` so a normal
+                # empty BLPOP (returns None, not an exception) stays on the loop and
+                # non-Redis programmer errors propagate rather than silently degrade.
                 logger.warning(
                     "PgResultBackend: BLPOP failed for task_id=%s; falling back to "
                     "poll for the rest of the wait",

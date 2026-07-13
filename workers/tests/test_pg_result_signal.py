@@ -24,6 +24,7 @@ import uuid
 from unittest.mock import MagicMock
 
 import pytest
+import redis
 from queue_backend.pg_queue import result_backend as rb_mod
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.result_backend import (
@@ -40,7 +41,7 @@ _ROW = {"status": "completed", "result": {"ok": True}, "error": ""}
 def _reset_redis_singleton(monkeypatch):
     """Isolate the module-level Redis client cache between tests."""
     monkeypatch.setattr(rb_mod, "_redis_client_singleton", None, raising=False)
-    monkeypatch.setattr(rb_mod, "_redis_client_unavailable", False, raising=False)
+    monkeypatch.setattr(rb_mod, "_redis_client_last_failure", None, raising=False)
     yield
 
 
@@ -130,11 +131,23 @@ class TestWaitViaRedis:
         """A Redis blip mid-wait must not fail the wait — fall back to poll."""
         monkeypatch.setenv("PG_RESULT_SIGNAL_BACKEND", "redis")
         client = MagicMock()
-        client.blpop.side_effect = RuntimeError("redis down")
+        # A Redis-level error (the narrowed except catches only these).
+        client.blpop.side_effect = redis.exceptions.ConnectionError("redis down")
         monkeypatch.setattr(rb_mod, "_get_result_redis_client", lambda: client)
         # race-check None -> BLPOP raises -> poll path finds it.
         rb = _backend_with_get_result([None, _ROW])
         assert rb.wait_for_result("k", timeout=5.0) == _ROW
+
+    def test_blpop_non_redis_error_propagates(self, monkeypatch):
+        """A non-Redis error (programmer bug) must NOT be silently degraded to poll —
+        it propagates so the defect is visible."""
+        monkeypatch.setenv("PG_RESULT_SIGNAL_BACKEND", "redis")
+        client = MagicMock()
+        client.blpop.side_effect = RuntimeError("unexpected bug")
+        monkeypatch.setattr(rb_mod, "_get_result_redis_client", lambda: client)
+        rb = _backend_with_get_result([None, _ROW])
+        with pytest.raises(RuntimeError, match="unexpected bug"):
+            rb.wait_for_result("k", timeout=5.0)
 
     def test_timeout_returns_none(self, monkeypatch):
         monkeypatch.setenv("PG_RESULT_SIGNAL_BACKEND", "redis")
@@ -143,6 +156,67 @@ class TestWaitViaRedis:
         monkeypatch.setattr(rb_mod, "_get_result_redis_client", lambda: client)
         rb = _backend_with_get_result(None)  # never ready
         assert rb.wait_for_result("k", timeout=0.05) is None
+
+    def test_missed_signal_still_delivers_via_fallback_select(self, monkeypatch):
+        """Core resilience property: the token NEVER arrives (BLPOP always returns
+        None), yet the row lands in the DB — the fallback SELECT must still deliver
+        it. Distinct from ``test_timeout_returns_none`` where the row never lands.
+        """
+        monkeypatch.setenv("PG_RESULT_SIGNAL_BACKEND", "redis")
+        client = MagicMock()
+        client.blpop.return_value = None  # signal lost/absent — token never arrives
+        monkeypatch.setattr(rb_mod, "_get_result_redis_client", lambda: client)
+        # race-check None, first fallback tick None, then the row appears.
+        rb = _backend_with_get_result([None, None, _ROW])
+        assert rb.wait_for_result("k", timeout=5.0) == _ROW
+        assert client.blpop.call_count >= 1  # waited on the (missed) signal
+
+
+class TestSignalClientBuild:
+    def test_socket_timeout_exceeds_blpop_block(self, monkeypatch):
+        """Regression guard: the signal client's ``socket_timeout`` MUST be >= the
+        longest BLPOP block, or redis-py aborts every block at the socket timeout and
+        each wait silently degrades to poll (defeating the feature)."""
+        captured: dict = {}
+
+        def _fake_create(**kwargs):
+            captured.update(kwargs)
+            return MagicMock()
+
+        monkeypatch.setattr(rb_mod, "create_redis_client", _fake_create)
+        client = rb_mod._get_result_redis_client()
+
+        assert client is not None
+        assert captured["socket_timeout"] >= rb_mod._REDIS_FALLBACK_POLL_SECONDS
+
+    def test_build_failure_retries_after_cooldown(self, monkeypatch):
+        """A transient build failure must NOT permanently disable signalling: within
+        the cooldown the build is skipped (returns None), but once the cooldown
+        elapses the next call retries and succeeds."""
+        calls = {"n": 0}
+
+        def _flaky_create(**kwargs):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("redis restarting")
+            return MagicMock()
+
+        monkeypatch.setattr(rb_mod, "create_redis_client", _flaky_create)
+
+        # First call fails and records the failure timestamp -> None.
+        assert rb_mod._get_result_redis_client() is None
+        # Still inside the cooldown: skip the rebuild, no second create call.
+        assert rb_mod._get_result_redis_client() is None
+        assert calls["n"] == 1
+        # Simulate the cooldown elapsing, then the next call retries + succeeds.
+        monkeypatch.setattr(
+            rb_mod,
+            "_redis_client_last_failure",
+            time.monotonic() - rb_mod._REDIS_CLIENT_RETRY_COOLDOWN_SECONDS - 1,
+            raising=False,
+        )
+        assert rb_mod._get_result_redis_client() is not None
+        assert calls["n"] == 2
 
 
 class TestStoreSignals:
