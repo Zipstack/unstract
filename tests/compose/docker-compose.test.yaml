@@ -26,3 +26,14 @@ services:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
     environment:
       - ENVIRONMENT=test
+
+  # LLM completions run inside the worker-unified image; passing the mock env
+  # here lets execute-path e2e tests run hermetically (no real LLM/secret).
+  # Empty unless the rig/CI sets it, so production-like runs are unaffected.
+  worker-executor-v2:
+    environment:
+      - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
+
+  worker-file-processing-v2:
+    environment:
+      - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}

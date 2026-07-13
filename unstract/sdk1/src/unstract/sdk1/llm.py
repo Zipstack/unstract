@@ -31,6 +31,20 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
+# Test-only escape hatch: when UNSTRACT_LLM_MOCK_RESPONSE is set, litellm returns
+# it as the completion instead of calling a provider, so execute-path tests run
+# hermetically with no real LLM/secret. litellm stamps fixed usage on the mock
+# (tune via DEFAULT_MOCK_RESPONSE_PROMPT/COMPLETION_TOKEN_COUNT). Sentinels like
+# "litellm.RateLimitError" force error paths. Unset in production => no-op.
+_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+
+
+def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
+    mock = os.getenv(_MOCK_RESPONSE_ENV)
+    if mock and "mock_response" not in completion_kwargs:
+        completion_kwargs["mock_response"] = mock
+
+
 # Drop unsupported params rather than raising errors.
 # Set once at module level instead of per-call to avoid repeated
 # global mutation in concurrent environments.
@@ -327,6 +341,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
@@ -450,6 +465,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
 
             response: dict[str, object] = litellm.completion(
@@ -517,6 +533,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
 
             max_retries = pop_litellm_retry_kwargs(
@@ -588,6 +605,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
 
             max_retries = pop_litellm_retry_kwargs(
