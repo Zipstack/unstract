@@ -93,7 +93,7 @@ class OwnerManagementMixin:
             return
         resource_type, resource_name = ctx
         try:
-            notification_plugin["service_class"]().send_sharing_notification(
+            notification_plugin["service_class"]().send_co_owner_added_notification(
                 resource_type=resource_type,
                 resource_name=resource_name,
                 resource_id=str(resource.pk),
@@ -115,6 +115,8 @@ class OwnerManagementMixin:
                 resource_name=resource_name,
                 removed_from=[user],
                 removed_by=actor,
+                resource_id=str(resource.pk),
+                resource_instance=resource,
             )
         except Exception as e:
             logger.exception("Failed to send co-owner removed notification: %s", e)

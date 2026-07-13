@@ -10,6 +10,8 @@ DB-backed (Django ``TestCase``), so ``backend/conftest.py`` auto-marks these
 ``integration`` and the rig runs them in ``integration-backend``.
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 from account_v2.models import User
 from django.test import TestCase
@@ -204,3 +206,78 @@ class CrossResourceOwnerManagementTests(CoOwnerOrgTestMixin, TestCase):
                 self.assertNotIn(resource, manager.for_user(self.outsider))
                 self.assertTrue(self._is_owner_perm(self.coowner, resource))
                 self.assertFalse(self._is_owner_perm(self.outsider, resource))
+
+
+class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
+    """``add_co_owner`` / ``remove_co_owner`` fire the sharing-service
+    notifications with the right payload, and swallow notification failures so
+    the owners request is never broken (best-effort). The resource-type hook is
+    patched to a fixed value so the test does not depend on the cloud-only
+    notification plugin's conditional ``ResourceType`` import."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-1", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.factory = APIRequestFactory()
+        self.service = Mock()
+        plugin = {"service_class": Mock(return_value=self.service)}
+        for p in (
+            patch("permissions.membership_views.notification_plugin", plugin),
+            patch.object(
+                WorkflowViewSet,
+                "get_notification_resource_type",
+                return_value="workflow",
+            ),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _add(self, actor: User, target_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"post": "add_co_owner"})
+        request = self.factory.post("/x/", {"user_id": target_id}, format="json")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk))
+
+    def _remove(self, actor: User, user_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"delete": "remove_co_owner"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk), user_id=str(user_id))
+
+    def test_add_fires_added_notification_with_payload(self) -> None:
+        response = self._add(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.service.send_co_owner_added_notification.assert_called_once()
+        kwargs = self.service.send_co_owner_added_notification.call_args.kwargs
+        self.assertEqual(kwargs["resource_type"], "workflow")
+        self.assertEqual(kwargs["resource_name"], "wf-1")
+        self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
+        self.assertEqual(kwargs["shared_by"], self.owner)
+        self.assertEqual([u.pk for u in kwargs["shared_to"]], [self.coowner.pk])
+        self.assertEqual(kwargs["resource_instance"], self.workflow)
+
+    def test_remove_fires_removed_notification_with_payload(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.service.send_access_removed_notification.assert_called_once()
+        kwargs = self.service.send_access_removed_notification.call_args.kwargs
+        self.assertEqual(kwargs["resource_type"], "workflow")
+        self.assertEqual([u.pk for u in kwargs["removed_from"]], [self.coowner.pk])
+        self.assertEqual(kwargs["removed_by"], self.owner)
+        self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
+        self.assertEqual(kwargs["resource_instance"], self.workflow)
+
+    def test_notification_failure_does_not_break_add(self) -> None:
+        self.service.send_co_owner_added_notification.side_effect = RuntimeError("boom")
+        response = self._add(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        owner_ids = set(
+            self.workflow.memberships.filter(role=ResourceRole.OWNER).values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertIn(self.coowner.pk, owner_ids)
