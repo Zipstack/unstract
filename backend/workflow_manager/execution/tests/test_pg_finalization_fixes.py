@@ -163,7 +163,7 @@ class TerminalOneWayGuardTests(TestCase):
         )
         out = self._update(ex, ExecutionStatus.EXECUTING)
         ex.refresh_from_db()
-        assert out.get("reason") == "already_completed"
+        assert out.get("reason") == "already_final"
         assert ex.status == ExecutionStatus.COMPLETED.value  # not clobbered
 
     def test_celery_keeps_legacy_behavior(self):
@@ -195,7 +195,7 @@ class TerminalOneWayGuardTests(TestCase):
         )
         out = self._update(ex, ExecutionStatus.ERROR)
         ex.refresh_from_db()
-        assert out.get("reason") == "already_completed"
+        assert out.get("reason") == "already_final"
         assert ex.status == ExecutionStatus.COMPLETED.value  # success protected
 
     def test_pg_allows_error_corrected_to_completed(self):
@@ -209,6 +209,17 @@ class TerminalOneWayGuardTests(TestCase):
         self._update(ex, ExecutionStatus.COMPLETED)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value  # correction allowed
+
+    def test_pg_rejects_completed_over_stopped(self):
+        # STOPPED is an explicit user/operator stop — a straggler callback that
+        # finishes after the stop must not silently erase it back to COMPLETED.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.STOPPED, queue_message_id=123
+        )
+        out = self._update(ex, ExecutionStatus.COMPLETED)
+        ex.refresh_from_db()
+        assert out.get("reason") == "already_final"
+        assert ex.status == ExecutionStatus.STOPPED.value  # user stop preserved
 
     def test_pg_allows_idempotent_completed_rewrite(self):
         # COMPLETED→SAME COMPLETED is a no-op rewrite and must still be allowed (a

@@ -510,35 +510,44 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # PG execution is still finalizing (per the "transport carried on the
                 # row, never re-read from Flipt" rule).
                 #
-                # Guard COMPLETED specifically — it is the codebase's only truly-final
-                # status (set exclusively by a successful callback; a redelivered
-                # callback on a COMPLETED row is skipped, see _callback_already_ran).
-                # Under the PG path's high concurrency ~15 call sites write status via
-                # unlocked read-modify-write, so a stale writer can commit AFTER the
-                # callback's COMPLETED and clobber it (lost update → execution stranded
-                # in EXECUTING, or a confusing success→failed flip). Lock the row and
-                # refuse to overwrite COMPLETED with anything else.
+                # Protect COMPLETED and STOPPED — the two statuses that assert a
+                # deliberate final outcome. COMPLETED is set exclusively by a
+                # successful callback (its redelivery is skipped, see
+                # _callback_already_ran); STOPPED records an explicit user/operator
+                # stop. Under the PG path's high concurrency ~15 call sites write
+                # status via unlocked read-modify-write, so a stale writer can commit
+                # AFTER one of these and clobber it (lost update → execution stranded
+                # in EXECUTING, a confusing success→failed flip, or a straggler
+                # callback erasing a user's stop). Lock the row and refuse to overwrite
+                # either with a different status.
                 #
-                # ERROR/STOPPED are deliberately NOT protected: other paths (upstream
-                # error, external stop, the reaper) can set them BEFORE the first real
-                # callback, which then legitimately corrects the row to COMPLETED when
-                # the files actually succeeded — blocking that would freeze a genuinely
-                # successful run at a premature ERROR. Celery executions
-                # (queue_message_id NULL) keep the legacy path.
+                # ERROR is deliberately NOT protected: other paths (upstream error,
+                # the reaper) can set it BEFORE the first real callback, which then
+                # legitimately corrects the row to COMPLETED when the files actually
+                # succeeded — blocking that would freeze a genuinely successful run at
+                # a premature ERROR. Celery executions (queue_message_id NULL) keep the
+                # legacy path.
                 if execution.queue_message_id is not None:
                     execution = WorkflowExecution.objects.select_for_update().get(
                         pk=execution.pk
                     )
-                    completed = ExecutionStatus.COMPLETED.value
-                    if execution.status == completed and status_enum.value != completed:
+                    protected = {
+                        ExecutionStatus.COMPLETED.value,
+                        ExecutionStatus.STOPPED.value,
+                    }
+                    if (
+                        execution.status in protected
+                        and status_enum.value != execution.status
+                    ):
                         logger.warning(
-                            f"update_status: refusing to overwrite COMPLETED status "
-                            f"with '{status_enum.value}' for execution {id}"
+                            f"update_status: refusing to overwrite protected status "
+                            f"'{execution.status}' with '{status_enum.value}' "
+                            f"for execution {id}"
                         )
                         return Response(
                             {
                                 "status": "skipped",
-                                "reason": "already_completed",
+                                "reason": "already_final",
                                 "execution_id": str(execution.id),
                                 "new_status": execution.status,
                             }

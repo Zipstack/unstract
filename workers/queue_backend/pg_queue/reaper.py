@@ -1190,53 +1190,61 @@ class PgReaper:
                 dedup,
                 claims,
             )
-        # Safety-net: finalize PG executions stranded non-terminal after all files
-        # completed. Those have no barrier/claim row, so the PG-table sweeps above
-        # can't see them — this asks the backend (org-agnostic; endpoint scopes to
-        # PG rows by queue_message_id and heals server-side to the CORRECT terminal
-        # status). Cadence-gated (per-row API work) like the claims sweep; opt-in.
-        if self._stuck_recovery_enabled:
-            try:
-                resp = self._get_api_client().recover_stuck_pg_executions(
-                    stuck_seconds=self._stuck_recovery_seconds,
+        self._maybe_recover_stuck_executions()
+
+    def _maybe_recover_stuck_executions(self) -> None:
+        """Opt-in safety-net: finalize PG executions stranded non-terminal after all
+        files completed.
+
+        Those have no barrier/claim row, so the PG-table sweeps in :meth:`_maybe_sweep`
+        can't see them — this asks the backend (org-agnostic; endpoint scopes to PG
+        rows by ``queue_message_id`` and heals server-side to the CORRECT terminal
+        status). Extracted from :meth:`_maybe_sweep` to keep its cognitive complexity
+        low; runs on the same cadence gate (per-row API work).
+        """
+        if not self._stuck_recovery_enabled:
+            return
+        try:
+            resp = self._get_api_client().recover_stuck_pg_executions(
+                stuck_seconds=self._stuck_recovery_seconds,
+            )
+            data = getattr(resp, "data", None) or {}
+            if not data:
+                # The endpoint always returns the four counters on success, so an
+                # empty payload means a failed call or a response-shape drift —
+                # surface it loudly rather than silently reporting all-zero (the
+                # exact "wholesale failure invisible on this end" trap this block
+                # exists to close).
+                logger.warning(
+                    "Reaper: safety-net recovery returned an empty/unexpected "
+                    "response (%r) — recovery counters unavailable; investigate",
+                    resp,
                 )
-                data = getattr(resp, "data", None) or {}
-                if not data:
-                    # The endpoint always returns the four counters on success, so an
-                    # empty payload means a failed call or a response-shape drift —
-                    # surface it loudly rather than silently reporting all-zero (the
-                    # exact "wholesale failure invisible on this end" trap this block
-                    # exists to close).
-                    logger.warning(
-                        "Reaper: safety-net recovery returned an empty/unexpected "
-                        "response (%r) — recovery counters unavailable; investigate",
-                        resp,
-                    )
-                recovered = data.get("recovered") or 0
-                failed = data.get("failed") or 0
-                scanned = data.get("scanned") or 0
-                if recovered or failed:
-                    logger.warning(
-                        "Reaper: safety-net scanned %s stranded PG execution(s) — "
-                        "recovered %s, failed %s, skipped %s",
-                        scanned,
-                        recovered,
-                        failed,
-                        data.get("skipped"),
-                    )
-                elif scanned:
-                    # Scanned stuck rows but recovered none and hit no errors — the
-                    # sweep is not silently defeated (would be all-skipped, e.g.
-                    # still-processing), but surface it so a wholesale-failure
-                    # regression isn't invisible on this end.
-                    logger.info(
-                        "Reaper: safety-net scanned %s stranded PG execution(s), "
-                        "recovered 0 (all skipped %s)",
-                        scanned,
-                        data.get("skipped"),
-                    )
-            except Exception:
-                logger.exception("Reaper: stuck-execution recovery sweep failed")
+            recovered = data.get("recovered") or 0
+            failed = data.get("failed") or 0
+            scanned = data.get("scanned") or 0
+            if recovered or failed:
+                logger.warning(
+                    "Reaper: safety-net scanned %s stranded PG execution(s) — "
+                    "recovered %s, failed %s, skipped %s",
+                    scanned,
+                    recovered,
+                    failed,
+                    data.get("skipped"),
+                )
+            elif scanned:
+                # Scanned stuck rows but recovered none and hit no errors — the sweep
+                # is not silently defeated (would be all-skipped, e.g. still-
+                # processing), but surface it so a wholesale-failure regression isn't
+                # invisible on this end.
+                logger.info(
+                    "Reaper: safety-net scanned %s stranded PG execution(s), "
+                    "recovered 0 (all skipped %s)",
+                    scanned,
+                    data.get("skipped"),
+                )
+        except Exception:
+            logger.exception("Reaper: stuck-execution recovery sweep failed")
 
     def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
         """Run one retention sweep best-effort; return its row count (0 on failure).
