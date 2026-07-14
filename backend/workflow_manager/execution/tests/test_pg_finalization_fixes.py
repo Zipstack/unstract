@@ -231,3 +231,106 @@ class TerminalOneWayGuardTests(TestCase):
         ex.refresh_from_db()
         assert out.get("status") == "updated"
         assert ex.status == ExecutionStatus.COMPLETED.value
+
+
+class ModelStaleWriterGuardTests(TestCase):
+    """The terminal-one-way guard at the MODEL layer (update_execution) — where the
+    HTTP-endpoint guard can't reach. A stale backend object (created EXECUTING, NULL
+    counters, re-saved after the callback set COMPLETED) must not revert a
+    protected-terminal (COMPLETED/STOPPED) PG execution back to EXECUTING+NULL."""
+
+    def setUp(self):
+        self.wf = Workflow.objects.create(workflow_name="wf-stale")
+
+    def _stale(self, ex, status, **fields):
+        """A separate in-memory instance of ex with stale field values."""
+        stale = WorkflowExecution.objects.get(pk=ex.pk)
+        stale.status = status.value
+        for k, v in fields.items():
+            setattr(stale, k, v)
+        return stale
+
+    def test_pg_refuses_stale_revert_of_completed(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=11,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+        )
+        stale = self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        )
+        stale.update_execution(status=ExecutionStatus.EXECUTING)  # the clobber
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # not reverted
+        assert ex.successful_files == 1  # counters not nulled
+
+    def test_pg_refuses_stale_revert_of_stopped(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.STOPPED, queue_message_id=12
+        )
+        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
+            status=ExecutionStatus.EXECUTING
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.STOPPED.value
+
+    def test_pg_allows_error_corrected_to_completed(self):
+        # ERROR is not protected — a premature ERROR must stay correctable.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.ERROR, queue_message_id=13
+        )
+        WorkflowExecution.objects.get(pk=ex.pk).update_execution(
+            status=ExecutionStatus.COMPLETED
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_pg_allows_idempotent_completed_rewrite(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=14
+        )
+        WorkflowExecution.objects.get(pk=ex.pk).update_execution(
+            status=ExecutionStatus.COMPLETED
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_celery_row_unaffected(self):
+        # queue_message_id NULL → legacy behavior, the stale write goes through.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=None,
+            task_id=uuid.uuid4(),
+        )
+        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
+            status=ExecutionStatus.EXECUTING
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.EXECUTING.value  # legacy: overwritten
+
+    def test_result_acknowledge_does_not_touch_status_or_counters(self):
+        # A stale object acknowledging a result must not rewrite status/counters
+        # (update_fields scoping).
+        from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=15,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+            result_acknowledged=False,
+        )
+        stale = self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        )
+        WorkflowHelper._set_result_acknowledge(stale)
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+        assert ex.successful_files == 1
+        assert ex.result_acknowledged is True

@@ -436,7 +436,11 @@ class WorkflowHelper:
         """
         if not execution.result_acknowledged:
             execution.result_acknowledged = True
-            execution.save()
+            # Scope the write to ONLY result_acknowledged. A full save() here would
+            # rewrite the whole row from this (possibly stale) object — the exact
+            # mechanism that reverted COMPLETED executions back to EXECUTING+NULL under
+            # load. Acknowledging a result must never touch status / counters.
+            execution.save(update_fields=["result_acknowledged"])
             logger.info(
                 f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
             )

@@ -373,6 +373,35 @@ class WorkflowExecution(BaseModel):
 
         if status is not None:
             status = ExecutionStatus(status)
+            # Terminal-one-way for PG executions. A stale in-memory object — e.g. one
+            # created as EXECUTING (with NULL file counters) and re-saved by a backend
+            # path after the callback already committed COMPLETED — must not revert a
+            # protected-terminal status. Re-read the committed status and, if it is
+            # COMPLETED/STOPPED and this write would change it, skip the ENTIRE save
+            # (which also prevents the stale object's NULL counters from clobbering
+            # the real ones). This guards the backend-internal writers the HTTP
+            # update_status guard can't see. ERROR is deliberately NOT protected (a
+            # premature ERROR stays correctable to COMPLETED). Celery rows
+            # (queue_message_id NULL) are unaffected.
+            if self.queue_message_id is not None:
+                committed = (
+                    WorkflowExecution.objects.filter(pk=self.pk)
+                    .values_list("status", flat=True)
+                    .first()
+                )
+                protected = {
+                    ExecutionStatus.COMPLETED.value,
+                    ExecutionStatus.STOPPED.value,
+                }
+                if committed in protected and status.value != committed:
+                    logger.warning(
+                        "update_execution: refusing to overwrite protected status "
+                        "'%s' with '%s' for execution %s (stale-writer guard)",
+                        committed,
+                        status.value,
+                        self.id,
+                    )
+                    return
             self.status = status.value
             if status in [
                 ExecutionStatus.COMPLETED,

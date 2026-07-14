@@ -177,6 +177,27 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution = WorkflowExecution.objects.get(pk=self.execution_id)
 
         if status is not None:
+            # Terminal-one-way for PG executions (mirrors the model method): don't let
+            # a write revert a protected-terminal status. execution is freshly read
+            # above, so its status is the committed one. ERROR stays correctable to
+            # COMPLETED; Celery rows (queue_message_id NULL) are unaffected.
+            if (
+                execution.queue_message_id is not None
+                and execution.status
+                in (
+                    ExecutionStatus.COMPLETED.value,
+                    ExecutionStatus.STOPPED.value,
+                )
+                and status.value != execution.status
+            ):
+                logger.warning(
+                    "update_execution: refusing to overwrite protected status '%s' "
+                    "with '%s' for execution %s (stale-writer guard)",
+                    execution.status,
+                    status.value,
+                    execution.id,
+                )
+                return
             execution.status = status.value
 
             if (
