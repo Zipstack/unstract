@@ -305,6 +305,126 @@ class TestNormalPipeline:
 
 
 # ---------------------------------------------------------------------------
+# Tests — Extraction timing metric (UN-2771)
+# ---------------------------------------------------------------------------
+
+
+class TestExtractionMetrics:
+    """Extraction duration is reported under the reserved _pipeline namespace.
+
+    The metric is nested as ``metrics["_pipeline"]["extraction"]`` rather than a
+    bare top-level ``"extraction"`` key, because sibling keys in this dict are
+    user-defined output/prompt names — a prompt literally named "extraction"
+    would otherwise collide with it.
+    """
+
+    def _executor_with_extraction(self, executor, answer_metrics=None):
+        executor._handle_extract = MagicMock(
+            return_value=ExecutionResult(
+                success=True, data={"extracted_text": "text"}
+            )
+        )
+        executor._handle_index = MagicMock(
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
+        )
+        executor._handle_answer_prompt = MagicMock(
+            return_value=ExecutionResult(
+                success=True,
+                data={"output": {}, "metrics": answer_metrics or {}},
+            )
+        )
+        return executor
+
+    def _run(self, executor):
+        ctx = _make_pipeline_context({
+            "extract_params": _base_extract_params(),
+            "index_template": _base_index_template(),
+            "answer_params": _base_answer_params(),
+            "pipeline_options": _base_pipeline_options(),
+        })
+        return executor._handle_structure_pipeline(ctx)
+
+    def test_extraction_metrics_recorded(self, executor):
+        """A normal run reports a non-negative float extraction duration."""
+        self._executor_with_extraction(executor)
+        result = self._run(executor)
+
+        assert result.success
+        time_taken = result.data["metrics"]["_pipeline"]["extraction"][
+            "time_taken(s)"
+        ]
+        assert isinstance(time_taken, float)
+        assert time_taken >= 0
+
+    def test_extraction_metric_does_not_collide_with_output_name(self, executor):
+        """A prompt named "extraction" coexists with the pipeline metric."""
+        self._executor_with_extraction(
+            executor,
+            answer_metrics={"extraction": {"llm": {"time_taken(s)": 2.0}}},
+        )
+        result = self._run(executor)
+
+        metrics = result.data["metrics"]
+        # The user's prompt metrics are untouched...
+        assert metrics["extraction"] == {"llm": {"time_taken(s)": 2.0}}
+        # ...and the pipeline timing lives in its own namespace.
+        assert "time_taken(s)" in metrics["_pipeline"]["extraction"]
+
+    def test_index_and_extraction_metrics_merged(self, executor):
+        """Per-output indexing and pipeline extraction metrics coexist."""
+        self._executor_with_extraction(
+            executor,
+            answer_metrics={"field_a": {"llm": {"time_taken(s)": 2.0}}},
+        )
+        executor._run_pipeline_index = MagicMock(
+            return_value=({"field_a": {"indexing": {"time_taken(s)": 0.5}}}, [])
+        )
+        result = self._run(executor)
+
+        metrics = result.data["metrics"]
+        assert "llm" in metrics["field_a"]
+        assert "indexing" in metrics["field_a"]
+        assert "time_taken(s)" in metrics["_pipeline"]["extraction"]
+
+    def test_skip_extraction_records_no_extraction_metric(self, executor):
+        """Smart-table path skips extract, so no extraction metric is added."""
+        executor._handle_extract = MagicMock()
+        executor._handle_index = MagicMock()
+        executor._handle_answer_prompt = MagicMock(
+            return_value=ExecutionResult(success=True, data={"output": {}})
+        )
+        opts = _base_pipeline_options()
+        opts["skip_extraction_and_indexing"] = True
+
+        ctx = _make_pipeline_context({
+            "extract_params": _base_extract_params(),
+            "index_template": _base_index_template(),
+            "answer_params": _base_answer_params(),
+            "pipeline_options": opts,
+        })
+        result = executor._handle_structure_pipeline(ctx)
+
+        assert result.success
+        executor._handle_extract.assert_not_called()
+        assert "_pipeline" not in result.data.get("metrics", {})
+
+    def test_extract_failure_records_no_extraction_metric(self, executor):
+        """Timing is taken after the failure early-return, so a failed extract
+        must not report a duration."""
+        executor._handle_extract = MagicMock(
+            return_value=ExecutionResult.failure(error="x2text error")
+        )
+        executor._handle_index = MagicMock()
+        executor._handle_answer_prompt = MagicMock()
+        executor._finalize_pipeline_result = MagicMock()
+
+        result = self._run(executor)
+
+        assert not result.success
+        executor._finalize_pipeline_result.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
 # Tests — Embedding usage record propagation
 # ---------------------------------------------------------------------------
 

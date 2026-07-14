@@ -51,6 +51,11 @@ class PromptServiceConstants:
     CHALLENGE = "challenge"
     ENABLE_CHALLENGE = "enable_challenge"
     EXTRACTION = "extraction"
+    # Reserved namespace for pipeline-level metrics so they cannot collide with
+    # user-defined output/prompt names at the top level of the metrics dict.
+    PIPELINE = "_pipeline"
+    # Wire-format key every metrics producer reports its duration under.
+    TIME_TAKEN = "time_taken(s)"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
     SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"
