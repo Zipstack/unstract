@@ -22,7 +22,7 @@ class TestBackoffJitter:
     def test_zero_base_returns_zero(self):
         from shared.clients.base_client import _backoff_with_jitter
 
-        assert _backoff_with_jitter(0.0, 3) == 0.0
+        assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
 
     def test_is_not_constant(self):
         from shared.clients.base_client import _backoff_with_jitter
