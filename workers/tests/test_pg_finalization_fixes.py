@@ -6,40 +6,48 @@
   so concurrent workers don't retry in synchronized waves.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
+_JITTER_FLAG = "shared.clients.base_client.check_feature_flag_status"
+
 
 class TestBackoffJitter:
-    def test_disabled_by_default_returns_exact_base(self, monkeypatch):
-        # Default (Celery flow unchanged): no jitter, exact exponential backoff.
-        monkeypatch.delenv("WORKER_PG_RETRY_JITTER_ENABLED", raising=False)
+    def test_flag_off_returns_exact_base(self):
+        # Celery flow (pg_queue_enabled off): exact exponential backoff, no jitter.
         from shared.clients.base_client import _backoff_with_jitter
 
-        assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
+        with patch(_JITTER_FLAG, return_value=False):
+            assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
 
-    def test_within_equal_jitter_band_when_enabled(self, monkeypatch):
-        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
+    def test_flipt_error_fails_closed_to_no_jitter(self):
+        from shared.clients.base_client import _backoff_with_jitter
+
+        with patch(_JITTER_FLAG, side_effect=RuntimeError("flipt down")):
+            assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
+
+    def test_within_equal_jitter_band_when_flag_on(self):
         from shared.clients.base_client import _backoff_with_jitter
 
         # base = backoff_factor(1.0) * 2**attempt(2) = 4.0 → equal jitter [2.0, 4.0]
-        for _ in range(500):
-            assert 2.0 <= _backoff_with_jitter(1.0, 2) <= 4.0
+        with patch(_JITTER_FLAG, return_value=True):
+            for _ in range(500):
+                assert 2.0 <= _backoff_with_jitter(1.0, 2) <= 4.0
 
-    def test_zero_base_returns_zero(self, monkeypatch):
-        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
+    def test_zero_base_returns_zero(self):
         from shared.clients.base_client import _backoff_with_jitter
 
-        assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
+        with patch(_JITTER_FLAG, return_value=True):
+            assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
 
-    def test_is_not_constant_when_enabled(self, monkeypatch):
-        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
+    def test_is_not_constant_when_flag_on(self):
         from shared.clients.base_client import _backoff_with_jitter
 
         # De-correlation: repeated calls must NOT all land on the same value
         # (that synchronized schedule is exactly the thundering herd we fix).
-        assert len({_backoff_with_jitter(1.0, 3) for _ in range(64)}) > 1
+        with patch(_JITTER_FLAG, return_value=True):
+            assert len({_backoff_with_jitter(1.0, 3) for _ in range(64)}) > 1
 
 
 class TestPGFinalizationReraise:
