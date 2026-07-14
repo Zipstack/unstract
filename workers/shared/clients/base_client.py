@@ -31,18 +31,25 @@ APPLICATION_JSON = "application/json"
 
 
 def _backoff_with_jitter(backoff_factor: float, attempt: int) -> float:
-    """Exponential backoff with equal jitter.
+    """Exponential backoff, with equal jitter when enabled for PG workers.
 
     Without jitter, every concurrent worker retrying a saturated backend sleeps on
     the identical 1s/2s/4s schedule and their retries arrive in synchronized waves
-    (thundering herd) that keep failing together — the exact condition behind the
-    PG finalization-write failures under high concurrency. Equal jitter spreads
-    each retry across [base/2, base] so the waves de-correlate while keeping a
-    minimum backoff floor.
+    (thundering herd) that keep failing together — the condition behind the PG
+    finalization-write failures under high concurrency. Equal jitter spreads each
+    retry across [base/2, base] so the waves de-correlate.
+
+    Opt-in via ``WORKER_PG_RETRY_JITTER_ENABLED`` (default OFF) so the shared HTTP
+    client's retry cadence is unchanged for the Celery flow; PG worker deployments
+    turn it on. Read at call time — this is on the (rare) retry path behind a
+    network round-trip, so the getenv cost is irrelevant and it stays togglable at
+    runtime for rollback.
     """
     base = backoff_factor * (2**attempt)
     if base <= 0:
         return 0.0
+    if os.getenv("WORKER_PG_RETRY_JITTER_ENABLED", "false").lower() != "true":
+        return base  # default: exact exponential backoff (unchanged for Celery)
     return base / 2 + random.uniform(0, base / 2)
 
 

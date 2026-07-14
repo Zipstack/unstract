@@ -12,19 +12,29 @@ import pytest
 
 
 class TestBackoffJitter:
-    def test_within_equal_jitter_band(self):
+    def test_disabled_by_default_returns_exact_base(self, monkeypatch):
+        # Default (Celery flow unchanged): no jitter, exact exponential backoff.
+        monkeypatch.delenv("WORKER_PG_RETRY_JITTER_ENABLED", raising=False)
+        from shared.clients.base_client import _backoff_with_jitter
+
+        assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
+
+    def test_within_equal_jitter_band_when_enabled(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
         from shared.clients.base_client import _backoff_with_jitter
 
         # base = backoff_factor(1.0) * 2**attempt(2) = 4.0 → equal jitter [2.0, 4.0]
         for _ in range(500):
             assert 2.0 <= _backoff_with_jitter(1.0, 2) <= 4.0
 
-    def test_zero_base_returns_zero(self):
+    def test_zero_base_returns_zero(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
         from shared.clients.base_client import _backoff_with_jitter
 
         assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
 
-    def test_is_not_constant(self):
+    def test_is_not_constant_when_enabled(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_RETRY_JITTER_ENABLED", "true")
         from shared.clients.base_client import _backoff_with_jitter
 
         # De-correlation: repeated calls must NOT all land on the same value
