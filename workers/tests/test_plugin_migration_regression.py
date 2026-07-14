@@ -1,22 +1,12 @@
-"""Phase 6J — Comprehensive Phase 6 sanity tests.
-
-Consolidated regression + integration tests for the full Phase 6
-plugin migration. Verifies:
-
-1. Full Operation enum coverage — every operation has exactly one executor
-2. Multi-executor coexistence in ExecutorRegistry
-3. End-to-end Celery chain for each cloud executor (mock executors)
-4. Cross-cutting highlight plugin works across executors
-5. Plugin loader → executor registration → dispatch → result flow
-6. Queue routing for all executor names
-7. Graceful degradation when cloud plugins missing
-8. tasks.py log_component for all operation types
+"""Consolidated regression tests for the executor plugin migration: full
+Operation-to-executor coverage, multi-executor coexistence, per-executor Celery
+chains, cross-cutting highlight, dispatch/result flow, queue routing, graceful
+degradation when cloud plugins are absent, and log_component for all operations.
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
@@ -24,10 +14,10 @@ from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
@@ -57,6 +47,7 @@ def eager_app():
 
 def _register_legacy():
     from executor.executors.legacy_executor import LegacyExecutor
+
     ExecutorRegistry.register(LegacyExecutor)
 
 
@@ -72,9 +63,7 @@ def _register_mock_cloud_executors():
 
         def execute(self, context):
             if context.operation != "table_extract":
-                return ExecutionResult.failure(
-                    error=f"Unsupported: {context.operation}"
-                )
+                return ExecutionResult.failure(error=f"Unsupported: {context.operation}")
             return ExecutionResult(
                 success=True,
                 data={"output": "table_data", "metadata": {}},
@@ -88,9 +77,7 @@ def _register_mock_cloud_executors():
 
         def execute(self, context):
             if context.operation != "smart_table_extract":
-                return ExecutionResult.failure(
-                    error=f"Unsupported: {context.operation}"
-                )
+                return ExecutionResult.failure(error=f"Unsupported: {context.operation}")
             return ExecutionResult(
                 success=True,
                 data={"output": "smart_table_data", "metadata": {}},
@@ -104,9 +91,7 @@ def _register_mock_cloud_executors():
 
         def execute(self, context):
             if context.operation not in ("sps_answer_prompt", "sps_index"):
-                return ExecutionResult.failure(
-                    error=f"Unsupported: {context.operation}"
-                )
+                return ExecutionResult.failure(error=f"Unsupported: {context.operation}")
             return ExecutionResult(
                 success=True,
                 data={"output": f"sps_{context.operation}", "metadata": {}},
@@ -115,9 +100,13 @@ def _register_mock_cloud_executors():
     @ExecutorRegistry.register
     class MockAgenticExecutor(BaseExecutor):
         _OPS = {
-            "agentic_extract", "agentic_summarize", "agentic_uniformize",
-            "agentic_finalize", "agentic_generate_prompt",
-            "agentic_generate_prompt_pipeline", "agentic_compare",
+            "agentic_extract",
+            "agentic_summarize",
+            "agentic_uniformize",
+            "agentic_finalize",
+            "agentic_generate_prompt",
+            "agentic_generate_prompt_pipeline",
+            "agentic_compare",
             "agentic_tune_field",
         }
 
@@ -127,9 +116,7 @@ def _register_mock_cloud_executors():
 
         def execute(self, context):
             if context.operation not in self._OPS:
-                return ExecutionResult.failure(
-                    error=f"Unsupported: {context.operation}"
-                )
+                return ExecutionResult.failure(error=f"Unsupported: {context.operation}")
             return ExecutionResult(
                 success=True,
                 data={"output": f"agentic_{context.operation}", "metadata": {}},
@@ -211,6 +198,7 @@ class TestOperationEnumCoverage:
 # 2. Multi-executor coexistence in registry
 # ---------------------------------------------------------------------------
 
+
 class TestMultiExecutorCoexistence:
     def test_all_five_executors_registered(self):
         """Legacy + 4 cloud executors all coexist in registry."""
@@ -277,6 +265,7 @@ class TestMultiExecutorCoexistence:
 # ---------------------------------------------------------------------------
 # 3. End-to-end Celery chain for cloud executors
 # ---------------------------------------------------------------------------
+
 
 class TestCeleryChainCloudExecutors:
     def test_table_extract_celery_chain(self, eager_app):
@@ -372,6 +361,7 @@ class TestCeleryChainCloudExecutors:
 # 4. Cross-cutting highlight plugin across executors
 # ---------------------------------------------------------------------------
 
+
 class TestCrossCuttingHighlight:
     @patch("importlib.metadata.entry_points", return_value=[])
     def test_highlight_plugin_not_installed_no_error(self, _mock_eps):
@@ -413,7 +403,9 @@ class TestCrossCuttingHighlight:
 
             # Both legacy and agentic contexts can create instances
             legacy_hl = cls(file_path=str(tmp_path / "doc.txt"), execution_source="ide")
-            agentic_hl = cls(file_path=str(tmp_path / "other.txt"), execution_source="tool")
+            agentic_hl = cls(
+                file_path=str(tmp_path / "other.txt"), execution_source="tool"
+            )
 
             assert legacy_hl.get_highlight_data() == {"lines": [1, 2, 3]}
             assert agentic_hl.get_confidence_data() == {"confidence": 0.95}
@@ -423,9 +415,11 @@ class TestCrossCuttingHighlight:
 # 5. Plugin loader → registration → dispatch → result flow
 # ---------------------------------------------------------------------------
 
+
 class TestPluginDiscoveryToDispatchFlow:
     def test_full_discovery_to_dispatch_flow(self):
         """Simulate: entry point discovery → register → dispatch → result."""
+
         # Step 1: "Discover" a cloud executor via entry point
         @ExecutorRegistry.register
         class DiscoveredExecutor(BaseExecutor):
@@ -494,6 +488,7 @@ class TestQueueRoutingAllExecutors:
 # 7. Graceful degradation when cloud plugins missing
 # ---------------------------------------------------------------------------
 
+
 class TestGracefulDegradation:
     def test_legacy_works_without_cloud_executors(self, eager_app):
         """Legacy operations work even when no cloud executors installed."""
@@ -512,8 +507,12 @@ class TestGracefulDegradation:
         _register_legacy()
         executor = ExecutorRegistry.get("legacy")
 
-        for cloud_op in ["table_extract", "smart_table_extract",
-                         "sps_answer_prompt", "agentic_extract"]:
+        for cloud_op in [
+            "table_extract",
+            "smart_table_extract",
+            "sps_answer_prompt",
+            "agentic_extract",
+        ]:
             ctx = ExecutionContext(
                 executor_name="legacy",
                 operation=cloud_op,
@@ -544,6 +543,7 @@ class TestGracefulDegradation:
 # 8. tasks.py log_component for all operation types
 # ---------------------------------------------------------------------------
 
+
 class TestLogComponentAllOperations:
     """Verify tasks.py log_component builder handles all operation types."""
 
@@ -553,15 +553,17 @@ class TestLogComponentAllOperations:
             "tool_id": "t-1",
             "file_name": "doc.pdf",
         }
-        ctx = ExecutionContext.from_dict({
-            "executor_name": "legacy",
-            "operation": operation,
-            "run_id": "run-log",
-            "execution_source": "tool",
-            "executor_params": params,
-            "request_id": "req-1",
-            "log_events_id": "evt-1",
-        })
+        ctx = ExecutionContext.from_dict(
+            {
+                "executor_name": "legacy",
+                "operation": operation,
+                "run_id": "run-log",
+                "execution_source": "tool",
+                "executor_params": params,
+                "request_id": "req-1",
+                "log_events_id": "evt-1",
+            }
+        )
 
         # Replicate tasks.py logic
         if ctx.operation == "ide_index":
@@ -590,17 +592,23 @@ class TestLogComponentAllOperations:
             }
 
     def test_ide_index_extracts_nested_params(self):
-        comp = self._build_log_component("ide_index", {
-            "extract_params": {"tool_id": "t-nested", "file_name": "nested.pdf"},
-        })
+        comp = self._build_log_component(
+            "ide_index",
+            {
+                "extract_params": {"tool_id": "t-nested", "file_name": "nested.pdf"},
+            },
+        )
         assert comp["tool_id"] == "t-nested"
         assert comp["doc_name"] == "nested.pdf"
 
     def test_structure_pipeline_extracts_nested_params(self):
-        comp = self._build_log_component("structure_pipeline", {
-            "answer_params": {"tool_id": "t-pipe"},
-            "pipeline_options": {"source_file_name": "pipe.pdf"},
-        })
+        comp = self._build_log_component(
+            "structure_pipeline",
+            {
+                "answer_params": {"tool_id": "t-pipe"},
+                "pipeline_options": {"source_file_name": "pipe.pdf"},
+            },
+        )
         assert comp["tool_id"] == "t-pipe"
         assert comp["doc_name"] == "pipe.pdf"
 
@@ -613,11 +621,21 @@ class TestLogComponentAllOperations:
         comp = self._build_log_component("smart_table_extract")
         assert comp["operation"] == "smart_table_extract"
 
-    @pytest.mark.parametrize("op", [
-        "extract", "index", "answer_prompt", "single_pass_extraction",
-        "summarize", "sps_answer_prompt", "sps_index",
-        "agentic_extract", "agentic_summarize", "agentic_compare",
-    ])
+    @pytest.mark.parametrize(
+        "op",
+        [
+            "extract",
+            "index",
+            "answer_prompt",
+            "single_pass_extraction",
+            "summarize",
+            "sps_answer_prompt",
+            "sps_index",
+            "agentic_extract",
+            "agentic_summarize",
+            "agentic_compare",
+        ],
+    )
     def test_default_branch_for_standard_ops(self, op):
         comp = self._build_log_component(op)
         assert comp["tool_id"] == "t-1"
@@ -628,6 +646,7 @@ class TestLogComponentAllOperations:
 # ---------------------------------------------------------------------------
 # 9. ExecutionResult serialization round-trip
 # ---------------------------------------------------------------------------
+
 
 class TestResultRoundTrip:
     def test_success_result_round_trip(self):

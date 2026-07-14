@@ -1,4 +1,4 @@
-"""Phase 5D — Tests for structure_pipeline compound operation.
+"""Tests for structure_pipeline compound operation.
 
 Tests _handle_structure_pipeline in LegacyExecutor which runs the full
 extract → summarize → index → answer_prompt pipeline in a single
@@ -8,7 +8,6 @@ executor invocation.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -20,9 +19,7 @@ _PATCH_FILE_UTILS = "executor.executors.file_utils.FileUtils.get_fs_instance"
 _PATCH_INDEXING_DEPS = (
     "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
 )
-_PATCH_PROMPT_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
-)
+_PATCH_PROMPT_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
 
 
 # ---------------------------------------------------------------------------
@@ -169,9 +166,7 @@ class TestNormalPipeline:
         extract_result = ExecutionResult(
             success=True, data={"extracted_text": "Revenue is $1M"}
         )
-        index_result = ExecutionResult(
-            success=True, data={"doc_id": "doc-1"}
-        )
+        index_result = ExecutionResult(success=True, data={"doc_id": "doc-1"})
         answer_result = ExecutionResult(
             success=True,
             data={
@@ -183,16 +178,16 @@ class TestNormalPipeline:
 
         executor._handle_extract = MagicMock(return_value=extract_result)
         executor._handle_index = MagicMock(return_value=index_result)
-        executor._handle_answer_prompt = MagicMock(
-            return_value=answer_result
-        )
+        executor._handle_answer_prompt = MagicMock(return_value=answer_result)
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
 
         result = executor._handle_structure_pipeline(ctx)
 
@@ -204,14 +199,10 @@ class TestNormalPipeline:
     def test_result_has_metadata_and_file_name(self, executor):
         """Result includes source_file_name in metadata."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"doc_id": "d1"}
-            )
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
         )
         executor._handle_answer_prompt = MagicMock(
             return_value=ExecutionResult(
@@ -219,12 +210,14 @@ class TestNormalPipeline:
             )
         )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -238,22 +231,20 @@ class TestNormalPipeline:
             )
         )
         executor._handle_index = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"doc_id": "d1"}
-            )
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
         )
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.data["metadata"]["extracted_text"] == "Revenue $1M"
@@ -261,14 +252,10 @@ class TestNormalPipeline:
     def test_index_metrics_merged(self, executor):
         """Index metrics are merged into answer metrics."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"doc_id": "d1"}
-            )
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
         )
         executor._handle_answer_prompt = MagicMock(
             return_value=ExecutionResult(
@@ -289,12 +276,14 @@ class TestNormalPipeline:
             )
         )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -319,9 +308,7 @@ class TestPipelineUsageRecordsPropagation:
 
     def test_index_usage_records_propagate(self, executor):
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         embedding_row = {
             "model_name": "emb-1",
@@ -346,12 +333,14 @@ class TestPipelineUsageRecordsPropagation:
             )
         )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -362,9 +351,7 @@ class TestPipelineUsageRecordsPropagation:
         from executor.executors.exceptions import LegacyExecutorError
 
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
             return_value=ExecutionResult.failure(
@@ -373,12 +360,14 @@ class TestPipelineUsageRecordsPropagation:
         )
         executor._handle_answer_prompt = MagicMock()
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         with pytest.raises(LegacyExecutorError) as exc_info:
             executor._handle_structure_pipeline(ctx)
 
@@ -402,12 +391,14 @@ class TestExtractFailure:
         executor._handle_index = MagicMock()
         executor._handle_answer_prompt = MagicMock()
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert not result.success
@@ -428,21 +419,21 @@ class TestSkipExtraction:
         executor._handle_extract = MagicMock()
         executor._handle_index = MagicMock()
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
         opts["skip_extraction_and_indexing"] = True
         answer = _base_answer_params()
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": opts,
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": opts,
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -455,9 +446,7 @@ class TestSkipExtraction:
     def test_skip_extraction_table_settings_injection(self, executor):
         """Table settings get input_file when extraction is skipped."""
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
@@ -467,12 +456,14 @@ class TestSkipExtraction:
             "is_directory_mode": False,
         }
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": opts,
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": opts,
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -490,26 +481,24 @@ class TestSinglePass:
 
     def test_single_pass_skips_index(self, executor):
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock()
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
         opts["is_single_pass_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": opts,
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -520,25 +509,23 @@ class TestSinglePass:
     def test_single_pass_operation_is_single_pass(self, executor):
         """The answer_prompt call uses single_pass_extraction operation."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
         opts["is_single_pass_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": opts,
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+            }
+        )
         executor._handle_structure_pipeline(ctx)
 
         call_ctx = executor._handle_answer_prompt.call_args[0][0]
@@ -554,47 +541,41 @@ class TestSummarizePipeline:
     """Summarize: extract + summarize + answer_prompt (no indexing)."""
 
     @patch(_PATCH_FILE_UTILS)
-    def test_summarize_calls_handle_summarize(
-        self, mock_get_fs, executor, mock_fs
-    ):
+    def test_summarize_calls_handle_summarize(self, mock_get_fs, executor, mock_fs):
         mock_get_fs.return_value = mock_fs
         mock_fs.exists.return_value = False
         mock_fs.read.return_value = "extracted text for summarize"
 
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_summarize = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"data": "summarized text"}
-            )
+            return_value=ExecutionResult(success=True, data={"data": "summarized text"})
         )
         executor._handle_index = MagicMock()
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
         opts["is_summarization_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": opts,
-            "summarize_params": {
-                "llm_adapter_instance_id": "llm-1",
-                "summarize_prompt": "Summarize this",
-                "extract_file_path": "/data/exec/EXTRACT",
-                "summarize_file_path": "/data/exec/SUMMARIZE",
-                "platform_api_key": "sk-test",
-                "prompt_keys": ["field_a"],
-            },
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+                "summarize_params": {
+                    "llm_adapter_instance_id": "llm-1",
+                    "summarize_prompt": "Summarize this",
+                    "extract_file_path": "/data/exec/EXTRACT",
+                    "summarize_file_path": "/data/exec/SUMMARIZE",
+                    "platform_api_key": "sk-test",
+                    "prompt_keys": ["field_a"],
+                },
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -609,43 +590,39 @@ class TestSummarizePipeline:
         mock_fs.read.return_value = "cached summary"
 
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_summarize = MagicMock()
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         opts = _base_pipeline_options()
         opts["is_summarization_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": opts,
-            "summarize_params": {
-                "llm_adapter_instance_id": "llm-1",
-                "summarize_prompt": "Summarize this",
-                "extract_file_path": "/data/exec/EXTRACT",
-                "summarize_file_path": "/data/exec/SUMMARIZE",
-                "platform_api_key": "sk-test",
-                "prompt_keys": ["field_a"],
-            },
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+                "summarize_params": {
+                    "llm_adapter_instance_id": "llm-1",
+                    "summarize_prompt": "Summarize this",
+                    "extract_file_path": "/data/exec/EXTRACT",
+                    "summarize_file_path": "/data/exec/SUMMARIZE",
+                    "platform_api_key": "sk-test",
+                    "prompt_keys": ["field_a"],
+                },
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
         executor._handle_summarize.assert_not_called()
 
     @patch(_PATCH_FILE_UTILS)
-    def test_summarize_updates_answer_params(
-        self, mock_get_fs, executor, mock_fs
-    ):
+    def test_summarize_updates_answer_params(self, mock_get_fs, executor, mock_fs):
         """After summarize, answer_params file_path and hash are updated."""
         mock_get_fs.return_value = mock_fs
         mock_fs.exists.return_value = False
@@ -653,39 +630,35 @@ class TestSummarizePipeline:
         mock_fs.get_hash_from_file.return_value = "sum-hash-456"
 
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_summarize = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"data": "summarized"}
-            )
+            return_value=ExecutionResult(success=True, data={"data": "summarized"})
         )
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         answer = _base_answer_params()
         opts = _base_pipeline_options()
         opts["is_summarization_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": opts,
-            "summarize_params": {
-                "llm_adapter_instance_id": "llm-1",
-                "summarize_prompt": "Summarize",
-                "extract_file_path": "/data/exec/EXTRACT",
-                "summarize_file_path": "/data/exec/SUMMARIZE",
-                "platform_api_key": "sk-test",
-                "prompt_keys": [],
-            },
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": opts,
+                "summarize_params": {
+                    "llm_adapter_instance_id": "llm-1",
+                    "summarize_prompt": "Summarize",
+                    "extract_file_path": "/data/exec/EXTRACT",
+                    "summarize_file_path": "/data/exec/SUMMARIZE",
+                    "platform_api_key": "sk-test",
+                    "prompt_keys": [],
+                },
+            }
+        )
         executor._handle_structure_pipeline(ctx)
 
         # Check answer_params were updated
@@ -693,43 +666,39 @@ class TestSummarizePipeline:
         assert answer["file_path"] == "/data/exec/SUMMARIZE"
 
     @patch(_PATCH_FILE_UTILS)
-    def test_summarize_sets_chunk_size_zero(
-        self, mock_get_fs, executor, mock_fs
-    ):
+    def test_summarize_sets_chunk_size_zero(self, mock_get_fs, executor, mock_fs):
         """Summarize sets chunk-size=0 for all outputs."""
         mock_get_fs.return_value = mock_fs
         mock_fs.exists.return_value = True
         mock_fs.read.return_value = "cached"
 
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "t"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "t"})
         )
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         answer = _base_answer_params()
         opts = _base_pipeline_options()
         opts["is_summarization_enabled"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": opts,
-            "summarize_params": {
-                "llm_adapter_instance_id": "llm-1",
-                "summarize_prompt": "Summarize",
-                "extract_file_path": "/data/exec/EXTRACT",
-                "summarize_file_path": "/data/exec/SUMMARIZE",
-                "platform_api_key": "sk-test",
-                "prompt_keys": [],
-            },
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": opts,
+                "summarize_params": {
+                    "llm_adapter_instance_id": "llm-1",
+                    "summarize_prompt": "Summarize",
+                    "extract_file_path": "/data/exec/EXTRACT",
+                    "summarize_file_path": "/data/exec/SUMMARIZE",
+                    "platform_api_key": "sk-test",
+                    "prompt_keys": [],
+                },
+            }
+        )
         executor._handle_structure_pipeline(ctx)
 
         # Outputs should have chunk-size=0
@@ -749,9 +718,7 @@ class TestIndexDedup:
     def test_index_dedup_skips_duplicate_params(self, executor):
         """Duplicate param combos are only indexed once."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         index_call_count = 0
 
@@ -762,32 +729,34 @@ class TestIndexDedup:
 
         executor._handle_index = counting_index
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         answer = _base_answer_params()
         # Add a second output with same adapter params
-        answer["outputs"].append({
-            "name": "field_b",
-            "prompt": "What is the profit?",
-            "type": "text",
-            "active": True,
-            "chunk-size": 512,
-            "chunk-overlap": 128,
-            "llm": "llm-1",
-            "embedding": "emb-1",
-            "vector-db": "vdb-1",
-            "x2text_adapter": "x2t-1",
-        })
+        answer["outputs"].append(
+            {
+                "name": "field_b",
+                "prompt": "What is the profit?",
+                "type": "text",
+                "active": True,
+                "chunk-size": 512,
+                "chunk-overlap": 128,
+                "llm": "llm-1",
+                "embedding": "emb-1",
+                "vector-db": "vdb-1",
+                "x2text_adapter": "x2t-1",
+            }
+        )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -797,9 +766,7 @@ class TestIndexDedup:
     def test_index_different_params_indexes_both(self, executor):
         """Different param combos are indexed separately."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         index_call_count = 0
 
@@ -810,31 +777,33 @@ class TestIndexDedup:
 
         executor._handle_index = counting_index
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         answer = _base_answer_params()
-        answer["outputs"].append({
-            "name": "field_b",
-            "prompt": "What is the profit?",
-            "type": "text",
-            "active": True,
-            "chunk-size": 256,  # Different chunk size
-            "chunk-overlap": 64,
-            "llm": "llm-1",
-            "embedding": "emb-1",
-            "vector-db": "vdb-1",
-            "x2text_adapter": "x2t-1",
-        })
+        answer["outputs"].append(
+            {
+                "name": "field_b",
+                "prompt": "What is the profit?",
+                "type": "text",
+                "active": True,
+                "chunk-size": 256,  # Different chunk size
+                "chunk-overlap": 64,
+                "llm": "llm-1",
+                "embedding": "emb-1",
+                "vector-db": "vdb-1",
+                "x2text_adapter": "x2t-1",
+            }
+        )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -843,26 +812,24 @@ class TestIndexDedup:
     def test_chunk_size_zero_skips_index(self, executor):
         """chunk-size=0 outputs skip indexing entirely."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock()
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         answer = _base_answer_params()
         answer["outputs"][0]["chunk-size"] = 0
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": answer,
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": answer,
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
@@ -879,25 +846,23 @@ class TestAnswerPromptFailure:
 
     def test_answer_failure_propagates(self, executor):
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"doc_id": "d1"}
-            )
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
         )
         executor._handle_answer_prompt = MagicMock(
             return_value=ExecutionResult.failure(error="LLM timeout")
         )
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert not result.success
@@ -913,21 +878,15 @@ class TestMergeMetrics:
     """Test _merge_pipeline_metrics."""
 
     def test_merge_disjoint(self, executor):
-        m = executor._merge_pipeline_metrics(
-            {"a": {"x": 1}}, {"b": {"y": 2}}
-        )
+        m = executor._merge_pipeline_metrics({"a": {"x": 1}}, {"b": {"y": 2}})
         assert m == {"a": {"x": 1}, "b": {"y": 2}}
 
     def test_merge_overlapping(self, executor):
-        m = executor._merge_pipeline_metrics(
-            {"a": {"x": 1}}, {"a": {"y": 2}}
-        )
+        m = executor._merge_pipeline_metrics({"a": {"x": 1}}, {"a": {"y": 2}})
         assert m == {"a": {"x": 1, "y": 2}}
 
     def test_merge_non_dict_values(self, executor):
-        m = executor._merge_pipeline_metrics(
-            {"a": 1}, {"b": 2}
-        )
+        m = executor._merge_pipeline_metrics({"a": 1}, {"b": 2})
         assert m == {"a": 1, "b": 2}
 
 
@@ -942,19 +901,13 @@ class TestSubContextCreation:
     def test_extract_context_inherits_fields(self, executor):
         """Extract sub-context gets run_id, org_id, etc. from parent."""
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"doc_id": "d1"}
-            )
+            return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
         )
         executor._handle_answer_prompt = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"output": {}}
-            )
+            return_value=ExecutionResult(success=True, data={"output": {}})
         )
 
         ctx = _make_pipeline_context(

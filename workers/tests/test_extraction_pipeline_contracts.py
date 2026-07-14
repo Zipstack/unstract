@@ -1,4 +1,4 @@
-"""Phase 2-SANITY — Full-chain integration tests for LegacyExecutor.
+"""Full-chain integration tests for LegacyExecutor.
 
 All Phase 2 code and unit tests are complete (2A–2H, 194 workers tests).
 This file bridges unit tests and real integration by testing the full
@@ -16,9 +16,10 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import (
     IndexingConstants as IKeys,
+)
+from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
 from unstract.sdk1.execution.context import ExecutionContext, Operation
@@ -31,19 +32,13 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 _PATCH_X2TEXT = "executor.executors.legacy_executor.X2Text"
 _PATCH_FS = "executor.executors.legacy_executor.FileUtils.get_fs_instance"
-_PATCH_INDEX_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
-)
-_PATCH_PROMPT_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
-)
+_PATCH_INDEX_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
+_PATCH_PROMPT_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
 _PATCH_SHIM = "executor.executors.legacy_executor.ExecutorToolShim"
 _PATCH_RUN_COMPLETION = (
     "executor.executors.answer_prompt.AnswerPromptService.run_completion"
 )
-_PATCH_INDEX_UTILS = (
-    "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
-)
+_PATCH_INDEX_UTILS = "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -121,7 +116,9 @@ def _mock_prompt_deps(llm=None):
     if llm is None:
         llm = _mock_llm()
 
-    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
+    from executor.executors.answer_prompt import (
+        AnswerPromptService as answer_prompt_svc_cls,
+    )
 
     retrieval_svc = MagicMock(name="RetrievalService")
     retrieval_svc.run_retrieval.return_value = ["chunk1", "chunk2"]
@@ -166,8 +163,9 @@ def _mock_process_response(text="sanity extracted text"):
     )
 
 
-def _make_prompt(name="field_a", prompt="What is the revenue?",
-                 output_type="text", **overrides):
+def _make_prompt(
+    name="field_a", prompt="What is the revenue?", output_type="text", **overrides
+):
     """Build a minimal prompt definition dict."""
     d = {
         PSKeys.NAME: name,
@@ -286,9 +284,7 @@ class TestSanityExtract:
     def test_extract_full_chain(self, mock_x2text_cls, mock_get_fs, eager_app):
         """Mocked X2Text + FileUtils → result.data has extracted_text."""
         mock_x2text = MagicMock()
-        mock_x2text.process.return_value = _mock_process_response(
-            "sanity extracted"
-        )
+        mock_x2text.process.return_value = _mock_process_response("sanity extracted")
         mock_x2text.x2text_instance = MagicMock()
         mock_x2text_cls.return_value = mock_x2text
         mock_get_fs.return_value = MagicMock()
@@ -369,9 +365,7 @@ class TestSanityIndex:
 
     @patch(_PATCH_INDEX_UTILS, return_value="doc-zero-chunk-sanity")
     @patch(_PATCH_FS)
-    def test_index_chunk_size_zero_full_chain(
-        self, mock_get_fs, mock_gen_key, eager_app
-    ):
+    def test_index_chunk_size_zero_full_chain(self, mock_get_fs, mock_gen_key, eager_app):
         """chunk_size=0 skips heavy deps → returns doc_id via IndexingUtils."""
         mock_get_fs.return_value = MagicMock()
 
@@ -480,9 +474,7 @@ class TestSanityAnswerPrompt:
         mock_deps.return_value = _mock_prompt_deps(llm)
         mock_shim_cls.return_value = MagicMock()
 
-        ctx = _answer_prompt_ctx(
-            prompts=[_make_prompt(output_type="table")]
-        )
+        ctx = _answer_prompt_ctx(prompts=[_make_prompt(output_type="table")])
         result_dict = _run_task(eager_app, ctx.to_dict())
         result = ExecutionResult.from_dict(result_dict)
 
@@ -528,8 +520,13 @@ class TestSanitySummarize:
         mock_llm_cls = MagicMock()
         mock_llm_cls.return_value = MagicMock()
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         ctx = _summarize_ctx()
@@ -565,8 +562,13 @@ class TestSanitySummarize:
         mock_llm_cls = MagicMock()
         mock_llm_cls.return_value = MagicMock()
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         ctx = _summarize_ctx()
@@ -629,7 +631,9 @@ class TestSanityResponseContracts:
         mock_index_cls.return_value = mock_index
 
         mock_emb_cls = MagicMock()
-        mock_emb_cls.return_value = MagicMock()
+        mock_emb = MagicMock()
+        mock_emb.flush_pending_usage.return_value = []  # must be JSON-serializable
+        mock_emb_cls.return_value = mock_emb
         mock_vdb_cls = MagicMock()
         mock_vdb_cls.return_value = MagicMock()
 
@@ -649,9 +653,7 @@ class TestSanityResponseContracts:
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
-    def test_answer_prompt_contract(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
-    ):
+    def test_answer_prompt_contract(self, mock_shim_cls, mock_deps, _mock_idx, eager_app):
         llm = _mock_llm("contract answer")
         mock_deps.return_value = _mock_prompt_deps(llm)
         mock_shim_cls.return_value = MagicMock()
@@ -671,14 +673,17 @@ class TestSanityResponseContracts:
     @patch(_PATCH_RUN_COMPLETION, return_value="contract summary")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
-    def test_summarize_contract(
-        self, mock_shim_cls, mock_get_deps, mock_run, eager_app
-    ):
+    def test_summarize_contract(self, mock_shim_cls, mock_get_deps, mock_run, eager_app):
         mock_llm_cls = MagicMock()
         mock_llm_cls.return_value = MagicMock()
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         ctx = _summarize_ctx()

@@ -1,4 +1,4 @@
-"""Phase 6C Sanity — Highlight data as cross-cutting plugin.
+"""Highlight data as cross-cutting plugin.
 
 Verifies:
 1. run_completion() passes process_text to llm.complete()
@@ -16,10 +16,10 @@ import pytest
 from executor.executors.answer_prompt import AnswerPromptService
 from executor.executors.constants import PromptServiceConstants as PSKeys
 
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture()
 def mock_llm():
@@ -53,6 +53,7 @@ def mock_llm_no_highlight():
 # 1. run_completion() passes process_text to llm.complete()
 # ---------------------------------------------------------------------------
 
+
 class TestRunCompletionProcessText:
     def test_process_text_passed_to_llm_complete(self, mock_llm):
         """process_text callback is forwarded to llm.complete()."""
@@ -64,8 +65,10 @@ class TestRunCompletionProcessText:
         )
         mock_llm.complete.assert_called_once()
         call_kwargs = mock_llm.complete.call_args
-        assert call_kwargs.kwargs.get("process_text") is callback or \
-            call_kwargs[1].get("process_text") is callback
+        assert (
+            call_kwargs.kwargs.get("process_text") is callback
+            or call_kwargs[1].get("process_text") is callback
+        )
 
     def test_process_text_none_by_default(self, mock_llm):
         """When process_text not provided, None is passed to llm.complete()."""
@@ -95,10 +98,12 @@ class TestRunCompletionProcessText:
 # 2. run_completion() populates metadata from completion dict
 # ---------------------------------------------------------------------------
 
+
 class TestRunCompletionMetadata:
     def test_highlight_metadata_populated_with_process_text(self, mock_llm):
         """When process_text is provided and LLM returns highlight data,
-        metadata is populated correctly."""
+        metadata is populated correctly.
+        """
         callback = MagicMock(name="highlight_run")
         metadata: dict = {}
         AnswerPromptService.run_completion(
@@ -116,9 +121,7 @@ class TestRunCompletionMetadata:
         assert metadata[PSKeys.LINE_NUMBERS]["field1"] == [1, 2]
         assert metadata[PSKeys.WHISPER_HASH] == "abc123"
 
-    def test_highlight_metadata_empty_without_process_text(
-        self, mock_llm_no_highlight
-    ):
+    def test_highlight_metadata_empty_without_process_text(self, mock_llm_no_highlight):
         """Without process_text, highlight data is empty but no error."""
         metadata: dict = {}
         AnswerPromptService.run_completion(
@@ -136,6 +139,7 @@ class TestRunCompletionMetadata:
 # ---------------------------------------------------------------------------
 # 3. construct_and_run_prompt() passes process_text through
 # ---------------------------------------------------------------------------
+
 
 class TestConstructAndRunPromptProcessText:
     def test_process_text_forwarded(self, mock_llm):
@@ -202,6 +206,7 @@ class TestConstructAndRunPromptProcessText:
 # 4. _handle_answer_prompt() initializes highlight plugin
 # ---------------------------------------------------------------------------
 
+
 class TestHandleAnswerPromptHighlight:
     """Test highlight plugin integration in LegacyExecutor._handle_answer_prompt."""
 
@@ -254,8 +259,10 @@ class TestHandleAnswerPromptHighlight:
         return ExecutorRegistry.get("legacy")
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
     def test_highlight_plugin_initialized_when_enabled(
         self, mock_index_key, mock_shim_cls
     ):
@@ -287,7 +294,8 @@ class TestHandleAnswerPromptHighlight:
 
         with (
             patch.object(
-                executor, "_get_prompt_deps",
+                executor,
+                "_get_prompt_deps",
                 return_value=(
                     AnswerPromptService,
                     MagicMock(
@@ -295,9 +303,7 @@ class TestHandleAnswerPromptHighlight:
                             return_value=["context chunk"]
                         )
                     ),
-                    MagicMock(
-                        is_variables_present=MagicMock(return_value=False)
-                    ),
+                    MagicMock(is_variables_present=MagicMock(return_value=False)),
                     None,  # Index
                     mock_llm_cls,
                     MagicMock(),  # EmbeddingCompat
@@ -324,12 +330,13 @@ class TestHandleAnswerPromptHighlight:
         )
         # Verify process_text was the highlight instance's run method
         llm_complete_call = mock_llm.complete.call_args
-        assert llm_complete_call.kwargs.get("process_text") is \
-            mock_highlight_instance.run
+        assert llm_complete_call.kwargs.get("process_text") is mock_highlight_instance.run
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
     def test_highlight_skipped_when_plugin_not_installed(
         self, mock_index_key, mock_shim_cls
     ):
@@ -353,17 +360,14 @@ class TestHandleAnswerPromptHighlight:
         mock_llm_cls = MagicMock(return_value=mock_llm)
         with (
             patch.object(
-                executor, "_get_prompt_deps",
+                executor,
+                "_get_prompt_deps",
                 return_value=(
                     AnswerPromptService,
                     MagicMock(
-                        retrieve_complete_context=MagicMock(
-                            return_value=["chunk"]
-                        )
+                        retrieve_complete_context=MagicMock(return_value=["chunk"])
                     ),
-                    MagicMock(
-                        is_variables_present=MagicMock(return_value=False)
-                    ),
+                    MagicMock(is_variables_present=MagicMock(return_value=False)),
                     None,
                     mock_llm_cls,
                     MagicMock(),
@@ -383,11 +387,11 @@ class TestHandleAnswerPromptHighlight:
         assert llm_complete_call.kwargs.get("process_text") is None
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_highlight_skipped_when_disabled(
-        self, mock_index_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_highlight_skipped_when_disabled(self, mock_index_key, mock_shim_cls):
         """When enable_highlight=False, plugin loader is not even called."""
         mock_shim = MagicMock()
         mock_shim_cls.return_value = mock_shim
@@ -408,17 +412,14 @@ class TestHandleAnswerPromptHighlight:
         mock_llm_cls = MagicMock(return_value=mock_llm)
         with (
             patch.object(
-                executor, "_get_prompt_deps",
+                executor,
+                "_get_prompt_deps",
                 return_value=(
                     AnswerPromptService,
                     MagicMock(
-                        retrieve_complete_context=MagicMock(
-                            return_value=["chunk"]
-                        )
+                        retrieve_complete_context=MagicMock(return_value=["chunk"])
                     ),
-                    MagicMock(
-                        is_variables_present=MagicMock(return_value=False)
-                    ),
+                    MagicMock(is_variables_present=MagicMock(return_value=False)),
                     None,
                     mock_llm_cls,
                     MagicMock(),
@@ -432,8 +433,15 @@ class TestHandleAnswerPromptHighlight:
             result = executor._handle_answer_prompt(ctx)
 
         assert result.success
-        # Plugin loader should NOT have been called
-        mock_plugin_get.assert_not_called()
+        # Highlight disabled → highlight plugin must not be fetched. Other plugin
+        # lookups (e.g. lookup-enrichment) run unconditionally and return None in
+        # OSS, so assert on the highlight key rather than "loader untouched".
+        highlight_fetches = [
+            c
+            for c in mock_plugin_get.call_args_list
+            if c.args and c.args[0] == "highlight-data"
+        ]
+        assert highlight_fetches == []
         # process_text should be None
         llm_complete_call = mock_llm.complete.call_args
         assert llm_complete_call.kwargs.get("process_text") is None
@@ -443,6 +451,7 @@ class TestHandleAnswerPromptHighlight:
 # 5. Multiple prompts share same highlight instance
 # ---------------------------------------------------------------------------
 
+
 class TestHighlightMultiplePrompts:
     """Verify that one highlight instance is shared across all prompts."""
 
@@ -451,19 +460,21 @@ class TestHighlightMultiplePrompts:
 
         prompts = []
         for name in ["field1", "field2", "field3"]:
-            prompts.append({
-                PSKeys.NAME: name,
-                PSKeys.PROMPT: f"What is {name}?",
-                PSKeys.PROMPTX: f"What is {name}?",
-                PSKeys.TYPE: PSKeys.TEXT,
-                PSKeys.CHUNK_SIZE: 0,
-                PSKeys.CHUNK_OVERLAP: 0,
-                PSKeys.LLM: "llm-123",
-                PSKeys.EMBEDDING: "emb-123",
-                PSKeys.VECTOR_DB: "vdb-123",
-                PSKeys.X2TEXT_ADAPTER: "x2t-123",
-                PSKeys.RETRIEVAL_STRATEGY: "simple",
-            })
+            prompts.append(
+                {
+                    PSKeys.NAME: name,
+                    PSKeys.PROMPT: f"What is {name}?",
+                    PSKeys.PROMPTX: f"What is {name}?",
+                    PSKeys.TYPE: PSKeys.TEXT,
+                    PSKeys.CHUNK_SIZE: 0,
+                    PSKeys.CHUNK_OVERLAP: 0,
+                    PSKeys.LLM: "llm-123",
+                    PSKeys.EMBEDDING: "emb-123",
+                    PSKeys.VECTOR_DB: "vdb-123",
+                    PSKeys.X2TEXT_ADAPTER: "x2t-123",
+                    PSKeys.RETRIEVAL_STRATEGY: "simple",
+                }
+            )
         return ExecutionContext(
             executor_name="legacy",
             operation="answer_prompt",
@@ -487,8 +498,10 @@ class TestHighlightMultiplePrompts:
         )
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
     def test_single_highlight_instance_for_all_prompts(
         self, mock_index_key, mock_shim_cls
     ):
@@ -521,17 +534,14 @@ class TestHighlightMultiplePrompts:
         mock_llm_cls = MagicMock(return_value=mock_llm)
         with (
             patch.object(
-                executor, "_get_prompt_deps",
+                executor,
+                "_get_prompt_deps",
                 return_value=(
                     AnswerPromptService,
                     MagicMock(
-                        retrieve_complete_context=MagicMock(
-                            return_value=["chunk"]
-                        )
+                        retrieve_complete_context=MagicMock(return_value=["chunk"])
                     ),
-                    MagicMock(
-                        is_variables_present=MagicMock(return_value=False)
-                    ),
+                    MagicMock(is_variables_present=MagicMock(return_value=False)),
                     None,
                     mock_llm_cls,
                     MagicMock(),

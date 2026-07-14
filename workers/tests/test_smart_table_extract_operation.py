@@ -1,41 +1,19 @@
-"""Phase 6F Sanity — SmartTableExtractorExecutor + SMART_TABLE_EXTRACT operation.
-
-Verifies:
-1. Operation.SMART_TABLE_EXTRACT enum exists with value "smart_table_extract"
-2. tasks.py log_component builder handles smart_table_extract operation
-3. Mock SmartTableExtractorExecutor — registration and execution
-4. Queue routing: executor_name="smart_table" → celery_executor_smart_table
-5. LegacyExecutor does NOT handle smart_table_extract
-6. Dispatch sends to correct queue
+"""SMART_TABLE_EXTRACT operation: the smart-table executor registers, routes to
+its own queue, and LegacyExecutor rejects the operation.
 """
 
 from unittest.mock import MagicMock
 
-
-from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 # ---------------------------------------------------------------------------
-# 1. Operation enum
+# tasks.py log_component for smart_table_extract
 # ---------------------------------------------------------------------------
 
-class TestSmartTableExtractOperation:
-    def test_smart_table_extract_enum_exists(self):
-        assert hasattr(Operation, "SMART_TABLE_EXTRACT")
-        assert Operation.SMART_TABLE_EXTRACT.value == "smart_table_extract"
-
-    def test_smart_table_extract_in_operation_values(self):
-        values = {op.value for op in Operation}
-        assert "smart_table_extract" in values
-
-
-# ---------------------------------------------------------------------------
-# 2. tasks.py log_component for smart_table_extract
-# ---------------------------------------------------------------------------
 
 class TestTasksLogComponent:
     def test_smart_table_extract_log_component(self):
@@ -77,9 +55,11 @@ class TestTasksLogComponent:
 # 3. Mock SmartTableExtractorExecutor — registration and execution
 # ---------------------------------------------------------------------------
 
+
 class TestSmartTableExtractorRegistration:
     def test_mock_smart_table_executor_registers_and_executes(self):
         """Simulate cloud executor discovery and execution."""
+
         @ExecutorRegistry.register
         class MockSmartTableExecutor(BaseExecutor):
             @property
@@ -134,6 +114,7 @@ class TestSmartTableExtractorRegistration:
 # 4. Queue routing
 # ---------------------------------------------------------------------------
 
+
 class TestSmartTableQueueRouting:
     def test_smart_table_routes_to_correct_queue(self):
         queue = ExecutionDispatcher._get_queue("smart_table")
@@ -166,9 +147,11 @@ class TestSmartTableQueueRouting:
 # 5. LegacyExecutor does NOT handle smart_table_extract
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyExcludesSmartTable:
     def test_smart_table_extract_not_in_legacy_operation_map(self):
         from executor.executors.legacy_executor import LegacyExecutor
+
         assert "smart_table_extract" not in LegacyExecutor._OPERATION_MAP
 
     def test_legacy_returns_failure_for_smart_table_extract(self):
