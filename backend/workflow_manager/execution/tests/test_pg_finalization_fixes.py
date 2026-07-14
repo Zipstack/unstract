@@ -1,10 +1,9 @@
 """Backend unit tests for the PG finalization-strand fixes.
 
-- L1: ``update_status`` terminal-one-way guard (flag-gated) — a non-terminal write
-  cannot clobber an already-terminal execution.
+- L1: ``update_status`` terminal-one-way guard (PG rows, keyed on queue_message_id)
+  — a non-terminal write cannot clobber an already-terminal execution.
 - L4: ``recover_stuck_pg_executions`` — recompute the correct terminal status from
-  files, mark never-dispatched (file-less) stuck execs ERROR, and never touch
-  Celery rows.
+  files, skip file-less (possibly-still-queued) execs, and never touch Celery rows.
 - N+1: ``active_file_executions`` — one batched dedup query.
 """
 
@@ -20,8 +19,6 @@ from workflow_manager.internal_views import WorkflowExecutionInternalViewSet
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
-
-_FLAG = "workflow_manager.internal_views.check_feature_flag_status"
 
 
 def _age(execution, seconds):
@@ -74,13 +71,16 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert ex.status == ExecutionStatus.ERROR.value
         assert ex.failed_files == 1 and ex.successful_files == 1
 
-    def test_file_less_stuck_marked_error(self):
+    def test_file_less_stuck_is_skipped_not_failed(self):
+        # A file-less PG exec may still be QUEUED (a backlog/outage can outlast the
+        # stuck window) — it must NOT be failed, so a delayed worker can still
+        # finalize it (the one-way guard would otherwise block recovery).
         ex = self._exec(ExecutionStatus.PENDING, files=[])
         _age(ex, 9999)
         out = self._call()
         ex.refresh_from_db()
-        assert out["recovered"] == 1
-        assert ex.status == ExecutionStatus.ERROR.value
+        assert out["skipped"] == 1
+        assert ex.status == ExecutionStatus.PENDING.value
 
     def test_celery_execution_never_scanned(self):
         ex = self._exec(
@@ -149,35 +149,38 @@ class TerminalOneWayGuardTests(TestCase):
         self.wf = Workflow.objects.create(workflow_name="wf-guard")
         self.view = WorkflowExecutionInternalViewSet()
 
-    def _update(self, ex, new_status, flag_on):
+    def _update(self, ex, new_status):
         req = MagicMock()
         req.data = {"status": new_status.value}
-        with patch.object(self.view, "get_object", return_value=ex), patch(
-            _FLAG, return_value=flag_on
-        ):
+        with patch.object(self.view, "get_object", return_value=ex):
             return self.view.update_status(req, id=str(ex.id)).data
 
-    def test_flag_on_rejects_non_terminal_write_over_terminal(self):
+    def test_pg_rejects_non_terminal_write_over_terminal(self):
+        # PG execution (queue_message_id set) → guard active regardless of any flag.
         ex = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.COMPLETED
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123
         )
-        out = self._update(ex, ExecutionStatus.EXECUTING, flag_on=True)
+        out = self._update(ex, ExecutionStatus.EXECUTING)
         ex.refresh_from_db()
         assert out.get("reason") == "already_terminal"
         assert ex.status == ExecutionStatus.COMPLETED.value  # not clobbered
 
-    def test_flag_off_keeps_legacy_behavior(self):
+    def test_celery_keeps_legacy_behavior(self):
+        # No queue_message_id → not a PG execution → legacy (unguarded) path.
         ex = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.COMPLETED
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=None,
+            task_id=uuid.uuid4(),
         )
-        self._update(ex, ExecutionStatus.EXECUTING, flag_on=False)
+        self._update(ex, ExecutionStatus.EXECUTING)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.EXECUTING.value  # legacy: overwritten
 
-    def test_flag_on_allows_terminal_write(self):
+    def test_pg_allows_terminal_write(self):
         ex = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.EXECUTING
+            workflow=self.wf, status=ExecutionStatus.EXECUTING, queue_message_id=123
         )
-        self._update(ex, ExecutionStatus.COMPLETED, flag_on=True)
+        self._update(ex, ExecutionStatus.COMPLETED)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value  # terminal write allowed

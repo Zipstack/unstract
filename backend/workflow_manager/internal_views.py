@@ -7,7 +7,6 @@ import uuid
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -25,7 +24,6 @@ from unstract.core.data_models import (
     WorkflowEndpointConfigData,
     WorkflowEndpointConfigResponseData,
 )
-from unstract.flags.feature_flag import check_feature_flag_status
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -505,26 +503,20 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
-                # Concurrency guard, gated by the single PG-queue rollout flag
-                # (``pg_queue_enabled``, evaluated per-org exactly like transport
-                # dispatch — OFF for a Celery org keeps the existing behavior).
+                # Concurrency guard for PG-transport executions, identified by the
+                # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
+                # Keying on the row's own transport keeps the terminal-one-way
+                # invariant correct even if the rollout flag is toggled off or Flipt
+                # is unreachable while a PG execution is still finalizing (per the
+                # "transport carried on the row, never re-read from Flipt" rule).
                 # Under the PG path's high concurrency ~15 call sites write this
-                # status via unlocked read-modify-write, so a stale writer can
-                # commit AFTER the callback's terminal write and clobber it back to
-                # a non-terminal status with NULL counters (lost update → execution
-                # stranded in EXECUTING forever). When enabled: lock the row and
-                # make terminal one-way — never let a non-terminal write overwrite
-                # an already-terminal status.
-                org_id = ""
-                if execution.workflow and getattr(
-                    execution.workflow, "organization", None
-                ):
-                    org_id = str(execution.workflow.organization.organization_id or "")
-                if check_feature_flag_status(
-                    flag_key=PG_QUEUE_FLAG_KEY,
-                    entity_id=org_id or "default",
-                    context={"organization_id": org_id},
-                ):
+                # status via unlocked read-modify-write, so a stale writer can commit
+                # AFTER the callback's terminal write and clobber it back to a
+                # non-terminal status with NULL counters (lost update → execution
+                # stranded in EXECUTING forever). Lock the row and make terminal
+                # one-way. Celery executions (queue_message_id NULL) keep the legacy
+                # path unchanged.
+                if execution.queue_message_id is not None:
                     execution = WorkflowExecution.objects.select_for_update().get(
                         pk=execution.pk
                     )
@@ -637,28 +629,14 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     )
                     total = files.count()
                     terminal_files = files.filter(status__in=terminal).count()
-                    if total == 0:
-                        # No file executions ever created: the execution was
-                        # dispatched but never picked up (dispatch leak). It is
-                        # already past the (long) stuck window, so it will never run
-                        # — mark ERROR with a clear reason instead of leaving it
-                        # stuck forever.
-                        execution.update_execution(
-                            status=ExecutionStatus.ERROR,
-                            error=(
-                                "[reaper-recovery] Stuck non-terminal past the stuck "
-                                "window with no file executions (never "
-                                "dispatched/picked up)."
-                            ),
-                        )
-                        logger.warning(
-                            f"Reaper safety-net: marked never-dispatched PG execution "
-                            f"{exec_id} ERROR (no file executions)"
-                        )
-                        recovered += 1
-                        continue
-                    if terminal_files < total:
-                        # A file is still non-terminal → genuinely processing; leave it.
+                    if total == 0 or terminal_files < total:
+                        # Leave it for a later sweep. total==0: a valid PG message may
+                        # still be QUEUED (a backlog/outage can outlast stuck_seconds),
+                        # so failing it here would wrongly terminalize a live execution
+                        # and the one-way guard would then block the delayed worker
+                        # from finalizing it — finalizing a file-less execution needs a
+                        # queue-state check (reaper-side, follow-up). terminal_files <
+                        # total: a file is still non-terminal → genuinely processing.
                         skipped += 1
                         continue
                     # Recompute the CORRECT terminal status from the files (COMPLETED

@@ -1210,9 +1210,7 @@ class PgReaper:
                         data.get("skipped"),
                     )
             except Exception:
-                logger.error(
-                    "Reaper: stuck-execution recovery sweep failed", exc_info=True
-                )
+                logger.exception("Reaper: stuck-execution recovery sweep failed")
 
     def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
         """Run one retention sweep best-effort; return its row count (0 on failure).

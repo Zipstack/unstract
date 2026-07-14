@@ -391,7 +391,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
             return APIResponse(success=True, data=response_data)
         except Exception as e:
-            logger.error(f"Error getting active file executions: {e}")
+            logger.exception("Error getting active file executions")
             return APIResponse(success=False, error=str(e))
 
     def check_files_active_processing(
