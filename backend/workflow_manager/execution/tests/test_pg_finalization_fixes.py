@@ -231,3 +231,21 @@ class TerminalOneWayGuardTests(TestCase):
         ex.refresh_from_db()
         assert out.get("status") == "updated"
         assert ex.status == ExecutionStatus.COMPLETED.value
+
+
+class RetrieveNotFoundTests(TestCase):
+    """A missing execution must return 404, not 500 (UN-3719). The reaper's
+    orphan-claim sweep relies on the deterministic 404 to GC claims for deleted
+    executions; a 500 made it retry forever and never clean them up."""
+
+    def test_retrieve_returns_404_for_missing_execution(self):
+        from django.http import Http404
+
+        view = WorkflowExecutionInternalViewSet()
+        req = MagicMock()
+        req.GET = {}
+        # get_object() raises Http404 for a missing row (DRF get_object_or_404).
+        with patch.object(view, "get_object", side_effect=Http404("not found")):
+            resp = view.retrieve(req, id=str(uuid.uuid4()))
+        assert resp.status_code == 404
+        assert resp.data.get("error") == "WorkflowExecution not found"

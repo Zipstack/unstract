@@ -6,6 +6,7 @@ import logging
 import uuid
 
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -148,6 +149,20 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = WorkflowExecutionContextSerializer(context_data)
             return Response(serializer.data)
 
+        except (Http404, WorkflowExecution.DoesNotExist):
+            # A deleted / never-existent execution is a deterministic 404, not a 500.
+            # The reaper's orphan-claim sweep depends on this: it must distinguish
+            # "execution gone → GC the orphan claim" from a transient server error
+            # ("retain, retry next sweep"). Returning 500 here made the reaper retry
+            # forever and never GC claims for deleted executions.
+            logger.info(
+                f"WorkflowExecution {kwargs.get('pk') or kwargs.get('id')} not found "
+                "(retrieve) — returning 404"
+            )
+            return Response(
+                {"error": "WorkflowExecution not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         except Exception as e:
             logger.error(
                 f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"
