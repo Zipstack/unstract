@@ -114,3 +114,38 @@ class TestRecoverStuckClientResponseShape:
         # A malformed (non-dict) body → empty data → the reaper's loud-guard fires.
         resp = self._client(None).recover_stuck_pg_executions()
         assert not resp.data
+
+
+class TestStuckRecoveryDefaultOn:
+    """Stranded-execution recovery is ON by default in the PG reaper; only an
+    explicit 'false' kill-switch disables it (a default-off gate previously let
+    strands silently accumulate)."""
+
+    def _flag(self, value):
+        import os
+
+        from queue_backend.pg_queue.reaper import stuck_recovery_enabled_from_env
+
+        key = "WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED"
+        with patch.dict(os.environ, {}, clear=False):
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+            return stuck_recovery_enabled_from_env()
+
+    def test_default_unset_is_enabled(self):
+        assert self._flag(None) is True
+
+    def test_explicit_false_disables(self):
+        assert self._flag("false") is False
+
+    def test_false_is_case_insensitive(self):
+        assert self._flag("FALSE") is False
+
+    def test_true_stays_enabled(self):
+        assert self._flag("true") is True
+
+    def test_only_false_kills_it(self):
+        # kill-switch semantics: a typo/other value must not silently disable it.
+        assert self._flag("1") is True
