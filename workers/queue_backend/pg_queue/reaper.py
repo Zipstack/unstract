@@ -218,7 +218,8 @@ def stuck_recovery_enabled_from_env() -> bool:
     one safety-net that heals them did nothing until someone remembered the env.
     """
     return (
-        os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "true").lower() != "false"
+        os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "true").strip().lower()
+        != "false"
     )
 
 

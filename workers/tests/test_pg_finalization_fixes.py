@@ -149,3 +149,9 @@ class TestStuckRecoveryDefaultOn:
     def test_only_false_kills_it(self):
         # kill-switch semantics: a typo/other value must not silently disable it.
         assert self._flag("1") is True
+
+    def test_surrounding_whitespace_still_kills_it(self):
+        # An operator's emergency `false ` (trailing space / newline from a
+        # configmap) must still disable it — strip() before compare.
+        assert self._flag("false ") is False
+        assert self._flag("  FALSE\n") is False
