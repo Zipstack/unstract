@@ -207,6 +207,24 @@ def dedup_retention_from_env() -> int:
     )
 
 
+def stuck_recovery_enabled_from_env() -> bool:
+    """Whether the reaper's stranded-execution recovery sweep runs — ON by default.
+
+    Finalizing PG executions stranded non-terminal after all their files completed is
+    core to the reaper's job (like the barrier / orphan-claim / dedup sweeps), so it
+    defaults on. Parsed like the codebase's other default-on flags (``CACHE_REDIS_
+    ENABLED``, ``ENABLE_METRICS``): unset → on; set the env to any non-``"true"``
+    value (conventionally ``"false"``) to disable — a kill-switch that ``strip()`` +
+    ``lower()`` make robust to a stray space, newline, or case from a ConfigMap. A
+    default-off gate was a footgun: it let strands silently accumulate because the one
+    safety-net that heals them did nothing until someone set the env.
+    """
+    return (
+        os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "true").strip().lower()
+        == "true"
+    )
+
+
 def _rollback_after_sweep_failure(conn: PgConnection, table: str) -> None:
     """Roll back after a failed sweep DELETE; surface a rollback that itself fails.
 
@@ -974,13 +992,11 @@ class PgReaper:
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
         # Safety-net recovery of PG executions stranded non-terminal after all files
-        # completed (barrier gone → invisible to the PG-table sweeps). Opt-in
-        # (default off) for a controlled rollout; the stuck window defaults to the
-        # barrier stuck-timeout so it never races a legitimately long execution.
-        self._stuck_recovery_enabled = (
-            os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "false").lower()
-            == "true"
-        )
+        # completed (barrier gone → invisible to the PG-table sweeps). Enablement +
+        # kill-switch semantics live in stuck_recovery_enabled_from_env(); the stuck
+        # window (below) defaults to the barrier stuck-timeout so it never races a
+        # legitimately long execution.
+        self._stuck_recovery_enabled = stuck_recovery_enabled_from_env()
         self._stuck_recovery_seconds = _positive_duration_from_env(
             "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
             self._stuck_timeout_seconds,
