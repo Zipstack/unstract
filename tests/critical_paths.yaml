@@ -43,6 +43,7 @@ paths:
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."
     covered_by: [e2e-workflow]
+    proof: marker
 
   - id: api-deployment-provision
     description: "Deploying a workflow as an API mints a usable key and a resolvable endpoint."
@@ -57,6 +58,7 @@ paths:
   - id: api-deployment-run
     description: "Deploy a workflow as an API, POST a document, receive structured JSON."
     covered_by: [e2e-api-deployment]
+    proof: marker
 
   - id: prompt-studio-author
     description: "Create a Prompt Studio project and add a prompt to it."
@@ -83,7 +85,8 @@ paths:
 
   - id: usage-token-tracking
     description: "Per-execution token usage is recorded and retrievable."
-    covered_by: []   # gap
+    covered_by: [e2e-api-deployment]
+    proof: marker
 
   - id: workflow-execution-fan-out
     description: "Multi-file workflow execution fans out to file-processing workers and rejoins."
