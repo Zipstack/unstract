@@ -134,10 +134,13 @@ class ExecutionAPIClient(BaseAPIClient):
                 message="Successfully retrieved workflow execution",
             )
         except Exception as e:
+            # Preserve the HTTP status (404 vs 5xx) so callers — the reaper's
+            # orphan-claim sweep — can tell "execution deleted" from a transient blip.
             return ExecutionResponse.error_response(
                 error=str(e),
                 execution_id=str(execution_id),
                 message="Failed to retrieve workflow execution",
+                status_code=getattr(e, "status_code", None),
             )
 
     def get_workflow_definition(

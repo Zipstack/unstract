@@ -6,6 +6,7 @@ import logging
 import uuid
 
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -148,6 +149,32 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = WorkflowExecutionContextSerializer(context_data)
             return Response(serializer.data)
 
+        except (Http404, WorkflowExecution.DoesNotExist):
+            # A deleted execution must return 404 (deterministic) so the reaper's
+            # orphan-claim sweep can GC it, instead of 500 (which it treats as
+            # transient → retry forever). BUT get_object() is org-scoped and this try
+            # wraps the whole method, so an Http404 here can also mean "exists but
+            # scoped out of this request" or a nested Http404 for a *different*
+            # resource — NOT "execution deleted". Since the reaper turns a genuine 404
+            # into an irreversible claim GC, confirm the row is truly absent (unscoped)
+            # before saying not-found; otherwise 500 so the reaper retains the claim.
+            execution_id = kwargs.get("pk") or kwargs.get("id")
+            if not WorkflowExecution.objects.filter(id=execution_id).exists():
+                logger.info(
+                    f"WorkflowExecution {execution_id} not found (retrieve) — 404"
+                )
+                return Response(
+                    {"error": "WorkflowExecution not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            logger.warning(
+                f"WorkflowExecution {execution_id} exists but was not retrievable in "
+                "this context (org scope / nested lookup) — returning 500 (retain)"
+            )
+            return Response(
+                {"error": "Failed to retrieve workflow execution"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:
             logger.error(
                 f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"

@@ -86,9 +86,19 @@ class AuthenticationError(InternalAPIClientError):
 
 
 class APIRequestError(InternalAPIClientError):
-    """Raised when API request fails."""
+    """Raised when an API request fails.
 
-    pass
+    ``status_code`` carries the HTTP status for a non-timeout 4xx or a retry-exhausted
+    5xx (e.g. 404 / 500). It is ``None`` for transport-level failures **and** for the
+    few paths that don't thread it (429-exhausted, data-serialization, generic
+    fallback). Only rely on it for those 4xx/5xx cases — do not assume "any HTTP error
+    carries a code". Callers use it to distinguish a deterministic 404 (resource gone)
+    from a transient 5xx.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class BaseAPIClient:
@@ -335,7 +345,10 @@ class BaseAPIClient:
                     error_msg = f"Client error: {response.status_code} {response.reason}"
                     response_text = self._safe_get_response_text(response)
                     logger.error(f"{error_msg}: {response_text}")
-                    raise APIRequestError(f"{error_msg}: {response_text}")
+                    raise APIRequestError(
+                        f"{error_msg}: {response_text}",
+                        status_code=response.status_code,
+                    )
 
                 # Handle server errors (retry these)
                 if response.status_code in retry_statuses:
@@ -353,7 +366,10 @@ class BaseAPIClient:
                         logger.error(
                             f"{error_msg} - max retries exceeded: {response_text}"
                         )
-                        raise APIRequestError(f"{error_msg}: {response_text}")
+                        raise APIRequestError(
+                            f"{error_msg}: {response_text}",
+                            status_code=response.status_code,
+                        )
 
                 # Handle rate limiting (429)
                 rate_limit_status = 429
