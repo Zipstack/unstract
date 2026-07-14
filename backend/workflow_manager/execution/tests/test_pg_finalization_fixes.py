@@ -238,14 +238,33 @@ class RetrieveNotFoundTests(TestCase):
     orphan-claim sweep relies on the deterministic 404 to GC claims for deleted
     executions; a 500 made it retry forever and never clean them up."""
 
+    def setUp(self):
+        self.wf = Workflow.objects.create(workflow_name="wf-retrieve")
+        self.view = WorkflowExecutionInternalViewSet()
+
     def test_retrieve_returns_404_for_missing_execution(self):
         from django.http import Http404
 
-        view = WorkflowExecutionInternalViewSet()
         req = MagicMock()
         req.GET = {}
-        # get_object() raises Http404 for a missing row (DRF get_object_or_404).
-        with patch.object(view, "get_object", side_effect=Http404("not found")):
-            resp = view.retrieve(req, id=str(uuid.uuid4()))
+        # get_object() raises Http404 for a missing row; the id genuinely doesn't
+        # exist (unscoped) → 404 so the reaper GC's the orphan claim.
+        with patch.object(self.view, "get_object", side_effect=Http404("not found")):
+            resp = self.view.retrieve(req, id=str(uuid.uuid4()))
         assert resp.status_code == 404
         assert resp.data.get("error") == "WorkflowExecution not found"
+
+    def test_retrieve_returns_500_when_execution_exists_but_scoped_out(self):
+        # get_object() is org-scoped, so an Http404 can mean "exists but scoped out"
+        # (or a nested Http404). The row DOES exist (unscoped) → 500, so the reaper
+        # retains the claim instead of GC-ing a live execution's recovery handle.
+        from django.http import Http404
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.EXECUTING, queue_message_id=7
+        )
+        req = MagicMock()
+        req.GET = {}
+        with patch.object(self.view, "get_object", side_effect=Http404("scoped out")):
+            resp = self.view.retrieve(req, id=str(ex.id))
+        assert resp.status_code == 500

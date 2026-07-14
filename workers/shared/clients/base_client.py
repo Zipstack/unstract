@@ -88,9 +88,12 @@ class AuthenticationError(InternalAPIClientError):
 class APIRequestError(InternalAPIClientError):
     """Raised when an API request fails.
 
-    ``status_code`` carries the HTTP status when the failure was an HTTP error
-    response (e.g. 404 / 500), or ``None`` for a transport-level failure. Callers
-    use it to distinguish a deterministic 404 (resource gone) from a transient 5xx.
+    ``status_code`` carries the HTTP status for a non-timeout 4xx or a retry-exhausted
+    5xx (e.g. 404 / 500). It is ``None`` for transport-level failures **and** for the
+    few paths that don't thread it (429-exhausted, data-serialization, generic
+    fallback). Only rely on it for those 4xx/5xx cases — do not assume "any HTTP error
+    carries a code". Callers use it to distinguish a deterministic 404 (resource gone)
+    from a transient 5xx.
     """
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
