@@ -241,7 +241,6 @@ def _run_gap_scenario(
         "paths:\n"
         "  - id: p1\n"
         "    description: ''\n"
-        "    entry: ''\n"
         f"    covered_by: {covered_by}\n"
     )
     (tmp_path / "groups.yaml").write_text(manifest_yaml)
