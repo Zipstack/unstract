@@ -1,0 +1,80 @@
+{
+  "title": "MiniMax",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: minimax-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your MiniMax API key from [platform.minimax.io](https://platform.minimax.io)."
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "MiniMax-M3",
+      "examples": [
+        "MiniMax-M3",
+        "MiniMax-M2.7"
+      ],
+      "description": "MiniMax-M3 supports a 1,000,000-token context window with text, image, and video input. MiniMax-M2.7 supports a 204,800-token context window with text input."
+    },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://api.minimax.io/v1",
+      "description": "The default https://api.minimax.io/v1 is the global OpenAI-compatible endpoint. Other supported bases are https://api.minimax.io/anthropic for global Anthropic-compatible requests, https://api.minimaxi.com/v1 for China OpenAI-compatible requests, and https://api.minimaxi.com/anthropic for China Anthropic-compatible requests."
+    },
+    "service_tier": {
+      "type": "string",
+      "title": "Service Tier",
+      "enum": [
+        "standard",
+        "priority"
+      ],
+      "default": "standard",
+      "description": "Priority requests receive priority admission and use the provider's priority pricing."
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "default": 4096,
+      "description": "Maximum output length. MiniMax-M3 allows up to 524,288 tokens and MiniMax-M2.7 allows up to 204,800 tokens."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds."
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Thinking",
+      "default": true,
+      "description": "Enable adaptive thinking for MiniMax-M3. MiniMax-M2.7 always keeps thinking enabled."
+    }
+  }
+}

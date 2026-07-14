@@ -394,6 +394,35 @@ def test_record_usage_uses_reported_prompt_tokens_without_estimating() -> None:
     assert llm._pending_usage[0]["prompt_tokens"] == 3
 
 
+def test_record_usage_uses_adapter_cost_calculator() -> None:
+    llm_module = _load_llm_module()
+    llm = _build_llm_for_record_usage(llm_module.LLM)
+    calculator = MagicMock(return_value=0.42)
+
+    class _Adapter:
+        calculate_usage_cost = staticmethod(calculator)
+
+        @staticmethod
+        def get_provider() -> str:
+            return "minimax"
+
+    usage = {"prompt_tokens": 3, "completion_tokens": 4, "total_tokens": 7}
+    llm.adapter = _Adapter
+    llm.kwargs = {"service_tier": "priority"}
+
+    with patch.object(llm_module.litellm, "cost_per_token") as mock_cost_per_token:
+        llm._record_usage(
+            model="minimax/MiniMax-M3",
+            messages=[{"role": "user", "content": "hello"}],
+            usage=usage,
+            llm_api="complete",
+        )
+
+    calculator.assert_called_once_with("minimax/MiniMax-M3", usage, "priority")
+    mock_cost_per_token.assert_not_called()
+    assert llm._pending_usage[0]["cost_in_dollars"] == pytest.approx(0.42)
+
+
 def test_record_usage_tolerates_unmapped_models_without_prompt_tokens() -> None:
     llm_module = _load_llm_module()
     llm = _build_llm_for_record_usage(llm_module.LLM)
