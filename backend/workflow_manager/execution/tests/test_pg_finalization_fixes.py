@@ -154,14 +154,16 @@ class TerminalOneWayGuardTests(TestCase):
         with patch.object(self.view, "get_object", return_value=ex):
             return self.view.update_status(req, id=str(ex.id)).data
 
-    def test_pg_rejects_non_terminal_write_over_terminal(self):
+    def test_pg_rejects_non_completed_write_over_completed(self):
         # PG execution (queue_message_id set) → guard active regardless of any flag.
+        # A stale non-terminal write must not clobber the callback's COMPLETED (the
+        # strand bug).
         ex = WorkflowExecution.objects.create(
             workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123
         )
         out = self._update(ex, ExecutionStatus.EXECUTING)
         ex.refresh_from_db()
-        assert out.get("reason") == "already_terminal"
+        assert out.get("reason") == "already_completed"
         assert ex.status == ExecutionStatus.COMPLETED.value  # not clobbered
 
     def test_celery_keeps_legacy_behavior(self):
@@ -184,31 +186,32 @@ class TerminalOneWayGuardTests(TestCase):
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value  # terminal write allowed
 
-    def test_pg_rejects_different_terminal_over_terminal(self):
-        # terminal→a DIFFERENT terminal must be rejected too — a late ERROR callback
-        # must not overwrite an earlier COMPLETED (final status stays deterministic,
-        # not commit-order dependent).
+    def test_pg_rejects_error_write_over_completed(self):
+        # COMPLETED→ERROR is the genuinely confusing/wrong flip (a success suddenly
+        # shows failed) and never happens legitimately (COMPLETED is only ever set by
+        # a successful callback, whose redelivery is skipped). Must be rejected.
         ex = WorkflowExecution.objects.create(
             workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123
         )
         out = self._update(ex, ExecutionStatus.ERROR)
         ex.refresh_from_db()
-        assert out.get("reason") == "already_terminal"
-        assert ex.status == ExecutionStatus.COMPLETED.value  # first terminal wins
+        assert out.get("reason") == "already_completed"
+        assert ex.status == ExecutionStatus.COMPLETED.value  # success protected
 
-    def test_pg_late_completed_does_not_erase_stopped_abort(self):
-        # A user's STOPPED abort must survive a late COMPLETED from a file that
-        # finished after the abort.
+    def test_pg_allows_error_corrected_to_completed(self):
+        # ERROR is NOT final — a premature ERROR (upstream error / external stop /
+        # reaper) set before the first real callback must be correctable to COMPLETED
+        # when the files actually succeeded. Blocking this would freeze a successful
+        # run at a wrong ERROR.
         ex = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.STOPPED, queue_message_id=123
+            workflow=self.wf, status=ExecutionStatus.ERROR, queue_message_id=123
         )
-        out = self._update(ex, ExecutionStatus.COMPLETED)
+        self._update(ex, ExecutionStatus.COMPLETED)
         ex.refresh_from_db()
-        assert out.get("reason") == "already_terminal"
-        assert ex.status == ExecutionStatus.STOPPED.value  # abort preserved
+        assert ex.status == ExecutionStatus.COMPLETED.value  # correction allowed
 
-    def test_pg_allows_idempotent_same_terminal_rewrite(self):
-        # terminal→SAME terminal is a no-op rewrite and must still be allowed (a
+    def test_pg_allows_idempotent_completed_rewrite(self):
+        # COMPLETED→SAME COMPLETED is a no-op rewrite and must still be allowed (a
         # duplicate/redelivered callback re-writing its own COMPLETED).
         ex = WorkflowExecution.objects.create(
             workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123

@@ -505,40 +505,40 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             with transaction.atomic():
                 # Concurrency guard for PG-transport executions, identified by the
                 # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
-                # Keying on the row's own transport keeps the terminal-one-way
-                # invariant correct even if the rollout flag is toggled off or Flipt
-                # is unreachable while a PG execution is still finalizing (per the
-                # "transport carried on the row, never re-read from Flipt" rule).
-                # Under the PG path's high concurrency ~15 call sites write this
-                # status via unlocked read-modify-write, so a stale writer can commit
-                # AFTER the callback's terminal write and clobber it (lost update →
-                # execution stranded, or a final status that flips with commit
-                # ordering). Lock the row and make terminal fully one-way: once a row
-                # is terminal, only an idempotent same-value rewrite is allowed. This
-                # blocks BOTH terminal→non-terminal (the strand) AND terminal→a
-                # DIFFERENT terminal (e.g. a redelivered ERROR callback or the reaper's
-                # recomputed status overwriting an earlier COMPLETED, or a late
-                # COMPLETED erasing a user's STOPPED abort — _callback_already_ran only
-                # short-circuits COMPLETED, so ERROR/STOPPED redeliveries re-write).
-                # Celery executions (queue_message_id NULL) keep the legacy path.
+                # Keying on the row's own transport keeps the invariant correct even
+                # if the rollout flag is toggled off or Flipt is unreachable while a
+                # PG execution is still finalizing (per the "transport carried on the
+                # row, never re-read from Flipt" rule).
+                #
+                # Guard COMPLETED specifically — it is the codebase's only truly-final
+                # status (set exclusively by a successful callback; a redelivered
+                # callback on a COMPLETED row is skipped, see _callback_already_ran).
+                # Under the PG path's high concurrency ~15 call sites write status via
+                # unlocked read-modify-write, so a stale writer can commit AFTER the
+                # callback's COMPLETED and clobber it (lost update → execution stranded
+                # in EXECUTING, or a confusing success→failed flip). Lock the row and
+                # refuse to overwrite COMPLETED with anything else.
+                #
+                # ERROR/STOPPED are deliberately NOT protected: other paths (upstream
+                # error, external stop, the reaper) can set them BEFORE the first real
+                # callback, which then legitimately corrects the row to COMPLETED when
+                # the files actually succeeded — blocking that would freeze a genuinely
+                # successful run at a premature ERROR. Celery executions
+                # (queue_message_id NULL) keep the legacy path.
                 if execution.queue_message_id is not None:
                     execution = WorkflowExecution.objects.select_for_update().get(
                         pk=execution.pk
                     )
-                    terminal = ExecutionStatus.terminal_values()
-                    if (
-                        execution.status in terminal
-                        and status_enum.value != execution.status
-                    ):
+                    completed = ExecutionStatus.COMPLETED.value
+                    if execution.status == completed and status_enum.value != completed:
                         logger.warning(
-                            f"update_status: refusing to overwrite terminal status "
-                            f"'{execution.status}' with '{status_enum.value}' "
-                            f"for execution {id}"
+                            f"update_status: refusing to overwrite COMPLETED status "
+                            f"with '{status_enum.value}' for execution {id}"
                         )
                         return Response(
                             {
                                 "status": "skipped",
-                                "reason": "already_terminal",
+                                "reason": "already_completed",
                                 "execution_id": str(execution.id),
                                 "new_status": execution.status,
                             }
