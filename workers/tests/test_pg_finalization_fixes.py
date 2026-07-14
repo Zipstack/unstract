@@ -116,42 +116,85 @@ class TestRecoverStuckClientResponseShape:
         assert not resp.data
 
 
+_RECOVERY_ENV = "WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED"
+
+
 class TestStuckRecoveryDefaultOn:
-    """Stranded-execution recovery is ON by default in the PG reaper; only an
-    explicit 'false' kill-switch disables it (a default-off gate previously let
-    strands silently accumulate)."""
+    """Recovery is ON by default in the PG reaper, parsed like the codebase's other
+    default-on flags (CACHE_REDIS_ENABLED / ENABLE_METRICS): unset → on; any non-
+    'true' value disables — a reliable kill-switch an operator can't miss with a
+    stray space or case. A default-off gate previously let strands accumulate."""
 
-    def _flag(self, value):
-        import os
-
+    def _flag(self, monkeypatch, value):
         from queue_backend.pg_queue.reaper import stuck_recovery_enabled_from_env
 
-        key = "WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED"
-        with patch.dict(os.environ, {}, clear=False):
-            if value is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = value
-            return stuck_recovery_enabled_from_env()
+        monkeypatch.delenv(_RECOVERY_ENV, raising=False)
+        if value is not None:
+            monkeypatch.setenv(_RECOVERY_ENV, value)
+        return stuck_recovery_enabled_from_env()
 
-    def test_default_unset_is_enabled(self):
-        assert self._flag(None) is True
+    def test_default_unset_is_enabled(self, monkeypatch):
+        assert self._flag(monkeypatch, None) is True
 
-    def test_explicit_false_disables(self):
-        assert self._flag("false") is False
+    def test_true_stays_enabled(self, monkeypatch):
+        assert self._flag(monkeypatch, "true") is True
+        assert self._flag(monkeypatch, "TRUE") is True
 
-    def test_false_is_case_insensitive(self):
-        assert self._flag("FALSE") is False
+    def test_false_disables(self, monkeypatch):
+        assert self._flag(monkeypatch, "false") is False
+        assert self._flag(monkeypatch, "FALSE") is False
 
-    def test_true_stays_enabled(self):
-        assert self._flag("true") is True
+    def test_disable_is_whitespace_and_case_tolerant(self, monkeypatch):
+        # An incident rollback with a stray space/newline/case from a ConfigMap must
+        # still disable — strip()+lower() before the compare.
+        assert self._flag(monkeypatch, " false ") is False
+        assert self._flag(monkeypatch, "  FALSE\n") is False
 
-    def test_only_false_kills_it(self):
-        # kill-switch semantics: a typo/other value must not silently disable it.
-        assert self._flag("1") is True
+    def test_any_non_true_value_disables(self, monkeypatch):
+        # Reliable kill-switch: 0/no/off/disabled/empty (and a typo) all turn it off,
+        # so an operator trying to disable it never silently fails to.
+        for value in ("0", "no", "off", "disabled", "", "nope"):
+            assert self._flag(monkeypatch, value) is False
 
-    def test_surrounding_whitespace_still_kills_it(self):
-        # An operator's emergency `false ` (trailing space / newline from a
-        # configmap) must still disable it — strip() before compare.
-        assert self._flag("false ") is False
-        assert self._flag("  FALSE\n") is False
+
+class TestStuckRecoverySweepGating:
+    """The flag must actually GATE the sweep, not merely parse — a regression that
+    drops/inverts the guard in _maybe_recover_stuck_executions would pass the parser
+    tests above but break recovery."""
+
+    def _reaper(self, enabled):
+        from queue_backend.pg_queue.reaper import PgReaper
+
+        reaper = PgReaper.__new__(PgReaper)
+        reaper._stuck_recovery_enabled = enabled
+        reaper._stuck_recovery_seconds = 9000
+        api = MagicMock()
+        resp = MagicMock()
+        resp.data = {"recovered": 0, "skipped": 0, "scanned": 0, "failed": 0}
+        api.recover_stuck_pg_executions.return_value = resp
+        reaper._get_api_client = MagicMock(return_value=api)
+        return reaper, api
+
+    def test_disabled_skips_the_recovery_call(self):
+        reaper, api = self._reaper(enabled=False)
+        reaper._maybe_recover_stuck_executions()
+        api.recover_stuck_pg_executions.assert_not_called()
+
+    def test_enabled_makes_the_recovery_call(self):
+        reaper, api = self._reaper(enabled=True)
+        reaper._maybe_recover_stuck_executions()
+        api.recover_stuck_pg_executions.assert_called_once_with(stuck_seconds=9000)
+
+
+class TestReaperConstructorWiring:
+    """__init__ sources _stuck_recovery_enabled from the helper (not a hardcoded
+    literal) — pins the wiring so a stray `= True` can't slip through."""
+
+    def test_init_sources_flag_from_helper(self, monkeypatch):
+        import queue_backend.pg_queue.reaper as reaper_mod
+
+        monkeypatch.setattr(reaper_mod, "stuck_recovery_enabled_from_env", lambda: False)
+        # Mock lease: interval (default 5s) must be < lease_seconds; nothing else in
+        # __init__ does I/O, so this constructs without env/DB/HTTP setup.
+        reaper = reaper_mod.PgReaper(MagicMock(lease_seconds=30))
+        assert reaper._stuck_recovery_enabled is False
