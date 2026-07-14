@@ -511,21 +511,29 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # "transport carried on the row, never re-read from Flipt" rule).
                 # Under the PG path's high concurrency ~15 call sites write this
                 # status via unlocked read-modify-write, so a stale writer can commit
-                # AFTER the callback's terminal write and clobber it back to a
-                # non-terminal status with NULL counters (lost update → execution
-                # stranded in EXECUTING forever). Lock the row and make terminal
-                # one-way. Celery executions (queue_message_id NULL) keep the legacy
-                # path unchanged.
+                # AFTER the callback's terminal write and clobber it (lost update →
+                # execution stranded, or a final status that flips with commit
+                # ordering). Lock the row and make terminal fully one-way: once a row
+                # is terminal, only an idempotent same-value rewrite is allowed. This
+                # blocks BOTH terminal→non-terminal (the strand) AND terminal→a
+                # DIFFERENT terminal (e.g. a redelivered ERROR callback or the reaper's
+                # recomputed status overwriting an earlier COMPLETED, or a late
+                # COMPLETED erasing a user's STOPPED abort — _callback_already_ran only
+                # short-circuits COMPLETED, so ERROR/STOPPED redeliveries re-write).
+                # Celery executions (queue_message_id NULL) keep the legacy path.
                 if execution.queue_message_id is not None:
                     execution = WorkflowExecution.objects.select_for_update().get(
                         pk=execution.pk
                     )
                     terminal = ExecutionStatus.terminal_values()
-                    if execution.status in terminal and status_enum.value not in terminal:
+                    if (
+                        execution.status in terminal
+                        and status_enum.value != execution.status
+                    ):
                         logger.warning(
                             f"update_status: refusing to overwrite terminal status "
-                            f"'{execution.status}' with non-terminal "
-                            f"'{status_enum.value}' for execution {id}"
+                            f"'{execution.status}' with '{status_enum.value}' "
+                            f"for execution {id}"
                         )
                         return Response(
                             {

@@ -89,3 +89,28 @@ class TestPGFinalizationReraise:
         result = call()
         assert result["status"] == "completed"
         api.update_workflow_execution_status.assert_called_once()
+
+
+class TestRecoverStuckClientResponseShape:
+    """The recovery endpoint returns a FLAT body (no {"data": ...} envelope). The
+    client must surface it as ``APIResponse.data`` so the reaper's observability
+    block can read the counters — convert_dict_response() would zero them all."""
+
+    def _client(self, post_return):
+        from shared.clients.execution_client import ExecutionAPIClient
+
+        client = ExecutionAPIClient.__new__(ExecutionAPIClient)
+        client._build_url = MagicMock(return_value="/recover/")
+        client.post = MagicMock(return_value=post_return)
+        return client
+
+    def test_flat_body_surfaced_as_data(self):
+        body = {"recovered": 3, "skipped": 2, "scanned": 5, "failed": 0}
+        resp = self._client(body).recover_stuck_pg_executions(stuck_seconds=9000)
+        assert resp.data == body
+        assert resp.data.get("recovered") == 3  # reaper reads a real count, not 0
+
+    def test_non_dict_body_yields_empty_data(self):
+        # A malformed (non-dict) body → empty data → the reaper's loud-guard fires.
+        resp = self._client(None).recover_stuck_pg_executions()
+        assert not resp.data

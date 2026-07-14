@@ -346,7 +346,13 @@ class ExecutionAPIClient(BaseAPIClient):
             self._build_url("workflow_execution", "recover_stuck_pg_executions/"),
             data,
         )
-        return convert_dict_response(response, APIResponse)
+        # The endpoint returns a FLAT body — {"recovered":.., "skipped":.., "scanned":..,
+        # "failed":..} — with no {"data": ...} envelope. convert_dict_response() reads
+        # response["data"], which is absent → it would silently zero every counter the
+        # reaper logs from. Surface the whole body as `.data` instead.
+        return APIResponse.success_response(
+            data=response if isinstance(response, dict) else None
+        )
 
     def batch_update_execution_status(
         self,

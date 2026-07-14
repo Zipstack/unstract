@@ -1201,6 +1201,17 @@ class PgReaper:
                     stuck_seconds=self._stuck_recovery_seconds,
                 )
                 data = getattr(resp, "data", None) or {}
+                if not data:
+                    # The endpoint always returns the four counters on success, so an
+                    # empty payload means a failed call or a response-shape drift —
+                    # surface it loudly rather than silently reporting all-zero (the
+                    # exact "wholesale failure invisible on this end" trap this block
+                    # exists to close).
+                    logger.warning(
+                        "Reaper: safety-net recovery returned an empty/unexpected "
+                        "response (%r) — recovery counters unavailable; investigate",
+                        resp,
+                    )
                 recovered = data.get("recovered") or 0
                 failed = data.get("failed") or 0
                 scanned = data.get("scanned") or 0

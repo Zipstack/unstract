@@ -183,3 +183,37 @@ class TerminalOneWayGuardTests(TestCase):
         self._update(ex, ExecutionStatus.COMPLETED)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value  # terminal write allowed
+
+    def test_pg_rejects_different_terminal_over_terminal(self):
+        # terminal→a DIFFERENT terminal must be rejected too — a late ERROR callback
+        # must not overwrite an earlier COMPLETED (final status stays deterministic,
+        # not commit-order dependent).
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123
+        )
+        out = self._update(ex, ExecutionStatus.ERROR)
+        ex.refresh_from_db()
+        assert out.get("reason") == "already_terminal"
+        assert ex.status == ExecutionStatus.COMPLETED.value  # first terminal wins
+
+    def test_pg_late_completed_does_not_erase_stopped_abort(self):
+        # A user's STOPPED abort must survive a late COMPLETED from a file that
+        # finished after the abort.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.STOPPED, queue_message_id=123
+        )
+        out = self._update(ex, ExecutionStatus.COMPLETED)
+        ex.refresh_from_db()
+        assert out.get("reason") == "already_terminal"
+        assert ex.status == ExecutionStatus.STOPPED.value  # abort preserved
+
+    def test_pg_allows_idempotent_same_terminal_rewrite(self):
+        # terminal→SAME terminal is a no-op rewrite and must still be allowed (a
+        # duplicate/redelivered callback re-writing its own COMPLETED).
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=123
+        )
+        out = self._update(ex, ExecutionStatus.COMPLETED)
+        ex.refresh_from_db()
+        assert out.get("status") == "updated"
+        assert ex.status == ExecutionStatus.COMPLETED.value
