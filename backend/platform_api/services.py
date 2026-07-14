@@ -120,22 +120,34 @@ def _transfer_membership_rows(from_user: User, to_user: User) -> None:
     """Re-point OWNER/VIEWER ``ResourceMembership`` rows across all resources.
 
     One polymorphic table covers every resource (UN-2202). ``unique_together
-    (user, content_type, object_id)`` means a resource ``to_user`` already has
-    a role on can't gain a second row — drop ``from_user``'s row there instead.
+    (user, content_type, object_id)`` caps ``to_user`` at one row per resource,
+    so when both users hold a row on the same resource they are reconciled by
+    role precedence (OWNER outranks VIEWER): ``to_user`` keeps the stronger of
+    the two roles and ``from_user``'s row is dropped. Without this, transferring
+    an OWNER onto an existing VIEWER would silently leave the resource ownerless.
     """
+    from permissions.roles import ResourceRole
     from tenant_account_v2.models import ResourceMembership
 
-    held = set(
-        ResourceMembership.objects.filter(user=to_user).values_list(
-            "content_type_id", "object_id"
-        )
-    )
+    # Rank so a collision only ever promotes to_user, never demotes them.
+    role_rank = {ResourceRole.VIEWER: 0, ResourceRole.OWNER: 1}
+
+    # to_user's current rows keyed by resource, to compare roles on collision.
+    to_rows = {
+        (r.content_type_id, r.object_id): r
+        for r in ResourceMembership.objects.filter(user=to_user)
+    }
     for row in ResourceMembership.objects.filter(user=from_user):
-        if (row.content_type_id, row.object_id) in held:
-            row.delete()  # to_user already has a role on this resource
-        else:
+        existing = to_rows.get((row.content_type_id, row.object_id))
+        if existing is None:
             row.user = to_user
             row.save(update_fields=["user"])
+            continue
+        # to_user already holds a row here — keep the higher-ranked role.
+        if role_rank.get(row.role, 0) > role_rank.get(existing.role, 0):
+            existing.role = row.role
+            existing.save(update_fields=["role"])
+        row.delete()
 
 
 def transfer_ownership(from_user: User, to_user: User | None) -> None:
@@ -144,9 +156,9 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
     Replaces from_user with to_user across business models:
     - created_by / modified_by ForeignKey fields
     - auto-through ManyToMany fields to User
-    - OWNER/VIEWER membership rows (custom-through, UN-2202) — re-pointed with
-      ``unique_together`` dedup so a resource to_user already holds isn't
-      duplicated.
+    - OWNER/VIEWER membership rows (custom-through, UN-2202) — re-pointed,
+      reconciling by role precedence when to_user already holds a row so the
+      resource keeps an owner.
     """
     if not to_user:
         return
