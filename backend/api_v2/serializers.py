@@ -523,6 +523,7 @@ class DeploymentResponseSerializer(Serializer):
 
 
 class APIExecutionResponseSerializer(Serializer):
+    execution_id = CharField()
     execution_status = CharField()
     status_api = CharField()
     error = CharField()
