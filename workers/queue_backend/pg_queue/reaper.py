@@ -973,6 +973,19 @@ class PgReaper:
         )
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
+        # Safety-net recovery of PG executions stranded non-terminal after all files
+        # completed (barrier gone → invisible to the PG-table sweeps). Opt-in
+        # (default off) for a controlled rollout; the stuck window defaults to the
+        # barrier stuck-timeout so it never races a legitimately long execution.
+        self._stuck_recovery_enabled = (
+            os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "false").lower()
+            == "true"
+        )
+        self._stuck_recovery_seconds = _positive_duration_from_env(
+            "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
+            self._stuck_timeout_seconds,
+            int,
+        )
         # None → "never swept", so the first leader tick sweeps immediately; set to
         # monotonic() each sweep so the cadence holds thereafter. (A None sentinel,
         # not 0.0, so the gate doesn't lean on monotonic() never returning ~0.)
@@ -1177,6 +1190,29 @@ class PgReaper:
                 dedup,
                 claims,
             )
+        # Safety-net: finalize PG executions stranded non-terminal after all files
+        # completed. Those have no barrier/claim row, so the PG-table sweeps above
+        # can't see them — this asks the backend (org-agnostic; endpoint scopes to
+        # PG rows by queue_message_id and heals server-side to the CORRECT terminal
+        # status). Cadence-gated (per-row API work) like the claims sweep; opt-in.
+        if self._stuck_recovery_enabled:
+            try:
+                resp = self._get_api_client().recover_stuck_pg_executions(
+                    stuck_seconds=self._stuck_recovery_seconds,
+                )
+                data = getattr(resp, "data", None) or {}
+                if data.get("recovered"):
+                    logger.warning(
+                        "Reaper: safety-net finalized %s stranded PG execution(s) "
+                        "(scanned %s, skipped %s)",
+                        data.get("recovered"),
+                        data.get("scanned"),
+                        data.get("skipped"),
+                    )
+            except Exception:
+                logger.error(
+                    "Reaper: stuck-execution recovery sweep failed", exc_info=True
+                )
 
     def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
         """Run one retention sweep best-effort; return its row count (0 on failure).

@@ -324,6 +324,30 @@ class ExecutionAPIClient(BaseAPIClient):
         # Convert dict response to consistent APIResponse
         return convert_dict_response(response, APIResponse)
 
+    def recover_stuck_pg_executions(
+        self,
+        stuck_seconds: int | None = None,
+        limit: int | None = None,
+    ) -> APIResponse:
+        """Trigger the backend safety-net that finalizes PG executions stranded
+        non-terminal after all their files completed.
+
+        Called org-agnostically by the leader-elected reaper (no ``X-Organization-ID``
+        header) — the endpoint scans across orgs, scoped to PG rows by
+        ``queue_message_id``, and heals each server-side. See
+        ``WorkflowExecutionInternalViewSet.recover_stuck_pg_executions``.
+        """
+        data: dict[str, Any] = {}
+        if stuck_seconds is not None:
+            data["stuck_seconds"] = stuck_seconds
+        if limit is not None:
+            data["limit"] = limit
+        response = self.post(
+            self._build_url("workflow_execution", "recover_stuck_pg_executions/"),
+            data,
+        )
+        return convert_dict_response(response, APIResponse)
+
     def batch_update_execution_status(
         self,
         updates: list[dict[str, Any] | StatusUpdateRequest],

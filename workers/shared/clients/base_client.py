@@ -9,6 +9,7 @@ All specialized clients inherit from BaseAPIClient to get consistent HTTP behavi
 
 import json
 import os
+import random
 import time
 import uuid
 from typing import Any
@@ -27,6 +28,22 @@ logger = WorkerLogger.get_logger(__name__)
 
 # HTTP Content Type Constants
 APPLICATION_JSON = "application/json"
+
+
+def _backoff_with_jitter(backoff_factor: float, attempt: int) -> float:
+    """Exponential backoff with equal jitter.
+
+    Without jitter, every concurrent worker retrying a saturated backend sleeps on
+    the identical 1s/2s/4s schedule and their retries arrive in synchronized waves
+    (thundering herd) that keep failing together — the exact condition behind the
+    PG finalization-write failures under high concurrency. Equal jitter spreads
+    each retry across [base/2, base] so the waves de-correlate while keeping a
+    minimum backoff floor.
+    """
+    base = backoff_factor * (2**attempt)
+    if base <= 0:
+        return 0.0
+    return base / 2 + random.uniform(0, base / 2)
 
 
 class InternalAPIClientError(Exception):
@@ -299,7 +316,7 @@ class BaseAPIClient:
                     response_text = self._safe_get_response_text(response)
 
                     if attempt < max_retries:
-                        sleep_time = backoff_factor * (2**attempt)
+                        sleep_time = _backoff_with_jitter(backoff_factor, attempt)
                         logger.warning(
                             f"{error_msg} - retrying in {sleep_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                         )
@@ -350,7 +367,7 @@ class BaseAPIClient:
                 )
 
                 if attempt < max_retries:
-                    sleep_time = backoff_factor * (2**attempt)
+                    sleep_time = _backoff_with_jitter(backoff_factor, attempt)
                     logger.warning(
                         f"Request {error_type} error - retrying in {sleep_time:.1f}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}"
                     )

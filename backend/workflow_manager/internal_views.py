@@ -7,6 +7,7 @@ import uuid
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -24,6 +25,7 @@ from unstract.core.data_models import (
     WorkflowEndpointConfigData,
     WorkflowEndpointConfigResponseData,
 )
+from unstract.flags.feature_flag import check_feature_flag_status
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -503,6 +505,45 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
+                # Concurrency guard, gated by the single PG-queue rollout flag
+                # (``pg_queue_enabled``, evaluated per-org exactly like transport
+                # dispatch — OFF for a Celery org keeps the existing behavior).
+                # Under the PG path's high concurrency ~15 call sites write this
+                # status via unlocked read-modify-write, so a stale writer can
+                # commit AFTER the callback's terminal write and clobber it back to
+                # a non-terminal status with NULL counters (lost update → execution
+                # stranded in EXECUTING forever). When enabled: lock the row and
+                # make terminal one-way — never let a non-terminal write overwrite
+                # an already-terminal status.
+                org_id = ""
+                if execution.workflow and getattr(
+                    execution.workflow, "organization", None
+                ):
+                    org_id = str(execution.workflow.organization.organization_id or "")
+                if check_feature_flag_status(
+                    flag_key=PG_QUEUE_FLAG_KEY,
+                    entity_id=org_id or "default",
+                    context={"organization_id": org_id},
+                ):
+                    execution = WorkflowExecution.objects.select_for_update().get(
+                        pk=execution.pk
+                    )
+                    terminal = ExecutionStatus.terminal_values()
+                    if execution.status in terminal and status_enum.value not in terminal:
+                        logger.warning(
+                            f"update_status: refusing to overwrite terminal status "
+                            f"'{execution.status}' with non-terminal "
+                            f"'{status_enum.value}' for execution {id}"
+                        )
+                        return Response(
+                            {
+                                "status": "skipped",
+                                "reason": "already_terminal",
+                                "execution_id": str(execution.id),
+                                "new_status": execution.status,
+                            }
+                        )
+
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
@@ -536,6 +577,162 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @action(detail=False, methods=["post"])
+    def recover_stuck_pg_executions(self, request):
+        """Reaper safety-net: finalize PG executions stranded non-terminal after
+        all their files completed.
+
+        A lost-update race (unlocked concurrent status writes) or a swallowed
+        finalization write can leave a PG execution in EXECUTING/PENDING forever
+        even though every file execution is terminal — and because the barrier row
+        self-deletes at fan-in, the reaper's other (PG-table) sweeps can't see it.
+        This endpoint is the leader-gated reaper's trigger: it finds PG executions
+        stuck past ``stuck_seconds`` whose files are ALL terminal, recomputes the
+        correct terminal status from those files, and finalizes them.
+
+        Scoped to PG by ``queue_message_id`` (the durable per-row transport marker;
+        Celery rows carry ``task_id`` and ``queue_message_id=NULL``), so it needs no
+        Flipt context and never touches Celery executions.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        stuck_seconds = int(request.data.get("stuck_seconds") or 9000)
+        limit = int(request.data.get("limit") or 100)
+        cutoff = timezone.now() - timedelta(seconds=stuck_seconds)
+        terminal = ExecutionStatus.terminal_values()
+
+        stuck_ids = list(
+            WorkflowExecution.objects.filter(
+                queue_message_id__isnull=False,  # PG-only; Celery uses task_id
+                status__in=[
+                    ExecutionStatus.PENDING.value,
+                    ExecutionStatus.EXECUTING.value,
+                ],
+                modified_at__lt=cutoff,
+            )
+            .order_by("modified_at")
+            .values_list("id", flat=True)[:limit]
+        )
+
+        recovered = 0
+        skipped = 0
+        for exec_id in stuck_ids:
+            try:
+                with transaction.atomic():
+                    execution = WorkflowExecution.objects.select_for_update().get(
+                        pk=exec_id
+                    )
+                    # Re-check under lock: skip if it reached terminal or was just
+                    # touched (no longer stuck) — never race a live execution.
+                    if execution.status in terminal or execution.modified_at >= cutoff:
+                        skipped += 1
+                        continue
+                    files = WorkflowFileExecution.objects.filter(
+                        workflow_execution=execution
+                    )
+                    total = files.count()
+                    terminal_files = files.filter(status__in=terminal).count()
+                    if total == 0:
+                        # No file executions ever created: the execution was
+                        # dispatched but never picked up (dispatch leak). It is
+                        # already past the (long) stuck window, so it will never run
+                        # — mark ERROR with a clear reason instead of leaving it
+                        # stuck forever.
+                        execution.update_execution(
+                            status=ExecutionStatus.ERROR,
+                            error=(
+                                "[reaper-recovery] Stuck non-terminal past the stuck "
+                                "window with no file executions (never "
+                                "dispatched/picked up)."
+                            ),
+                        )
+                        logger.warning(
+                            f"Reaper safety-net: marked never-dispatched PG execution "
+                            f"{exec_id} ERROR (no file executions)"
+                        )
+                        recovered += 1
+                        continue
+                    if terminal_files < total:
+                        # A file is still non-terminal → genuinely processing; leave it.
+                        skipped += 1
+                        continue
+                    # Recompute the CORRECT terminal status from the files (COMPLETED
+                    # only if every file succeeded; ERROR if any errored/stopped) —
+                    # not a blanket ERROR.
+                    failed = files.exclude(status=ExecutionStatus.COMPLETED.value).count()
+                    successful = total - failed
+                    computed = (
+                        ExecutionStatus.ERROR if failed else ExecutionStatus.COMPLETED
+                    )
+                    execution.update_execution(status=computed)
+                    self._update_file_aggregates(
+                        execution,
+                        {
+                            "total_files": total,
+                            "successful_files": successful,
+                            "failed_files": failed,
+                        },
+                    )
+                    logger.warning(
+                        f"Reaper safety-net: finalized stranded PG execution "
+                        f"{exec_id} to {computed.value} "
+                        f"(files {successful} ok / {failed} failed)"
+                    )
+                    recovered += 1
+            except Exception as e:
+                logger.error(
+                    f"recover_stuck_pg_executions: failed to recover {exec_id}: {e}"
+                )
+        logger.info(
+            f"recover_stuck_pg_executions: scanned={len(stuck_ids)} "
+            f"recovered={recovered} skipped={skipped}"
+        )
+        return Response(
+            {
+                "recovered": recovered,
+                "skipped": skipped,
+                "scanned": len(stuck_ids),
+            }
+        )
+
+    @action(detail=False, methods=["get"])
+    def active_file_executions(self, request):
+        """Batch the dedup check: files being processed in a workflow's ACTIVE
+        executions, in ONE query.
+
+        Returns ``{provider_file_uuid: status}`` for every file in the workflow's
+        PENDING/EXECUTING executions whose file status is skip-processing
+        (PENDING/EXECUTING/COMPLETED) — the set a new file must skip to avoid
+        double-processing. This replaces the workers' previous
+        ``_get_existing_file_executions`` pattern of 1 + N-active-executions API
+        round-trips (O(active executions) per file → the 800u backend-saturation
+        collapse) with a single indexed join.
+        """
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        workflow_id = request.query_params.get("workflow_id")
+        if not workflow_id:
+            return Response(
+                {"error": "workflow_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        skip_values = [s.value for s in ExecutionStatus.get_skip_processing_statuses()]
+        rows = WorkflowFileExecution.objects.filter(
+            workflow_execution__workflow_id=workflow_id,
+            workflow_execution__status__in=[
+                ExecutionStatus.PENDING.value,
+                ExecutionStatus.EXECUTING.value,
+            ],
+            status__in=skip_values,
+            provider_file_uuid__isnull=False,
+        ).values_list("provider_file_uuid", "status")
+        mapping = {str(uuid): file_status for uuid, file_status in rows}
+        return Response({"file_executions": mapping})
 
     @staticmethod
     def _cascade_terminal_files(execution, status_enum, error_message) -> None:
