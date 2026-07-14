@@ -44,7 +44,8 @@ groups:
     workdir: workers
     paths: [tests, shared/tests]
     # Negative filter like the other unit groups: worker tests aren't tagged
-    # `unit`; live-infra tests carry `integration`/`slow` and run elsewhere.
+    # `unit`. Tests tagged `integration`/`slow` are excluded here but not yet
+    # routed to any group — add one before relying on those markers.
     markers: "not integration and not slow"
     uv_sync_group: test
     coverage_source: shared

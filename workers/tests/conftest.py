@@ -17,7 +17,9 @@ load_dotenv(_env_test)
 
 # Worker Celery apps build a Postgres result backend from DB_*/CELERY_BACKEND_DB_*.
 # Strip these before any app is imported so tests don't reach (or leak) a live DB
-# the unit tier has no server for; eager results then stay in-memory.
+# the unit tier has no server for; eager results then stay in-memory. This undoes
+# the DB_* defaults set in ../conftest.py, which stay in effect for shared/tests
+# (not covered by this file).
 for _var in (
     "DB_HOST",
     "DB_PORT",

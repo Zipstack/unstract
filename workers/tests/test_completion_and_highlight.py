@@ -439,7 +439,7 @@ class TestHandleAnswerPromptHighlight:
         highlight_fetches = [
             c
             for c in mock_plugin_get.call_args_list
-            if c.args and c.args[0] == "highlight-data"
+            if "highlight-data" in c.args or c.kwargs.get("name") == "highlight-data"
         ]
         assert highlight_fetches == []
         # process_text should be None

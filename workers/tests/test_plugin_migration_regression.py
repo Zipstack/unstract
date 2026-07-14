@@ -545,64 +545,46 @@ class TestGracefulDegradation:
 
 
 class TestLogComponentAllOperations:
-    """Verify tasks.py log_component builder handles all operation types."""
+    """Verify tasks.py builds `_log_component` for the branches it special-cases.
+    Drives the real `execute_extraction` (orchestrator patched out) so drift in
+    the builder fails here instead of passing against a replica.
+    """
 
-    def _build_log_component(self, operation, executor_params=None):
-        """Simulate the tasks.py log_component logic."""
-        params = executor_params or {
-            "tool_id": "t-1",
-            "file_name": "doc.pdf",
-        }
-        ctx = ExecutionContext.from_dict(
-            {
-                "executor_name": "legacy",
-                "operation": operation,
-                "run_id": "run-log",
-                "execution_source": "tool",
-                "executor_params": params,
-                "request_id": "req-1",
-                "log_events_id": "evt-1",
-            }
-        )
+    def _log_component(self, operation, params):
+        with patch("executor.tasks.ExecutionOrchestrator") as mock_orch_cls:
+            mock_orch = MagicMock()
+            mock_orch.execute.return_value = MagicMock(
+                success=True, to_dict=lambda: {"success": True}
+            )
+            mock_orch_cls.return_value = mock_orch
 
-        # Replicate tasks.py logic
-        if ctx.operation == "ide_index":
-            extract_params = params.get("extract_params", {})
-            return {
-                "tool_id": extract_params.get("tool_id", ""),
-                "run_id": ctx.run_id,
-                "doc_name": str(extract_params.get("file_name", "")),
-                "operation": ctx.operation,
-            }
-        elif ctx.operation == "structure_pipeline":
-            answer_params = params.get("answer_params", {})
-            pipeline_opts = params.get("pipeline_options", {})
-            return {
-                "tool_id": answer_params.get("tool_id", ""),
-                "run_id": ctx.run_id,
-                "doc_name": str(pipeline_opts.get("source_file_name", "")),
-                "operation": ctx.operation,
-            }
-        else:
-            return {
-                "tool_id": params.get("tool_id", ""),
-                "run_id": ctx.run_id,
-                "doc_name": str(params.get("file_name", "")),
-                "operation": ctx.operation,
-            }
+            from executor.tasks import execute_extraction
 
-    def test_ide_index_extracts_nested_params(self):
-        comp = self._build_log_component(
+            execute_extraction(
+                {
+                    "executor_name": "legacy",
+                    "operation": operation,
+                    "run_id": "run-log",
+                    "execution_source": "tool",
+                    "log_events_id": "evt-1",
+                    "executor_params": params,
+                }
+            )
+            return mock_orch.execute.call_args[0][0]._log_component
+
+    def test_ide_index_reads_nested_index_and_usage_params(self):
+        comp = self._log_component(
             "ide_index",
             {
-                "extract_params": {"tool_id": "t-nested", "file_name": "nested.pdf"},
+                "index_params": {"tool_id": "t-nested"},
+                "extract_params": {"usage_kwargs": {"file_name": "nested.pdf"}},
             },
         )
         assert comp["tool_id"] == "t-nested"
         assert comp["doc_name"] == "nested.pdf"
 
-    def test_structure_pipeline_extracts_nested_params(self):
-        comp = self._build_log_component(
+    def test_structure_pipeline_reads_answer_and_pipeline_params(self):
+        comp = self._log_component(
             "structure_pipeline",
             {
                 "answer_params": {"tool_id": "t-pipe"},
@@ -612,35 +594,16 @@ class TestLogComponentAllOperations:
         assert comp["tool_id"] == "t-pipe"
         assert comp["doc_name"] == "pipe.pdf"
 
-    def test_table_extract_uses_direct_params(self):
-        comp = self._build_log_component("table_extract")
-        assert comp["tool_id"] == "t-1"
-        assert comp["operation"] == "table_extract"
-
-    def test_smart_table_extract_uses_direct_params(self):
-        comp = self._build_log_component("smart_table_extract")
-        assert comp["operation"] == "smart_table_extract"
-
-    @pytest.mark.parametrize(
-        "op",
-        [
-            "extract",
-            "index",
-            "answer_prompt",
-            "single_pass_extraction",
-            "summarize",
-            "sps_answer_prompt",
-            "sps_index",
-            "agentic_extract",
-            "agentic_summarize",
-            "agentic_compare",
-        ],
-    )
-    def test_default_branch_for_standard_ops(self, op):
-        comp = self._build_log_component(op)
-        assert comp["tool_id"] == "t-1"
-        assert comp["doc_name"] == "doc.pdf"
-        assert comp["operation"] == op
+    def test_default_branch_reads_direct_params(self):
+        comp = self._log_component(
+            "table_extract", {"tool_id": "t-1", "file_name": "doc.pdf"}
+        )
+        assert comp == {
+            "tool_id": "t-1",
+            "run_id": "run-log",
+            "doc_name": "doc.pdf",
+            "operation": "table_extract",
+        }
 
 
 # ---------------------------------------------------------------------------
