@@ -628,6 +628,19 @@ class InternalAPIClient(CachedAPIClientMixin):
             cascade_terminal_files=cascade_terminal_files,
         )
 
+    def recover_stuck_pg_executions(
+        self,
+        stuck_seconds: int | None = None,
+        limit: int | None = None,
+    ) -> APIResponse:
+        """Reaper safety-net: finalize PG executions stranded non-terminal after all
+        their files completed. Org-agnostic (the endpoint scans across orgs, scoped
+        to PG rows by ``queue_message_id``). Delegates to the execution client.
+        """
+        return self.execution_client.recover_stuck_pg_executions(
+            stuck_seconds=stuck_seconds, limit=limit
+        )
+
     def create_workflow_execution(self, execution_data: dict[str, Any]) -> dict[str, Any]:
         """Create workflow execution."""
         return self.execution_client.create_workflow_execution(execution_data)

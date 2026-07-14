@@ -186,6 +186,30 @@ class TestStuckRecoverySweepGating:
         api.recover_stuck_pg_executions.assert_called_once_with(stuck_seconds=9000)
 
 
+class TestFacadeExposesRecovery:
+    """The reaper calls recover_stuck_pg_executions on the InternalAPIClient FACADE
+    (what _get_api_client() returns), which must delegate to its ExecutionAPIClient.
+    The mock-based gating test above CANNOT catch a missing delegator (a MagicMock
+    has every attribute) — this pins the real facade wiring, which once shipped an
+    AttributeError to prod because the delegator was never added."""
+
+    def test_facade_delegates_to_execution_client(self):
+        from shared.api.internal_client import InternalAPIClient
+
+        # __new__ (not __init__) → no network/env setup; inject a mock sub-client.
+        client = InternalAPIClient.__new__(InternalAPIClient)
+        client.execution_client = MagicMock()
+        sentinel = object()
+        client.execution_client.recover_stuck_pg_executions.return_value = sentinel
+
+        result = client.recover_stuck_pg_executions(stuck_seconds=600, limit=50)
+
+        client.execution_client.recover_stuck_pg_executions.assert_called_once_with(
+            stuck_seconds=600, limit=50
+        )
+        assert result is sentinel
+
+
 class TestReaperConstructorWiring:
     """__init__ sources _stuck_recovery_enabled from the helper (not a hardcoded
     literal) — pins the wiring so a stray `= True` can't slip through."""
