@@ -139,6 +139,32 @@ def parse_junit(group_name: str, tier: str, reports_dir: Path) -> GroupResult | 
     )
 
 
+def passed_critical_path_ids(group_name: str, reports_dir: Path) -> set[str]:
+    """Extract critical-path ids attested by *passing* tests in a group's junit.
+
+    The rig's injected pytest plugin copies ``@pytest.mark.critical_path`` args
+    into per-testcase ``<properties>``. Only testcases with no failure/error/
+    skipped child count — a skipped or failing marked test proves nothing.
+    Missing or malformed junit yields an empty set (the group-level result
+    already surfaces that as an error).
+    """
+    junit_path = reports_dir / group_name / "junit.xml"
+    if not junit_path.exists():
+        return set()
+    try:
+        root = ET.parse(junit_path).getroot()
+    except ET.ParseError:
+        return set()
+    ids: set[str] = set()
+    for case in root.iter("testcase"):
+        if any(case.find(tag) is not None for tag in ("failure", "error", "skipped")):
+            continue
+        for prop in case.iter("property"):
+            if prop.get("name") == "critical_path" and prop.get("value"):
+                ids.add(prop.get("value"))
+    return ids
+
+
 def _read_exit_code(exit_path: Path) -> int:
     if not exit_path.exists():
         return -1

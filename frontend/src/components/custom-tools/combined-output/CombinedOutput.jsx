@@ -1,4 +1,4 @@
-import "prismjs";
+// global Prism is installed eagerly at app entry (helpers/prismSetup.js)
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";

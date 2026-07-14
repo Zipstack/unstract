@@ -3,10 +3,10 @@ import os
 import unittest
 from unittest.mock import AsyncMock, patch
 
+import pytest
 from botocore.exceptions import ClientError
 from s3fs.core import S3FileSystem
 from s3fs.errors import translate_boto_error
-
 from unstract.connectors.filesystems.minio.exceptions import s3_error_code
 from unstract.connectors.filesystems.minio.minio import (
     MinioFS,
@@ -16,38 +16,31 @@ from unstract.connectors.filesystems.ucs.ucs import UnstractCloudStorage
 
 
 class TestMinoFS(unittest.TestCase):
-    @unittest.skip("")
-    def test_s3(self) -> None:
-        self.assertEqual(MinioFS.requires_oauth(), False)
-        access_key = os.environ.get("AWS_ACCESS_KEY_ID")
-        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY")
-        s3 = MinioFS(
-            {
-                "key": access_key,
-                "secret": secret_key,
-                "path": "/",
-                "endpoint_url": "https://s3.amazonaws.com",
-            }
-        )
-
-        print(s3.get_fsspec_fs().ls("unstract-user-storage"))
-
-    # @unittest.skip("Minio is not running")
+    @pytest.mark.integration
+    @unittest.skipUnless(
+        os.environ.get("MINIO_ACCESS_KEY_ID")
+        and os.environ.get("MINIO_SECRET_ACCESS_KEY"),
+        "Integration test requires a live MinIO and MINIO_ACCESS_KEY_ID + MINIO_SECRET_ACCESS_KEY",
+    )
     def test_minio(self) -> None:
+        # Endpoint from the rig's testcontainers MinIO via MINIO_ENDPOINT_URL;
+        # falls back to the local platform MinIO for manual runs.
         self.assertEqual(MinioFS.requires_oauth(), False)
-        access_key = os.environ.get("MINIO_ACCESS_KEY_ID")
-        secret_key = os.environ.get("MINIO_SECRET_ACCESS_KEY")
-        print(access_key, secret_key)
-        s3 = MinioFS(
+        fs = MinioFS(
             {
-                "key": access_key,
-                "secret": secret_key,
-                "endpoint_url": "http://localhost:9000",
-                "path": "/minio-test",
+                "key": os.environ["MINIO_ACCESS_KEY_ID"],
+                "secret": os.environ["MINIO_SECRET_ACCESS_KEY"],
+                "endpoint_url": os.environ.get(
+                    "MINIO_ENDPOINT_URL", "http://localhost:9000"
+                ),
+                "path": "/",
             }
-        )
-
-        print(s3.get_fsspec_fs().ls("/minio-test"))
+        ).get_fsspec_fs()
+        bucket = "rig-minio-test"
+        if not fs.exists(bucket):
+            fs.mkdir(bucket)
+        listed = [b.rstrip("/").split("/")[-1] for b in fs.ls("")]
+        self.assertIn(bucket, listed)
 
 
 def _translated_error(code: str) -> BaseException:

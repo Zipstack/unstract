@@ -1,3 +1,4 @@
+import functools
 import json
 import uuid
 from datetime import datetime
@@ -33,6 +34,9 @@ def get_token_from_auth_header(request: Request) -> Any:
 
 
 def authentication_middleware(func: Any) -> Any:
+    # Flask names endpoints after the view's __name__; without wraps every
+    # decorated route registers as "wrapper" and collides.
+    @functools.wraps(func)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = get_token_from_auth_header(request)
         # Check if bearer token exists and validate it
@@ -111,7 +115,7 @@ def validate_bearer_token(token: str | None) -> bool:
         return False
 
 
-@platform_bp.route("/page-usage", methods=["POST"], endpoint="page_usage")
+@platform_bp.route("/page-usage", methods=["POST"])
 @authentication_middleware
 def page_usage() -> Any:
     """Usage endpoint."""
@@ -262,11 +266,7 @@ def usage() -> Any:
         return make_response(result, 500)
 
 
-@platform_bp.route(
-    "/platform_details",
-    methods=["GET"],
-    endpoint="platform_details",
-)
+@platform_bp.route("/platform_details", methods=["GET"])
 @authentication_middleware
 def platform_details() -> Any:
     """Fetch details associated with the platform. This uses the authenticated
@@ -288,7 +288,7 @@ def platform_details() -> Any:
     return result, 200
 
 
-@platform_bp.route("/cache", methods=["POST", "GET", "DELETE"], endpoint="cache")
+@platform_bp.route("/cache", methods=["POST", "GET", "DELETE"])
 @authentication_middleware
 def cache() -> Any:
     """Cache endpoint.
@@ -348,11 +348,7 @@ def cache() -> Any:
     return "OK", 200
 
 
-@platform_bp.route(
-    "/adapter_instance",
-    methods=["GET"],
-    endpoint="adapter_instance",
-)
+@platform_bp.route("/adapter_instance", methods=["GET"])
 @authentication_middleware
 def adapter_instance() -> Any:
     """Fetch Adapter instance.
@@ -399,11 +395,7 @@ def adapter_instance() -> Any:
         raise APIError(message=msg)
 
 
-@platform_bp.route(
-    "/custom_tool_instance",
-    methods=["GET"],
-    endpoint="custom_tool_instance",
-)
+@platform_bp.route("/custom_tool_instance", methods=["GET"])
 @authentication_middleware
 def custom_tool_instance() -> Any:
     """Fetching exported custom tool instance.
@@ -438,11 +430,7 @@ def custom_tool_instance() -> Any:
         raise APIError(message=msg) from e
 
 
-@platform_bp.route(
-    "/agentic_tool_instance",
-    methods=["GET"],
-    endpoint="agentic_tool_instance",
-)
+@platform_bp.route("/agentic_tool_instance", methods=["GET"])
 @authentication_middleware
 def agentic_tool_instance() -> Any:
     """Fetching exported agentic tool instance.
@@ -479,11 +467,7 @@ def agentic_tool_instance() -> Any:
         raise APIError(message=msg) from e
 
 
-@platform_bp.route(
-    "/llm_profile_instance",
-    methods=["GET"],
-    endpoint="llm_profile_instance",
-)
+@platform_bp.route("/llm_profile_instance", methods=["GET"])
 @authentication_middleware
 def llm_profile_instance() -> Any:
     """Fetching llm profile instance."""
