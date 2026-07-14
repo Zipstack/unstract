@@ -269,13 +269,98 @@ class ModelStaleWriterGuardTests(TestCase):
 
     def test_pg_refuses_stale_revert_of_stopped(self):
         ex = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.STOPPED, queue_message_id=12
+            workflow=self.wf,
+            status=ExecutionStatus.STOPPED,
+            queue_message_id=12,
+            total_files=2,
+            successful_files=1,
+            failed_files=1,
         )
-        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
-            status=ExecutionStatus.EXECUTING
-        )
+        self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        ).update_execution(status=ExecutionStatus.EXECUTING)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.STOPPED.value
+        assert ex.successful_files == 1 and ex.failed_files == 1  # counters preserved
+
+    def test_pg_same_status_does_not_clobber_counters(self):
+        # Same-status COMPLETED→COMPLETED: the guard is a no-op, so update_fields must
+        # be what stops the stale NULL counters from clobbering the real ones.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=17,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+        )
+        self._stale(
+            ex, ExecutionStatus.COMPLETED, successful_files=None, failed_files=None
+        ).update_execution(status=ExecutionStatus.COMPLETED)
+        ex.refresh_from_db()
+        assert ex.successful_files == 1  # not nulled
+
+    def test_pg_stale_null_marker_still_guarded_and_not_nulled(self):
+        # A stale object whose in-memory queue_message_id is None (snapshotted before
+        # dispatch recorded it) must STILL be guarded (routing reads the persisted
+        # marker) AND the marker must not be nulled by the write.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=99,
+            successful_files=1,
+        )
+        self._stale(
+            ex, ExecutionStatus.EXECUTING, queue_message_id=None, successful_files=None
+        ).update_execution(status=ExecutionStatus.EXECUTING)
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # still guarded
+        assert ex.queue_message_id == 99  # marker NOT nulled
+        assert ex.successful_files == 1
+
+    def test_pg_refused_status_still_applies_error_and_attempt(self):
+        # The refused status must NOT silently drop error / increment_attempt.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=16,
+            attempts=0,
+        )
+        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
+            status=ExecutionStatus.EXECUTING,
+            error="late failure",
+            increment_attempt=True,
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # status refused
+        assert ex.error_message == "late failure"  # error applied
+        assert ex.attempts == 1  # increment applied
+
+    def test_service_helper_update_execution_is_guarded(self):
+        from workflow_manager.workflow_v2.execution import (
+            WorkflowExecutionServiceHelper,
+        )
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=18
+        )
+        helper = WorkflowExecutionServiceHelper.__new__(WorkflowExecutionServiceHelper)
+        helper.execution_id = str(ex.id)
+        helper.update_execution(status=ExecutionStatus.EXECUTING)  # delegates → guarded
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_update_execution_err_is_guarded(self):
+        from workflow_manager.workflow_v2.execution import (
+            WorkflowExecutionServiceHelper,
+        )
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=19
+        )
+        WorkflowExecutionServiceHelper.update_execution_err(str(ex.id), "late error")
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # COMPLETED not reverted
 
     def test_pg_allows_error_corrected_to_completed(self):
         # ERROR is not protected — a premature ERROR must stay correctable.

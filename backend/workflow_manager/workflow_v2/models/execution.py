@@ -369,39 +369,33 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
-        should_release_rate_limit = False
+        # Route on the PERSISTED transport marker, never the (possibly stale) in-memory
+        # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+        # handle would otherwise be mis-routed to the legacy path, whose full save()
+        # would revert the row AND write NULL back into queue_message_id — permanently
+        # disabling this and every sibling guard (all gate on queue_message_id).
+        committed_qmid = (
+            WorkflowExecution.objects.filter(pk=self.pk)
+            .values_list("queue_message_id", flat=True)
+            .first()
+        )
+        if committed_qmid is None:
+            self._update_execution_legacy(status, error, increment_attempt)
+        else:
+            self._update_execution_pg_guarded(status, error, increment_attempt)
 
+    def _update_execution_legacy(
+        self,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> None:
+        """Celery-path (queue_message_id NULL) status update — unchanged legacy
+        behavior, a full save().
+        """
+        should_release_rate_limit = False
         if status is not None:
             status = ExecutionStatus(status)
-            # Terminal-one-way for PG executions. A stale in-memory object — e.g. one
-            # created as EXECUTING (with NULL file counters) and re-saved by a backend
-            # path after the callback already committed COMPLETED — must not revert a
-            # protected-terminal status. Re-read the committed status and, if it is
-            # COMPLETED/STOPPED and this write would change it, skip the ENTIRE save
-            # (which also prevents the stale object's NULL counters from clobbering
-            # the real ones). This guards the backend-internal writers the HTTP
-            # update_status guard can't see. ERROR is deliberately NOT protected (a
-            # premature ERROR stays correctable to COMPLETED). Celery rows
-            # (queue_message_id NULL) are unaffected.
-            if self.queue_message_id is not None:
-                committed = (
-                    WorkflowExecution.objects.filter(pk=self.pk)
-                    .values_list("status", flat=True)
-                    .first()
-                )
-                protected = {
-                    ExecutionStatus.COMPLETED.value,
-                    ExecutionStatus.STOPPED.value,
-                }
-                if committed in protected and status.value != committed:
-                    logger.warning(
-                        "update_execution: refusing to overwrite protected status "
-                        "'%s' with '%s' for execution %s (stale-writer guard)",
-                        committed,
-                        status.value,
-                        self.id,
-                    )
-                    return
             self.status = status.value
             if status in [
                 ExecutionStatus.COMPLETED,
@@ -410,13 +404,89 @@ class WorkflowExecution(BaseModel):
             ]:
                 self.execution_time = CommonUtils.time_since(self.created_at, 3)
                 should_release_rate_limit = True
-
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             self.attempts += 1
-
         self.save()
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
+
+    def _update_execution_pg_guarded(
+        self,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> None:
+        """PG-path status update with the terminal-one-way guard.
+
+        Locks the row (``select_for_update``) so the committed-status read and the
+        write are atomic — a concurrent callback can't commit COMPLETED in between.
+        A protected-terminal (COMPLETED/STOPPED) row refuses only the *status* change
+        (ERROR stays correctable to COMPLETED); ``error`` / ``increment_attempt`` are
+        still applied. Writes are field-scoped (``update_fields``) so a stale object's
+        NULL counters — or the marker — can never be clobbered by a full-row save, and
+        the post-save cache write publishes the status we actually persisted.
+        """
+        from django.db import transaction
+
+        should_release_rate_limit = False
+        update_fields: list[str] = []
+        with transaction.atomic():
+            locked = (
+                WorkflowExecution.objects.select_for_update()
+                .filter(pk=self.pk)
+                .values("status", "attempts")
+                .first()
+            )
+            if locked is None:
+                return
+            committed = locked["status"]
+
+            if status is not None:
+                status = ExecutionStatus(status)
+                if (
+                    committed in ExecutionStatus.protected_terminal_values()
+                    and status.value != committed
+                ):
+                    logger.warning(
+                        "update_execution: refusing to revert protected status '%s' "
+                        "with '%s' for execution %s (stale-writer guard); error=%s "
+                        "increment_attempt=%s still applied",
+                        committed,
+                        status.value,
+                        self.id,
+                        bool(error),
+                        increment_attempt,
+                    )
+                    # Keep self (and the post-save cache) consistent with the DB.
+                    self.status = committed
+                else:
+                    self.status = status.value
+                    update_fields.append("status")
+                    if status in [
+                        ExecutionStatus.COMPLETED,
+                        ExecutionStatus.ERROR,
+                        ExecutionStatus.STOPPED,
+                    ]:
+                        self.execution_time = CommonUtils.time_since(self.created_at, 3)
+                        update_fields.append("execution_time")
+                        should_release_rate_limit = True
+
+            if error:
+                self.error_message = error[:EXECUTION_ERROR_LENGTH]
+                update_fields.append("error_message")
+            if increment_attempt:
+                # Increment from the locked committed value, not the stale in-memory one.
+                self.attempts = locked["attempts"] + 1
+                update_fields.append("attempts")
+
+            if update_fields:
+                update_fields.append("modified_at")
+                self.save(update_fields=update_fields)
+
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
 
         # Release rate limit slot for API deployment executions after save
         if should_release_rate_limit and self.pipeline_id:
