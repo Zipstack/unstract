@@ -193,7 +193,7 @@ LiteLLM requires provider prefixes on model names:
    python .claude/skills/adapter-ops/scripts/manage_models.py \
      --adapter llm \
      --provider openai \
-     --action add \
+     --action add-enum \
      --models "gpt-4-turbo,gpt-4o-mini"
    ```
 
