@@ -589,12 +589,24 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         """
         from datetime import timedelta
 
+        from django.db.models import Count, Q
         from django.utils import timezone
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
-        stuck_seconds = int(request.data.get("stuck_seconds") or 9000)
-        limit = int(request.data.get("limit") or 100)
+        # Validate/clamp inputs: a negative stuck_seconds would push the cutoff into
+        # the future and match LIVE executions (finalizing running work); an
+        # unbounded limit would let one call scan the whole table.
+        try:
+            stuck_seconds = int(request.data.get("stuck_seconds") or 9000)
+            limit = int(request.data.get("limit") or 100)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "stuck_seconds and limit must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        stuck_seconds = max(1, stuck_seconds)
+        limit = max(1, min(limit, 1000))
         cutoff = timezone.now() - timedelta(seconds=stuck_seconds)
         terminal = ExecutionStatus.terminal_values()
 
@@ -613,6 +625,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
         recovered = 0
         skipped = 0
+        failed_recoveries = 0
         for exec_id in stuck_ids:
             try:
                 with transaction.atomic():
@@ -624,93 +637,78 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     if execution.status in terminal or execution.modified_at >= cutoff:
                         skipped += 1
                         continue
-                    files = WorkflowFileExecution.objects.filter(
+                    # One conditional aggregate instead of three COUNT round-trips.
+                    counts = WorkflowFileExecution.objects.filter(
                         workflow_execution=execution
+                    ).aggregate(
+                        total=Count("id"),
+                        terminal=Count("id", filter=Q(status__in=terminal)),
+                        errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+                        stopped=Count(
+                            "id", filter=Q(status=ExecutionStatus.STOPPED.value)
+                        ),
+                        completed=Count(
+                            "id", filter=Q(status=ExecutionStatus.COMPLETED.value)
+                        ),
                     )
-                    total = files.count()
-                    terminal_files = files.filter(status__in=terminal).count()
-                    if total == 0 or terminal_files < total:
-                        # Leave it for a later sweep. total==0: a valid PG message may
-                        # still be QUEUED (a backlog/outage can outlast stuck_seconds),
-                        # so failing it here would wrongly terminalize a live execution
-                        # and the one-way guard would then block the delayed worker
-                        # from finalizing it — finalizing a file-less execution needs a
-                        # queue-state check (reaper-side, follow-up). terminal_files <
-                        # total: a file is still non-terminal → genuinely processing.
+                    total = counts["total"]
+                    if total == 0 or counts["terminal"] < total:
+                        # total==0: a valid PG message may still be QUEUED (a
+                        # backlog/outage can outlast stuck_seconds), so failing it
+                        # would wrongly terminalize a live execution the one-way guard
+                        # then blocks from recovery — file-less recovery needs a
+                        # queue-state check (reaper-side, follow-up). terminal < total:
+                        # a file is still non-terminal → genuinely processing. Skip.
                         skipped += 1
                         continue
-                    # Recompute the CORRECT terminal status from the files (COMPLETED
-                    # only if every file succeeded; ERROR if any errored/stopped) —
-                    # not a blanket ERROR.
-                    failed = files.exclude(status=ExecutionStatus.COMPLETED.value).count()
-                    successful = total - failed
-                    computed = (
-                        ExecutionStatus.ERROR if failed else ExecutionStatus.COMPLETED
-                    )
+                    # Recompute the correct terminal status: ERROR if any file
+                    # errored, else STOPPED if any was stopped (a cancelled run must
+                    # not be turned into ERROR), else COMPLETED.
+                    if counts["errored"]:
+                        computed = ExecutionStatus.ERROR
+                    elif counts["stopped"]:
+                        computed = ExecutionStatus.STOPPED
+                    else:
+                        computed = ExecutionStatus.COMPLETED
                     execution.update_execution(status=computed)
                     self._update_file_aggregates(
                         execution,
                         {
                             "total_files": total,
-                            "successful_files": successful,
-                            "failed_files": failed,
+                            "successful_files": counts["completed"],
+                            "failed_files": counts["errored"],
                         },
                     )
                     logger.warning(
-                        f"Reaper safety-net: finalized stranded PG execution "
-                        f"{exec_id} to {computed.value} "
-                        f"(files {successful} ok / {failed} failed)"
+                        "Reaper safety-net: finalized stranded PG execution %s to %s "
+                        "(files %s ok / %s errored / %s stopped)",
+                        exec_id,
+                        computed.value,
+                        counts["completed"],
+                        counts["errored"],
+                        counts["stopped"],
                     )
                     recovered += 1
-            except Exception as e:
-                logger.error(
-                    f"recover_stuck_pg_executions: failed to recover {exec_id}: {e}"
+            except Exception:
+                failed_recoveries += 1
+                logger.exception(
+                    "recover_stuck_pg_executions: failed to recover %s", exec_id
                 )
         logger.info(
-            f"recover_stuck_pg_executions: scanned={len(stuck_ids)} "
-            f"recovered={recovered} skipped={skipped}"
+            "recover_stuck_pg_executions: scanned=%s recovered=%s skipped=%s failed=%s",
+            len(stuck_ids),
+            recovered,
+            skipped,
+            failed_recoveries,
         )
         return Response(
             {
                 "recovered": recovered,
                 "skipped": skipped,
                 "scanned": len(stuck_ids),
+                "failed": failed_recoveries,
             }
         )
-
-    @action(detail=False, methods=["get"])
-    def active_file_executions(self, request):
-        """Batch the dedup check: files being processed in a workflow's ACTIVE
-        executions, in ONE query.
-
-        Returns ``{provider_file_uuid: status}`` for every file in the workflow's
-        PENDING/EXECUTING executions whose file status is skip-processing
-        (PENDING/EXECUTING/COMPLETED) — the set a new file must skip to avoid
-        double-processing. This replaces the workers' previous
-        ``_get_existing_file_executions`` pattern of 1 + N-active-executions API
-        round-trips (O(active executions) per file → the 800u backend-saturation
-        collapse) with a single indexed join.
-        """
-        from workflow_manager.workflow_v2.enums import ExecutionStatus
-
-        workflow_id = request.query_params.get("workflow_id")
-        if not workflow_id:
-            return Response(
-                {"error": "workflow_id is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        skip_values = [s.value for s in ExecutionStatus.get_skip_processing_statuses()]
-        rows = WorkflowFileExecution.objects.filter(
-            workflow_execution__workflow_id=workflow_id,
-            workflow_execution__status__in=[
-                ExecutionStatus.PENDING.value,
-                ExecutionStatus.EXECUTING.value,
-            ],
-            status__in=skip_values,
-            provider_file_uuid__isnull=False,
-        ).values_list("provider_file_uuid", "status")
-        mapping = {str(uuid): file_status for uuid, file_status in rows}
-        return Response({"file_executions": mapping})
 
     @staticmethod
     def _cascade_terminal_files(execution, status_enum, error_message) -> None:

@@ -371,28 +371,6 @@ class WorkerSourceConnector:
 
             from unstract.core.data_models import ExecutionStatus
 
-            # Fast path: one batched call returns {provider_file_uuid: status} for
-            # every file being processed across the workflow's active executions,
-            # replacing the per-active-execution N+1 below (the O(active) round-trips
-            # that saturated the backend at 800 concurrent users). Fall through to
-            # the legacy loop only if the batch endpoint is unavailable/errors.
-            batch = self.api_client.get_active_file_executions(self.workflow_id)
-            if (
-                batch.success
-                and isinstance(batch.data, dict)
-                and "file_executions" in batch.data
-            ):
-                mapping = batch.data["file_executions"] or {}
-                logger.info(
-                    f"Dedup (batched): {len(mapping)} blocking file execution(s) "
-                    f"for workflow {self.workflow_id}"
-                )
-                return mapping
-            logger.warning(
-                f"active_file_executions batch unavailable for workflow "
-                f"{self.workflow_id}; falling back to per-execution dedup"
-            )
-
             # Step 1: Get ALL active workflow executions (matching backend _get_active_workflow_executions)
             try:
                 # Get workflow executions with PENDING or EXECUTING status

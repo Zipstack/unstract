@@ -1201,12 +1201,27 @@ class PgReaper:
                     stuck_seconds=self._stuck_recovery_seconds,
                 )
                 data = getattr(resp, "data", None) or {}
-                if data.get("recovered"):
+                recovered = data.get("recovered") or 0
+                failed = data.get("failed") or 0
+                scanned = data.get("scanned") or 0
+                if recovered or failed:
                     logger.warning(
-                        "Reaper: safety-net finalized %s stranded PG execution(s) "
-                        "(scanned %s, skipped %s)",
-                        data.get("recovered"),
-                        data.get("scanned"),
+                        "Reaper: safety-net scanned %s stranded PG execution(s) — "
+                        "recovered %s, failed %s, skipped %s",
+                        scanned,
+                        recovered,
+                        failed,
+                        data.get("skipped"),
+                    )
+                elif scanned:
+                    # Scanned stuck rows but recovered none and hit no errors — the
+                    # sweep is not silently defeated (would be all-skipped, e.g.
+                    # still-processing), but surface it so a wholesale-failure
+                    # regression isn't invisible on this end.
+                    logger.info(
+                        "Reaper: safety-net scanned %s stranded PG execution(s), "
+                        "recovered 0 (all skipped %s)",
+                        scanned,
                         data.get("skipped"),
                     )
             except Exception:

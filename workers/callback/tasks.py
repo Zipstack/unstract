@@ -425,10 +425,11 @@ def _update_execution_status_unified(
         # consumer acks/deletes the message, the barrier row is already gone, and
         # the reaper has no handle — every safety net is silently defeated. Re-raise
         # so PG's at-least-once vt-redelivery retries the write and, if it keeps
-        # failing, poison-drops the batch to a terminal ERROR. The re-run is
-        # idempotency-guarded by _callback_already_ran (skips once terminal). The
-        # Celery path keeps the legacy swallow (its chord retry covers it) so this
-        # is a PG-only behavior change.
+        # failing, poison-drops the batch to a terminal ERROR. A post-success
+        # redelivery is idempotency-guarded by _callback_already_ran (skips once
+        # COMPLETED; ERROR/STOPPED are intentionally re-run, so a failed-write
+        # ERROR execution simply retries the write). The Celery path keeps the
+        # legacy swallow (its chord retry covers it) so this is a PG-only change.
         if is_pg:
             raise
         # Return error result instead of re-raising to maintain callback flow

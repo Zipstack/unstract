@@ -4,7 +4,6 @@
   — a non-terminal write cannot clobber an already-terminal execution.
 - L4: ``recover_stuck_pg_executions`` — recompute the correct terminal status from
   files, skip file-less (possibly-still-queued) execs, and never touch Celery rows.
-- N+1: ``active_file_executions`` — one batched dedup query.
 """
 
 import uuid
@@ -71,6 +70,37 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert ex.status == ExecutionStatus.ERROR.value
         assert ex.failed_files == 1 and ex.successful_files == 1
 
+    def test_stopped_files_recover_to_stopped_not_error(self):
+        # A cancelled run (STOPPED files, no errors) must not be turned into ERROR.
+        ex = self._exec(
+            ExecutionStatus.EXECUTING,
+            files=[ExecutionStatus.COMPLETED, ExecutionStatus.STOPPED],
+        )
+        _age(ex, 9999)
+        self._call()
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.STOPPED.value
+        assert ex.failed_files == 0 and ex.successful_files == 1
+
+    def test_error_takes_priority_over_stopped(self):
+        ex = self._exec(
+            ExecutionStatus.EXECUTING,
+            files=[ExecutionStatus.ERROR, ExecutionStatus.STOPPED],
+        )
+        _age(ex, 9999)
+        self._call()
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.ERROR.value
+
+    def test_negative_stuck_seconds_does_not_match_live_execution(self):
+        # A negative stuck_seconds must be clamped so the cutoff can't move into the
+        # future and finalize currently-running work.
+        ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        out = self._call(stuck_seconds=-100000)
+        ex.refresh_from_db()
+        assert out["scanned"] == 0
+        assert ex.status == ExecutionStatus.EXECUTING.value
+
     def test_file_less_stuck_is_skipped_not_failed(self):
         # A file-less PG exec may still be QUEUED (a backlog/outage can outlast the
         # stuck window) — it must NOT be failed, so a delayed worker can still
@@ -111,37 +141,6 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert ex.status == ExecutionStatus.EXECUTING.value
 
 
-class ActiveFileExecutionsTests(TestCase):
-    def setUp(self):
-        self.wf = Workflow.objects.create(workflow_name="wf-dedup")
-        self.view = WorkflowExecutionInternalViewSet()
-
-    def _mapping(self):
-        req = MagicMock()
-        req.query_params = {"workflow_id": str(self.wf.id)}
-        return self.view.active_file_executions(req).data["file_executions"]
-
-    def test_returns_only_active_execution_files_in_skip_statuses(self):
-        active = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.EXECUTING
-        )
-        WorkflowFileExecution.objects.create(
-            workflow_execution=active,
-            file_name="a",
-            status=ExecutionStatus.EXECUTING.value,
-            provider_file_uuid="uuid-a",
-        )
-        # A terminal execution's files must NOT appear (not active).
-        done = WorkflowExecution.objects.create(
-            workflow=self.wf, status=ExecutionStatus.COMPLETED
-        )
-        WorkflowFileExecution.objects.create(
-            workflow_execution=done,
-            file_name="b",
-            status=ExecutionStatus.EXECUTING.value,
-            provider_file_uuid="uuid-b",
-        )
-        assert self._mapping() == {"uuid-a": ExecutionStatus.EXECUTING.value}
 
 
 class TerminalOneWayGuardTests(TestCase):

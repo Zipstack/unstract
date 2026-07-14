@@ -370,30 +370,6 @@ class InternalAPIClient(CachedAPIClientMixin):
                 error=str(e),
             )
 
-    def get_active_file_executions(
-        self,
-        workflow_id: str | uuid.UUID,
-        organization_id: str | None = None,
-    ) -> APIResponse:
-        """Batch dedup: ``{provider_file_uuid: status}`` for files being processed
-        in a workflow's active executions, in ONE call.
-
-        Replaces the per-active-execution N+1 (``get_workflow_executions_by_status``
-        then a ``get_workflow_file_executions_by_execution`` per execution). See
-        ``WorkflowExecutionInternalViewSet.active_file_executions``.
-        """
-        try:
-            response_data = self._make_request(
-                method=HTTPMethod.GET,
-                endpoint="v1/workflow-execution/active_file_executions/",
-                params={"workflow_id": str(workflow_id)},
-                organization_id=organization_id,
-            )
-            return APIResponse(success=True, data=response_data)
-        except Exception as e:
-            logger.exception("Error getting active file executions")
-            return APIResponse(success=False, error=str(e))
-
     def check_files_active_processing(
         self,
         workflow_id: str | uuid.UUID,
