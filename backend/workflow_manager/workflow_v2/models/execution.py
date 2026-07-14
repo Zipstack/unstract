@@ -220,6 +220,22 @@ class WorkflowExecution(BaseModel):
         indexes = [
             models.Index(fields=["workflow_id", "-created_at"]),
             models.Index(fields=["pipeline_id", "-created_at"]),
+            # Partial index over ACTIVE (non-terminal) executions only — see
+            # migration 0023. Keeps the hot "is there an in-flight execution of
+            # this workflow?" lookup (WHERE workflow_id=… AND status IN active)
+            # O(active) instead of O(all-history-for-workflow). The predicate is
+            # the COMPLEMENT of the terminal set: the *index* stays usable if a new
+            # *active* status is added, but the callers use a frozen positive
+            # status IN ('PENDING','EXECUTING') list — so a new active status is
+            # indexed yet not returned until every caller's list is updated too.
+            # Only a new *terminal* status needs this predicate updated; the literal
+            # is kept in sync with ExecutionStatus.terminal_values() by
+            # tests/test_active_execution_index.py.
+            models.Index(
+                fields=["workflow_id"],
+                name="we_active_by_workflow_idx",
+                condition=~Q(status__in=["COMPLETED", "STOPPED", "ERROR"]),
+            ),
         ]
 
     @property
