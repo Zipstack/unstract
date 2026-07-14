@@ -1,0 +1,38 @@
+{
+  "title": "Mistral Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: mistral-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "mistral-embed",
+      "description": "Provide the name of the model. The mistral/ prefix will be added automatically if omitted. Recommended: mistral-embed."
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "format": "password",
+      "description": "API Key for Mistral embeddings"
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Timeout in seconds"
+    }
+  }
+}
