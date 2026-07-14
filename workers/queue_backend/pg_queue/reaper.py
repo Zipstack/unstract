@@ -112,6 +112,12 @@ _CLAIM_RECOVERED: Final = "recovered"  # execution marked ERROR (crash-window)
 _CLAIM_GC: Final = "gc"  # terminal execution's tombstone deleted
 _ClaimOutcome = Literal["recovered", "gc"]
 
+# Sentinel: _execution_status returns this when the execution row no longer exists
+# (a deterministic 404 — deleted by retention/cleanup). Distinct from None (a
+# readable execution with no status) and from a status string, so _recover_one_claim
+# can GC the pure-orphan claim instead of retaining it forever on an unreadable read.
+_EXECUTION_GONE: Final = object()
+
 
 class LeaderLeaseLike(Protocol):
     """Structural contract :class:`PgReaper` needs from a lease.
@@ -335,20 +341,36 @@ def rearm_expired_claims(conn: PgConnection) -> int:
 
 def _execution_status(
     api_client: InternalAPIClient, execution_id: str, organization_id: str
-) -> str | None:
+) -> str | object | None:
     """Current execution status via the org-scoped internal API.
 
-    **Raises** when the read fails. The client catches all errors and returns a
-    ``success=False`` response (it does NOT raise), so a transient blip would
-    yield ``status=None`` — which is not terminal, and the caller would then mark
-    a possibly-COMPLETED execution ERROR. Treating "couldn't read" as a hard stop
-    (the caller's ``except`` retains the row for retry) is what keeps the
-    terminal-skip guard honest.
+    Returns the status string on success (or ``None`` for a readable-but-statusless
+    response), or :data:`_EXECUTION_GONE` when the execution row no longer exists (a
+    deterministic 404 — the claim is a pure orphan the caller should GC).
+
+    **Raises** on any *other* read failure. The client catches errors and returns a
+    ``success=False`` response (it does NOT raise), so a transient blip would yield
+    ``status=None`` — not terminal — and the caller would then mark a possibly-
+    COMPLETED execution ERROR. Treating a transient "couldn't read" as a hard stop
+    (the caller's ``except`` retains the row for retry) keeps the terminal-skip guard
+    honest; only a confirmed 404 is safe to act on.
     """
     response = api_client.get_workflow_execution(
         execution_id, organization_id=organization_id, file_execution=False
     )
     if not getattr(response, "success", False):
+        # GONE only when the backend itself confirms the row is absent: require BOTH
+        # the 404 status AND the app-level marker in the body. A bare 404 from a
+        # proxy / gateway / rolling-deploy URL-or-version skew would 404 *every* read
+        # at once — treating that as "deleted" would GC every orphan claim in a
+        # single sweep. And an org-scoped 404 for an execution that still exists is
+        # likewise not "gone". The dual signal gates GC to the real thing.
+        if getattr(
+            response, "status_code", None
+        ) == 404 and "WorkflowExecution not found" in (
+            getattr(response, "error", "") or ""
+        ):
+            return _EXECUTION_GONE
         raise RuntimeError(
             f"status read failed for execution {execution_id} "
             f"(refusing to mark ERROR on an unconfirmed status)"
@@ -473,7 +495,18 @@ def _recover_one_barrier(
         return False
 
     status = _execution_status(api_client, execution_id, organization_id)
-    if status is None:
+    if status is _EXECUTION_GONE:
+        # The execution row was deleted — there is nothing to mark ERROR. Fall through
+        # to the cleanup below and GC the orphaned barrier / dedup rows (same "no
+        # status overwrite" path as an already-terminal execution). Without this
+        # branch, ExecutionStatus.is_completed(_EXECUTION_GONE) would raise
+        # ValueError, churn every sweep, and could trip the systemic-failure guard.
+        logger.info(
+            "Reaper: barrier for deleted execution %s — cleaning up the orphaned "
+            "row only (no status overwrite).",
+            execution_id,
+        )
+    elif status is None:
         # A successful read with no status is anomalous — don't mark on it; leave
         # the row for the next sweep rather than risk a wrong ERROR.
         logger.warning(
@@ -482,7 +515,7 @@ def _recover_one_barrier(
             execution_id,
         )
         return False
-    if ExecutionStatus.is_completed(status):
+    elif ExecutionStatus.is_completed(status):
         logger.warning(
             "Reaper: barrier for execution %s expired but the execution is already "
             "%s — cleaning up the orphaned row only (no status overwrite).",
@@ -711,6 +744,20 @@ def _recover_one_claim(
         return None
 
     status = _execution_status(api_client, execution_id, organization_id)
+    if status is _EXECUTION_GONE:
+        # The execution row no longer exists (deleted by retention/cleanup) → the
+        # claim references nothing and can never be recovered or armed. GC the pure
+        # orphan tombstone (re-guarded on still-orphan-and-old inside
+        # _delete_orphan_claim; a 0-row delete lost the race to a concurrent
+        # re-claim → leave the fresh one).
+        if not _delete_orphan_claim(conn, execution_id, stuck_timeout_seconds):
+            return None
+        logger.info(
+            "Reaper: GC'd orphan orchestration claim for deleted execution %s "
+            "(execution row no longer exists).",
+            execution_id,
+        )
+        return _CLAIM_GC
     if status is None:
         logger.warning(
             "Reaper: status read for orphan-claim execution %s returned no status "
