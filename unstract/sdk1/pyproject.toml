@@ -45,6 +45,7 @@ dependencies = [
     "singleton-decorator~=1.0.0",
     "httpx>=0.25.2",
     "pdfplumber>=0.11.2",
+    "pypdfium2>=4.0.0",
     "redis>=5.2.1",
     # # LLMWhisperer client
     "llmwhisperer-client>=2.6.2",

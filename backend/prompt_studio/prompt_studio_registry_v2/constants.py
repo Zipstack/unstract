@@ -106,6 +106,9 @@ class JsonSchemaKey:
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
     WORD_CONFIDENCE_POSTAMBLE = "word_confidence_postamble"
+    # Vision mode fields
+    EXTRACTION_INPUTS = "extraction_inputs"
+    SOURCE_OF_TRUTH = "source_of_truth"
 
 
 class SpecKey:

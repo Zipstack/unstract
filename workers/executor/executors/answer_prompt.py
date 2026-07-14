@@ -20,6 +20,14 @@ from urllib.parse import urlparse
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
+from unstract.sdk1.constants import (
+    ExtractionInputs,
+    VisionMode,
+    derive_vision_mode,
+)
+from unstract.sdk1.rasteriser import RenderSettings, rasterise_pages
+from unstract.sdk1.vision import build_vision_messages
+
 logger = logging.getLogger(__name__)
 
 
@@ -115,6 +123,7 @@ class AnswerPromptService:
         file_path: str = "",
         execution_source: str | None = "ide",
         process_text: Any = None,
+        source_file_path: str = "",
     ) -> str:
         """Construct the full prompt and run LLM completion.
 
@@ -129,10 +138,17 @@ class AnswerPromptService:
             execution_source: "ide" or "tool".
             process_text: Optional callback for text processing during
                 completion (e.g. highlight-data plugin's ``run`` method).
+            source_file_path: Path to the original source file (PDF) for
+                vision mode rasterisation. Empty string disables vision.
 
         Returns:
             The LLM answer string.
         """
+        # Derive vision mode from per-prompt fields
+        extraction_inputs = output.get(PSKeys.EXTRACTION_INPUTS, ExtractionInputs.TEXT)
+        source_of_truth = output.get(PSKeys.SOURCE_OF_TRUTH, "text")
+        vision_mode = derive_vision_mode(extraction_inputs, source_of_truth)
+
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
         word_confidence_postamble = tool_settings.get(
             PSKeys.WORD_CONFIDENCE_POSTAMBLE, ""
@@ -142,6 +158,16 @@ class AnswerPromptService:
         enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
         if not enable_highlight:
             enable_word_confidence = False
+
+        # Vision mode: suppress highlights and postambles (no OCR line
+        # metadata to ground against)
+        if vision_mode != VisionMode.TEXT_ONLY:
+            platform_postamble = ""
+            word_confidence_postamble = ""
+            enable_highlight = False
+            enable_word_confidence = False
+            process_text = None
+
         prompt_type = output.get(PSKeys.TYPE, PSKeys.TEXT)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
@@ -159,6 +185,21 @@ class AnswerPromptService:
             prompt_type=prompt_type,
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
+
+        if vision_mode != VisionMode.TEXT_ONLY:
+            return AnswerPromptService.run_vision_completion(
+                llm=llm,
+                text_prompt=prompt,
+                text_context=context,
+                source_file_path=source_file_path,
+                vision_mode=vision_mode,
+                metadata=metadata,
+                prompt_key=output[PSKeys.NAME],
+                prompt_type=prompt_type,
+                preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
+                execution_source=execution_source or "ide",
+            )
+
         return AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
@@ -279,6 +320,132 @@ class AnswerPromptService:
             logger.error("Error fetching response for prompt: %s", e)
             status_code = getattr(e, "status_code", None) or 500
             raise LegacyExecutorError(message=str(e), code=status_code) from e
+
+    @staticmethod
+    def run_vision_completion(
+        llm: Any,
+        text_prompt: str,
+        text_context: str,
+        source_file_path: str,
+        vision_mode: str,
+        metadata: dict[str, Any],
+        prompt_key: str,
+        prompt_type: str = "text",
+        preamble: str = "",
+        execution_source: str = "ide",
+    ) -> str:
+        """Run VLM completion with page images and optional text context.
+
+        Reads the source file, rasterises pages, builds multimodal messages,
+        and calls ``llm.complete_vision()``.
+
+        Args:
+            llm: LLM adapter instance.
+            text_prompt: The constructed prompt string (preamble + question +
+                postamble + context).
+            text_context: Retrieved text context (may be empty for image-only).
+            source_file_path: Path to the original source file (PDF) in
+                file storage, for rasterisation.
+            vision_mode: One of VisionMode.SPATIAL_HELPER or
+                VisionMode.SOURCE_OF_TRUTH.
+            metadata: Metadata dict (updated in place).
+            prompt_key: The prompt name for metadata keying.
+            prompt_type: "text" or "json" — controls extract_json.
+            preamble: The preamble text used as system prompt for the VLM.
+            execution_source: "ide" or "tool" — determines storage backend.
+        """
+        try:
+            from unstract.sdk1.exceptions import RateLimitError as _sdk_rate_limit_error
+            from unstract.sdk1.exceptions import SdkError as _sdk_error
+        except ImportError:
+            _sdk_rate_limit_error = Exception
+            _sdk_error = Exception
+
+        if not source_file_path:
+            raise LegacyExecutorError(
+                message=(
+                    f"Vision mode '{vision_mode}' requires a source file path "
+                    f"for rasterisation, but none was provided for prompt "
+                    f"'{prompt_key}'."
+                ),
+                code=400,
+            )
+
+        try:
+            # Read source file bytes from file storage
+            from executor.executors.file_utils import FileUtils
+
+            fs = FileUtils.get_fs_instance(execution_source=execution_source)
+            file_bytes: bytes = fs.read(path=source_file_path, mode="rb")
+
+            # Rasterise pages
+            settings = RenderSettings()
+            page_images = rasterise_pages(
+                file_bytes=file_bytes,
+                settings=settings,
+            )
+            if not page_images:
+                raise LegacyExecutorError(
+                    message=(
+                        f"No pages could be rasterised from '{source_file_path}' "
+                        f"for prompt '{prompt_key}'."
+                    ),
+                    code=500,
+                )
+
+            logger.info(
+                "Vision mode=%s: rasterised %d pages for prompt=%s",
+                vision_mode,
+                len(page_images),
+                prompt_key,
+            )
+
+            # Map VisionMode constants to build_vision_messages mode strings
+            mode_str = (
+                "spatial_helper"
+                if vision_mode == VisionMode.SPATIAL_HELPER
+                else "source_of_truth"
+            )
+
+            # Build multimodal messages
+            messages = build_vision_messages(
+                system_prompt=preamble,
+                text_context=text_context if text_context.strip() else None,
+                page_images=page_images,
+                prompt=text_prompt,
+                mode=mode_str,
+            )
+
+            # Call VLM completion
+            completion = llm.complete_vision(
+                messages=messages,
+                extract_json=prompt_type.lower() != PSKeys.TEXT,
+            )
+
+            answer: str = completion[PSKeys.RESPONSE].text
+            return answer
+
+        except _sdk_rate_limit_error as e:
+            raise RateLimitError(f"Rate limit error. {str(e)}") from e
+        except (LegacyExecutorError, RateLimitError):
+            raise
+        except _sdk_error as e:
+            logger.error(
+                "Error during vision completion for prompt %s: %s",
+                prompt_key,
+                e,
+            )
+            status_code = getattr(e, "status_code", None) or 500
+            raise LegacyExecutorError(message=str(e), code=status_code) from e
+        except Exception as e:
+            logger.error(
+                "Unexpected error during vision completion for prompt %s: %s",
+                prompt_key,
+                e,
+            )
+            raise LegacyExecutorError(
+                message=f"Vision completion failed: {e}", code=500
+            ) from e
 
     @staticmethod
     def _run_webhook_postprocess(

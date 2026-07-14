@@ -414,6 +414,9 @@ class LLM:
     ) -> dict[str, object]:
         """Chat completion with multimodal (text + image) messages.
 
+        Full parity with complete(): retry logic, extract_json,
+        process_text callback, usage recording, and error wrapping.
+
         Accepts pre-built messages with image_url content blocks::
 
             [
@@ -432,18 +435,17 @@ class LLM:
         LiteLLM auto-translates the OpenAI-style image format for
         Anthropic, Bedrock, Vertex, and other providers.
 
-        Same error handling, usage tracking, and metrics as complete().
-
         Args:
             messages: List of message dicts with multimodal content.
             **kwargs: Additional arguments passed to litellm.completion().
+                Supports extract_json (bool) and process_text (callable)
+                same as complete().
 
         Returns:
-            dict with "response" key containing LLMResponseCompat.
+            dict with "response" key containing LLMResponseCompat,
+            plus any post-processed output from extract_json/process_text.
         """
         try:
-            litellm.drop_params = True
-
             logger.debug(
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
                 f"vision completion API"
@@ -452,9 +454,14 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
-            response: dict[str, object] = litellm.completion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response: dict[str, object] = call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -471,9 +478,21 @@ class LLM:
             if response_text is None:
                 self._raise_for_empty_response(finish_reason)
 
+            extract_json: bool = cast("bool", kwargs.get("extract_json", False))
+            post_process_fn: (
+                Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None
+            ) = cast(
+                "Callable[[LLMResponseCompat, bool, str], dict[str, object]] | None",
+                kwargs.get("process_text", None),
+            )
+
+            response_text, post_processed_output = self._post_process_response(
+                response_text, extract_json, post_process_fn
+            )
+
             response_object = LLMResponseCompat(response_text)
             response_object.raw = response
-            return {"response": response_object}
+            return {"response": response_object, **post_processed_output}
 
         except LLMError:
             raise

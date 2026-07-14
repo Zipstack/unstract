@@ -47,6 +47,14 @@ try {
   // The component will remain null of it is not available
 }
 
+let VisionModeSelector;
+try {
+  const mod = await import("../../../plugins/prompt-card/VisionModeSelector");
+  VisionModeSelector = mod.VisionModeSelector;
+} catch {
+  // Cloud-only vision mode selector; stays undefined in OSS builds
+}
+
 function PromptCardItems({
   promptDetails,
   enforceTypeList,
@@ -308,6 +316,19 @@ function PromptCardItems({
                         )}
                     </Space>
                     <Space>
+                      {VisionModeSelector && (
+                        <VisionModeSelector
+                          promptDetails={promptDetails}
+                          handleChange={handleChange}
+                          disabled={
+                            isCoverageLoading ||
+                            isSinglePassExtractLoading ||
+                            indexDocs.includes(selectedDoc?.document_id) ||
+                            isPublicSource
+                          }
+                          enforceType={enforceType}
+                        />
+                      )}
                       {TableExtractionSettingsBtn && (
                         <TableExtractionSettingsBtn
                           promptId={promptDetails?.prompt_id}

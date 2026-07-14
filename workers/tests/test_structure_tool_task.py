@@ -19,7 +19,10 @@ from __future__ import annotations
 
 import pytest
 
-from file_processing.structure_tool_task import _fairness_headers
+from file_processing.structure_tool_task import (
+    _fairness_headers,
+    _should_skip_extraction_for_vision,
+)
 from queue_backend.fairness import WorkloadType
 
 
@@ -48,6 +51,52 @@ class TestFairnessHeaders:
         wire = _fairness_headers("org-1")
         assert wire["x-fairness-key"]["workload_type"] == WorkloadType.NON_API.value
         assert wire["x-fairness-key"]["workload_type"] != WorkloadType.API.value
+
+
+class TestShouldSkipExtractionForVision:
+    """Tests for ``_should_skip_extraction_for_vision``.
+
+    Extraction should be skipped only when ALL prompts use image-only
+    vision mode (extraction_inputs="image").
+    """
+
+    def test_empty_outputs_returns_false(self):
+        assert _should_skip_extraction_for_vision([]) is False
+
+    def test_all_text_only_returns_false(self):
+        outputs = [
+            {"name": "p1", "extraction_inputs": "text"},
+            {"name": "p2", "extraction_inputs": "text"},
+        ]
+        assert _should_skip_extraction_for_vision(outputs) is False
+
+    def test_all_image_only_returns_true(self):
+        outputs = [
+            {"name": "p1", "extraction_inputs": "image"},
+            {"name": "p2", "extraction_inputs": "image"},
+        ]
+        assert _should_skip_extraction_for_vision(outputs) is True
+
+    def test_mixed_modes_returns_false(self):
+        """If any prompt needs text, extraction must run."""
+        outputs = [
+            {"name": "p1", "extraction_inputs": "image"},
+            {"name": "p2", "extraction_inputs": "both"},
+        ]
+        assert _should_skip_extraction_for_vision(outputs) is False
+
+    def test_both_mode_returns_false(self):
+        outputs = [{"name": "p1", "extraction_inputs": "both"}]
+        assert _should_skip_extraction_for_vision(outputs) is False
+
+    def test_missing_field_defaults_to_text(self):
+        """Outputs without extraction_inputs should default to text."""
+        outputs = [{"name": "p1"}]
+        assert _should_skip_extraction_for_vision(outputs) is False
+
+    def test_single_image_only_returns_true(self):
+        outputs = [{"name": "p1", "extraction_inputs": "image"}]
+        assert _should_skip_extraction_for_vision(outputs) is True
 
 
 if __name__ == "__main__":
