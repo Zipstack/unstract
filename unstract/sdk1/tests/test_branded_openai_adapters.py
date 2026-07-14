@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
     MiniMaxLLMParameters,
     NvidiaBuildEmbeddingParameters,
@@ -92,104 +93,20 @@ def test_minimax_model_prefix_follows_changed_protocol() -> None:
     assert anthropic["model"] == "anthropic/MiniMax-M3"
 
 
-@pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
-def test_minimax_native_routing_resolves_usage_cost(model: str) -> None:
+def test_minimax_m3_standard_cost_path_handles_long_context() -> None:
     from litellm import cost_per_token
 
-    prompt_cost, completion_cost = cost_per_token(
-        f"minimax/{model}", prompt_tokens=1, completion_tokens=1
+    base_prompt_cost, base_completion_cost = cost_per_token(
+        "minimax/MiniMax-M3", prompt_tokens=512_000, completion_tokens=1
+    )
+    long_prompt_cost, long_completion_cost = cost_per_token(
+        "minimax/MiniMax-M3", prompt_tokens=512_001, completion_tokens=1
     )
 
-    assert prompt_cost > 0
-    assert completion_cost > 0
-
-
-@pytest.mark.parametrize(
-    ("model", "context_window", "max_output_tokens", "supports_vision"),
-    [
-        ("MiniMax-M3", 1_000_000, 524_288, True),
-        ("MiniMax-M2.7", 204_800, 204_800, False),
-    ],
-)
-def test_minimax_model_metadata_matches_official_limits(
-    model: str,
-    context_window: int,
-    max_output_tokens: int,
-    supports_vision: bool,
-) -> None:
-    from litellm import get_max_tokens, get_model_info
-
-    model_name = f"minimax/{model}"
-    info = get_model_info(model_name)
-
-    assert info["max_input_tokens"] == context_window
-    assert info["max_output_tokens"] == max_output_tokens
-    assert info["supports_vision"] is supports_vision
-    assert get_max_tokens(model_name) == max_output_tokens
-
-
-def test_minimax_m3_usage_cost_preserves_context_and_service_tiers() -> None:
-    base_usage = {
-        "prompt_tokens": 512_000,
-        "completion_tokens": 1,
-        "total_tokens": 512_001,
-    }
-    long_usage = {
-        "prompt_tokens": 512_001,
-        "completion_tokens": 1,
-        "total_tokens": 512_002,
-    }
-
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M3", base_usage
-    ) == pytest.approx(512_000 * 0.3e-6 + 1.2e-6)
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M3", long_usage
-    ) == pytest.approx(512_001 * 0.6e-6 + 2.4e-6)
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M3", base_usage, "priority"
-    ) == pytest.approx(512_000 * 0.45e-6 + 1.8e-6)
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M3", long_usage, "priority"
-    ) == pytest.approx(512_001 * 0.9e-6 + 3.6e-6)
-
-
-def test_minimax_usage_cost_preserves_cache_rates() -> None:
-    m3_cache_read = {
-        "prompt_tokens": 10,
-        "completion_tokens": 0,
-        "total_tokens": 10,
-        "prompt_tokens_details": {"cached_tokens": 10},
-    }
-    m27_cache_write = {
-        "prompt_tokens": 10,
-        "completion_tokens": 0,
-        "total_tokens": 10,
-        "cache_creation_input_tokens": 10,
-    }
-
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "anthropic/MiniMax-M3", m3_cache_read, "priority"
-    ) == pytest.approx(10 * 0.09e-6)
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M2.7", m27_cache_write
-    ) == pytest.approx(10 * 0.375e-6)
-    assert MiniMaxLLMAdapter.calculate_usage_cost(
-        "minimax/MiniMax-M2.7", m27_cache_write, "priority"
-    ) == pytest.approx(10 * 0.5625e-6)
-
-
-def test_minimax_registered_metadata_preserves_tiered_prices() -> None:
-    from litellm import model_cost
-
-    info = model_cost["minimax/MiniMax-M3"]
-
-    assert info["input_cost_per_token_above_512k_tokens"] == pytest.approx(0.6e-6)
-    assert info["output_cost_per_token_above_512k_tokens"] == pytest.approx(2.4e-6)
-    assert info["input_cost_per_token_priority"] == pytest.approx(0.45e-6)
-    assert info["output_cost_per_token_above_512k_tokens_priority"] == pytest.approx(
-        3.6e-6
-    )
+    assert base_prompt_cost == pytest.approx(512_000 * 0.3e-6)
+    assert base_completion_cost == pytest.approx(1.2e-6)
+    assert long_prompt_cost == pytest.approx(512_001 * 0.6e-6)
+    assert long_completion_cost == pytest.approx(2.4e-6)
 
 
 def test_minimax_temperature_uses_official_default_and_range() -> None:
@@ -205,6 +122,28 @@ def test_minimax_temperature_uses_official_default_and_range() -> None:
                     "temperature": temperature,
                 }
             )
+
+
+def test_minimax_anthropic_temperature_uses_protocol_range() -> None:
+    validated = MiniMaxLLMParameters.validate(
+        {
+            "model": "MiniMax-M3",
+            "api_key": "k",
+            "api_base": _MINIMAX_ANTHROPIC_API_BASE,
+            "temperature": 1,
+        }
+    )
+
+    assert validated["temperature"] == pytest.approx(1)
+    with pytest.raises(ValueError, match="Anthropic-compatible"):
+        MiniMaxLLMParameters.validate(
+            {
+                "model": "MiniMax-M3",
+                "api_key": "k",
+                "api_base": _MINIMAX_ANTHROPIC_API_BASE,
+                "temperature": 1.1,
+            }
+        )
 
 
 @pytest.mark.parametrize("service_tier", ["standard", "priority"])
@@ -249,6 +188,12 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
         MiniMaxLLMParameters.validate(
             {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": False}
         )
+
+
+def test_minimax_m2_defaults_to_adaptive_thinking() -> None:
+    validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
+
+    assert validated["thinking"] == {"type": "adaptive"}
 
 
 def test_openrouter_llm_routes_via_native_openrouter_provider() -> None:

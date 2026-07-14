@@ -52,7 +52,7 @@
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
       "default": 4096,
-      "description": "Maximum output length. MiniMax-M3 allows up to 524,288 tokens and MiniMax-M2.7 allows up to 204,800 tokens."
+      "description": "Maximum output length, subject to the selected model's total context window."
     },
     "max_retries": {
       "type": "number",

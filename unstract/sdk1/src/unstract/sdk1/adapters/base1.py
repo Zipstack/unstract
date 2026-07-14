@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -588,6 +589,9 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
             }
 
         thinking = adapter_metadata.get("thinking")
+        if thinking is None and model_id.lower().startswith("minimax-m2"):
+            thinking = {"type": "adaptive"}
+            adapter_metadata["thinking"] = thinking
         if thinking is not None:
             if not isinstance(thinking, dict) or thinking.get("type") not in {
                 "adaptive",
@@ -601,6 +605,15 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
                 raise ValueError(f"{model_id} does not support disabling thinking.")
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        if (
+            _minimax_provider_prefix(validated["api_base"])
+            == _MINIMAX_ANTHROPIC_PROVIDER_PREFIX
+            and validated["temperature"] is not None
+            and validated["temperature"] > 1
+        ):
+            raise ValueError(
+                "temperature must be between 0 and 1 for the Anthropic-compatible API."
+            )
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
         return validated
@@ -959,8 +972,7 @@ def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
     token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
     if not isinstance(token, str) or not token.strip():
         raise ValueError(
-            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
-            "auth_type is 'bearer_token'."
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when auth_type is 'bearer_token'."
         )
     validated[_BEDROCK_LITELLM_BEARER_KWARG] = token.strip()
 
