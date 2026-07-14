@@ -365,6 +365,7 @@ def _update_execution_status_unified(
     aggregated_results: dict[str, Any],
     organization_id: str,
     error_message: str | None = None,
+    is_pg: bool = False,
 ) -> dict[str, Any]:
     """Unified workflow execution status update for all callback types.
 
@@ -419,6 +420,18 @@ def _update_execution_status_unified(
         logger.error(
             f"Failed to update execution status for {execution_id}: {e}", exc_info=True
         )
+        # On the PG path this finalization write is the single terminalizing step.
+        # Swallowing a failure here strands the execution in EXECUTING forever: the
+        # consumer acks/deletes the message, the barrier row is already gone, and
+        # the reaper has no handle — every safety net is silently defeated. Re-raise
+        # so PG's at-least-once vt-redelivery retries the write and, if it keeps
+        # failing, poison-drops the batch to a terminal ERROR. A post-success
+        # redelivery is idempotency-guarded by _callback_already_ran (skips once
+        # COMPLETED; ERROR/STOPPED are intentionally re-run, so a failed-write
+        # ERROR execution simply retries the write). The Celery path keeps the
+        # legacy swallow (its chord retry covers it) so this is a PG-only change.
+        if is_pg:
+            raise
         # Return error result instead of re-raising to maintain callback flow
         return {
             "status": "failed",
@@ -1473,6 +1486,7 @@ def _process_batch_callback_core(
                     aggregated_results=aggregated_results,
                     organization_id=context.organization_id,
                     error_message=None,
+                    is_pg=is_pg,
                 )
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
@@ -1732,6 +1746,7 @@ def process_batch_callback_api(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
+                    is_pg=is_pg,
                 )
 
                 # Create minimal context for unified pipeline handling

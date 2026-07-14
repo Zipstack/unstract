@@ -973,6 +973,19 @@ class PgReaper:
         )
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
+        # Safety-net recovery of PG executions stranded non-terminal after all files
+        # completed (barrier gone → invisible to the PG-table sweeps). Opt-in
+        # (default off) for a controlled rollout; the stuck window defaults to the
+        # barrier stuck-timeout so it never races a legitimately long execution.
+        self._stuck_recovery_enabled = (
+            os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "false").lower()
+            == "true"
+        )
+        self._stuck_recovery_seconds = _positive_duration_from_env(
+            "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
+            self._stuck_timeout_seconds,
+            int,
+        )
         # None → "never swept", so the first leader tick sweeps immediately; set to
         # monotonic() each sweep so the cadence holds thereafter. (A None sentinel,
         # not 0.0, so the gate doesn't lean on monotonic() never returning ~0.)
@@ -1177,6 +1190,61 @@ class PgReaper:
                 dedup,
                 claims,
             )
+        self._maybe_recover_stuck_executions()
+
+    def _maybe_recover_stuck_executions(self) -> None:
+        """Opt-in safety-net: finalize PG executions stranded non-terminal after all
+        files completed.
+
+        Those have no barrier/claim row, so the PG-table sweeps in :meth:`_maybe_sweep`
+        can't see them — this asks the backend (org-agnostic; endpoint scopes to PG
+        rows by ``queue_message_id`` and heals server-side to the CORRECT terminal
+        status). Extracted from :meth:`_maybe_sweep` to keep its cognitive complexity
+        low; runs on the same cadence gate (per-row API work).
+        """
+        if not self._stuck_recovery_enabled:
+            return
+        try:
+            resp = self._get_api_client().recover_stuck_pg_executions(
+                stuck_seconds=self._stuck_recovery_seconds,
+            )
+            data = getattr(resp, "data", None) or {}
+            if not data:
+                # The endpoint always returns the four counters on success, so an
+                # empty payload means a failed call or a response-shape drift —
+                # surface it loudly rather than silently reporting all-zero (the
+                # exact "wholesale failure invisible on this end" trap this block
+                # exists to close).
+                logger.warning(
+                    "Reaper: safety-net recovery returned an empty/unexpected "
+                    "response (%r) — recovery counters unavailable; investigate",
+                    resp,
+                )
+            recovered = data.get("recovered") or 0
+            failed = data.get("failed") or 0
+            scanned = data.get("scanned") or 0
+            if recovered or failed:
+                logger.warning(
+                    "Reaper: safety-net scanned %s stranded PG execution(s) — "
+                    "recovered %s, failed %s, skipped %s",
+                    scanned,
+                    recovered,
+                    failed,
+                    data.get("skipped"),
+                )
+            elif scanned:
+                # Scanned stuck rows but recovered none and hit no errors — the sweep
+                # is not silently defeated (would be all-skipped, e.g. still-
+                # processing), but surface it so a wholesale-failure regression isn't
+                # invisible on this end.
+                logger.info(
+                    "Reaper: safety-net scanned %s stranded PG execution(s), "
+                    "recovered 0 (all skipped %s)",
+                    scanned,
+                    data.get("skipped"),
+                )
+        except Exception:
+            logger.exception("Reaper: stuck-execution recovery sweep failed")
 
     def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
         """Run one retention sweep best-effort; return its row count (0 on failure).

@@ -503,6 +503,56 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
+                # Concurrency guard for PG-transport executions, identified by the
+                # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
+                # Keying on the row's own transport keeps the invariant correct even
+                # if the rollout flag is toggled off or Flipt is unreachable while a
+                # PG execution is still finalizing (per the "transport carried on the
+                # row, never re-read from Flipt" rule).
+                #
+                # Protect COMPLETED and STOPPED — the two statuses that assert a
+                # deliberate final outcome. COMPLETED is set exclusively by a
+                # successful callback (its redelivery is skipped, see
+                # _callback_already_ran); STOPPED records an explicit user/operator
+                # stop. Under the PG path's high concurrency ~15 call sites write
+                # status via unlocked read-modify-write, so a stale writer can commit
+                # AFTER one of these and clobber it (lost update → execution stranded
+                # in EXECUTING, a confusing success→failed flip, or a straggler
+                # callback erasing a user's stop). Lock the row and refuse to overwrite
+                # either with a different status.
+                #
+                # ERROR is deliberately NOT protected: other paths (upstream error,
+                # the reaper) can set it BEFORE the first real callback, which then
+                # legitimately corrects the row to COMPLETED when the files actually
+                # succeeded — blocking that would freeze a genuinely successful run at
+                # a premature ERROR. Celery executions (queue_message_id NULL) keep the
+                # legacy path.
+                if execution.queue_message_id is not None:
+                    execution = WorkflowExecution.objects.select_for_update().get(
+                        pk=execution.pk
+                    )
+                    protected = {
+                        ExecutionStatus.COMPLETED.value,
+                        ExecutionStatus.STOPPED.value,
+                    }
+                    if (
+                        execution.status in protected
+                        and status_enum.value != execution.status
+                    ):
+                        logger.warning(
+                            f"update_status: refusing to overwrite protected status "
+                            f"'{execution.status}' with '{status_enum.value}' "
+                            f"for execution {id}"
+                        )
+                        return Response(
+                            {
+                                "status": "skipped",
+                                "reason": "already_final",
+                                "execution_id": str(execution.id),
+                                "new_status": execution.status,
+                            }
+                        )
+
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
@@ -536,6 +586,148 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @action(detail=False, methods=["post"])
+    def recover_stuck_pg_executions(self, request):
+        """Reaper safety-net: finalize PG executions stranded non-terminal after
+        all their files completed.
+
+        A lost-update race (unlocked concurrent status writes) or a swallowed
+        finalization write can leave a PG execution in EXECUTING/PENDING forever
+        even though every file execution is terminal — and because the barrier row
+        self-deletes at fan-in, the reaper's other (PG-table) sweeps can't see it.
+        This endpoint is the leader-gated reaper's trigger: it finds PG executions
+        stuck past ``stuck_seconds`` whose files are ALL terminal, recomputes the
+        correct terminal status from those files, and finalizes them.
+
+        Scoped to PG by ``queue_message_id`` (the durable per-row transport marker;
+        Celery rows carry ``task_id`` and ``queue_message_id=NULL``), so it needs no
+        Flipt context and never touches Celery executions.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        # Validate/clamp inputs: a negative stuck_seconds would push the cutoff into
+        # the future and match LIVE executions (finalizing running work); an
+        # unbounded limit would let one call scan the whole table.
+        try:
+            stuck_seconds = int(request.data.get("stuck_seconds") or 9000)
+            limit = int(request.data.get("limit") or 100)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "stuck_seconds and limit must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        stuck_seconds = max(1, stuck_seconds)
+        limit = max(1, min(limit, 1000))
+        cutoff = timezone.now() - timedelta(seconds=stuck_seconds)
+        terminal = ExecutionStatus.terminal_values()
+
+        stuck_ids = list(
+            WorkflowExecution.objects.filter(
+                queue_message_id__isnull=False,  # PG-only; Celery uses task_id
+                status__in=[
+                    ExecutionStatus.PENDING.value,
+                    ExecutionStatus.EXECUTING.value,
+                ],
+                modified_at__lt=cutoff,
+            )
+            .order_by("modified_at")
+            .values_list("id", flat=True)[:limit]
+        )
+
+        outcomes = {"recovered": 0, "skipped": 0, "failed": 0}
+        for exec_id in stuck_ids:
+            outcomes[self._recover_one_stuck_pg_execution(exec_id, cutoff, terminal)] += 1
+        logger.info(
+            "recover_stuck_pg_executions: scanned=%s recovered=%s skipped=%s failed=%s",
+            len(stuck_ids),
+            outcomes["recovered"],
+            outcomes["skipped"],
+            outcomes["failed"],
+        )
+        return Response(
+            {
+                "recovered": outcomes["recovered"],
+                "skipped": outcomes["skipped"],
+                "scanned": len(stuck_ids),
+                "failed": outcomes["failed"],
+            }
+        )
+
+    def _recover_one_stuck_pg_execution(self, exec_id, cutoff, terminal) -> str:
+        """Finalize one stuck PG execution under a row lock.
+
+        Returns the outcome — ``"recovered"`` | ``"skipped"`` | ``"failed"``.
+        Extracted from :meth:`recover_stuck_pg_executions` to keep that action's
+        cognitive complexity low; see it for the full rationale.
+        """
+        from django.db.models import Count, Q
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        try:
+            with transaction.atomic():
+                execution = WorkflowExecution.objects.select_for_update().get(pk=exec_id)
+                # Re-check under lock: skip if it reached terminal or was just
+                # touched (no longer stuck) — never race a live execution.
+                if execution.status in terminal or execution.modified_at >= cutoff:
+                    return "skipped"
+                # One conditional aggregate instead of three COUNT round-trips.
+                counts = WorkflowFileExecution.objects.filter(
+                    workflow_execution=execution
+                ).aggregate(
+                    total=Count("id"),
+                    terminal=Count("id", filter=Q(status__in=terminal)),
+                    errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+                    stopped=Count("id", filter=Q(status=ExecutionStatus.STOPPED.value)),
+                    completed=Count(
+                        "id", filter=Q(status=ExecutionStatus.COMPLETED.value)
+                    ),
+                )
+                total = counts["total"]
+                if total == 0 or counts["terminal"] < total:
+                    # total==0: a valid PG message may still be QUEUED (a
+                    # backlog/outage can outlast stuck_seconds), so failing it would
+                    # wrongly terminalize a live execution the one-way guard then
+                    # blocks from recovery — file-less recovery needs a queue-state
+                    # check (reaper-side, follow-up). terminal < total: a file is
+                    # still non-terminal → genuinely processing. Skip either way.
+                    return "skipped"
+                # Recompute the correct terminal status: ERROR if any file errored,
+                # else STOPPED if any was stopped (a cancelled run must not be turned
+                # into ERROR), else COMPLETED.
+                if counts["errored"]:
+                    computed = ExecutionStatus.ERROR
+                elif counts["stopped"]:
+                    computed = ExecutionStatus.STOPPED
+                else:
+                    computed = ExecutionStatus.COMPLETED
+                execution.update_execution(status=computed)
+                self._update_file_aggregates(
+                    execution,
+                    {
+                        "total_files": total,
+                        "successful_files": counts["completed"],
+                        "failed_files": counts["errored"],
+                    },
+                )
+                logger.warning(
+                    "Reaper safety-net: finalized stranded PG execution %s to %s "
+                    "(files %s ok / %s errored / %s stopped)",
+                    exec_id,
+                    computed.value,
+                    counts["completed"],
+                    counts["errored"],
+                    counts["stopped"],
+                )
+                return "recovered"
+        except Exception:
+            logger.exception("recover_stuck_pg_executions: failed to recover %s", exec_id)
+            return "failed"
 
     @staticmethod
     def _cascade_terminal_files(execution, status_enum, error_message) -> None:
