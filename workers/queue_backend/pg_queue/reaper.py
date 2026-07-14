@@ -207,6 +207,21 @@ def dedup_retention_from_env() -> int:
     )
 
 
+def stuck_recovery_enabled_from_env() -> bool:
+    """Whether the reaper's stranded-execution recovery sweep runs — ON by default.
+
+    Like every other reaper sweep (barrier / orphan-claim / dedup GC), finalizing PG
+    executions stranded non-terminal after all their files completed is core to the
+    reaper's job, so it defaults on. ``WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED=
+    "false"`` is a kill-switch; any other value (or unset) leaves it enabled. A
+    default-off gate was a footgun — it let strands silently accumulate because the
+    one safety-net that heals them did nothing until someone remembered the env.
+    """
+    return (
+        os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "true").lower() != "false"
+    )
+
+
 def _rollback_after_sweep_failure(conn: PgConnection, table: str) -> None:
     """Roll back after a failed sweep DELETE; surface a rollback that itself fails.
 
@@ -974,13 +989,11 @@ class PgReaper:
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
         # Safety-net recovery of PG executions stranded non-terminal after all files
-        # completed (barrier gone → invisible to the PG-table sweeps). Opt-in
-        # (default off) for a controlled rollout; the stuck window defaults to the
-        # barrier stuck-timeout so it never races a legitimately long execution.
-        self._stuck_recovery_enabled = (
-            os.getenv("WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED", "false").lower()
-            == "true"
-        )
+        # completed (barrier gone → invisible to the PG-table sweeps). ON by default
+        # (kill-switch via WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED="false"); the
+        # stuck window defaults to the barrier stuck-timeout so it never races a
+        # legitimately long execution.
+        self._stuck_recovery_enabled = stuck_recovery_enabled_from_env()
         self._stuck_recovery_seconds = _positive_duration_from_env(
             "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
             self._stuck_timeout_seconds,
