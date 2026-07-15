@@ -12,13 +12,33 @@ import "./ListView.css";
 import {
   DeleteOutlined,
   EditOutlined,
+  InfoCircleOutlined,
   QuestionCircleOutlined,
   ShareAltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import moment from "moment";
 import { useNavigate } from "react-router-dom";
 
+import { formattedDateTime } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+
+// Rows are presence-keyed: pages whose APIs don't return a field simply
+// don't show it (e.g. model is adapter-only, prompt_count is prompt studio).
+const renderItemMetadata = (item) => (
+  <div>
+    {item?.created_at && (
+      <div>Created: {formattedDateTime(item.created_at)}</div>
+    )}
+    {item?.modified_at && (
+      <div>Modified: {formattedDateTime(item.modified_at)}</div>
+    )}
+    {item?.model && <div>Model: {item.model}</div>}
+    {item?.prompt_count !== undefined && (
+      <div>Prompts: {item.prompt_count}</div>
+    )}
+  </div>
+);
 
 function ListView({
   listOfTools,
@@ -92,13 +112,36 @@ function ListView({
               <Typography.Text disabled className="adapters-list-user-prefix">
                 Owned By:
               </Typography.Text>
-              <Typography.Text className="shared-username">
+              <Typography.Text
+                className="shared-username"
+                ellipsis={{ tooltip: true }}
+              >
                 {item?.created_by_email
                   ? item?.created_by_email === sessionDetails.email
                     ? "Me"
                     : item?.created_by_email
                   : "-"}
               </Typography.Text>
+            </div>
+          )}
+          {item?.modified_at && (
+            <div
+              className="adapters-list-modified-container"
+              onClick={(event) => event.stopPropagation()}
+              role="none"
+            >
+              <Typography.Text
+                type="secondary"
+                className="adapters-list-modified-text"
+              >
+                Updated {moment(item.modified_at).fromNow()}
+              </Typography.Text>
+              <Tooltip title={renderItemMetadata(item)}>
+                <InfoCircleOutlined
+                  className="adapters-list-info-icon"
+                  aria-label="Creation and modification details"
+                />
+              </Tooltip>
             </div>
           )}
         </div>

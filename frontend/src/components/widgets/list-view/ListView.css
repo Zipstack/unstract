@@ -66,11 +66,14 @@
   align-items: center;
   display: flex;
   justify-content: center;
+  /* allow the email to ellipsize instead of wrapping when the row is tight */
+  min-width: 0;
 }
 
 .adapters-list-user-prefix {
   margin: 0 5px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .adapters-list-title {
@@ -86,6 +89,23 @@
 .list-view-content {
   display: flex;
   width: 80%;
+}
+
+.adapters-list-modified-container {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  margin-left: 24px;
+  white-space: nowrap;
+}
+
+.adapters-list-modified-text {
+  font-size: 12px;
+}
+
+.adapters-list-info-icon {
+  color: #8c8c8c;
+  font-size: 13px;
 }
 
 .adapters-list-title-container {

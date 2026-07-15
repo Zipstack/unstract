@@ -83,3 +83,33 @@ class PromptStudioAuthorAPITest(TestCase):
         persisted = ToolStudioPrompt.objects.get(prompt_id=prompt.data["prompt_id"])
         assert persisted.tool_id_id == tool.tool_id
         assert persisted.active
+
+    def test_list_modified_at_reflects_prompt_edits(self) -> None:
+        """Prompt edits don't touch the CustomTool row; the list endpoint must
+        surface the latest prompt modified_at instead (UN-3741).
+        """
+        tool = CustomTool.objects.create(
+            tool_name="quote-parser",
+            description="extracts quote fields",
+            author="test",
+            created_by=self.user,
+        )
+        prompt = ToolStudioPrompt.objects.create(
+            tool_id=tool,
+            prompt_key="quote_number",
+            prompt="What is the quote number?",
+            prompt_type=ToolStudioPrompt.PromptType.PROMPT,
+            sequence_number=1,
+        )
+        assert prompt.modified_at > tool.modified_at
+
+        list_view = PromptStudioCoreView.as_view({"get": "list"})
+        response = self._call(list_view, "get", "/api/v1/prompt-studio/", {})
+        assert response.status_code == status.HTTP_200_OK, response.data
+
+        rows = response.data
+        if isinstance(rows, dict):  # paginated response
+            rows = rows["results"]
+        row = next(r for r in rows if str(r["tool_id"]) == str(tool.tool_id))
+        assert row["modified_at"] == prompt.modified_at
+        assert row["created_at"] is not None
