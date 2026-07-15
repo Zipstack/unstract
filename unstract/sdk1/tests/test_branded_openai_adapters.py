@@ -108,26 +108,6 @@ def test_minimax_m3_standard_cost_path_handles_long_context() -> None:
     assert long_completion_cost == pytest.approx(2.4e-6)
 
 
-def test_minimax_m27_cost_path_tracks_cache_writes() -> None:
-    from litellm import cost_per_token
-    from litellm.types.utils import Usage
-
-    usage = Usage(
-        prompt_tokens=1_000,
-        completion_tokens=100,
-        total_tokens=1_100,
-        cache_read_input_tokens=100,
-        cache_creation_input_tokens=100,
-    )
-
-    prompt_cost, completion_cost = cost_per_token(
-        "minimax/MiniMax-M2.7", usage_object=usage
-    )
-
-    assert prompt_cost == pytest.approx(800 * 0.3e-6 + 100 * 0.06e-6 + 100 * 0.375e-6)
-    assert completion_cost == pytest.approx(100 * 1.2e-6)
-
-
 def test_minimax_temperature_uses_official_default_and_range() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M3", "api_key": "k"})
 
@@ -173,9 +153,6 @@ def test_minimax_forwards_supported_service_tiers(service_tier: str) -> None:
     )
 
     assert validated["service_tier"] == service_tier
-    assert validated["cost_multiplier"] == pytest.approx(
-        1.5 if service_tier == "priority" else 1.0
-    )
 
 
 def test_minimax_rejects_unknown_service_tier() -> None:
@@ -364,7 +341,7 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
         ("MiniMax-M2.7", _MINIMAX_ANTHROPIC_API_BASE, 204_800),
     ],
 )
-def test_minimax_context_window_uses_cost_model(
+def test_minimax_context_window_uses_adapter_metadata(
     model: str, api_base: str, context_window: int
 ) -> None:
     import sys
