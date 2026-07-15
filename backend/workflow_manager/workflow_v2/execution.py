@@ -3,7 +3,6 @@ import time
 import uuid
 
 from account_v2.constants import Common
-from django.utils import timezone
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
@@ -174,29 +173,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         error: str | None = None,
         increment_attempt: bool = False,
     ) -> None:
+        # Delegate to the model method, which owns the single, robust terminal-one-way
+        # guard (atomic select_for_update, PG-scoped, field-scoped writes). Duplicating
+        # the guard here risked drift + its own TOCTOU/dropped-field bugs.
         execution = WorkflowExecution.objects.get(pk=self.execution_id)
-
-        if status is not None:
-            execution.status = status.value
-
-            if (
-                status
-                in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.ERROR,
-                    ExecutionStatus.STOPPED,
-                ]
-                and not execution.execution_time
-            ):
-                execution.execution_time = round(
-                    (timezone.now() - execution.created_at).total_seconds(), 3
-                )
-        if error:
-            execution.error_message = error[:EXECUTION_ERROR_LENGTH]
-        if increment_attempt:
-            execution.attempts += 1
-
-        execution.save()
+        execution.update_execution(
+            status=status, error=error, increment_attempt=increment_attempt
+        )
 
     def has_successful_compilation(self) -> bool:
         return self.compilation_result["success"] is True
@@ -396,9 +379,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR.value
-            execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
-            execution.save()
+            # Route through the guarded model method instead of a direct save, so a
+            # late error handler can't revert a PG execution the callback already
+            # finalized COMPLETED/STOPPED. (ERROR over EXECUTING/PENDING still applies.)
+            execution.update_execution(status=ExecutionStatus.ERROR, error=err_msg)
             return execution
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")

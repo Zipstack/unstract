@@ -586,6 +586,18 @@ def _terminal_values(cls) -> frozenset[str]:
 ExecutionStatus.terminal_values = classmethod(_terminal_values)
 
 
+# Terminal statuses that a stale/late writer must NOT overwrite (the terminal-one-way
+# guard). Derived from terminal_values() minus ERROR, so a *new* terminal status is
+# protected-by-default; ERROR is deliberately excluded so a premature ERROR (set by
+# an upstream/other path before the real callback) stays correctable to COMPLETED.
+def _protected_terminal_values(cls) -> frozenset[str]:
+    """String values of terminal statuses that are one-way (COMPLETED/STOPPED)."""
+    return cls.terminal_values() - {cls.ERROR.value}
+
+
+ExecutionStatus.protected_terminal_values = classmethod(_protected_terminal_values)
+
+
 # Add the is_completed method as a class method
 def _is_completed(cls, status: str) -> bool:
     """Check if the execution status represents a completed (terminal) state."""

@@ -369,8 +369,45 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
-        should_release_rate_limit = False
+        from django.db import transaction
 
+        should_release_rate_limit = False
+        with transaction.atomic():
+            # Lock the row and read the PERSISTED marker + status together, so routing
+            # AND the write are atomic. Never trust the (possibly stale) in-memory
+            # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+            # handle, mis-routed to an unlocked legacy full save(), would write NULL
+            # back into queue_message_id and permanently disable every guard. Under
+            # this lock a concurrent _record_dispatch_handle serializes after us.
+            locked = (
+                WorkflowExecution.objects.select_for_update()
+                .filter(pk=self.pk)
+                .values("queue_message_id", "status", "attempts")
+                .first()
+            )
+            if locked is None:
+                return
+            if locked["queue_message_id"] is None:
+                should_release_rate_limit = self._apply_legacy_update(
+                    status, error, increment_attempt
+                )
+            else:
+                should_release_rate_limit = self._apply_pg_guarded_update(
+                    locked, status, error, increment_attempt
+                )
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
+
+    def _apply_legacy_update(
+        self,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> bool:
+        """Celery-path (queue_message_id NULL) — unchanged full save(); runs inside the
+        caller's locked transaction. Returns whether to release the rate-limit slot.
+        """
+        should_release = False
         if status is not None:
             status = ExecutionStatus(status)
             self.status = status.value
@@ -380,18 +417,90 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus.STOPPED,
             ]:
                 self.execution_time = CommonUtils.time_since(self.created_at, 3)
-                should_release_rate_limit = True
-
+                should_release = True
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             self.attempts += 1
-
         self.save()
+        return should_release
 
-        # Release rate limit slot for API deployment executions after save
-        if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+    def _apply_pg_guarded_update(
+        self,
+        locked: dict,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> bool:
+        """PG-path terminal-one-way guarded write, inside the caller's row lock. Refuses
+        a revert of a protected-terminal (COMPLETED/STOPPED) status — ERROR stays
+        correctable — while still applying error / increment_attempt. Field-scoped
+        (``update_fields``) so a stale object can never clobber counters or the marker,
+        and the post-save cache publishes the status actually persisted. Returns whether
+        to release the rate-limit slot.
+        """
+        committed = locked["status"]
+        should_release = False
+        update_fields: list[str] = []
+        if status is not None:
+            status_fields, should_release = self._apply_guarded_status(
+                ExecutionStatus(status), committed, error, increment_attempt
+            )
+            update_fields.extend(status_fields)
+        if error:
+            self.error_message = error[:EXECUTION_ERROR_LENGTH]
+            update_fields.append("error_message")
+        if increment_attempt:
+            # Increment from the locked committed value, not the stale in-memory one.
+            self.attempts = locked["attempts"] + 1
+            update_fields.append("attempts")
+        if update_fields:
+            update_fields.append("modified_at")
+            self.save(update_fields=update_fields)
+        return should_release
+
+    def _apply_guarded_status(
+        self,
+        status: ExecutionStatus,
+        committed: str,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> tuple[list[str], bool]:
+        """Apply the status change under the terminal-one-way guard.
+
+        Returns ``(update_fields, should_release_rate_limit)``. On a refused revert of
+        a protected-terminal (COMPLETED/STOPPED) row, keeps ``self.status == committed``
+        and returns ``([], False)`` — the caller still applies error / increment.
+        """
+        if (
+            committed in ExecutionStatus.protected_terminal_values()
+            and status.value != committed
+        ):
+            logger.warning(
+                "update_execution: refusing to revert protected status '%s' with "
+                "'%s' for execution %s (stale-writer guard); error=%s "
+                "increment_attempt=%s still applied",
+                committed,
+                status.value,
+                self.id,
+                bool(error),
+                increment_attempt,
+            )
+            self.status = committed  # keep self + post-save cache consistent with DB
+            return [], False
+
+        self.status = status.value
+        fields = ["status"]
+        should_release = False
+        if status in [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ]:
+            self.execution_time = CommonUtils.time_since(self.created_at, 3)
+            fields.append("execution_time")
+            should_release = True
+        return fields, should_release
 
     def _release_api_deployment_rate_limit(self) -> None:
         """Release rate limit slot for API deployment executions.

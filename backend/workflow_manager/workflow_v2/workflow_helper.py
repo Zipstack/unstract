@@ -435,8 +435,16 @@ class WorkflowHelper:
             execution (WorkflowExecution): WorkflowExecution instance
         """
         if not execution.result_acknowledged:
+            # A DB-side queryset UPDATE of the single column, NOT execution.save():
+            # a save() (even with update_fields) rewrites the whole row from this
+            # possibly-stale object AND re-runs _handle_execution_cache(), which would
+            # publish the stale in-memory status (e.g. EXECUTING+NULL) to Redis while
+            # Postgres stays COMPLETED. Acknowledging a result must touch ONLY that
+            # column and never the status/counters or the cache.
+            WorkflowExecution.objects.filter(pk=execution.pk).update(
+                result_acknowledged=True
+            )
             execution.result_acknowledged = True
-            execution.save()
             logger.info(
                 f"ExecutionID [{execution.id}] - Task {execution.task_id} acknowledged"
             )

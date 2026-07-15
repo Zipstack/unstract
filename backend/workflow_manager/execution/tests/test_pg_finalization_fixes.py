@@ -233,6 +233,192 @@ class TerminalOneWayGuardTests(TestCase):
         assert ex.status == ExecutionStatus.COMPLETED.value
 
 
+class ModelStaleWriterGuardTests(TestCase):
+    """The terminal-one-way guard at the MODEL layer (update_execution) — where the
+    HTTP-endpoint guard can't reach. A stale backend object (created EXECUTING, NULL
+    counters, re-saved after the callback set COMPLETED) must not revert a
+    protected-terminal (COMPLETED/STOPPED) PG execution back to EXECUTING+NULL."""
+
+    def setUp(self):
+        self.wf = Workflow.objects.create(workflow_name="wf-stale")
+
+    def _stale(self, ex, status, **fields):
+        """A separate in-memory instance of ex with stale field values."""
+        stale = WorkflowExecution.objects.get(pk=ex.pk)
+        stale.status = status.value
+        for k, v in fields.items():
+            setattr(stale, k, v)
+        return stale
+
+    def test_pg_refuses_stale_revert_of_completed(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=11,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+        )
+        stale = self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        )
+        stale.update_execution(status=ExecutionStatus.EXECUTING)  # the clobber
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # not reverted
+        assert ex.successful_files == 1  # counters not nulled
+
+    def test_pg_refuses_stale_revert_of_stopped(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.STOPPED,
+            queue_message_id=12,
+            total_files=2,
+            successful_files=1,
+            failed_files=1,
+        )
+        self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        ).update_execution(status=ExecutionStatus.EXECUTING)
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.STOPPED.value
+        assert ex.successful_files == 1 and ex.failed_files == 1  # counters preserved
+
+    def test_pg_same_status_does_not_clobber_counters(self):
+        # Same-status COMPLETED→COMPLETED: the guard is a no-op, so update_fields must
+        # be what stops the stale NULL counters from clobbering the real ones.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=17,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+        )
+        self._stale(
+            ex, ExecutionStatus.COMPLETED, successful_files=None, failed_files=None
+        ).update_execution(status=ExecutionStatus.COMPLETED)
+        ex.refresh_from_db()
+        assert ex.successful_files == 1  # not nulled
+
+    def test_pg_stale_null_marker_still_guarded_and_not_nulled(self):
+        # A stale object whose in-memory queue_message_id is None (snapshotted before
+        # dispatch recorded it) must STILL be guarded (routing reads the persisted
+        # marker) AND the marker must not be nulled by the write.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=99,
+            successful_files=1,
+        )
+        self._stale(
+            ex, ExecutionStatus.EXECUTING, queue_message_id=None, successful_files=None
+        ).update_execution(status=ExecutionStatus.EXECUTING)
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # still guarded
+        assert ex.queue_message_id == 99  # marker NOT nulled
+        assert ex.successful_files == 1
+
+    def test_pg_refused_status_still_applies_error_and_attempt(self):
+        # The refused status must NOT silently drop error / increment_attempt.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=16,
+            attempts=0,
+        )
+        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
+            status=ExecutionStatus.EXECUTING,
+            error="late failure",
+            increment_attempt=True,
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # status refused
+        assert ex.error_message == "late failure"  # error applied
+        assert ex.attempts == 1  # increment applied
+
+    def test_service_helper_update_execution_is_guarded(self):
+        from workflow_manager.workflow_v2.execution import (
+            WorkflowExecutionServiceHelper,
+        )
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=18
+        )
+        helper = WorkflowExecutionServiceHelper.__new__(WorkflowExecutionServiceHelper)
+        helper.execution_id = str(ex.id)
+        helper.update_execution(status=ExecutionStatus.EXECUTING)  # delegates → guarded
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_update_execution_err_is_guarded(self):
+        from workflow_manager.workflow_v2.execution import (
+            WorkflowExecutionServiceHelper,
+        )
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=19
+        )
+        WorkflowExecutionServiceHelper.update_execution_err(str(ex.id), "late error")
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value  # COMPLETED not reverted
+
+    def test_pg_allows_error_corrected_to_completed(self):
+        # ERROR is not protected — a premature ERROR must stay correctable.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.ERROR, queue_message_id=13
+        )
+        WorkflowExecution.objects.get(pk=ex.pk).update_execution(
+            status=ExecutionStatus.COMPLETED
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_pg_allows_idempotent_completed_rewrite(self):
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf, status=ExecutionStatus.COMPLETED, queue_message_id=14
+        )
+        WorkflowExecution.objects.get(pk=ex.pk).update_execution(
+            status=ExecutionStatus.COMPLETED
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_celery_row_unaffected(self):
+        # queue_message_id NULL → legacy behavior, the stale write goes through.
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=None,
+            task_id=uuid.uuid4(),
+        )
+        self._stale(ex, ExecutionStatus.EXECUTING).update_execution(
+            status=ExecutionStatus.EXECUTING
+        )
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.EXECUTING.value  # legacy: overwritten
+
+    def test_result_acknowledge_does_not_touch_status_or_counters(self):
+        # A stale object acknowledging a result must not rewrite status/counters
+        # (update_fields scoping).
+        from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
+
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.COMPLETED,
+            queue_message_id=15,
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+            result_acknowledged=False,
+        )
+        stale = self._stale(
+            ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
+        )
+        WorkflowHelper._set_result_acknowledge(stale)
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+        assert ex.successful_files == 1
+        assert ex.result_acknowledged is True
 class RetrieveNotFoundTests(TestCase):
     """A missing execution must return 404, not 500 (UN-3719). The reaper's
     orphan-claim sweep relies on the deterministic 404 to GC claims for deleted
