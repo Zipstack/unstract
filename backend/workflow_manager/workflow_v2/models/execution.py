@@ -369,31 +369,45 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
-        # Route on the PERSISTED transport marker, never the (possibly stale) in-memory
-        # self.queue_message_id: a PG row snapshotted before dispatch recorded its
-        # handle would otherwise be mis-routed to the legacy path, whose full save()
-        # would revert the row AND write NULL back into queue_message_id — permanently
-        # disabling this and every sibling guard (all gate on queue_message_id).
-        committed_qmid = (
-            WorkflowExecution.objects.filter(pk=self.pk)
-            .values_list("queue_message_id", flat=True)
-            .first()
-        )
-        if committed_qmid is None:
-            self._update_execution_legacy(status, error, increment_attempt)
-        else:
-            self._update_execution_pg_guarded(status, error, increment_attempt)
+        from django.db import transaction
 
-    def _update_execution_legacy(
+        should_release_rate_limit = False
+        with transaction.atomic():
+            # Lock the row and read the PERSISTED marker + status together, so routing
+            # AND the write are atomic. Never trust the (possibly stale) in-memory
+            # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+            # handle, mis-routed to an unlocked legacy full save(), would write NULL
+            # back into queue_message_id and permanently disable every guard. Under
+            # this lock a concurrent _record_dispatch_handle serializes after us.
+            locked = (
+                WorkflowExecution.objects.select_for_update()
+                .filter(pk=self.pk)
+                .values("queue_message_id", "status", "attempts")
+                .first()
+            )
+            if locked is None:
+                return
+            if locked["queue_message_id"] is None:
+                should_release_rate_limit = self._apply_legacy_update(
+                    status, error, increment_attempt
+                )
+            else:
+                should_release_rate_limit = self._apply_pg_guarded_update(
+                    locked, status, error, increment_attempt
+                )
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
+
+    def _apply_legacy_update(
         self,
         status: ExecutionStatus | None,
         error: str | None,
         increment_attempt: bool,
-    ) -> None:
-        """Celery-path (queue_message_id NULL) status update — unchanged legacy
-        behavior, a full save().
+    ) -> bool:
+        """Celery-path (queue_message_id NULL) — unchanged full save(); runs inside the
+        caller's locked transaction. Returns whether to release the rate-limit slot.
         """
-        should_release_rate_limit = False
+        should_release = False
         if status is not None:
             status = ExecutionStatus(status)
             self.status = status.value
@@ -403,66 +417,47 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus.STOPPED,
             ]:
                 self.execution_time = CommonUtils.time_since(self.created_at, 3)
-                should_release_rate_limit = True
+                should_release = True
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             self.attempts += 1
         self.save()
-        if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+        return should_release
 
-    def _update_execution_pg_guarded(
+    def _apply_pg_guarded_update(
         self,
+        locked: dict,
         status: ExecutionStatus | None,
         error: str | None,
         increment_attempt: bool,
-    ) -> None:
-        """PG-path status update with the terminal-one-way guard.
-
-        Locks the row (``select_for_update``) so the committed-status read and the
-        write are atomic — a concurrent callback can't commit COMPLETED in between.
-        A protected-terminal (COMPLETED/STOPPED) row refuses only the *status* change
-        (ERROR stays correctable to COMPLETED); ``error`` / ``increment_attempt`` are
-        still applied. Writes are field-scoped (``update_fields``) so a stale object's
-        NULL counters — or the marker — can never be clobbered by a full-row save, and
-        the post-save cache write publishes the status we actually persisted.
+    ) -> bool:
+        """PG-path terminal-one-way guarded write, inside the caller's row lock. Refuses
+        a revert of a protected-terminal (COMPLETED/STOPPED) status — ERROR stays
+        correctable — while still applying error / increment_attempt. Field-scoped
+        (``update_fields``) so a stale object can never clobber counters or the marker,
+        and the post-save cache publishes the status actually persisted. Returns whether
+        to release the rate-limit slot.
         """
-        from django.db import transaction
-
-        should_release_rate_limit = False
+        committed = locked["status"]
+        should_release = False
         update_fields: list[str] = []
-        with transaction.atomic():
-            locked = (
-                WorkflowExecution.objects.select_for_update()
-                .filter(pk=self.pk)
-                .values("status", "attempts")
-                .first()
+        if status is not None:
+            status_fields, should_release = self._apply_guarded_status(
+                ExecutionStatus(status), committed, error, increment_attempt
             )
-            if locked is None:
-                return
-            committed = locked["status"]
-
-            if status is not None:
-                status_fields, should_release_rate_limit = self._apply_guarded_status(
-                    ExecutionStatus(status), committed, error, increment_attempt
-                )
-                update_fields.extend(status_fields)
-
-            if error:
-                self.error_message = error[:EXECUTION_ERROR_LENGTH]
-                update_fields.append("error_message")
-            if increment_attempt:
-                # Increment from the locked committed value, not the stale in-memory one.
-                self.attempts = locked["attempts"] + 1
-                update_fields.append("attempts")
-
-            if update_fields:
-                update_fields.append("modified_at")
-                self.save(update_fields=update_fields)
-
-        if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+            update_fields.extend(status_fields)
+        if error:
+            self.error_message = error[:EXECUTION_ERROR_LENGTH]
+            update_fields.append("error_message")
+        if increment_attempt:
+            # Increment from the locked committed value, not the stale in-memory one.
+            self.attempts = locked["attempts"] + 1
+            update_fields.append("attempts")
+        if update_fields:
+            update_fields.append("modified_at")
+            self.save(update_fields=update_fields)
+        return should_release
 
     def _apply_guarded_status(
         self,
