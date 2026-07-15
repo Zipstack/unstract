@@ -12,10 +12,13 @@ from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -43,6 +46,27 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
+
+    @staticmethod
+    def _enforce_connector_creation_restriction(request: Any) -> None:
+        """Controlled mode (UN-3585): only org admins may create connectors
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) bypass; the default (flag off) keeps creation open
+        for everyone. Applies to all connector types (all connect to external
+        systems).
+        """
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_connector_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "Connector creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
 
     def get_queryset(self) -> QuerySet | None:
         queryset = ConnectorInstance.objects.for_user(self.request.user)
@@ -161,11 +185,18 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
+        # Explicitly bind the connector to the request-scoped organization.
+        # Defense-in-depth: DefaultOrganizationMixin already declares
+        # `organization` as editable=False (so DRF drops any client-supplied
+        # value) and its save() backfills the org from UserContext when unset.
+        # Binding here makes that explicit at the callsite and keeps the row's
+        # org consistent with the org the controlled-mode check evaluated.
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
             created_by=self.request.user,
             modified_by=self.request.user,
+            organization=UserContext.get_organization(),
         )  # type: ignore
 
         # Clean up OAuth cache after successful create
@@ -173,6 +204,10 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
+        # Fail fast on the admin restriction before validating the payload —
+        # the check depends only on the request/org, not on validated data, so
+        # a denied caller shouldn't get input-validation feedback first.
+        self._enforce_connector_creation_restriction(request)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:

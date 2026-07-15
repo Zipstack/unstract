@@ -453,7 +453,7 @@ function AddLlmProfile({
   };
 
   return (
-    <div className="settings-body-pad-top">
+    <div className="add-llm-profile-body">
       <Form
         form={form}
         layout="vertical"
@@ -633,7 +633,10 @@ function AddLlmProfile({
             />
           </div>
         </SpaceWrapper>
-        <Form.Item className="display-flex-right">
+        <Form.Item
+          className="display-flex-right add-llm-profile-footer"
+          style={{ backgroundColor: token.colorBgContainer }}
+        >
           <Space>
             <CustomButton type="primary" htmlType="submit" loading={loading}>
               {editLlmProfileId ? "Update" : "Add"}
