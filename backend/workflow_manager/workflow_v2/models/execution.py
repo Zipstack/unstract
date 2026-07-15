@@ -444,34 +444,10 @@ class WorkflowExecution(BaseModel):
             committed = locked["status"]
 
             if status is not None:
-                status = ExecutionStatus(status)
-                if (
-                    committed in ExecutionStatus.protected_terminal_values()
-                    and status.value != committed
-                ):
-                    logger.warning(
-                        "update_execution: refusing to revert protected status '%s' "
-                        "with '%s' for execution %s (stale-writer guard); error=%s "
-                        "increment_attempt=%s still applied",
-                        committed,
-                        status.value,
-                        self.id,
-                        bool(error),
-                        increment_attempt,
-                    )
-                    # Keep self (and the post-save cache) consistent with the DB.
-                    self.status = committed
-                else:
-                    self.status = status.value
-                    update_fields.append("status")
-                    if status in [
-                        ExecutionStatus.COMPLETED,
-                        ExecutionStatus.ERROR,
-                        ExecutionStatus.STOPPED,
-                    ]:
-                        self.execution_time = CommonUtils.time_since(self.created_at, 3)
-                        update_fields.append("execution_time")
-                        should_release_rate_limit = True
+                status_fields, should_release_rate_limit = self._apply_guarded_status(
+                    ExecutionStatus(status), committed, error, increment_attempt
+                )
+                update_fields.extend(status_fields)
 
             if error:
                 self.error_message = error[:EXECUTION_ERROR_LENGTH]
@@ -488,9 +464,48 @@ class WorkflowExecution(BaseModel):
         if should_release_rate_limit and self.pipeline_id:
             self._release_api_deployment_rate_limit()
 
-        # Release rate limit slot for API deployment executions after save
-        if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+    def _apply_guarded_status(
+        self,
+        status: ExecutionStatus,
+        committed: str,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> tuple[list[str], bool]:
+        """Apply the status change under the terminal-one-way guard.
+
+        Returns ``(update_fields, should_release_rate_limit)``. On a refused revert of
+        a protected-terminal (COMPLETED/STOPPED) row, keeps ``self.status == committed``
+        and returns ``([], False)`` — the caller still applies error / increment.
+        """
+        if (
+            committed in ExecutionStatus.protected_terminal_values()
+            and status.value != committed
+        ):
+            logger.warning(
+                "update_execution: refusing to revert protected status '%s' with "
+                "'%s' for execution %s (stale-writer guard); error=%s "
+                "increment_attempt=%s still applied",
+                committed,
+                status.value,
+                self.id,
+                bool(error),
+                increment_attempt,
+            )
+            self.status = committed  # keep self + post-save cache consistent with DB
+            return [], False
+
+        self.status = status.value
+        fields = ["status"]
+        should_release = False
+        if status in [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ]:
+            self.execution_time = CommonUtils.time_since(self.created_at, 3)
+            fields.append("execution_time")
+            should_release = True
+        return fields, should_release
 
     def _release_api_deployment_rate_limit(self) -> None:
         """Release rate limit slot for API deployment executions.
