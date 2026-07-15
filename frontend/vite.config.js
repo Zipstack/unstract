@@ -149,6 +149,10 @@ export default defineConfig(({ mode }) => {
       target: "esnext",
       outDir: "build",
       sourcemap: true,
+      // Single stylesheet: per-chunk CSS loads in navigation order, making
+      // equal-specificity cross-component rules resolve unpredictably. JS
+      // splitting is unaffected.
+      cssCodeSplit: false,
       // Chunk size warning limit
       chunkSizeWarningLimit: 1000,
       rollupOptions: {

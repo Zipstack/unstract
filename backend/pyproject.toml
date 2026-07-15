@@ -71,7 +71,10 @@ dev = [
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]
-test = ["pytest>=8.0.1"]
+test = [
+    "pytest>=8.0.1",
+    "pytest-django>=4.12.0",
+]
 deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let uv decide version
@@ -101,6 +104,11 @@ constraint-dependencies = [
 # Note: test.env is loaded by backend/conftest.py via python-dotenv directly
 # (replaces the unmaintained pytest-dotenv plugin).
 addopts = "-s"
+python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
+markers = [
+    "integration: needs live infra (Postgres/Redis); runs in the rig's integration tier, not unit (select with -m integration / exclude with -m 'not integration')",
+    "critical_path(path_id): attests coverage of declared critical path(s) from tests/critical_paths.yaml when this test passes",
+]
 
 [tool.poe]
 envfile = ".env"

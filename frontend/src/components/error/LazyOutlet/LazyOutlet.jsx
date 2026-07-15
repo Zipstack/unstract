@@ -4,6 +4,7 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import { GenericLoader } from "../../generic-loader/GenericLoader.jsx";
 import { ErrorBoundary } from "../../widgets/error-boundary/ErrorBoundary.jsx";
+import "./LazyOutlet.css";
 
 // A failed dynamic import — almost always a stale hashed chunk after a
 // redeploy (the client's index.html references a filename the CDN no longer
@@ -74,7 +75,15 @@ export function LazyOutlet() {
       onError={handleRouteError}
       fallbackComponent={<RouteLoadError />}
     >
-      <Suspense fallback={<GenericLoader />}>
+      {/* Wrap the loader so it fills the content area and stays centered — see
+          LazyOutlet.css for why GenericLoader needs this here. */}
+      <Suspense
+        fallback={
+          <div className="lazyOutletFallback">
+            <GenericLoader />
+          </div>
+        }
+      >
         <Outlet />
       </Suspense>
     </ErrorBoundary>

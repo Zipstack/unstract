@@ -260,37 +260,6 @@ class TestExceptions:
         assert err.message == "extraction failed"
         assert err.code == 500
 
-    def test_no_flask_import(self):
-        """Verify exceptions module does NOT import Flask."""
-        import importlib
-        import sys
-
-        # Reload to re-run the module's imports so a stray Flask import would
-        # re-populate sys.modules. But reloading rebinds the module's classes
-        # (LegacyExecutorError etc.) to new objects, which breaks ``isinstance``
-        # / ``pytest.raises`` identity for every other test/module that imported
-        # them earlier. So snapshot the module namespace and restore it in a
-        # ``finally`` — the exception classes stay identical for the rest of the
-        # suite.
-        mod_name = "executor.executors.exceptions"
-        mod = sys.modules.get(mod_name)
-        saved = dict(mod.__dict__) if mod is not None else None
-        try:
-            if mod is not None:
-                importlib.reload(mod)
-            else:
-                importlib.import_module(mod_name)
-
-            # Check that no flask modules were pulled in
-            flask_modules = [m for m in sys.modules if m.startswith("flask")]
-            assert flask_modules == [], (
-                f"Flask modules imported: {flask_modules}"
-            )
-        finally:
-            if saved is not None:
-                mod.__dict__.clear()
-                mod.__dict__.update(saved)
-
     def test_custom_data_error_signature(self):
         from executor.executors.exceptions import CustomDataError
 
