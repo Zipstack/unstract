@@ -153,7 +153,7 @@ class PromptStudioCoreView(
     def get_queryset(self) -> QuerySet | None:
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
-            "memberships"
+            "memberships__user"
         )
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()

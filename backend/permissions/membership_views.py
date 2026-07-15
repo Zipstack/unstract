@@ -10,7 +10,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 
 from permissions.membership_serializers import AddOwnerSerializer, RemoveOwnerSerializer
-from permissions.roles import ResourceRole
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +77,10 @@ class OwnerManagementMixin:
 
     @staticmethod
     def _owner_refs(resource: Any) -> list[dict[str, Any]]:
-        return [
-            {"id": membership.user_id, "email": membership.user.email}
-            for membership in resource.memberships.filter(
-                role=ResourceRole.OWNER
-            ).select_related("user")
-        ]
+        # Mirror ``owners()`` (service accounts excluded) so this payload names
+        # the same roster as the ``co_owners`` field every resource serializer
+        # returns — otherwise POST owners/ and GET list_of_shared_users disagree.
+        return [{"id": user.pk, "email": user.email} for user in resource.owners()]
 
     # --- notifications: reuse the user-sharing service, best-effort ---
 

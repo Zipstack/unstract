@@ -25,7 +25,6 @@ Helpers exposed:
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Iterable
 from typing import Any
 
@@ -143,45 +142,18 @@ def set_resource_share_groups(resource_obj: Any, group_ids: Iterable[int]) -> No
         )
 
 
-def _safe_uuids(raw_ids: Iterable[Any]) -> list[uuid.UUID]:
-    """Cast varchar ``object_id`` values to UUID, skipping malformed ones.
-
-    ``ResourceGroupShare.object_id`` is intentionally varchar, so one corrupt
-    value must not 500 the entire resource list for every member of the group.
-    Malformed ids are skipped and logged rather than raised.
-    """
-    result: list[uuid.UUID] = []
-    for s in raw_ids:
-        if not s:
-            continue
-        try:
-            result.append(uuid.UUID(s))
-        except (ValueError, AttributeError, TypeError):
-            logger.warning("Skipping malformed ResourceGroupShare.object_id=%r", s)
-    return result
-
-
 def list_resources_shared_with_group(
     group: OrganizationGroup, model: type[Model]
 ) -> QuerySet:
     """Resources of ``model`` shared with ``group`` (replaces
     ``model.objects.filter(shared_groups=group)``).
-
-    Materialises IDs to Python so UUID-keyed PKs can be cast before the
-    ``pk__in`` lookup — Postgres refuses the implicit ``uuid = character
-    varying`` comparison when the varchar ``object_id`` subquery is fed in
-    directly (same constraint as :func:`resources_visible_via_groups`).
     """
-    raw_ids = ResourceGroupShare.objects.filter(
+    qs = ResourceGroupShare.objects.filter(
         group=group,
         content_type=ContentType.objects.get_for_model(model),
         organization_id=group.organization_id,
-    ).values_list("object_id", flat=True)
-    if isinstance(model._meta.pk, models.UUIDField):
-        pks: list[Any] = _safe_uuids(raw_ids)
-    else:
-        pks = list(raw_ids)
-    return model.objects.filter(pk__in=pks)
+    )
+    return model.objects.filter(pk__in=_object_id_subquery(qs, model))
 
 
 def _object_id_subquery(qs: QuerySet[Any], model: type[Model]) -> QuerySet[Any]:
@@ -191,6 +163,11 @@ def _object_id_subquery(qs: QuerySet[Any], model: type[Model]) -> QuerySet[Any]:
     ``Cast`` to UUID inside the subquery so Postgres accepts the ``uuid = uuid``
     comparison — keeping the lookup in SQL instead of materialising the ids to
     Python and inlining them as literals.
+
+    A malformed ``object_id`` raises ``DataError`` rather than being skipped:
+    the only write paths store ``str(resource_obj.pk)`` from a live resource, so
+    a corrupt value can arrive only via manual SQL or a bad import — a data
+    integrity bug that should surface, not be masked into a missing resource.
     """
     if isinstance(model._meta.pk, models.UUIDField):
         return qs.values(obj_uuid=Cast("object_id", output_field=models.UUIDField()))
