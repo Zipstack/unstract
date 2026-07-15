@@ -394,6 +394,33 @@ def test_record_usage_uses_reported_prompt_tokens_without_estimating() -> None:
     assert llm._pending_usage[0]["prompt_tokens"] == 3
 
 
+def test_record_usage_preserves_cache_details_and_cost_multiplier() -> None:
+    llm_module = _load_llm_module()
+    llm = _build_llm_for_record_usage(llm_module.LLM)
+
+    with patch.object(
+        llm_module.litellm, "cost_per_token", return_value=(1.0, 2.0)
+    ) as mock_cost_per_token:
+        llm._record_usage(
+            model="custom_openai/gateway-model",
+            messages=[{"role": "user", "content": "hello"}],
+            usage={
+                "prompt_tokens": 8,
+                "completion_tokens": 2,
+                "total_tokens": 10,
+                "cache_read_input_tokens": 3,
+                "cache_creation_input_tokens": 1,
+            },
+            llm_api="complete",
+            cost_multiplier=1.5,
+        )
+
+    usage_object = mock_cost_per_token.call_args.kwargs["usage_object"]
+    assert usage_object.cache_read_input_tokens == 3
+    assert usage_object.cache_creation_input_tokens == 1
+    assert llm._pending_usage[0]["cost_in_dollars"] == pytest.approx(4.5)
+
+
 def test_record_usage_tolerates_unmapped_models_without_prompt_tokens() -> None:
     llm_module = _load_llm_module()
     llm = _build_llm_for_record_usage(llm_module.LLM)

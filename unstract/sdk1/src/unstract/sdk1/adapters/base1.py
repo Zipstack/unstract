@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 if TYPE_CHECKING:
     from typing import Any
 
+import litellm
 from pydantic import BaseModel, Field, model_validator
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
@@ -534,6 +535,22 @@ _MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 _MINIMAX_PROVIDER_PREFIX = "minimax/"
 _MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
+_MINIMAX_PRIORITY_COST_MULTIPLIER = 1.5
+
+# The pinned LiteLLM map does not yet include MiniMax-M2.7.
+litellm.register_model(
+    {
+        "minimax/MiniMax-M2.7": {
+            "max_input_tokens": 204_800,
+            "input_cost_per_token": 0.3e-6,
+            "output_cost_per_token": 1.2e-6,
+            "cache_read_input_token_cost": 0.06e-6,
+            "cache_creation_input_token_cost": 0.375e-6,
+            "litellm_provider": "minimax",
+            "mode": "chat",
+        }
+    }
+)
 
 
 def _minimax_provider_prefix(api_base: str) -> str:
@@ -606,6 +623,9 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
+        validated["cost_multiplier"] = (
+            _MINIMAX_PRIORITY_COST_MULTIPLIER if service_tier == "priority" else 1.0
+        )
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
         return validated
 

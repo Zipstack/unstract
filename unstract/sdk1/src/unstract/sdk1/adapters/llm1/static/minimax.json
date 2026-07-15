@@ -27,7 +27,7 @@
         "MiniMax-M3",
         "MiniMax-M2.7"
       ],
-      "description": "MiniMax-M3 supports a 1,000,000-token context window with text, image, and video input. MiniMax-M2.7 supports a 204,800-token context window with text input."
+      "description": "MiniMax-M3 supports a 1,000,000-token context window with text, image, and video input. Standard pricing is $0.30 input, $1.20 output, and $0.06 cache read per million tokens up to 512,000 input tokens, with each rate doubled above that threshold. MiniMax-M2.7 supports a 204,800-token context window with text input and costs $0.30 input, $1.20 output, $0.06 cache read, and $0.375 cache write per million tokens."
     },
     "api_base": {
       "type": "string",
@@ -44,7 +44,7 @@
         "priority"
       ],
       "default": "standard",
-      "description": "Priority requests receive priority admission and use the provider's priority pricing."
+      "description": "Priority requests receive priority admission and use 1.5 times the standard token and cache pricing."
     },
     "max_tokens": {
       "type": "number",
@@ -73,8 +73,7 @@
     "enable_thinking": {
       "type": "boolean",
       "title": "Enable Thinking",
-      "default": true,
-      "description": "Enable adaptive thinking for MiniMax-M3. MiniMax-M2.7 always keeps thinking enabled."
+      "description": "Override the protocol default for MiniMax-M3. OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.7 always keeps thinking enabled."
     }
   }
 }

@@ -10,6 +10,7 @@ import litellm
 
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens
+from litellm.types.utils import Usage
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
@@ -224,6 +225,7 @@ class LLM:
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
             self._cost_model = self.kwargs.pop("cost_model", None)
+            self._cost_multiplier = float(self.kwargs.pop("cost_multiplier", 1.0))
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"],
@@ -328,6 +330,9 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            cost_multiplier = float(
+                completion_kwargs.pop("cost_multiplier", self._cost_multiplier)
+            )
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
             #     completion_kwargs["temperature"] = 0.003
@@ -353,6 +358,7 @@ class LLM:
                 response.get("usage"),
                 "complete",
                 response=response,
+                cost_multiplier=cost_multiplier,
             )
 
             # Handle refusal or empty content from the LLM provider
@@ -445,12 +451,14 @@ class LLM:
             litellm.drop_params = True
 
             logger.debug(
-                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
-                f"vision completion API"
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} vision completion API"
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            cost_multiplier = float(
+                completion_kwargs.pop("cost_multiplier", self._cost_multiplier)
+            )
 
             response: dict[str, object] = litellm.completion(
                 messages=messages,
@@ -466,6 +474,7 @@ class LLM:
                 response.get("usage"),
                 "complete_vision",
                 response=response,
+                cost_multiplier=cost_multiplier,
             )
 
             if response_text is None:
@@ -518,6 +527,9 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            cost_multiplier = float(
+                completion_kwargs.pop("cost_multiplier", self._cost_multiplier)
+            )
 
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
@@ -541,6 +553,7 @@ class LLM:
                         chunk.get("usage"),
                         "stream_complete",
                         response=chunk,
+                        cost_multiplier=cost_multiplier,
                     )
 
                 response = self._process_stream_chunk(
@@ -589,6 +602,9 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            cost_multiplier = float(
+                completion_kwargs.pop("cost_multiplier", self._cost_multiplier)
+            )
 
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
@@ -608,6 +624,7 @@ class LLM:
                 response.get("usage"),
                 "acomplete",
                 response=response,
+                cost_multiplier=cost_multiplier,
             )
 
             # Handle refusal or empty content from the LLM provider
@@ -652,8 +669,18 @@ class LLM:
     ) -> int:
         """Returns the context window size of the LLM."""
         try:
-            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
-            return get_max_tokens(model)
+            validated = adapters[adapter_id][Common.MODULE].validate(
+                dict(adapter_metadata)
+            )
+            model = cast("str", validated.get("cost_model") or validated["model"])
+            model_info = litellm.get_model_info(model)
+            context_window = model_info.get("max_input_tokens")
+            if isinstance(context_window, int):
+                return context_window
+            fallback = get_max_tokens(model)
+            if isinstance(fallback, int):
+                return fallback
+            raise ValueError(f"Context window is unavailable for model {model}.")
         except Exception as e:
             logger.warning(f"Failed to get context window size for {adapter_id}: {e}")
             return cls.MAX_TOKENS
@@ -667,10 +694,10 @@ class LLM:
             llm_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
             adapter_id = llm_config[Common.ADAPTER_ID]
             adapter_metadata = llm_config[Common.ADAPTER_METADATA]
-
-            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
-
-            return get_max_tokens(model) - reserved_for_output
+            return (
+                cls.get_context_window_size(adapter_id, adapter_metadata)
+                - reserved_for_output
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to get context window size for {adapter_instance_id}: {e}"
@@ -725,11 +752,12 @@ class LLM:
         self,
         model: str,
         messages: list[dict[str, str]],
-        usage: Mapping[str, int] | None,
+        usage: Mapping[str, Any] | None,
         llm_api: str,
         response: object | None = None,
+        cost_multiplier: float = 1.0,
     ) -> None:
-        usage_data: Mapping[str, int] = usage or {}
+        usage_data: Mapping[str, Any] = usage or {}
         prompt_tokens = usage_data.get("prompt_tokens", 0)
         completion_tokens = usage_data.get("completion_tokens", 0)
         total_tokens = usage_data.get("total_tokens", 0)
@@ -768,12 +796,22 @@ class LLM:
         )
 
         try:
-            prompt_cost, compl_cost = litellm.cost_per_token(
-                model=model,
+            cost_usage = Usage(
                 prompt_tokens=prompt_tokens,
                 completion_tokens=completion_tokens,
+                total_tokens=total_tokens,
+                prompt_tokens_details=usage_data.get("prompt_tokens_details"),
+                completion_tokens_details=usage_data.get("completion_tokens_details"),
+                cache_creation_input_tokens=usage_data.get(
+                    "cache_creation_input_tokens", 0
+                ),
+                cache_read_input_tokens=usage_data.get("cache_read_input_tokens", 0),
             )
-            cost = prompt_cost + compl_cost
+            prompt_cost, compl_cost = litellm.cost_per_token(
+                model=model,
+                usage_object=cost_usage,
+            )
+            cost = (prompt_cost + compl_cost) * cost_multiplier
         except Exception:
             logger.warning(
                 "Failed to compute cost for model=%s; recording as 0.0",
