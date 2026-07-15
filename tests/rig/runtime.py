@@ -263,16 +263,17 @@ def _run(cmd: list[str], *, check: bool = True) -> None:
 
 
 def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
-    """(service name, health URL) for every HTTP service in the platform.
+    """(service name, health URL) for every HTTP service the e2e tier depends on.
 
     Single source of truth for the readiness probe and the e2e smoke test.
-    Paths are service-specific: runner and x2text mount health under blueprint
-    prefixes, and there is no standalone prompt-service (folded into workers).
+    Paths are service-specific: x2text mounts health under a blueprint prefix,
+    and there is no standalone prompt-service (folded into workers). The runner
+    is intentionally absent — container-based execution is being retired in
+    favour of in-worker execution, so e2e must not depend on it being up.
     """
     return [
         ("backend", endpoints.backend_url.rstrip("/") + "/health"),
         ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
-        ("runner", endpoints.runner_url.rstrip("/") + "/v1/api/health"),
         ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
     ]
 

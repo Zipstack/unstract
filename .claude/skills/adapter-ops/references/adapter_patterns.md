@@ -568,48 +568,87 @@ print(schema)
 4. **Missing `is_active: True`** - Adapter won't be registered without it
 5. **Wrong inheritance order** - Parameter class must come before BaseAdapter
 6. **Incorrect provider in get_provider()** - Must match filename and schema path
-7. **Provider name not matching LiteLLM pricing data** - Causes $0 cost calculation (see below)
+7. **Model prefix not resolving in LiteLLM's cost map** - Causes silent $0 cost calculation (see below)
 
-## Provider Name Verification (CRITICAL)
+## Model Prefix Verification (CRITICAL)
 
-The `get_provider()` return value MUST match the `litellm_provider` field in LiteLLM's pricing JSON. A mismatch causes cost calculation to silently fail, returning $0.
+Cost is derived from the **validated model string**, not from `get_provider()`. Whatever
+`validate_model()` emits is handed to `litellm.cost_per_token()`. No cost-map entry means the
+call raises, the exception is swallowed, and the usage row records $0.
+
+### Cost Calculation Flow
+
+1. **Usage recording**: `LLM._record_usage()` logs tokens (no cost math here).
+2. **Cost lookup**:
+   - LLM → `Audit.push_usage_data()` → `cost_per_token(model=model_name)` in `audit.py`
+   - Embedding → `UsageHandler` → `litellm.cost_per_token(...)` in `usage_handler.py`
+   - `model_name` is `self._cost_model or self.kwargs["model"]` — the **prefixed** string.
+3. **Failure mode**: both call sites wrap the lookup in a bare `except` and fall back to
+   `cost_in_dollars = 0.0`, logged at `debug`/`warning`.
+
+The `provider` value travels alongside the usage payload and lands in the `provider` DB column.
+It is **not** consulted for pricing.
+
+Because the failure is swallowed, nothing breaks loudly. Tests pass. Runs succeed. Usage rows
+just quietly say $0.
 
 ### How to Verify
 
-**Before implementing any new adapter:**
+Query the pinned LiteLLM in the sdk1 venv — that's the version that actually runs:
 
 ```bash
-# Step 1: Identify the correct provider name from LiteLLM pricing data
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.key | startswith("YOUR_PROVIDER"))) | .[0].value.litellm_provider'
+cd unstract/sdk1 && uv run python -c "
+import litellm
+from litellm import cost_per_token
 
-# Step 2: Use that exact value in get_provider()
+print([p for p in litellm.provider_list if 'YOUR_VENDOR' in str(p).lower()])
+print([k for k in litellm.model_cost if k.lower().startswith('YOUR_PROVIDER/')])
+
+for m in ['YOUR_PROVIDER/some-model', 'custom_openai/some-model']:
+    try:
+        print(m, cost_per_token(model=m, prompt_tokens=1_000_000, completion_tokens=1_000_000))
+    except Exception:
+        print(m, 'RAISES => cost silently recorded as 0.0')
+"
 ```
 
-### Real Example: Azure AI Foundry Bug
+### Real Example: the `custom_openai/` trap
 
-**Wrong implementation (caused $0 costs):**
+A vendor speaking the OpenAI wire protocol invites subclassing
+`OpenAICompatibleLLMParameters` and pinning `api_base`. That class's `validate_model()`
+unconditionally prepends `custom_openai/`, and **no** LiteLLM cost-map key uses that prefix.
+
 ```python
-@staticmethod
-def get_provider() -> str:
-    return "azure_ai_foundry"  # WRONG - doesn't match litellm_provider
+# Vendor has a native LiteLLM provider AND priced models.
+# WRONG - emits "custom_openai/MiniMax-M3", which is not in the cost map -> $0
+class MiniMaxLLMParameters(OpenAICompatibleLLMParameters):
+    api_base: str = "https://api.minimax.io/v1"
+
+# CORRECT - emits "minimax/MiniMax-M3", priced at $0.30 / $1.20 per 1M tokens
+class MiniMaxLLMParameters(BaseChatCompletionParameters):
+    ...  # follow OpenRouterLLMParameters
 ```
 
-**Correct implementation:**
-```python
-@staticmethod
-def get_provider() -> str:
-    return "azure_ai"  # CORRECT - matches litellm_provider in pricing data
-```
+Note that `get_provider()` returns `"minimax"` in *both* cases and matches `litellm_provider`
+exactly. The provider string was never the problem — the model prefix was.
 
-**How the bug was found:**
-```bash
-# Check what LiteLLM actually uses for azure_ai models
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0]'
+### Choosing a base class
 
-# Output shows: "litellm_provider": "azure_ai" (NOT "azure_ai_foundry")
-```
+| If… | Then | Cost tracking |
+|-----|------|---------------|
+| LiteLLM has a native provider for the vendor | `BaseChatCompletionParameters`, emit `{provider}/{model}` — see `OpenRouterLLMParameters` | ✅ resolves |
+| LiteLLM has **no** priced models for the vendor | `OpenAICompatibleLLMParameters`, pin `api_base` — see `NvidiaBuildLLMParameters` | ⚠️ $0 regardless, nothing forfeited |
+
+`NvidiaBuildLLMParameters` is a safe template *only because* LiteLLM prices zero `nvidia_nim/`
+chat models. Don't copy its shape for a vendor LiteLLM prices — verify first.
+
+### What `get_provider()` is for
+
+1. Resolving the static schema path: `{type}1/static/{get_provider()}.json` (case-sensitive).
+2. The `provider` column on the usage row — metadata only.
+
+Match it to LiteLLM's `litellm_provider` for hygiene and because it coincides with the prefix
+when routing natively. But it does not, by itself, guarantee cost resolution.
 
 ### Provider Name Reference
 
@@ -623,14 +662,3 @@ curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_
 | Google VertexAI | `vertex_ai` |
 | Mistral | `mistral` |
 | Ollama | `ollama` |
-
-### Cost Calculation Flow
-
-Understanding why this matters:
-
-1. **Usage Recording**: `LLM._record_usage()` → `Audit.push_usage_data(provider=get_provider())`
-2. **Platform Service**: Receives provider name with usage data
-3. **Cost Lookup**: `CostCalculationHelper` checks `provider in model_info.get("litellm_provider", "")`
-4. **Result**: If check fails, returns `cost = 0`
-
-The check `"azure_ai_foundry" in "azure_ai"` returns `False`, causing silent failure.
