@@ -5,8 +5,9 @@ from django.db import migrations, models
 
 
 # Seed function ported from the squashed 0005_pgorchestratorlock: leader-election
-# is a bare `UPDATE ... WHERE id = 1`, so the single lock row must exist or every
-# try_acquire silently returns False forever. get_or_create keeps it idempotent.
+# is a plain `UPDATE` keyed on `id = 1` (with a lease predicate) and has NO
+# upsert/INSERT fallback, so the single lock row must pre-exist or every
+# try_acquire returns False forever. get_or_create keeps it idempotent.
 def seed_single_row(apps, schema_editor):
     lock_model = apps.get_model("pg_queue", "PgOrchestratorLock")
     lock_model.objects.get_or_create(id=1, defaults={"leader": ""})
@@ -212,13 +213,28 @@ class Migration(migrations.Migration):
             name="state",
             field=models.TextField(default="ready"),
         ),
+        # Django's AddField backfills every existing row to 'ready' then DROPs the
+        # DB default (it manages defaults at the ORM layer). Re-add a DB-level
+        # default so the schema is self-protecting: a raw INSERT that omits `state`
+        # still lands a valid 'ready' row rather than a NOT-NULL violation.
+        # (The ORM always sends state='ready' via the field default, so this guards
+        # only raw SQL; insert_message_sql() also sets it explicitly — belt +
+        # suspenders.) Metadata-only; touches no row data.
         migrations.RunSQL(
             sql="ALTER TABLE pg_queue_message ALTER COLUMN state SET DEFAULT 'ready'",
             reverse_sql="ALTER TABLE pg_queue_message ALTER COLUMN state DROP DEFAULT",
         ),
+        # Deploy-safety backfill: the new claim keys off `state` and ignores `vt`,
+        # but AddField set EVERY pre-existing row (including claimed-but-unacked
+        # in-flight rows, which carry a future `vt`) to 'ready'. Without this, a
+        # rolling deploy over a non-empty queue would make a still-processing
+        # message instantly re-claimable → one-time double processing (absorbed by
+        # the idempotency stack, but avoidable). Land genuinely in-flight rows as
+        # 'claimed' so they stay invisible until their lease expires. No-op at the
+        # first enablement (the queue table is empty while the flag is off).
         migrations.RunSQL(
             sql="UPDATE pg_queue_message SET state = 'claimed' WHERE vt > now()",
-            reverse_sql="",
+            reverse_sql=migrations.RunSQL.noop,
         ),
         migrations.AddIndex(
             model_name="pgqueuemessage",
@@ -245,4 +261,14 @@ class Migration(migrations.Migration):
                 name="pg_queue_message_state_valid",
             ),
         ),
+        # NOTE (UN-3445): performance tuning for the state-machine churn
+        # (fillfactor + aggressive per-table autovacuum) is deliberately KEPT OUT of
+        # this migration. Those are core-Postgres reloptions, but they are (a)
+        # environment-specific tuning that belongs in the ops/deploy layer, not app
+        # schema, and (b) potentially restricted by a locked-down managed role
+        # (Cloud SQL / RDS / Azure), where a failed `ALTER TABLE SET (autovacuum_*)`
+        # would abort the whole migration. The fix itself (state column + partial
+        # indexes) is pure portable DDL and needs none of it. If a soak shows bloat,
+        # apply the tuning per environment via ops (see the PG-Queue Claim State
+        # runbook in Confluence), not here.
     ]
