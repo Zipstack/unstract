@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Any
 
+from account_v2.models import User
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
@@ -178,7 +179,7 @@ class AdapterInstanceViewSet(
         queryset = (
             AdapterInstance.objects.for_user(self.request.user)
             .select_related("created_by")
-            .prefetch_related("memberships")
+            .prefetch_related("memberships__user")
         )
         if filter_args := FilterHelper.build_filter_args(
             self.request,
@@ -428,6 +429,17 @@ class AdapterInstanceViewSet(
         from tenant_account_v2.sharing_helpers import compute_effective_members
 
         return {member["user_id"] for member in compute_effective_members(adapter)}
+
+    def on_owner_removed(self, resource: AdapterInstance, user: User) -> None:
+        """Clear the removed co-owner's dangling default adapter — but only if
+        they lost all effective access (they may still be a viewer, in a shared
+        group, or covered by ``shared_to_org``). Mirrors the ``share`` cleanup,
+        which ``remove_co_owner`` would otherwise skip.
+        """
+        resource.refresh_from_db()
+        if user.pk in self._effective_member_ids(resource):
+            return
+        self._clear_default_adapter_for_removed_users(resource, {user.pk})
 
     def _notify_shared_users(
         self,

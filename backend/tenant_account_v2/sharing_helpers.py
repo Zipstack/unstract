@@ -34,6 +34,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Model, QuerySet
+from django.db.models.functions import Cast
 from rest_framework.exceptions import ValidationError
 from utils.user_context import UserContext
 
@@ -183,38 +184,46 @@ def list_resources_shared_with_group(
     return model.objects.filter(pk__in=pks)
 
 
+def _object_id_subquery(qs: QuerySet[Any], model: type[Model]) -> QuerySet[Any]:
+    """``object_id`` values of ``qs`` as a subquery for ``Q(pk__in=...)``.
+
+    ``object_id`` is varchar; for UUID-keyed resources (all in-scope) it is
+    ``Cast`` to UUID inside the subquery so Postgres accepts the ``uuid = uuid``
+    comparison — keeping the lookup in SQL instead of materialising the ids to
+    Python and inlining them as literals.
+    """
+    if isinstance(model._meta.pk, models.UUIDField):
+        return qs.values(obj_uuid=Cast("object_id", output_field=models.UUIDField()))
+    return qs.values("object_id")
+
+
 def resources_visible_via_groups(
     model: type[Model], user_group_ids: Iterable[int]
-) -> list[Any]:
-    """IDs of ``model`` rows shared with any group the user belongs to.
+) -> QuerySet[Any]:
+    """Subquery of ``model`` PKs shared with any group the user belongs to.
 
-    Returns a Python list (not a subquery) so each value can be coerced to
-    the resource PK type. ``ResourceGroupShare.object_id`` is a varchar; for
-    UUID-keyed resources (all 7 in-scope today) Postgres refuses the
-    implicit ``uuid = character varying`` comparison when this is fed into
-    ``Q(pk__in=...)``, so we cast in Python instead. The result set is
-    bounded by ``(groups user belongs to) × (shared rows of that model)``.
+    Feeds each resource manager's ``for_user()`` ``Q(pk__in=...)``. Returns a
+    ``ValuesQuerySet`` (subquery) rather than a materialised list so the lookup
+    stays in SQL — see :func:`_object_id_subquery` for the varchar/UUID cast.
     """
-    raw_ids = ResourceGroupShare.objects.filter(
+    qs = ResourceGroupShare.objects.filter(
         content_type=ContentType.objects.get_for_model(model),
         group_id__in=user_group_ids,
-    ).values_list("object_id", flat=True)
-    if isinstance(model._meta.pk, models.UUIDField):
-        return _safe_uuids(raw_ids)
-    return list(raw_ids)
+    )
+    return _object_id_subquery(qs, model)
 
 
 def resources_visible_via_memberships(
     model: type[Model], user: Any, organization: Organization | None = None
-) -> list[Any]:
-    """PKs of ``model`` rows on which ``user`` holds a ``ResourceMembership``
+) -> QuerySet[Any]:
+    """Subquery of ``model`` PKs on which ``user`` holds a ``ResourceMembership``
     (OWNER or VIEWER), scoped to ``organization``.
 
-    Per-user analogue of :func:`resources_visible_via_groups`.
-    ``ResourceMembership.object_id`` is varchar, so a ``memberships__user`` JOIN
-    makes Postgres refuse the implicit ``uuid = character varying`` comparison;
-    we materialise the ids and cast in Python instead. Bounded by the rows the
-    user is a member of.
+    Per-user analogue of :func:`resources_visible_via_groups`. Returns a
+    ``ValuesQuerySet`` (subquery), not a materialised list: the paginated
+    executions list calls this three times per request, and inlining every
+    membership id as a literal defeated plan caching. See
+    :func:`_object_id_subquery` for the varchar/UUID cast.
 
     Org scoping is load-bearing: a user in multiple orgs holds membership rows
     in each, so an unscoped lookup leaks resource ids across orgs on the one
@@ -230,10 +239,7 @@ def resources_visible_via_memberships(
     )
     if organization is not None:
         qs = qs.filter(organization=organization)
-    raw_ids = qs.values_list("object_id", flat=True)
-    if isinstance(model._meta.pk, models.UUIDField):
-        return _safe_uuids(raw_ids)
-    return list(raw_ids)
+    return _object_id_subquery(qs, model)
 
 
 def serialize_group_refs(resource_obj: Any) -> list[dict[str, Any]]:

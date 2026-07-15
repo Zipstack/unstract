@@ -273,7 +273,7 @@ class APIDeploymentViewSet(
         queryset = (
             APIDeployment.objects.for_user(self.request.user)
             .select_related("created_by")
-            .prefetch_related("memberships")
+            .prefetch_related("memberships__user")
             .annotate(last_run_time_annotated=Subquery(last_run_subquery))
             .order_by(F("last_run_time_annotated").desc(nulls_last=True))
         )
@@ -400,9 +400,15 @@ class APIDeploymentViewSet(
         )
         return response
 
-    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
-        """List users who have access to this API deployment."""
+        """List users who have access to this API deployment.
+
+        Viewer-tier by design (``get_permissions`` →
+        ``IsOwnerOrSharedUserOrSharedToOrg``): a shared user may open the owner
+        popup (co-owners spec §10). ``get_permissions`` ignores any
+        ``permission_classes`` set on the decorator, so none is set here.
+        """
         instance = self.get_object()
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)

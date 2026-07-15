@@ -25,11 +25,14 @@ def cleanup_user_org_access(
     Two cleanups:
     1. Group memberships for that org (group-derived access goes away live
        via ``for_user()``).
-    2. Direct VIEWER membership rows on every shareable resource of that org
-       — closes the rejoin backdoor where a re-invited user would silently
-       regain direct access. OWNER rows are left intact (parity with the old
-       ``shared_users``-only purge, where ``created_by`` ownership survived
-       re-invite); a departing owner's resources stay admin-manageable.
+    2. Direct membership rows on every shareable resource of that org: all
+       VIEWER rows, plus OWNER rows wherever another owner remains. Closes the
+       co-owner rejoin backdoor — a re-invited user (same ``User.id``) would
+       otherwise silently regain co-ownership, since ``_is_resource_owner``
+       grants on any surviving OWNER row with no live-membership check. A sole
+       owner's OWNER row is kept so the resource is never left ownerless
+       (spec §7.4); ``created_by`` (audit) is untouched and admin access is
+       independent (``IsOwner`` OR ``_is_organization_admin``).
 
     Uses a signal (not DB CASCADE) so notification / audit hooks can attach
     here later without a schema change. The whole purge runs in one
@@ -50,18 +53,42 @@ def cleanup_user_org_access(
                 instance.organization_id,
             )
 
-        # One polymorphic table + explicit ``organization`` FK — a single
-        # query purges direct VIEWER access across every shareable resource,
-        # unscoped by ``UserContext`` (None outside an HTTP request).
-        removed, _ = ResourceMembership.objects.filter(
+        # Direct access on this org's shareable resources (one polymorphic
+        # table, unscoped by ``UserContext`` which is None outside a request).
+        # VIEWER rows always go.
+        viewer_removed, _ = ResourceMembership.objects.filter(
             user=instance.user,
             organization=instance.organization,
             role=ResourceRole.VIEWER,
         ).delete()
-        if removed:
+
+        # OWNER rows go only where another owner remains, so a solely-owned
+        # resource is never left ownerless (spec §7.4). Set-based (3 queries,
+        # not per-resource) since a power user may own many resources.
+        owner_rows = list(
+            ResourceMembership.objects.filter(
+                user=instance.user,
+                organization=instance.organization,
+                role=ResourceRole.OWNER,
+            ).values_list("pk", "content_type_id", "object_id")
+        )
+        co_owned = set(
+            ResourceMembership.objects.filter(
+                role=ResourceRole.OWNER,
+                object_id__in=[oid for _, _, oid in owner_rows],
+            )
+            .exclude(user=instance.user)
+            .values_list("content_type_id", "object_id")
+        )
+        purge_pks = [pk for pk, ct_id, oid in owner_rows if (ct_id, oid) in co_owned]
+        owner_removed, _ = ResourceMembership.objects.filter(pk__in=purge_pks).delete()
+
+        if viewer_removed or owner_removed:
             logger.info(
-                "Removed %s VIEWER memberships for user=%s in org=%s",
-                removed,
+                "Removed %s VIEWER + %s OWNER memberships for user=%s in org=%s "
+                "(kept sole-owner rows)",
+                viewer_removed,
+                owner_removed,
                 instance.user_id,
                 instance.organization_id,
             )

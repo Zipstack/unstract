@@ -90,7 +90,7 @@ class ConnectorInstanceViewSet(
         queryset = (
             ConnectorInstance.objects.for_user(self.request.user)
             .select_related("created_by")
-            .prefetch_related("memberships")
+            .prefetch_related("memberships__user")
         )
 
         filter_args = FilterHelper.build_filter_args(

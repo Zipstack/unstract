@@ -18,7 +18,10 @@ class HasMembersMixin:
         ).select_related("user")
 
     def owners(self) -> list[Any]:
-        return [membership.user for membership in self.owner_memberships()]
+        # Service accounts (machine identities) are excluded from the co-owner
+        # surface everywhere (see ``AddOwnerSerializer``); keep them off the
+        # roster so they never appear as removable co-owners.
+        return [m.user for m in self.owner_memberships() if not m.user.is_service_account]
 
     def viewer_memberships(self) -> "models.QuerySet[Any]":
         return self.memberships.filter(  # type: ignore[attr-defined]
@@ -32,9 +35,11 @@ class HasMembersMixin:
         return [membership.user for membership in self.viewer_memberships()]
 
     def co_owners_count(self) -> int:
-        # ``.all()`` hits the prefetch cache in list views; 1 query otherwise.
+        # ``.all()`` hits the prefetch cache in list views (``memberships__user``
+        # keeps ``m.user`` cached); 1 query otherwise. Service accounts excluded
+        # to match ``owners()``.
         return sum(
-            m.role == ResourceRole.OWNER
+            m.role == ResourceRole.OWNER and not m.user.is_service_account
             for m in self.memberships.all()  # type: ignore[attr-defined]
         )
 

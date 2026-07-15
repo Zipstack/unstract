@@ -57,6 +57,12 @@ class RemoveOwnerSerializer(serializers.Serializer):
         user = self.context["user_to_remove"]
         if not resource.memberships.filter(user=user, role=ResourceRole.OWNER).exists():
             raise serializers.ValidationError("User is not an owner of this resource.")
+        # Symmetric with ``AddOwnerSerializer``: a removed service-account owner
+        # can't be re-added, so block removal to avoid an irrecoverable state.
+        if user.is_service_account:
+            raise serializers.ValidationError(
+                "Service accounts cannot be removed as owners."
+            )
         return attrs
 
     def save(self, **kwargs) -> None:

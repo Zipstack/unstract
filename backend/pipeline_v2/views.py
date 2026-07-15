@@ -84,7 +84,7 @@ class PipelineViewSet(
         queryset = (
             Pipeline.objects.for_user(self.request.user)
             .select_related("created_by")
-            .prefetch_related("memberships")
+            .prefetch_related("memberships__user")
         )
 
         # Apply type filter if specified
@@ -168,9 +168,15 @@ class PipelineViewSet(
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
-    @action(detail=True, methods=["get"], url_path="users", permission_classes=[IsOwner])
+    @action(detail=True, methods=["get"], url_path="users")
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
-        """Returns the list of users the pipeline is shared with."""
+        """Returns the list of users the pipeline is shared with.
+
+        Viewer-tier by design (``get_permissions`` →
+        ``IsOwnerOrSharedUserOrSharedToOrg``): a shared user may open the owner
+        popup (co-owners spec §10). ``get_permissions`` ignores any
+        ``permission_classes`` set on the decorator, so none is set here.
+        """
         pipeline = self.get_object()
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)

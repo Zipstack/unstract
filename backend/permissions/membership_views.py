@@ -64,8 +64,17 @@ class OwnerManagementMixin:
         )
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        self.on_owner_removed(resource, user_to_remove)
         self._notify_owner_removed(resource, user_to_remove, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+    def on_owner_removed(self, resource: Any, user: User) -> None:  # NOSONAR
+        """Hook: resource-specific cleanup after a user loses OWNER access.
+
+        Default no-op. The ``share`` path clears dangling defaults on access
+        loss; ViewSets whose resource has such state (e.g. adapters) override
+        this so ``remove_co_owner`` gets the same cleanup.
+        """
 
     @staticmethod
     def _owner_refs(resource: Any) -> list[dict[str, Any]]:

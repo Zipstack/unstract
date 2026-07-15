@@ -109,7 +109,9 @@ class WorkflowViewSet(
             else Workflow.objects.for_user(self.request.user)
         )
         # Avoid per-row queries for owner/co-owner + creator fields in list views
-        queryset = queryset.select_related("created_by").prefetch_related("memberships")
+        queryset = queryset.select_related("created_by").prefetch_related(
+            "memberships__user"
+        )
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
             queryset = queryset.order_by("-modified_at")
