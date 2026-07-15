@@ -35,6 +35,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Model, QuerySet
 from rest_framework.exceptions import ValidationError
+from utils.user_context import UserContext
 
 from tenant_account_v2.models import (
     GroupMembership,
@@ -203,20 +204,33 @@ def resources_visible_via_groups(
     return list(raw_ids)
 
 
-def resources_visible_via_memberships(model: type[Model], user: Any) -> list[Any]:
+def resources_visible_via_memberships(
+    model: type[Model], user: Any, organization: Organization | None = None
+) -> list[Any]:
     """PKs of ``model`` rows on which ``user`` holds a ``ResourceMembership``
-    (OWNER or VIEWER).
+    (OWNER or VIEWER), scoped to ``organization``.
 
     Per-user analogue of :func:`resources_visible_via_groups`.
     ``ResourceMembership.object_id`` is varchar, so a ``memberships__user`` JOIN
     makes Postgres refuse the implicit ``uuid = character varying`` comparison;
     we materialise the ids and cast in Python instead. Bounded by the rows the
     user is a member of.
+
+    Org scoping is load-bearing: a user in multiple orgs holds membership rows
+    in each, so an unscoped lookup leaks resource ids across orgs on the one
+    caller (``WorkflowExecutionManager``) whose outer queryset isn't already
+    org-scoped. Falls back to ``UserContext`` so request paths need no change;
+    pass ``organization`` explicitly on worker/management paths where
+    ``UserContext`` is empty.
     """
-    raw_ids = ResourceMembership.objects.filter(
+    organization = organization or UserContext.get_organization()
+    qs = ResourceMembership.objects.filter(
         content_type=ContentType.objects.get_for_model(model),
         user=user,
-    ).values_list("object_id", flat=True)
+    )
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+    raw_ids = qs.values_list("object_id", flat=True)
     if isinstance(model._meta.pk, models.UUIDField):
         return _safe_uuids(raw_ids)
     return list(raw_ids)
