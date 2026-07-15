@@ -123,26 +123,23 @@ def test_minimax_temperature_uses_official_default_and_range() -> None:
             )
 
 
-def test_minimax_anthropic_temperature_uses_protocol_range() -> None:
+def test_minimax_anthropic_temperature_uses_official_range() -> None:
     validated = MiniMaxLLMParameters.validate(
         {
             "model": "MiniMax-M3",
             "api_key": "k",
             "api_base": _MINIMAX_ANTHROPIC_API_BASE,
-            "temperature": 1,
+            "temperature": 2,
         }
     )
 
-    assert validated["temperature"] == pytest.approx(1)
-    with pytest.raises(ValueError, match="Anthropic-compatible"):
-        MiniMaxLLMParameters.validate(
-            {
-                "model": "MiniMax-M3",
-                "api_key": "k",
-                "api_base": _MINIMAX_ANTHROPIC_API_BASE,
-                "temperature": 1.1,
-            }
-        )
+    assert validated["temperature"] == pytest.approx(2)
+
+
+@pytest.mark.parametrize("model", [None, "", "   "])
+def test_minimax_rejects_missing_model(model: str | None) -> None:
+    with pytest.raises(ValueError, match="model is required"):
+        MiniMaxLLMParameters.validate({"model": model, "api_key": "k"})
 
 
 @pytest.mark.parametrize("service_tier", ["standard", "priority"])
@@ -193,6 +190,14 @@ def test_minimax_m2_defaults_to_adaptive_thinking() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
     assert validated["thinking"] == {"type": "adaptive"}
+
+
+def test_minimax_m2_thinking_rules_require_model_family_boundary() -> None:
+    validated = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M20", "api_key": "k", "enable_thinking": False}
+    )
+
+    assert validated["thinking"] == {"type": "disabled"}
 
 
 def test_openrouter_llm_routes_via_native_openrouter_provider() -> None:

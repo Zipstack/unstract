@@ -543,6 +543,10 @@ def _minimax_provider_prefix(api_base: str) -> str:
     return _MINIMAX_PROVIDER_PREFIX
 
 
+def _is_minimax_m2_model(model_id: str) -> bool:
+    return re.match(r"^minimax-m2(?:$|[.-])", model_id, re.IGNORECASE) is not None
+
+
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
     """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
 
@@ -588,7 +592,7 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
             }
 
         thinking = adapter_metadata.get("thinking")
-        if thinking is None and model_id.lower().startswith("minimax-m2"):
+        if thinking is None and _is_minimax_m2_model(model_id):
             thinking = {"type": "adaptive"}
             adapter_metadata["thinking"] = thinking
         if thinking is not None:
@@ -597,29 +601,18 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
                 "disabled",
             }:
                 raise ValueError("thinking.type must be adaptive or disabled.")
-            if (
-                model_id.lower().startswith("minimax-m2")
-                and thinking["type"] == "disabled"
-            ):
+            if _is_minimax_m2_model(model_id) and thinking["type"] == "disabled":
                 raise ValueError(f"{model_id} does not support disabling thinking.")
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
-        if (
-            _minimax_provider_prefix(validated["api_base"])
-            == _MINIMAX_ANTHROPIC_PROVIDER_PREFIX
-            and validated["temperature"] is not None
-            and validated["temperature"] > 1
-        ):
-            raise ValueError(
-                "temperature must be between 0 and 1 for the Anthropic-compatible API."
-            )
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
         return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = str(adapter_metadata.get("model", "")).strip()
+        raw_model = adapter_metadata.get("model")
+        model = str(raw_model).strip() if raw_model is not None else ""
         if not model:
             raise ValueError("model is required for the MiniMax adapter.")
         for prefix in (
