@@ -255,6 +255,35 @@ class SignalCleanupTests(GroupSharingTestBase):
         )
         self.assertNotIn(self.member.id, _shared_user_ids(self.workflow))
 
+    def test_org_member_removal_purges_co_owner_but_keeps_sole_owner(self) -> None:
+        """OWNER rows are purged on org exit EXCEPT where the departing user is
+        the last owner — closes the co-owner rejoin backdoor without orphaning a
+        solely-owned resource (UN-2202 review #2).
+        """
+        # self.member is a co-owner of the shared workflow (self.owner owns it
+        # too) and the SOLE owner of a second workflow.
+        self.workflow.memberships.create(user=self.member, role=ResourceRole.OWNER)
+        solo = Workflow.objects.create(
+            workflow_name="wf-solo", organization=self.org, created_by=self.member
+        )
+        solo.memberships.create(user=self.member, role=ResourceRole.OWNER)
+
+        OrganizationMember.objects.get(user=self.member).delete()
+
+        # co-owner row purged (owner remains) → rejoin backdoor closed
+        self.assertEqual(
+            set(
+                self.workflow.memberships.filter(role=ResourceRole.OWNER).values_list(
+                    "user_id", flat=True
+                )
+            ),
+            {self.owner.pk},
+        )
+        # sole-owner row kept → resource not orphaned (spec §7.4)
+        self.assertTrue(
+            solo.memberships.filter(user=self.member, role=ResourceRole.OWNER).exists()
+        )
+
     def test_resource_delete_purges_group_shares(self) -> None:
         set_resource_share_groups(self.workflow, [self.group.id])
         content_type = ContentType.objects.get_for_model(Workflow)

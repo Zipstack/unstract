@@ -122,6 +122,26 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(self._owner_ids(), {self.coowner.pk})
 
+    def test_remove_rejects_service_account(self) -> None:
+        """Symmetric with the add-side guard: a service-account owner cannot be
+        removed, so it can't be stranded off the resource (UN-2202 review #7)."""
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, svc.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(svc.pk, self._owner_ids())
+
+    def test_shared_viewer_can_list_shared_users(self) -> None:
+        """``list_of_shared_users`` is viewer-tier by design (spec §10): a shared
+        user may open the owner popup. Guards against a re-tighten to IsOwner
+        (UN-2202 review #6)."""
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        view = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=self.viewer)
+        response = view(request, pk=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
 
 class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
     """IsOwner branches, for_user visibility, HasMembersMixin, save() org-derivation."""
@@ -168,6 +188,23 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
             {u.id for u in self.workflow.owners()}, {self.owner.pk, self.coowner.pk}
         )
         self.assertEqual({u.id for u in self.workflow.viewers()}, {self.viewer.pk})
+
+    def test_service_account_excluded_from_owner_roster(self) -> None:
+        """A service-account OWNER row is a real grant but must not surface as a
+        removable co-owner or inflate the count badge (UN-2202 review #7)."""
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
+        self.assertEqual(
+            {u.id for u in self.workflow.owners()}, {self.owner.pk, self.coowner.pk}
+        )
+        self.assertEqual(self.workflow.co_owners_count(), 2)
+        # the filter is display-only — the SA still genuinely owns the resource
+        self.assertTrue(
+            self.workflow.memberships.filter(
+                user=svc, role=ResourceRole.OWNER
+            ).exists()
+        )
 
     def test_membership_save_derives_organization(self) -> None:
         # organization is server-derived from the resource, never passed in.
@@ -387,3 +424,61 @@ class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
         # (no owner row) is still cleared.
         self.assertNotIn(self.coowner.pk, captured["removed"])
         self.assertIn(self.viewer.pk, captured["removed"])
+
+
+class AdapterRemoveCoOwnerCleanupTests(CoOwnerOrgTestMixin, TestCase):
+    """``remove_co_owner`` clears a co-owner's now-dangling default adapter, but
+    only when they lose all effective access — mirroring the ``share`` cleanup
+    the co-owner-removal path previously skipped (UN-2202 review #4).
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
+        from tenant_account_v2.models import OrganizationMember
+
+        self.adapter = AdapterInstance.objects.create(
+            adapter_name="ad-1",
+            adapter_id="openai|test",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.adapter.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.coowner_member = OrganizationMember.objects.get(user=self.coowner)
+        UserDefaultAdapter.objects.create(
+            organization_member=self.coowner_member, default_llm_adapter=self.adapter
+        )
+        self.factory = APIRequestFactory()
+
+    def _remove(self, actor: User, user_id: int) -> Response:
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        view = AdapterInstanceViewSet.as_view({"delete": "remove_co_owner"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.adapter.pk), user_id=str(user_id))
+
+    def _default_llm_id(self) -> int | None:
+        from adapter_processor_v2.models import UserDefaultAdapter
+
+        return UserDefaultAdapter.objects.get(
+            organization_member=self.coowner_member
+        ).default_llm_adapter_id
+
+    def test_remove_clears_dangling_default(self) -> None:
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        # co-owner lost all access → their default-adapter link is nulled
+        self.assertIsNone(self._default_llm_id())
+
+    def test_remove_keeps_default_when_access_remains(self) -> None:
+        # shared_to_org keeps the removed co-owner as an effective (org) member,
+        # so their default must NOT be cleared.
+        self.adapter.shared_to_org = True
+        self.adapter.save(update_fields=["shared_to_org"])
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self._default_llm_id(), self.adapter.pk)
