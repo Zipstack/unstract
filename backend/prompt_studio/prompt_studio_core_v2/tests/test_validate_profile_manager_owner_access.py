@@ -181,7 +181,12 @@ class TestCreatorBypasses:
 
 
 class TestDenialMessage:
-    """The message must name the creator, not 'You', and be a plain string."""
+    """The message must blame the creator role (never 'You'), carry no PII,
+    and be a plain string.
+
+    Post-fix the only audience for these denials is non-admin
+    collaborators, so the creator's email stays in server logs only.
+    """
 
     def _denied(self, *, creator_is_member: bool) -> PSPermissionError:
         creator = _user("userb", "userb@org.com")
@@ -196,16 +201,18 @@ class TestDenialMessage:
             _run_check(profile, creator_is_member=creator_is_member)
         return exc_info.value
 
-    def test_message_names_creator_and_adapter(self) -> None:
+    def test_message_blames_creator_without_pii(self) -> None:
         exc = self._denied(creator_is_member=True)
 
         # A tuple detail (the old ``error_msg = (f"...",)`` bug) becomes a
         # list in DRF's APIException — detail must stay a plain string.
         assert isinstance(exc.detail, str), "error detail must be a string"
         message = str(exc)
-        assert "userb@org.com" in message
+        assert "userb@org.com" not in message, "no PII in user-facing errors"
+        assert "created" in message
         assert "llm-1" in message
         assert "You do not have access" not in message
+        assert "admin" in message, "remediation must point at an org admin"
 
     def test_message_flags_former_member_creator(self) -> None:
         """Case 7: offboarded creator — say so instead of a bare denial."""
@@ -213,7 +220,7 @@ class TestDenialMessage:
         message = str(exc)
 
         assert isinstance(exc.detail, str)
-        assert "userb@org.com" in message
+        assert "userb@org.com" not in message
         assert "no longer a member" in message
 
     def test_message_lists_all_inaccessible_adapters(self) -> None:

@@ -261,30 +261,33 @@ class PromptStudioHelper:
             request_user_id,
         )
 
+        # Creator identity stays in server logs only — this error is shown
+        # to non-admin collaborators (admins bypass above), so no PII here.
         denied_names = ", ".join(adapter.adapter_name for adapter in denied)
         profile_ref = (
             f"This project's LLM profile '{profile_manager.profile_name}' was"
-            f" created by {owner.email}"
+            f" created by another user"
         )
         if not OrganizationMemberService.get_user_by_id(owner.id):
             error_msg = (
-                f"Permission Error: {profile_ref}, who is no longer a member of"
-                f" this organization. Recreate the default profile, or ask an"
-                f" admin to share these adapters with everyone: {denied_names}."
+                f"Permission Error: {profile_ref} who is no longer a member of"
+                f" this organization. Ask an org admin to recreate the default"
+                f" profile, or to share these adapters with everyone:"
+                f" {denied_names}."
             )
         elif len(denied) > 1:
             error_msg = (
-                f"Permission Error: {profile_ref}, who no longer has access to"
-                f" these adapters: {denied_names}. Re-share them with the"
-                f" creator, share them with everyone, or recreate the profile"
-                f" using adapters you have access to."
+                f"Permission Error: {profile_ref} who no longer has access to"
+                f" these adapters: {denied_names}. Ask an org admin to re-share"
+                f" them with the profile's creator, share them with everyone,"
+                f" or recreate the profile."
             )
         else:
             error_msg = (
-                f"Permission Error: {profile_ref}, who no longer has access to"
-                f" the adapter '{denied_names}'. Re-share the adapter with"
-                f" them, share it with everyone, or recreate the profile using"
-                f" adapters you have access to."
+                f"Permission Error: {profile_ref} who no longer has access to"
+                f" the adapter '{denied_names}'. Ask an org admin to re-share"
+                f" it with the profile's creator, share it with everyone, or"
+                f" recreate the profile."
             )
 
         raise PermissionError(error_msg)
@@ -1593,7 +1596,7 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
-        request_user_id=None,
+        request_user_id: str | None = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
@@ -1700,7 +1703,7 @@ class PromptStudioHelper:
         org_id,
         document_id,
         run_id,
-        request_user_id=None,
+        request_user_id: str | None = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
