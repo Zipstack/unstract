@@ -284,6 +284,32 @@ class SignalCleanupTests(GroupSharingTestBase):
             solo.memberships.filter(user=self.member, role=ResourceRole.OWNER).exists()
         )
 
+    def test_org_member_removal_ignores_stale_ex_member_owner_rows(self) -> None:
+        """A departed user's kept OWNER row is not "another owner": counting
+        it would purge the last LIVE owner, leaving the resource manageable by
+        nobody in the org (UN-2202 review #5).
+        """
+        wf = Workflow.objects.create(
+            workflow_name="wf-stale", organization=self.org, created_by=self.member
+        )
+        wf.memberships.create(user=self.member, role=ResourceRole.OWNER)
+
+        # Step 1: the sole owner departs — the carve-out keeps the (now
+        # stale) row.
+        OrganizationMember.objects.get(user=self.member).delete()
+        self.assertTrue(
+            wf.memberships.filter(user=self.member, role=ResourceRole.OWNER).exists()
+        )
+
+        # Step 2: an org admin later adds a live co-owner, who then departs.
+        wf.memberships.create(user=self.outsider, role=ResourceRole.OWNER)
+        OrganizationMember.objects.get(user=self.outsider).delete()
+
+        # The live owner's row survives — the stale row didn't count.
+        self.assertTrue(
+            wf.memberships.filter(user=self.outsider, role=ResourceRole.OWNER).exists()
+        )
+
     def test_resource_delete_purges_group_shares(self) -> None:
         set_resource_share_groups(self.workflow, [self.group.id])
         content_type = ContentType.objects.get_for_model(Workflow)

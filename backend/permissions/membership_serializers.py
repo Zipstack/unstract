@@ -69,11 +69,20 @@ class RemoveOwnerSerializer(serializers.Serializer):
         resource = self.context["resource"]
         user = self.context["user_to_remove"]
         with transaction.atomic():
-            # Lock the resource so a concurrent removal can't drop the last two
-            # owners at once.
-            locked = type(resource).objects.select_for_update().get(pk=resource.pk)
-            if locked.memberships.filter(role=ResourceRole.OWNER).count() <= 1:
+            # Lock the OWNER membership rows themselves, not the resource row:
+            # the org-exit purge (``tenant_account_v2.signals``) guards the
+            # same last-owner invariant, and only a shared lock target
+            # serializes the two paths (ordered by pk to match its scan and
+            # avoid deadlocks). Materialised via ``list`` — a locked
+            # ``.count()`` silently drops FOR UPDATE.
+            owner_pks = list(
+                resource.memberships.select_for_update()
+                .filter(role=ResourceRole.OWNER)
+                .order_by("pk")
+                .values_list("pk", flat=True)
+            )
+            if len(owner_pks) <= 1:
                 raise serializers.ValidationError(
                     "Cannot remove the last owner. Add another owner first."
                 )
-            locked.memberships.filter(user=user, role=ResourceRole.OWNER).delete()
+            resource.memberships.filter(user=user, role=ResourceRole.OWNER).delete()

@@ -26,13 +26,14 @@ def cleanup_user_org_access(
     1. Group memberships for that org (group-derived access goes away live
        via ``for_user()``).
     2. Direct membership rows on every shareable resource of that org: all
-       VIEWER rows, plus OWNER rows wherever another owner remains. Closes the
-       co-owner rejoin backdoor — a re-invited user (same ``User.id``) would
-       otherwise silently regain co-ownership, since ``_is_resource_owner``
-       grants on any surviving OWNER row with no live-membership check. A sole
-       owner's OWNER row is kept so the resource is never left ownerless
-       (spec §7.4); ``created_by`` (audit) is untouched and admin access is
-       independent (``IsOwner`` OR ``_is_organization_admin``).
+       VIEWER rows, plus OWNER rows wherever another *live* owner remains
+       (:func:`_purge_replaceable_owner_rows`). Closes the co-owner rejoin
+       backdoor — a re-invited user (same ``User.id``) would otherwise
+       silently regain co-ownership, since ``_is_resource_owner`` grants on
+       any surviving OWNER row with no live-membership check. A sole owner's
+       OWNER row is kept so the resource is never left ownerless (spec §7.4);
+       ``created_by`` (audit) is untouched and admin access is independent
+       (``IsOwner`` OR ``_is_organization_admin``).
 
     Uses a signal (not DB CASCADE) so notification / audit hooks can attach
     here later without a schema change. The whole purge runs in one
@@ -62,36 +63,70 @@ def cleanup_user_org_access(
             role=ResourceRole.VIEWER,
         ).delete()
 
-        # OWNER rows go only where another owner remains, so a solely-owned
-        # resource is never left ownerless (spec §7.4). Set-based (3 queries,
-        # not per-resource) since a power user may own many resources.
-        owner_rows = list(
-            ResourceMembership.objects.filter(
-                user=instance.user,
-                organization=instance.organization,
-                role=ResourceRole.OWNER,
-            ).values_list("pk", "content_type_id", "object_id")
-        )
-        co_owned = set(
-            ResourceMembership.objects.filter(
-                role=ResourceRole.OWNER,
-                object_id__in=[oid for _, _, oid in owner_rows],
-            )
-            .exclude(user=instance.user)
-            .values_list("content_type_id", "object_id")
-        )
-        purge_pks = [pk for pk, ct_id, oid in owner_rows if (ct_id, oid) in co_owned]
-        owner_removed, _ = ResourceMembership.objects.filter(pk__in=purge_pks).delete()
+        owner_removed = _purge_replaceable_owner_rows(instance)
 
         if viewer_removed or owner_removed:
             logger.info(
                 "Removed %s VIEWER + %s OWNER memberships for user=%s in org=%s "
-                "(kept sole-owner rows)",
+                "(kept rows with no other live owner)",
                 viewer_removed,
                 owner_removed,
                 instance.user_id,
                 instance.organization_id,
             )
+
+
+def _purge_replaceable_owner_rows(instance: OrganizationMember) -> int:
+    """Delete the departing user's OWNER rows where another LIVE owner remains.
+
+    Sole-owner rows are kept so a resource is never left ownerless (spec §7.4);
+    when every live owner departs at once (bulk removal), all their rows are
+    kept — the N-user generalisation of the same carve-out. Two subtleties:
+
+    - Liveness: the carve-out deliberately keeps departed users' rows, so a
+      surviving OWNER row may belong to an ex-member; counting it as "another
+      owner" would purge the last live owner. Only current org members count.
+      ``_base_manager`` because ``OrganizationMember``'s default manager is
+      org-scoped by ``UserContext`` (None outside a request → an empty live
+      set would silently defeat the purge).
+    - Locking: ``RemoveOwnerSerializer`` guards the same last-owner invariant,
+      so both paths lock the resource's OWNER rows (ordered by pk so
+      overlapping scans cannot deadlock) to serialize concurrent removals.
+      The departing-user exclusion happens in Python — excluding in SQL would
+      let two concurrent departures lock disjoint rows and both purge.
+    """
+    owner_rows = list(
+        ResourceMembership.objects.filter(
+            user=instance.user,
+            organization=instance.organization,
+            role=ResourceRole.OWNER,
+        ).values_list("pk", "content_type_id", "object_id")
+    )
+    if not owner_rows:
+        return 0
+    # Materialised so every lock is held before the purge decision below.
+    peer_rows = list(
+        ResourceMembership.objects.select_for_update()
+        .filter(
+            role=ResourceRole.OWNER,
+            object_id__in={oid for _, _, oid in owner_rows},
+        )
+        .order_by("pk")
+        .values_list("user_id", "content_type_id", "object_id")
+    )
+    live_user_ids = set(
+        OrganizationMember._base_manager.filter(
+            organization=instance.organization
+        ).values_list("user_id", flat=True)
+    )
+    co_owned = {
+        (ct_id, oid)
+        for user_id, ct_id, oid in peer_rows
+        if user_id != instance.user_id and user_id in live_user_ids
+    }
+    purge_pks = [pk for pk, ct_id, oid in owner_rows if (ct_id, oid) in co_owned]
+    removed, _ = ResourceMembership.objects.filter(pk__in=purge_pks).delete()
+    return removed
 
 
 def cleanup_resource_group_shares(
