@@ -1,5 +1,0 @@
-# Runtime deps for the PG-vs-Celery benchmark harness.
-# Kept minimal + stdlib-first; psycopg2 for DB readers, requests for triggering.
-psycopg2-binary>=2.9
-requests>=2.31
-# test-only: pytest
