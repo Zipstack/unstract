@@ -15,7 +15,10 @@ from rest_framework.serializers import (
     SerializerMethodField,
     ValidationError,
 )
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
 
@@ -208,7 +211,7 @@ class SharedUserListSerializer(ModelSerializer):
         return serialize_group_refs(obj)
 
     def get_co_owners(self, obj):
-        return [{"id": u.id, "email": u.email} for u in obj.owners()]
+        return serialize_owner_refs(obj)
 
     def get_created_by(self, obj):
         if obj.created_by:

@@ -6,7 +6,7 @@ from account_v2.custom_exceptions import DuplicateData
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
@@ -149,18 +149,24 @@ class PipelineViewSet(
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            pipeline_instance = serializer.save()
-            # Create API key using the created instance
-            KeyHelper.create_api_key(pipeline_instance, request)
+            # ``save()`` schedules the cron job, which can raise a non-IntegrityError
+            # (JobSchedulingError/ValidationError) *after* the pipeline row commits.
+            # Without this transaction that leaves a pipeline with no OWNER row —
+            # and since ``created_by`` is audit-only (UN-2202), for_user() would
+            # never match it again, so only an org admin could clean it up.
+            with transaction.atomic():
+                pipeline_instance = serializer.save()
+                # Grant before the API key so the creator's access is committed
+                # with the row itself, matching api_deployment_views.create().
+                pipeline_instance.memberships.get_or_create(
+                    user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+                )
+                # Create API key using the created instance
+                KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
-        # ``created_by`` is audit-only; the creator's access flows through an
-        # OWNER membership row (UN-2202 co-owners).
-        pipeline_instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: Pipeline) -> None:

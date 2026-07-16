@@ -20,6 +20,8 @@ Helpers exposed:
   ``effective-members/`` resource action.
 * ``serialize_group_refs`` — small ``[{id, name}]`` listing for
   the share modal's currently-shared listing.
+* ``serialize_owner_refs`` — small ``[{id, email}]`` listing for the
+  co-owner modal's ``co_owners`` field.
 """
 
 from __future__ import annotations
@@ -222,6 +224,16 @@ def resources_visible_via_memberships(
 def serialize_group_refs(resource_obj: Any) -> list[dict[str, Any]]:
     """Return a compact ``[{id, name}]`` listing for share modals."""
     return list(get_resource_share_groups(resource_obj).values("id", "name"))
+
+
+def serialize_owner_refs(resource_obj: Any) -> list[dict[str, Any]]:
+    """Return a compact ``[{id, email}]`` co-owner listing for share modals.
+
+    Email — not username — because the co-owner modal's add-dropdown can only
+    offer emails (the org members endpoint exposes no username), so any other
+    shape makes a row change identity between pending and persisted.
+    """
+    return [{"id": user.pk, "email": user.email} for user in resource_obj.owners()]
 
 
 def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:

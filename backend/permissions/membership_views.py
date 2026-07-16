@@ -8,6 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
+from tenant_account_v2.sharing_helpers import serialize_owner_refs
 
 from permissions.membership_serializers import AddOwnerSerializer, RemoveOwnerSerializer
 
@@ -77,10 +78,10 @@ class OwnerManagementMixin:
 
     @staticmethod
     def _owner_refs(resource: Any) -> list[dict[str, Any]]:
-        # Mirror ``owners()`` (service accounts excluded) so this payload names
-        # the same roster as the ``co_owners`` field every resource serializer
-        # returns — otherwise POST owners/ and GET list_of_shared_users disagree.
-        return [{"id": user.pk, "email": user.email} for user in resource.owners()]
+        # Same helper every resource serializer's ``co_owners`` field uses, so
+        # POST owners/ and GET list_of_shared_users cannot drift apart in either
+        # roster or shape.
+        return serialize_owner_refs(resource)
 
     # --- notifications: reuse the user-sharing service, best-effort ---
 

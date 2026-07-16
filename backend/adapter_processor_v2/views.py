@@ -432,9 +432,11 @@ class AdapterInstanceViewSet(
 
     def on_owner_removed(self, resource: AdapterInstance, user: User) -> None:
         """Clear the removed co-owner's dangling default adapter — but only if
-        they lost all effective access (they may still be a viewer, in a shared
-        group, or covered by ``shared_to_org``). Mirrors the ``share`` cleanup,
-        which ``remove_co_owner`` would otherwise skip.
+        they lost all effective access (they may still be in a shared group or
+        covered by ``shared_to_org``; a surviving direct VIEWER row is not
+        possible, since ``uniq_resource_membership`` means the promotion to
+        OWNER consumed it). Mirrors the ``share`` cleanup, which
+        ``remove_co_owner`` would otherwise skip.
         """
         resource.refresh_from_db()
         if user.pk in self._effective_member_ids(resource):

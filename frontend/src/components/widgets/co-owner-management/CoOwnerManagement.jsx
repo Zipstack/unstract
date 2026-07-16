@@ -163,9 +163,7 @@ function CoOwnerManagement({
                             <Popconfirm
                               key={`${item.id}-remove`}
                               title="Remove Co-Owner"
-                              description={`Are you sure you want to remove '${
-                                item?.username || item?.email
-                              }' as co-owner?`}
+                              description={`Are you sure you want to remove '${item?.email}' as co-owner?`}
                               okText="Yes"
                               cancelText="No"
                               icon={<QuestionCircleOutlined />}
@@ -199,7 +197,7 @@ function CoOwnerManagement({
                             icon={<UserOutlined />}
                           />
                           <Typography.Text className="shared-username">
-                            {item.username || item.email}
+                            {item.email}
                           </Typography.Text>
                         </>
                       }

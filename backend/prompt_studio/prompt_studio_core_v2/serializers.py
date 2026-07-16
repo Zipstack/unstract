@@ -6,7 +6,10 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.FileValidator import FileValidator
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -263,7 +266,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         return serialize_group_refs(obj)
 
     def get_co_owners(self, obj):
-        return UserSerializer(obj.owners(), many=True).data
+        return serialize_owner_refs(obj)
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

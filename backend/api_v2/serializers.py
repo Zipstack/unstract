@@ -23,7 +23,10 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -578,5 +581,4 @@ class SharedUserListSerializer(ModelSerializer):
         return None
 
     def get_co_owners(self, obj):
-        """Return co-owners (OWNER members) with id and email."""
-        return [{"id": u.id, "email": u.email} for u in obj.owners()]
+        return serialize_owner_refs(obj)
