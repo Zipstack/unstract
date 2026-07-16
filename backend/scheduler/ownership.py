@@ -1,4 +1,4 @@
-"""Schedule-ownership ramp control (Phase 9, ②c) — hands a pipeline's schedule
+"""Schedule-ownership ramp control — hands a pipeline's schedule
 from Celery Beat to the Postgres scheduler, per-schedule and reversibly.
 
 A schedule is owned by exactly one firer. ``reconcile_ownership_for``
@@ -105,7 +105,7 @@ def reconcile_ownership_for(
                 # Back on Beat → clear the PG next-run so a future re-hand-over
                 # baselines instead of firing immediately on a stale timestamp.
                 updates["next_run_at"] = None
-            # The mirror row exists from the dual-write (②a) / backfill; guard
+            # The mirror row exists from the dual-write / backfill; guard
             # anyway — a missing row means nothing to own yet.
             updated = PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(
                 **updates

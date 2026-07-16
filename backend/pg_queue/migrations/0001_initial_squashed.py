@@ -261,7 +261,7 @@ class Migration(migrations.Migration):
                 name="pg_queue_message_state_valid",
             ),
         ),
-        # NOTE (UN-3445): performance tuning for the state-machine churn
+        # NOTE: performance tuning for the state-machine churn
         # (fillfactor + aggressive per-table autovacuum) is deliberately KEPT OUT of
         # this migration. Those are core-Postgres reloptions, but they are (a)
         # environment-specific tuning that belongs in the ops/deploy layer, not app

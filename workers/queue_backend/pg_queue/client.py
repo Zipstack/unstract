@@ -1,7 +1,7 @@
 """Thin client over the bespoke PG queue (extension-free, ``SKIP LOCKED``).
 
-This is the storage + dequeue primitive the enqueue wiring (9b) and the
-consumer poll loop (9c) build on; ``dispatch()`` routes PG-opted tasks here.
+This is the storage + dequeue primitive the enqueue wiring and the
+consumer poll loop build on; ``dispatch()`` routes PG-opted tasks here.
 
 Dequeue uses the visibility-timeout pattern: :meth:`PgQueueClient.read`
 runs a single atomic statement — candidate rows are locked in a CTE
@@ -12,7 +12,7 @@ processes the message *outside* the transaction, then
 :meth:`PgQueueClient.delete` acks on success. Claiming sets
 ``state='claimed'``; on a crash before ``delete()`` the row stays
 ``claimed`` with an expired ``vt`` (its lease) and is re-armed to
-``state='ready'`` by the reaper (``reaper.rearm_expired_claims``, UN-3445)
+``state='ready'`` by the reaper (``reaper.rearm_expired_claims``)
 — **at-least-once** delivery: SKIP LOCKED stops two *concurrent* readers
 from claiming the same visible row, but a message can still be delivered
 more than once if a reader crashes before ``delete()`` and the reaper
@@ -25,7 +25,7 @@ plain Django migration with no DB-side function.
 The cached connection is kept usable across calls: every operation rolls
 back on error, and a connection that goes bad (dropped socket / PgBouncer
 recycle) is discarded so the next call reconnects — so one blip can't
-permanently wedge the 9c consumer.
+permanently wedge the consumer.
 """
 
 from __future__ import annotations
@@ -93,7 +93,7 @@ _CLAIMED = QueueMessageState.CLAIMED.value
 # locks exactly ``n`` rows once and updates precisely those. The trailing SELECT
 # re-applies the order because UPDATE ... RETURNING is otherwise unordered.
 #
-# Visibility is now an INDEXED predicate (``state='ready'`` — UN-3445), not the
+# Visibility is now an INDEXED predicate (``state='ready'``), not the
 # old per-row ``vt <= now()`` filter. Claimed (in-flight) rows are absent from the
 # partial claim index entirely, so there is nothing to scan past: claim cost is
 # independent of in-flight depth (the O(in-flight) scan-past under the old design

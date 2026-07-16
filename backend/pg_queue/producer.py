@@ -1,4 +1,4 @@
-"""Backend-side producer for the PG queue (orchestrator dispatch — 9e PR A / 2d).
+"""Backend-side producer for the PG queue (orchestrator dispatch).
 
 The workers own the consumer and the worker-side ``dispatch()`` PG producer; the
 backend has the ``pg_queue`` tables but, until now, no way to *enqueue* to them —

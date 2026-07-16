@@ -158,8 +158,7 @@ class TestFleet:
     def test_healthy_uptime_resets_crash_counter(self):
         f = _Fleet(1)
         f.schedule_restart(0, uptime=0.1)
-        f.schedule_restart(0, uptime=0.1)
-        assert f.consecutive_crashes(0) == 2
+        assert f.schedule_restart(0, uptime=0.1) == 2
         n = f.schedule_restart(0, uptime=_MIN_HEALTHY_UPTIME_SECONDS + 1)
         assert n == 0 and f.is_crash_looping() is False
 
@@ -195,7 +194,7 @@ class TestReapDead:
             _reap_dead(f, stopping)
         assert f.alive_count() == 0
         assert f.due_restarts() in ([], [0])  # scheduled (maybe backed off)
-        assert f.consecutive_crashes(0) >= 1  # counted (immediate death)
+        assert f._consecutive_crashes.get(0, 0) >= 1  # counted (immediate death)
 
     def test_live_child_left_alone(self):
         f = _Fleet(1)

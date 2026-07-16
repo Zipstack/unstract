@@ -1,6 +1,6 @@
 """PG queue consumer — claims tasks from ``pg_queue_message`` and runs them.
 
-The producer side (9b) enqueues a :class:`~queue_backend.pg_queue.TaskPayload`
+The producer side enqueues a :class:`~queue_backend.pg_queue.TaskPayload`
 when a task is routed to PG. This is the other half: it polls the queue with
 ``SKIP LOCKED`` + a visibility timeout (via :class:`PgQueueClient`), runs each
 claimed task **in-process** (no Celery broker), and acks by deleting the row.
@@ -60,7 +60,7 @@ _DEFAULT_QUEUE = "default"
 # raise it, keep vt_seconds > batch_size x worst-case task duration.
 _DEFAULT_BATCH = 1
 _DEFAULT_VT_SECONDS = 30
-# Renewable-lease claim window (UN-3695). A claimed message is hidden for only
+# Renewable-lease claim window. A claimed message is hidden for only
 # this long; a background thread renews it (~every LEASE/3) while the task runs, so a
 # live-but-slow task stays claimed but a DEAD worker's claim expires in ~LEASE →
 # redelivery in minutes instead of the full VT. VT_SECONDS is now the drain /
@@ -82,12 +82,12 @@ _DEFAULT_POISON_REPARK_VT_SECONDS = 300
 # last net) after this many extra reads past max_attempts, so a permanently
 # unmarkable pipeline message can't re-park forever.
 _DEFAULT_POISON_REPARK_BUDGET = 5
-# Retention for the pg_task_result rows the REST task_status poll reads (UN-3693).
+# Retention for the pg_task_result rows the REST task_status poll reads.
 # 24h (Celery's default result_expires) — the 1h default would expire a completed
 # task's row while a late poll (a browser resumed from sleep, an API client checking
 # back) is still querying it. Completed rows are status-only (no payload); FAILED rows
 # carry the executor error text, which can embed document content (cf. the _forget_sql
-# note in result_backend.py / UN-3683) — accepted at this horizon because that same
+# note in result_backend.py) — accepted at this horizon because that same
 # text is already shown to the owner via the WebSocket event + the task_status
 # response, and the row is TTL'd.
 _TASK_STATUS_RETENTION_SECONDS = 86400
@@ -259,7 +259,7 @@ class PgQueueConsumer:
         self._api_client = api_client
         self.batch_size = batch_size
         self.vt_seconds = vt_seconds
-        # Renewable lease (UN-3695): the claim is taken for a short LEASE and renewed
+        # Renewable lease: the claim is taken for a short LEASE and renewed
         # every ~lease/3 while a task runs, so a dead worker's claim expires in ~LEASE
         # (fast redelivery) but a live one is never redelivered. VT_SECONDS is the
         # drain / max-runtime bound; a lease longer than it is meaningless, so clamp —
@@ -282,7 +282,7 @@ class PgQueueConsumer:
             logger.warning(
                 "WORKER_PG_QUEUE_CONSUMER_BATCH_SIZE=%s forced to 1: the renewable lease "
                 "only covers the in-flight message, so a batch tail could lapse and "
-                "double-run (UN-3695)",
+                "double-run",
                 self.batch_size,
             )
             self.batch_size = 1
@@ -332,7 +332,7 @@ class PgQueueConsumer:
 
     @contextlib.contextmanager
     def _lease_renewal(self, msg_id: int) -> Iterator[None]:
-        """Keep ``msg_id``'s claim alive while a task runs (UN-3695).
+        """Keep ``msg_id``'s claim alive while a task runs.
 
         Starts a daemon thread that renews the short lease (``set_vt``) every
         ``lease/3`` — so a live-but-slow task stays claimed — then signals stop and
@@ -501,7 +501,7 @@ class PgQueueConsumer:
             fairness = payload.get("fairness")
             headers = {FAIRNESS_HEADER_NAME: fairness} if fairness else None
             # Renew the short lease while the (possibly long) task runs, so a dead
-            # worker's claim expires fast but a live one is never redelivered (UN-3695).
+            # worker's claim expires fast but a live one is never redelivered.
             with self._lease_renewal(message.msg_id):
                 eager = task.apply(
                     args=payload.get("args") or [],
@@ -608,7 +608,7 @@ class PgQueueConsumer:
     ) -> None:
         """Record a ``dispatch_with_callback`` task's terminal status in
         ``pg_task_result`` so the REST ``PromptStudio.task_status`` poll resolves
-        under the PG transport (UN-3693) — the eager PG executor never writes a Celery
+        under the PG transport — the eager PG executor never writes a Celery
         result backend under the dispatch id, so ``AsyncResult`` alone would poll
         "processing" forever.
 
@@ -687,7 +687,7 @@ class PgQueueConsumer:
         so the stranded session is correlatable).
         """
         # Record the terminal status for the REST PromptStudio.task_status poll
-        # (UN-3693) before the enqueue, so it resolves under PG even if the callback
+        # before the enqueue, so it resolves under PG even if the callback
         # enqueue below fails. This self-chain is the single terminal choke point for
         # both success (``error`` None) and failure (``error`` set) of a callback
         # dispatch. The recorded status reflects the EXECUTOR outcome, not callback
@@ -936,26 +936,6 @@ class PgQueueConsumer:
     def seconds_since_last_poll(self) -> float:
         """Seconds since the last poll attempt (for the liveness heartbeat)."""
         return time.monotonic() - self._last_poll_monotonic
-
-    def is_poll_stale(self, stale_after_seconds: float) -> bool:
-        """True if the poll loop hasn't cycled within ``stale_after_seconds``.
-
-        Drives the health endpoint: a stale loop means the consumer is wedged
-        (deadlock, or a single task running longer than the threshold), so the
-        liveness probe should report unhealthy and let the orchestrator restart
-        it. Pick a threshold comfortably above ``backoff_max`` and the longest
-        expected task so normal idle/backoff never trips it.
-
-        Note the heartbeat is stamped at the *top* of ``poll_once`` (before the
-        DB read), so a loop that fails fast every cycle — e.g. ``read()`` raising
-        on an unreachable DB, caught and backed off by ``run()`` — keeps stamping
-        and stays *healthy*. That is deliberate: a liveness probe must not couple
-        to backend reachability (a restart can't fix a DB outage, and coupling
-        would crash-loop every consumer during one). Surfacing a permanent
-        config fault (bad creds, missing schema) is a readiness/alerting concern,
-        not liveness.
-        """
-        return self.seconds_since_last_poll() > stale_after_seconds
 
     def run(self, *, install_signals: bool = True, require_tasks: bool = True) -> None:
         """Poll loop with empty-queue backoff and graceful shutdown.

@@ -240,7 +240,7 @@ class ReaperMetrics(_Exporter):
         )
         self.queue_rearmed = Counter(
             "pg_reaper_queue_rearmed_total",
-            "Expired in-flight queue messages re-armed to 'ready' (UN-3445: "
+            "Expired in-flight queue messages re-armed to 'ready' ("
             "crashed-worker redelivery — the state-machine equivalent of the old "
             "implicit vt-expiry self-heal)",
             registry=self.registry,

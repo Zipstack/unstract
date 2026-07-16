@@ -5,7 +5,7 @@ connection — workers otherwise reach state via the Internal API, with
 Redis the only other direct store. It reuses the **backend's** ``DB_*``
 env so the target follows the deployment: in cloud those vars point at
 PgBouncer (connection pooling); in OSS / on-prem they point straight at
-Postgres (UN-3533 decision).
+Postgres.
 
 ``search_path`` is set to ``DB_SCHEMA`` so the bespoke
 ``pg_queue_message`` table resolves in the same schema the backend
@@ -31,9 +31,9 @@ logger = logging.getLogger(__name__)
 # PgBouncer recycle / server termination), as opposed to a logical/data error on
 # a live connection. Single source of truth for every PG-queue site that decides
 # "was this a connection death?" — the dispatch ``send`` reused-guard
-# (``pg_queue.client``, UN-3654), the ``store_result`` retry
-# (``pg_queue.result_backend``, UN-3659) and the barrier enqueue/decrement
-# (``pg_barrier``, UN-3651/UN-3660). Hoisted here (the module all of them already
+# (``pg_queue.client``), the ``store_result`` retry
+# (``pg_queue.result_backend``) and the barrier enqueue/decrement
+# (``pg_barrier``). Hoisted here (the module all of them already
 # import) so the three call sites can't drift apart.
 CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
     psycopg2.OperationalError,

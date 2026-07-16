@@ -1,4 +1,4 @@
-"""Unit tests for the backend PG-queue producer (orchestrator dispatch, 9e PR A).
+"""Unit tests for the backend PG-queue producer (orchestrator dispatch).
 
 DB-free: ``PgQueueMessage`` is mocked, so these pin the wire-shape contract and
 the JSON-coercion logic without needing a test database.

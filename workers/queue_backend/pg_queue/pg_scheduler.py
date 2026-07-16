@@ -1,4 +1,4 @@
-"""PG scheduler tick — the periodic-trigger half of the orchestrator (Phase 9, ②b).
+"""PG scheduler tick — the periodic-trigger half of the orchestrator.
 
 Folded into the leader-elected reaper loop (the reaper becomes "the
 orchestrator": recover + schedule, per the labs single-orchestrator model).
@@ -14,7 +14,7 @@ Correctness properties:
 - **One firer per schedule (conditional).** A ``pg_owned`` row fires here; the
   no-double-fire guarantee with Beat depends on the matching Beat
   ``PeriodicTask`` being disabled when a schedule is handed over — that's the
-  ②c ramp control, which does not exist yet. **Until it lands, safety rests on
+  ramp control, which does not exist yet. **Until it lands, safety rests on
   ``pg_owned`` defaulting to False** (nothing is owned → this fires nothing →
   Beat fires everything). A row manually flipped to ``pg_owned=True`` while its
   PeriodicTask is still enabled *would* double-fire.

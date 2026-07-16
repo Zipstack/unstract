@@ -1,5 +1,5 @@
 """Backfill the pg_periodic_schedule mirror + reconcile Beat/PG schedule
-ownership (Phase 9, ②c).
+ownership.
 
 Run this:
 - **once** after deploying the mirror, to backfill rows for schedules created

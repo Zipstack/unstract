@@ -139,7 +139,7 @@ def resolve_backend(task_name: str, override: QueueBackend | None) -> QueueBacke
     """Resolve the transport for a dispatch, applying the per-call override.
 
     The single home for the override-wins-else-allow-list precedence so the
-    rule reads in one place (and ``dispatch()`` plus the 9e PR 2c call sites
+    rule reads in one place (and ``dispatch()`` plus the call sites
     share it):
 
     - ``override`` is ``None`` → defer to :func:`select_backend` (the env

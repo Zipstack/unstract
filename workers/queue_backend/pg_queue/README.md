@@ -1,9 +1,7 @@
 # PG Queue — Reference & Glossary
 
 A quick-reference dictionary for the bespoke Postgres-backed work queue that can
-stand in for Celery/RabbitMQ (epic UN-3445). For the *design* of a full-execution
-migration see [`9e-design.md`](./9e-design.md); this file is the **terminology + config
-lookup**.
+stand in for Celery/RabbitMQ. This file is the **terminology + config lookup**.
 
 The transport is chosen **per org** by the Flipt flag `pg_queue_enabled`
 (fail-closed to Celery), so the system runs **with and without** PG unchanged.
@@ -49,7 +47,7 @@ integers.
 ### Orchestration / barrier / connection
 | Env | One-line |
 |---|---|
-| `WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS` | A barrier whose `last_progress_at` hasn't advanced this long is fast-failed by the reaper (UN-3661) |
+| `WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS` | A barrier whose `last_progress_at` hasn't advanced this long is fast-failed by the reaper |
 | `WORKER_PG_ORCHESTRATOR_LEASE_SECONDS` | Leader-election lease duration for the single-orchestrator role |
 | `WORKER_PG_DEDUP_RETENTION_SECONDS` | Retention for `pg_batch_dedup` rows |
 | `WORKER_PG_QUEUE_CONNECT_RETRIES` / `_BACKOFF` | Reconnect attempts / backoff on a stale or broken DB connection |
@@ -70,7 +68,7 @@ it's gone; if the worker dies without acking, the `vt` expires and the message
 **redelivers**. There's no live broker connection like RabbitMQ, so the `vt` is the
 queue's only "worker died" signal — recovery latency ≈ how far out the `vt` is.
 
-**Renewable lease (`LEASE_SECONDS`, UN-3695)** — rather than claim for the full `VT`
+**Renewable lease (`LEASE_SECONDS`)** — rather than claim for the full `VT`
 (up to 2.5h), the consumer claims for a **short** `LEASE` and a background thread
 **renews** it (`set_vt`) every ~`LEASE/3` while the task runs. A live-but-slow task
 keeps its claim; a **dead** worker's renewal stops, so its `vt` expires in ~`LEASE` →
@@ -115,15 +113,15 @@ the supervisor reports the *oldest* child's staleness on `/health`. Frozen durin
 long task, so a wedged child goes stale and trips the probe.
 
 **Reaper** — a singleton (leader-elected) sweeper that recovers **stranded** work:
-fast-fails a barrier whose `last_progress_at` stalled (UN-3661), cascades a terminal
+fast-fails a barrier whose `last_progress_at` stalled, cascades a terminal
 execution to its files, and sweeps expired retention rows.
 
 **Barrier (`PgBarrierState`)** — the fan-in counter for a batched execution: each
 file-batch decrements `remaining`; when it hits 0 the aggregating callback fires. It
 carries `last_progress_at` (the reaper's liveness signal for stuck detection).
 
-**`last_progress_at`** — timestamp bumped whenever a batch makes progress
-(UN-3661). Lets the reaper fast-fail a stalled batch in ~stuck-timeout instead of the
+**`last_progress_at`** — timestamp bumped whenever a batch makes progress.
+Lets the reaper fast-fail a stalled batch in ~stuck-timeout instead of the
 full VT/6h horizon.
 
 **Leader election / orchestrator lock (`pg_orchestrator_lock`)** — a DB lease that
@@ -158,7 +156,7 @@ PG-routed run mirrors Celery's fair scheduling.
 | `pg_periodic_schedule` | Periodic-schedule store (the Celery-Beat replacement) |
 
 All PG-queue tables are **droppable side tables** that never touch
-`WorkflowExecution` (UN-3533) — the PG transport can be turned off and its tables
+`WorkflowExecution` — the PG transport can be turned off and its tables
 dropped without affecting the Celery path.
 
 ---

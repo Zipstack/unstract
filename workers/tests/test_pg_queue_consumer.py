@@ -593,17 +593,6 @@ class TestPollHeartbeat:
         consumer.poll_once()
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
 
-    def test_is_poll_stale_threshold(self):
-        consumer = PgQueueConsumer(["q"], client=MagicMock())
-        consumer._last_poll_monotonic -= 120  # last poll 120s ago
-        assert consumer.is_poll_stale(60) is True  # past threshold → stale
-        assert consumer.is_poll_stale(200) is False  # within threshold → fresh
-
-    def test_fresh_consumer_is_not_stale(self):
-        # Seeded at construction, so a just-started consumer reads healthy.
-        consumer = PgQueueConsumer(["q"], client=MagicMock())
-        assert consumer.is_poll_stale(60) is False
-
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
         from queue_backend.pg_queue.consumer import _maybe_start_health_server

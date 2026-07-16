@@ -91,13 +91,12 @@ def dispatch(
     ``None`` (the default, and every call site today) the transport is the env
     allow-list decision via ``select_backend`` — behaviour is unchanged. When
     set, it wins over the allow-list: this is the seam the execution-level PG
-    pipeline (9e PR 2c) uses to route a whole execution's header/callback
+    pipeline uses to route a whole execution's header/callback
     dispatches onto PG without opting their task *names* into
     ``WORKER_PG_QUEUE_ENABLED_TASKS``. (The allow-list is for *leaf* tasks; the
     coupled pipeline's migration unit is the whole execution — its transport is
     resolved once at creation and travels on the execution's task kwargs onto
-    ``WorkflowContextData.transport``, see ``queue_backend/pg_queue/
-    9e-design.md``.) The override only forces the *transport*; it does not
+    ``WorkflowContextData.transport``.) The override only forces the *transport*; it does not
     bypass ``_enqueue_pg``'s no-silent-fallback contract.
     """
     if resolve_backend(task_name, backend) is QueueBackend.PG:

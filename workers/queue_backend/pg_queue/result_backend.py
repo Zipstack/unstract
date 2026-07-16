@@ -1,4 +1,4 @@
-"""Postgres request-reply result store for the executor RPC (Phase 9).
+"""Postgres request-reply result store for the executor RPC.
 
 Replaces Celery's ``AsyncResult`` / result backend for the *blocking* executor
 dispatch when it rides the PG transport. The PG executor consumer

@@ -22,7 +22,7 @@ Launch via ``python -m pg_queue_consumer`` or ``./run-worker.sh pg-queue-consume
 
 
 def _bootstrap_and_run() -> None:
-    # CONCURRENCY > 1 → run a prefork supervisor (UN-3606): N isolated consumer
+    # CONCURRENCY > 1 → run a prefork supervisor: N isolated consumer
     # children, the PG analogue of Celery --pool=prefork --concurrency=N. The
     # supervisor forks the children (each does its OWN worker bootstrap, so no
     # connections are inherited across the fork) and owns the single health port.

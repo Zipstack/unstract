@@ -10,7 +10,7 @@ over once the lease goes stale.
 **Lease, not advisory lock.** Leadership is a TTL'd ``UPDATE`` (take it if the
 ``leader`` is free or its ``acquired_at`` is older than the lease window), *not*
 ``pg_advisory_lock``. Session-scoped advisory locks do not survive the
-transaction-pooled PgBouncer the queue connects through (UN-3533) — the pooler
+transaction-pooled PgBouncer the queue connects through — the pooler
 hands out a different backend per transaction, so a session-held lock would be
 silently dropped. A plain ``UPDATE`` is one transaction → pooling-safe. Every
 time comparison is server-side (``now()``), so candidate clock skew can't split

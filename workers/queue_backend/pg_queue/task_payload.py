@@ -3,8 +3,8 @@
 Not to be confused with the queue **row** itself (the backend's
 ``PgQueueMessage`` model / ``pg_queue_message`` table). This is the shape
 of the row's ``message`` JSONB column when the message is a task: a
-``dispatch()`` that routes to PG (9b) serialises a :class:`TaskPayload`
-into that column, and the consumer poll loop (9c) decodes it and runs the
+``dispatch()`` that routes to PG serialises a :class:`TaskPayload`
+into that column, and the consumer poll loop decodes it and runs the
 task. Producer↔consumer contract — keep both sides reading the same keys.
 """
 

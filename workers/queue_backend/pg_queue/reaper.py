@@ -26,7 +26,7 @@ on** — without it the un-catchable strand windows (a worker SIGKILL mid-batch,
 a crash after the final decrement but before the callback enqueues) would bottom
 out silently at the ~6h barrier expiry.
 
-**Orchestration-claim GC + recovery (UN-3679).** The orchestration idempotency
+**Orchestration-claim GC + recovery.** The orchestration idempotency
 claim (``pg_orchestration_claim``) is taken BEFORE the barrier is armed, so a
 crash in the claim→arm window leaves a claim with no barrier row — invisible to
 the barrier sweep above — and a successful claim's tombstone has no natural GC.
@@ -94,7 +94,7 @@ _DEFAULT_SWEEP_INTERVAL_SECONDS = 300.0
 _DEFAULT_DEDUP_RETENTION_SECONDS = 86400
 
 # A barrier is "stranded" when it has made no progress for the stuck-timeout (the
-# fast, per-progress signal — UN-3661) OR it has passed its absolute ``expires_at``
+# fast, per-progress signal) OR it has passed its absolute ``expires_at``
 # cap (the last-resort backstop). Both feed the SAME recovery. Defined once so the
 # detection SELECT, the pre-mark re-check, and the cleanup DELETE can't drift.
 # Binds one ``%s`` — the stuck-timeout in seconds (``barrier_stuck_timeout_seconds``).
@@ -307,9 +307,9 @@ def sweep_orphan_dedup(conn: PgConnection, retention_seconds: int) -> int:
 def rearm_expired_claims(conn: PgConnection) -> int:
     """Re-arm crashed-worker queue messages: ``claimed`` + expired vt -> ``ready``.
 
-    UN-3445 crash-redelivery. Under the state-machine claim (``WHERE state='ready'``,
+    Crash-redelivery. Under the state-machine claim (``WHERE state='ready'``,
     client._dequeue_sql), an in-flight row is ``state='claimed'`` and invisible to
-    claimants; its ``vt`` is the renewable lease (UN-3695). If the owning worker
+    claimants; its ``vt`` is the renewable lease. If the owning worker
     dies its renewal stops, ``vt`` lapses, and this sweep flips the row back to
     ``ready`` so the next consumer re-claims it — the explicit, indexed equivalent
     of the old design's implicit ``vt <= now()`` self-heal in the claim itself.
@@ -834,7 +834,7 @@ def sweep_orphan_claims(
     stuck_timeout_seconds: int | None = None,
     metrics: ReaperMetrics | None = None,
 ) -> int:
-    """GC / recover orphaned ``pg_orchestration_claim`` rows (UN-3679). Returns the
+    """GC / recover orphaned ``pg_orchestration_claim`` rows. Returns the
     number of claim rows removed (terminal-tombstone GCs + crash-window recoveries).
 
     The orchestration claim is taken BEFORE the barrier is armed, so — unlike
@@ -1090,10 +1090,6 @@ class PgReaper:
         """Seconds since the last tick started — the liveness heartbeat age."""
         return time.monotonic() - self._last_tick_monotonic
 
-    def is_tick_stale(self, stale_after_seconds: float) -> bool:
-        """Whether the loop has gone quiet past ``stale_after_seconds``."""
-        return self.seconds_since_last_tick() > stale_after_seconds
-
     def _get_sweep_conn(self) -> PgConnection:
         # Recreate only an OWNED missing/closed connection; an injected one is the
         # caller's and is never swapped (mirrors LeaderLease / PgQueueClient).
@@ -1163,7 +1159,7 @@ class PgReaper:
         except Exception:
             self._discard_owned_sweep_conn()
             raise
-        # Crash-redelivery (UN-3445): re-arm queue messages whose owning worker
+        # Crash-redelivery: re-arm queue messages whose owning worker
         # died (state='claimed', vt expired) back to 'ready'. Runs EVERY leader tick
         # (the redelivery cadence), like barrier recovery above and NOT the
         # retention sweep — a crashed batch must not wait the 5-min sweep interval.
@@ -1231,7 +1227,7 @@ class PgReaper:
             "pg_batch_dedup",
             lambda conn: sweep_orphan_dedup(conn, self._dedup_retention),
         )
-        # Orphan orchestration-claim GC + crash-window recovery (UN-3679). Runs
+        # Orphan orchestration-claim GC + crash-window recovery. Runs
         # here (cadence-gated) rather than every tick: orphan claims are rare and
         # already older than the stuck-timeout, and this does a per-row status API
         # read, so the 5-min cadence keeps it off the hot path. Independent of the

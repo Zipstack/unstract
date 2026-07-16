@@ -1,4 +1,4 @@
-"""Tests for the reconcile_pg_schedules management command (Phase 9, ②c).
+"""Tests for the reconcile_pg_schedules management command.
 
 DB-free: the ORM, mirror upsert, and ownership reconcile are mocked. These pin
 the operator-facing contract — backfill skip, the malformed-args guard, the

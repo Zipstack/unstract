@@ -1,4 +1,4 @@
-"""Tests for the backend executor-RPC adapter (UN-3607).
+"""Tests for the backend executor-RPC adapter.
 
 The dispatch contract (never-raises / result interpretation), the routing, and the
 Flipt gate matrix live ONCE in the shared module and are covered in

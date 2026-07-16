@@ -362,7 +362,7 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
     connection sits idle **between pipeline runs** (a scheduled pipeline can idle
     for tens of minutes, past PgBouncer's ``server_idle_timeout``), so the FIRST
     ``INSERT`` of a run can hit an idle-reaped handle; that execute-phase reap
-    self-heals on one reconnect (UN-3684). See the helper for the full rationale.
+    self-heals on one reconnect. See the helper for the full rationale.
     """
 
     def _op(cur: PgCursor) -> bool:
@@ -575,7 +575,7 @@ class PgBarrier:
         any substrate failure raises. ``app_instance`` is accepted for Protocol
         parity but unused.
 
-        ``transport`` selects the fan-out mode (9e):
+        ``transport`` selects the fan-out mode:
 
         - ``celery`` (default, the ``WORKER_BARRIER_BACKEND=pg`` legacy path):
           header tasks are Celery-dispatched with ``.link(barrier_pg_decr_and_check)``
@@ -828,7 +828,7 @@ def _fire_barrier_callback(
       org/priority as the Celery path — no Celery, so the whole execution stays
       off the broker.
     - absent / anything else (legacy ``.link`` path): dispatch via
-      ``current_app.signature(...).apply_async()`` — byte-identical to pre-9e,
+      ``current_app.signature(...).apply_async()`` — byte-identical to the legacy path,
       preserving the ``fairness_headers`` the producer attached.
 
     On the PG path the callback kwargs carry :data:`PG_TRANSPORT_CALLBACK_KWARG`
@@ -917,7 +917,7 @@ def _apply_decrement(
     Any non-connection error (e.g. the NUL-byte ``psycopg2.DataError`` from the
     jsonb cast) also propagates unchanged — only the idle-reap self-heals. This is
     the decrement's counterpart to ``pg_queue.client.send``'s reused-guard
-    (UN-3654) and the idempotent pre-dispatch write's retry, but phase-split
+    and the idempotent pre-dispatch write's retry, but phase-split
     because the decrement, unlike those, must never replay a committed write.
     """
     # ``last_progress_at = now()`` records that a batch just completed — the
@@ -1018,7 +1018,7 @@ def _barrier_pg_decrement(
 
     - the Celery ``link`` callback :func:`barrier_pg_decr_and_check` (today's
       only caller, behaviour unchanged); and
-    - the 9e PR 2c PG-consumed pipeline path, which will call this directly in
+    - the PG-consumed pipeline path, which will call this directly in
       the header task's body — a PG-consumed task fires no ``.link``, so the
       decrement must run in-body.
 
@@ -1174,7 +1174,7 @@ def barrier_pg_decr_and_check(
 
     Thin ``@worker_task`` wrapper around :func:`_barrier_pg_decrement` so the
     decrement logic stays callable in-body (no ``.link``) on the PG-consumed
-    pipeline path (9e PR 2c). ``max_retries=0`` — a Celery retry would replay
+    pipeline path. ``max_retries=0`` — a Celery retry would replay
     the decrement and corrupt the count (see the core's contract).
     """
     return _barrier_pg_decrement(
@@ -1342,7 +1342,7 @@ SKIPPED_TERMINAL_EXECUTION_KEY = "skipped_terminal_execution"
 def run_batch_with_barrier(
     barrier_context: BarrierContext, work_fn: Callable[[], dict[str, Any]]
 ) -> dict[str, Any]:
-    """Run a fire-and-forget PG-path batch under the barrier protocol (9e PR 2c).
+    """Run a fire-and-forget PG-path batch under the barrier protocol.
 
     A PG-consumed header task fires no Celery ``.link``, so the barrier
     coordination runs in-body here, given the ``_barrier_context`` that

@@ -1038,7 +1038,6 @@ class TestHeartbeat:
     def test_fresh_after_init(self):
         reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
         assert reaper.seconds_since_last_tick() < 5
-        assert reaper.is_tick_stale(1) is False
 
     def test_tick_refreshes_heartbeat(self):
         # Even a standby tick (no sweep) counts as loop progress.
@@ -1046,9 +1045,9 @@ class TestHeartbeat:
             _FakeLease(acquires=False), interval_seconds=0.01, sweep_conn=object()
         )
         reaper._last_tick_monotonic = time.monotonic() - 100  # force stale
-        assert reaper.is_tick_stale(1) is True
+        assert reaper.seconds_since_last_tick() > 1
         reaper.tick()
-        assert reaper.is_tick_stale(1) is False
+        assert reaper.seconds_since_last_tick() < 1
 
 
 def _http_get(server, path="/health"):

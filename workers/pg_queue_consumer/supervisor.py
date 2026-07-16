@@ -1,4 +1,4 @@
-"""Prefork supervisor for the PG-queue consumer (UN-3606).
+"""Prefork supervisor for the PG-queue consumer.
 
 Forks ``WORKER_PG_QUEUE_CONSUMER_CONCURRENCY`` copies of the single-threaded
 :class:`~queue_backend.pg_queue.consumer.PgQueueConsumer` so multiple file
@@ -69,7 +69,7 @@ _CRASH_LOOP_THRESHOLD = 3
 # shutdown_grace_from_env().
 # This is NOT the live value: the live grace defaults to the consumer's visibility
 # timeout so a SIGTERM (deploy / HPA scale-down) lets an in-flight batch finish
-# instead of a mid-flight SIGKILL that orphans it (UN-3695).
+# instead of a mid-flight SIGKILL that orphans it.
 _DEFAULT_SHUTDOWN_GRACE_SECONDS = 30.0
 
 
@@ -106,7 +106,7 @@ def shutdown_grace_from_env() -> float:
     Defaults to the consumer's visibility timeout (``WORKER_PG_QUEUE_CONSUMER_VT_SECONDS``)
     — the by-design upper bound on a single task's runtime — so a graceful SIGTERM
     (deploy / HPA scale-down) lets an in-flight batch finish rather than being
-    SIGKILLed mid-flight and orphaned (UN-3695). The chart sets the pod's
+    SIGKILLed mid-flight and orphaned. The chart sets the pod's
     ``terminationGracePeriodSeconds`` to VT + a buffer, so even a genuinely-wedged
     child is SIGKILLed here just BEFORE k8s reaps the pod. An explicit
     ``WORKER_PG_QUEUE_CONSUMER_SHUTDOWN_GRACE_SECONDS`` overrides (and is honoured
@@ -210,9 +210,6 @@ class _Fleet:
         """Slots whose re-fork backoff has elapsed (oldest schedule first)."""
         now = time.monotonic()
         return sorted(s for s, due in self._restart_due.items() if due <= now)
-
-    def consecutive_crashes(self, slot: int) -> int:
-        return self._consecutive_crashes.get(slot, 0)
 
     def alive_items(self) -> list[tuple[int, int]]:
         return list(self._pids.items())
@@ -455,7 +452,7 @@ def _join_children(fleet: _Fleet, grace_seconds: float) -> None:
     bounding the total wait to ~``grace_seconds``. A per-child deadline would instead
     sum to N×grace and, at grace≈VT (thousands of seconds), blow past the pod's
     ``terminationGracePeriodSeconds`` — so k8s SIGKILLs the whole pod, hard-killing
-    siblings that were still draining cleanly (UN-3695 / debate H2).
+    siblings that were still draining cleanly.
     """
     deadline = time.monotonic() + grace_seconds
     for slot, pid in fleet.alive_items():
