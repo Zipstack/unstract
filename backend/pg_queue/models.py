@@ -182,12 +182,11 @@ class PgBatchDedup(models.Model):
     task more than once. Rows for an execution are cleared when its barrier
     finalises (``remaining`` → 0, via ``clear_execution_batches``).
 
-    Orphan reclaim — executions that never finalise currently **leak** their
-    dedup markers: the reaper's ``sweep_expired_barriers`` deletes only the
-    ``pg_barrier_state`` row (there is no FK / cascade to this table), so the
-    matching markers are left behind. A dedup-orphan sweep (e.g. by ``created_at``
-    age) is intended future work; until then the leak is bounded only by how many
-    executions never finalise.
+    Orphan reclaim — markers left behind by an execution that never finalises
+    (the reaper's ``sweep_expired_barriers`` deletes only the ``pg_barrier_state``
+    row, with no FK / cascade to this table) are swept by the reaper's
+    ``sweep_orphan_dedup``, which deletes markers older than the retention window
+    by ``created_at`` age (wired into the reaper's periodic ``_maybe_sweep``).
 
     Composite uniqueness on ``(execution_id, batch_index)`` is enforced by a
     ``UniqueConstraint`` (Django has no composite primary key here); the worker's
@@ -199,9 +198,10 @@ class PgBatchDedup(models.Model):
 
     execution_id = models.TextField()
     batch_index = models.IntegerField()
-    # Observability/debugging only today (when a marker was claimed); not read,
-    # indexed, or used for reclaim. The intended future dedup-orphan sweep (see
-    # the class docstring) would sweep by this column's age and add an index then.
+    # When the marker was claimed. Read by the reaper's dedup-orphan sweep
+    # (``sweep_orphan_dedup``), which deletes markers older than the retention
+    # window by this column's age. Deliberately UNINDEXED — the sweep seq-scans a
+    # normally-near-empty table at a ~5-min cadence; add an index if it grows.
     created_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
@@ -364,10 +364,10 @@ class PgTaskResult(models.Model):
     The absence of a row means "not done yet" — there is deliberately no
     ``pending`` state to maintain. A separate, droppable table that never touches
     ``WorkflowExecution`` — same posture as ``PgBarrierState`` / ``PgBatchDedup``,
-    extension-free. ``expires_at`` is written for a **future** retention
-    sweep (``DELETE … WHERE expires_at <= now()``); that sweep is **not wired yet**
-    — until it lands the table grows with each RPC (acceptable while the feature is
-    gated off; tracked as follow-up before the gate ramps to 100%).
+    extension-free. ``expires_at`` is written for the retention
+    sweep (``DELETE … WHERE expires_at <= now()``), which is wired into the
+    reaper's periodic ``_maybe_sweep`` (``sweep_expired_results``) — so the table
+    is bounded, not growing unbounded.
     """
 
     # Caller-chosen reply key (opaque text, mirrors a Celery task id's role): the
@@ -381,15 +381,15 @@ class PgTaskResult(models.Model):
     # failed row — avoids a string column having two empty states (NULL vs "").
     error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
-    # Retention horizon for the future sweep (see class docstring). The writer
-    # always sets it; nullable only so the column itself imposes no NOT NULL.
+    # Retention horizon for the reaper's retention sweep (see class docstring).
+    # The writer always sets it; nullable only so the column imposes no NOT NULL.
     expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "pg_task_result"
         indexes = [
-            # Index for the future retention sweep (DELETE ... WHERE
-            # expires_at <= now()); no sweeper reads it yet (see class docstring).
+            # Index for the retention sweep (DELETE ... WHERE expires_at <= now()),
+            # run by the reaper's sweep_expired_results (see class docstring).
             models.Index(fields=["expires_at"], name="pg_task_result_expires_idx"),
         ]
 

@@ -13,9 +13,12 @@ with no ``task_name`` (malformed/foreign) or a name not in the registry can
 never run, so it is likewise dropped with a loud log. The fairness header is
 rebuilt from the payload so a PG-routed run mirrors the Celery dispatch path.
 
-Run as ``python -m queue_backend.pg_queue.consumer`` (config via env). The
-worker bootstrap must have imported/registered the Celery tasks so they
-resolve in ``current_app.tasks``.
+In production this runs under the ``pg_queue_consumer`` supervisor
+(``python -m pg_queue_consumer`` / ``./run-worker.sh pg-queue-consumer``),
+which preforks N of these for parallel file batches; this module's ``main()``
+runs a single consumer directly (config via env). The worker bootstrap must
+have imported/registered the Celery tasks so they resolve in
+``current_app.tasks``.
 """
 
 from __future__ import annotations
@@ -562,7 +565,7 @@ class PgQueueConsumer:
                 )
         elif on_success:
             # Async/callback: self-chain the success continuation onto the callback
-            # queue before the ack — the §5 hand-off (PG analogue of Celery's link).
+            # queue before the ack — the callback hand-off (PG analogue of Celery's link).
             #
             # "success" == the task did not RAISE (parity with Celery `link`, which
             # also fires on any non-exception return). A task that *returns* a failed

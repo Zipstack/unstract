@@ -43,9 +43,10 @@ CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool
 # wait, brief network partition, "too many clients" spikes) — the common cloud
 # blips. Opening a connection is side-effect-free, so retrying it is safe and
-# purely additive. Note we deliberately do NOT auto-retry the enqueue INSERT
-# (queue_backend.pg_queue.client.send): an ambiguous commit-time failure could
-# double-enqueue → double-dispatch, so that path stays fail-and-surface.
+# purely additive. Distinct from client.send()'s single reconnect-retry, which
+# fires only for the idle-reap case (the conn was reaped before the INSERT ran,
+# so it provably never executed); an *ambiguous* commit-time failure is never
+# retried there — that stays fail-and-surface to avoid a double-enqueue.
 _DEFAULT_CONNECT_RETRIES = 3  # total attempts (1 = no retry)
 _MAX_CONNECT_RETRIES = 10  # sane upper bound — a fat-fingered value can't wedge startup
 _DEFAULT_CONNECT_BACKOFF = 0.5  # base seconds between attempts; doubles each retry

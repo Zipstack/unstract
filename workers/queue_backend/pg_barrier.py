@@ -822,7 +822,7 @@ def _fire_barrier_callback(
 
     Two transports, selected by the descriptor's ``transport`` marker:
 
-    - ``"pg_queue"`` (9e fire-and-forget PG path): self-chain the callback onto
+    - ``"pg_queue"`` (fire-and-forget PG path): self-chain the callback onto
       the PG queue via :func:`_dispatch_pg`, carrying the producer's fairness
       (reconstructed from the stored headers) so the callback rides the same
       org/priority as the Celery path — no Celery, so the whole execution stays
@@ -1051,7 +1051,7 @@ def _barrier_pg_decrement(
     # commit boundary replay the decrement — corrupting ``remaining`` and
     # breaking the exactly-one-sees-zero serialisation, surfacing only as a
     # barrier hung until ``expires_at`` (~6h). The Celery ``.link`` path always
-    # enters idle (``_cursor`` commits after every use); the 2c in-body caller
+    # enters idle (``_cursor`` commits after every use); the PG in-body caller
     # must too. (Tests inject an autocommit connection → always idle → no trip.)
     if (
         _get_conn().get_transaction_status()

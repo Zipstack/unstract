@@ -33,19 +33,20 @@ carried choice over the per-task env. ``select_backend`` then becomes:
 "if the dispatch carries an execution-transport marker, use it; otherwise
 consult this allow-list." Until then, only enable *leaf* tasks here.
 
-**Scaffold posture.** This module only makes the routing *decision*.
-In the current phase there is no PG consumer, so ``dispatch()`` still
-sends PG-selected tasks via Celery (the decision is observable in logs
-but inert). ``resolve_backend()`` (which wraps the ``select_backend()``
-allow-list with the per-call override) is the seam where the real PG
-dispatch lands in a later phase.
+**Routing posture.** This module only makes the routing *decision*.
+When the flag and the ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list select
+PG, ``dispatch()`` really enqueues the task to Postgres (a durable INSERT
+via ``_enqueue_pg``) and the PG consumer runs it — this moves live traffic
+onto the PG transport, it is not a no-op. ``resolve_backend()`` wraps the
+``select_backend()`` allow-list with the per-call execution-transport
+override used to pin a whole coupled pipeline to one substrate.
 
-**Observability.** Because the gate is silent-by-construction (a
-misrouted task still runs on Celery), the only signals are logs, emitted
-at INFO so they survive a default log config: the configured allow-list
-is logged once per process (:func:`_log_allow_list_once`, so a typo is
-visible even if it never matches a real task), and the first time each
-task is routed to PG (``dispatch()``, log-once per task name).
+**Observability.** Routing is logged at INFO so the signals survive a
+default log config: the configured allow-list is logged once per process
+(:func:`_log_allow_list_once`, so a typo is visible even if it never
+matches a real task), and the first time each task is routed to PG
+(``dispatch()``, log-once per task name). A task not in the allow-list
+still routes to the safe ``CELERY`` default.
 
 **Fail-safe parsing.** Unlike ``get_barrier()`` (which raises on an
 unrecognised value, because a typo'd substrate must not silently fall
