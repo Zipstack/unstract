@@ -16,14 +16,21 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const latestRequestRef = useRef(null);
 
   const refreshCoOwnerData = useCallback(
-    async (resourceId) => {
+    // Bail if another modal open superseded this refresh — a slow response
+    // must not commit a stale roster (or close a healthy modal via the 404
+    // branch) after the user has moved to a different resource. Mutation
+    // callers pass the token captured BEFORE their POSTs so a modal switch
+    // during the mutation itself is caught too, not just one mid-refresh.
+    async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
+        if (latestRequestRef.current !== requestId) return;
         setCoOwnerData({
           coOwners: res.data?.co_owners || [],
           createdBy: res.data?.created_by || null,
         });
       } catch (err) {
+        if (latestRequestRef.current !== requestId) return;
         if (err?.response?.status === 404) {
           setCoOwnerOpen(false);
           onListRefresh?.();
@@ -86,6 +93,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
 
   const onAddCoOwner = useCallback(
     async (resourceId, userIdOrIds) => {
+      const requestId = latestRequestRef.current;
       const isBatch = Array.isArray(userIdOrIds);
       const userIds = isBatch ? userIdOrIds : [userIdOrIds];
       // Attempt every id independently — a mid-batch failure must not drop the
@@ -101,7 +109,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         }
       }
       // Reconverge the modal on true server state regardless of partial outcome.
-      await refreshCoOwnerData(resourceId);
+      await refreshCoOwnerData(resourceId, requestId);
       onListRefresh?.();
 
       const succeeded = userIds.length - failedIds.length;
@@ -138,13 +146,14 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
 
   const onRemoveCoOwner = useCallback(
     async (resourceId, userId) => {
+      const requestId = latestRequestRef.current;
       try {
         await service.removeCoOwner(resourceId, userId);
         setAlertDetails({
           type: "success",
           content: "Co-owner removed successfully",
         });
-        await refreshCoOwnerData(resourceId);
+        await refreshCoOwnerData(resourceId, requestId);
         onListRefresh?.();
       } catch (err) {
         setAlertDetails(handleException(err, "Unable to remove co-owner"));

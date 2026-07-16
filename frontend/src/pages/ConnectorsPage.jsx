@@ -151,6 +151,21 @@ function ConnectorsPage() {
         setGroupList(items.map((g) => ({ id: g.id, name: g.name })));
       })
       .catch(() => setGroupList([]));
+    // Seed the modal from the detail endpoint — the list row no longer
+    // carries `shared_users`, and SharePermission gates all seeding on it;
+    // seeding from the row would render "not shared" and Apply would then
+    // silently wipe every existing share (same pattern as the other pages).
+    setIsShareLoading(true);
+    connectorCoOwnerService
+      .getSharedUsers(connector.id)
+      .then((res) => setSharingConnector(res?.data))
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Unable to fetch sharing information"),
+        );
+        setShareModalVisible(false);
+      })
+      .finally(() => setIsShareLoading(false));
   };
 
   const handleShareSave = async (

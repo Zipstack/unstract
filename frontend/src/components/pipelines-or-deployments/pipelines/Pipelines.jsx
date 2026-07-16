@@ -69,7 +69,8 @@ function Pipelines({ type }) {
   } = useCoOwnerManagement({
     service: pipelineApiService,
     setAlertDetails,
-    onListRefresh: () => getPipelineList(),
+    onListRefresh: () =>
+      getPipelineList(pagination.current, pagination.pageSize, searchTerm),
   });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();

@@ -65,7 +65,8 @@ function ApiDeployment() {
   } = useCoOwnerManagement({
     service: apiDeploymentsApiService,
     setAlertDetails,
-    onListRefresh: () => getApiDeploymentList(),
+    onListRefresh: () =>
+      getApiDeploymentList(pagination.current, pagination.pageSize, searchTerm),
   });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();

@@ -105,11 +105,18 @@ def _purge_replaceable_owner_rows(instance: OrganizationMember) -> int:
     if not owner_rows:
         return 0
     # Materialised so every lock is held before the purge decision below.
+    # ``content_type_id__in`` + ``organization`` are invariant across the
+    # departing user's rows, so the lock set stays a superset of every
+    # (ct, oid) pair the user owns (contention with the serializer's lock is
+    # preserved) while the (content_type, object_id, role) index applies —
+    # without them this is a full-table scan under FOR UPDATE.
     peer_rows = list(
         ResourceMembership.objects.select_for_update()
         .filter(
             role=ResourceRole.OWNER,
+            content_type_id__in={ct_id for _, ct_id, _ in owner_rows},
             object_id__in={oid for _, _, oid in owner_rows},
+            organization=instance.organization,
         )
         .order_by("pk")
         .values_list("user_id", "content_type_id", "object_id")

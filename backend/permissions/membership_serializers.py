@@ -75,13 +75,21 @@ class RemoveOwnerSerializer(serializers.Serializer):
             # serializes the two paths (ordered by pk to match its scan and
             # avoid deadlocks). Materialised via ``list`` — a locked
             # ``.count()`` silently drops FOR UPDATE.
-            owner_pks = list(
+            owner_rows = list(
                 resource.memberships.select_for_update()
                 .filter(role=ResourceRole.OWNER)
                 .order_by("pk")
-                .values_list("pk", flat=True)
+                .values_list("pk", "user_id")
             )
-            if len(owner_pks) <= 1:
+            # The org-exit carve-out (spec §7.4) keeps a departed owner's row,
+            # so a surviving row may belong to an ex-member; only another LIVE
+            # owner justifies removal — mirrors the signal's liveness check.
+            live_user_ids = set(
+                OrganizationMember.objects.filter(
+                    organization=UserContext.get_organization()
+                ).values_list("user_id", flat=True)
+            )
+            if not any(uid != user.id and uid in live_user_ids for _, uid in owner_rows):
                 raise serializers.ValidationError(
                     "Cannot remove the last owner. Add another owner first."
                 )

@@ -482,3 +482,150 @@ class AdapterRemoveCoOwnerCleanupTests(CoOwnerOrgTestMixin, TestCase):
         response = self._remove(self.owner, self.coowner.pk)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(self._default_llm_id(), self.adapter.pk)
+
+
+class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
+    """Every OSS create path grants the creator an OWNER membership row.
+
+    ``for_user`` no longer consults ``created_by`` (audit-only, UN-2202), so a
+    create path that skips the grant leaves the new resource invisible to its
+    own creator — and every other test seeds the OWNER row by hand, which is
+    exactly why these must drive the real create endpoints.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.factory = APIRequestFactory()
+
+    def _create(self, view_cls: type, payload: dict) -> Response:
+        view = view_cls.as_view({"post": "create"})
+        request = self.factory.post("/x/", payload, format="json")
+        force_authenticate(request, user=self.coowner)
+        return view(request)
+
+    def _assert_creator_owns(self, model: type, **lookup: str) -> None:
+        created = model.objects.get(**lookup)
+        self.assertTrue(created.is_owner(self.coowner))
+        # The load-bearing half: the creator can actually SEE the resource.
+        self.assertIn(created, model.objects.for_user(self.coowner))
+
+    def _build_workflow_fixture(self) -> Workflow:
+        return Workflow.objects.create(
+            workflow_name="wf-parent", organization=self.org, created_by=self.coowner
+        )
+
+    @pytest.mark.critical_path("co-owner-manage")
+    def test_workflow_create_grants_creator_ownership(self) -> None:
+        response = self._create(WorkflowViewSet, {"workflow_name": "wf-new"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(Workflow, workflow_name="wf-new")
+
+    def test_custom_tool_create_grants_creator_ownership(self) -> None:
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+
+        response = self._create(
+            PromptStudioCoreView,
+            {"tool_name": "tool-new", "description": "d", "author": "a"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(CustomTool, tool_name="tool-new")
+
+    def test_adapter_create_grants_creator_ownership(self) -> None:
+        from adapter_processor_v2.models import AdapterInstance
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        # Only the SDK context-window lookup (a provider-shaped call) is mocked.
+        with patch.object(
+            AdapterInstance, "get_context_window_size", return_value=4096
+        ):
+            response = self._create(
+                AdapterInstanceViewSet,
+                {
+                    "adapter_id": "openai|test-llm",
+                    "adapter_name": "adapter-new",
+                    "adapter_type": "LLM",
+                    "adapter_metadata": {"api_key": "sk-test", "model": "gpt-4o"},
+                },
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(AdapterInstance, adapter_name="adapter-new")
+
+    def test_connector_create_grants_creator_ownership(self) -> None:
+        from connector_v2.models import ConnectorInstance
+        from connector_v2.views import ConnectorInstanceViewSet
+
+        response = self._create(
+            ConnectorInstanceViewSet,
+            {
+                # A real catalog id — to_representation resolves connector_mode
+                # from the connectorkit; create itself needs no live MinIO.
+                "connector_id": "minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
+                "connector_name": "conn-new",
+                "connector_metadata": {"key": "k", "secret": "s"},
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(ConnectorInstance, connector_name="conn-new")
+
+    def test_pipeline_create_grants_creator_ownership(self) -> None:
+        from pipeline_v2.models import Pipeline
+        from pipeline_v2.views import PipelineViewSet
+
+        workflow = self._build_workflow_fixture()
+        # Scheduler I/O is out of scope; the row + grant commit is the invariant.
+        with patch("pipeline_v2.serializers.crud.SchedulerHelper"):
+            response = self._create(
+                PipelineViewSet,
+                {
+                    "pipeline_name": "pipe-new",
+                    "workflow": str(workflow.pk),
+                    "pipeline_type": "ETL",
+                },
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(Pipeline, pipeline_name="pipe-new")
+
+    def test_api_deployment_create_grants_creator_ownership(self) -> None:
+        from api_v2.api_deployment_views import APIDeploymentViewSet
+        from api_v2.models import APIDeployment
+        from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+
+        workflow = self._build_workflow_fixture()
+        # The serializer requires configured endpoints; API-type needs no connector.
+        for endpoint_type in (
+            WorkflowEndpoint.EndpointType.SOURCE,
+            WorkflowEndpoint.EndpointType.DESTINATION,
+        ):
+            WorkflowEndpoint.objects.create(
+                workflow=workflow,
+                endpoint_type=endpoint_type,
+                connection_type=WorkflowEndpoint.ConnectionType.API,
+            )
+        response = self._create(
+            APIDeploymentViewSet,
+            {
+                "display_name": "api-new",
+                "api_name": "api-new-x",
+                "workflow": str(workflow.pk),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(APIDeployment, api_name="api-new-x")
+
+    def test_import_path_grants_creator_ownership(self) -> None:
+        """The 7th grant site — ``create_tool_from_import_data`` — is a helper
+        the viewset sweep can't reach; pin it directly."""
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+            PromptStudioHelper,
+        )
+
+        tool = PromptStudioHelper.create_tool_from_import_data(
+            {"tool_metadata": {"description": "d", "author": "a"}, "tool_settings": {}},
+            "tool-imported",
+            self.org,
+            self.coowner,
+        )
+        self.assertTrue(tool.is_owner(self.coowner))
+        self.assertIn(tool, CustomTool.objects.for_user(self.coowner))

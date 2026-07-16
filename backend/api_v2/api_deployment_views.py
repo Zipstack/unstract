@@ -361,9 +361,11 @@ class APIDeploymentViewSet(
             )
             workflow_ids = tool_instances.values_list("workflow_id", flat=True).distinct()
 
-            # Get API deployments for these workflows
-            deployments = APIDeployment.objects.filter(
-                workflow_id__in=workflow_ids, created_by=request.user
+            # Get API deployments for these workflows the user can access —
+            # ``created_by`` is audit-only; access flows through memberships,
+            # sharing, and the admin/SA bypasses (UN-2202).
+            deployments = APIDeployment.objects.for_user(request.user).filter(
+                workflow_id__in=workflow_ids
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)
