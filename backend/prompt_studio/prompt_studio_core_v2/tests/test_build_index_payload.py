@@ -55,6 +55,7 @@ def _dispatch_build(
     read_return: str | Exception,
     tool: Any = None,
     profile: Any = None,
+    validate_owner_mock: Any = None,
 ):
     """Run ``build_index_payload`` with all collaborators patched.
 
@@ -69,6 +70,7 @@ def _dispatch_build(
     """
     tool = tool or _make_tool()
     profile = profile or _make_profile()
+    validate_owner_mock = validate_owner_mock or MagicMock(return_value=None)
 
     fs_instance = MagicMock(name="fs_instance")
     if isinstance(read_return, Exception):
@@ -90,14 +92,22 @@ def _dispatch_build(
                 "get_or_create_prompt_studio_subdirectory",
                 MagicMock(return_value="/prompt-studio/org/user/tool"),
             ),
-            (_psh_mod.ProfileManager, "get_default_llm_profile", MagicMock(return_value=profile)),
+            (
+                _psh_mod.ProfileManager,
+                "get_default_llm_profile",
+                MagicMock(return_value=profile),
+            ),
             (PromptStudioHelper, "validate_adapter_status", MagicMock(return_value=None)),
             (
                 PromptStudioHelper,
                 "validate_profile_manager_owner_access",
-                MagicMock(return_value=None),
+                validate_owner_mock,
             ),
-            (PromptStudioHelper, "_get_platform_api_key", MagicMock(return_value="pk-test")),
+            (
+                PromptStudioHelper,
+                "_get_platform_api_key",
+                MagicMock(return_value="pk-test"),
+            ),
             (
                 PromptStudioHelper,
                 "_build_summarize_params",
@@ -105,7 +115,11 @@ def _dispatch_build(
             ),
             (_psh_mod.EnvHelper, "get_storage", MagicMock(return_value=fs_instance)),
             (_psh_mod.PromptStudioIndexHelper, "check_extraction_status", check_mock),
-            (_psh_mod.IndexingUtils, "generate_index_key", MagicMock(return_value="doc-key-1")),
+            (
+                _psh_mod.IndexingUtils,
+                "generate_index_key",
+                MagicMock(return_value="doc-key-1"),
+            ),
             (_psh_mod, "PromptIdeBaseTool", MagicMock(return_value=MagicMock())),
             (_psh_mod.StateStore, "get", MagicMock(return_value="")),
         ):
@@ -173,3 +187,17 @@ class TestBuildIndexPayloadMarker:
             "falling back to full extraction" in rec.getMessage()
             for rec in caplog.records
         )
+
+
+class TestOwnerAccessPlumbing:
+    """UN-3739: the requesting user must reach the owner-access check."""
+
+    def test_owner_access_receives_requesting_user(self) -> None:
+        validate_owner_mock = MagicMock(return_value=None)
+        _dispatch_build(
+            check_return=True,
+            read_return="extracted text",
+            validate_owner_mock=validate_owner_mock,
+        )
+        _args, kwargs = validate_owner_mock.call_args
+        assert kwargs.get("request_user_id") == "user-1"

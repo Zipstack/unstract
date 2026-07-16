@@ -184,104 +184,110 @@ class PromptStudioHelper:
                 raise PermissionError(error_msg)
 
     @staticmethod
+    def _is_org_admin_by_user_id(user_id: str | None) -> bool:
+        """Return True if ``user_id`` resolves to an org member with admin role."""
+        if not user_id:
+            return False
+        member = OrganizationMemberService.get_user_by_user_id(user_id)
+        return bool(
+            member and OrganizationMemberService.is_user_organization_admin(member.user)
+        )
+
+    @staticmethod
+    def _user_has_adapter_access(user: Any, adapter: Any) -> bool:
+        return (
+            adapter.shared_to_org
+            or adapter.created_by == user
+            or adapter.shared_users.filter(pk=user.pk).exists()
+            or has_group_access(user, adapter)
+        )
+
+    @staticmethod
     def validate_profile_manager_owner_access(
         profile_manager: ProfileManager,
+        request_user_id: str | None = None,
     ) -> None:
-        """Helper method to validate the owner's access to the profile manager.
+        """Validate adapter access for a profile before using its adapters.
+
+        This is a revocation guard on the profile *creator*, not a
+        requester ACL: users with project access deliberately piggyback on
+        the creator's adapter access. Org admins and service-account
+        creators bypass it — admins have implicit access to all adapters,
+        and platform-API/org-migration profiles are created by service
+        accounts that hold no adapter shares by design (UN-3739).
 
         Args:
-            profile_manager (ProfileManager): The profile manager instance to
-              validate.
+            profile_manager: The profile whose adapters will be used.
+            request_user_id: ``user_id`` of the user triggering the action.
 
         Raises:
-            PermissionError: If the owner does not have permission to perform
-              the action.
+            PermissionError: If the profile creator no longer has access to
+              one or more adapters and no bypass applies.
         """
-        profile_manager_owner = profile_manager.created_by
-        if profile_manager_owner is None:
+        if PromptStudioHelper._is_org_admin_by_user_id(request_user_id):
             return
 
-        if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
+        owner = profile_manager.created_by
+        if owner is None:
             return
 
-        is_llm_owned = (
-            profile_manager.llm.shared_to_org
-            or profile_manager.llm.created_by == profile_manager_owner
-            or profile_manager.llm.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.llm)
-        )
-        is_vector_store_owned = (
-            profile_manager.vector_store.shared_to_org
-            or profile_manager.vector_store.created_by == profile_manager_owner
-            or profile_manager.vector_store.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.vector_store)
-        )
-        is_embedding_model_owned = (
-            profile_manager.embedding_model.shared_to_org
-            or profile_manager.embedding_model.created_by == profile_manager_owner
-            or profile_manager.embedding_model.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.embedding_model)
-        )
-        is_x2text_owned = (
-            profile_manager.x2text.shared_to_org
-            or profile_manager.x2text.created_by == profile_manager_owner
-            or profile_manager.x2text.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-            or has_group_access(profile_manager_owner, profile_manager.x2text)
+        if getattr(owner, "is_service_account", False):
+            return
+
+        if OrganizationMemberService.is_user_organization_admin(owner):
+            return
+
+        adapters = [
+            profile_manager.llm,
+            profile_manager.vector_store,
+            profile_manager.embedding_model,
+            profile_manager.x2text,
+        ]
+        denied = [
+            adapter
+            for adapter in adapters
+            if not PromptStudioHelper._user_has_adapter_access(owner, adapter)
+        ]
+        if not denied:
+            return
+
+        for adapter in denied:
+            logger.error(ERROR_MSG, owner.user_id, adapter.id)
+        logger.error(
+            "Adapter access denied for profile '%s': creator %s lacks access,"
+            " requester %s",
+            profile_manager.profile_name,
+            owner.user_id,
+            request_user_id,
         )
 
-        if not (
-            is_llm_owned
-            and is_vector_store_owned
-            and is_embedding_model_owned
-            and is_x2text_owned
-        ):
-            adapter_names = set()
-            if not is_llm_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.llm.id,
-                )
-                adapter_names.add(profile_manager.llm.adapter_name)
-            if not is_vector_store_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.vector_store.id,
-                )
-                adapter_names.add(profile_manager.vector_store.adapter_name)
-            if not is_embedding_model_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.embedding_model.id,
-                )
-                adapter_names.add(profile_manager.embedding_model.adapter_name)
-            if not is_x2text_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.x2text.id,
-                )
-                adapter_names.add(profile_manager.x2text.adapter_name)
-            if len(adapter_names) > 1:
-                error_msg = (
-                    f"Multiple permission errors were encountered with {', '.join(adapter_names)}",  # noqa: E501
-                )
-            else:
-                error_msg = (
-                    f"Permission Error: You do not have access to {adapter_names.pop()}",  # noqa: E501
-                )
+        denied_names = ", ".join(adapter.adapter_name for adapter in denied)
+        profile_ref = (
+            f"This project's LLM profile '{profile_manager.profile_name}' was"
+            f" created by {owner.email}"
+        )
+        if not OrganizationMemberService.get_user_by_id(owner.id):
+            error_msg = (
+                f"Permission Error: {profile_ref}, who is no longer a member of"
+                f" this organization. Recreate the default profile, or ask an"
+                f" admin to share these adapters with everyone: {denied_names}."
+            )
+        elif len(denied) > 1:
+            error_msg = (
+                f"Permission Error: {profile_ref}, who no longer has access to"
+                f" these adapters: {denied_names}. Re-share them with the"
+                f" creator, share them with everyone, or recreate the profile"
+                f" using adapters you have access to."
+            )
+        else:
+            error_msg = (
+                f"Permission Error: {profile_ref}, who no longer has access to"
+                f" the adapter '{denied_names}'. Re-share the adapter with"
+                f" them, share it with everyone, or recreate the profile using"
+                f" adapters you have access to."
+            )
 
-            raise PermissionError(error_msg)
+        raise PermissionError(error_msg)
 
     @staticmethod
     def _publish_log(
@@ -321,6 +327,7 @@ class PromptStudioHelper:
         stem: str,
         extract_file_path: str,
         platform_api_key: str,
+        request_user_id: str | None = None,
     ) -> tuple[dict[str, Any] | None, str, "ProfileManager"]:
         """Build summarize_params dict if summarization is enabled.
 
@@ -344,7 +351,9 @@ class PromptStudioHelper:
 
         if summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
-            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                summary_profile, request_user_id=request_user_id
+            )
 
         llm_adapter_id = (
             str(tool.summarize_llm_adapter.id)
@@ -508,7 +517,9 @@ class PromptStudioHelper:
             raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(default_profile)
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user_id=user_id
+        )
 
         # Common path decomposition used by extract, summarize, and index
         directory, filename = os.path.split(file_path)
@@ -525,6 +536,7 @@ class PromptStudioHelper:
                 stem,
                 extract_file_path,
                 platform_api_key,
+                request_user_id=user_id,
             )
         )
 
@@ -727,7 +739,9 @@ class PromptStudioHelper:
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user_id=user_id
+        )
 
         vector_db = str(profile_manager.vector_store.id)
         embedding_model = str(profile_manager.embedding_model.id)
@@ -945,7 +959,9 @@ class PromptStudioHelper:
             raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user_id=user_id
+        )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
@@ -1136,7 +1152,9 @@ class PromptStudioHelper:
             challenge_llm = str(default_profile.llm.id)
 
         PromptStudioHelper.validate_adapter_status(default_profile)
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user_id=user_id
+        )
         default_profile.chunk_size = 0
 
         if prompt_grammar:
@@ -1373,12 +1391,16 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(default_profile)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user_id=user_id
+        )
 
         # Also validate summary profile if it's different from default
         if tool.summarize_context and summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
-            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                summary_profile, request_user_id=user_id
+            )
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -1550,6 +1572,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
+                user_id=user_id,
             )
 
     @staticmethod
@@ -1668,6 +1691,7 @@ class PromptStudioHelper:
         org_id,
         document_id,
         run_id,
+        user_id=None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
@@ -1698,6 +1722,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
+                user_id=user_id,
             )
             return PromptStudioHelper._handle_response(
                 response=response,
@@ -1837,7 +1862,9 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(profile_manager)
         # Need to check the user who created profile manager
         # has access to adapters
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user_id=user_id
+        )
         # Not checking reindex here as there might be
         # change in Profile Manager
         vector_db = str(profile_manager.vector_store.id)
@@ -2218,6 +2245,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str = None,
+        user_id: str | None = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -2237,7 +2265,9 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         PromptStudioHelper.validate_adapter_status(default_profile)
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user_id=user_id
+        )
         default_profile.chunk_size = 0  # To retrive full context
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
