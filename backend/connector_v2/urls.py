@@ -12,10 +12,18 @@ connector_detail = CIViewSet.as_view(
         "delete": "destroy",
     }
 )
+connector_share = CIViewSet.as_view({"post": "share"})
+connector_effective_members = CIViewSet.as_view({"get": "effective_members"})
 
 urlpatterns = format_suffix_patterns(
     [
         path("connector/", connector_list, name="connector-list"),
         path("connector/<uuid:pk>/", connector_detail, name="connector-detail"),
+        path("connector/<uuid:pk>/share/", connector_share, name="connector-share"),
+        path(
+            "connector/<uuid:pk>/effective-members/",
+            connector_effective_members,
+            name="connector-effective-members",
+        ),
     ]
 )

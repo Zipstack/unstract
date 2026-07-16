@@ -9,12 +9,16 @@ from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -33,7 +37,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
@@ -43,6 +47,27 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
+    @staticmethod
+    def _enforce_connector_creation_restriction(request: Any) -> None:
+        """Controlled mode (UN-3585): only org admins may create connectors
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) bypass; the default (flag off) keeps creation open
+        for everyone. Applies to all connector types (all connect to external
+        systems).
+        """
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_connector_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "Connector creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
+
     def get_queryset(self) -> QuerySet | None:
         queryset = ConnectorInstance.objects.for_user(self.request.user)
 
@@ -51,6 +76,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             RequestKey.WORKFLOW,
             RequestKey.CREATED_BY,
             CIKey.CONNECTOR_TYPE,
+            CIKey.CONNECTOR_NAME,
         )
         if filter_args:
             queryset = queryset.filter(**filter_args)
@@ -159,11 +185,18 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
+        # Explicitly bind the connector to the request-scoped organization.
+        # Defense-in-depth: DefaultOrganizationMixin already declares
+        # `organization` as editable=False (so DRF drops any client-supplied
+        # value) and its save() backfills the org from UserContext when unset.
+        # Binding here makes that explicit at the callsite and keeps the row's
+        # org consistent with the org the controlled-mode check evaluated.
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
             created_by=self.request.user,
             modified_by=self.request.user,
+            organization=UserContext.get_organization(),
         )  # type: ignore
 
         # Clean up OAuth cache after successful create
@@ -171,6 +204,10 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
+        # Fail fast on the admin restriction before validating the payload —
+        # the check depends only on the request/org, not on validated data, so
+        # a denied caller shouldn't get input-validation feedback first.
+        self._enforce_connector_creation_restriction(request)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -204,40 +241,41 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
-
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and bool(notification_plugin)
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    # Only send notifications if there are newly shared users
-                    SharingNotificationService().send_sharing_notification(
-                        resource_type=ResourceType.CONNECTOR.value,
-                        resource_name=instance.connector_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
-
-                    logger.info(
-                        f"Sent sharing notifications for connector "
-                        f"to {len(newly_shared_users)} users"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail the update operation
-                logger.exception(
-                    f"Failed to send sharing notification, continuing update though: {str(e)}"
-                )
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        instance: ConnectorInstance,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        try:
+            SharingNotificationService().send_sharing_notification(
+                resource_type=ResourceType.CONNECTOR.value,
+                resource_name=instance.connector_name,
+                resource_id=str(instance.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+            logger.info(
+                "Sent sharing notifications for connector to %d users",
+                len(users_diff.added),
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification, continuing update though: %s",
+                str(e),
+            )

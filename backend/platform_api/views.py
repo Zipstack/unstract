@@ -7,7 +7,7 @@ from rest_framework.response import Response
 from utils.user_context import UserContext
 
 from platform_api.models import PlatformApiKey
-from platform_api.permissions import IsOrganizationAdmin
+from platform_api.permissions import CanRotatePlatformApiKey, IsOrganizationAdmin
 from platform_api.serializers import (
     PlatformApiKeyCreateSerializer,
     PlatformApiKeyDetailSerializer,
@@ -19,6 +19,13 @@ from platform_api.services import create_api_user_for_key
 
 class PlatformApiKeyViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
+
+    def get_permissions(self):
+        # Rotate allows self-service rotation by a platform API key (UN-3586);
+        # all other key-management actions stay admin/session-only.
+        if self.action == "rotate":
+            return [IsAuthenticated(), CanRotatePlatformApiKey()]
+        return super().get_permissions()
 
     def get_queryset(self):
         return PlatformApiKey.objects.filter(

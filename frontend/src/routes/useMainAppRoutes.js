@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { Route } from "react-router-dom";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
@@ -5,138 +6,221 @@ import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
-import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
-import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
-import { AgencyPage } from "../pages/AgencyPage.jsx";
-import ConnectorsPage from "../pages/ConnectorsPage.jsx";
-import { CustomTools } from "../pages/CustomTools.jsx";
-import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
-import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
-import { LogsPage } from "../pages/LogsPage.jsx";
-import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
-import { OnBoardPage } from "../pages/OnBoardPage.jsx";
-import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { PlatformApiKeysPage } from "../pages/PlatformApiKeysPage.jsx";
-import { ProfilePage } from "../pages/ProfilePage.jsx";
-import { SettingsPage } from "../pages/SettingsPage.jsx";
-import { ToolIdePage } from "../pages/ToolIdePage.jsx";
-import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
-import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
-import { UsersPage } from "../pages/UsersPage.jsx";
-import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
+import { lazyNamed } from "../helpers/lazyNamed.js";
+import { isModuleMissing } from "../helpers/pluginLoader.js";
+import { lazyPlugin } from "../helpers/pluginRegistry.js";
 
-let RequirePlatformAdmin;
-let PlatformAdminPage;
-let AppDeployments;
-let ChatAppPage;
-let ChatAppLayout;
-let ManualReviewSettings;
-let OnboardProduct;
+// Route pages are code-split (via the shared lazyNamed helper) so they are
+// only fetched when navigated to, not eagerly on the unauthenticated /landing
+// page. The <Suspense> boundary that renders these lives in Router.jsx
+// (shared <Routes>).
+
+// The authenticated app shell is lazy too: it statically pulls in heavy nav
+// widgets (which themselves eager-load plugins like lookup-studio), so keeping
+// it eager would drag that whole graph onto /landing even though the shell
+// never renders pre-login.
+const FullPageLayout = lazyNamed(
+  () => import("../layouts/fullpage-payout/FullPageLayout.jsx"),
+  "FullPageLayout",
+);
+const PageLayout = lazyNamed(
+  () => import("../layouts/page-layout/PageLayout.jsx"),
+  "PageLayout",
+);
+
+const AgencyPage = lazyNamed(
+  () => import("../pages/AgencyPage.jsx"),
+  "AgencyPage",
+);
+const ConnectorsPage = lazy(() => import("../pages/ConnectorsPage.jsx")); // default export
+const CustomTools = lazyNamed(
+  () => import("../pages/CustomTools.jsx"),
+  "CustomTools",
+);
+const DeploymentsPage = lazyNamed(
+  () => import("../pages/DeploymentsPage.jsx"),
+  "DeploymentsPage",
+);
+const GroupsPage = lazyNamed(
+  () => import("../pages/GroupsPage.jsx"),
+  "GroupsPage",
+);
+const InviteEditUserPage = lazyNamed(
+  () => import("../pages/InviteEditUserPage.jsx"),
+  "InviteEditUserPage",
+);
+const LogsPage = lazyNamed(() => import("../pages/LogsPage.jsx"), "LogsPage");
+const MetricsDashboardPage = lazyNamed(
+  () => import("../pages/MetricsDashboardPage.jsx"),
+  "MetricsDashboardPage",
+);
+const OnBoardPage = lazyNamed(
+  () => import("../pages/OnBoardPage.jsx"),
+  "OnBoardPage",
+);
+const OutputAnalyzerPage = lazyNamed(
+  () => import("../pages/OutputAnalyzerPage.jsx"),
+  "OutputAnalyzerPage",
+);
+const PlatformApiKeysPage = lazyNamed(
+  () => import("../pages/PlatformApiKeysPage.jsx"),
+  "PlatformApiKeysPage",
+);
+const ProfilePage = lazyNamed(
+  () => import("../pages/ProfilePage.jsx"),
+  "ProfilePage",
+);
+const SettingsPage = lazyNamed(
+  () => import("../pages/SettingsPage.jsx"),
+  "SettingsPage",
+);
+const ToolIdePage = lazyNamed(
+  () => import("../pages/ToolIdePage.jsx"),
+  "ToolIdePage",
+);
+const ToolsSettingsPage = lazyNamed(
+  () => import("../pages/ToolsSettingsPage.jsx"),
+  "ToolsSettingsPage",
+);
+const UnstractAdministrationPage = lazyNamed(
+  () => import("../pages/UnstractAdministrationPage.jsx"),
+  "UnstractAdministrationPage",
+);
+const UsersPage = lazyNamed(
+  () => import("../pages/UsersPage.jsx"),
+  "UsersPage",
+);
+const WorkflowsPage = lazyNamed(
+  () => import("../pages/WorkflowsPage.jsx"),
+  "WorkflowsPage",
+);
+
+// Enterprise plugin route elements — code-split (see lazyPlugin). Each returns
+// a React.lazy component whose chunk loads only on navigation, so none are
+// fetched on the /landing page. In OSS the import resolves to a stub and the
+// element falls back to NotFound (route harmlessly 404s). The
+// `{Component && <Route/>}` guards below are retained but always truthy.
+const RequirePlatformAdmin = lazyPlugin(
+  () => import("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx"),
+  "RequirePlatformAdmin",
+);
+const PlatformAdminPage = lazyPlugin(
+  () =>
+    import(
+      "../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx"
+    ),
+  "PlatformAdminPage",
+);
+const AgenticPromptStudio = lazyPlugin(
+  () => import("../plugins/agentic-prompt-studio"),
+  "AgenticPromptStudio",
+);
+const LookupStudio = lazyPlugin(
+  () => import("../plugins/lookup-studio"),
+  "LookupStudio",
+);
+const AppDeployments = lazyPlugin(
+  () => import("../plugins/app-deployment/AppDeployments.jsx"),
+  "AppDeployments",
+);
+const ChatAppPage = lazyPlugin(
+  () => import("../plugins/app-deployment/chat-app/ChatAppPage.jsx"),
+  "ChatAppPage",
+);
+const ChatAppLayout = lazyPlugin(
+  () => import("../plugins/app-deployment/chat-app/ChatAppLayout.jsx"),
+  "ChatAppLayout",
+);
+const ManualReviewSettings = lazyPlugin(
+  () => import("../plugins/manual-review/settings/Settings.jsx"),
+  "ManualReviewSettings",
+);
+const OnboardProduct = lazyPlugin(
+  () => import("../plugins/onboard-product/OnboardProduct.jsx"),
+  "OnboardProduct",
+);
+const ManualReviewPage = lazyPlugin(
+  () => import("../plugins/manual-review/page/ManualReviewPage.jsx"),
+  "ManualReviewPage",
+);
+const ReviewLayout = lazyPlugin(
+  () => import("../plugins/manual-review/review-layout/ReviewLayout.jsx"),
+  "ReviewLayout",
+);
+const SimpleManualReviewPage = lazyPlugin(
+  () =>
+    import("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx"),
+  "SimpleManualReviewPage",
+);
+const Manage = lazyPlugin(
+  () => import("../plugins/manual-review/page/manage/Manage.jsx"),
+  "Manage",
+);
+const ReadOnlyReviewPage = lazyPlugin(
+  () => import("../plugins/prompt-change-indicator/ReadOnlyReviewPage.jsx"),
+  "ReadOnlyReviewPage",
+);
+const UnstractSubscriptionPage = lazyPlugin(
+  () =>
+    import(
+      "../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx"
+    ),
+  "UnstractSubscriptionPage",
+);
+const UnstractSubscriptionCheck = lazyPlugin(
+  () =>
+    import(
+      "../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx"
+    ),
+  "UnstractSubscriptionCheck",
+);
+const MarketplaceLandingPage = lazyPlugin(
+  () => import("../plugins/marketplace"),
+  "MarketplaceLandingPage",
+);
+const MarketplaceStripeConflictPage = lazyPlugin(
+  () => import("../plugins/marketplace"),
+  "MarketplaceStripeConflictPage",
+);
+
+// PRODUCT_NAMES is a data value read synchronously below to decide the route
+// tree, so it cannot be lazy — load it with a guarded await (cloud only; OSS
+// resolves to the stub and is caught).
 let PRODUCT_NAMES = {};
-let ManualReviewPage;
-let SimpleManualReviewPage;
-let ReviewLayout;
-let Manage;
-let UnstractSubscriptionPage;
-let UnstractSubscriptionCheck;
-let AgenticPromptStudio;
-
 try {
-  const mod1 = await import(
-    "../plugins/frictionless-onboard/RequirePlatformAdmin.jsx"
-  );
-  RequirePlatformAdmin = mod1.RequirePlatformAdmin;
-  const mod2 = await import(
-    "../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx"
-  );
-  PlatformAdminPage = mod2.PlatformAdminPage;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
+  const mod = await import("../plugins/llm-whisperer/helper.js");
+  PRODUCT_NAMES = mod.PRODUCT_NAMES ?? {};
+} catch (err) {
+  if (!isModuleMissing(err)) {
+    // eslint-disable-next-line no-console
+    console.error("[llm-whisperer] helper import failed unexpectedly", err);
+  }
 }
 
-try {
-  const mod = await import("../plugins/agentic-prompt-studio");
-  AgenticPromptStudio = mod.AgenticPromptStudio;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-let LookupStudio;
-try {
-  const mod = await import("../plugins/lookup-studio");
-  LookupStudio = mod.LookupStudio;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  const mod1 = await import("../plugins/app-deployment/AppDeployments.jsx");
-  AppDeployments = mod1.AppDeployments;
-  const mod2 = await import(
-    "../plugins/app-deployment/chat-app/ChatAppPage.jsx"
-  );
-  ChatAppPage = mod2.ChatAppPage;
-  const mod3 = await import(
-    "../plugins/app-deployment/chat-app/ChatAppLayout.jsx"
-  );
-  ChatAppLayout = mod3.ChatAppLayout;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  const mod = await import("../plugins/manual-review/settings/Settings.jsx");
-  ManualReviewSettings = mod.ManualReviewSettings;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  const mod1 = await import("../plugins/onboard-product/OnboardProduct.jsx");
-  OnboardProduct = mod1.OnboardProduct;
-  const mod2 = await import("../plugins/llm-whisperer/helper.js");
-  PRODUCT_NAMES = mod2.PRODUCT_NAMES ?? {};
-} catch {
-  // Do nothing.
-}
-
-try {
-  const mod1 = await import(
-    "../plugins/manual-review/page/ManualReviewPage.jsx"
-  );
-  ManualReviewPage = mod1.ManualReviewPage;
-  const mod2 = await import(
-    "../plugins/manual-review/review-layout/ReviewLayout.jsx"
-  );
-  ReviewLayout = mod2.ReviewLayout;
-  const mod3 = await import(
-    "../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx"
-  );
-  SimpleManualReviewPage = mod3.SimpleManualReviewPage;
-  const mod4 = await import("../plugins/manual-review/page/manage/Manage.jsx");
-  Manage = mod4.Manage;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
-
-try {
-  const mod1 = await import(
-    "../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx"
-  );
-  UnstractSubscriptionPage = mod1.UnstractSubscriptionPage;
-  const mod3 = await import(
-    "../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx"
-  );
-  UnstractSubscriptionCheck = mod3.UnstractSubscriptionCheck;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
+// NOTE: the old "ReadOnlyReviewPage loaded but ReviewLayout missing" warning
+// was removed — with lazyPlugin both wrappers are always truthy, so the check
+// could never fire. If prompt-change-indicator ever ships without
+// manual-review, ReviewLayout's import rejects at render and falls back to
+// NotFound (lazyPlugin), so the readonly route degrades to a 404 rather than
+// crashing — no silent total failure to guard against.
 
 function useMainAppRoutes() {
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
+        {MarketplaceLandingPage && (
+          <Route
+            path="marketplace-landing"
+            element={<MarketplaceLandingPage />}
+          />
+        )}
+        {MarketplaceStripeConflictPage && (
+          <Route
+            path="marketplace-stripe-conflict"
+            element={<MarketplaceStripeConflictPage />}
+          />
+        )}
       </Route>
       {ChatAppLayout && ChatAppPage && (
         <Route path=":orgName" element={<ChatAppLayout />}>
@@ -218,6 +302,7 @@ function useMainAppRoutes() {
           <Route path="users" element={<UsersPage />} />
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
+          <Route path="groups" element={<GroupsPage />} />
           <Route
             path="settings/platform-api-keys"
             element={<PlatformApiKeysPage />}
@@ -257,17 +342,24 @@ function useMainAppRoutes() {
             element={<ManualReviewPage type="approve" />}
           />
           {Manage && <Route path="review/manage" element={<Manage />} />}
+          {ReadOnlyReviewPage && (
+            <Route
+              path="review/readonly/:documentId"
+              element={<ReadOnlyReviewPage />}
+            />
+          )}
         </Route>
       )}
     </>
   );
 
-  if (OnboardProduct && Object.keys(PRODUCT_NAMES)?.length) {
+  // Gate on the exact value passed as `type` (PRODUCT_NAMES.unstract) rather
+  // than on the map being non-empty, so we never wrap every route in
+  // OnboardProduct with an undefined product type.
+  const unstractProduct = PRODUCT_NAMES?.unstract;
+  if (OnboardProduct && unstractProduct) {
     return (
-      <Route
-        path=""
-        element={<OnboardProduct type={PRODUCT_NAMES?.unstract} />}
-      >
+      <Route path="" element={<OnboardProduct type={unstractProduct} />}>
         <Route path="" element={<UnstractSubscriptionCheck />}>
           {routes}
         </Route>

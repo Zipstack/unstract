@@ -7,7 +7,6 @@
 #   5678 - backend
 #   5679 - runner
 #   5680 - platform-service
-#   5681 - prompt-service
 #   5682 - worker-file-processing-v2
 #   5683 - worker-callback-v2
 #   5684 - worker-api-deployment-v2
@@ -63,21 +62,6 @@ services:
         --timeout 900
         --access-logfile -
         --graceful-timeout 5 unstract.platform_service.run:app"
-    ]
-
-  prompt-service:
-    ports:
-      - "5681:5681"
-    command: [
-      "uv run python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5681 .venv/bin/gunicorn
-        --bind 0.0.0.0:3003
-        --workers 1
-        --threads 2
-        --worker-class gthread
-        --log-level debug
-        --timeout 900
-        --access-logfile -
-        --graceful-timeout 5 unstract.prompt_service.run:app"
     ]
 
   #########################################################################################################

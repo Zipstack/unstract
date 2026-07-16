@@ -123,9 +123,18 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
     label: "User Management",
     path: `/${orgName}/users`,
   },
+  ...(isAdmin
+    ? [
+        {
+          key: "groups",
+          label: "Groups",
+          path: `/${orgName}/groups`,
+        },
+      ]
+    : []),
   {
     key: "triad",
-    label: "Default Triad",
+    label: "Default LLM Profile",
     path: `/${orgName}/settings/triad`,
   },
   ...(manualReviewSettingsEnabled
@@ -149,6 +158,9 @@ const getActiveSettingsKey = () => {
   }
   if (currentPath.includes("/users")) {
     return "users";
+  }
+  if (currentPath.includes("/groups")) {
+    return "groups";
   }
   if (currentPath.includes("/settings/triad")) {
     return "triad";
@@ -465,7 +477,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
               `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
-            globalThis.location.pathname === `/${orgName}/users`,
+            globalThis.location.pathname === `/${orgName}/users` ||
+            globalThis.location.pathname === `/${orgName}/groups`,
         },
       ],
     },

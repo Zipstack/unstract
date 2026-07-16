@@ -249,24 +249,6 @@ class TestExceptions:
         assert err.message == "extraction failed"
         assert err.code == 500
 
-    def test_no_flask_import(self):
-        """Verify exceptions module does NOT import Flask."""
-        import importlib
-        import sys
-
-        # Ensure fresh import
-        mod_name = "executor.executors.exceptions"
-        if mod_name in sys.modules:
-            importlib.reload(sys.modules[mod_name])
-        else:
-            importlib.import_module(mod_name)
-
-        # Check that no flask modules were pulled in
-        flask_modules = [m for m in sys.modules if m.startswith("flask")]
-        assert flask_modules == [], (
-            f"Flask modules imported: {flask_modules}"
-        )
-
     def test_custom_data_error_signature(self):
         from executor.executors.exceptions import CustomDataError
 

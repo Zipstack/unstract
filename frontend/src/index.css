@@ -251,3 +251,26 @@ body {
   background-color: #ffffff;
   z-index: 2000;
 }
+
+.notification-id-line,
+.notification-id-line__value {
+  font-size: 12px;
+}
+
+.notification-id-line {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.notification-id-line--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.notification-id-line__value {
+  word-break: break-all;
+}

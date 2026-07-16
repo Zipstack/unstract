@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from rest_framework import serializers
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -12,6 +13,7 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
@@ -30,14 +32,24 @@ logger = logging.getLogger(__name__)
 
 class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
+    # ``shared_groups`` is no longer an M2M on Workflow — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /workflow/{id}/share/``; the field is
+    # read-only on this serializer (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = Workflow
         fields = "__all__"
+        # IntegrityErrorMixin owns uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the mixin can map a friendly message.
+        validators = []
         extra_kwargs = {
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,
             },
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
         }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
@@ -171,14 +183,22 @@ class FileHistorySerializer(ModelSerializer):
 
 
 class SharedUserListSerializer(ModelSerializer):
-    """Serializer for returning workflow with shared user details."""
+    """Serializer for returning workflow with shared user + group details."""
 
     shared_users = SerializerMethodField()
+    shared_groups = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = Workflow
-        fields = ["id", "workflow_name", "shared_users", "shared_to_org", "created_by"]
+        fields = [
+            "id",
+            "workflow_name",
+            "shared_users",
+            "shared_to_org",
+            "shared_groups",
+            "created_by",
+        ]
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
@@ -186,6 +206,9 @@ class SharedUserListSerializer(ModelSerializer):
             {"id": user.id, "email": user.email}
             for user in obj.shared_users.filter(is_service_account=False)
         ]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
     def get_created_by(self, obj):
         """Return creator details."""

@@ -41,6 +41,16 @@ try {
   // The component will remain 'undefined' it is not available
 }
 
+let PromptChangeIndicator;
+try {
+  const mod = await import(
+    "../../../plugins/prompt-change-indicator/PromptChangeIndicator"
+  );
+  PromptChangeIndicator = mod.PromptChangeIndicator;
+} catch {
+  // Cloud-only feedback loop indicator; stays undefined in OSS builds
+}
+
 let LookupMenuItem;
 try {
   const mod = await import(
@@ -450,6 +460,12 @@ function Header({
           </>
         )}
         <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        {PromptChangeIndicator && (
+          <PromptChangeIndicator
+            promptDetails={promptDetails}
+            toolDetails={details}
+          />
+        )}
         {isSimplePromptStudio && PromptRunBtnSps && (
           <PromptRunBtnSps
             spsLoading={spsLoading}

@@ -6,6 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from importlib import import_module
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from typing import Any
@@ -17,32 +18,47 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 # Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). The patterns are regex-searched against the model id
-# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
-# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
-# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
-# covers every encoding of the id we have observed:
-#   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
-#   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
-#   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
+# `top_p`, `top_k`). Anthropic removed the sampling params starting with Claude
+# Opus 4.7, and every model released since — Opus 4.8, Sonnet 5, Fable 5,
+# Mythos 5 — rejects them with a 400 (directly, and through the Bedrock / Azure
+# AI Foundry / Vertex proxies). Opus 4.6 / Sonnet 4.6 and older still accept
+# them, so detection is a narrow allowlist rather than a broad `claude-*` match.
+#
+# Each stem is compiled into a pattern that is regex-searched against the model
+# id after lowercasing and normalizing `.` / `_` to `-`. The match is anchored
+# at the trailing edge so unrelated future ids (`claude-sonnet-50`,
+# `claude-opus-4-70`, `claude-sonnet-5verbose`) do not match. One stem covers
+# every encoding of the id we have observed, e.g. for `claude-sonnet-5`:
+#   - Native Anthropic              `claude-sonnet-5`, `anthropic/claude-sonnet-5`
+#   - Bedrock foundation model      `anthropic.claude-sonnet-5-<date>-v1:0`
+#   - Bedrock cross-region profile  `us.anthropic.claude-sonnet-5-...`,
 #                                   `eu.`, `apac.`, `global.` variants
 #   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
-#                                    anthropic.claude-opus-4-7-...`
+#                                    anthropic.claude-sonnet-5-...`
 #   - Bedrock inference-profile ARN `arn:aws:bedrock:<region>:<account>:
-#                                    inference-profile/us.anthropic.claude-opus-4-7-...`
-#   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
-#   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
+#                                    inference-profile/us.anthropic.claude-sonnet-5-...`
+#   - Vertex AI                     `vertex_ai/claude-sonnet-5@<date>`
+#   - Azure AI Foundry              deployments whose name embeds `claude-sonnet-5`
 # Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
 # through because the regex is anchored only at the trailing edge.
-# Add new entries here when Anthropic deprecates sampling on more models.
+# Keep this list current — add a stem here when Anthropic deprecates sampling on
+# a new model.
 # Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
 # delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
 # `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
-# `v` is intentionally rejected so alpha continuations like `4-7verbose` do
-# not silently match.
-# See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
-_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
+# `v` is intentionally rejected so alpha continuations like `sonnet-5verbose`
+# do not silently match.
+# See https://docs.claude.com/en/about-claude/models/overview
+_SAMPLING_DEPRECATED_MODEL_STEMS: tuple[str, ...] = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(rf"{re.escape(stem)}(?=$|[-:@/]|v\d)")
+    for stem in _SAMPLING_DEPRECATED_MODEL_STEMS
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
@@ -62,7 +78,7 @@ def _looks_like_opaque_aip_arn(value: str | None) -> bool:
 
     Bedrock AIP ARNs do not carry the underlying foundation-model id in the
     string, so the sampling-strip detector cannot decide whether the call is
-    bound for Claude Opus 4.7.
+    bound for a sampling-deprecated Claude model (Opus 4.7 and later).
     """
     return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
 
@@ -71,12 +87,14 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     """Return True when the model rejects sampling parameters.
 
     Anthropic deprecated `temperature`, `top_p`, and `top_k` starting with
-    Claude Opus 4.7; sending any of them yields a 400 from Anthropic and from
-    the providers that proxy it (Bedrock, Azure AI Foundry, Vertex AI).
+    Claude Opus 4.7, and every model released since (Opus 4.8, Sonnet 5,
+    Fable 5, Mythos 5) rejects them too; sending any of them yields a 400 from
+    Anthropic and from the providers that proxy it (Bedrock, Azure AI Foundry,
+    Vertex AI). See `_SAMPLING_DEPRECATED_MODEL_STEMS` for the covered set.
 
     The check normalizes case and `.`/`_` separators to `-`, then regex-
     searches against the patterns with a trailing-edge boundary, so
-    `claude-opus-4-70` and `claude-opus-4-7verbose` do not match. This
+    `claude-sonnet-50` and `claude-sonnet-5verbose` do not match. This
     catches every format that embeds the model id (foundation model ids,
     cross-region profiles, foundation-model ARNs, inference-profile ARNs,
     Vertex `@`-suffixed ids).
@@ -88,7 +106,8 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
       from the string. Pass the AIP ARN in `model_id` and keep the standard
       model id in `model`, or the strip won't fire.
     - Azure AI Foundry deployment names that omit the model id; rename the
-      deployment to include `claude-opus-4-7` so detection works.
+      deployment to include the model id (e.g. `claude-sonnet-5`) so detection
+      works.
     """
     if not model:
         return False
@@ -340,10 +359,240 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add openai/ prefix if the model doesn't already have it
-        if model.startswith("openai/"):
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
             return model
         else:
-            return f"openai/{model}"
+            return f"{_OPENAI_PROVIDER_PREFIX}{model}"
+
+
+# LiteLLM provider prefixes hoisted to module constants so the same literal is
+# not duplicated across `OpenAILLMParameters`, `OpenAICompatibleLLMParameters`,
+# and the reasoning-model detector below.
+_OPENAI_PROVIDER_PREFIX = "openai/"
+_CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
+_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+# Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
+# null/blank one before any request reaches the endpoint.
+_NO_AUTH_API_KEY = "no-auth"
+
+
+def _is_openai_reasoning_model(model: str) -> bool:
+    """Best-effort detection of OpenAI reasoning model names.
+
+    The check is conservative — it matches only OpenAI's known reasoning
+    families (o1, o3, o4, gpt-5) after stripping the LiteLLM `custom_openai/`
+    prefix and optional `openai/` sub-prefix. Custom gateway model aliases
+    that hide a reasoning model behind an unrelated name still need the
+    explicit `enable_reasoning` opt-in.
+    """
+    if not model:
+        return False
+    if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :]
+    if model.startswith(_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_OPENAI_PROVIDER_PREFIX) :]
+    return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
+
+
+def _is_openai_api_endpoint(api_base: str | None) -> bool:
+    """Return True when api_base points at OpenAI's own HTTPS API host."""
+    if not api_base:
+        return False
+    parsed = urlparse(api_base)
+    return (
+        parsed.scheme == "https" and (parsed.hostname or "").lower() == "api.openai.com"
+    )
+
+
+class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
+
+    api_key: str | None = None
+    api_base: str
+    reasoning_effort: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = OpenAICompatibleLLMParameters.validate_model(
+            adapter_metadata
+        )
+        api_key = adapter_metadata.get("api_key")
+        if isinstance(api_key, str) and not api_key.strip():
+            adapter_metadata["api_key"] = None
+
+        # Reasoning models (OpenAI gpt-5, o1, o3, ...) routed through an
+        # OpenAI-compatible gateway reject `temperature != 1` and `max_tokens`
+        # (require `max_completion_tokens`). LiteLLM's `custom_openai` provider
+        # is generic and does not apply these transformations, so we route the
+        # reasoning-only fields via `extra_body` (which LiteLLM forwards as-is)
+        # and strip the rejected fields from the top-level kwargs.
+        # Auto-detect known OpenAI reasoning model names so users do not have
+        # to know that gpt-5 / o-series need special handling — they can still
+        # opt in explicitly for custom gateway aliases that hide the model id.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
+        # When validate() runs again on its own previous output, the reasoning
+        # fields live ONLY inside `extra_body` (this method strips them from
+        # the top level on the reasoning path). Recover them from there so
+        # re-validation is idempotent for non-auto-detected aliases too.
+        existing_extra_body = adapter_metadata.get("extra_body")
+        has_reasoning_extra_body = (
+            isinstance(existing_extra_body, dict)
+            and existing_extra_body.get("reasoning_effort") is not None
+        )
+        # Infer reasoning only when `enable_reasoning` is ABSENT (e.g. on a
+        # re-validation pass that already stripped the field). Skip the inference
+        # if the user explicitly submitted `enable_reasoning: false` with a
+        # leftover `reasoning_effort` — that's an explicit opt-out, not an
+        # implicit opt-in.
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and (has_reasoning_effort or has_reasoning_extra_body)
+        ):
+            enable_reasoning = True
+        if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
+            enable_reasoning = True
+
+        reasoning_effort = (
+            adapter_metadata.get("reasoning_effort")
+            or (
+                existing_extra_body.get("reasoning_effort")
+                if isinstance(existing_extra_body, dict)
+                else None
+            )
+            or "medium"
+        )
+
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+        validation_metadata = {
+            k: v for k, v in adapter_metadata.items() if k not in exclude_fields
+        }
+        validated = OpenAICompatibleLLMParameters(**validation_metadata).model_dump()
+
+        if enable_reasoning:
+            # Read max_tokens from the validated dict so Pydantic's `int | None`
+            # coercion (e.g. "4096" -> 4096) has already been applied before the
+            # value is forwarded to the upstream API via extra_body. On the
+            # re-validation path the original max_tokens is in extra_body, not
+            # at the top level — fall back to that to keep the value across
+            # passes.
+            max_tokens = validated.get("max_tokens")
+            if max_tokens is None and isinstance(existing_extra_body, dict):
+                max_tokens = existing_extra_body.get("max_completion_tokens")
+            extra_body = {"reasoning_effort": reasoning_effort}
+            if max_tokens is not None:
+                extra_body["max_completion_tokens"] = max_tokens
+            validated["extra_body"] = extra_body
+            validated.pop("temperature", None)
+            validated.pop("max_tokens", None)
+            validated.pop("reasoning_effort", None)
+        else:
+            validated.pop("reasoning_effort", None)
+
+        # The custom_openai/ prefix has no entry in the cost price map. Strip
+        # it only for OpenAI's own endpoint; other gateways price the same
+        # model name differently, so leave their cost unresolved.
+        if _is_openai_api_endpoint(validated.get("api_base")):
+            validated["cost_model"] = validated["model"][
+                len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :
+            ]
+
+        return validated
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenAI Compatible adapter.")
+        if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
+            return model
+        return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
+
+
+# Shared validation for branded adapters that reuse the OpenAI-compatible wire
+# protocol with a fixed default endpoint.
+def _validate_branded_openai_compatible(
+    adapter_metadata: dict[str, "Any"], default_api_base: str
+) -> dict[str, "Any"]:
+    # Endpoint stays overridable so a provider URL change needs no release.
+    api_base = adapter_metadata.get("api_base")
+    if not (isinstance(api_base, str) and api_base.strip()):
+        api_base = default_api_base
+    adapter_metadata = {**adapter_metadata, "api_base": api_base}
+    return OpenAICompatibleLLMParameters.validate(adapter_metadata)
+
+
+_NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
+_OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+
+
+class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(
+            adapter_metadata, _NVIDIA_BUILD_API_BASE
+        )
+
+
+class OpenRouterLLMParameters(BaseChatCompletionParameters):
+    """Adapter for OpenRouter (openrouter.ai).
+
+    Routed through LiteLLM's native `openrouter/` provider so per-token costs
+    resolve and reasoning params map without provider-specific workarounds.
+    """
+
+    api_key: str
+    api_base: str = _OPENROUTER_API_BASE
+    reasoning_effort: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _OPENROUTER_API_BASE
+        adapter_metadata["model"] = OpenRouterLLMParameters.validate_model(
+            adapter_metadata
+        )
+        # Reasoning models reject a non-default temperature; drop it and send
+        # reasoning_effort only when reasoning is enabled. On a re-validation
+        # pass `enable_reasoning` is absent (it isn't serialized), so recover the
+        # state from a surviving reasoning_effort to keep reload idempotent —
+        # unless the user explicitly opted out with `enable_reasoning: false`.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        ):
+            enable_reasoning = True
+        adapter_metadata.pop("enable_reasoning", None)
+        if enable_reasoning:
+            adapter_metadata["temperature"] = None
+        else:
+            adapter_metadata.pop("reasoning_effort", None)
+        return OpenRouterLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenRouter adapter.")
+        if model.startswith(_OPENROUTER_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -704,6 +953,35 @@ def _resolve_bedrock_aws_credentials(
     return validated
 
 
+def _pack_bedrock_guardrail_config(metadata: dict[str, "Any"]) -> None:
+    """Translate snake_case guardrail_* fields into LiteLLM's guardrailConfig."""
+    identifier = _clean_str(metadata.get("guardrail_identifier"))
+    if not identifier:
+        return
+    version = _clean_str(metadata.get("guardrail_version"))
+    # Fail fast — Bedrock rejects identifier without version with an opaque error.
+    if not version:
+        raise ValueError(
+            "guardrail_version is required when guardrail_identifier is set."
+        )
+    cfg: dict[str, str] = {
+        "guardrailIdentifier": identifier,
+        "guardrailVersion": version,
+    }
+    trace = _clean_str(metadata.get("guardrail_trace"))
+    if trace:
+        cfg["trace"] = trace
+    metadata["guardrailConfig"] = cfg
+
+
+def _clean_str(value: str | None) -> str | None:
+    """Strip surrounding whitespace; return None if the result is empty."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
@@ -718,6 +996,9 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
     max_retries: int | None = None
+    # Declared so it survives Pydantic re-validation of kwargs.
+    # Matches LiteLLM's Bedrock kwarg name, hence the mixed case.
+    guardrailConfig: dict | None = None  # noqa: N815
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -760,15 +1041,30 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
+        _pack_bedrock_guardrail_config(result_metadata)
+
         # Create validation metadata excluding control fields. `auth_type` is
         # a UI-only selector that drives form rendering; LiteLLM never sees it.
         validation_metadata = {
             k: v
             for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking", "auth_type")
+            if k
+            not in (
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
+                "auth_type",
+                "guardrail_identifier",
+                "guardrail_version",
+                "guardrail_trace",
+            )
         }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
+
+        # Drop unset value so it isn't forwarded as `None`.
+        if not validated.get("guardrailConfig"):
+            validated.pop("guardrailConfig", None)
 
         # Add thinking config to final result if enabled
         if enable_thinking and "thinking" in result_metadata:
@@ -1101,6 +1397,8 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_base: str | None = None
     embed_batch_size: int | None = 10
     dimensions: int | None = None  # For text-embedding-3-* models
+    # Strict endpoints reject the null LiteLLM sends when this is unset.
+    encoding_format: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -1114,6 +1412,77 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
+
+
+# custom_openai has no embedding support, so these route through LiteLLM's
+# native nvidia_nim provider; its default api_base is pinned for the schema.
+_NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
+
+
+class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
+    """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
+
+    # Overridable default endpoint.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        # Endpoint stays overridable so a provider URL change needs no release.
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the NVIDIA Build embedding adapter.")
+        if model.startswith(_NVIDIA_NIM_PROVIDER_PREFIX):
+            return model
+        return f"{_NVIDIA_NIM_PROVIDER_PREFIX}{model}"
+
+
+class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
+    """Embeddings for any OpenAI-compatible server (vLLM, self-hosted, etc.).
+
+    Routes through the `openai/` provider with a user-supplied `api_base`;
+    cost stays unresolved since the endpoint is arbitrary.
+    """
+
+    # Some gateways are keyless; the endpoint is always required.
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_key = adapter_metadata.get("api_key")
+        if not (isinstance(api_key, str) and api_key.strip()):
+            adapter_metadata["api_key"] = _NO_AUTH_API_KEY
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAICompatibleEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError(
+                "model is required for the OpenAI Compatible embedding adapter."
+            )
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
@@ -1289,4 +1658,31 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
             )
         if not model.startswith("gemini/"):
             model = f"gemini/{model}"
+        return model
+
+
+class MistralEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/mistral."""
+
+    api_key: str
+    embed_batch_size: int | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = MistralEmbeddingParameters.validate_model(metadata_copy)
+
+        return MistralEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Mistral embedding adapter. "
+                "Example: 'mistral-embed'"
+            )
+        if not model.startswith("mistral/"):
+            model = f"mistral/{model}"
         return model

@@ -15,9 +15,16 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
+from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
+
+# Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
+# temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
+# causing "Enter a valid URL." on the API deployment `presigned_urls` field.
+# Raise the cap globally. No-op on Django 4.2.x (no such attribute is checked).
+URLValidator.max_length = 8192
 
 missing_settings = []
 
@@ -153,8 +160,6 @@ DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")
 PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
-PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
-PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )
@@ -213,12 +218,43 @@ MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
 # Maximum number of times a file can be executed in a workflow
 MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 
+# Org-scoped group sharing (UN-2977 / mfbt UNS-612)
+MAX_GROUPS_PER_ORG = int(os.environ.get("MAX_GROUPS_PER_ORG", 200))
+MAX_MEMBERS_PER_GROUP = int(os.environ.get("MAX_MEMBERS_PER_GROUP", 500))
+
 CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
 )
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
+# Default batching window (seconds) for clubbing BATCHED notifications — also the
+# flush cadence. Default 300 (5 min). This is only the fallback default; each org
+# can override it from Platform Settings (Configuration key
+# NOTIFICATION_CLUB_INTERVAL), read per-org at enqueue time. Buffer rows
+# precompute flush_after at enqueue, so changes only affect rows enqueued after.
+NOTIFICATION_CLUB_INTERVAL = int(os.environ.get("NOTIFICATION_CLUB_INTERVAL", "300"))
+# Retention for terminal NotificationBuffer rows (DISPATCHED / DEAD_LETTER).
+# PENDING rows are never GC'd regardless of age.
+NOTIFICATION_BUFFER_RETENTION_DAYS = int(
+    os.environ.get("NOTIFICATION_BUFFER_RETENTION_DAYS", "7")
+)
+# Lease (seconds) for a buffer row claimed for dispatch (status=SENDING). If a row
+# stays SENDING longer than this — e.g. the backend crashed between committing the
+# claim and publishing the Celery task — the flush reaper returns it to PENDING for
+# re-dispatch. Must exceed the worst-case retry duration (max_retries * retry_delay)
+# so in-flight dispatches are never reclaimed mid-flight. Default 900 (15 min).
+NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
+    os.environ.get("NOTIFICATION_DISPATCH_LEASE_SECONDS", "900")
+)
+# Hard ceiling on how many times a buffer row may be claimed for dispatch. Each
+# SENDING claim increments NotificationBuffer.dispatch_attempts; once it reaches
+# this cap the row is dead-lettered instead of re-dispatched. Bounds the reaper
+# reclaim loop so a row whose terminal callback never fires (e.g. a crash that
+# recurs in the dispatch->callback window) cannot be redelivered forever.
+NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
+    os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )

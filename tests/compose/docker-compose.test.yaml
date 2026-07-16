@@ -1,0 +1,28 @@
+# E2E test overlay for docker/docker-compose.yaml.
+#
+# Used by tests/rig/runtime.py's ComposeRuntime:
+#   docker compose -f docker/docker-compose.yaml \
+#                  -f tests/compose/docker-compose.test.yaml up -d --wait
+#
+# Keep this file minimal so e2e tests run against images as close to production
+# as possible. Override only what the test stack actually needs (test creds,
+# pinned image tags, ENVIRONMENT=test sentinel).
+
+services:
+  backend:
+    # Defaults to `latest` so contributors can run without setting
+    # UNSTRACT_TEST_VERSION. CI pins it to the commit SHA of the images built
+    # in the same run (see the e2e job in .github/workflows/ci-test.yaml).
+    image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test
+
+  platform-service:
+    image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test
+
+  runner:
+    image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test

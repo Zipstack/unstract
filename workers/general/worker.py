@@ -4,6 +4,7 @@ Celery worker for general tasks including webhooks, background
 processing, and workflow orchestration.
 """
 
+from queue_backend import worker_task
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.config.registry import WorkerRegistry
@@ -59,7 +60,7 @@ WorkerRegistry.register_health_check(
 )
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 def healthcheck(self):
     """Health check task for monitoring systems."""
     return {

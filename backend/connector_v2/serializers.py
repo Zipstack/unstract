@@ -8,6 +8,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
+from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
@@ -25,11 +26,24 @@ class ConnectorInstanceSerializer(AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
+    # ``shared_groups`` is no longer an M2M on ConnectorInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /connector/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
-        extra_kwargs = {"connector_name": {"required": False}}
+        # View owns uniqueness (IntegrityError->DuplicateData); drop the DRF
+        # auto-validator that 400s on re-save before the view can handle it.
+        validators = []
+        extra_kwargs = {
+            "connector_name": {"required": False},
+            # connector_mode is derived from the catalog in to_representation.
+            "connector_mode": {"read_only": True},
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     def validate_connector_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Connector name")

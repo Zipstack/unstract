@@ -1,11 +1,12 @@
 import { Layout } from "antd";
-import { Outlet } from "react-router-dom";
 import "./FullPageLayout.css";
+
+import { LazyOutlet } from "../../components/error/LazyOutlet/LazyOutlet.jsx";
 
 function FullPageLayout() {
   return (
     <Layout className="container">
-      <Outlet />
+      <LazyOutlet />
     </Layout>
   );
 }

@@ -14,10 +14,10 @@ dependencies = [
     # AWS/S3 client - pin to match backend for MinIO compatibility
     "boto3~=1.34.0", # Pinned to 1.34.x - boto3 1.36+ breaks MinIO DeleteObjects
     # HTTP clients and utilities (merged from shared package)
-    "requests>=2.31.0,<3.0.0", # HTTP client for internal API calls
+    "requests>=2.33.0,<3.0.0", # HTTP client for internal API calls
     "urllib3>=1.26.0", # HTTP utilities and retry strategies
     "httpx>=0.27.0", # Async HTTP client
-    "python-dotenv>=1.0.0,<2.0.0", # Environment variable loading
+    "python-dotenv>=1.2.2,<2.0.0", # Environment variable loading
     # WebSocket support for log consumer
     "python-socketio>=5.9.0", # Socket.IO client for emitting log events
     # Monitoring and system utilities
@@ -43,11 +43,11 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
-    "black>=23.7.0",
+    "black>=26.3.1",
     "isort>=5.12.0",
     "flake8>=6.0.0",
     "mypy>=1.5.0",
@@ -55,8 +55,8 @@ dev = [
 ]
 
 test = [
-    "pytest>=7.4.0",
-    "pytest-asyncio>=0.21.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
     "factory-boy>=3.3.0",
@@ -116,7 +116,8 @@ known_first_party = [
     "notification",
     "scheduler",
     "log_consumer",
-    "ide_callback"
+    "ide_callback",
+    "queue_backend"
 ]
 
 [tool.mypy]
@@ -145,9 +146,10 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+asyncio_mode = "strict"
 addopts = [
     "--strict-markers",
     "--strict-config",
@@ -163,6 +165,7 @@ addopts = [
     "--cov=scheduler",
     "--cov=log_consumer",
     "--cov=ide_callback",
+    "--cov=queue_backend",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml"
@@ -185,7 +188,8 @@ source = [
     "notification",
     "scheduler",
     "log_consumer",
-    "ide_callback"
+    "ide_callback",
+    "queue_backend"
 ]
 omit = [
     "*/tests/*",
