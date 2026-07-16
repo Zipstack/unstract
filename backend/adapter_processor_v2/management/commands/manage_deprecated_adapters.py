@@ -235,8 +235,11 @@ class Command(BaseCommand):
                 default_x2text_adapter=adapter
             ).count()
 
-        # Check if shared with direct viewers (VIEWER memberships, UN-2202)
-        usage_count += len(adapter.viewers())
+        # Check if shared with direct viewers (VIEWER memberships, UN-2202).
+        # ``count()`` rather than ``len(viewers())``: this runs per adapter in a
+        # loop and only the number is needed, so there is no reason to fetch the
+        # rows and hydrate a User for each.
+        usage_count += adapter.viewer_memberships().count()
 
         # Check if shared to organization
         if adapter.shared_to_org:
