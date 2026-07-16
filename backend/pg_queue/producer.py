@@ -102,7 +102,10 @@ def enqueue_task(
         "args": _json_safe(list(args) if args is not None else []),
         "kwargs": _json_safe(dict(kwargs) if kwargs is not None else {}),
         "queue": pg_queue,
-        "fairness": fairness,
+        # Coerce like args/kwargs/on_success/on_error: FairnessPayload may carry a
+        # UUID/enum/datetime that a plain JSONField insert can't serialise, which
+        # would raise at enqueue and drop the task on the PG path only.
+        "fairness": _json_safe(fairness) if fairness is not None else fairness,
     }
     # Each optional key is set only when present — keeps fire-and-forget rows
     # byte-identical to before these fields existed.
