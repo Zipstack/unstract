@@ -92,8 +92,9 @@ class TestPgQueueClientUnit:
         # An out-of-range priority would silently jump/sink the row in the
         # priority DESC claim order — reject at the write boundary.
         conn, _ = _mock_conn(fetchone=(1,))
+        client = PgQueueClient(conn=conn)
         with pytest.raises(ValueError, match="priority out of range"):
-            PgQueueClient(conn=conn).send("q1", {"a": 1}, priority=bad)
+            client.send("q1", {"a": 1}, priority=bad)
 
     def test_read_runs_skip_locked_dequeue(self):
         conn, cur = _mock_conn(fetchall=[(7, {"k": "v"}, 1)])
@@ -141,19 +142,22 @@ class TestPgQueueClientUnit:
 
     def test_read_rejects_non_positive_vt(self):
         conn, _ = _mock_conn()
+        client = PgQueueClient(conn=conn)
         with pytest.raises(ValueError, match="vt_seconds"):
-            PgQueueClient(conn=conn).read("q1", vt_seconds=0)
+            client.read("q1", vt_seconds=0)
 
     def test_read_rejects_non_positive_qty(self):
         conn, _ = _mock_conn()
+        client = PgQueueClient(conn=conn)
         with pytest.raises(ValueError, match="qty"):
-            PgQueueClient(conn=conn).read("q1", qty=0)
+            client.read("q1", qty=0)
 
     def test_error_rolls_back_and_reraises(self):
         conn, cur = _mock_conn()
         cur.execute.side_effect = RuntimeError("boom")
+        client = PgQueueClient(conn=conn)
         with pytest.raises(RuntimeError):
-            PgQueueClient(conn=conn).send("q1", {"a": 1})
+            client.send("q1", {"a": 1})
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()
 

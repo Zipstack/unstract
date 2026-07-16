@@ -144,8 +144,10 @@ class TestSharedDispatchContract:
         # Documented asymmetry vs the never-raises dispatch: a fire-and-forget enqueue
         # error propagates (the caller has no result object to fail into).
         t = _FakeTransport(enqueue_raises=RuntimeError("db down"))
+        dispatcher = PgExecutionDispatcher(t)
+        ctx = _ctx()
         with pytest.raises(RuntimeError, match="db down"):
-            PgExecutionDispatcher(t).dispatch_async(_ctx())
+            dispatcher.dispatch_async(ctx)
 
     @staticmethod
     def _sig(task: str):

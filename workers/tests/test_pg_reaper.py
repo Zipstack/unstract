@@ -165,33 +165,41 @@ class _FakeLease:
 
 class TestConstruction:
     def test_interval_must_be_shorter_than_lease(self):
+        lease = _FakeLease(lease_seconds=5)
+        sweep_conn = object()
         with pytest.raises(ValueError, match="shorter than the lease"):
-            PgReaper(_FakeLease(lease_seconds=5), interval_seconds=5, sweep_conn=object())
+            PgReaper(lease, interval_seconds=5, sweep_conn=sweep_conn)
 
     def test_non_positive_interval_rejected(self):
+        lease = _FakeLease()
+        sweep_conn = object()
         with pytest.raises(ValueError):
-            PgReaper(_FakeLease(), interval_seconds=0, sweep_conn=object())
+            PgReaper(lease, interval_seconds=0, sweep_conn=sweep_conn)
 
     def test_valid_interval_accepted(self):
         PgReaper(_FakeLease(lease_seconds=10), interval_seconds=3, sweep_conn=object())
 
     def test_non_positive_sweep_interval_rejected(self):
         # An injected knob bypasses the env parser's guard → re-validated in __init__.
+        lease = _FakeLease()
+        sweep_conn = object()
         with pytest.raises(ValueError, match="sweep_interval"):
             PgReaper(
-                _FakeLease(),
+                lease,
                 interval_seconds=1,
                 sweep_interval_seconds=0,
-                sweep_conn=object(),
+                sweep_conn=sweep_conn,
             )
 
     def test_non_positive_dedup_retention_rejected(self):
+        lease = _FakeLease()
+        sweep_conn = object()
         with pytest.raises(ValueError, match="dedup_retention"):
             PgReaper(
-                _FakeLease(),
+                lease,
                 interval_seconds=1,
                 dedup_retention_seconds=0,
-                sweep_conn=object(),
+                sweep_conn=sweep_conn,
             )
 
 
@@ -688,8 +696,9 @@ class TestRecoverConnection:
         cur.execute.side_effect = psycopg2.OperationalError("dead")
         conn = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cur
+        api = MagicMock()
         with pytest.raises(psycopg2.OperationalError):
-            recover_expired_barriers(conn, MagicMock())
+            recover_expired_barriers(conn, api)
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()
 
@@ -970,7 +979,7 @@ class TestRecoverExpiredBarriers:
     def test_status_none_on_success_does_not_mark(self, barrier_conn):
         # A successful read with no status is anomalous — don't mark on it.
         _seed(barrier_conn, "exp-nostatus", expired=True)
-        api = _FakeApiClient(status=None)  # success=True, status=None
+        api = _FakeApiClient(status=None)  # i.e. read reports success with a None status
         recovered = recover_expired_barriers(barrier_conn, api)
         assert recovered == []
         assert api.update_calls == []

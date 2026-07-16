@@ -83,8 +83,9 @@ class TestDispatcherFactory:
             patch.object(st, "get_executor_dispatcher") as factory,
             patch.object(st, "_fetch_tool_metadata", side_effect=RuntimeError("stop")),
         ):
+            params = self._params()
             with pytest.raises(RuntimeError, match="stop"):
-                st._execute_structure_tool_impl(self._params())
+                st._execute_structure_tool_impl(params)
         factory.assert_called_once_with(celery_app=st.app)
 
 

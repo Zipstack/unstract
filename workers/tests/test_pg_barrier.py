@@ -126,9 +126,11 @@ class TestEnqueueShortCircuits:
         )
 
     def test_missing_execution_id_raises(self):
+        barrier = PgBarrier()
+        header = _mock_header_task()[0]
         with pytest.raises(ValueError, match="execution_id"):
-            PgBarrier().enqueue(
-                [_mock_header_task()[0]],
+            barrier.enqueue(
+                [header],
                 callback_task_name="cb",
                 callback_kwargs={},  # no execution_id
                 callback_queue="general",
@@ -889,8 +891,9 @@ class TestPgBarrierEnqueue:
         good, _ = _mock_header_task()
         bad, bad_cloned = _mock_header_task()
         bad_cloned.apply_async.side_effect = RuntimeError("broker down")
+        barrier = PgBarrier()
         with pytest.raises(RuntimeError):
-            PgBarrier().enqueue(
+            barrier.enqueue(
                 [good, bad],
                 callback_task_name="cb",
                 callback_kwargs={"execution_id": "exec-D"},
@@ -1105,9 +1108,10 @@ class TestDecrAndCheck:
 
     def test_unserialisable_result_raises(self, barrier_db):
         _seed(barrier_db, "exec-U", 1)
+        bad_result = {object()}
         with pytest.raises(TypeError):
             barrier_pg_decr_and_check(
-                {object()}, execution_id="exec-U", callback_descriptor=_CALLBACK
+                bad_result, execution_id="exec-U", callback_descriptor=_CALLBACK
             )
 
     def test_registered_under_canonical_name(self):
@@ -1256,8 +1260,8 @@ class TestDecrementAtomicityThroughTask:
 class TestDbConstraint:
     def test_expires_at_must_exceed_created_at(self, barrier_db):
         # The one writer-proof invariant (workers SQL can't import the model).
-        with pytest.raises(psycopg2.errors.CheckViolation):
-            with barrier_db.cursor() as cur:
+        with barrier_db.cursor() as cur:
+            with pytest.raises(psycopg2.errors.CheckViolation):
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
                     "(execution_id, organization_id, remaining, results, "
@@ -1608,9 +1612,11 @@ class TestPgFireAndForgetMode:
 
         dispatch_side_effect.claimed = False
         with patch("queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect):
+            barrier = PgBarrier()
+            headers = [_pg_header(), _pg_header()]
             with pytest.raises(RuntimeError, match="broker down"):
-                PgBarrier().enqueue(
-                    [_pg_header(), _pg_header()],
+                barrier.enqueue(
+                    headers,
                     callback_task_name="process_batch_callback",
                     callback_kwargs={"execution_id": "exec-midfail"},
                     callback_queue="general",

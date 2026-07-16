@@ -713,8 +713,9 @@ class TestMultiQueue:
         assert PgQueueConsumer(["empty", "busy"], client=client).poll_once() == 1
 
     def test_rejects_empty_queue_list(self):
+        client = MagicMock()
         with pytest.raises(ValueError, match="queue_names"):
-            PgQueueConsumer([], client=MagicMock())
+            PgQueueConsumer([], client=client)
 
     def test_one_queue_failing_does_not_abort_the_others(self):
         """A read failure on one queue is isolated: the already-acked work this

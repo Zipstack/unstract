@@ -53,12 +53,14 @@ class TestLeaseSecondsEnv:
 class TestConstruction:
     @pytest.mark.parametrize("bad", ["", "   "])
     def test_empty_worker_id_rejected(self, bad):
+        conn = object()
         with pytest.raises(ValueError, match="non-empty"):
-            LeaderLease(bad, conn=object())  # conn unused — guard fires first
+            LeaderLease(bad, conn=conn)  # conn unused — guard fires first
 
     def test_non_positive_lease_seconds_rejected(self):
+        conn = object()
         with pytest.raises(ValueError):
-            LeaderLease("w1", lease_seconds=0, conn=object())
+            LeaderLease("w1", lease_seconds=0, conn=conn)
 
     def test_default_worker_id_shape_and_idempotent(self):
         default_worker_id.cache_clear()
@@ -309,8 +311,8 @@ class TestLeaderLease:
 
 class TestSingleRowConstraint:
     def test_second_row_rejected(self, lock_db):
-        with pytest.raises(psycopg2.errors.CheckViolation):
-            with lock_db.conn.cursor() as cur:
+        with lock_db.conn.cursor() as cur:
+            with pytest.raises(psycopg2.errors.CheckViolation):
                 cur.execute(
                     "INSERT INTO pg_orchestrator_lock (id, leader, acquired_at) "
                     "VALUES (2, '', now())"

@@ -266,8 +266,9 @@ class TestChildAfterFork:
             patch(f"{_MOD}._run_child"),
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
+            queue = MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, MagicMock())
+                _child_after_fork(0, queue)
         # SIGTERM + SIGINT reset to default before running.
         assert sig.call_count == 2
         exit_.assert_called_once_with(0)
@@ -278,8 +279,9 @@ class TestChildAfterFork:
             patch(f"{_MOD}._run_child", side_effect=RuntimeError("boom")),
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
+            queue = MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, MagicMock())
+                _child_after_fork(0, queue)
         exit_.assert_called_once_with(1)
 
 

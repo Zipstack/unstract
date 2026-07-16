@@ -44,8 +44,9 @@ class TestPureHelpers:
         )
 
     def test_invalid_cron_raises(self):
-        with pytest.raises(Exception):
-            compute_next_run("not a cron", datetime.datetime(2026, 6, 18, 10, 0, 0))
+        base = datetime.datetime(2026, 6, 18, 10, 0, 0)
+        with pytest.raises(ValueError):
+            compute_next_run("not a cron", base)
 
     def test_trigger_payload_shape(self):
         p = _build_trigger_payload(
