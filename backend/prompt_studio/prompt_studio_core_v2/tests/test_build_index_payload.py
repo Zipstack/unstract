@@ -132,6 +132,7 @@ def _dispatch_build(
             user_id="user-1",
             document_id="doc-1",
             run_id="run-1",
+            request_user_id="requester-1",
         )
         return context, cb_kwargs, fs_instance, check_mock
 
@@ -190,7 +191,14 @@ class TestBuildIndexPayloadMarker:
 
 
 class TestOwnerAccessPlumbing:
-    """UN-3739: the requesting user must reach the owner-access check."""
+    """UN-3739: the REQUESTER must reach the owner-access check.
+
+    ``user_id`` in these helpers is the file-path owner (the project
+    creator) — views pass ``tool.created_by.user_id`` there.  The
+    requesting user travels separately as ``request_user_id``; asserting
+    it differs from ``user_id`` pins that the two identities are never
+    conflated again.
+    """
 
     def test_owner_access_receives_requesting_user(self) -> None:
         validate_owner_mock = MagicMock(return_value=None)
@@ -200,4 +208,5 @@ class TestOwnerAccessPlumbing:
             validate_owner_mock=validate_owner_mock,
         )
         _args, kwargs = validate_owner_mock.call_args
-        assert kwargs.get("request_user_id") == "user-1"
+        assert kwargs.get("request_user_id") == "requester-1"
+        assert kwargs.get("request_user_id") != "user-1"
