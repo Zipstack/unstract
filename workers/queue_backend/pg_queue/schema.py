@@ -31,7 +31,9 @@ import re
 # DB_SCHEMA is operator-supplied (helm values / env), never user input — but we
 # still validate it as a bare SQL identifier before interpolating it into SQL,
 # as defence-in-depth so a typo'd/hostile value can't become injection.
-_IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+# re.ASCII keeps ``\w`` ASCII-only — a bare ``\w`` is Unicode-aware and would
+# widen this identifier check to accented letters, defeating the purpose.
+_IDENT_RE = re.compile(r"^[A-Za-z_]\w*$", re.ASCII)
 
 # Mirror create_pg_connection's default so an unset DB_SCHEMA qualifies to the
 # same schema the connection targets (search_path default ``unstract``).

@@ -29,7 +29,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from enum import Enum
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from celery import current_app
 
@@ -428,6 +428,50 @@ class PgQueueConsumer:
                 with contextlib.suppress(Exception):
                     client.close()
 
+    def _resolve_runnable_task(
+        self, message: QueueMessage, payload: TaskPayload, task_name: str | None
+    ) -> Any | None:
+        """Return the task to run, or drop+ack the message and return None.
+
+        Collapses the three terminal-drop guards — malformed (no ``task_name``),
+        poison (re-claimed past the cap), and unknown (named but unregistered) —
+        each of which acks the message so it is never redelivered. Extracted from
+        ``_handle`` to keep that method's cognitive complexity within budget.
+        """
+        # Malformed / foreign payload: no task name → can't run; drop with a
+        # log that points at the payload, not at task registration.
+        if not task_name:
+            logger.error(
+                "PG-queue consumer: payload missing task_name (msg_id=%s) — "
+                "dropping malformed message: %r",
+                message.msg_id,
+                payload,
+            )
+            self._fail_dispatch(payload, error="malformed message: missing task_name")
+            self._client.delete(message.msg_id)
+            return None
+
+        # Poison message: a task re-claimed past the cap keeps failing. Drop
+        # it (with the payload, so it's recoverable from logs) instead of
+        # redelivering on every vt expiry forever.
+        if message.read_ct > self.max_attempts:
+            self._drop_poison_message(message, payload, task_name)
+            return None
+
+        task = self._app.tasks.get(task_name)
+        if task is None:
+            # A named-but-unregistered task can never run → drop and shout.
+            logger.error(
+                "PG-queue consumer: unknown task %r (msg_id=%s) — dropping",
+                task_name,
+                message.msg_id,
+            )
+            self._fail_dispatch(payload, error=f"unknown task {task_name}")
+            self._client.delete(message.msg_id)
+            return None
+
+        return task
+
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
         task_name = payload.get("task_name")
@@ -445,36 +489,10 @@ class PgQueueConsumer:
         on_success = payload.get("on_success")
         on_error = payload.get("on_error")
 
-        # Malformed / foreign payload: no task name → can't run; drop with a
-        # log that points at the payload, not at task registration.
-        if not task_name:
-            logger.error(
-                "PG-queue consumer: payload missing task_name (msg_id=%s) — "
-                "dropping malformed message: %r",
-                message.msg_id,
-                payload,
-            )
-            self._fail_dispatch(payload, error="malformed message: missing task_name")
-            self._client.delete(message.msg_id)
-            return
-
-        # Poison message: a task re-claimed past the cap keeps failing. Drop
-        # it (with the payload, so it's recoverable from logs) instead of
-        # redelivering on every vt expiry forever.
-        if message.read_ct > self.max_attempts:
-            self._drop_poison_message(message, payload, task_name)
-            return
-
-        task = self._app.tasks.get(task_name)
+        # Validate the claimed message is runnable; a malformed / poison /
+        # unknown-task message is dropped+acked inside the helper (returns None).
+        task = self._resolve_runnable_task(message, payload, task_name)
         if task is None:
-            # A named-but-unregistered task can never run → drop and shout.
-            logger.error(
-                "PG-queue consumer: unknown task %r (msg_id=%s) — dropping",
-                task_name,
-                message.msg_id,
-            )
-            self._fail_dispatch(payload, error=f"unknown task {task_name}")
-            self._client.delete(message.msg_id)
             return
 
         try:
