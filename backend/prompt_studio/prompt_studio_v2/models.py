@@ -155,15 +155,11 @@ class ToolStudioPrompt(BaseModel):
     #
 
     def _touch_tool(self) -> None:
-        """Bump the parent tool's modified_at so it reflects prompt activity.
+        """Bump the parent tool's modified_at to reflect prompt activity.
 
-        Prompt writes never touch the CustomTool row, so without this the
-        tool's "last modified" goes stale (UN-3741) — and a derived
-        max(tool, prompts) can travel backwards on prompt delete. A
-        queryset update bypasses CustomTool.save() (no auto_now recursion,
-        no signals). ``_base_manager`` bypasses the org-scoped default
-        manager, which reads a thread-local and would silently match zero
-        rows outside a request context; pk alone is globally unique.
+        Queryset update avoids save() recursion; ``_base_manager`` bypasses
+        the org-scoped default manager (thread-local dependent) so the bump
+        also works outside request context — pk alone is globally unique.
         """
         if self.tool_id_id:
             CustomTool._base_manager.filter(pk=self.tool_id_id).update(

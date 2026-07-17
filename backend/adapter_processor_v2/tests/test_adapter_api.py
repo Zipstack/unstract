@@ -63,7 +63,7 @@ class AdapterRegisterLLMAPITest(TestCase):
 
     @patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
     def test_list_serves_timestamps_and_rename_bumps_modified(self, _ctx) -> None:
-        """UN-3741: the list endpoint must serve created_at/modified_at, and a
+        """The list endpoint must serve created_at/modified_at, and a
         rename must advance modified_at while created_at stays stable — the
         Meta.fields tuple is hand-maintained, so this pins the two lines.
         """

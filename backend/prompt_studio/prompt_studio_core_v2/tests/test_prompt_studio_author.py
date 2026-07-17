@@ -97,8 +97,8 @@ class PromptStudioAuthorAPITest(TestCase):
         assert persisted.active
 
     def _create_project(self, name: str) -> CustomTool:
-        """Create via the API so ownership membership rows (UN-2202) exist —
-        a bare objects.create() is invisible to the list queryset."""
+        """Create via the API so ownership membership rows exist — a bare
+        objects.create() is invisible to the list queryset."""
         create_project = PromptStudioCoreView.as_view({"post": "create"})
         project = self._call(
             create_project,
@@ -120,8 +120,7 @@ class PromptStudioAuthorAPITest(TestCase):
     def test_prompt_writes_bump_tool_modified_at(self) -> None:
         """Prompt create, edit and DELETE all bump the parent CustomTool row —
         modified_at is maintained at the source, so it stays honest (never
-        travels backwards) and identical across list/detail endpoints
-        (UN-3741 review).
+        travels backwards) and identical across list/detail endpoints.
         """
         tool = self._create_project("quote-parser")
 
@@ -170,7 +169,7 @@ class PromptStudioAuthorAPITest(TestCase):
         """sync_prompts clears prompts with a QuerySet.delete(), which
         bypasses ToolStudioPrompt.delete() — the sync must bump the tool
         explicitly, or a prompts-clearing sync with no tool settings leaves
-        modified_at stale (UN-3741 review).
+        modified_at stale.
         """
         tool = self._create_project("sync-me")
         adapters = [
@@ -223,7 +222,7 @@ class PromptStudioAuthorAPITest(TestCase):
     def test_prompt_bump_survives_missing_org_context(self) -> None:
         """The parent bump must not depend on the thread-local org context —
         an org-scoped manager would silently match zero rows outside a
-        request (UN-3741 review).
+        request.
         """
         tool = self._create_project("ctx-free")
         prompt = ToolStudioPrompt.objects.create(

@@ -164,13 +164,11 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # modified_at needs no annotation: instance-level prompt writes
-            # bump the parent row at the source (ToolStudioPrompt.save/delete,
-            # plus the explicit bump in sync_prompts), so the plain field is
-            # orderable (UN-3741).
-            # Caveat: only *prompt* writes bump. ProfileManager /
-            # DocumentManager edits and queryset-level prompt writes do NOT —
-            # any new path must bump CustomTool itself (tracked: UN-3759)
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
+            # keeping the plain field orderable. Only prompt writes bump —
+            # profile/document edits and queryset-level prompt writes do not;
+            # any new write path must bump CustomTool itself
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )

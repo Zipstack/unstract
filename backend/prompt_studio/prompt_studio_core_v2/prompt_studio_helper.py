@@ -3108,10 +3108,9 @@ class PromptStudioHelper:
             _, per_model = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
             deleted_count = per_model.get(ToolStudioPrompt._meta.label, 0)
             if deleted_count:
-                # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so the
-                # parent bump must happen explicitly — a prompts-clearing sync
-                # is still a modification. _base_manager: see
-                # ToolStudioPrompt._touch_tool (UN-3741)
+                # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so
+                # bump the parent explicitly — clearing prompts is still a
+                # modification (_base_manager: see ToolStudioPrompt._touch_tool)
                 CustomTool._base_manager.filter(pk=tool.tool_id).update(
                     modified_at=timezone.now()
                 )

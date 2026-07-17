@@ -22,11 +22,10 @@ import { useNavigate } from "react-router-dom";
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 
-// Tooltip lines are shown when the value is present (`!= null` — so 0
-// renders but null/undefined hide): model is adapter-only, prompt_count is
-// Prompt-Studio-only. The "Updated" block itself is opt-in via the
-// showModified prop — presence of modified_at is not evidence the page's
-// value is an honest "last modified" (e.g. Workflows, Connectors).
+// Tooltip lines render when the value is present (`!= null`: 0 shows,
+// null/undefined hide). The "Updated" block itself is opt-in via
+// showModified — field presence alone doesn't prove the page's value is
+// an honest "last modified".
 const renderItemMetadata = (item) => (
   <div>
     {item?.created_at && (
