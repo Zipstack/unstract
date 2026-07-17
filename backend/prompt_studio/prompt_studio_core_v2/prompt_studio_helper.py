@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from permissions.permission import (
     _is_resource_owner,
     _is_resource_viewer,
@@ -3101,8 +3102,18 @@ class PromptStudioHelper:
             )
 
         with transaction.atomic():
-            # Delete all existing prompts
-            deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            # Delete all existing prompts. QuerySet.delete() returns the
+            # cascade total (outputs ride along via CASCADE) — report only
+            # the prompt rows to the API client
+            _, per_model = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            deleted_count = per_model.get(ToolStudioPrompt._meta.label, 0)
+            if deleted_count:
+                # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so
+                # bump the parent explicitly — clearing prompts is still a
+                # modification (_base_manager: see ToolStudioPrompt._touch_tool)
+                CustomTool._base_manager.filter(pk=tool.tool_id).update(
+                    modified_at=timezone.now()
+                )
 
             # Create new prompts from export data
             PromptStudioHelper.import_prompts(prompts_data, tool, user)

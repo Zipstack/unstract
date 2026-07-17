@@ -170,6 +170,8 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "created_at",
+            "modified_at",
             "description",
         )  # type: ignore
 

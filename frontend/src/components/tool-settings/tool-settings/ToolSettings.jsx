@@ -339,6 +339,7 @@ function ToolSettings({ type }) {
               handleShare={handleShare}
               handleCoOwner={handleCoOwner}
               showOwner={true}
+              showModified
               type="Adapter"
             />
           </div>

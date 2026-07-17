@@ -12,13 +12,32 @@ import "./ListView.css";
 import {
   DeleteOutlined,
   EditOutlined,
+  InfoCircleOutlined,
   QuestionCircleOutlined,
   ShareAltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
+import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+
+// Tooltip lines render when the value is present (`!= null`: 0 shows,
+// null/undefined hide). The "Updated" block itself is opt-in via
+// showModified — field presence alone doesn't prove the page's value is
+// an honest "last modified".
+const renderItemMetadata = (item) => (
+  <div>
+    {item?.created_at && (
+      <div>Created: {formattedDateTime(item.created_at)}</div>
+    )}
+    {item?.modified_at && (
+      <div>Modified: {formattedDateTime(item.modified_at)}</div>
+    )}
+    {item?.model != null && <div>Model: {item.model}</div>}
+    {item?.prompt_count != null && <div>Prompts: {item.prompt_count}</div>}
+  </div>
+);
 
 function ListView({
   listOfTools,
@@ -33,6 +52,7 @@ function ListView({
   centered,
   isClickable = true,
   showOwner = true,
+  showModified = false,
   type,
 }) {
   const navigate = useNavigate();
@@ -80,7 +100,10 @@ function ListView({
         <Typography.Text disabled className="adapters-list-user-prefix">
           Owned By:
         </Typography.Text>
-        <Typography.Text className="shared-username">
+        <Typography.Text
+          className="shared-username"
+          ellipsis={{ tooltip: true }}
+        >
           {ownerLabel}
         </Typography.Text>
       </>
@@ -117,94 +140,131 @@ function ListView({
       title = (
         <div className="adapter-cover-img">
           <Image src={item[iconProp]} preview={false} className="fit-cover" />
-          <Typography.Text className="adapters-list-title">
+          <Typography.Text
+            className="adapters-list-title"
+            ellipsis={{ tooltip: true }}
+          >
             {item[titleProp]}
           </Typography.Text>
         </div>
       );
     } else if (iconProp) {
       title = (
-        <Typography.Text className="adapters-list-title">
+        <Typography.Text
+          className="adapters-list-title"
+          ellipsis={{ tooltip: true }}
+        >
           {`${item[iconProp]} ${item[titleProp]}`}
         </Typography.Text>
       );
     } else {
       title = (
-        <Typography.Text className="adapters-list-title">
+        <Typography.Text
+          className="adapters-list-title"
+          ellipsis={{ tooltip: true }}
+        >
           {item[titleProp]}
         </Typography.Text>
       );
     }
 
+    return title;
+  };
+
+  const renderMeta = (item) => {
+    // Empty on malformed input — hide the label instead of "Invalid date"
+    const updatedAgo = showModified ? timeAgo(item?.modified_at) : "";
+    if (!showOwner && !updatedAgo) {
+      return null;
+    }
+    // No click handler here: the co-owner button stops its own propagation,
+    // and everything else should bubble to the row like the rest of it
     return (
-      <Flex
-        gap={20}
-        align="center"
-        justify="space-between"
-        className="list-view-container"
-      >
-        <div className="list-view-content">
-          <div className="adapters-list-title-container display-flex-left">
-            {title}
-          </div>
-          {showOwner && renderOwnerBadge(item)}
-        </div>
-        <div
-          className="action-button-container"
-          onClick={(event) => event.stopPropagation()}
-          role="none"
-        >
-          <Tooltip
-            title={item?.is_deprecated ? "This adapter is deprecated" : ""}
-          >
-            <EditOutlined
-              key={`${item.id}-edit`}
-              onClick={(event) => handleEdit(event, item)}
-              className={`action-icon-buttons edit-icon ${
-                item?.is_deprecated ? "disabled-icon" : ""
-              }`}
-              style={{
-                cursor: item?.is_deprecated ? "not-allowed" : "pointer",
-                opacity: item?.is_deprecated ? 0.4 : 1,
-              }}
-            />
-          </Tooltip>
-          {handleShare && (
-            <Tooltip
-              title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+      <div className="list-view-meta">
+        {showOwner && renderOwnerBadge(item)}
+        {updatedAgo && (
+          <div className="list-view-modified-container">
+            <Typography.Text
+              type="secondary"
+              className="list-view-modified-text"
             >
-              <ShareAltOutlined
-                key={`${item.id}-share`}
-                className={`action-icon-buttons share-icon ${
-                  item?.is_deprecated ? "disabled-icon" : ""
-                }`}
-                onClick={(event) => handleShareClick(event, item, true)}
-                style={{
-                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
-                  opacity: item?.is_deprecated ? 0.4 : 1,
-                }}
+              Updated {updatedAgo}
+            </Typography.Text>
+            <Tooltip title={() => renderItemMetadata(item)}>
+              <InfoCircleOutlined
+                className="list-view-info-icon"
+                aria-label="Creation and modification details"
               />
             </Tooltip>
-          )}
-          <Popconfirm
-            key={`${item.id}-delete`}
-            title={`Delete the ${type}`}
-            description={`Are you sure to delete ${item[titleProp]}`}
-            okText="Yes"
-            cancelText="No"
-            icon={<QuestionCircleOutlined />}
-            onConfirm={(event) => {
-              handleDeleteClick(event, item);
-            }}
-          >
-            <Typography.Text>
-              <DeleteOutlined className="action-icon-buttons delete-icon" />
-            </Typography.Text>
-          </Popconfirm>
-        </div>
-      </Flex>
+          </div>
+        )}
+      </div>
     );
   };
+
+  const renderActions = (item) => (
+    <div
+      className="action-button-container"
+      onClick={(event) => event.stopPropagation()}
+      role="none"
+    >
+      <Tooltip title={item?.is_deprecated ? "This adapter is deprecated" : ""}>
+        <EditOutlined
+          key={`${item.id}-edit`}
+          onClick={(event) => {
+            if (item?.is_deprecated) {
+              return;
+            }
+            handleEdit(event, item);
+          }}
+          className={`action-icon-buttons edit-icon ${
+            item?.is_deprecated ? "disabled-icon" : ""
+          }`}
+          style={{
+            cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+            opacity: item?.is_deprecated ? 0.4 : 1,
+          }}
+        />
+      </Tooltip>
+      {handleShare && (
+        <Tooltip
+          title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+        >
+          <ShareAltOutlined
+            key={`${item.id}-share`}
+            className={`action-icon-buttons share-icon ${
+              item?.is_deprecated ? "disabled-icon" : ""
+            }`}
+            onClick={(event) => {
+              if (item?.is_deprecated) {
+                return;
+              }
+              handleShareClick(event, item, true);
+            }}
+            style={{
+              cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+              opacity: item?.is_deprecated ? 0.4 : 1,
+            }}
+          />
+        </Tooltip>
+      )}
+      <Popconfirm
+        key={`${item.id}-delete`}
+        title={`Delete the ${type}`}
+        description={`Are you sure to delete ${item[titleProp]}`}
+        okText="Yes"
+        cancelText="No"
+        icon={<QuestionCircleOutlined />}
+        onConfirm={(event) => {
+          handleDeleteClick(event, item);
+        }}
+      >
+        <Typography.Text>
+          <DeleteOutlined className="action-icon-buttons delete-icon" />
+        </Typography.Text>
+      </Popconfirm>
+    </div>
+  );
 
   return (
     <List
@@ -226,13 +286,17 @@ function ListView({
                 ? navigate(`${item[idProp]}`)
                 : handleShareClick(event, item, false);
             }}
-            className={`cur-pointer ${centered ? "centered" : ""}`}
+            className="cur-pointer"
           >
-            <List.Item.Meta
-              className="list-item-desc"
-              title={renderTitle(item)}
-              description={
-                item[descriptionProp] ? (
+            <Flex
+              gap={24}
+              align={centered ? "center" : "flex-start"}
+              justify="space-between"
+              className="list-view-row"
+            >
+              <div className="list-view-left">
+                {renderTitle(item)}
+                {item[descriptionProp] ? (
                   <Typography.Paragraph
                     type="secondary"
                     ellipsis={{ rows: 1, tooltip: true }}
@@ -240,9 +304,11 @@ function ListView({
                   >
                     {item[descriptionProp]}
                   </Typography.Paragraph>
-                ) : null
-              }
-            ></List.Item.Meta>
+                ) : null}
+              </div>
+              {renderMeta(item)}
+              {renderActions(item)}
+            </Flex>
           </List.Item>
         );
       }}
@@ -263,6 +329,7 @@ ListView.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  showModified: PropTypes.bool,
   type: PropTypes.string,
 };
 

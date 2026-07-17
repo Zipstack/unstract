@@ -193,8 +193,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     let tools = [...listOfTools];
 
     if (isEdit) {
+      // Merge — the PATCH response (CustomToolSerializer) lacks list-only
+      // fields like prompt_count; replacing wholesale would drop them
       tools = tools.map((item) =>
-        item?.tool_id === data?.tool_id ? data : item,
+        item?.tool_id === data?.tool_id ? { ...item, ...data } : item,
       );
       setEditItem(null);
     } else {
@@ -424,6 +426,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         type="Prompt Project"
         handleShare={handleShare}
         handleCoOwner={handleCoOwner}
+        showModified
       />
     </div>
   );

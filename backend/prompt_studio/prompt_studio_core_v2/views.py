@@ -164,8 +164,13 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
+            # keeping the plain field orderable. Only prompt writes bump —
+            # profile/document edits and queryset-level prompt writes do not;
+            # any new write path must bump CustomTool itself
             qs = qs.select_related("created_by").annotate(
-                _prompt_count=Subquery(prompt_count_sq)
+                _prompt_count=Subquery(prompt_count_sq),
             )
         return qs
 

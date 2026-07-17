@@ -2,6 +2,7 @@ import uuid
 
 from account_v2.models import User
 from django.db import models
+from django.utils import timezone
 from utils.models.base_model import BaseModel
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -152,6 +153,29 @@ class ToolStudioPrompt(BaseModel):
     eval_guidance_toxicity = models.BooleanField(default=True)
     eval_guidance_completeness = models.BooleanField(default=True)
     #
+
+    def _touch_tool(self) -> None:
+        """Bump the parent tool's modified_at to reflect prompt activity.
+
+        Queryset update avoids save() recursion; ``_base_manager`` bypasses
+        the org-scoped default manager (thread-local dependent) so the bump
+        also works outside request context — pk alone is globally unique.
+        """
+        if self.tool_id_id:
+            CustomTool._base_manager.filter(pk=self.tool_id_id).update(
+                modified_at=timezone.now()
+            )
+
+    def save(self, *args, **kwargs) -> None:
+        super().save(*args, **kwargs)
+        self._touch_tool()
+
+    def delete(self, *args, **kwargs):
+        # Django's collector nulls only the instance PK on delete, never FK
+        # attnames, so tool_id_id survives super().delete()
+        result = super().delete(*args, **kwargs)
+        self._touch_tool()
+        return result
 
     class Meta:
         verbose_name = "Tool Studio Prompt"
