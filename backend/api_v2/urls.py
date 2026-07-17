@@ -35,6 +35,8 @@ list_shared_users = APIDeploymentViewSet.as_view(
 )
 deployment_share = APIDeploymentViewSet.as_view({"post": "share"})
 deployment_effective_members = APIDeploymentViewSet.as_view({"get": "effective_members"})
+deployment_owners = APIDeploymentViewSet.as_view({"post": "add_co_owner"})
+deployment_owner_detail = APIDeploymentViewSet.as_view({"delete": "remove_co_owner"})
 
 execute = DeploymentExecution.as_view()
 
@@ -74,6 +76,16 @@ urlpatterns = format_suffix_patterns(
             "deployment/<uuid:pk>/effective-members/",
             deployment_effective_members,
             name="api_deployment_effective_members",
+        ),
+        path(
+            "deployment/<uuid:pk>/owners/",
+            deployment_owners,
+            name="api_deployment_owners",
+        ),
+        path(
+            "deployment/<uuid:pk>/owners/<int:user_id>/",
+            deployment_owner_detail,
+            name="api_deployment_owner_detail",
         ),
         path(
             "deployment/by-prompt-studio-tool/",
