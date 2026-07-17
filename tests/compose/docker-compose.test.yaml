@@ -27,9 +27,7 @@ services:
     environment:
       - ENVIRONMENT=test
 
-  # LLM completions run inside the worker-unified image; passing the mock env
-  # here lets execute-path e2e tests run hermetically (no real LLM/secret).
-  # Empty unless the rig/CI sets it, so production-like runs are unaffected.
+  # Execute-path e2e must not reach a real provider. Empty unless the rig sets it.
   worker-executor-v2:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}

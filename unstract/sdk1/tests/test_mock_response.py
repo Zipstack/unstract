@@ -1,9 +1,7 @@
 """The UNSTRACT_LLM_MOCK_RESPONSE escape hatch and the litellm mock contract.
 
-Execute-path critical-path tests run hermetically only if both hold: our
-injector wires mock_response when (and only when) the env is set, and litellm
-returns that string with deterministic usage so token-tracking assertions are
-exact.
+Hermetic execute-path coverage rests on both, so pin them here: a litellm bump
+that broke either would otherwise surface far from its cause.
 """
 
 from __future__ import annotations
@@ -50,9 +48,7 @@ def test_inject_does_not_clobber_explicit_mock_response(
 
 
 def test_litellm_mock_contract_returns_string_and_fixed_usage() -> None:
-    # The whole hermetic-execute design leans on this: mock_response yields the
-    # string verbatim plus deterministic usage (litellm defaults 10/20/30),
-    # letting usage-token-tracking assert exact counts. Guards a litellm bump.
+    # 10/20/30 are litellm's defaults, asserted verbatim by the e2e tests.
     resp = litellm.completion(
         model="gpt-4o",
         messages=[{"role": "user", "content": "anything"}],
@@ -65,8 +61,7 @@ def test_litellm_mock_contract_returns_string_and_fixed_usage() -> None:
 
 
 def test_litellm_mock_error_sentinel_raises() -> None:
-    # Error-path critical paths depend on the sentinel forcing a real
-    # litellm error type rather than a normal completion.
+    # Error paths need the sentinel to raise rather than complete normally.
     with pytest.raises(litellm.RateLimitError):
         litellm.completion(
             model="gpt-4o",

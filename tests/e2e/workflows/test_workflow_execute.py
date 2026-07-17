@@ -1,14 +1,12 @@
 """E2E: create a workflow, execute a document through it, poll to COMPLETED.
 
-Exercises the app-facing ``/workflow/execute/`` path (distinct from the public
-API-deployment endpoint). The LLM is mocked via UNSTRACT_LLM_MOCK_RESPONSE, so a
-COMPLETED status with a successful file is itself the hermetic proof: without a
-real key the completion would fail and the file would not succeed.
+Covers the app-facing ``/workflow/execute/`` path, distinct from the public
+API-deployment endpoint.
 
-The per-file answer is not exposed over HTTP for a manual execute (it lands in a
-worker-side result store), so this asserts on the execution status the status
-endpoint does expose. The exact mocked answer is asserted by the API-deployment
-test, whose endpoint returns it as JSON.
+Asserts execution status rather than the answer, which a manual execute never
+exposes over HTTP; the API-deployment test covers the answer itself. A succeeding
+file is proof enough that the mock held: a real completion would fail without a
+key.
 """
 
 from __future__ import annotations
@@ -33,8 +31,8 @@ def test_workflow_execute_completes(
     session = pw.session
     csrf = {"X-CSRFToken": session.cookies.get("csrftoken", "")}
 
-    # Two-step contract: call 1 (no files) creates a PENDING execution without
-    # dispatching; call 2 (with that execution_id + files) uploads and dispatches.
+    # Two calls by contract: the first creates a PENDING execution, the second
+    # uploads and dispatches it.
     resp = session.post(
         f"{pw.prefix}/workflow/execute/",
         headers=csrf,
@@ -54,8 +52,7 @@ def test_workflow_execute_completes(
     )
     assert resp.status_code == 200, f"dispatch execution: {resp.text}"
 
-    # Poll the top-level execution app (retrieve by execution_id). The
-    # workflow/execution/<pk>/ route filters by workflow_id and 404s here.
+    # Not workflow/execution/<pk>/: that route filters by workflow_id and 404s.
     final = {}
     deadline = time.monotonic() + 180
     while time.monotonic() < deadline:

@@ -31,11 +31,8 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
-# Test-only escape hatch: when UNSTRACT_LLM_MOCK_RESPONSE is set, litellm returns
-# it as the completion instead of calling a provider, so execute-path tests run
-# hermetically with no real LLM/secret. litellm stamps fixed usage on the mock
-# (tune via DEFAULT_MOCK_RESPONSE_PROMPT/COMPLETION_TOKEN_COUNT). Sentinels like
-# "litellm.RateLimitError" force error paths. Unset in production => no-op.
+# Lets tests force a deterministic completion without a provider or a secret.
+# Unset in production, where this is a no-op.
 _MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 
 

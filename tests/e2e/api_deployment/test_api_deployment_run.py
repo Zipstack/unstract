@@ -1,15 +1,7 @@
 """E2E: deploy a workflow as an API, POST a document, get structured JSON back.
 
-Covers two critical paths in one hermetic run (the LLM is mocked via
-UNSTRACT_LLM_MOCK_RESPONSE, so no real provider/secret is touched):
-
-  • api-deployment-run   — the public deployment endpoint executes and returns
-                           the mocked answer as structured JSON.
-  • usage-token-tracking — per-execution token usage is recorded and returned
-                           (litellm stamps a fixed 10/20/30 on the mock).
-
-Synchronous execution (timeout > 0 blocks) so the result comes back on the POST
-itself — no polling and no out-of-band result store to read.
+Runs synchronously (a non-zero timeout blocks) so the result arrives on the POST
+itself, leaving no polling or out-of-band result store to read.
 """
 
 from __future__ import annotations
@@ -66,11 +58,9 @@ def test_api_deployment_returns_mocked_answer(
 
     file_result = message["result"][0]
     assert file_result["status"] == "Success", file_result
-    # api-deployment-run: the mocked completion surfaces as the prompt's answer.
     assert file_result["result"]["output"]["answer"] == llm_mock_response
 
-    # usage-token-tracking: litellm stamps a deterministic 10/20/30 on the mock,
-    # recorded per-execution and returned under the file's metadata.
+    # 10/20/30 is litellm's fixed usage for a mocked completion.
     usage = file_result["result"]["metadata"]["extraction_llm"][0]
     assert usage["input_tokens"] == 10, usage
     assert usage["output_tokens"] == 20, usage

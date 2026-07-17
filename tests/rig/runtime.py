@@ -33,9 +33,7 @@ log = logging.getLogger(__name__)
 COMPOSE_OVERLAY = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 
-# Deterministic completion the execute-path e2e tests provision against. The
-# overlay forwards UNSTRACT_LLM_MOCK_RESPONSE into the workers; the same value
-# reaches pytest via os.environ so tests can assert the exact string back.
+# Shared by the workers and the tests, so the exact completion is assertable.
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
 
@@ -136,8 +134,7 @@ class ComposeRuntime:
     def up(self) -> PlatformEndpoints:
         if shutil.which("docker") is None:
             raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
-        # setdefault so a CI/dev override wins; copied into os.environ so both
-        # the compose subprocess (worker env) and the pytest groups see it.
+        # setdefault so a CI/dev override wins.
         os.environ.setdefault(LLM_MOCK_RESPONSE_ENV, DEFAULT_LLM_MOCK_RESPONSE)
         files = ["-f", str(BASE_COMPOSE)]
         if COMPOSE_OVERLAY.exists():

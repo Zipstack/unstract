@@ -169,7 +169,6 @@ groups:
     paths: [tests/e2e/workflows]
     requires_platform: true
     critical: true
-    # Not optional: holds real execute-path tests, so red fails the build.
     depends_on: [e2e-smoke]
 
   e2e-api-deployment:
@@ -177,7 +176,6 @@ groups:
     paths: [tests/e2e/api_deployment]
     requires_platform: true
     critical: true
-    # Not optional: holds real execute-path tests, so red fails the build.
     depends_on: [e2e-smoke]
 
   e2e-prompt-studio:

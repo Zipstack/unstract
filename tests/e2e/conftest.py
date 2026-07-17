@@ -17,12 +17,9 @@ import requests
 
 from tests.rig.runtime import LLM_MOCK_RESPONSE_ENV, PlatformEndpoints
 
-# Static adapter registry ids from unstract.sdk1 (see adapters/*/). The NoOp
-# x2text/vectordb return canned output so extraction/indexing need no real
-# service; the OpenAI LLM/embedding rows never reach a provider — the LLM is
-# mocked via UNSTRACT_LLM_MOCK_RESPONSE and, with chunk_size=0, embedding +
-# vectordb are never invoked. Adapter create does not validate connectivity,
-# so fake creds persist.
+# Adapter registry ids from unstract.sdk1, chosen so no real service is needed:
+# the NoOp rows return canned output and the LLM is mocked. Fake creds persist
+# because adapter create does not validate connectivity.
 _LLM_ADAPTER = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
 _EMBED_ADAPTER = "openai|717a0b0e-3bbc-41dc-9f0c-5689437a1151"
 _VECTORDB_ADAPTER = "noOpVectorDb|ca4d6056-4971-4bc8-97e3-9e36290b5bc0"
@@ -88,9 +85,8 @@ def authed_session(platform: PlatformEndpoints) -> requests.Session:
 def llm_mock_response() -> str:
     """The exact string the workers were told to return for every completion.
 
-    The rig sets this when it boots the platform (ComposeRuntime); a manual/local
-    run must export it to match what the workers got. Absent it, execute-path
-    tests can't assert a deterministic answer, so skip rather than guess.
+    Skips rather than guesses when unset: there is no deterministic answer to
+    assert unless the workers got the same value.
     """
     value = os.environ.get(LLM_MOCK_RESPONSE_ENV)
     if not value:
@@ -138,12 +134,9 @@ def provisioned_workflow(
 ) -> ProvisionedWorkflow:
     """Stand up an API workflow backed by a single Prompt Studio tool.
 
-    Chain (all HTTP, mirrors the app): create 4 adapters -> Prompt Studio project
-    (auto-creates a default profile) -> pin adapters + chunk_size=0 on that
-    profile -> add one text prompt -> export (mints a PromptStudioRegistry row) ->
-    workflow -> point both endpoints at API -> attach the exported tool. The
-    resulting workflow executes hermetically because the LLM is mocked and, with
-    chunk_size=0, embedding + vectordb are skipped.
+    Provisioned over HTTP rather than via the ORM so setup exercises the same
+    surface as the app. Executes hermetically: the LLM is mocked, and
+    chunk_size=0 keeps embedding and vectordb out of the path.
     """
     s = authed_session
     base = platform.backend_url.rstrip("/")
@@ -166,8 +159,8 @@ def provisioned_workflow(
         assert resp.status_code == 201, f"adapter {adapter_type}: {resp.text}"
         return resp.json()["id"]
 
-    # api_base is required by the SDK's OpenAI params even though completion is
-    # mocked (validation runs before the litellm call).
+    # api_base is required even though the completion is mocked: params are
+    # validated before the mock short-circuits.
     llm_id = create_adapter(
         _LLM_ADAPTER,
         "LLM",
@@ -187,8 +180,7 @@ def provisioned_workflow(
     assert resp.status_code == 201, f"prompt-studio project: {resp.text}"
     tool_id = resp.json()["tool_id"]
 
-    # Project creation auto-makes the default profile; creating a second yields
-    # two is_default rows and breaks export. Patch the auto one instead.
+    # Patch the auto-created default profile; a second one would break export.
     resp = s.get(f"{prefix}/prompt-studio/prompt-studio-profile/{tool_id}/", timeout=30)
     resp.raise_for_status()
     profile_id = next(p["profile_id"] for p in resp.json() if p.get("is_default"))
@@ -228,7 +220,7 @@ def provisioned_workflow(
         json={"force_export": True, "is_shared_with_org": True},
     )
     assert resp.status_code == 200, f"export: {resp.text}"
-    # get_queryset returns None unless a filter arg is present -> pass custom_tool.
+    # The filter arg is mandatory: without one the view returns no queryset.
     resp = s.get(
         f"{prefix}/prompt-studio/registry/", params={"custom_tool": tool_id}, timeout=30
     )
