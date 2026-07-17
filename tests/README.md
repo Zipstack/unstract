@@ -24,10 +24,10 @@ tests/
 │   ├── coverage.py          # Per-group coverage files + combine
 │   └── critical_paths.py    # Gap + regression detection
 ├── e2e/
-│   ├── conftest.py          # Session-scoped `platform` fixture
+│   ├── conftest.py          # `platform` fixture + `provisioned_workflow` chain
 │   ├── smoke/               # Login → /health smoke
-│   ├── workflows/           # (future) workflow execution e2e
-│   ├── api_deployment/      # (future) API deployment e2e
+│   ├── workflows/           # Workflow execution e2e (mocked LLM)
+│   ├── api_deployment/      # API deployment e2e (mocked LLM)
 │   ├── prompt_studio/       # (future) Prompt Studio e2e
 │   └── hurl/                # (future) hurl-based HTTP suites
 ├── integration/             # Cross-service tests needing infra but not full platform
@@ -152,6 +152,14 @@ Three modes behind one protocol, chosen by `--runtime` or `UNSTRACT_E2E_RUNTIME`
 The rig brings the platform up **once** per `run` invocation (if any selected group has `requires_platform: true`) and exports its URLs via env vars (`UNSTRACT_BACKEND_URL`, `UNSTRACT_PROMPT_SERVICE_URL`, etc.). The rig uses `env.setdefault(...)` so a pre-set value (e.g. from `local` runtime or a developer override) wins over the runtime's default — useful when iterating against a custom stack, but means stale shell env can mask wiring bugs. The smoke test asserts the fixture's URL matches the env var to catch this.
 
 The `platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars; e2e tests run elsewhere (without the rig) just skip with a clear message.
+
+### Hermetic LLM (`UNSTRACT_LLM_MOCK_RESPONSE`)
+
+Execute-path e2e tests must not call a real provider, so `ComposeRuntime.up()` sets `UNSTRACT_LLM_MOCK_RESPONSE` (default `MOCK_LLM_OK`) before boot. The test overlay forwards it into the workers, and `unstract.sdk1.llm` passes it to litellm as `mock_response`: litellm returns the string verbatim with fixed usage (10 prompt / 20 completion / 30 total), so both the answer and the token counts are exact-assertable. Sentinels like `litellm.RateLimitError` force error paths. Unset (the production default) the hook is a no-op.
+
+It is `setdefault`, so a CI/dev override wins. Running these tests **without** the rig means the var is unset in the workers, so the `llm_mock_response` fixture skips rather than guess — export it on both sides (your shell and the workers) if you boot the stack yourself.
+
+Only `LLM` completions are mocked, not embeddings: `provisioned_workflow` pins `chunk_size=0` so indexing never invokes `litellm.embedding`. A test that needs chunking will need the embedding path mocked too.
 
 ---
 

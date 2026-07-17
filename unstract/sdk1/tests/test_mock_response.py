@@ -1,7 +1,9 @@
-"""The UNSTRACT_LLM_MOCK_RESPONSE escape hatch and the litellm mock contract it
-relies on. Execute-path critical-path tests run hermetically only if both hold:
-our injector wires mock_response when (and only when) the env is set, and litellm
-returns that string with deterministic usage so token-tracking assertions are exact.
+"""The UNSTRACT_LLM_MOCK_RESPONSE escape hatch and the litellm mock contract.
+
+Execute-path critical-path tests run hermetically only if both hold: our
+injector wires mock_response when (and only when) the env is set, and litellm
+returns that string with deterministic usage so token-tracking assertions are
+exact.
 """
 
 from __future__ import annotations

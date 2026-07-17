@@ -164,13 +164,15 @@ groups:
     critical: true
     depends_on: [e2e-smoke]
 
+  # Not optional: these hold real execute-path tests (not placeholders), so a
+  # red one must fail the build on its own merit rather than only surfacing as
+  # a critical-path gap.
   e2e-workflow:
     tier: e2e
     paths: [tests/e2e/workflows]
     requires_platform: true
     critical: true
     depends_on: [e2e-smoke]
-    optional: true
 
   e2e-api-deployment:
     tier: e2e
@@ -178,7 +180,6 @@ groups:
     requires_platform: true
     critical: true
     depends_on: [e2e-smoke]
-    optional: true
 
   e2e-prompt-studio:
     tier: e2e
