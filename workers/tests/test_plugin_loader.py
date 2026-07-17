@@ -1,4 +1,4 @@
-"""Phase 6A Sanity — Plugin loader infrastructure + queue-per-executor routing.
+"""Plugin loader infrastructure + queue-per-executor routing.
 
 Verifies:
 1. ExecutorPluginLoader.get() returns None when no plugins installed
@@ -240,8 +240,7 @@ class TestQueuePerExecutor:
 
     def test_get_queue_smart_table(self):
         assert (
-            ExecutionDispatcher._get_queue("smart_table")
-            == "celery_executor_smart_table"
+            ExecutionDispatcher._get_queue("smart_table") == "celery_executor_smart_table"
         )
 
     def test_get_queue_simple_prompt_studio(self):
@@ -255,10 +254,7 @@ class TestQueuePerExecutor:
 
     def test_get_queue_arbitrary_name(self):
         """Any executor_name works — no whitelist."""
-        assert (
-            ExecutionDispatcher._get_queue("my_custom")
-            == "celery_executor_my_custom"
-        )
+        assert ExecutionDispatcher._get_queue("my_custom") == "celery_executor_my_custom"
 
     def test_queue_name_enum_matches_dispatcher(self):
         """QueueName.EXECUTOR matches what dispatcher generates for 'legacy'."""

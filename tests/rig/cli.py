@@ -487,14 +487,21 @@ def cmd_run(args: argparse.Namespace) -> int:
                 and overall_exit == 0
             ):
                 overall_exit = exit_code
-            # Empty collection (exit 5) is a *failure* for a required group: a
-            # marker filter or path that matches nothing (e.g. the `unit-workers`
-            # regression where `-m "unit"` matched zero tests) would otherwise
-            # pass silently with an empty junit — the whole suite "green" having
-            # run nothing. Optional groups (placeholders / infra-gated) keep
-            # exit 5 as a pass; that's what `not group.optional` guards.
-            if exit_code == 5 and not group.optional and overall_exit == 0:
-                overall_exit = exit_code
+            # A non-optional pytest group that collected zero tests (exit 5) is
+            # almost always a broken marker/path (e.g. the `unit-workers`
+            # regression where `-m "unit"` matched zero tests), not intent — fail
+            # rather than fold in green. Skip hurl (its exit 5 means "no files", a
+            # placeholder) and dev runs with a marker/paths override that may
+            # legitimately match nothing.
+            if (
+                exit_code == 5
+                and not group.optional
+                and group.runner == "pytest"
+                and not args.marker
+                and not args.paths
+                and overall_exit == 0
+            ):
+                overall_exit = 1
             # Belt-and-braces: if the junit attests to errors/failures the exit
             # code didn't (truncated junit → errors=1 with exit 0), the report
             # shows ❌ but exit would otherwise stay 0. Keep them in sync.

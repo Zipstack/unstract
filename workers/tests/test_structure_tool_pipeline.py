@@ -1,4 +1,4 @@
-"""Phase 3-SANITY — Integration tests for the structure tool Celery task.
+"""Integration tests for the structure tool Celery task.
 
 Tests the full structure tool pipeline with mocked platform API and
 ExecutionDispatcher. After Phase 5E, the structure tool task dispatches a
@@ -10,7 +10,6 @@ are assembled and the result is written to filesystem.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from shared.enums.task_enums import TaskName
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -18,18 +17,10 @@ from unstract.sdk1.execution.result import ExecutionResult
 # Patch targets
 # ---------------------------------------------------------------------------
 
-_PATCH_DISPATCHER = (
-    "file_processing.structure_tool_task.get_executor_dispatcher"
-)
-_PATCH_PLATFORM_HELPER = (
-    "file_processing.structure_tool_task._create_platform_helper"
-)
-_PATCH_FILE_STORAGE = (
-    "file_processing.structure_tool_task._get_file_storage"
-)
-_PATCH_SHIM = (
-    "executor.executor_tool_shim.ExecutorToolShim"
-)
+_PATCH_DISPATCHER = "file_processing.structure_tool_task.get_executor_dispatcher"
+_PATCH_PLATFORM_HELPER = "file_processing.structure_tool_task._create_platform_helper"
+_PATCH_FILE_STORAGE = "file_processing.structure_tool_task._get_file_storage"
+_PATCH_SHIM = "executor.executor_tool_shim.ExecutorToolShim"
 _PATCH_SERVICE_IS_STRUCTURE = (
     "shared.workflow.execution.service."
     "WorkerWorkflowExecutionService._is_structure_tool_workflow"
@@ -343,9 +334,7 @@ class TestStructureToolSummarize:
             "tool_metadata": tool_metadata_regular,
         }
 
-        tool_metadata_regular["tool_settings"]["summarize_prompt"] = (
-            "Summarize this doc"
-        )
+        tool_metadata_regular["tool_settings"]["summarize_prompt"] = "Summarize this doc"
         base_params["tool_instance_metadata"]["summarize_as_source"] = True
 
         dispatcher_instance = MagicMock()
@@ -777,7 +766,9 @@ class TestStructureToolNoSummarize:
 
         ctx = dispatcher_instance.dispatch.call_args[0][0]
         assert ctx.executor_params["summarize_params"] is None
-        assert ctx.executor_params["pipeline_options"]["is_summarization_enabled"] is False
+        assert (
+            ctx.executor_params["pipeline_options"]["is_summarization_enabled"] is False
+        )
 
 
 class TestWorkflowServiceDetection:
@@ -895,9 +886,7 @@ class TestStructureToolParamsPassthrough:
         "_is_structure_tool_workflow",
         return_value=True,
     )
-    def test_structure_tool_params_passthrough(
-        self, mock_is_struct, mock_exec_struct
-    ):
+    def test_structure_tool_params_passthrough(self, mock_is_struct, mock_exec_struct):
         from shared.workflow.execution.service import (
             WorkerWorkflowExecutionService,
         )
@@ -910,9 +899,7 @@ class TestStructureToolParamsPassthrough:
         service._build_and_execute_workflow(mock_exec_service, "test.pdf")
 
         # Verify _execute_structure_tool_workflow was called
-        mock_exec_struct.assert_called_once_with(
-            mock_exec_service, "test.pdf"
-        )
+        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf")
 
     @patch(
         "shared.workflow.execution.service.WorkerWorkflowExecutionService."
@@ -960,9 +947,7 @@ class TestStructureToolParamsPassthrough:
 
         mock_execute_struct.return_value = {"success": True}
 
-        service._execute_structure_tool_workflow(
-            mock_exec_service, "invoice.pdf"
-        )
+        service._execute_structure_tool_workflow(mock_exec_service, "invoice.pdf")
 
         # The dispatched params dict must carry the real file name,
         # not the "SOURCE" sentinel from file_handler.source_file.
@@ -1011,10 +996,7 @@ class TestHelperFunctions:
         )
 
         outputs = [{"name": "field_a", "prompt": "What?"}]
-        assert (
-            _should_skip_extraction_for_smart_table(outputs)
-            is False
-        )
+        assert _should_skip_extraction_for_smart_table(outputs) is False
 
     def test_should_skip_extraction_with_json_schema(self):
         from file_processing.structure_tool_task import (
@@ -1028,7 +1010,4 @@ class TestHelperFunctions:
                 "prompt": '{"col1": "string", "col2": "number"}',
             }
         ]
-        assert (
-            _should_skip_extraction_for_smart_table(outputs)
-            is True
-        )
+        assert _should_skip_extraction_for_smart_table(outputs) is True

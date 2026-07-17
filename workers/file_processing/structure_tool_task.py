@@ -478,6 +478,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "parallel_pages": at_settings.get("parallel_pages", 4),
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
+            "group_key": at_settings.get("group_key", ""),
         }
         at_ctx = ExecutionContext(
             executor_name="agentic_table",

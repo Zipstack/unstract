@@ -20,12 +20,13 @@ Helpers exposed:
   ``effective-members/`` resource action.
 * ``serialize_group_refs`` — small ``[{id, name}]`` listing for
   the share modal's currently-shared listing.
+* ``serialize_owner_refs`` — small ``[{id, email}]`` listing for the
+  co-owner modal's ``co_owners`` field.
 """
 
 from __future__ import annotations
 
 import logging
-import uuid
 from collections.abc import Iterable
 from typing import Any
 
@@ -34,13 +35,16 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Model, QuerySet
+from django.db.models.functions import Cast
 from rest_framework.exceptions import ValidationError
+from utils.user_context import UserContext
 
 from tenant_account_v2.models import (
     GroupMembership,
     OrganizationGroup,
     OrganizationMember,
     ResourceGroupShare,
+    ResourceMembership,
 )
 
 logger = logging.getLogger(__name__)
@@ -140,71 +144,96 @@ def set_resource_share_groups(resource_obj: Any, group_ids: Iterable[int]) -> No
         )
 
 
-def _safe_uuids(raw_ids: Iterable[Any]) -> list[uuid.UUID]:
-    """Cast varchar ``object_id`` values to UUID, skipping malformed ones.
-
-    ``ResourceGroupShare.object_id`` is intentionally varchar, so one corrupt
-    value must not 500 the entire resource list for every member of the group.
-    Malformed ids are skipped and logged rather than raised.
-    """
-    result: list[uuid.UUID] = []
-    for s in raw_ids:
-        if not s:
-            continue
-        try:
-            result.append(uuid.UUID(s))
-        except (ValueError, AttributeError, TypeError):
-            logger.warning("Skipping malformed ResourceGroupShare.object_id=%r", s)
-    return result
-
-
 def list_resources_shared_with_group(
     group: OrganizationGroup, model: type[Model]
 ) -> QuerySet:
     """Resources of ``model`` shared with ``group`` (replaces
     ``model.objects.filter(shared_groups=group)``).
-
-    Materialises IDs to Python so UUID-keyed PKs can be cast before the
-    ``pk__in`` lookup — Postgres refuses the implicit ``uuid = character
-    varying`` comparison when the varchar ``object_id`` subquery is fed in
-    directly (same constraint as :func:`resources_visible_via_groups`).
     """
-    raw_ids = ResourceGroupShare.objects.filter(
+    qs = ResourceGroupShare.objects.filter(
         group=group,
         content_type=ContentType.objects.get_for_model(model),
         organization_id=group.organization_id,
-    ).values_list("object_id", flat=True)
+    )
+    return model.objects.filter(pk__in=_object_id_subquery(qs, model))
+
+
+def _object_id_subquery(qs: QuerySet[Any], model: type[Model]) -> QuerySet[Any]:
+    """``object_id`` values of ``qs`` as a subquery for ``Q(pk__in=...)``.
+
+    ``object_id`` is varchar; for UUID-keyed resources (all in-scope) it is
+    ``Cast`` to UUID inside the subquery so Postgres accepts the ``uuid = uuid``
+    comparison — keeping the lookup in SQL instead of materialising the ids to
+    Python and inlining them as literals.
+
+    A malformed ``object_id`` raises ``DataError`` rather than being skipped:
+    the only write paths store ``str(resource_obj.pk)`` from a live resource, so
+    a corrupt value can arrive only via manual SQL or a bad import — a data
+    integrity bug that should surface, not be masked into a missing resource.
+    """
     if isinstance(model._meta.pk, models.UUIDField):
-        pks: list[Any] = _safe_uuids(raw_ids)
-    else:
-        pks = list(raw_ids)
-    return model.objects.filter(pk__in=pks)
+        return qs.values(obj_uuid=Cast("object_id", output_field=models.UUIDField()))
+    return qs.values("object_id")
 
 
 def resources_visible_via_groups(
     model: type[Model], user_group_ids: Iterable[int]
-) -> list[Any]:
-    """IDs of ``model`` rows shared with any group the user belongs to.
+) -> QuerySet[Any]:
+    """Subquery of ``model`` PKs shared with any group the user belongs to.
 
-    Returns a Python list (not a subquery) so each value can be coerced to
-    the resource PK type. ``ResourceGroupShare.object_id`` is a varchar; for
-    UUID-keyed resources (all 7 in-scope today) Postgres refuses the
-    implicit ``uuid = character varying`` comparison when this is fed into
-    ``Q(pk__in=...)``, so we cast in Python instead. The result set is
-    bounded by ``(groups user belongs to) × (shared rows of that model)``.
+    Feeds each resource manager's ``for_user()`` ``Q(pk__in=...)``. Returns a
+    ``ValuesQuerySet`` (subquery) rather than a materialised list so the lookup
+    stays in SQL — see :func:`_object_id_subquery` for the varchar/UUID cast.
     """
-    raw_ids = ResourceGroupShare.objects.filter(
+    qs = ResourceGroupShare.objects.filter(
         content_type=ContentType.objects.get_for_model(model),
         group_id__in=user_group_ids,
-    ).values_list("object_id", flat=True)
-    if isinstance(model._meta.pk, models.UUIDField):
-        return _safe_uuids(raw_ids)
-    return list(raw_ids)
+    )
+    return _object_id_subquery(qs, model)
+
+
+def resources_visible_via_memberships(
+    model: type[Model], user: Any, organization: Organization | None = None
+) -> QuerySet[Any]:
+    """Subquery of ``model`` PKs on which ``user`` holds a ``ResourceMembership``
+    (OWNER or VIEWER), scoped to ``organization``.
+
+    Per-user analogue of :func:`resources_visible_via_groups`. Returns a
+    ``ValuesQuerySet`` (subquery), not a materialised list: the paginated
+    executions list calls this three times per request, and inlining every
+    membership id as a literal defeated plan caching. See
+    :func:`_object_id_subquery` for the varchar/UUID cast.
+
+    Org scoping is load-bearing: a user in multiple orgs holds membership rows
+    in each, so an unscoped lookup leaks resource ids across orgs on the one
+    caller (``WorkflowExecutionManager``) whose outer queryset isn't already
+    org-scoped. Falls back to ``UserContext`` so request paths need no change;
+    pass ``organization`` explicitly on worker/management paths where
+    ``UserContext`` is empty.
+    """
+    organization = organization or UserContext.get_organization()
+    qs = ResourceMembership.objects.filter(
+        content_type=ContentType.objects.get_for_model(model),
+        user=user,
+    )
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+    return _object_id_subquery(qs, model)
 
 
 def serialize_group_refs(resource_obj: Any) -> list[dict[str, Any]]:
     """Return a compact ``[{id, name}]`` listing for share modals."""
     return list(get_resource_share_groups(resource_obj).values("id", "name"))
+
+
+def serialize_owner_refs(resource_obj: Any) -> list[dict[str, Any]]:
+    """Return a compact ``[{id, email}]`` co-owner listing for share modals.
+
+    Email — not username — because the co-owner modal's add-dropdown can only
+    offer emails (the org members endpoint exposes no username), so any other
+    shape makes a row change identity between pending and persisted.
+    """
+    return [{"id": user.pk, "email": user.email} for user in resource_obj.owners()]
 
 
 def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
@@ -218,17 +247,17 @@ def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     """
     seen: dict[int, dict[str, Any]] = {}
 
-    # Direct shares
-    direct_users = list(
-        resource_obj.shared_users.filter(is_service_account=False).values(
-            "id", "email", "first_name", "last_name"
-        )
-    )
-    for u in direct_users:
-        seen[u["id"]] = {
-            "user_id": u["id"],
-            "email": u["email"],
-            "display_name": _display_name(u),
+    # Direct shares — VIEWER membership rows (UN-2202 Phase 2 successor to the
+    # old ``shared_users`` M2M). Owners are excluded here: they hold the
+    # resource, they are not "shared with" it (parity with prior behavior).
+    for membership in resource_obj.viewer_memberships():
+        user = membership.user
+        if getattr(user, "is_service_account", False):
+            continue
+        seen[user.id] = {
+            "user_id": user.id,
+            "email": user.email,
+            "display_name": _user_display_name(user),
             "access_via": "direct",
             "group_id": None,
             "group_name": None,
@@ -283,15 +312,6 @@ def _add_org_members(seen: dict[int, dict[str, Any]], resource_obj: Any) -> None
             "group_id": None,
             "group_name": None,
         }
-
-
-def _display_name(user_dict: dict[str, Any]) -> str:
-    parts = [
-        (user_dict.get("first_name") or "").strip(),
-        (user_dict.get("last_name") or "").strip(),
-    ]
-    full = " ".join(p for p in parts if p)
-    return full or user_dict.get("email") or ""
 
 
 def _user_display_name(user: User) -> str:
@@ -371,7 +391,9 @@ class ShareAuthorizationService:
             cls._commit(resource, desired)
             return
 
-        is_owner = resource.created_by_id == actor.pk
+        # Ownership is role-based (OWNER membership), not ``created_by``, since
+        # UN-2202 — ``created_by`` is audit-only.
+        is_owner = resource.is_owner(actor)
         is_admin = is_org_admin(actor)
         cls._authorize(actor, resource, desired, is_owner, is_admin)
         cls._commit(resource, desired)
@@ -533,9 +555,22 @@ class ShareAuthorizationService:
 
     @staticmethod
     def _current_ids(resource: Any, axis: str) -> set[int]:
+        if axis == ShareAuthorizationService.USERS_AXIS:
+            return ShareAuthorizationService._current_viewer_ids(resource)
         if axis == ShareAuthorizationService.GROUPS_AXIS:
             return set(get_resource_share_groups(resource).values_list("id", flat=True))
         return set(getattr(resource, axis).values_list("pk", flat=True))
+
+    @staticmethod
+    def _current_viewer_ids(resource: Any) -> set[int]:
+        """User ids holding a VIEWER membership row on ``resource``."""
+        from permissions.roles import ResourceRole
+
+        return set(
+            resource.memberships.filter(role=ResourceRole.VIEWER).values_list(
+                "user_id", flat=True
+            )
+        )
 
     # ----------------------------------------------------------------- write
 
@@ -543,7 +578,7 @@ class ShareAuthorizationService:
     @transaction.atomic
     def _commit(cls, resource: Any, desired: dict[str, Any]) -> None:
         if cls.USERS_AXIS in desired:
-            getattr(resource, cls.USERS_AXIS).set(desired[cls.USERS_AXIS] or [])
+            cls._set_viewer_members(resource, desired[cls.USERS_AXIS] or [])
         if cls.GROUPS_AXIS in desired:
             set_resource_share_groups(resource, desired[cls.GROUPS_AXIS] or [])
         if cls.ORG_AXIS in desired:
@@ -551,6 +586,31 @@ class ShareAuthorizationService:
             if bool(getattr(resource, cls.ORG_AXIS)) != new_value:
                 setattr(resource, cls.ORG_AXIS, new_value)
                 resource.save(update_fields=[cls.ORG_AXIS, "modified_at"])
+
+    @staticmethod
+    def _set_viewer_members(resource: Any, desired_ids: Iterable[int]) -> None:
+        """Replace ``resource``'s VIEWER membership rows to match ``desired_ids``.
+
+        Mirrors M2M ``.set()`` semantics over the membership table. OWNER rows
+        are never touched: a desired id that is already an OWNER is left as-is
+        (``unique_together`` forbids a second row), so owners are never demoted
+        or duplicated (UN-2202 Phase 2).
+        """
+        from permissions.roles import ResourceRole
+
+        desired = {int(pk) for pk in desired_ids or ()}
+        memberships = resource.memberships
+        current_viewer_ids = set(
+            memberships.filter(role=ResourceRole.VIEWER).values_list("user_id", flat=True)
+        )
+        to_remove = current_viewer_ids - desired
+        if to_remove:
+            memberships.filter(role=ResourceRole.VIEWER, user_id__in=to_remove).delete()
+        for user_id in desired - current_viewer_ids:
+            # get_or_create: an existing OWNER row is returned untouched.
+            memberships.get_or_create(
+                user_id=user_id, defaults={"role": ResourceRole.VIEWER}
+            )
 
     # ------------------------------------------------------------ exceptions
 

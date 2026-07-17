@@ -18,6 +18,26 @@ from dotenv import load_dotenv
 _env_test = Path(__file__).resolve().parent.parent / ".env.test"
 load_dotenv(_env_test)
 
+# Worker Celery apps build a Postgres result backend from DB_*/CELERY_BACKEND_DB_*.
+# Strip these before any app is imported so tests don't reach (or leak) a live DB
+# the unit tier has no server for; eager results then stay in-memory. This undoes
+# the DB_* defaults set in ../conftest.py, which stay in effect for shared/tests
+# (not covered by this file). Done before the _PRISTINE_ENVIRON capture below so
+# the restored baseline also excludes them (they don't creep back per-test).
+for _var in (
+    "DB_HOST",
+    "DB_PORT",
+    "DB_NAME",
+    "DB_USER",
+    "DB_PASSWORD",
+    "CELERY_BACKEND_DB_HOST",
+    "CELERY_BACKEND_DB_PORT",
+    "CELERY_BACKEND_DB_NAME",
+    "CELERY_BACKEND_DB_USER",
+    "CELERY_BACKEND_DB_PASSWORD",
+):
+    os.environ.pop(_var, None)
+
 # Pristine baseline: the environment right after .env.test loads, captured before
 # pytest collection imports any worker module. Some worker modules call
 # ``load_dotenv(<workers>/.env)`` at import time, so on a developer machine the
@@ -262,3 +282,20 @@ def _reset_queue_backend_state():
             with contextlib.suppress(Exception):
                 conn.close()
             _pg_barrier._local.conn = None
+
+
+@pytest.fixture(autouse=True)
+def _restore_current_celery_app():
+    """Pin celery's default app as current_app around each test. Worker modules
+    build their own apps at import and set them current, so `@worker_task` proxies
+    otherwise fail to resolve (`NotRegistered`) against a drifted current_app.
+    Finalize so every shared task is registered on it.
+    """
+    from celery._state import default_app
+
+    default_app.finalize()
+    default_app.set_current()
+    try:
+        yield
+    finally:
+        default_app.set_current()

@@ -1,0 +1,631 @@
+"""Integration tests for co-owner (OWNER-membership) management (UN-2202).
+
+Exercises the shared owner-management surface — the ``owners/`` endpoints,
+``AddOwnerSerializer`` / ``RemoveOwnerSerializer`` (incl. VIEWER->OWNER promotion
+and the last-owner guard), the ``IsOwner`` permission class, ``for_user``
+visibility, and ``HasMembersMixin`` — on Workflow, plus a parameterized sweep
+across the OSS shareable resources.
+
+DB-backed (Django ``TestCase``), so ``backend/conftest.py`` auto-marks these
+``integration`` and the rig runs them in ``integration-backend``.
+"""
+
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+import pytest
+from account_v2.models import User
+from django.test import TestCase
+from permissions.roles import ResourceRole
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.test import APIRequestFactory, force_authenticate
+from rest_framework.views import APIView
+from workflow_manager.workflow_v2.models.workflow import Workflow
+from workflow_manager.workflow_v2.views import WorkflowViewSet
+
+from permissions.membership_serializers import AddOwnerSerializer
+from permissions.permission import IsParentToolOwner
+from permissions.tests.base import (
+    RESOURCE_SPECS,
+    CoOwnerOrgTestMixin,
+    make_user,
+)
+
+
+class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
+    """The ``owners/`` add/remove endpoints via the real WorkflowViewSet."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-1", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.factory = APIRequestFactory()
+
+    def _add(self, actor: User, target_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"post": "add_co_owner"})
+        request = self.factory.post("/x/", {"user_id": target_id}, format="json")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk))
+
+    def _remove(self, actor: User, user_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"delete": "remove_co_owner"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk), user_id=str(user_id))
+
+    def _owner_ids(self) -> set[int]:
+        return set(
+            self.workflow.memberships.filter(role=ResourceRole.OWNER).values_list(
+                "user_id", flat=True
+            )
+        )
+
+    @pytest.mark.critical_path("co-owner-manage")
+    def test_owner_adds_co_owner(self) -> None:
+        response = self._add(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(self.coowner.pk, self._owner_ids())
+        self.assertIn(self.coowner.pk, [ref["id"] for ref in response.data["co_owners"]])
+
+    def test_add_rejects_non_org_member(self) -> None:
+        response = self._add(self.owner, self.stranger.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_rejects_existing_owner(self) -> None:
+        response = self._add(self.owner, self.owner.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_add_promotes_viewer_to_owner(self) -> None:
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        response = self._add(self.owner, self.viewer.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn(self.viewer.pk, self._owner_ids())
+        # promotion, not duplication: exactly one row for the viewer
+        self.assertEqual(self.workflow.memberships.filter(user=self.viewer).count(), 1)
+
+    def test_viewer_cannot_add_co_owner(self) -> None:
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        response = self._add(self.viewer, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_outsider_gets_404(self) -> None:
+        # for_user() filters the resource out before IsOwner runs → 404, not 403.
+        response = self._add(self.outsider, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_admin_can_add_co_owner(self) -> None:
+        response = self._add(self.admin, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_owner_removes_co_owner(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertNotIn(self.coowner.pk, self._owner_ids())
+
+    def test_remove_rejects_non_owner(self) -> None:
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        response = self._remove(self.owner, self.viewer.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_cannot_remove_last_owner(self) -> None:
+        response = self._remove(self.owner, self.owner.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(self.owner.pk, self._owner_ids())
+
+    def test_can_remove_when_multiple_owners(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, self.owner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self._owner_ids(), {self.coowner.pk})
+
+    def test_remove_rejects_service_account(self) -> None:
+        """Symmetric with the add-side guard: a service-account owner cannot be
+        removed, so it can't be stranded off the resource (UN-2202 review #7)."""
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, svc.pk)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn(svc.pk, self._owner_ids())
+
+    def test_shared_viewer_can_list_shared_users(self) -> None:
+        """``list_of_shared_users`` is viewer-tier by design (spec §10): a shared
+        user may open the owner popup. Guards against a re-tighten to IsOwner
+        (UN-2202 review #6)."""
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        view = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=self.viewer)
+        response = view(request, pk=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
+    """IsOwner branches, for_user visibility, HasMembersMixin, save() org-derivation."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-1", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+
+    def test_is_owner_permission_branches(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.assertTrue(self._is_owner_perm(self.owner, self.workflow))
+        self.assertTrue(self._is_owner_perm(self.coowner, self.workflow))
+        self.assertTrue(self._is_owner_perm(self.admin, self.workflow))
+        self.assertTrue(self._is_owner_perm(svc, self.workflow))
+        self.assertFalse(self._is_owner_perm(self.viewer, self.workflow))
+        self.assertFalse(self._is_owner_perm(self.outsider, self.workflow))
+
+    def test_created_by_not_consulted_when_memberships_exist(self) -> None:
+        # A creator with no OWNER row is not an owner — created_by is audit-only.
+        orphan = Workflow.objects.create(
+            workflow_name="wf-2", organization=self.org, created_by=self.outsider
+        )
+        self.assertFalse(self._is_owner_perm(self.outsider, orphan))
+
+    def test_for_user_visibility_tracks_membership(self) -> None:
+        self.assertNotIn(self.workflow, Workflow.objects.for_user(self.coowner))
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.assertIn(self.workflow, Workflow.objects.for_user(self.coowner))
+        self.assertNotIn(self.workflow, Workflow.objects.for_user(self.outsider))
+
+    def test_has_members_mixin_accessors(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.assertEqual(self.workflow.co_owners_count(), 2)
+        self.assertTrue(self.workflow.is_owner(self.owner))
+        self.assertTrue(self.workflow.is_owner(self.coowner))
+        self.assertFalse(self.workflow.is_owner(self.viewer))
+        self.assertEqual(
+            {u.id for u in self.workflow.owners()}, {self.owner.pk, self.coowner.pk}
+        )
+        self.assertEqual({u.id for u in self.workflow.viewers()}, {self.viewer.pk})
+
+    def test_service_account_excluded_from_owner_roster(self) -> None:
+        """A service-account OWNER row is a real grant but must not surface as a
+        removable co-owner or inflate the count badge (UN-2202 review #7)."""
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
+        self.assertEqual(
+            {u.id for u in self.workflow.owners()}, {self.owner.pk, self.coowner.pk}
+        )
+        self.assertEqual(self.workflow.co_owners_count(), 2)
+        # the filter is display-only — the SA still genuinely owns the resource
+        self.assertTrue(
+            self.workflow.memberships.filter(
+                user=svc, role=ResourceRole.OWNER
+            ).exists()
+        )
+
+    def test_membership_save_derives_organization(self) -> None:
+        # organization is server-derived from the resource, never passed in.
+        membership = self.workflow.memberships.create(
+            user=self.viewer, role=ResourceRole.VIEWER
+        )
+        self.assertEqual(membership.organization_id, self.org.pk)
+
+
+class CrossResourceOwnerManagementTests(CoOwnerOrgTestMixin, TestCase):
+    """The shared owner-management surface behaves identically for every OSS
+    shareable resource (AgenticProject is covered cloud-side)."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+
+    def test_add_owner_and_visibility_per_resource(self) -> None:
+        for spec in RESOURCE_SPECS:
+            with self.subTest(kind=spec.kind):
+                resource = spec.build(self.org, self.owner)
+                resource.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+
+                serializer = AddOwnerSerializer(
+                    data={"user_id": self.coowner.pk}, context={"resource": resource}
+                )
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+
+                owner_ids = set(
+                    resource.memberships.filter(role=ResourceRole.OWNER).values_list(
+                        "user_id", flat=True
+                    )
+                )
+                self.assertEqual(owner_ids, {self.owner.pk, self.coowner.pk})
+                self.assertTrue(resource.is_owner(self.coowner))
+
+                manager = type(resource).objects
+                self.assertIn(resource, manager.for_user(self.coowner))
+                self.assertNotIn(resource, manager.for_user(self.outsider))
+                self.assertTrue(self._is_owner_perm(self.coowner, resource))
+                self.assertFalse(self._is_owner_perm(self.outsider, resource))
+
+
+class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
+    """``add_co_owner`` / ``remove_co_owner`` fire the sharing-service
+    notifications with the right payload, and swallow notification failures so
+    the owners request is never broken (best-effort). The resource-type hook is
+    patched to a fixed value so the test does not depend on the cloud-only
+    notification plugin's conditional ``ResourceType`` import."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-1", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.factory = APIRequestFactory()
+        self.service = Mock()
+        plugin = {"service_class": Mock(return_value=self.service)}
+        for p in (
+            patch("permissions.membership_views.notification_plugin", plugin),
+            patch.object(
+                WorkflowViewSet,
+                "get_notification_resource_type",
+                return_value="workflow",
+            ),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def _add(self, actor: User, target_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"post": "add_co_owner"})
+        request = self.factory.post("/x/", {"user_id": target_id}, format="json")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk))
+
+    def _remove(self, actor: User, user_id: int) -> Response:
+        view = WorkflowViewSet.as_view({"delete": "remove_co_owner"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk), user_id=str(user_id))
+
+    def test_add_fires_added_notification_with_payload(self) -> None:
+        response = self._add(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.service.send_co_owner_added_notification.assert_called_once()
+        kwargs = self.service.send_co_owner_added_notification.call_args.kwargs
+        self.assertEqual(kwargs["resource_type"], "workflow")
+        self.assertEqual(kwargs["resource_name"], "wf-1")
+        self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
+        self.assertEqual(kwargs["shared_by"], self.owner)
+        self.assertEqual([u.pk for u in kwargs["shared_to"]], [self.coowner.pk])
+        self.assertEqual(kwargs["resource_instance"], self.workflow)
+
+    def test_remove_fires_removed_notification_with_payload(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.service.send_access_removed_notification.assert_called_once()
+        kwargs = self.service.send_access_removed_notification.call_args.kwargs
+        self.assertEqual(kwargs["resource_type"], "workflow")
+        self.assertEqual([u.pk for u in kwargs["removed_from"]], [self.coowner.pk])
+        self.assertEqual(kwargs["removed_by"], self.owner)
+        self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
+        self.assertEqual(kwargs["resource_instance"], self.workflow)
+
+    def test_notification_failure_does_not_break_add(self) -> None:
+        self.service.send_co_owner_added_notification.side_effect = RuntimeError("boom")
+        response = self._add(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        owner_ids = set(
+            self.workflow.memberships.filter(role=ResourceRole.OWNER).values_list(
+                "user_id", flat=True
+            )
+        )
+        self.assertIn(self.coowner.pk, owner_ids)
+
+
+class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
+    """``IsParentToolOwner`` inherits access from the parent ``CustomTool``
+    (owner/co-owner/admin/service-account allow; viewer/outsider deny) and falls
+    back to the object's own ``created_by`` when there is no parent tool.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+        self.tool = CustomTool.objects.create(
+            tool_name="tool-1",
+            description="co-owner test tool",
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.tool.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.tool.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.tool.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+
+    def _perm(self, user: User, obj: object) -> bool:
+        request = APIRequestFactory().get("/")
+        request.user = user
+        return IsParentToolOwner().has_object_permission(request, APIView(), obj)
+
+    def test_parent_tool_owners_admin_service_account_allowed(self) -> None:
+        child = SimpleNamespace(prompt_studio_tool=self.tool)
+        svc = make_user("svc@example.com", is_service_account=True)
+        self.assertTrue(self._perm(self.owner, child))
+        self.assertTrue(self._perm(self.coowner, child))
+        self.assertTrue(self._perm(self.admin, child))
+        self.assertTrue(self._perm(svc, child))
+
+    def test_parent_tool_viewer_and_outsider_denied(self) -> None:
+        child = SimpleNamespace(prompt_studio_tool=self.tool)
+        self.assertFalse(self._perm(self.viewer, child))
+        self.assertFalse(self._perm(self.outsider, child))
+
+    def test_null_parent_falls_back_to_object_owner(self) -> None:
+        # No parent tool → access derives from the object's own ``created_by``.
+        orphan = SimpleNamespace(prompt_studio_tool=None, created_by=self.owner)
+        self.assertTrue(self._perm(self.owner, orphan))
+        self.assertFalse(self._perm(self.coowner, orphan))
+
+
+class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
+    """A co-owner keeps their default-adapter link when a share-axis change
+    (e.g. a ``shared_to_org`` toggle-off) drops them from *effective* access —
+    all owners, not just the creator, are exempt from the post-share
+    default-adapter cleanup (UN-2202 regression guard).
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from adapter_processor_v2.models import AdapterInstance
+
+        self.adapter = AdapterInstance.objects.create(
+            adapter_name="ad-1",
+            adapter_id="openai|test",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.adapter.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+
+    def test_owner_exempt_from_default_adapter_clear(self) -> None:
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        captured: dict[str, set[int]] = {}
+        # shared_to_org toggle-off drops the co-owner + viewer from effective
+        # access; only the creator survives the recompute.
+        before = {self.owner.pk, self.coowner.pk, self.viewer.pk}
+        after = {self.owner.pk}
+        with (
+            patch.object(
+                AdapterInstanceViewSet, "get_object", return_value=self.adapter
+            ),
+            patch.object(
+                AdapterInstanceViewSet,
+                "_effective_member_ids",
+                side_effect=[before, after],
+            ),
+            patch(
+                "permissions.resource_share_views.ResourceShareManagementMixin.share",
+                return_value=Response(status=status.HTTP_200_OK),
+            ),
+            patch.object(
+                AdapterInstanceViewSet,
+                "_clear_default_adapter_for_removed_users",
+                side_effect=lambda adapter, removed: captured.__setitem__(
+                    "removed", set(removed)
+                ),
+            ),
+        ):
+            AdapterInstanceViewSet().share(Mock(), pk=str(self.adapter.pk))
+        # co-owner (OWNER row, user_id != created_by) is exempt; the viewer
+        # (no owner row) is still cleared.
+        self.assertNotIn(self.coowner.pk, captured["removed"])
+        self.assertIn(self.viewer.pk, captured["removed"])
+
+
+class AdapterRemoveCoOwnerCleanupTests(CoOwnerOrgTestMixin, TestCase):
+    """``remove_co_owner`` clears a co-owner's now-dangling default adapter, but
+    only when they lose all effective access — mirroring the ``share`` cleanup
+    the co-owner-removal path previously skipped (UN-2202 review #4).
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
+        from tenant_account_v2.models import OrganizationMember
+
+        self.adapter = AdapterInstance.objects.create(
+            adapter_name="ad-1",
+            adapter_id="openai|test",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.adapter.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.coowner_member = OrganizationMember.objects.get(user=self.coowner)
+        UserDefaultAdapter.objects.create(
+            organization_member=self.coowner_member, default_llm_adapter=self.adapter
+        )
+        self.factory = APIRequestFactory()
+
+    def _remove(self, actor: User, user_id: int) -> Response:
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        view = AdapterInstanceViewSet.as_view({"delete": "remove_co_owner"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.adapter.pk), user_id=str(user_id))
+
+    def _default_llm_id(self) -> int | None:
+        from adapter_processor_v2.models import UserDefaultAdapter
+
+        return UserDefaultAdapter.objects.get(
+            organization_member=self.coowner_member
+        ).default_llm_adapter_id
+
+    def test_remove_clears_dangling_default(self) -> None:
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        # co-owner lost all access → their default-adapter link is nulled
+        self.assertIsNone(self._default_llm_id())
+
+    def test_remove_keeps_default_when_access_remains(self) -> None:
+        # shared_to_org keeps the removed co-owner as an effective (org) member,
+        # so their default must NOT be cleared.
+        self.adapter.shared_to_org = True
+        self.adapter.save(update_fields=["shared_to_org"])
+        response = self._remove(self.owner, self.coowner.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertEqual(self._default_llm_id(), self.adapter.pk)
+
+
+class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
+    """Every OSS create path grants the creator an OWNER membership row.
+
+    ``for_user`` no longer consults ``created_by`` (audit-only, UN-2202), so a
+    create path that skips the grant leaves the new resource invisible to its
+    own creator — and every other test seeds the OWNER row by hand, which is
+    exactly why these must drive the real create endpoints.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.factory = APIRequestFactory()
+
+    def _create(self, view_cls: type, payload: dict) -> Response:
+        view = view_cls.as_view({"post": "create"})
+        request = self.factory.post("/x/", payload, format="json")
+        force_authenticate(request, user=self.coowner)
+        return view(request)
+
+    def _assert_creator_owns(self, model: type, **lookup: str) -> None:
+        created = model.objects.get(**lookup)
+        self.assertTrue(created.is_owner(self.coowner))
+        # The load-bearing half: the creator can actually SEE the resource.
+        self.assertIn(created, model.objects.for_user(self.coowner))
+
+    def _build_workflow_fixture(self) -> Workflow:
+        return Workflow.objects.create(
+            workflow_name="wf-parent", organization=self.org, created_by=self.coowner
+        )
+
+    @pytest.mark.critical_path("co-owner-manage")
+    def test_workflow_create_grants_creator_ownership(self) -> None:
+        response = self._create(WorkflowViewSet, {"workflow_name": "wf-new"})
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(Workflow, workflow_name="wf-new")
+
+    def test_custom_tool_create_grants_creator_ownership(self) -> None:
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+
+        response = self._create(
+            PromptStudioCoreView,
+            {"tool_name": "tool-new", "description": "d", "author": "a"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(CustomTool, tool_name="tool-new")
+
+    def test_adapter_create_grants_creator_ownership(self) -> None:
+        from adapter_processor_v2.models import AdapterInstance
+        from adapter_processor_v2.views import AdapterInstanceViewSet
+
+        # Only the SDK context-window lookup (a provider-shaped call) is mocked.
+        with patch.object(
+            AdapterInstance, "get_context_window_size", return_value=4096
+        ):
+            response = self._create(
+                AdapterInstanceViewSet,
+                {
+                    "adapter_id": "openai|test-llm",
+                    "adapter_name": "adapter-new",
+                    "adapter_type": "LLM",
+                    "adapter_metadata": {"api_key": "sk-test", "model": "gpt-4o"},
+                },
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(AdapterInstance, adapter_name="adapter-new")
+
+    def test_connector_create_grants_creator_ownership(self) -> None:
+        from connector_v2.models import ConnectorInstance
+        from connector_v2.views import ConnectorInstanceViewSet
+
+        response = self._create(
+            ConnectorInstanceViewSet,
+            {
+                # A real catalog id — to_representation resolves connector_mode
+                # from the connectorkit; create itself needs no live MinIO.
+                "connector_id": "minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
+                "connector_name": "conn-new",
+                "connector_metadata": {"key": "k", "secret": "s"},
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(ConnectorInstance, connector_name="conn-new")
+
+    def test_pipeline_create_grants_creator_ownership(self) -> None:
+        from pipeline_v2.models import Pipeline
+        from pipeline_v2.views import PipelineViewSet
+
+        workflow = self._build_workflow_fixture()
+        # Scheduler I/O is out of scope; the row + grant commit is the invariant.
+        with patch("pipeline_v2.serializers.crud.SchedulerHelper"):
+            response = self._create(
+                PipelineViewSet,
+                {
+                    "pipeline_name": "pipe-new",
+                    "workflow": str(workflow.pk),
+                    "pipeline_type": "ETL",
+                },
+            )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(Pipeline, pipeline_name="pipe-new")
+
+    def test_api_deployment_create_grants_creator_ownership(self) -> None:
+        from api_v2.api_deployment_views import APIDeploymentViewSet
+        from api_v2.models import APIDeployment
+        from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+
+        workflow = self._build_workflow_fixture()
+        # The serializer requires configured endpoints; API-type needs no connector.
+        for endpoint_type in (
+            WorkflowEndpoint.EndpointType.SOURCE,
+            WorkflowEndpoint.EndpointType.DESTINATION,
+        ):
+            WorkflowEndpoint.objects.create(
+                workflow=workflow,
+                endpoint_type=endpoint_type,
+                connection_type=WorkflowEndpoint.ConnectionType.API,
+            )
+        response = self._create(
+            APIDeploymentViewSet,
+            {
+                "display_name": "api-new",
+                "api_name": "api-new-x",
+                "workflow": str(workflow.pk),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self._assert_creator_owns(APIDeployment, api_name="api-new-x")
+
+    def test_import_path_grants_creator_ownership(self) -> None:
+        """The 7th grant site — ``create_tool_from_import_data`` — is a helper
+        the viewset sweep can't reach; pin it directly."""
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+            PromptStudioHelper,
+        )
+
+        tool = PromptStudioHelper.create_tool_from_import_data(
+            {"tool_metadata": {"description": "d", "author": "a"}, "tool_settings": {}},
+            "tool-imported",
+            self.org,
+            self.coowner,
+        )
+        self.assertTrue(tool.is_owner(self.coowner))
+        self.assertIn(tool, CustomTool.objects.for_user(self.coowner))
