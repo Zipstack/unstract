@@ -17,14 +17,16 @@ import {
   ShareAltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import moment from "moment";
 import { useNavigate } from "react-router-dom";
 
-import { formattedDateTime } from "../../../helpers/GetStaticData";
+import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 
-// Rows are presence-keyed: pages whose APIs don't return a field simply
-// don't show it (e.g. model is adapter-only, prompt_count is prompt studio).
+// Tooltip lines are shown when the value is present (`!= null` — so 0
+// renders but null/undefined hide): model is adapter-only, prompt_count is
+// Prompt-Studio-only. The "Updated" block itself is opt-in via the
+// showModified prop — presence of modified_at is not evidence the page's
+// value is an honest "last modified" (e.g. Workflows, Connectors).
 const renderItemMetadata = (item) => (
   <div>
     {item?.created_at && (
@@ -33,10 +35,8 @@ const renderItemMetadata = (item) => (
     {item?.modified_at && (
       <div>Modified: {formattedDateTime(item.modified_at)}</div>
     )}
-    {item?.model && <div>Model: {item.model}</div>}
-    {item?.prompt_count !== undefined && (
-      <div>Prompts: {item.prompt_count}</div>
-    )}
+    {item?.model != null && <div>Model: {item.model}</div>}
+    {item?.prompt_count != null && <div>Prompts: {item.prompt_count}</div>}
   </div>
 );
 
@@ -53,6 +53,7 @@ function ListView({
   centered,
   isClickable = true,
   showOwner = true,
+  showModified = false,
   type,
 }) {
   const navigate = useNavigate();
@@ -140,20 +141,29 @@ function ListView({
       title = (
         <div className="adapter-cover-img">
           <Image src={item[iconProp]} preview={false} className="fit-cover" />
-          <Typography.Text className="adapters-list-title">
+          <Typography.Text
+            className="adapters-list-title"
+            ellipsis={{ tooltip: true }}
+          >
             {item[titleProp]}
           </Typography.Text>
         </div>
       );
     } else if (iconProp) {
       title = (
-        <Typography.Text className="adapters-list-title">
+        <Typography.Text
+          className="adapters-list-title"
+          ellipsis={{ tooltip: true }}
+        >
           {`${item[iconProp]} ${item[titleProp]}`}
         </Typography.Text>
       );
     } else {
       title = (
-        <Typography.Text className="adapters-list-title">
+        <Typography.Text
+          className="adapters-list-title"
+          ellipsis={{ tooltip: true }}
+        >
           {item[titleProp]}
         </Typography.Text>
       );
@@ -163,27 +173,27 @@ function ListView({
   };
 
   const renderMeta = (item) => {
-    if (!showOwner && !item?.modified_at) {
+    // Empty on malformed input — hide the label instead of "Invalid date"
+    const updatedAgo = showModified ? timeAgo(item?.modified_at) : "";
+    if (!showOwner && !updatedAgo) {
       return null;
     }
+    // No click handler here: the co-owner button stops its own propagation,
+    // and everything else should bubble to the row like the rest of it
     return (
-      <div
-        className="list-view-meta"
-        onClick={(event) => event.stopPropagation()}
-        role="none"
-      >
+      <div className="list-view-meta">
         {showOwner && renderOwnerBadge(item)}
-        {item?.modified_at && (
-          <div className="adapters-list-modified-container">
+        {updatedAgo && (
+          <div className="list-view-modified-container">
             <Typography.Text
               type="secondary"
-              className="adapters-list-modified-text"
+              className="list-view-modified-text"
             >
-              Updated {moment(item.modified_at).fromNow()}
+              Updated {updatedAgo}
             </Typography.Text>
-            <Tooltip title={renderItemMetadata(item)}>
+            <Tooltip title={() => renderItemMetadata(item)}>
               <InfoCircleOutlined
-                className="adapters-list-info-icon"
+                className="list-view-info-icon"
                 aria-label="Creation and modification details"
               />
             </Tooltip>
@@ -277,11 +287,11 @@ function ListView({
                 ? navigate(`${item[idProp]}`)
                 : handleShareClick(event, item, false);
             }}
-            className={`cur-pointer ${centered ? "centered" : ""}`}
+            className="cur-pointer"
           >
             <Flex
               gap={24}
-              align="center"
+              align={centered ? "center" : "flex-start"}
               justify="space-between"
               className="list-view-row"
             >
@@ -320,6 +330,7 @@ ListView.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  showModified: PropTypes.bool,
   type: PropTypes.string,
 };
 

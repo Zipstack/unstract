@@ -164,16 +164,11 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # Prompt edits don't touch the CustomTool row, so surface the
-            # latest prompt modified_at for an honest "last modified" (UN-3741)
-            last_prompt_modified_sq = (
-                ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
-                .order_by("-modified_at")
-                .values("modified_at")[:1]
-            )
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete), so the plain
+            # field is honest and stays orderable (UN-3741)
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
-                _last_prompt_modified=Subquery(last_prompt_modified_sq),
             )
         return qs
 

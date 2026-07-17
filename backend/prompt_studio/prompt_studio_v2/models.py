@@ -2,6 +2,7 @@ import uuid
 
 from account_v2.models import User
 from django.db import models
+from django.utils import timezone
 from utils.models.base_model import BaseModel
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -152,6 +153,32 @@ class ToolStudioPrompt(BaseModel):
     eval_guidance_toxicity = models.BooleanField(default=True)
     eval_guidance_completeness = models.BooleanField(default=True)
     #
+
+    def _touch_tool(self) -> None:
+        """Bump the parent tool's modified_at so it reflects prompt activity.
+
+        Prompt writes never touch the CustomTool row, so without this the
+        tool's "last modified" goes stale (UN-3741) — and a derived
+        max(tool, prompts) can travel backwards on prompt delete. A
+        queryset update bypasses CustomTool.save() (no auto_now recursion,
+        no signals).
+        """
+        if self.tool_id_id:
+            CustomTool.objects.filter(pk=self.tool_id_id).update(
+                modified_at=timezone.now()
+            )
+
+    def save(self, *args, **kwargs) -> None:
+        super().save(*args, **kwargs)
+        self._touch_tool()
+
+    def delete(self, *args, **kwargs):
+        # Capture before delete — SET_NULL FKs survive, but be defensive
+        tool_pk = self.tool_id_id
+        result = super().delete(*args, **kwargs)
+        if tool_pk:
+            CustomTool.objects.filter(pk=tool_pk).update(modified_at=timezone.now())
+        return result
 
     class Meta:
         verbose_name = "Tool Studio Prompt"

@@ -37,14 +37,6 @@
   transition: color 0.2s ease;
 }
 
-.cur-pointer .ant-list-item-meta {
-  align-self: flex-start;
-}
-
-.cur-pointer.centered .ant-list-item-meta {
-  align-self: center !important;
-}
-
 .list-view-description {
   font-size: 13px;
   margin-bottom: 0 !important;
@@ -65,7 +57,9 @@
   min-width: 0;
 }
 
-/* Middle column: owner + updated, vertically centered in the entry */
+/* Middle column: owner + updated. align-items only centers the badge and
+   the updated-text against each other — the column's own vertical position
+   comes from the row Flex's align in ListView.jsx */
 .list-view-meta {
   align-items: center;
   display: flex;
@@ -93,7 +87,9 @@
   align-items: center;
   display: flex;
   justify-content: center;
-  /* allow the email to ellipsize instead of wrapping when the row is tight */
+  /* let this shrink below its content width so the email ellipsizes
+     instead of forcing the row wider (the email itself never wraps —
+     it's nowrap + capped at 200px) */
   min-width: 0;
 }
 
@@ -113,18 +109,23 @@
   gap: 5px;
 }
 
-.adapters-list-modified-container {
+/* flex item: allow the title to shrink so its ellipsis can engage */
+.adapter-cover-img .adapters-list-title {
+  min-width: 0;
+}
+
+.list-view-modified-container {
   align-items: center;
   display: flex;
   gap: 6px;
   white-space: nowrap;
 }
 
-.adapters-list-modified-text {
+.list-view-modified-text {
   font-size: 12px;
 }
 
-.adapters-list-info-icon {
+.list-view-info-icon {
   color: #8c8c8c;
   font-size: 13px;
 }

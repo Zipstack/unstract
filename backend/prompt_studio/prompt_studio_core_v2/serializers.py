@@ -46,7 +46,6 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
     created_by_email = serializers.SerializerMethodField()
     prompt_count = serializers.SerializerMethodField()
-    modified_at = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
     co_owners_count = serializers.SerializerMethodField()
 
@@ -70,15 +69,6 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
     def get_created_by_email(self, instance):
         return instance.created_by.email if instance.created_by else ""
-
-    def get_modified_at(self, instance):
-        """Latest of the tool's own modified_at and its prompts' — prompt
-        edits never touch the CustomTool row (UN-3741).
-        """
-        last_prompt_modified = getattr(instance, "_last_prompt_modified", None)
-        if last_prompt_modified and last_prompt_modified > instance.modified_at:
-            return last_prompt_modified
-        return instance.modified_at
 
     def get_is_owner(self, instance) -> bool:
         request = self.context.get("request")

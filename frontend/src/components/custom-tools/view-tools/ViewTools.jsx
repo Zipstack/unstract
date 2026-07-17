@@ -21,6 +21,7 @@ function ViewTools({
   handleShare,
   handleCoOwner,
   showOwner,
+  showModified,
   type,
 }) {
   if (isLoading) {
@@ -61,6 +62,7 @@ function ViewTools({
       handleShare={handleShare}
       handleCoOwner={handleCoOwner}
       showOwner={showOwner}
+      showModified={showModified}
       type={type}
     />
   );
@@ -82,6 +84,7 @@ ViewTools.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  showModified: PropTypes.bool,
   type: PropTypes.string,
 };
 

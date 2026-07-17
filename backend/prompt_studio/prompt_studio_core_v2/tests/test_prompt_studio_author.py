@@ -15,6 +15,7 @@ from datetime import timedelta
 import pytest
 from account_v2.models import Organization, User
 from django.test import TestCase
+from django.utils.dateparse import parse_datetime
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
@@ -85,25 +86,37 @@ class PromptStudioAuthorAPITest(TestCase):
         assert persisted.tool_id_id == tool.tool_id
         assert persisted.active
 
-    def test_list_modified_at_reflects_prompt_edits(self) -> None:
-        """Prompt edits don't touch the CustomTool row; the list endpoint must
-        surface the latest prompt modified_at instead (UN-3741).
-        """
-        # Create via the API so ownership membership rows (UN-2202) exist —
-        # a bare objects.create() is invisible to the list queryset
+    def _create_project(self, name: str) -> CustomTool:
+        """Create via the API so ownership membership rows (UN-2202) exist —
+        a bare objects.create() is invisible to the list queryset."""
         create_project = PromptStudioCoreView.as_view({"post": "create"})
         project = self._call(
             create_project,
             "post",
             "/api/v1/prompt-studio/",
-            {
-                "tool_name": "quote-parser",
-                "description": "extracts quote fields",
-                "author": "test",
-            },
+            {"tool_name": name, "description": f"{name} desc", "author": "test"},
         )
         assert project.status_code == status.HTTP_201_CREATED, project.data
-        tool = CustomTool.objects.get(tool_id=project.data["tool_id"])
+        return CustomTool.objects.get(tool_id=project.data["tool_id"])
+
+    @staticmethod
+    def _backdate_tool(tool: CustomTool, minutes: int) -> None:
+        """Move the tool row's modified_at into the past, bypassing auto_now."""
+        CustomTool.objects.filter(pk=tool.pk).update(
+            modified_at=tool.modified_at - timedelta(minutes=minutes)
+        )
+        tool.refresh_from_db()
+
+    def test_prompt_writes_bump_tool_modified_at(self) -> None:
+        """Prompt create, edit and DELETE all bump the parent CustomTool row —
+        modified_at is maintained at the source, so it stays honest (never
+        travels backwards) and identical across list/detail endpoints
+        (UN-3741 review).
+        """
+        tool = self._create_project("quote-parser")
+
+        self._backdate_tool(tool, minutes=60)
+        before = tool.modified_at
         prompt = ToolStudioPrompt.objects.create(
             tool_id=tool,
             prompt_key="quote_number",
@@ -111,22 +124,69 @@ class PromptStudioAuthorAPITest(TestCase):
             prompt_type=ToolStudioPrompt.PromptType.PROMPT,
             sequence_number=1,
         )
-        # Pin the prompt's modified_at to a known future instant — two
-        # back-to-back creates can tie on coarse clocks, and the scenario
-        # requires the prompt edit to be strictly newer than the tool row
-        ToolStudioPrompt.objects.filter(pk=prompt.pk).update(
-            modified_at=tool.modified_at + timedelta(minutes=5)
+        tool.refresh_from_db()
+        assert tool.modified_at > before, "prompt create must bump the tool"
+
+        self._backdate_tool(tool, minutes=60)
+        before = tool.modified_at
+        prompt.prompt = "What is the quotation number?"
+        prompt.save()
+        tool.refresh_from_db()
+        assert tool.modified_at > before, "prompt edit must bump the tool"
+
+        self._backdate_tool(tool, minutes=60)
+        before = tool.modified_at
+        prompt.delete()
+        tool.refresh_from_db()
+        assert tool.modified_at > before, "prompt delete must bump the tool"
+
+    def test_prompt_bump_only_touches_its_own_tool(self) -> None:
+        """A prompt write must not disturb other tools' modified_at."""
+        tool_a = self._create_project("tool-a")
+        tool_b = self._create_project("tool-b")
+        untouched = tool_b.modified_at
+
+        ToolStudioPrompt.objects.create(
+            tool_id=tool_a,
+            prompt_key="k",
+            prompt="p",
+            prompt_type=ToolStudioPrompt.PromptType.PROMPT,
+            sequence_number=1,
         )
-        prompt.refresh_from_db()
-        assert prompt.modified_at > tool.modified_at
+        tool_b.refresh_from_db()
+        assert tool_b.modified_at == untouched
+
+    def test_list_serves_bumped_modified_at(self) -> None:
+        """The list endpoint serves the real row value — which, thanks to the
+        parent bump, already reflects prompt activity. A promptless project
+        serves its own timestamp (no annotation involved).
+        """
+        tool = self._create_project("fresh-project")
 
         list_view = PromptStudioCoreView.as_view({"get": "list"})
         response = self._call(list_view, "get", "/api/v1/prompt-studio/", {})
         assert response.status_code == status.HTTP_200_OK, response.data
-
         rows = response.data
         if isinstance(rows, dict):  # paginated response
             rows = rows["results"]
         row = next(r for r in rows if str(r["tool_id"]) == str(tool.tool_id))
-        assert row["modified_at"] == prompt.modified_at
+        assert parse_datetime(row["modified_at"]) == tool.modified_at
         assert row["created_at"] is not None
+
+        self._backdate_tool(tool, minutes=60)
+        ToolStudioPrompt.objects.create(
+            tool_id=tool,
+            prompt_key="quote_number",
+            prompt="What is the quote number?",
+            prompt_type=ToolStudioPrompt.PromptType.PROMPT,
+            sequence_number=1,
+        )
+        tool.refresh_from_db()
+
+        response = self._call(list_view, "get", "/api/v1/prompt-studio/", {})
+        rows = response.data
+        if isinstance(rows, dict):
+            rows = rows["results"]
+        row = next(r for r in rows if str(r["tool_id"]) == str(tool.tool_id))
+        assert parse_datetime(row["modified_at"]) == tool.modified_at
+        assert row["prompt_count"] == 1
