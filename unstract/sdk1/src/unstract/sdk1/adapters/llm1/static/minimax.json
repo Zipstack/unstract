@@ -27,14 +27,14 @@
         "MiniMax-M3",
         "MiniMax-M2.7"
       ],
-      "description": "MiniMax-M3 supports a 1,000,000-token context window with text, image, and video input. Standard pricing is $0.30 input, $1.20 output, and $0.06 cache read per million tokens up to 512,000 input tokens, with each rate doubled above that threshold. MiniMax-M2.7 supports a 204,800-token context window with text input and costs $0.30 input, $1.20 output, $0.06 cache read, and $0.375 cache write per million tokens."
+      "description": "The model name as listed in [MiniMax's model docs](https://platform.minimax.io/docs/api-reference/text-openai-api). Examples: MiniMax-M3, MiniMax-M2.7. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo) for rates and context windows."
     },
     "api_base": {
       "type": "string",
       "format": "url",
       "title": "API Base",
       "default": "https://api.minimax.io/v1",
-      "description": "The default https://api.minimax.io/v1 is the global OpenAI-compatible endpoint. Other supported bases are https://api.minimax.io/anthropic for global Anthropic-compatible requests, https://api.minimaxi.com/v1 for China OpenAI-compatible requests, and https://api.minimaxi.com/anthropic for China Anthropic-compatible requests."
+      "description": "MiniMax endpoint. Pre-filled with the global OpenAI-compatible base. A base whose path ends in `/anthropic` is sent using the Anthropic-compatible protocol; any other base uses the OpenAI-compatible protocol. China accounts use the `api.minimaxi.com` host. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
     },
     "service_tier": {
       "type": "string",
@@ -44,7 +44,7 @@
         "priority"
       ],
       "default": "standard",
-      "description": "Priority requests receive priority admission and use 1.5 times the standard token and cache pricing."
+      "description": "Priority requests receive faster admission at a higher price. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo). Note that cost tracking records standard-tier rates."
     },
     "max_tokens": {
       "type": "number",
@@ -52,7 +52,7 @@
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
       "default": 4096,
-      "description": "Maximum output length, subject to the selected model's total context window."
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
     },
     "max_retries": {
       "type": "number",
@@ -73,7 +73,7 @@
     "enable_thinking": {
       "type": "boolean",
       "title": "Enable Thinking",
-      "description": "Override the protocol default for MiniMax-M3. OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.7 always keeps thinking enabled."
+      "description": "Override the protocol default for MiniMax-M3: OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.x models always keep thinking enabled. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
     }
   }
 }

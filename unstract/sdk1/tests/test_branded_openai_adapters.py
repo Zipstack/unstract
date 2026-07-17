@@ -316,22 +316,33 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
         "MiniMax-M2.7",
     ]
     assert "default" not in schema["properties"]["enable_thinking"]
-    thinking_description = schema["properties"]["enable_thinking"]["description"]
-    assert "OpenAI-compatible requests default to adaptive" in thinking_description
-    assert "Anthropic-compatible requests default to disabled" in thinking_description
-    endpoint_description = schema["properties"]["api_base"]["description"]
-    for endpoint in (
-        _MINIMAX_API_BASE,
-        _MINIMAX_ANTHROPIC_API_BASE,
-        _MINIMAX_CN_API_BASE,
-        _MINIMAX_CN_ANTHROPIC_API_BASE,
-    ):
-        assert endpoint in endpoint_description
+    assert schema["properties"]["api_base"]["default"] == _MINIMAX_API_BASE
     assert schema["properties"]["service_tier"]["enum"] == [
         "standard",
         "priority",
     ]
     assert "reasoning_effort" not in json.dumps(schema)
+
+
+def test_minimax_schema_descriptions_link_out_instead_of_quoting_provider_facts() -> (
+    None
+):
+    """Provider-owned facts go stale, so descriptions link instead of copying."""
+    schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
+    descriptions = {
+        name: prop["description"]
+        for name, prop in schema["properties"].items()
+        if "description" in prop
+    }
+
+    for name, description in descriptions.items():
+        assert "$" not in description, f"{name} quotes a price that will go stale"
+
+    for name in ("model", "service_tier"):
+        assert "platform.minimax.io" in descriptions[name]
+
+    # Protocol selection is adapter behaviour, not a MiniMax fact.
+    assert "/anthropic" in descriptions["api_base"]
 
 
 @pytest.mark.parametrize(
