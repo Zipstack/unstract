@@ -106,6 +106,14 @@ def test_status_icon_round_trips() -> None:
     assert empty_result.status_icon == "⚪"
 
 
+def test_blocked_result_is_never_green() -> None:
+    # A blocked group ran nothing, so its zero counters otherwise read as a
+    # pass and would attest coverage its tests never proved.
+    blocked = GroupResult("g", "e2e", 0, 0, 0, 0, 0, 0.0, blocked_by=("e2e-smoke",))
+    assert blocked.status == "blocked"
+    assert blocked.status_icon == "⏭️"
+
+
 def test_passed_critical_path_ids_collects_only_passing_marked_tests(
     tmp_path: Path,
 ) -> None:

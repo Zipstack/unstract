@@ -24,12 +24,13 @@ from tests.rig.critical_paths import CriticalPathStatus
 
 log = logging.getLogger(__name__)
 
-ResultStatus = Literal["pass", "empty", "fail"]
+ResultStatus = Literal["pass", "empty", "fail", "blocked"]
 
 _STATUS_ICONS: dict[ResultStatus, str] = {
     "pass": "✅",
     "empty": "⚪",
     "fail": "❌",
+    "blocked": "⏭️",
 }
 
 
@@ -43,9 +44,14 @@ class GroupResult:
     errors: int
     skipped: int
     duration_seconds: float
+    # Names of failed dependencies that stopped this group from running. Never
+    # green, so it attests no coverage and the path reports as a gap.
+    blocked_by: tuple[str, ...] = ()
 
     @property
     def status(self) -> ResultStatus:
+        if self.blocked_by:
+            return "blocked"
         if self.exit_code == 5:  # pytest "no tests collected"
             return "empty"
         if self.exit_code == 0 and self.failed == 0 and self.errors == 0:
@@ -245,9 +251,16 @@ def _render_markdown(
         )
         lines.append("|---|---|---|---:|---:|---:|---:|---:|")
         for r in group_results:
+            # Without the reason a blocked row is all zeros, indistinguishable
+            # from a group that simply had nothing to run.
+            note = (
+                f" — blocked by {', '.join(f'`{d}`' for d in r.blocked_by)}"
+                if r.blocked_by
+                else ""
+            )
             lines.append(
-                f"| {r.status_icon} | `{r.name}` | {r.tier} | {r.passed} | {r.failed} "
-                f"| {r.errors} | {r.skipped} | {r.duration_seconds:.1f} |"
+                f"| {r.status_icon} | `{r.name}`{note} | {r.tier} | {r.passed} "
+                f"| {r.failed} | {r.errors} | {r.skipped} | {r.duration_seconds:.1f} |"
             )
         totals = _totals(group_results)
         lines.append(

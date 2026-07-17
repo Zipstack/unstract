@@ -81,6 +81,18 @@ class GroupManifest:
     def names_by_tier(self, tier: Tier) -> list[str]:
         return sorted(n for n, g in self.groups.items() if g.tier == tier)
 
+    def transitive_deps(self, name: str) -> set[str]:
+        """Return every group ``name`` depends on, directly or otherwise."""
+        self.get(name)  # raises on unknown
+        deps: set[str] = set()
+        frontier = [name]
+        while frontier:
+            for dep in self.get(frontier.pop()).depends_on:
+                if dep not in deps:
+                    deps.add(dep)
+                    frontier.append(dep)
+        return deps
+
     def expand(self, selected: list[str]) -> list[str]:
         """Return ``selected`` plus the transitive closure of their ``depends_on``,
         in topological order (dependencies before dependents).

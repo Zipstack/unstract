@@ -60,8 +60,12 @@ def test_api_deployment_returns_mocked_answer(
     assert file_result["status"] == "Success", file_result
     assert file_result["result"]["output"]["answer"] == llm_mock_response
 
-    # 10/20/30 is litellm's fixed usage for a mocked completion.
+    # 10/20/30 is litellm's fixed usage for one mocked completion. Counts are
+    # summed per reason, so a multiple of it means the prompt made extra calls
+    # rather than that tracking is broken.
     usage = file_result["result"]["metadata"]["extraction_llm"][0]
-    assert usage["input_tokens"] == 10, usage
-    assert usage["output_tokens"] == 20, usage
-    assert usage["total_tokens"] == 30, usage
+    counts = (usage["input_tokens"], usage["output_tokens"], usage["total_tokens"])
+    assert counts == (10, 20, 30), (
+        f"expected exactly one mocked extraction call, got {counts} — a multiple "
+        f"means the prompt issued more completions than this test assumes: {usage}"
+    )

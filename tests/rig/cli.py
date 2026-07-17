@@ -436,18 +436,25 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             endpoints = runtime.up()
 
-        # TODO(runtime-gate-skip): groups run unconditionally in topo order;
-        # there is no skip-if-a-dependency-failed logic yet. The dep edge to
-        # the platform gate (e2e-smoke) is enforced structurally at load time
-        # (_validate_platform_groups_depend_on_gate), but at runtime a red gate
-        # does not stop its dependents from running against a half-up stack.
-        # Moot today since every platform dependent is `optional: true`
-        # (placeholder). When promoting them to active, track failed groups
-        # here and skip any group whose (transitive) deps include a failure,
-        # writing a synthetic "skipped (dependency failed)" result. Decide then:
-        # does an optional/non-failing-exit gate cascade, and how far?
+        # Groups run in topo order, so a dependency's result is always known by
+        # the time its dependents come up. A red dep means the precondition it
+        # gates (e.g. e2e-smoke: is the platform actually up?) does not hold, so
+        # running its dependents only yields noise against a half-up stack.
+        #
+        # `optional` cascades like any other dep: it governs whether a failure
+        # gates CI, not whether the stack can be trusted. The skip itself never
+        # sets overall_exit — the failing dep already did if it was non-optional,
+        # and a blocked group attests no coverage, so --fail-on-critical-gap
+        # still catches a critical path that silently stopped being covered.
+        failed_groups: set[str] = set()
         for name in runnable:
             group = manifest.get(name)
+            blocked_by = tuple(sorted(manifest.transitive_deps(name) & failed_groups))
+            if blocked_by:
+                print(f"\n[rig] SKIP {name} (dependency failed: {', '.join(blocked_by)})")
+                group_results.append(_blocked_result(group, blocked_by))
+                failed_groups.add(name)
+                continue
             print(
                 f"\n[rig] running group: {name} "
                 f"(tier={group.tier}, runner={group.runner})"
@@ -467,6 +474,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             if result is not None:
                 group_results.append(result)
+            # Tracked regardless of `optional` — see the cascade note above.
+            if exit_code not in _NON_FAILING_PYTEST_EXIT_CODES or (
+                result is not None and (result.errors or result.failed)
+            ):
+                failed_groups.add(name)
             # `optional: true` groups run and surface their result in the
             # summary, but never gate the overall exit. This honors the
             # developer intent for groups that need infra we don't provision in
@@ -609,6 +621,21 @@ def cmd_run(args: argparse.Namespace) -> int:
 
 
 # ── execution helpers ─────────────────────────────────────────────────────────
+
+
+def _blocked_result(group: GroupDefinition, blocked_by: tuple[str, ...]) -> GroupResult:
+    """A group that never ran because a dependency failed."""
+    return GroupResult(
+        name=group.name,
+        tier=group.tier,
+        exit_code=0,
+        passed=0,
+        failed=0,
+        errors=0,
+        skipped=0,
+        duration_seconds=0.0,
+        blocked_by=blocked_by,
+    )
 
 
 def _db_env_from_postgres_url(url: str) -> dict[str, str]:

@@ -28,6 +28,11 @@ def _inject(kwargs: dict[str, object]) -> dict[str, object]:
     return kwargs
 
 
+@pytest.fixture(autouse=True)
+def _reset_warn_cache() -> None:
+    _load_llm_module()._warn_mock_active.cache_clear()
+
+
 def test_inject_is_noop_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("UNSTRACT_LLM_MOCK_RESPONSE", raising=False)
     assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
@@ -45,6 +50,27 @@ def test_inject_does_not_clobber_explicit_mock_response(
 ) -> None:
     monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "from-env")
     assert _inject({"mock_response": "explicit"})["mock_response"] == "explicit"
+
+
+def test_inject_warns_once_while_active(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "from-env")
+    with caplog.at_level("WARNING", logger="unstract.sdk1.llm"):
+        _inject({"model": "gpt-4o"})
+        _inject({"model": "gpt-4o"})
+    warnings = [r for r in caplog.records if "UNSTRACT_LLM_MOCK_RESPONSE" in r.message]
+    # Once per process, not once per completion: a worker would flood otherwise.
+    assert len(warnings) == 1, caplog.text
+
+
+def test_inject_does_not_warn_when_env_unset(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.delenv("UNSTRACT_LLM_MOCK_RESPONSE", raising=False)
+    with caplog.at_level("WARNING", logger="unstract.sdk1.llm"):
+        _inject({"model": "gpt-4o"})
+    assert not caplog.records, caplog.text
 
 
 def test_litellm_mock_contract_returns_string_and_fixed_usage() -> None:
