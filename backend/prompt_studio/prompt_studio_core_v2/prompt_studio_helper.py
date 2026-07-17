@@ -3102,13 +3102,17 @@ class PromptStudioHelper:
             )
 
         with transaction.atomic():
-            # Delete all existing prompts
-            deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            # Delete all existing prompts. QuerySet.delete() returns the
+            # cascade total (outputs ride along via CASCADE) — report only
+            # the prompt rows to the API client
+            _, per_model = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            deleted_count = per_model.get(ToolStudioPrompt._meta.label, 0)
             if deleted_count:
                 # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so the
                 # parent bump must happen explicitly — a prompts-clearing sync
-                # is still a modification (UN-3741)
-                CustomTool.objects.filter(pk=tool.tool_id).update(
+                # is still a modification. _base_manager: see
+                # ToolStudioPrompt._touch_tool (UN-3741)
+                CustomTool._base_manager.filter(pk=tool.tool_id).update(
                     modified_at=timezone.now()
                 )
 

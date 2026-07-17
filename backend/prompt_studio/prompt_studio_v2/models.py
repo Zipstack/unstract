@@ -161,10 +161,12 @@ class ToolStudioPrompt(BaseModel):
         tool's "last modified" goes stale (UN-3741) — and a derived
         max(tool, prompts) can travel backwards on prompt delete. A
         queryset update bypasses CustomTool.save() (no auto_now recursion,
-        no signals).
+        no signals). ``_base_manager`` bypasses the org-scoped default
+        manager, which reads a thread-local and would silently match zero
+        rows outside a request context; pk alone is globally unique.
         """
         if self.tool_id_id:
-            CustomTool.objects.filter(pk=self.tool_id_id).update(
+            CustomTool._base_manager.filter(pk=self.tool_id_id).update(
                 modified_at=timezone.now()
             )
 
@@ -173,11 +175,10 @@ class ToolStudioPrompt(BaseModel):
         self._touch_tool()
 
     def delete(self, *args, **kwargs):
-        # Capture before delete — SET_NULL FKs survive, but be defensive
-        tool_pk = self.tool_id_id
+        # Django's collector nulls only the instance PK on delete, never FK
+        # attnames, so tool_id_id survives super().delete()
         result = super().delete(*args, **kwargs)
-        if tool_pk:
-            CustomTool.objects.filter(pk=tool_pk).update(modified_at=timezone.now())
+        self._touch_tool()
         return result
 
     class Meta:

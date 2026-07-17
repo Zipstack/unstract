@@ -29,6 +29,10 @@ from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
     PromptStudioHelper,
 )
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
+from prompt_studio.prompt_studio_output_manager_v2.models import (
+    PromptStudioOutputManager,
+)
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 
 
@@ -188,21 +192,59 @@ class PromptStudioAuthorAPITest(TestCase):
             embedding_model=adapters[2],
             x2text=adapters[3],
         )
-        ToolStudioPrompt.objects.create(
+        prompt = ToolStudioPrompt.objects.create(
             tool_id=tool,
             prompt_key="k",
             prompt="p",
             prompt_type=ToolStudioPrompt.PromptType.PROMPT,
             sequence_number=1,
         )
+        # A prompt that has been run carries CASCADE output rows — the
+        # reported count must be prompts only, not the cascade total
+        document = DocumentManager.objects.create(
+            document_name="d.pdf", tool=tool, created_by=self.user
+        )
+        PromptStudioOutputManager.objects.create(
+            prompt_id=prompt,
+            document_manager=document,
+            profile_manager=ProfileManager.objects.get(prompt_studio_tool=tool),
+            tool_id=tool,
+            created_by=self.user,
+        )
 
         self._backdate_tool(tool, minutes=60)
         before = tool.modified_at
         result = PromptStudioHelper.sync_prompts(tool, {"prompts": []}, self.user)
-        assert result["prompts_deleted"] == 1
+        assert result["prompts_deleted"] == 1, "prompts only, not cascaded rows"
 
         tool.refresh_from_db()
         assert tool.modified_at > before, "prompt-clearing sync must bump"
+
+    def test_prompt_bump_survives_missing_org_context(self) -> None:
+        """The parent bump must not depend on the thread-local org context —
+        an org-scoped manager would silently match zero rows outside a
+        request (UN-3741 review).
+        """
+        tool = self._create_project("ctx-free")
+        prompt = ToolStudioPrompt.objects.create(
+            tool_id=tool,
+            prompt_key="k",
+            prompt="p",
+            prompt_type=ToolStudioPrompt.PromptType.PROMPT,
+            sequence_number=1,
+        )
+        self._backdate_tool(tool, minutes=60)
+        before = tool.modified_at
+
+        UserContext.set_organization_identifier(None)
+        try:
+            prompt.prompt = "edited outside request context"
+            prompt.save()
+        finally:
+            UserContext.set_organization_identifier(self.org.organization_id)
+
+        tool.refresh_from_db()
+        assert tool.modified_at > before, "bump must not require org context"
 
     def test_list_serves_bumped_modified_at(self) -> None:
         """The list endpoint serves the real row value — which, thanks to the
