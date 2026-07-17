@@ -1,4 +1,4 @@
-"""Phase 1 — Executor log streaming to frontend via Socket.IO.
+"""Executor log streaming to frontend via Socket.IO.
 
 Tests cover:
 - ExecutionContext round-trips log_events_id through to_dict/from_dict
@@ -13,10 +13,8 @@ Tests cover:
 
 from unittest.mock import MagicMock, patch
 
-
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.execution.context import ExecutionContext
-
 
 # ---------------------------------------------------------------------------
 # 1A — ExecutionContext.log_events_id round-trip
@@ -168,9 +166,7 @@ class TestExecutorToolShimProgress:
     def test_stream_log_empty_log_events_id_no_publish(self, mock_lp):
         from executor.executor_tool_shim import ExecutorToolShim
 
-        shim = ExecutorToolShim(
-            platform_api_key="sk-test", log_events_id=""
-        )
+        shim = ExecutorToolShim(platform_api_key="sk-test", log_events_id="")
         shim.stream_log("Hello", level=LogLevel.INFO)
 
         mock_lp.log_progress.assert_not_called()
@@ -243,9 +239,7 @@ class TestExecuteExtractionComponentDict:
     """Verify component dict is built from executor_params."""
 
     @patch("executor.tasks.ExecutionOrchestrator")
-    def test_component_dict_built_when_log_events_id_present(
-        self, mock_orch_cls
-    ):
+    def test_component_dict_built_when_log_events_id_present(self, mock_orch_cls):
         mock_orch = MagicMock()
         mock_orch.execute.return_value = MagicMock(
             success=True, to_dict=lambda: {"success": True}
@@ -277,9 +271,7 @@ class TestExecuteExtractionComponentDict:
         }
 
     @patch("executor.tasks.ExecutionOrchestrator")
-    def test_component_dict_empty_when_no_log_events_id(
-        self, mock_orch_cls
-    ):
+    def test_component_dict_empty_when_no_log_events_id(self, mock_orch_cls):
         mock_orch = MagicMock()
         mock_orch.execute.return_value = MagicMock(
             success=True, to_dict=lambda: {"success": True}
@@ -324,9 +316,7 @@ class TestLegacyExecutorLogPassthrough:
         mock_shim = MagicMock()
         mock_shim_cls.return_value = mock_shim
         mock_x2t = MagicMock()
-        mock_x2t.process.return_value = MagicMock(
-            extracted_text="hello"
-        )
+        mock_x2t.process.return_value = MagicMock(extracted_text="hello")
         mock_x2text.return_value = mock_x2t
 
         ctx = ExecutionContext(
@@ -351,6 +341,9 @@ class TestLegacyExecutorLogPassthrough:
             platform_api_key="sk-test",
             log_events_id="session-abc",
             component={"tool_id": "t1", "run_id": "r1", "doc_name": "test.pdf"},
+            execution_id=None,
+            organization_id=None,
+            file_execution_id=None,
         )
 
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
@@ -368,9 +361,7 @@ class TestLegacyExecutorLogPassthrough:
         mock_shim = MagicMock()
         mock_shim_cls.return_value = mock_shim
         mock_x2t = MagicMock()
-        mock_x2t.process.return_value = MagicMock(
-            extracted_text="hello"
-        )
+        mock_x2t.process.return_value = MagicMock(extracted_text="hello")
         mock_x2text.return_value = mock_x2t
 
         ctx = ExecutionContext(
@@ -393,11 +384,12 @@ class TestLegacyExecutorLogPassthrough:
             platform_api_key="sk-test",
             log_events_id="",
             component={},
+            execution_id=None,
+            organization_id=None,
+            file_execution_id=None,
         )
 
-    @patch(
-        "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
-    )
+    @patch("executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps")
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_answer_prompt_enriches_component_with_prompt_key(
         self, mock_shim_cls, mock_prompt_deps
@@ -417,9 +409,7 @@ class TestLegacyExecutorLogPassthrough:
         mock_answer_prompt_service.extract_variable.return_value = "prompt text"
         mock_retrieval_service = MagicMock()
         mock_variable_replacement_service = MagicMock()
-        mock_variable_replacement_service.is_variables_present.return_value = (
-            False
-        )
+        mock_variable_replacement_service.is_variables_present.return_value = False
         mock_index = MagicMock()
         mock_llm = MagicMock()
         mock_embedding_compat = MagicMock()
@@ -474,12 +464,8 @@ class TestLegacyExecutorLogPassthrough:
         ):
             executor = LegacyExecutor()
             # The handler will try retrieval which we need to mock
-            mock_retrieval_service.retrieve_complete_context.return_value = [
-                "context"
-            ]
-            mock_answer_prompt_service.construct_and_run_prompt.return_value = (
-                "INV-001"
-            )
+            mock_retrieval_service.retrieve_complete_context.return_value = ["context"]
+            mock_answer_prompt_service.construct_and_run_prompt.return_value = "INV-001"
 
             executor.execute(ctx)
 

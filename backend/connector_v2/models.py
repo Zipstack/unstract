@@ -6,8 +6,14 @@ from account_v2.models import User
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
+from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import (
+    resources_visible_via_groups,
+    resources_visible_via_memberships,
+)
 from utils.fields import EncryptedBinaryField
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
@@ -34,16 +40,14 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
-        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
-
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+        member_ids = resources_visible_via_memberships(self.model, user)
 
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
-                | models.Q(shared_users=user)
+                models.Q(pk__in=member_ids)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
@@ -51,7 +55,7 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         )
 
 
-class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
+class ConnectorInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     class ConnectorType(models.TextChoices):
         INPUT = "INPUT", "Input"
         OUTPUT = "OUTPUT", "Output"
@@ -105,12 +109,6 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         db_comment="Is the connector shared to entire org",
     )
 
-    # Introduced field to establish M2M relation between users and connectors.
-    # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_connectors", blank=True
-    )
-
     # ``shared_groups`` is stored polymorphically in
     # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
     # ergonomic read surface for DRF / existing callers.
@@ -119,6 +117,11 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         from tenant_account_v2.sharing_helpers import get_resource_share_groups
 
         return get_resource_share_groups(self)
+
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     objects = ConnectorInstanceModelManager()
 

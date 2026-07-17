@@ -1,4 +1,4 @@
-"""Phase 2H: Tests for variable replacement and postprocessor modules.
+"""Tests for variable replacement and postprocessor modules.
 
 Covers VariableReplacementHelper, VariableReplacementService, and
 the webhook postprocessor — all pure Python with no llama_index deps.

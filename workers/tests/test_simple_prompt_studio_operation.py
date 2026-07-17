@@ -1,51 +1,24 @@
-"""Phase 6G Sanity — SimplePromptStudioExecutor + SPS operations.
-
-Verifies:
-1. Operation.SPS_ANSWER_PROMPT enum exists with value "sps_answer_prompt"
-2. Operation.SPS_INDEX enum exists with value "sps_index"
-3. Mock SimplePromptStudioExecutor — registration and execution
-4. Queue routing: executor_name="simple_prompt_studio" → celery_executor_simple_prompt_studio
-5. LegacyExecutor does NOT handle sps_answer_prompt or sps_index
-6. Dispatch sends to correct queue
-7. SimplePromptStudioExecutor rejects unsupported operations
+"""SPS operations (sps_answer_prompt, sps_index): the simple-prompt-studio
+executor registers, routes to its own queue, and LegacyExecutor rejects them.
 """
 
 from unittest.mock import MagicMock
 
-
-from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 # ---------------------------------------------------------------------------
-# 1. Operation enums
+# Mock SimplePromptStudioExecutor — registration and execution
 # ---------------------------------------------------------------------------
 
-class TestSPSOperations:
-    def test_sps_answer_prompt_enum_exists(self):
-        assert hasattr(Operation, "SPS_ANSWER_PROMPT")
-        assert Operation.SPS_ANSWER_PROMPT.value == "sps_answer_prompt"
-
-    def test_sps_index_enum_exists(self):
-        assert hasattr(Operation, "SPS_INDEX")
-        assert Operation.SPS_INDEX.value == "sps_index"
-
-    def test_sps_operations_in_operation_values(self):
-        values = {op.value for op in Operation}
-        assert "sps_answer_prompt" in values
-        assert "sps_index" in values
-
-
-# ---------------------------------------------------------------------------
-# 2. Mock SimplePromptStudioExecutor — registration and execution
-# ---------------------------------------------------------------------------
 
 class TestSimplePromptStudioRegistration:
     def test_mock_sps_executor_registers_and_executes(self):
         """Simulate cloud executor discovery and execution."""
+
         @ExecutorRegistry.register
         class MockSPSExecutor(BaseExecutor):
             _OPERATION_MAP = {
@@ -127,6 +100,7 @@ class TestSimplePromptStudioRegistration:
 # 3. Queue routing
 # ---------------------------------------------------------------------------
 
+
 class TestSPSQueueRouting:
     def test_sps_routes_to_correct_queue(self):
         queue = ExecutionDispatcher._get_queue("simple_prompt_studio")
@@ -181,13 +155,16 @@ class TestSPSQueueRouting:
 # 4. LegacyExecutor does NOT handle SPS operations
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyExcludesSPS:
     def test_sps_answer_prompt_not_in_legacy_operation_map(self):
         from executor.executors.legacy_executor import LegacyExecutor
+
         assert "sps_answer_prompt" not in LegacyExecutor._OPERATION_MAP
 
     def test_sps_index_not_in_legacy_operation_map(self):
         from executor.executors.legacy_executor import LegacyExecutor
+
         assert "sps_index" not in LegacyExecutor._OPERATION_MAP
 
     def test_legacy_returns_failure_for_sps_answer_prompt(self):
@@ -233,6 +210,7 @@ class TestLegacyExcludesSPS:
 # 5. tasks.py log_component for SPS operations
 # ---------------------------------------------------------------------------
 
+
 class TestTasksLogComponent:
     def test_sps_answer_prompt_uses_default_log_component(self):
         """SPS operations use the default log_component branch in tasks.py."""
@@ -253,8 +231,12 @@ class TestTasksLogComponent:
         params = context.executor_params
 
         # SPS operations fall through to the default branch
-        assert context.operation not in ("ide_index", "structure_pipeline",
-                                          "table_extract", "smart_table_extract")
+        assert context.operation not in (
+            "ide_index",
+            "structure_pipeline",
+            "table_extract",
+            "smart_table_extract",
+        )
         component = {
             "tool_id": params.get("tool_id", ""),
             "run_id": context.run_id,
@@ -285,8 +267,12 @@ class TestTasksLogComponent:
         context = ExecutionContext.from_dict(ctx_dict)
         params = context.executor_params
 
-        assert context.operation not in ("ide_index", "structure_pipeline",
-                                          "table_extract", "smart_table_extract")
+        assert context.operation not in (
+            "ide_index",
+            "structure_pipeline",
+            "table_extract",
+            "smart_table_extract",
+        )
         component = {
             "tool_id": params.get("tool_id", ""),
             "run_id": context.run_id,

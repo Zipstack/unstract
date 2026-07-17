@@ -11,7 +11,12 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
-from permissions.permission import has_group_access
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -86,6 +91,20 @@ CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
+
+
+def _adapter_accessible_by(adapter: AdapterInstance, user: User) -> bool:
+    """Whether ``user`` may use ``adapter`` (owner, direct viewer, org, or group).
+
+    ``created_by`` is audit-only since UN-2202 — access is owner/viewer role
+    based via the membership bridges.
+    """
+    return (
+        adapter.shared_to_org
+        or _is_resource_owner(user, adapter)
+        or _is_resource_viewer(user, adapter)
+        or has_group_access(user, adapter)
+    )
 
 
 class PromptStudioHelper:
@@ -184,15 +203,6 @@ class PromptStudioHelper:
                 raise PermissionError(error_msg)
 
     @staticmethod
-    def _user_has_adapter_access(user: Any, adapter: Any) -> bool:
-        return (
-            adapter.shared_to_org
-            or adapter.created_by == user
-            or adapter.shared_users.filter(pk=user.pk).exists()
-            or has_group_access(user, adapter)
-        )
-
-    @staticmethod
     def validate_profile_manager_owner_access(
         profile_manager: ProfileManager,
         request_user: User | None = None,
@@ -239,10 +249,10 @@ class PromptStudioHelper:
             profile_manager.embedding_model,
             profile_manager.x2text,
         ]
+        # Access resolution via the UN-2202 membership bridges — created_by
+        # is audit-only for adapters; owner/viewer roles carry access.
         denied = [
-            adapter
-            for adapter in adapters
-            if not PromptStudioHelper._user_has_adapter_access(owner, adapter)
+            adapter for adapter in adapters if not _adapter_accessible_by(adapter, owner)
         ]
         if not denied:
             return
@@ -2807,6 +2817,10 @@ class PromptStudioHelper:
             modified_by=user,
             organization=organization,
         )
+
+        # created_by is audit-only; grant the creator an OWNER membership row so
+        # access/ownership flows through it (UN-2202), as the viewset create does.
+        tool.memberships.get_or_create(user=user, defaults={"role": ResourceRole.OWNER})
 
         return tool
 

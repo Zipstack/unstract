@@ -45,12 +45,14 @@ def _user(user_id: str, email: str, *, service_account: bool = False) -> MagicMo
     return user
 
 
-def _adapter(name: str, created_by: MagicMock) -> MagicMock:
+def _adapter(name: str, owner: MagicMock) -> MagicMock:
+    """Adapter mock for the UN-2202 access model: created_by is audit-only;
+    access flows from owner/viewer membership roles, org share, or groups."""
     adapter = MagicMock(name=f"adapter-{name}")
     adapter.adapter_name = name
-    adapter.created_by = created_by
     adapter.shared_to_org = False
-    adapter.shared_users.filter.return_value.exists.return_value = False
+    adapter.owner_set = {owner}
+    adapter.viewer_set = set()
     return adapter
 
 
@@ -87,6 +89,20 @@ def _run_check(
 
     with ExitStack() as stack:
         stack.enter_context(patch.object(_psh_mod, "OrganizationMemberService", oms))
+        stack.enter_context(
+            patch.object(
+                _psh_mod,
+                "_is_resource_owner",
+                MagicMock(side_effect=lambda user, adapter: user in adapter.owner_set),
+            )
+        )
+        stack.enter_context(
+            patch.object(
+                _psh_mod,
+                "_is_resource_viewer",
+                MagicMock(side_effect=lambda user, adapter: user in adapter.viewer_set),
+            )
+        )
         stack.enter_context(
             patch.object(
                 _psh_mod, "has_group_access", MagicMock(return_value=group_access)
@@ -163,8 +179,8 @@ class TestCreatorBypasses:
 class TestCreatorAccessDisjuncts:
     """Each non-ownership access path must independently satisfy the guard.
 
-    Review sabotage-check: reducing ``_user_has_adapter_access`` to
-    ``created_by == user`` must fail these.
+    Review sabotage-check: reducing ``_adapter_accessible_by`` to its
+    owner-role disjunct alone must fail these.
     """
 
     def _lapsed_profile(self) -> MagicMock:
@@ -179,12 +195,10 @@ class TestCreatorAccessDisjuncts:
 
         _run_check(profile)
 
-    def test_user_shared_adapters_pass(self) -> None:
+    def test_viewer_shared_adapters_pass(self) -> None:
         profile = self._lapsed_profile()
         for attr in ("llm", "vector_store", "embedding_model", "x2text"):
-            getattr(
-                profile, attr
-            ).shared_users.filter.return_value.exists.return_value = True
+            getattr(profile, attr).viewer_set.add(profile.created_by)
 
         _run_check(profile)
 
@@ -209,7 +223,7 @@ class TestDenialMessage:
         # Creator has access to all but the LLM adapter — mirrors the
         # reported single-adapter denial.
         for attr in ("vector_store", "embedding_model", "x2text"):
-            getattr(profile, attr).created_by = creator
+            getattr(profile, attr).owner_set.add(creator)
 
         with pytest.raises(PSPermissionError) as exc_info:
             _run_check(profile, creator_is_member=creator_is_member)
