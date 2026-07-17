@@ -10,6 +10,7 @@ to their project. Needs a live DB (integration tier).
 from __future__ import annotations
 
 import secrets
+from datetime import timedelta
 
 import pytest
 from account_v2.models import Organization, User
@@ -110,6 +111,13 @@ class PromptStudioAuthorAPITest(TestCase):
             prompt_type=ToolStudioPrompt.PromptType.PROMPT,
             sequence_number=1,
         )
+        # Pin the prompt's modified_at to a known future instant — two
+        # back-to-back creates can tie on coarse clocks, and the scenario
+        # requires the prompt edit to be strictly newer than the tool row
+        ToolStudioPrompt.objects.filter(pk=prompt.pk).update(
+            modified_at=tool.modified_at + timedelta(minutes=5)
+        )
+        prompt.refresh_from_db()
         assert prompt.modified_at > tool.modified_at
 
         list_view = PromptStudioCoreView.as_view({"get": "list"})

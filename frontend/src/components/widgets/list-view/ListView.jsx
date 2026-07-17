@@ -202,7 +202,12 @@ function ListView({
       <Tooltip title={item?.is_deprecated ? "This adapter is deprecated" : ""}>
         <EditOutlined
           key={`${item.id}-edit`}
-          onClick={(event) => handleEdit(event, item)}
+          onClick={(event) => {
+            if (item?.is_deprecated) {
+              return;
+            }
+            handleEdit(event, item);
+          }}
           className={`action-icon-buttons edit-icon ${
             item?.is_deprecated ? "disabled-icon" : ""
           }`}
@@ -221,7 +226,12 @@ function ListView({
             className={`action-icon-buttons share-icon ${
               item?.is_deprecated ? "disabled-icon" : ""
             }`}
-            onClick={(event) => handleShareClick(event, item, true)}
+            onClick={(event) => {
+              if (item?.is_deprecated) {
+                return;
+              }
+              handleShareClick(event, item, true);
+            }}
             style={{
               cursor: item?.is_deprecated ? "not-allowed" : "pointer",
               opacity: item?.is_deprecated ? 0.4 : 1,
