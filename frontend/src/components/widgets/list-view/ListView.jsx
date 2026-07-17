@@ -91,116 +91,114 @@ function ListView({
       );
     }
 
+    return title;
+  };
+
+  const renderMeta = (item) => {
+    if (!showOwner && !item?.modified_at) {
+      return null;
+    }
     return (
-      <Flex
-        gap={20}
-        align="center"
-        justify="space-between"
-        className="list-view-container"
+      <div
+        className="list-view-meta"
+        onClick={(event) => event.stopPropagation()}
+        role="none"
       >
-        <div className="list-view-content">
-          <div className="adapters-list-title-container display-flex-left">
-            {title}
-          </div>
-          {showOwner && (
-            <div className="adapters-list-profile-container">
-              <Avatar
-                size={20}
-                className="adapters-list-user-avatar"
-                icon={<UserOutlined />}
-              />
-              <Typography.Text disabled className="adapters-list-user-prefix">
-                Owned By:
-              </Typography.Text>
-              <Typography.Text
-                className="shared-username"
-                ellipsis={{ tooltip: true }}
-              >
-                {item?.created_by_email
-                  ? item?.created_by_email === sessionDetails.email
-                    ? "Me"
-                    : item?.created_by_email
-                  : "-"}
-              </Typography.Text>
-            </div>
-          )}
-          {item?.modified_at && (
-            <div
-              className="adapters-list-modified-container"
-              onClick={(event) => event.stopPropagation()}
-              role="none"
-            >
-              <Typography.Text
-                type="secondary"
-                className="adapters-list-modified-text"
-              >
-                Updated {moment(item.modified_at).fromNow()}
-              </Typography.Text>
-              <Tooltip title={renderItemMetadata(item)}>
-                <InfoCircleOutlined
-                  className="adapters-list-info-icon"
-                  aria-label="Creation and modification details"
-                />
-              </Tooltip>
-            </div>
-          )}
-        </div>
-        <div
-          className="action-button-container"
-          onClick={(event) => event.stopPropagation()}
-          role="none"
-        >
-          <Tooltip
-            title={item?.is_deprecated ? "This adapter is deprecated" : ""}
-          >
-            <EditOutlined
-              key={`${item.id}-edit`}
-              onClick={(event) => handleEdit(event, item)}
-              className={`action-icon-buttons edit-icon ${
-                item?.is_deprecated ? "disabled-icon" : ""
-              }`}
-              style={{
-                cursor: item?.is_deprecated ? "not-allowed" : "pointer",
-                opacity: item?.is_deprecated ? 0.4 : 1,
-              }}
+        {showOwner && (
+          <div className="adapters-list-profile-container">
+            <Avatar
+              size={20}
+              className="adapters-list-user-avatar"
+              icon={<UserOutlined />}
             />
-          </Tooltip>
-          {handleShare && (
-            <Tooltip
-              title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+            <Typography.Text disabled className="adapters-list-user-prefix">
+              Owned By:
+            </Typography.Text>
+            <Typography.Text
+              className="shared-username"
+              ellipsis={{ tooltip: true }}
             >
-              <ShareAltOutlined
-                key={`${item.id}-share`}
-                className={`action-icon-buttons share-icon ${
-                  item?.is_deprecated ? "disabled-icon" : ""
-                }`}
-                onClick={(event) => handleShareClick(event, item, true)}
-                style={{
-                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
-                  opacity: item?.is_deprecated ? 0.4 : 1,
-                }}
+              {item?.created_by_email
+                ? item?.created_by_email === sessionDetails.email
+                  ? "Me"
+                  : item?.created_by_email
+                : "-"}
+            </Typography.Text>
+          </div>
+        )}
+        {item?.modified_at && (
+          <div className="adapters-list-modified-container">
+            <Typography.Text
+              type="secondary"
+              className="adapters-list-modified-text"
+            >
+              Updated {moment(item.modified_at).fromNow()}
+            </Typography.Text>
+            <Tooltip title={renderItemMetadata(item)}>
+              <InfoCircleOutlined
+                className="adapters-list-info-icon"
+                aria-label="Creation and modification details"
               />
             </Tooltip>
-          )}
-          <Popconfirm
-            key={`${item.id}-delete`}
-            title={`Delete the ${type}`}
-            description={`Are you sure to delete ${item[titleProp]}`}
-            okText="Yes"
-            cancelText="No"
-            icon={<QuestionCircleOutlined />}
-            onConfirm={(event) => {
-              handleDeleteClick(event, item);
-            }}
-          >
-            <Typography.Text>
-              <DeleteOutlined className="action-icon-buttons delete-icon" />
-            </Typography.Text>
-          </Popconfirm>
-        </div>
-      </Flex>
+          </div>
+        )}
+      </div>
     );
   };
+
+  const renderActions = (item) => (
+    <div
+      className="action-button-container"
+      onClick={(event) => event.stopPropagation()}
+      role="none"
+    >
+      <Tooltip title={item?.is_deprecated ? "This adapter is deprecated" : ""}>
+        <EditOutlined
+          key={`${item.id}-edit`}
+          onClick={(event) => handleEdit(event, item)}
+          className={`action-icon-buttons edit-icon ${
+            item?.is_deprecated ? "disabled-icon" : ""
+          }`}
+          style={{
+            cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+            opacity: item?.is_deprecated ? 0.4 : 1,
+          }}
+        />
+      </Tooltip>
+      {handleShare && (
+        <Tooltip
+          title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+        >
+          <ShareAltOutlined
+            key={`${item.id}-share`}
+            className={`action-icon-buttons share-icon ${
+              item?.is_deprecated ? "disabled-icon" : ""
+            }`}
+            onClick={(event) => handleShareClick(event, item, true)}
+            style={{
+              cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+              opacity: item?.is_deprecated ? 0.4 : 1,
+            }}
+          />
+        </Tooltip>
+      )}
+      <Popconfirm
+        key={`${item.id}-delete`}
+        title={`Delete the ${type}`}
+        description={`Are you sure to delete ${item[titleProp]}`}
+        okText="Yes"
+        cancelText="No"
+        icon={<QuestionCircleOutlined />}
+        onConfirm={(event) => {
+          handleDeleteClick(event, item);
+        }}
+      >
+        <Typography.Text>
+          <DeleteOutlined className="action-icon-buttons delete-icon" />
+        </Typography.Text>
+      </Popconfirm>
+    </div>
+  );
 
   return (
     <List
@@ -224,11 +222,15 @@ function ListView({
             }}
             className={`cur-pointer ${centered ? "centered" : ""}`}
           >
-            <List.Item.Meta
-              className="list-item-desc"
-              title={renderTitle(item)}
-              description={
-                item[descriptionProp] ? (
+            <Flex
+              gap={24}
+              align="center"
+              justify="space-between"
+              className="list-view-row"
+            >
+              <div className="list-view-left">
+                {renderTitle(item)}
+                {item[descriptionProp] ? (
                   <Typography.Paragraph
                     type="secondary"
                     ellipsis={{ rows: 1, tooltip: true }}
@@ -236,9 +238,11 @@ function ListView({
                   >
                     {item[descriptionProp]}
                   </Typography.Paragraph>
-                ) : null
-              }
-            ></List.Item.Meta>
+                ) : null}
+              </div>
+              {renderMeta(item)}
+              {renderActions(item)}
+            </Flex>
           </List.Item>
         );
       }}
