@@ -324,9 +324,7 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
     assert "reasoning_effort" not in json.dumps(schema)
 
 
-def test_minimax_schema_descriptions_link_out_instead_of_quoting_provider_facts() -> (
-    None
-):
+def test_minimax_schema_descriptions_link_out_instead_of_quoting_provider_facts() -> None:
     """Provider-owned facts go stale, so descriptions link instead of copying."""
     schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
     descriptions = {
