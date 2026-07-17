@@ -21,7 +21,13 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 
+from adapter_processor_v2.models import AdapterInstance
+
+from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+    PromptStudioHelper,
+)
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 
@@ -155,6 +161,48 @@ class PromptStudioAuthorAPITest(TestCase):
         )
         tool_b.refresh_from_db()
         assert tool_b.modified_at == untouched
+
+    def test_sync_prompts_clear_bumps_tool_modified_at(self) -> None:
+        """sync_prompts clears prompts with a QuerySet.delete(), which
+        bypasses ToolStudioPrompt.delete() — the sync must bump the tool
+        explicitly, or a prompts-clearing sync with no tool settings leaves
+        modified_at stale (UN-3741 review).
+        """
+        tool = self._create_project("sync-me")
+        adapters = [
+            AdapterInstance.objects.create(
+                adapter_name=f"sync-{kind}",
+                adapter_id="openai|x",
+                adapter_type=kind,
+                created_by=self.user,
+            )
+            for kind in ("LLM", "VECTOR_DB", "EMBEDDING", "X2TEXT")
+        ]
+        ProfileManager.objects.create(
+            prompt_studio_tool=tool,
+            is_default=True,
+            profile_name="default",
+            created_by=self.user,
+            llm=adapters[0],
+            vector_store=adapters[1],
+            embedding_model=adapters[2],
+            x2text=adapters[3],
+        )
+        ToolStudioPrompt.objects.create(
+            tool_id=tool,
+            prompt_key="k",
+            prompt="p",
+            prompt_type=ToolStudioPrompt.PromptType.PROMPT,
+            sequence_number=1,
+        )
+
+        self._backdate_tool(tool, minutes=60)
+        before = tool.modified_at
+        result = PromptStudioHelper.sync_prompts(tool, {"prompts": []}, self.user)
+        assert result["prompts_deleted"] == 1
+
+        tool.refresh_from_db()
+        assert tool.modified_at > before, "prompt-clearing sync must bump"
 
     def test_list_serves_bumped_modified_at(self) -> None:
         """The list endpoint serves the real row value — which, thanks to the

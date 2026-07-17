@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from permissions.permission import (
     _is_resource_owner,
     _is_resource_viewer,
@@ -3103,6 +3104,13 @@ class PromptStudioHelper:
         with transaction.atomic():
             # Delete all existing prompts
             deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            if deleted_count:
+                # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so the
+                # parent bump must happen explicitly — a prompts-clearing sync
+                # is still a modification (UN-3741)
+                CustomTool.objects.filter(pk=tool.tool_id).update(
+                    modified_at=timezone.now()
+                )
 
             # Create new prompts from export data
             PromptStudioHelper.import_prompts(prompts_data, tool, user)
