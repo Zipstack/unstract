@@ -1,4 +1,4 @@
-"""Phase 5-SANITY — Integration tests for the multi-hop elimination.
+"""Integration tests for the multi-hop elimination.
 
 Phase 5 eliminates idle backend worker slots by:
   - Adding ``dispatch_with_callback`` (fire-and-forget with link/link_error)
@@ -12,7 +12,6 @@ verify the results match what callers (views / structure_tool_task) expect.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
@@ -27,19 +26,13 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 _PATCH_X2TEXT = "executor.executors.legacy_executor.X2Text"
 _PATCH_FS = "executor.executors.legacy_executor.FileUtils.get_fs_instance"
-_PATCH_INDEX_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
-)
-_PATCH_PROMPT_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
-)
+_PATCH_INDEX_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
+_PATCH_PROMPT_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
 _PATCH_SHIM = "executor.executors.legacy_executor.ExecutorToolShim"
 _PATCH_RUN_COMPLETION = (
     "executor.executors.answer_prompt.AnswerPromptService.run_completion"
 )
-_PATCH_INDEX_UTILS = (
-    "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
-)
+_PATCH_INDEX_UTILS = "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -110,7 +103,9 @@ def _mock_prompt_deps(llm=None):
     if llm is None:
         llm = _mock_llm()
 
-    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
+    from executor.executors.answer_prompt import (
+        AnswerPromptService as answer_prompt_svc_cls,
+    )
 
     retrieval_service = MagicMock(name="RetrievalService")
     retrieval_service.run_retrieval.return_value = ["chunk1"]
@@ -262,9 +257,7 @@ class TestIdeIndexEagerChain:
         """Full ide_index through eager chain returns doc_id."""
         # Mock extract
         x2t_instance = MagicMock()
-        x2t_instance.process.return_value = _mock_process_response(
-            "IDE extracted text"
-        )
+        x2t_instance.process.return_value = _mock_process_response("IDE extracted text")
         mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
@@ -456,9 +449,7 @@ class TestIdeIndexEagerChain:
         x2t_instance.process.assert_not_called()
         # perform_indexing received the pre-populated text.
         perform_call_kwargs = index_inst.perform_indexing.call_args.kwargs
-        assert (
-            perform_call_kwargs.get("extracted_text") == "reused extracted payload"
-        )
+        assert perform_call_kwargs.get("extracted_text") == "reused extracted payload"
 
     @patch(_PATCH_INDEX_DEPS)
     @patch(_PATCH_FS)
@@ -474,9 +465,7 @@ class TestIdeIndexEagerChain:
     ):
         """Marker-miss path: extract runs as before when extracted_text is absent."""
         x2t_instance = MagicMock()
-        x2t_instance.process.return_value = _mock_process_response(
-            "freshly extracted"
-        )
+        x2t_instance.process.return_value = _mock_process_response("freshly extracted")
         mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
@@ -856,18 +845,10 @@ class TestStructurePipelineEagerChain:
 class TestStructureToolSingleDispatch:
     """Verify structure_tool_task dispatches exactly once."""
 
-    @patch(
-        "executor.executor_tool_shim.ExecutorToolShim"
-    )
-    @patch(
-        "file_processing.structure_tool_task._get_file_storage"
-    )
-    @patch(
-        "file_processing.structure_tool_task._create_platform_helper"
-    )
-    @patch(
-        "file_processing.structure_tool_task.ExecutionDispatcher"
-    )
+    @patch("executor.executor_tool_shim.ExecutorToolShim")
+    @patch("file_processing.structure_tool_task._get_file_storage")
+    @patch("file_processing.structure_tool_task._create_platform_helper")
+    @patch("file_processing.structure_tool_task.ExecutionDispatcher")
     def test_single_dispatch_normal(
         self,
         mock_dispatcher_cls,

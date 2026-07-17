@@ -12,6 +12,8 @@ os.environ.setdefault("INTERNAL_SERVICE_API_KEY", "test-key-123")
 os.environ.setdefault("CELERY_BROKER_BASE_URL", "amqp://localhost:5672//")
 os.environ.setdefault("CELERY_BROKER_USER", "guest")
 os.environ.setdefault("CELERY_BROKER_PASS", "guest")
+# tests/conftest.py strips these back out for workers/tests so Celery result
+# backends stay in-memory; they remain in effect for shared/tests.
 os.environ.setdefault("DB_HOST", "localhost")
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
