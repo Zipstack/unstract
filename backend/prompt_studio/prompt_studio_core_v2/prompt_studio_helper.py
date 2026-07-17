@@ -88,7 +88,6 @@ from unstract.sdk1.utils.tool import ToolUtils
 logger = logging.getLogger(__name__)
 
 CHOICES_JSON = "/static/select_choices.json"
-ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 logger = logging.getLogger(__name__)
 
@@ -220,17 +219,16 @@ class PromptStudioHelper:
 
         Args:
             profile_manager: The profile whose adapters will be used.
-            request_user: The user triggering the action, if in a request
-              context. Worker paths pass None and rely on creator checks.
+            request_user: The user triggering the action. Defaults to None
+              only for the legacy, currently-uncalled ``index_document`` /
+              ``prompt_responder`` chain (UN-3756); all live callers pass
+              a requester.
 
         Raises:
             PermissionError: If the profile creator no longer has access to
               one or more adapters and no bypass applies.
         """
-        if (
-            request_user is not None
-            and OrganizationMemberService.is_user_organization_admin(request_user)
-        ):
+        if OrganizationMemberService.is_user_organization_admin(request_user):
             return
 
         owner = profile_manager.created_by
@@ -249,27 +247,45 @@ class PromptStudioHelper:
             profile_manager.embedding_model,
             profile_manager.x2text,
         ]
-        # Access resolution via the UN-2202 membership bridges — created_by
-        # is audit-only for adapters; owner/viewer roles carry access.
+        # Access = org share, owner/viewer role, or group (UN-2202);
+        # see _adapter_accessible_by.
         denied = [
             adapter for adapter in adapters if not _adapter_accessible_by(adapter, owner)
         ]
         if not denied:
             return
 
-        for adapter in denied:
-            logger.error(ERROR_MSG, owner.user_id, adapter.id)
         logger.error(
-            "Adapter access denied for profile '%s': creator %s lacks access,"
-            " requester %s",
+            "Adapter access denied for profile '%s': creator %s lacks access"
+            " to adapters %s, requester %s",
             profile_manager.profile_name,
             owner.user_id,
+            [str(adapter.id) for adapter in denied],
             getattr(request_user, "user_id", None),
         )
 
-        # Creator identity stays in server logs only — this error is shown
-        # to non-admin collaborators (admins bypass above), so no PII here.
-        denied_names = ", ".join(adapter.adapter_name for adapter in denied)
+        # Third-party identity stays in server logs only — user-facing text
+        # carries no PII.
+        denied_names = ", ".join(
+            dict.fromkeys(adapter.adapter_name for adapter in denied)
+        )
+        if request_user is not None and owner.pk == request_user.pk:
+            # The requester IS the creator — "created by another user"
+            # would be false, and they can be addressed directly.
+            adapter_ref = (
+                f"the adapter '{denied_names}', which you no longer have" f" access to"
+                if len(denied) == 1
+                else f"adapters you no longer have access to: {denied_names}"
+            )
+            error_msg = (
+                f"Permission Error: This project's LLM profile"
+                f" '{profile_manager.profile_name}' uses {adapter_ref}."
+                f" Ask an org admin to re-share access with you or share with"
+                f" everyone, or recreate the profile with adapters you can"
+                f" access."
+            )
+            raise PermissionError(error_msg)
+
         profile_ref = (
             f"This project's LLM profile '{profile_manager.profile_name}' was"
             f" created by another user"
@@ -336,7 +352,8 @@ class PromptStudioHelper:
         stem: str,
         extract_file_path: str,
         platform_api_key: str,
-        request_user: User | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[dict[str, Any] | None, str, "ProfileManager"]:
         """Build summarize_params dict if summarization is enabled.
 

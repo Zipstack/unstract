@@ -114,7 +114,7 @@ def _run_check(
 
 
 class TestRequesterBypass:
-    """Cases 1 and 7 of the UN-3739 matrix: the reported bug."""
+    """Contract case 1: the reported bug (and its case-6 guard)."""
 
     def test_admin_requester_passes_when_creator_lost_access(self) -> None:
         """Admin indexing a project whose creator lost adapter access → pass."""
@@ -126,7 +126,7 @@ class TestRequesterBypass:
         _run_check(profile, request_user=admin, admin_users=(admin,))
 
     def test_non_admin_requester_with_lapsed_creator_is_still_blocked(self) -> None:
-        """Case 2: the revocation guard must survive the fix."""
+        """Contract case 6: the revocation guard must survive the fix."""
         requester = _user("userc", "userc@org.com")
         creator = _user("userb", "userb@org.com")
         other = _user("userx", "userx@org.com")
@@ -145,7 +145,7 @@ class TestRequesterBypass:
 
 class TestCreatorBypasses:
     def test_service_account_creator_passes(self) -> None:
-        """Case 4: platform-API projects referencing others' adapters."""
+        """Contract case 3: platform-API projects referencing others' adapters."""
         sa_creator = _user("sa-1", "sa@org.com", service_account=True)
         other = _user("userx", "userx@org.com")
         profile = _profile(sa_creator, adapter_owner=other)
@@ -153,7 +153,7 @@ class TestCreatorBypasses:
         _run_check(profile)
 
     def test_admin_creator_passes(self) -> None:
-        """Case 3: existing behavior kept — creator-admin bypass."""
+        """Contract case 4: existing behavior kept — creator-admin bypass."""
         admin_creator = _user("admin-1", "admin@org.com")
         other = _user("userx", "userx@org.com")
         profile = _profile(admin_creator, adapter_owner=other)
@@ -161,14 +161,14 @@ class TestCreatorBypasses:
         _run_check(profile, admin_users=(admin_creator,))
 
     def test_none_creator_passes(self) -> None:
-        """Case 8: SET_NULL creator skips the check (unchanged)."""
+        """Contract case 2: SET_NULL creator skips the check (unchanged)."""
         other = _user("userx", "userx@org.com")
         profile = _profile(None, adapter_owner=other)
 
         _run_check(profile)
 
     def test_creator_with_access_passes_for_any_requester(self) -> None:
-        """Cases 5/6: delegated use — creator owns the adapters."""
+        """Contract case 5: delegated use — creator owns the adapters."""
         creator = _user("userb", "userb@org.com")
         requester = _user("userc", "userc@org.com")
         profile = _profile(creator, adapter_owner=creator)
@@ -241,9 +241,43 @@ class TestDenialMessage:
         assert "llm-1" in message
         assert "You do not have access" not in message
         assert "admin" in message, "remediation must point at an org admin"
+        # Single-denial branch must use singular copy, not the multi branch.
+        assert "the adapter 'llm-1'" in message
+        assert "these adapters" not in message
+
+    def test_message_addresses_creator_requester_directly(self) -> None:
+        """When the requester IS the creator, 'created by another user' is
+        false — the message must speak to them directly (still PII-free)."""
+        creator = _user("userb", "userb@org.com")
+        other = _user("userx", "userx@org.com")
+        profile = _profile(creator, adapter_owner=other)
+        for attr in ("vector_store", "embedding_model", "x2text"):
+            getattr(profile, attr).owner_set.add(creator)
+
+        with pytest.raises(PSPermissionError) as exc_info:
+            _run_check(profile, request_user=creator)
+        message = str(exc_info.value)
+
+        assert "another user" not in message, "requester is the creator"
+        assert "you no longer have access" in message
+        assert "llm-1" in message
+        assert "userb@org.com" not in message
+
+    def test_message_dedupes_adapter_names(self) -> None:
+        """Adapters of different types can share a name — list it once."""
+        creator = _user("userb", "userb@org.com")
+        other = _user("userx", "userx@org.com")
+        profile = _profile(creator, adapter_owner=other)
+        for attr in ("llm", "vector_store", "embedding_model", "x2text"):
+            getattr(profile, attr).adapter_name = "shared-name"
+
+        with pytest.raises(PSPermissionError) as exc_info:
+            _run_check(profile)
+
+        assert str(exc_info.value).count("shared-name") == 1
 
     def test_message_flags_former_member_creator(self) -> None:
-        """Case 7: offboarded creator — say so instead of a bare denial."""
+        """Contract case 6, former-member sub-branch: offboarded creator — say so."""
         exc = self._denied(creator_is_member=False)
         message = str(exc)
 
@@ -263,12 +297,15 @@ class TestDenialMessage:
         assert isinstance(exc_info.value.detail, str)
         for adapter_name in ("llm-1", "vdb-1", "emb-1", "x2t-1"):
             assert adapter_name in message
+        # Multi-denial branch must use plural copy, not the single branch.
+        assert "these adapters:" in message
+        assert "the adapter '" not in message
 
 
 class TestBuilderSignatures:
     """``request_user`` must be keyword-only with NO default on the four
-    view-facing builders — a dropped plumb must fail loudly (TypeError),
-    never silently revert to pre-fix behavior."""
+    view-facing builders and the live summarize hop — a dropped plumb must
+    fail loudly (TypeError), never silently revert to pre-fix behavior."""
 
     @pytest.mark.parametrize(
         "builder",
@@ -277,12 +314,60 @@ class TestBuilderSignatures:
             PromptStudioHelper.build_fetch_response_payload,
             PromptStudioHelper.build_bulk_fetch_response_payload,
             PromptStudioHelper.build_single_pass_payload,
+            PromptStudioHelper._build_summarize_params,
         ],
     )
     def test_request_user_is_required_keyword_only(self, builder) -> None:
         param = inspect.signature(builder).parameters["request_user"]
         assert param.kind is inspect.Parameter.KEYWORD_ONLY
         assert param.default is inspect.Parameter.empty
+
+
+class TestSummarizeHopForwarding:
+    """The summarize-profile validation inside ``_build_summarize_params``
+    must receive the requester — it guards a live second validator call."""
+
+    def test_summarize_profile_check_receives_requesting_user(self) -> None:
+        request_user = MagicMock(name="request-user")
+        validator = MagicMock(side_effect=_Forwarded())
+        tool = MagicMock(name="tool")
+        tool.summarize_context = True
+        tool.summarize_llm_adapter = None
+        summary_profile = MagicMock(name="summary-profile")
+
+        with ExitStack() as stack:
+            for target, attr, value in (
+                (
+                    _psh_mod.SummarizeMigrationUtils,
+                    "migrate_tool_to_adapter_based",
+                    MagicMock(),
+                ),
+                (
+                    _psh_mod.ProfileManager,
+                    "objects",
+                    MagicMock(get=MagicMock(return_value=summary_profile)),
+                ),
+                (PromptStudioHelper, "validate_adapter_status", MagicMock()),
+                (
+                    PromptStudioHelper,
+                    "validate_profile_manager_owner_access",
+                    validator,
+                ),
+            ):
+                stack.enter_context(patch.object(target, attr, value))
+            with pytest.raises(_Forwarded):
+                PromptStudioHelper._build_summarize_params(
+                    tool,
+                    MagicMock(name="default-profile"),
+                    "/dir",
+                    "stem",
+                    "/dir/extract/stem.txt",
+                    "pk-test",
+                    request_user=request_user,
+                )
+
+        _args, kwargs = validator.call_args
+        assert kwargs.get("request_user") is request_user
 
 
 class _Forwarded(Exception):
