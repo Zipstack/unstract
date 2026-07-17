@@ -48,6 +48,8 @@
 .list-view-description {
   font-size: 13px;
   margin-bottom: 0 !important;
+  /* keep rows uniform; full text is in the ellipsis tooltip */
+  max-width: 520px;
 }
 
 .list-view-row {
