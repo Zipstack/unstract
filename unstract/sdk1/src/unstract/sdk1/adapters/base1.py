@@ -536,8 +536,10 @@ _MINIMAX_PROVIDER_PREFIX = "minimax/"
 _MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
 _MINIMAX_CONTEXT_WINDOWS = {
     "MiniMax-M3": 1_000_000,
-    "MiniMax-M2.7": 204_800,
 }
+# All M2.x variants share one window. Kept local because LiteLLM overstates it.
+# REF: https://platform.minimax.io/docs/api-reference/text-openai-api
+_MINIMAX_M2_CONTEXT_WINDOW = 204_800
 
 
 def _minimax_provider_prefix(api_base: str) -> str:
@@ -549,6 +551,14 @@ def _minimax_provider_prefix(api_base: str) -> str:
 
 def _is_minimax_m2_model(model_id: str) -> bool:
     return re.match(r"^minimax-m2(?:$|[.-])", model_id, re.IGNORECASE) is not None
+
+
+def _minimax_context_window(model_id: str) -> int | None:
+    if context_window := _MINIMAX_CONTEXT_WINDOWS.get(model_id):
+        return context_window
+    if _is_minimax_m2_model(model_id):
+        return _MINIMAX_M2_CONTEXT_WINDOW
+    return None
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -610,7 +620,7 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
-        if context_window := _MINIMAX_CONTEXT_WINDOWS.get(model_id):
+        if context_window := _minimax_context_window(model_id):
             validated["context_window"] = context_window
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
         return validated

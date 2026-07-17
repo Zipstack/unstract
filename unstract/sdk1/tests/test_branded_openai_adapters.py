@@ -350,6 +350,11 @@ def test_minimax_schema_descriptions_link_out_instead_of_quoting_provider_facts(
     [
         ("MiniMax-M3", _MINIMAX_API_BASE, 1_000_000),
         ("MiniMax-M2.7", _MINIMAX_ANTHROPIC_API_BASE, 204_800),
+        # LiteLLM overstates the M2.x window; the adapter rule must win.
+        ("MiniMax-M2.5", _MINIMAX_API_BASE, 204_800),
+        ("MiniMax-M2.1", _MINIMAX_API_BASE, 204_800),
+        ("MiniMax-M2", _MINIMAX_API_BASE, 204_800),
+        ("MiniMax-M2.7-highspeed", _MINIMAX_API_BASE, 204_800),
     ],
 )
 def test_minimax_context_window_uses_adapter_metadata(
