@@ -27,8 +27,9 @@ tests/
 │   ├── conftest.py          # `platform` fixture + `provisioned_workflow` chain
 │   ├── smoke/               # Login → /health smoke
 │   ├── workflows/           # Workflow execution e2e (mocked LLM)
-│   ├── api_deployment/      # API deployment e2e (mocked LLM)
-│   ├── prompt_studio/       # (future) Prompt Studio e2e
+│   ├── api_deployment/      # API deployment e2e: sync, async, fan-out
+│   ├── etl/                 # ETL pipeline e2e (MinIO source + destination)
+│   ├── prompt_studio/       # Prompt Studio fetch-response e2e
 │   └── hurl/                # (future) hurl-based HTTP suites
 ├── integration/             # Cross-service tests needing infra but not full platform
 ├── fixtures/                # Sample PDFs, JSON, adapter configs
@@ -160,6 +161,14 @@ Execute-path e2e tests must not call a real provider, so `ComposeRuntime.up()` s
 It is `setdefault`, so a CI/dev override wins. Running these tests **without** the rig means the var is unset in the workers, so the `llm_mock_response` fixture skips rather than guess — export it on both sides (your shell and the workers) if you boot the stack yourself.
 
 Only `LLM` completions are mocked, not embeddings: `provisioned_workflow` pins `chunk_size=0` so indexing never invokes `litellm.embedding`. A test that needs chunking will need the embedding path mocked too.
+
+### Fan-out (`MAX_PARALLEL_FILE_BATCHES`)
+
+Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay sets it to `3` on `backend`, which is what matters: workers ask the backend for this value and only fall back to their own env if that call fails (the overlay sets it on `worker-api-deployment-v2` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
+
+### ETL (MinIO)
+
+`tests/e2e/etl` runs a pipeline from a source connector to a destination connector. MinIO is the only storage connector the compose stack both boots and registers — the local-filesystem one would need no infra but is never registered (`local_storage/` has no `__init__.py`, so `register_connectors` skips it), which is why the mounted `./workflow_data:/data` volume can't be used as an ETL endpoint. The test seeds and reads its objects over the published port (`UNSTRACT_MINIO_ENDPOINT`, default `localhost:9000`) while the workers reach the same store over the compose network (`UNSTRACT_MINIO_INTERNAL_URL`, default `http://unstract-minio:9000`). It skips when no MinIO answers, so it does not fail a runtime that publishes none.
 
 ---
 

@@ -108,6 +108,9 @@ class ProvisionedWorkflow:
     workflow_id: str
     tool_id: str
     prompt_registry_id: str
+    profile_id: str
+    prompt_id: str
+    prompt_key: str
 
 
 def _org_id(session: requests.Session, base: str) -> str:
@@ -164,10 +167,16 @@ def provisioned_workflow(
     llm_id = create_adapter(
         _LLM_ADAPTER,
         "LLM",
-        {"api_key": "sk-test", "model": "gpt-4o", "api_base": "https://api.openai.com/v1"},
+        {
+            "api_key": "sk-test",
+            "model": "gpt-4o",
+            "api_base": "https://api.openai.com/v1",
+        },
     )
     embed_id = create_adapter(
-        _EMBED_ADAPTER, "EMBEDDING", {"api_key": "sk-test", "model": "text-embedding-3-small"}
+        _EMBED_ADAPTER,
+        "EMBEDDING",
+        {"api_key": "sk-test", "model": "text-embedding-3-small"},
     )
     vdb_id = create_adapter(_VECTORDB_ADAPTER, "VECTOR_DB", {"wait_time": 0})
     x2t_id = create_adapter(_X2TEXT_ADAPTER, "X2TEXT", {"wait_time": 0})
@@ -198,14 +207,17 @@ def provisioned_workflow(
     )
     assert resp.status_code == 200, f"profile patch: {resp.text}"
 
+    prompt_key = "answer"
     resp = _post(
         s,
         f"{prefix}/prompt-studio/prompt-studio-prompt/{tool_id}/",
         json={
             "tool_id": tool_id,
-            "prompt_key": "answer",
+            "prompt_key": prompt_key,
             "prompt": "What is this document about?",
             "prompt_type": "PROMPT",
+            # text keeps the answer the raw completion; the structured types are
+            # re-serialised on the way out and would not match the mock verbatim.
             "enforce_type": "text",
             "sequence_number": 1,
             "active": True,
@@ -213,6 +225,7 @@ def provisioned_workflow(
         },
     )
     assert resp.status_code == 201, f"add prompt: {resp.text}"
+    prompt_id = resp.json()["prompt_id"]
 
     resp = _post(
         s,
@@ -234,7 +247,9 @@ def provisioned_workflow(
     assert resp.status_code == 201, f"create workflow: {resp.text}"
     workflow_id = resp.json()["id"]
 
-    resp = s.get(f"{prefix}/workflow/endpoint/", params={"workflow": workflow_id}, timeout=30)
+    resp = s.get(
+        f"{prefix}/workflow/endpoint/", params={"workflow": workflow_id}, timeout=30
+    )
     resp.raise_for_status()
     eps = resp.json()
     eps = eps if isinstance(eps, list) else eps.get("results", [])
@@ -262,4 +277,7 @@ def provisioned_workflow(
         workflow_id=workflow_id,
         tool_id=tool_id,
         prompt_registry_id=prompt_registry_id,
+        profile_id=profile_id,
+        prompt_id=prompt_id,
+        prompt_key=prompt_key,
     )

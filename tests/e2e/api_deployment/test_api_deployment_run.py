@@ -7,11 +7,10 @@ itself, leaving no polling or out-of-band result store to read.
 from __future__ import annotations
 
 import io
-import uuid
 
 import pytest
 
-from tests.e2e.conftest import ProvisionedWorkflow
+from tests.e2e.api_deployment.conftest import ApiDeployment
 
 pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 
@@ -19,35 +18,12 @@ pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 @pytest.mark.critical_path("api-deployment-run")
 @pytest.mark.critical_path("usage-token-tracking")
 def test_api_deployment_returns_mocked_answer(
-    provisioned_workflow: ProvisionedWorkflow, llm_mock_response: str
+    api_deployment: ApiDeployment, llm_mock_response: str
 ) -> None:
-    pw = provisioned_workflow
-    session = pw.session
-    csrf = {"X-CSRFToken": session.cookies.get("csrftoken", "")}
-
-    api_name = f"e2edep{uuid.uuid4().hex[:8]}"
-    resp = session.post(
-        f"{pw.prefix}/api/deployment/",
-        headers=csrf,
-        json={
-            "workflow": pw.workflow_id,
-            "display_name": f"e2e {api_name}",
-            "description": "e2e api deployment",
-            "api_name": api_name,
-            "is_active": True,
-        },
-        timeout=30,
-    )
-    assert resp.status_code == 201, f"deploy: {resp.text}"
-    deployment = resp.json()
-    api_key = deployment["api_key"]
-    endpoint = deployment["api_endpoint"]
-    exec_url = endpoint if endpoint.startswith("http") else f"{pw.base}/{endpoint.lstrip('/')}"
-
     document = io.BytesIO(b"Hello invoice 123. This is a test document about widgets.")
-    resp = session.post(
-        exec_url,
-        headers={"Authorization": f"Bearer {api_key}"},
+    resp = api_deployment.session.post(
+        api_deployment.exec_url,
+        headers=api_deployment.auth,
         data={"timeout": 300, "include_metadata": True},
         files={"files": ("probe.txt", document, "text/plain")},
         timeout=310,

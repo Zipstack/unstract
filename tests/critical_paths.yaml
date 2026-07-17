@@ -68,6 +68,7 @@ paths:
   - id: prompt-studio-fetch-response
     description: "Prompt Studio: create project, add prompt, run single-pass, get response."
     covered_by: [e2e-prompt-studio]
+    proof: marker
 
   - id: connector-register-test
     description: "Connector credentials are validated against the live system and stored encrypted."
@@ -76,7 +77,8 @@ paths:
 
   - id: pipeline-etl-execute
     description: "Run an ETL pipeline from source connector to destination."
-    covered_by: []   # gap
+    covered_by: [e2e-etl]
+    proof: marker
 
   - id: usage-aggregate-read
     description: "Per-run token usage aggregates correctly and stays scoped to its organization."
@@ -90,8 +92,10 @@ paths:
 
   - id: workflow-execution-fan-out
     description: "Multi-file workflow execution fans out to file-processing workers and rejoins."
-    covered_by: []   # gap
+    covered_by: [e2e-api-deployment]
+    proof: marker
 
   - id: callback-result-delivery
     description: "Async results are posted back via the callback worker."
-    covered_by: []   # gap
+    covered_by: [e2e-api-deployment]
+    proof: marker

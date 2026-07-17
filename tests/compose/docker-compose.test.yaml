@@ -16,6 +16,9 @@ services:
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
       - ENVIRONMENT=test
+      # Fan-out is off at the default of 1 (one batch, run serially). Workers
+      # ask the backend for this, so it has to be set here to be effective.
+      - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -35,3 +38,9 @@ services:
   worker-file-processing-v2:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
+
+  # Only the fallback if the worker cannot reach the backend for config; kept in
+  # step with it so a fallback can't quietly serialise the fan-out tests.
+  worker-api-deployment-v2:
+    environment:
+      - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
