@@ -33,10 +33,12 @@ class PromptStudioRegistryInfoSerializer(AuditSerializer):
         ).data
 
     def get_prompt_studio_users(self, obj: PromptStudioRegistry) -> Any:
-        prompt_studio_users = obj.custom_tool.shared_users.filter(
-            is_service_account=False
-        )
-        return UserSerializer(prompt_studio_users, many=True).data
+        # ``CustomTool.shared_users`` was replaced by polymorphic memberships
+        # (UN-2202); read owners + viewers instead. The unique membership
+        # constraint (user, content_type, object_id) rules out duplicates.
+        tool = obj.custom_tool
+        users = [u for u in (*tool.owners(), *tool.viewers()) if not u.is_service_account]
+        return UserSerializer(users, many=True).data
 
 
 class ExportToolRequestSerializer(serializers.Serializer):

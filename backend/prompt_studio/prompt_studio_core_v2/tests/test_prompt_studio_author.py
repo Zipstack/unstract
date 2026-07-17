@@ -88,12 +88,21 @@ class PromptStudioAuthorAPITest(TestCase):
         """Prompt edits don't touch the CustomTool row; the list endpoint must
         surface the latest prompt modified_at instead (UN-3741).
         """
-        tool = CustomTool.objects.create(
-            tool_name="quote-parser",
-            description="extracts quote fields",
-            author="test",
-            created_by=self.user,
+        # Create via the API so ownership membership rows (UN-2202) exist —
+        # a bare objects.create() is invisible to the list queryset
+        create_project = PromptStudioCoreView.as_view({"post": "create"})
+        project = self._call(
+            create_project,
+            "post",
+            "/api/v1/prompt-studio/",
+            {
+                "tool_name": "quote-parser",
+                "description": "extracts quote fields",
+                "author": "test",
+            },
         )
+        assert project.status_code == status.HTTP_201_CREATED, project.data
+        tool = CustomTool.objects.get(tool_id=project.data["tool_id"])
         prompt = ToolStudioPrompt.objects.create(
             tool_id=tool,
             prompt_key="quote_number",

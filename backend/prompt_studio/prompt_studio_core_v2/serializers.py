@@ -6,7 +6,10 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.FileValidator import FileValidator
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -44,6 +47,8 @@ class CustomToolListSerializer(serializers.ModelSerializer):
     created_by_email = serializers.SerializerMethodField()
     prompt_count = serializers.SerializerMethodField()
     modified_at = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
+    co_owners_count = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -59,6 +64,8 @@ class CustomToolListSerializer(serializers.ModelSerializer):
             "icon",
             "created_by_email",
             "prompt_count",
+            "is_owner",
+            "co_owners_count",
         ]
 
     def get_created_by_email(self, instance):
@@ -73,6 +80,13 @@ class CustomToolListSerializer(serializers.ModelSerializer):
             return last_prompt_modified
         return instance.modified_at
 
+    def get_is_owner(self, instance) -> bool:
+        request = self.context.get("request")
+        return instance.is_owner(request.user) if request else False
+
+    def get_co_owners_count(self, instance) -> int:
+        return instance.co_owners_count()
+
     def get_prompt_count(self, instance):
         if hasattr(instance, "_prompt_count"):
             return instance._prompt_count or 0
@@ -86,9 +100,9 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
-    # Share mutations go through ``POST /prompt-studio/{id}/share/``;
-    # both axes are read-only on this serializer (UN-2977 plan §B).
-    shared_users = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # Share mutations go through ``POST /prompt-studio/{id}/share/``; the
+    # groups axis is read-only here (UN-2977 plan §B). Direct viewers live in
+    # the membership table (UN-2202) and surface via the share-modal serializer.
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
@@ -240,6 +254,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     created_by = UserSerializer()
     shared_users = serializers.SerializerMethodField()
     shared_groups = serializers.SerializerMethodField()
+    co_owners = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -250,15 +265,18 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
         )
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

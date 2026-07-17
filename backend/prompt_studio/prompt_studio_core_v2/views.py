@@ -17,8 +17,10 @@ from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -120,12 +122,22 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            return None
+        return ResourceType.TEXT_EXTRACTOR.value
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -133,13 +145,16 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action == "destroy":
+        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "memberships__user"
+        )
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()
             prompt_count_sq = (
@@ -181,6 +196,11 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
