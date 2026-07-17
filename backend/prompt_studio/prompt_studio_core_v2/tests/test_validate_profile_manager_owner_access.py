@@ -8,13 +8,13 @@ the platform API).
 
 Contract pinned here (evaluation order):
 
-  1. Requester is an org admin              → pass (implicit access)
-  2. ``created_by`` is None                 → pass (unchanged)
-  3. Creator is a service account           → pass (platform-API projects)
-  4. Creator is an org admin                → pass (unchanged)
-  5. Creator has access to all 4 adapters   → pass (delegated use kept)
-  6. Otherwise                              → PermissionError naming the
-     CREATOR (not "You"), with remediation, as a plain string.
+  1. Requester (a ``User`` object) is an org admin  → pass
+  2. ``created_by`` is None                         → pass (unchanged)
+  3. Creator is a service account                   → pass (platform-API)
+  4. Creator is an org admin                        → pass (unchanged)
+  5. Creator has access to all 4 adapters           → pass (delegated use)
+  6. Otherwise → PermissionError blaming the creator role (never "You"),
+     PII-free, as a plain string.
 
 Unit tests: the real helper module is imported and collaborators are
 patched per-test, so no database is touched.
@@ -22,6 +22,7 @@ patched per-test, so no database is touched.
 
 from __future__ import annotations
 
+import inspect
 from contextlib import ExitStack
 from unittest.mock import MagicMock, patch
 
@@ -68,22 +69,18 @@ def _profile(creator: MagicMock | None, adapter_owner: MagicMock) -> MagicMock:
 def _run_check(
     profile: MagicMock,
     *,
-    request_user_id: str | None = None,
+    request_user: MagicMock | None = None,
     admin_users: tuple[MagicMock, ...] = (),
-    members_by_user_id: dict[str, MagicMock] | None = None,
+    group_access: bool = False,
     creator_is_member: bool = True,
 ) -> None:
     """Invoke the validator with OrganizationMemberService / group access patched.
 
-    ``members_by_user_id`` maps a request_user_id to an OrganizationMember
-    mock (``.user`` set); missing ids resolve to None.  ``admin_users``
-    are Users for whom ``is_user_organization_admin`` returns True.
+    ``admin_users`` are Users for whom ``is_user_organization_admin``
+    returns True.
     """
-    members_by_user_id = members_by_user_id or {}
-
     oms = MagicMock(name="OrganizationMemberService")
     oms.is_user_organization_admin.side_effect = lambda u: u in admin_users
-    oms.get_user_by_user_id.side_effect = lambda uid: members_by_user_id.get(uid)
     oms.get_user_by_id.return_value = (
         MagicMock(name="creator-membership") if creator_is_member else None
     )
@@ -91,17 +88,13 @@ def _run_check(
     with ExitStack() as stack:
         stack.enter_context(patch.object(_psh_mod, "OrganizationMemberService", oms))
         stack.enter_context(
-            patch.object(_psh_mod, "has_group_access", MagicMock(return_value=False))
+            patch.object(
+                _psh_mod, "has_group_access", MagicMock(return_value=group_access)
+            )
         )
         PromptStudioHelper.validate_profile_manager_owner_access(
-            profile, request_user_id=request_user_id
+            profile, request_user=request_user
         )
-
-
-def _member_for(user: MagicMock) -> MagicMock:
-    member = MagicMock(name=f"member-{user.user_id}")
-    member.user = user
-    return member
 
 
 class TestRequesterBypass:
@@ -114,12 +107,7 @@ class TestRequesterBypass:
         other = _user("userx", "userx@org.com")
         profile = _profile(creator, adapter_owner=other)
 
-        _run_check(
-            profile,
-            request_user_id="admin-1",
-            admin_users=(admin,),
-            members_by_user_id={"admin-1": _member_for(admin)},
-        )
+        _run_check(profile, request_user=admin, admin_users=(admin,))
 
     def test_non_admin_requester_with_lapsed_creator_is_still_blocked(self) -> None:
         """Case 2: the revocation guard must survive the fix."""
@@ -129,23 +117,19 @@ class TestRequesterBypass:
         profile = _profile(creator, adapter_owner=other)
 
         with pytest.raises(PSPermissionError):
-            _run_check(
-                profile,
-                request_user_id="userc",
-                members_by_user_id={"userc": _member_for(requester)},
-            )
+            _run_check(profile, request_user=requester)
 
-    def test_unknown_request_user_id_falls_through_to_creator_checks(self) -> None:
-        """A user_id with no membership row must not crash the check."""
+    def test_none_requester_falls_through_to_creator_checks(self) -> None:
+        """Worker paths pass no requester — creator checks still decide."""
         creator = _user("userb", "userb@org.com")
         profile = _profile(creator, adapter_owner=creator)
 
-        _run_check(profile, request_user_id="ghost-user")
+        _run_check(profile, request_user=None)
 
 
 class TestCreatorBypasses:
     def test_service_account_creator_passes(self) -> None:
-        """Case 4: platform-API / org-migration projects (the customer's setup)."""
+        """Case 4: platform-API projects referencing others' adapters."""
         sa_creator = _user("sa-1", "sa@org.com", service_account=True)
         other = _user("userx", "userx@org.com")
         profile = _profile(sa_creator, adapter_owner=other)
@@ -173,11 +157,41 @@ class TestCreatorBypasses:
         requester = _user("userc", "userc@org.com")
         profile = _profile(creator, adapter_owner=creator)
 
-        _run_check(
-            profile,
-            request_user_id="userc",
-            members_by_user_id={"userc": _member_for(requester)},
-        )
+        _run_check(profile, request_user=requester)
+
+
+class TestCreatorAccessDisjuncts:
+    """Each non-ownership access path must independently satisfy the guard.
+
+    Review sabotage-check: reducing ``_user_has_adapter_access`` to
+    ``created_by == user`` must fail these.
+    """
+
+    def _lapsed_profile(self) -> MagicMock:
+        creator = _user("userb", "userb@org.com")
+        other = _user("userx", "userx@org.com")
+        return _profile(creator, adapter_owner=other)
+
+    def test_org_shared_adapters_pass(self) -> None:
+        profile = self._lapsed_profile()
+        for attr in ("llm", "vector_store", "embedding_model", "x2text"):
+            getattr(profile, attr).shared_to_org = True
+
+        _run_check(profile)
+
+    def test_user_shared_adapters_pass(self) -> None:
+        profile = self._lapsed_profile()
+        for attr in ("llm", "vector_store", "embedding_model", "x2text"):
+            getattr(
+                profile, attr
+            ).shared_users.filter.return_value.exists.return_value = True
+
+        _run_check(profile)
+
+    def test_group_shared_adapters_pass(self) -> None:
+        profile = self._lapsed_profile()
+
+        _run_check(profile, group_access=True)
 
 
 class TestDenialMessage:
@@ -193,7 +207,7 @@ class TestDenialMessage:
         other = _user("userx", "userx@org.com")
         profile = _profile(creator, adapter_owner=other)
         # Creator has access to all but the LLM adapter — mirrors the
-        # customer's single-adapter denial.
+        # reported single-adapter denial.
         for attr in ("vector_store", "embedding_model", "x2text"):
             getattr(profile, attr).created_by = creator
 
@@ -235,3 +249,86 @@ class TestDenialMessage:
         assert isinstance(exc_info.value.detail, str)
         for adapter_name in ("llm-1", "vdb-1", "emb-1", "x2t-1"):
             assert adapter_name in message
+
+
+class TestBuilderSignatures:
+    """``request_user`` must be keyword-only with NO default on the four
+    view-facing builders — a dropped plumb must fail loudly (TypeError),
+    never silently revert to pre-fix behavior."""
+
+    @pytest.mark.parametrize(
+        "builder",
+        [
+            PromptStudioHelper.build_index_payload,
+            PromptStudioHelper.build_fetch_response_payload,
+            PromptStudioHelper.build_bulk_fetch_response_payload,
+            PromptStudioHelper.build_single_pass_payload,
+        ],
+    )
+    def test_request_user_is_required_keyword_only(self, builder) -> None:
+        param = inspect.signature(builder).parameters["request_user"]
+        assert param.kind is inspect.Parameter.KEYWORD_ONLY
+        assert param.default is inspect.Parameter.empty
+
+
+class _Forwarded(Exception):
+    """Sentinel raised by the patched validator to abort the builder."""
+
+
+class TestBuilderForwarding:
+    """Each builder must hand the requester object to the validator."""
+
+    REQUEST_USER = MagicMock(name="request-user")
+
+    @pytest.mark.parametrize(
+        "builder_name, extra_kwargs_factory",
+        [
+            (
+                "build_fetch_response_payload",
+                lambda: {"prompt": MagicMock(name="prompt")},
+            ),
+            (
+                "build_bulk_fetch_response_payload",
+                lambda: {"prompts": [MagicMock(name="prompt")]},
+            ),
+            (
+                "build_single_pass_payload",
+                lambda: {"prompts": [MagicMock(name="prompt")]},
+            ),
+        ],
+    )
+    def test_builder_forwards_requester(self, builder_name, extra_kwargs_factory) -> None:
+        validator = MagicMock(side_effect=_Forwarded())
+        builder = getattr(PromptStudioHelper, builder_name)
+        call_kwargs = {
+            "tool": MagicMock(name="tool"),
+            "doc_path": "/doc",
+            "doc_name": "doc.pdf",
+            "org_id": "org-1",
+            "user_id": "owner-1",
+            "document_id": "doc-1",
+            "run_id": "run-1",
+            "request_user": self.REQUEST_USER,
+            **extra_kwargs_factory(),
+        }
+        with ExitStack() as stack:
+            for target, attr, value in (
+                (
+                    _psh_mod.ProfileManager,
+                    "get_default_llm_profile",
+                    MagicMock(return_value=MagicMock(name="profile")),
+                ),
+                (
+                    PromptStudioHelper,
+                    "_resolve_llm_ids",
+                    MagicMock(return_value=("m", "c")),
+                ),
+                (PromptStudioHelper, "validate_adapter_status", MagicMock()),
+                (PromptStudioHelper, "validate_profile_manager_owner_access", validator),
+            ):
+                stack.enter_context(patch.object(target, attr, value))
+            with pytest.raises(_Forwarded):
+                builder(**call_kwargs)
+
+        _args, kwargs = validator.call_args
+        assert kwargs.get("request_user") is self.REQUEST_USER

@@ -447,11 +447,11 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
             # user_id is the file-path owner (project creator);
-            # request_user_id is who triggered the action (UN-3739)
+            # request_user is who triggered the action (UN-3739)
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
-            request_user_id=request.user.user_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -610,7 +610,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
-            request_user_id=request.user.user_id,
+            request_user=request.user,
         )
 
         # If document is being indexed, return pending status
@@ -723,7 +723,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
-            request_user_id=request.user.user_id,
+            request_user=request.user,
         )
 
         if context is None:
@@ -830,7 +830,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             user_id=user_id,
             document_id=document_id,
             run_id=run_id,
-            request_user_id=request.user.user_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()

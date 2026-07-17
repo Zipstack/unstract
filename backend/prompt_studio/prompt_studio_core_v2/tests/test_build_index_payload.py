@@ -29,6 +29,10 @@ from prompt_studio.prompt_studio_core_v2 import prompt_studio_helper as _psh_mod
 PromptStudioHelper = _psh_mod.PromptStudioHelper
 IKeys = _psh_mod.IKeys
 
+# Sentinel requester object handed to build_index_payload by every test —
+# distinct from the file-path ``user_id`` ("user-1") by construction.
+_REQUEST_USER = MagicMock(name="request-user")
+
 
 def _make_tool(enable_highlight: bool = False, summarize_context: bool = False):
     tool = MagicMock(name="CustomTool")
@@ -132,7 +136,7 @@ def _dispatch_build(
             user_id="user-1",
             document_id="doc-1",
             run_id="run-1",
-            request_user_id="requester-1",
+            request_user=_REQUEST_USER,
         )
         return context, cb_kwargs, fs_instance, check_mock
 
@@ -195,8 +199,8 @@ class TestOwnerAccessPlumbing:
 
     ``user_id`` in these helpers is the file-path owner (the project
     creator) — views pass ``tool.created_by.user_id`` there.  The
-    requesting user travels separately as ``request_user_id``; asserting
-    it differs from ``user_id`` pins that the two identities are never
+    requesting user travels separately as the ``request_user`` object;
+    asserting the sentinel arrives pins that the two identities are never
     conflated again.
     """
 
@@ -208,5 +212,4 @@ class TestOwnerAccessPlumbing:
             validate_owner_mock=validate_owner_mock,
         )
         _args, kwargs = validate_owner_mock.call_args
-        assert kwargs.get("request_user_id") == "requester-1"
-        assert kwargs.get("request_user_id") != "user-1"
+        assert kwargs.get("request_user") is _REQUEST_USER

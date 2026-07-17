@@ -184,16 +184,6 @@ class PromptStudioHelper:
                 raise PermissionError(error_msg)
 
     @staticmethod
-    def _is_org_admin_by_user_id(user_id: str | None) -> bool:
-        """Return True if ``user_id`` resolves to an org member with admin role."""
-        if not user_id:
-            return False
-        member = OrganizationMemberService.get_user_by_user_id(user_id)
-        return bool(
-            member and OrganizationMemberService.is_user_organization_admin(member.user)
-        )
-
-    @staticmethod
     def _user_has_adapter_access(user: Any, adapter: Any) -> bool:
         return (
             adapter.shared_to_org
@@ -205,26 +195,32 @@ class PromptStudioHelper:
     @staticmethod
     def validate_profile_manager_owner_access(
         profile_manager: ProfileManager,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> None:
         """Validate adapter access for a profile before using its adapters.
 
         This is a revocation guard on the profile *creator*, not a
         requester ACL: users with project access deliberately piggyback on
-        the creator's adapter access. Org admins and service-account
-        creators bypass it — admins have implicit access to all adapters,
-        and platform-API/org-migration profiles are created by service
-        accounts that hold no adapter shares by design (UN-3739).
+        the creator's adapter access. Bypasses (UN-3739): an org-admin
+        requester (implicit access to all adapters); a None creator —
+        profiles whose creating user was deleted, which includes
+        platform-API users removed on key deletion since ``created_by``
+        is SET_NULL; a service-account creator (platform-API profiles
+        hold no adapter shares by design); and an org-admin creator.
 
         Args:
             profile_manager: The profile whose adapters will be used.
-            request_user_id: ``user_id`` of the user triggering the action.
+            request_user: The user triggering the action, if in a request
+              context. Worker paths pass None and rely on creator checks.
 
         Raises:
             PermissionError: If the profile creator no longer has access to
               one or more adapters and no bypass applies.
         """
-        if PromptStudioHelper._is_org_admin_by_user_id(request_user_id):
+        if (
+            request_user is not None
+            and OrganizationMemberService.is_user_organization_admin(request_user)
+        ):
             return
 
         owner = profile_manager.created_by
@@ -258,7 +254,7 @@ class PromptStudioHelper:
             " requester %s",
             profile_manager.profile_name,
             owner.user_id,
-            request_user_id,
+            getattr(request_user, "user_id", None),
         )
 
         # Creator identity stays in server logs only — this error is shown
@@ -330,7 +326,7 @@ class PromptStudioHelper:
         stem: str,
         extract_file_path: str,
         platform_api_key: str,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> tuple[dict[str, Any] | None, str, "ProfileManager"]:
         """Build summarize_params dict if summarization is enabled.
 
@@ -355,7 +351,7 @@ class PromptStudioHelper:
         if summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
             PromptStudioHelper.validate_profile_manager_owner_access(
-                summary_profile, request_user_id=request_user_id
+                summary_profile, request_user=request_user
             )
 
         llm_adapter_id = (
@@ -499,7 +495,8 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str,
-        request_user_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext, dict[str, Any]]:
         """Build ide_index ExecutionContext for fire-and-forget dispatch.
 
@@ -522,7 +519,7 @@ class PromptStudioHelper:
 
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile, request_user_id=request_user_id
+            default_profile, request_user=request_user
         )
 
         # Common path decomposition used by extract, summarize, and index
@@ -540,7 +537,7 @@ class PromptStudioHelper:
                 stem,
                 extract_file_path,
                 platform_api_key,
-                request_user_id=request_user_id,
+                request_user=request_user,
             )
         )
 
@@ -722,7 +719,8 @@ class PromptStudioHelper:
         document_id: str,
         run_id: str,
         profile_manager_id: str | None = None,
-        request_user_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext | None, dict[str, Any]]:
         """Build answer_prompt ExecutionContext for fire-and-forget dispatch.
 
@@ -745,7 +743,7 @@ class PromptStudioHelper:
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(
-            profile_manager, request_user_id=request_user_id
+            profile_manager, request_user=request_user
         )
 
         vector_db = str(profile_manager.vector_store.id)
@@ -943,7 +941,8 @@ class PromptStudioHelper:
         document_id: str,
         run_id: str,
         profile_manager_id: str | None = None,
-        request_user_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext | None, dict[str, Any]]:
         """Build answer_prompt payload for multiple prompts in one task.
 
@@ -966,7 +965,7 @@ class PromptStudioHelper:
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(
-            profile_manager, request_user_id=request_user_id
+            profile_manager, request_user=request_user
         )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
@@ -1135,7 +1134,8 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str,
-        request_user_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext, dict[str, Any]]:
         """Build single_pass_extraction ExecutionContext.
 
@@ -1160,7 +1160,7 @@ class PromptStudioHelper:
 
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile, request_user_id=request_user_id
+            default_profile, request_user=request_user
         )
         default_profile.chunk_size = 0
 
@@ -1342,7 +1342,7 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str = None,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         """Method to index a document.
 
@@ -1400,14 +1400,14 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile, request_user_id=request_user_id
+            default_profile, request_user=request_user
         )
 
         # Also validate summary profile if it's different from default
         if tool.summarize_context and summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
             PromptStudioHelper.validate_profile_manager_owner_access(
-                summary_profile, request_user_id=request_user_id
+                summary_profile, request_user=request_user
             )
 
         fs_instance = EnvHelper.get_storage(
@@ -1536,7 +1536,7 @@ class PromptStudioHelper:
         id: str | None = None,
         run_id: str = None,
         profile_manager_id: str | None = None,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -1572,7 +1572,7 @@ class PromptStudioHelper:
                 document_id=document_id,
                 run_id=run_id,
                 profile_manager_id=profile_manager_id,
-                request_user_id=request_user_id,
+                request_user=request_user,
             )
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
@@ -1582,7 +1582,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
-                request_user_id=request_user_id,
+                request_user=request_user,
             )
 
     @staticmethod
@@ -1596,7 +1596,7 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
@@ -1663,7 +1663,7 @@ class PromptStudioHelper:
                     run_id=run_id,
                     profile_manager_id=profile_manager_id,
                     user_id=user_id,
-                    request_user_id=request_user_id,
+                    request_user=request_user,
                 )
             return PromptStudioHelper._handle_response(
                 response=response,
@@ -1703,7 +1703,7 @@ class PromptStudioHelper:
         org_id,
         document_id,
         run_id,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
@@ -1734,7 +1734,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
-                request_user_id=request_user_id,
+                request_user=request_user,
             )
             return PromptStudioHelper._handle_response(
                 response=response,
@@ -1821,7 +1821,7 @@ class PromptStudioHelper:
         run_id: str,
         user_id: str,
         profile_manager_id: str | None = None,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -1876,7 +1876,7 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         # has access to adapters
         PromptStudioHelper.validate_profile_manager_owner_access(
-            profile_manager, request_user_id=request_user_id
+            profile_manager, request_user=request_user
         )
         # Not checking reindex here as there might be
         # change in Profile Manager
@@ -2258,7 +2258,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str = None,
-        request_user_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -2279,7 +2279,7 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(default_profile)
         # has access to adapters configured in profile manager
         PromptStudioHelper.validate_profile_manager_owner_access(
-            default_profile, request_user_id=request_user_id
+            default_profile, request_user=request_user
         )
         default_profile.chunk_size = 0  # To retrive full context
         if prompt_grammar:
