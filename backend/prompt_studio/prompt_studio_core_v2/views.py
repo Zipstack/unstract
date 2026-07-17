@@ -469,9 +469,12 @@ class PromptStudioCoreView(
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
+            # user_id is the file-path owner (project creator);
+            # request_user is who triggered the action (UN-3739)
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -630,6 +633,7 @@ class PromptStudioCoreView(
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         # If document is being indexed, return pending status
@@ -742,6 +746,7 @@ class PromptStudioCoreView(
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         if context is None:
@@ -848,6 +853,7 @@ class PromptStudioCoreView(
             user_id=user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
