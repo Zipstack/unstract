@@ -20,8 +20,8 @@ from file_management.exceptions import FileNotFound
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from permissions.roles import ResourceRole
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
