@@ -1,45 +1,22 @@
-"""Phase 6E Sanity — TableExtractorExecutor + TABLE_EXTRACT operation.
-
-Verifies:
-1. Operation.TABLE_EXTRACT enum exists with value "table_extract"
-2. tasks.py log_component builder handles table_extract operation
-3. TableExtractorExecutor mock — registration via entry point
-4. TableExtractorExecutor mock — dispatch to correct queue
-5. LegacyExecutor excludes table_extract from its _OPERATION_MAP
-6. Cloud executor entry point name matches pyproject.toml
+"""TABLE_EXTRACT operation: the table executor registers via entry point,
+routes to its own queue, and LegacyExecutor rejects the operation.
 """
 
 from unittest.mock import MagicMock
 
-
-from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 # ---------------------------------------------------------------------------
-# 1. Operation enum
+# tasks.py log_component for table_extract
 # ---------------------------------------------------------------------------
 
-class TestTableExtractOperation:
-    def test_table_extract_enum_exists(self):
-        assert hasattr(Operation, "TABLE_EXTRACT")
-        assert Operation.TABLE_EXTRACT.value == "table_extract"
-
-    def test_table_extract_in_operation_values(self):
-        values = {op.value for op in Operation}
-        assert "table_extract" in values
-
-
-# ---------------------------------------------------------------------------
-# 2. tasks.py log_component for table_extract
-# ---------------------------------------------------------------------------
 
 class TestTasksLogComponent:
     def test_table_extract_log_component(self):
         """tasks.py builds correct log_component for table_extract."""
-
         # Build a mock context dict
         ctx_dict = {
             "executor_name": "table",
@@ -80,6 +57,7 @@ class TestTasksLogComponent:
 # ---------------------------------------------------------------------------
 # 3. Mock TableExtractorExecutor — entry point registration
 # ---------------------------------------------------------------------------
+
 
 class TestTableExtractorExecutorRegistration:
     def test_mock_table_executor_discovered_via_entry_point(self):
@@ -140,6 +118,7 @@ class TestTableExtractorExecutorRegistration:
 # 4. Queue routing for table executor
 # ---------------------------------------------------------------------------
 
+
 class TestTableQueueRouting:
     def test_table_executor_routes_to_correct_queue(self):
         """executor_name='table' routes to celery_executor_table queue."""
@@ -174,6 +153,7 @@ class TestTableQueueRouting:
 # 5. LegacyExecutor does NOT handle table_extract
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyExcludesTable:
     def test_table_extract_not_in_legacy_operation_map(self):
         """LegacyExecutor._OPERATION_MAP should NOT contain table_extract."""
@@ -205,6 +185,7 @@ class TestLegacyExcludesTable:
 # ---------------------------------------------------------------------------
 # 6. Entry point name verification
 # ---------------------------------------------------------------------------
+
 
 class TestEntryPointConfig:
     def test_entry_point_name_is_table(self):

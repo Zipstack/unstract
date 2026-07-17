@@ -1,4 +1,4 @@
-"""Phase 4-SANITY — IDE path integration tests through executor chain.
+"""IDE path integration tests through executor chain.
 
 Phase 4 replaces PromptTool HTTP calls in PromptStudioHelper with
 ExecutionDispatcher → executor worker → LegacyExecutor.
@@ -19,7 +19,6 @@ All tests use execution_source="ide" to match the real IDE path.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
@@ -34,22 +33,14 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 _PATCH_X2TEXT = "executor.executors.legacy_executor.X2Text"
 _PATCH_FS = "executor.executors.legacy_executor.FileUtils.get_fs_instance"
-_PATCH_INDEX_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
-)
-_PATCH_PROMPT_DEPS = (
-    "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
-)
+_PATCH_INDEX_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_indexing_deps"
+_PATCH_PROMPT_DEPS = "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
 _PATCH_SHIM = "executor.executors.legacy_executor.ExecutorToolShim"
 _PATCH_RUN_COMPLETION = (
     "executor.executors.answer_prompt.AnswerPromptService.run_completion"
 )
-_PATCH_INDEX_UTILS = (
-    "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
-)
-_PATCH_PLUGIN_LOADER = (
-    "executor.executors.plugins.loader.ExecutorPluginLoader.get"
-)
+_PATCH_INDEX_UTILS = "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
+_PATCH_PLUGIN_LOADER = "executor.executors.plugins.loader.ExecutorPluginLoader.get"
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -120,7 +111,9 @@ def _mock_prompt_deps(llm=None):
     if llm is None:
         llm = _mock_llm()
 
-    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
+    from executor.executors.answer_prompt import (
+        AnswerPromptService as answer_prompt_svc_cls,
+    )
 
     retrieval_svc = MagicMock(name="RetrievalService")
     retrieval_svc.run_retrieval.return_value = ["chunk1"]
@@ -165,8 +158,12 @@ def _mock_process_response(text="ide extracted text"):
     )
 
 
-def _make_ide_prompt(name="invoice_number", prompt="What is the invoice number?",
-                     output_type="text", **overrides):
+def _make_ide_prompt(
+    name="invoice_number",
+    prompt="What is the invoice number?",
+    output_type="text",
+    **overrides,
+):
     """Build a prompt dict matching what prompt_studio_helper builds.
 
     Uses the exact key strings from ToolStudioPromptKeys / PSKeys.
@@ -677,14 +674,10 @@ class TestIDEDispatcherIntegration:
 
     @patch(_PATCH_FS)
     @patch(_PATCH_X2TEXT)
-    def test_dispatcher_extract_round_trip(
-        self, mock_x2text_cls, mock_get_fs, eager_app
-    ):
+    def test_dispatcher_extract_round_trip(self, mock_x2text_cls, mock_get_fs, eager_app):
         """ExecutionDispatcher.dispatch() → extract → ExecutionResult."""
         mock_x2text = MagicMock()
-        mock_x2text.process.return_value = _mock_process_response(
-            "dispatcher extracted"
-        )
+        mock_x2text.process.return_value = _mock_process_response("dispatcher extracted")
         mock_x2text.x2text_instance = MagicMock()
         mock_x2text_cls.return_value = mock_x2text
         mock_get_fs.return_value = MagicMock()
@@ -749,9 +742,7 @@ class TestIDEDispatcherIntegration:
 
     @patch(_PATCH_FS)
     @patch(_PATCH_INDEX_DEPS)
-    def test_dispatcher_index_round_trip(
-        self, mock_deps, mock_get_fs, eager_app
-    ):
+    def test_dispatcher_index_round_trip(self, mock_deps, mock_get_fs, eager_app):
         """ExecutionDispatcher.dispatch() → index → ExecutionResult."""
         mock_index_cls = MagicMock()
         mock_index = MagicMock()

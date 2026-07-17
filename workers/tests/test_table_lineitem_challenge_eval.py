@@ -1,4 +1,4 @@
-"""Phase 6D Sanity — LegacyExecutor plugin integration.
+"""LegacyExecutor plugin integration.
 
 Verifies:
 1. TABLE type raises LegacyExecutorError with routing guidance
@@ -22,10 +22,10 @@ from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_context(
     output_type="TEXT",
@@ -110,17 +110,14 @@ def _standard_patches(executor, mock_llm_instance):
     mock_llm_cls = MagicMock(return_value=mock_llm_instance)
     return {
         "_get_prompt_deps": patch.object(
-            executor, "_get_prompt_deps",
+            executor,
+            "_get_prompt_deps",
             return_value=(
                 AnswerPromptService,
                 MagicMock(
-                    retrieve_complete_context=MagicMock(
-                        return_value=["context chunk"]
-                    )
+                    retrieve_complete_context=MagicMock(return_value=["context chunk"])
                 ),
-                MagicMock(
-                    is_variables_present=MagicMock(return_value=False)
-                ),
+                MagicMock(is_variables_present=MagicMock(return_value=False)),
                 None,  # Index
                 mock_llm_cls,
                 MagicMock(),  # EmbeddingCompat
@@ -142,13 +139,14 @@ def _standard_patches(executor, mock_llm_instance):
 # 1. TABLE type raises with routing guidance
 # ---------------------------------------------------------------------------
 
+
 class TestTableLineItemGuard:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_table_type_delegates_to_table_executor(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_table_type_delegates_to_table_executor(self, mock_key, mock_shim_cls):
         """TABLE prompts are delegated to TableExtractorExecutor in-process."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -178,11 +176,11 @@ class TestTableLineItemGuard:
         assert sub_ctx.operation == "table_extract"
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_table_type_raises_when_plugin_missing(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_table_type_raises_when_plugin_missing(self, mock_key, mock_shim_cls):
         """TABLE prompts raise error when table executor plugin is not installed."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -199,11 +197,11 @@ class TestTableLineItemGuard:
                     executor._handle_answer_prompt(ctx)
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_line_item_type_raises_when_plugin_missing(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_line_item_type_raises_when_plugin_missing(self, mock_key, mock_shim_cls):
         """LINE_ITEM prompts raise install error when line_item plugin
         is not registered (mirrors TABLE missing-plugin behavior).
         """
@@ -216,9 +214,7 @@ class TestTableLineItemGuard:
         with patches["_get_prompt_deps"], patches["shim"], patches["index_key"]:
             with patch(
                 "unstract.sdk1.execution.registry.ExecutorRegistry.get",
-                side_effect=KeyError(
-                    "No executor registered with name 'line_item'"
-                ),
+                side_effect=KeyError("No executor registered with name 'line_item'"),
             ):
                 with pytest.raises(
                     LegacyExecutorError, match="line_item_extractor plugin"
@@ -230,13 +226,14 @@ class TestTableLineItemGuard:
 # 2. Challenge plugin integration
 # ---------------------------------------------------------------------------
 
+
 class TestChallengeIntegration:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_invoked_when_enabled_and_installed(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_invoked_when_enabled_and_installed(self, mock_key, mock_shim_cls):
         """Challenge plugin is instantiated and run() called."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -271,11 +268,11 @@ class TestChallengeIntegration:
         mock_challenger.run.assert_called_once()
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_skipped_when_plugin_not_installed(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_skipped_when_plugin_not_installed(self, mock_key, mock_shim_cls):
         """When challenge enabled but plugin missing, no error."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -297,11 +294,11 @@ class TestChallengeIntegration:
         assert result.success
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_skipped_when_disabled(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_skipped_when_disabled(self, mock_key, mock_shim_cls):
         """When enable_challenge=False, plugin loader not called for challenge."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -327,11 +324,11 @@ class TestChallengeIntegration:
             )
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_skipped_when_no_challenge_llm(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_skipped_when_no_challenge_llm(self, mock_key, mock_shim_cls):
         """When enable_challenge=True but no challenge_llm, skip challenge."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -361,19 +358,18 @@ class TestChallengeIntegration:
 # 3. Evaluation plugin integration
 # ---------------------------------------------------------------------------
 
+
 class TestEvaluationIntegration:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_evaluation_invoked_when_enabled_and_installed(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_evaluation_invoked_when_enabled_and_installed(self, mock_key, mock_shim_cls):
         """Evaluation plugin is instantiated and run() called."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
-        ctx = _make_context(
-            eval_settings={PSKeys.EVAL_SETTINGS_EVALUATE: True}
-        )
+        ctx = _make_context(eval_settings={PSKeys.EVAL_SETTINGS_EVALUATE: True})
         llm = _mock_llm()
         mock_eval_cls = MagicMock()
         mock_evaluator = MagicMock()
@@ -386,9 +382,7 @@ class TestEvaluationIntegration:
             patches["index_key"],
             patch(
                 "executor.executors.plugins.loader.ExecutorPluginLoader.get",
-                side_effect=lambda name: (
-                    mock_eval_cls if name == "evaluation" else None
-                ),
+                side_effect=lambda name: mock_eval_cls if name == "evaluation" else None,
             ),
         ):
             result = executor._handle_answer_prompt(ctx)
@@ -401,17 +395,15 @@ class TestEvaluationIntegration:
         mock_evaluator.run.assert_called_once()
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_evaluation_skipped_when_plugin_not_installed(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_evaluation_skipped_when_plugin_not_installed(self, mock_key, mock_shim_cls):
         """When evaluation enabled but plugin missing, no error."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
-        ctx = _make_context(
-            eval_settings={PSKeys.EVAL_SETTINGS_EVALUATE: True}
-        )
+        ctx = _make_context(eval_settings={PSKeys.EVAL_SETTINGS_EVALUATE: True})
         llm = _mock_llm()
 
         patches = _standard_patches(executor, llm)
@@ -429,11 +421,11 @@ class TestEvaluationIntegration:
         assert result.success
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_evaluation_skipped_when_not_enabled(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_evaluation_skipped_when_not_enabled(self, mock_key, mock_shim_cls):
         """When no eval_settings or evaluate=False, evaluation skipped."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -464,13 +456,14 @@ class TestEvaluationIntegration:
 # 4. Challenge runs before evaluation (ordering)
 # ---------------------------------------------------------------------------
 
+
 class TestChallengeBeforeEvaluation:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_runs_before_evaluation(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_runs_before_evaluation(self, mock_key, mock_shim_cls):
         """Challenge mutates structured_output before evaluation reads it."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
@@ -521,13 +514,14 @@ class TestChallengeBeforeEvaluation:
 # 5. Challenge mutates structured_output
 # ---------------------------------------------------------------------------
 
+
 class TestChallengeMutation:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
-    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
-           return_value="doc-id-1")
-    def test_challenge_mutates_structured_output(
-        self, mock_key, mock_shim_cls
-    ):
+    @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-1",
+    )
+    def test_challenge_mutates_structured_output(self, mock_key, mock_shim_cls):
         """Challenge plugin can mutate structured_output dict."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()

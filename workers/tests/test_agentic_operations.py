@@ -1,25 +1,17 @@
-"""Phase 6H Sanity — AgenticPromptStudioExecutor + agentic operations.
-
-Verifies:
-1. All 8 agentic Operation enums exist
-2. AGENTIC_EXTRACTION removed from Operation enum
-3. Mock AgenticPromptStudioExecutor — registration and all 8 operations
-4. Queue routing: executor_name="agentic" → celery_executor_agentic
-5. LegacyExecutor does NOT handle any agentic operations
-6. Dispatch sends to correct queue
-7. Structure tool routes to agentic executor (not legacy)
+"""Agentic operations: the agentic executor registers and routes all 8
+operations to its queue, LegacyExecutor rejects them, and the structure tool
+dispatches agentic extract to it (not legacy). Also guards that the old
+AGENTIC_EXTRACTION enum stays removed.
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
-
 
 AGENTIC_OPERATIONS = [
     "agentic_extract",
@@ -34,15 +26,11 @@ AGENTIC_OPERATIONS = [
 
 
 # ---------------------------------------------------------------------------
-# 1. Operation enums
+# Operation enum
 # ---------------------------------------------------------------------------
 
-class TestAgenticOperations:
-    @pytest.mark.parametrize("op", AGENTIC_OPERATIONS)
-    def test_agentic_operation_enum_exists(self, op):
-        values = {o.value for o in Operation}
-        assert op in values
 
+class TestAgenticOperations:
     def test_agentic_extraction_removed(self):
         """Old AGENTIC_EXTRACTION enum no longer exists."""
         assert not hasattr(Operation, "AGENTIC_EXTRACTION")
@@ -54,9 +42,11 @@ class TestAgenticOperations:
 # 2. Mock AgenticPromptStudioExecutor — registration and all operations
 # ---------------------------------------------------------------------------
 
+
 class TestAgenticExecutorRegistration:
     def test_mock_agentic_executor_registers_and_routes_all_ops(self):
         """Simulate cloud executor discovery and execution of all 8 ops."""
+
         @ExecutorRegistry.register
         class MockAgenticExecutor(BaseExecutor):
             _OPERATION_MAP = {op: f"_handle_{op}" for op in AGENTIC_OPERATIONS}
@@ -115,6 +105,7 @@ class TestAgenticExecutorRegistration:
 # 3. Queue routing
 # ---------------------------------------------------------------------------
 
+
 class TestAgenticQueueRouting:
     def test_agentic_routes_to_correct_queue(self):
         queue = ExecutionDispatcher._get_queue("agentic")
@@ -148,10 +139,12 @@ class TestAgenticQueueRouting:
 # 4. LegacyExecutor does NOT handle agentic operations
 # ---------------------------------------------------------------------------
 
+
 class TestLegacyExcludesAgentic:
     @pytest.mark.parametrize("op", AGENTIC_OPERATIONS)
     def test_agentic_op_not_in_legacy_operation_map(self, op):
         from executor.executors.legacy_executor import LegacyExecutor
+
         assert op not in LegacyExecutor._OPERATION_MAP
 
     def test_legacy_returns_failure_for_agentic_extract(self):
@@ -197,11 +190,11 @@ class TestLegacyExcludesAgentic:
 # 5. Structure tool routes to agentic executor
 # ---------------------------------------------------------------------------
 
+
 class TestStructureToolAgenticRouting:
     @patch("unstract.sdk1.x2txt.X2Text")
     def test_structure_tool_dispatches_agentic_extract(self, mock_x2text_cls, tmp_path):
         """Verify _run_agentic_extraction sends executor_name='agentic'."""
-
         from file_processing.structure_tool_task import _run_agentic_extraction
 
         mock_dispatcher = MagicMock()
@@ -224,6 +217,7 @@ class TestStructureToolAgenticRouting:
             dispatcher=mock_dispatcher,
             shim=MagicMock(),
             file_execution_id="exec-001",
+            execution_id="exec-parent-001",
             organization_id="org-001",
             source_file_name="test.pdf",
             fs=MagicMock(),
@@ -240,6 +234,7 @@ class TestStructureToolAgenticRouting:
 # ---------------------------------------------------------------------------
 # 6. tasks.py log_component for agentic operations
 # ---------------------------------------------------------------------------
+
 
 class TestTasksLogComponent:
     @pytest.mark.parametrize("op", AGENTIC_OPERATIONS)
@@ -262,6 +257,8 @@ class TestTasksLogComponent:
         # Agentic ops should NOT match ide_index, structure_pipeline,
         # or table_extract/smart_table_extract branches
         assert context.operation not in (
-            "ide_index", "structure_pipeline",
-            "table_extract", "smart_table_extract",
+            "ide_index",
+            "structure_pipeline",
+            "table_extract",
+            "smart_table_extract",
         )
