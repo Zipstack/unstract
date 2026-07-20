@@ -253,6 +253,7 @@ def provisioned_workflow(
     resp.raise_for_status()
     eps = resp.json()
     eps = eps if isinstance(eps, list) else eps.get("results", [])
+    patched = 0
     for endpoint in eps:
         if endpoint.get("workflow") == workflow_id:
             resp = _patch(
@@ -261,6 +262,9 @@ def provisioned_workflow(
                 json={"connection_type": "API"},
             )
             assert resp.status_code == 200, f"patch endpoint: {resp.text}"
+            patched += 1
+    # Fail here, not in a downstream execute test, if no endpoint matched.
+    assert patched, f"no endpoint matched workflow_id={workflow_id}: {eps}"
 
     resp = _post(
         s,
