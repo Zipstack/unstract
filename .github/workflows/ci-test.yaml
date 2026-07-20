@@ -168,14 +168,14 @@ jobs:
         run: ./run-platform.sh -e
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
 
       # Bake instead of `compose build` so each ephemeral runner restores layers
       # from the GHA cache the release workflow also writes (matching per-service
       # scopes), instead of building cold every run. `load` exports the images
       # into the daemon so the compose stack can boot them.
       - name: Build service images
-        uses: docker/bake-action@v7
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7
         with:
           files: ./docker/docker-compose.build.yaml
           load: true
