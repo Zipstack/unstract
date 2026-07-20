@@ -9,6 +9,7 @@ unless the group is marked ``optional: true`` (which is how we declare
 from __future__ import annotations
 
 import graphlib
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +26,11 @@ RUNNERS: tuple[Runner, ...] = get_args(Runner)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "groups.yaml"
+
+# os.pathsep-separated overlay manifests merged on top of the base groups.yaml.
+# Lets a downstream repo (e.g. the cloud build, which copies its plugins into
+# this tree) contribute groups without editing the OSS manifest.
+EXTRA_MANIFESTS_ENV = "UNSTRACT_RIG_EXTRA_MANIFESTS"
 
 
 @dataclass(frozen=True)
@@ -127,12 +133,51 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     for name, spec in (raw["groups"] or {}).items():
         groups[name] = _build_group(name, spec, defaults)
 
+    # Overlay manifests are merged before validation, so cross-manifest
+    # `depends_on` and the platform-gate invariant are checked over the union.
+    for extra in _extra_manifest_paths():
+        _merge_manifest(groups, extra, defaults)
+
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
     _validate_paths(groups)
     smoke_gate = defaults.get("platform_gate_group", "e2e-smoke")
     _validate_platform_groups_depend_on_gate(groups, gate=smoke_gate)
     return GroupManifest(groups=groups)
+
+
+def _extra_manifest_paths() -> list[Path]:
+    """Overlay manifest paths from ``UNSTRACT_RIG_EXTRA_MANIFESTS``.
+
+    Relative paths resolve against ``REPO_ROOT`` so a downstream repo can point
+    at a manifest it copied into this tree (e.g. ``tests/groups.cloud.yaml``).
+    """
+    raw = os.environ.get(EXTRA_MANIFESTS_ENV, "").strip()
+    if not raw:
+        return []
+    paths: list[Path] = []
+    for entry in filter(None, (e.strip() for e in raw.split(os.pathsep))):
+        p = Path(entry)
+        paths.append(p if p.is_absolute() else REPO_ROOT / p)
+    return paths
+
+
+def _merge_manifest(
+    groups: dict[str, GroupDefinition], manifest_path: Path, base_defaults: dict[str, Any]
+) -> None:
+    """Merge an overlay manifest into ``groups`` in place. Overlay groups inherit
+    the base ``defaults`` unless they declare their own; a name collision is an
+    error rather than a silent override."""
+    raw = yaml.safe_load(manifest_path.read_text())
+    if not isinstance(raw, dict) or "groups" not in raw:
+        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+    defaults = {**base_defaults, **(raw.get("defaults") or {})}
+    for name, spec in (raw["groups"] or {}).items():
+        if name in groups:
+            raise ValueError(
+                f"{manifest_path}: group {name!r} already defined in a prior manifest"
+            )
+        groups[name] = _build_group(name, spec, defaults)
 
 
 def _build_group(

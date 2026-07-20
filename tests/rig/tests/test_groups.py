@@ -232,3 +232,58 @@ def test_group_env_is_frozen() -> None:
     assert group.env["A"] == "1"
     with pytest.raises(TypeError):
         group.env["B"] = "2"  # type: ignore[index]
+
+
+def _base_manifest(tmp_path: Path) -> Path:
+    return _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          unit-base:
+            tier: unit
+            paths: [x]
+            optional: true
+        """,
+    )
+
+
+def test_extra_manifest_merged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base = _base_manifest(tmp_path)
+    overlay = tmp_path / "groups.cloud.yaml"
+    overlay.write_text(
+        """
+        version: 1
+        groups:
+          unit-cloud:
+            tier: unit
+            paths: [y]
+            depends_on: [unit-base]
+            optional: true
+        """
+    )
+    monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
+    manifest = load_groups(base)
+    assert "unit-cloud" in manifest.names()
+    # Cross-manifest depends_on resolves against the merged set.
+    assert "unit-base" in manifest.expand(["unit-cloud"])
+
+
+def test_extra_manifest_name_collision_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = _base_manifest(tmp_path)
+    overlay = tmp_path / "groups.cloud.yaml"
+    overlay.write_text(
+        """
+        version: 1
+        groups:
+          unit-base:
+            tier: unit
+            paths: [y]
+            optional: true
+        """
+    )
+    monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
+    with pytest.raises(ValueError, match="already defined"):
+        load_groups(base)
