@@ -402,3 +402,38 @@ class TestStoreResultRealReconnect:
             cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (key,))
         pg_conn.commit()
         assert row is not None and row[0] == "true"
+
+
+class TestRedisDownFallbackBudget:
+    """The early Redis-unavailable fallback in ``_wait_via_redis`` must degrade to
+    the poll for the REMAINING budget, not the full original timeout — otherwise
+    ``wait_for_result`` overshoots its stated timeout on the Redis-down path.
+    (No DB/Redis needed: this pins the timeout arithmetic.)
+    """
+
+    def test_early_redis_unavailable_passes_remaining_budget(self, monkeypatch):
+        import queue_backend.pg_queue.result_backend as rbmod
+
+        rb = PgResultBackend(conn=MagicMock())
+        # Initial get_result (pre-wait race check) misses → proceed to the fallback.
+        monkeypatch.setattr(rb, "get_result", lambda task_id: None)
+        # Redis unavailable up front, and deliberately burn ~0.1s of the budget
+        # between the deadline being set and the fallback branch.
+        def slow_no_redis():
+            time.sleep(0.1)
+            return None
+
+        monkeypatch.setattr(rbmod, "_get_result_redis_client", slow_no_redis)
+
+        captured = {}
+
+        def fake_poll(task_id, timeout, poll_interval):
+            captured["timeout"] = timeout
+            return {"ok": True}
+
+        monkeypatch.setattr(rb, "_poll_for_result", fake_poll)
+
+        out = rb._wait_via_redis("t", timeout=5.0, poll_interval=0.2)
+        assert out == {"ok": True}
+        # Remaining budget, not the full 5.0 (buggy version passed exactly 5.0).
+        assert 0 < captured["timeout"] < 5.0 - 0.05

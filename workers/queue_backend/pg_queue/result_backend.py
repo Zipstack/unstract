@@ -503,7 +503,14 @@ class PgResultBackend:
             return row
         client = _get_result_redis_client()
         if client is None:
-            return self._poll_for_result(task_id, timeout, poll_interval)
+            # Redis unavailable up front → degrade to pure poll, but for the
+            # REMAINING budget: the deadline was set above and ``get_result`` has
+            # already burned some of it, so passing the full ``timeout`` here would
+            # let ``wait_for_result`` overshoot its contract. Mirrors the mid-BLPOP
+            # RedisError fallback below.
+            return self._poll_for_result(
+                task_id, max(0.0, deadline - time.monotonic()), poll_interval
+            )
         key = _ready_key(task_id)
         while True:
             # Do NOT pin the DB connection across the (possibly long) BLPOP: an
