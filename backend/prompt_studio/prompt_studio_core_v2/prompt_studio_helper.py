@@ -9,6 +9,7 @@ from typing import Any
 from account_v2.constants import Common
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
+from backend.celery_service import app as celery_app
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -22,11 +23,19 @@ from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from unstract.core.pubsub_helper import LogPublisher
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.exceptions import IndexingError, SdkError
+from unstract.sdk1.execution.context import ExecutionContext
+from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.utils.indexing import IndexingUtils
+from unstract.sdk1.utils.tool import ToolUtils
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -76,15 +85,6 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from unstract.core.pubsub_helper import LogPublisher
-from unstract.sdk1.constants import LogLevel
-from unstract.sdk1.exceptions import IndexingError, SdkError
-from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
-from unstract.sdk1.file_storage.constants import StorageType
-from unstract.sdk1.file_storage.env_helper import EnvHelper
-from unstract.sdk1.utils.indexing import IndexingUtils
-from unstract.sdk1.utils.tool import ToolUtils
 
 logger = logging.getLogger(__name__)
 
@@ -274,7 +274,7 @@ class PromptStudioHelper:
             # The requester IS the creator — "created by another user"
             # would be false, and they can be addressed directly.
             adapter_ref = (
-                f"the adapter '{denied_names}', which you no longer have" f" access to"
+                f"the adapter '{denied_names}', which you no longer have access to"
                 if len(denied) == 1
                 else f"adapters you no longer have access to: {denied_names}"
             )
@@ -3023,8 +3023,7 @@ class PromptStudioHelper:
                     )
                 except Exception as e:
                     logger.warning(
-                        f"Failed to import settings for prompt "
-                        f"{created.prompt_id}: {e}"
+                        f"Failed to import settings for prompt {created.prompt_id}: {e}"
                     )
 
     @staticmethod

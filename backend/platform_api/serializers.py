@@ -1,9 +1,9 @@
 import re
 
+from backend.serializers import AuditSerializer
 from rest_framework import serializers
 from utils.user_context import UserContext
 
-from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
 
 # Alphanumeric, spaces, hyphens, underscores, periods, commas, colons,

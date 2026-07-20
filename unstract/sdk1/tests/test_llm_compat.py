@@ -4,6 +4,7 @@ from typing import Self
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.llm import (
     LLM,
     ChatMessage,
@@ -358,7 +359,7 @@ class TestMessagesToPrompt:
         ]
         result = LLMCompat._messages_to_prompt(messages)
         assert result == (
-            "system: Be concise\n" "user: First\n" "assistant: Answer\n" "user: Follow-up"
+            "system: Be concise\nuser: First\nassistant: Answer\nuser: Follow-up"
         )
 
     def test_empty_messages_returns_empty_string(self: Self) -> None:

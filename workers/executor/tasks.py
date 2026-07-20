@@ -10,7 +10,6 @@ from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.result import ExecutionResult
