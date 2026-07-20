@@ -159,7 +159,26 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # into an irreversible claim GC, confirm the row is truly absent (unscoped)
             # before saying not-found; otherwise 500 so the reaper retains the claim.
             execution_id = kwargs.get("pk") or kwargs.get("id")
-            if not WorkflowExecution.objects.filter(id=execution_id).exists():
+            # Own try/except: a DatabaseError from this unscoped exists-check is
+            # raised INSIDE this except block, so the sibling ``except Exception``
+            # below would NOT catch it (Python doesn't route between sibling
+            # handlers) — it would escape as Django's unstructured 500. On any
+            # exists-check failure we can't confirm absence, so fail closed to a
+            # structured 500 (retain the claim), never a 404 that would GC it.
+            try:
+                row_absent = not WorkflowExecution.objects.filter(
+                    id=execution_id
+                ).exists()
+            except Exception:
+                logger.exception(
+                    f"WorkflowExecution {execution_id} existence check failed "
+                    "(retrieve) — returning 500 (retain)"
+                )
+                return Response(
+                    {"error": "Failed to retrieve workflow execution"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            if row_absent:
                 logger.info(
                     f"WorkflowExecution {execution_id} not found (retrieve) — 404"
                 )

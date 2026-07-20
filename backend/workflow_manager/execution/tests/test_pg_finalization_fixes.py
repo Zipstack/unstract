@@ -456,6 +456,29 @@ class RetrieveNotFoundTests(TestCase):
             resp = self.view.retrieve(req, id=str(ex.id))
         assert resp.status_code == 500
 
+    def test_retrieve_existence_check_db_error_returns_structured_500(self):
+        # A DatabaseError from the unscoped exists-check is raised INSIDE the
+        # Http404 except block, so the sibling `except Exception` cannot catch it;
+        # without its own guard it would escape as Django's unstructured 500.
+        # Assert we fail closed to a STRUCTURED 500 (retain the claim) and never
+        # propagate — the reaper depends on the structured shape.
+        from django.db import DatabaseError
+        from django.http import Http404
+
+        req = MagicMock()
+        req.GET = {}
+        with (
+            patch.object(self.view, "get_object", side_effect=Http404("scoped out")),
+            patch.object(
+                WorkflowExecution.objects, "filter", side_effect=DatabaseError("db down")
+            ),
+        ):
+            resp = self.view.retrieve(req, id=str(uuid.uuid4()))
+        assert resp.status_code == 500
+        assert resp.data.get("error") == "Failed to retrieve workflow execution"
+        # No "detail" → this is the guarded structured 500, not the catch-all path.
+        assert "detail" not in resp.data
+
 
 class RateLimitReleaseOnCommitTests(TestCase):
     """The API-deployment rate-limit slot must be released only once the status
