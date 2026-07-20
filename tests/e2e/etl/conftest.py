@@ -54,8 +54,11 @@ def minio_store() -> MinioFixture:
     endpoint = os.environ.get("UNSTRACT_MINIO_ENDPOINT", "localhost:9000")
     access_key = os.environ.get("UNSTRACT_MINIO_ACCESS_KEY", "minio")
     secret_key = os.environ.get("UNSTRACT_MINIO_SECRET_KEY", "minio123")
+    # Scheme is a var so a TLS-fronted deployment can override; the compose
+    # stack serves MinIO plain over its internal network.
+    scheme = os.environ.get("UNSTRACT_MINIO_SCHEME", "http")
     internal_url = os.environ.get(
-        "UNSTRACT_MINIO_INTERNAL_URL", "http://unstract-minio:9000"
+        "UNSTRACT_MINIO_INTERNAL_URL", f"{scheme}://unstract-minio:9000"
     )
     client = minio.Minio(
         endpoint, access_key=access_key, secret_key=secret_key, secure=False
