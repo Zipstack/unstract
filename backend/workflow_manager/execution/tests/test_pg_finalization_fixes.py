@@ -10,6 +10,7 @@ import uuid
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
+from django.db import transaction
 from django.test import TestCase
 from django.utils import timezone
 
@@ -454,3 +455,73 @@ class RetrieveNotFoundTests(TestCase):
         with patch.object(self.view, "get_object", side_effect=Http404("scoped out")):
             resp = self.view.retrieve(req, id=str(ex.id))
         assert resp.status_code == 500
+
+
+class RateLimitReleaseOnCommitTests(TestCase):
+    """The API-deployment rate-limit slot must be released only once the status
+    write is DURABLE.
+
+    ``update_execution()`` schedules the release via ``transaction.on_commit`` so a
+    caller's OUTER-transaction rollback — ``update_status``'s file-aggregate write
+    failing, or the PG reaper's ``_recover_one_stuck_pg_execution`` — can no longer
+    free the slot while leaving the status un-persisted (the P1 flagged in review).
+
+    Covers BOTH transports: the release path is shared, so this asserts the Celery
+    (``queue_message_id`` NULL) happy path is unchanged — the slot still frees on
+    commit — and the PG path behaves identically.
+    """
+
+    def setUp(self):
+        self.wf = Workflow.objects.create(workflow_name="wf-ratelimit")
+
+    def _exec(self, pg):
+        # pipeline_id set → an API-deployment execution that holds a rate-limit slot.
+        return WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.EXECUTING.value,
+            pipeline_id=uuid.uuid4(),
+            queue_message_id=123 if pg else None,
+            task_id=None if pg else uuid.uuid4(),
+        )
+
+    @patch.object(WorkflowExecution, "_release_api_deployment_rate_limit")
+    def test_celery_path_release_fires_on_commit(self, release):
+        # Regression guard for the existing Celery flow: reaching a terminal status
+        # still releases the slot — just on commit rather than mid-transaction.
+        ex = self._exec(pg=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            ex.update_execution(status=ExecutionStatus.COMPLETED)
+        release.assert_called_once()
+
+    @patch.object(WorkflowExecution, "_release_api_deployment_rate_limit")
+    def test_pg_path_release_fires_on_commit(self, release):
+        ex = self._exec(pg=True)
+        with self.captureOnCommitCallbacks(execute=True):
+            ex.update_execution(status=ExecutionStatus.COMPLETED)
+        release.assert_called_once()
+
+    @patch.object(WorkflowExecution, "_release_api_deployment_rate_limit")
+    def test_release_suppressed_when_outer_txn_rolls_back(self, release):
+        # The fix: an outer transaction that rolls back AFTER the status write must
+        # NOT leak the slot. Before on_commit, the Redis release fired inline and
+        # survived the rollback (freed slot + un-persisted status).
+        ex = self._exec(pg=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            try:
+                with transaction.atomic():
+                    ex.update_execution(status=ExecutionStatus.COMPLETED)
+                    raise RuntimeError("outer txn fails after the status write")
+            except RuntimeError:
+                pass
+        release.assert_not_called()
+        # And the status write rolled back with it — the execution is still recoverable.
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.EXECUTING.value
+
+    @patch.object(WorkflowExecution, "_release_api_deployment_rate_limit")
+    def test_non_terminal_status_never_releases(self, release):
+        # No slot is released for a non-terminal transition, on commit or otherwise.
+        ex = self._exec(pg=False)
+        with self.captureOnCommitCallbacks(execute=True):
+            ex.update_execution(status=ExecutionStatus.EXECUTING)
+        release.assert_not_called()

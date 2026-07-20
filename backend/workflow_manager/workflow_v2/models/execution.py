@@ -394,7 +394,16 @@ class WorkflowExecution(BaseModel):
                     locked, status, error, increment_attempt
                 )
         if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+            # Release the slot only once the status write is DURABLE. update_execution()
+            # has its own atomic(), but callers (update_status, the PG reaper's
+            # _recover_one_stuck_pg_execution) wrap it in an OUTER transaction with
+            # further writes (file aggregates, cascade). Firing the Redis release inline
+            # would free the rate-limit slot even if that outer txn later rolls back —
+            # freed slot + un-persisted status. transaction.on_commit fires on the
+            # OUTERMOST commit and is dropped on rollback; in autocommit (no surrounding
+            # txn) it runs immediately. So the happy path is unchanged for both
+            # transports, only the rollback leak is closed.
+            transaction.on_commit(self._release_api_deployment_rate_limit)
 
     def _apply_legacy_update(
         self,
