@@ -128,12 +128,18 @@ function Workflows() {
         // Endpoint is opt-in paginated: envelope when we send ?page, else a
         // bare array. Handle both so nothing breaks if the opt-in is dropped.
         const results = data?.results ?? data ?? [];
+        const total = data?.count ?? results.length;
+        // Deleting the last row on a page leaves it empty; step back a page.
+        if (results.length === 0 && page > 1 && total > 0) {
+          getProjectList(page - 1, pageSize, search);
+          return;
+        }
         setProjectList(results);
         setPagination((prev) => ({
           ...prev,
           current: page,
           pageSize,
-          total: data?.count ?? results.length,
+          total,
         }));
       })
       .catch(() => {

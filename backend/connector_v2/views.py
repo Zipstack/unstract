@@ -105,7 +105,6 @@ class ConnectorInstanceViewSet(
         if filter_args:
             queryset = queryset.filter(**filter_args)
 
-        # Server-side name search for the paginated listing page
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(connector_name__icontains=search)
@@ -128,7 +127,10 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        return queryset
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too. Not modified_at:
+        # that would conflict with the DISTINCT ON in for_user().
+        return queryset.order_by("id")
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.

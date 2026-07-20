@@ -190,11 +190,14 @@ class AdapterInstanceViewSet(
         ):
             queryset = queryset.filter(**filter_args)
 
-        # Server-side name search for the paginated listing page
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(adapter_name__icontains=search)
-        return queryset
+
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too. Not modified_at:
+        # that would conflict with the DISTINCT ON in for_user().
+        return queryset.order_by("id")
 
     def get_serializer_class(
         self,

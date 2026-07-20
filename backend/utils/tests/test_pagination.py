@@ -37,6 +37,11 @@ class TestOptionalPagination:
         req = _Req({"adapter_type": "LLM", "search": "foo"})
         assert OptionalPagination().paginate_queryset(QUERYSET, req) is None
 
+    def test_blank_params_do_not_trigger_pagination(self):
+        """Empty ?page= / ?page_size= keep the bare-array response."""
+        req = _Req({"page": "", "page_size": ""})
+        assert OptionalPagination().paginate_queryset(QUERYSET, req) is None
+
     def test_page_param_opts_in(self):
         paginator = OptionalPagination()
         page = paginator.paginate_queryset(QUERYSET, _Req({"page": "1"}))

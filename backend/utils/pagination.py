@@ -20,9 +20,10 @@ class OptionalPagination(CustomPagination):
 
     def paginate_queryset(self, queryset, request, view=None):
         params = request.query_params
-        if (
-            self.page_query_param not in params
-            and self.page_size_query_param not in params
+        # Blank values (?page=) count as not opting in, so shared callers keep
+        # their bare-array response instead of getting an enveloped page.
+        if not params.get(self.page_query_param) and not params.get(
+            self.page_size_query_param
         ):
             return None
         return super().paginate_queryset(queryset, request, view=view)

@@ -115,7 +115,6 @@ class WorkflowViewSet(
             "memberships__user"
         )
 
-        # Server-side name search for the paginated listing page
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(workflow_name__icontains=search)

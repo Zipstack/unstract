@@ -174,11 +174,12 @@ class PromptStudioCoreView(
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
-            # Server-side name search for the paginated listing page
             search = self.request.query_params.get("search")
             if search:
                 qs = qs.filter(tool_name__icontains=search)
-        return qs
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too.
+        return qs.order_by("tool_id")
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
