@@ -851,7 +851,7 @@ class TestStructureToolSingleDispatch:
     @patch("file_processing.structure_tool_task.get_executor_dispatcher")
     def test_single_dispatch_normal(
         self,
-        mock_dispatcher_cls,
+        mock_get_executor_dispatcher,
         mock_create_ph,
         mock_get_fs,
         mock_shim,
@@ -896,7 +896,7 @@ class TestStructureToolSingleDispatch:
         mock_create_ph.return_value = ph
 
         dispatcher = MagicMock()
-        mock_dispatcher_cls.return_value = dispatcher
+        mock_get_executor_dispatcher.return_value = dispatcher
         dispatcher.dispatch.return_value = ExecutionResult(
             success=True,
             data={"output": {"f1": "ans"}, "metadata": {}, "metrics": {}},
