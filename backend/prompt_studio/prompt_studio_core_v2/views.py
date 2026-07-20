@@ -31,6 +31,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -128,6 +129,7 @@ class PromptStudioCoreView(
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -172,6 +174,10 @@ class PromptStudioCoreView(
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
+            # Server-side name search for the paginated listing page
+            search = self.request.query_params.get("search")
+            if search:
+                qs = qs.filter(tool_name__icontains=search)
         return qs
 
     def get_object(self):

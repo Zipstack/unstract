@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from backend.constants import RequestKey
@@ -45,6 +46,7 @@ class ConnectorInstanceViewSet(
 ):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    pagination_class = OptionalPagination
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -102,6 +104,11 @@ class ConnectorInstanceViewSet(
         )
         if filter_args:
             queryset = queryset.filter(**filter_args)
+
+        # Server-side name search for the paginated listing page
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(connector_name__icontains=search)
 
         # Filter by connector_mode
         connector_mode_param = self.request.query_params.get("connector_mode")
