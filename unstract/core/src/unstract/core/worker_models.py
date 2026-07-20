@@ -347,8 +347,7 @@ class FileExecutionResult:
             return SkipReason(raw)
         except ValueError:
             logger.warning(
-                "Unknown SkipReason on wire: %r (file_execution_id=%s); "
-                "treating as None",
+                "Unknown SkipReason on wire: %r (file_execution_id=%s); treating as None",
                 raw,
                 file_execution_id,
             )

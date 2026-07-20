@@ -9,7 +9,6 @@ import logging
 
 from shared.api.internal_client import InternalAPIClient
 from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
-
 from unstract.core.data_models import ExecutionStatus
 
 logger = logging.getLogger(__name__)
