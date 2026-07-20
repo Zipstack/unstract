@@ -6,7 +6,10 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -38,7 +41,6 @@ class BaseAdapterSerializer(AuditSerializer):
         # auto-validator that 400s on re-save before the view can handle it.
         validators = []
         extra_kwargs = {
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -168,6 +170,8 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "created_at",
+            "modified_at",
             "description",
         )  # type: ignore
 
@@ -208,6 +212,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         else:
             rep["created_by_email"] = instance.created_by.email
 
+        request = self.context.get("request")
+        rep["is_owner"] = instance.is_owner(request.user) if request else False
+        rep["co_owners_count"] = instance.co_owners_count()
+
         return rep
 
 
@@ -219,6 +227,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
 
     shared_users = serializers.SerializerMethodField()
     shared_groups = serializers.SerializerMethodField()
+    co_owners = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -232,15 +241,18 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
         )  # type: ignore
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

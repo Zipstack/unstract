@@ -17,7 +17,7 @@
 }
 
 .cur-pointer {
-  padding: 10px 0 !important;
+  padding: 16px 0 !important;
   z-index: 1;
   overflow: hidden;
 }
@@ -37,18 +37,39 @@
   transition: color 0.2s ease;
 }
 
-.cur-pointer .ant-list-item-meta {
-  align-self: flex-start;
-}
-
-.cur-pointer.centered .ant-list-item-meta {
-  align-self: center !important;
-}
-
 .list-view-description {
   font-size: 13px;
-  margin-bottom: 0;
-  max-width: 40%;
+  margin-bottom: 0 !important;
+  /* keep rows uniform; full text is in the ellipsis tooltip */
+  max-width: 520px;
+}
+
+.list-view-row {
+  width: 100%;
+}
+
+/* Left column: title + description stacked; shrinks with ellipsis */
+.list-view-left {
+  display: flex;
+  flex: 1 1 45%;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Middle column: owner + updated. align-items only centers the badge and
+   the updated-text against each other — the column's own vertical position
+   comes from the row Flex's align in ListView.jsx */
+.list-view-meta {
+  align-items: center;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 20px;
+  min-width: 0;
+}
+
+.list-view-meta .shared-username {
+  max-width: 200px;
 }
 
 .list-view-divider {
@@ -66,11 +87,16 @@
   align-items: center;
   display: flex;
   justify-content: center;
+  /* let this shrink below its content width so the email ellipsizes
+     instead of forcing the row wider (the email itself never wraps —
+     it's nowrap + capped at 200px) */
+  min-width: 0;
 }
 
 .adapters-list-user-prefix {
   margin: 0 5px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .adapters-list-title {
@@ -83,18 +109,25 @@
   gap: 5px;
 }
 
-.list-view-content {
+/* flex item: allow the title to shrink so its ellipsis can engage */
+.adapter-cover-img .adapters-list-title {
+  min-width: 0;
+}
+
+.list-view-modified-container {
+  align-items: center;
   display: flex;
-  width: 80%;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.adapters-list-title-container {
-  width: 50%;
-  padding-right: 12px;
+.list-view-modified-text {
+  font-size: 12px;
 }
 
-.list-item-desc {
-  padding-bottom: 10px;
+.list-view-info-icon {
+  color: #8c8c8c;
+  font-size: 13px;
 }
 
 .edit-icon:hover {
@@ -106,5 +139,25 @@
 }
 
 .share-icon:hover {
+  color: #1890ff;
+}
+
+.owner-badge-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+}
+
+.owner-clickable {
+  cursor: pointer;
+}
+
+.owner-clickable:hover .adapters-list-user-avatar {
+  background-color: #1890ff;
+}
+
+.owner-clickable:hover .shared-username {
   color: #1890ff;
 }

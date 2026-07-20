@@ -151,6 +151,16 @@ groups:
     critical: true
     depends_on: [e2e-smoke]
 
+  # Owner-side co-owner HTTP contract (endpoints reachable, CSRF, org-scoped,
+  # validation + last-owner guard). Gating — CI-verified green before dropping
+  # the optional flag (the e2e stack can't run against a dev auth0 backend).
+  e2e-coowners:
+    tier: e2e
+    paths: [tests/e2e/coowners]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
   e2e-workflow:
     tier: e2e
     paths: [tests/e2e/workflows]

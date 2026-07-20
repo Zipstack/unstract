@@ -2,9 +2,15 @@ import uuid
 
 from account_v2.models import User
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import Q
+from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import (
+    resources_visible_via_groups,
+    resources_visible_via_memberships,
+)
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -34,21 +40,18 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
-        # Lazy import — avoids a circular at app load.
-        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
-
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+        member_ids = resources_visible_via_memberships(self.model, user)
 
         return self.filter(
-            Q(created_by=user)  # Owned by user
-            | Q(shared_users=user)  # Shared with user
+            Q(pk__in=member_ids)  # Owner or direct viewer (created_by audit-only)
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
-class Pipeline(DefaultOrganizationMixin, BaseModel):
+class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     """Model to hold data related to Pipelines."""
 
     class PipelineType(models.TextChoices):
@@ -119,12 +122,6 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         blank=True,
     )
     # Sharing fields
-    shared_users = models.ManyToManyField(
-        User,
-        related_name="shared_pipelines",
-        blank=True,
-        db_comment="Users with whom this pipeline is shared",
-    )
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",
@@ -138,6 +135,11 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         from tenant_account_v2.sharing_helpers import get_resource_share_groups
 
         return get_resource_share_groups(self)
+
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     # Manager
     objects = PipelineModelManager()
