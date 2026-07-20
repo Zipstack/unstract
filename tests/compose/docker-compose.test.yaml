@@ -1,23 +1,14 @@
-# E2E test overlay for docker/docker-compose.yaml.
-#
-# Used by tests/rig/runtime.py's ComposeRuntime:
-#   docker compose -f docker/docker-compose.yaml \
-#                  -f tests/compose/docker-compose.test.yaml up -d --wait
-#
-# Keep this file minimal so e2e tests run against images as close to production
-# as possible. Override only what the test stack actually needs (test creds,
-# pinned image tags, ENVIRONMENT=test sentinel).
+# E2E overlay for docker/docker-compose.yaml — override only what the test
+# stack needs, so e2e runs against production-like images.
 
 services:
   backend:
-    # Defaults to `latest` so contributors can run without setting
-    # UNSTRACT_TEST_VERSION. CI pins it to the commit SHA of the images built
-    # in the same run (see the e2e job in .github/workflows/ci-test.yaml).
+    # CI pins the tag to the SHA built in the same run; `latest` lets a
+    # contributor run without setting it.
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
       - ENVIRONMENT=test
-      # Fan-out is off at the default of 1 (one batch, run serially). Workers
-      # ask the backend for this, so it has to be set here to be effective.
+      # Workers read this from the backend, so fan-out only happens if it's set here.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
@@ -30,7 +21,7 @@ services:
     environment:
       - ENVIRONMENT=test
 
-  # Execute-path e2e must not reach a real provider. Empty unless the rig sets it.
+  # Execute-path e2e must never reach a real provider.
   worker-executor-v2:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
@@ -39,8 +30,8 @@ services:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
-  # Only the fallback if the worker cannot reach the backend for config; kept in
-  # step with it so a fallback can't quietly serialise the fan-out tests.
+  # Only the worker's fallback if it can't reach the backend; kept in step so it
+  # can't quietly serialise the fan-out test.
   worker-api-deployment-v2:
     environment:
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
