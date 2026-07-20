@@ -144,6 +144,8 @@ function Workflows() {
       })
       .catch(() => {
         console.error("Unable to get project list");
+        // Avoid an indefinite spinner when the first fetch fails.
+        setProjectList((prev) => prev ?? []);
       })
       .finally(() => {
         setLoading(false);
@@ -166,7 +168,6 @@ function Workflows() {
           type: "success",
           content: "Workflow updated successfully",
         });
-        handleListRefresh();
       })
       .catch((err) => {
         setAlertDetails(
