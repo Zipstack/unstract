@@ -13,7 +13,11 @@ import io
 
 import pytest
 
-from tests.e2e.api_deployment.conftest import ApiDeployment
+from tests.e2e.api_deployment.conftest import (
+    ApiDeployment,
+    dispatch_async,
+    poll_delivered,
+)
 
 pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 
@@ -35,25 +39,17 @@ def test_multi_file_execution_fans_out_and_rejoins(
         ("files", (name, io.BytesIO(body), "text/plain"))
         for name, body in _DOCUMENTS.items()
     ]
-    resp = api_deployment.session.post(
-        api_deployment.exec_url,
-        headers=api_deployment.auth,
-        data={"timeout": 300, "include_metadata": False},
-        files=files,
-        timeout=310,
-    )
-    assert resp.status_code == 200, f"execute: HTTP {resp.status_code}: {resp.text}"
-    message = resp.json()["message"]
-    assert message["execution_status"] == "COMPLETED", message
+    execution_id, status_url = dispatch_async(api_deployment, files)
+    body = poll_delivered(api_deployment, status_url)
+    assert body["status"] == "COMPLETED", body
 
     # Keyed by name, not position: batches rejoin in completion order.
-    by_name = {entry["file"]: entry for entry in message["result"]}
-    assert sorted(by_name) == sorted(_DOCUMENTS), message["result"]
+    by_name = {entry["file"]: entry for entry in body["message"]}
+    assert sorted(by_name) == sorted(_DOCUMENTS), body["message"]
     for name, entry in by_name.items():
         assert entry["status"] == "Success", (name, entry)
         assert entry["result"]["output"]["answer"] == llm_mock_response, (name, entry)
 
-    execution_id = message["execution_id"]
     _assert_totals_rejoined(api_deployment, execution_id)
     _assert_recorded_per_file(api_deployment, execution_id)
 

@@ -817,6 +817,9 @@ RIG_PYTEST_PLUGINS = (
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "requests>=2.31.0",
+    # e2e-etl seeds its source and reads the destination via the stack's MinIO;
+    # without the client that test skips and its critical path reads as a gap.
+    "minio>=7.2.0",
 )
 
 
