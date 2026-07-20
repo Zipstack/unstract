@@ -25,7 +25,7 @@ class _Req:
         self.query_params = params
 
     def build_absolute_uri(self) -> str:
-        return "http://testserver/things/"
+        return "https://testserver/things/"
 
 
 class TestOptionalPagination:
