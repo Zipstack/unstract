@@ -23,7 +23,10 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -48,7 +51,6 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         # that 400s on re-save before the mixin can map a friendly message.
         validators = []
         extra_kwargs = {
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -456,6 +458,8 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_5_run_statuses = SerializerMethodField()
     run_count = SerializerMethodField()
     last_run_time = SerializerMethodField()
+    is_owner = SerializerMethodField()
+    co_owners_count = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -473,11 +477,20 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_5_run_statuses",
             "run_count",
             "last_run_time",
+            "is_owner",
+            "co_owners_count",
         ]
 
     def get_created_by_email(self, obj):
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return obj.is_owner(request.user) if request else False
+
+    def get_co_owners_count(self, obj) -> int:
+        return obj.co_owners_count()
 
     def get_run_count(self, instance) -> int:
         """Get total execution count for this API deployment."""
@@ -535,6 +548,7 @@ class SharedUserListSerializer(ModelSerializer):
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
@@ -545,14 +559,16 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
             "created_by",
         ]
 
     def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
+        """Return direct viewers (VIEWER members) with id and email."""
         return [
             {"id": user.id, "email": user.email}
-            for user in obj.shared_users.filter(is_service_account=False)
+            for user in obj.viewers()
+            if not user.is_service_account
         ]
 
     def get_shared_groups(self, obj):
@@ -563,3 +579,6 @@ class SharedUserListSerializer(ModelSerializer):
         if obj.created_by:
             return {"id": obj.created_by.id, "email": obj.created_by.email}
         return None
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)

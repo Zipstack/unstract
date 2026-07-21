@@ -58,6 +58,39 @@ def _is_organization_admin(request: Request) -> bool:
     return is_admin
 
 
+def _is_resource_owner(user: Any, obj: Any) -> bool:
+    """True if ``user`` owns ``obj``.
+
+    Resources migrated to the membership model expose ``memberships`` — owner
+    means an OWNER-role row (creator + co-owners). Resources not yet migrated
+    fall back to ``created_by`` (co-owners rollout, UN-2202). ``created_by`` is
+    no longer consulted once a resource adopts the membership model.
+    """
+    memberships = getattr(obj, "memberships", None)
+    if memberships is None:
+        return obj.created_by == user
+    from permissions.roles import ResourceRole
+
+    return memberships.filter(user=user, role=ResourceRole.OWNER).exists()
+
+
+def _is_resource_viewer(user: Any, obj: Any) -> bool:
+    """True if ``user`` has direct viewer access to ``obj``.
+
+    Symmetric to :func:`_is_resource_owner`. Resources migrated to the
+    membership model expose ``memberships`` — a direct viewer is a VIEWER-role
+    row (the successor to the old ``shared_users`` M2M, UN-2202 Phase 2).
+    Resources not yet migrated fall back to the ``shared_users`` M2M so the
+    shared permission classes keep working for both.
+    """
+    memberships = getattr(obj, "memberships", None)
+    if memberships is None:
+        return obj.shared_users.filter(pk=user.pk).exists()
+    from permissions.roles import ResourceRole
+
+    return memberships.filter(user=user, role=ResourceRole.VIEWER).exists()
+
+
 class IsOwner(permissions.BasePermission):
     """Allow owners and org admins.
 
@@ -70,7 +103,7 @@ class IsOwner(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         if _is_organization_admin(request):
             return True
@@ -87,7 +120,7 @@ def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     """
     if _is_service_account(request):
         return True
-    if workflow.created_by == request.user:
+    if _is_resource_owner(request.user, workflow):
         return True
     return _is_organization_admin(request)
 
@@ -105,6 +138,45 @@ class IsParentWorkflowOwner(permissions.BasePermission):
         return is_workflow_mutator(request, obj.workflow)
 
 
+class IsParentToolOwner(permissions.BasePermission):
+    """Mutation gate for Prompt Studio sub-resources owned via the parent tool.
+
+    A ``ProfileManager`` is not a membership resource, so its access is
+    inherited from the parent ``CustomTool``. Admits the tool's owner (creator +
+    co-owners), org admin, or service account -- mirrors ``IsParentWorkflowOwner``
+    (UN-2202). Falls back to the object's own owner when it has no parent tool
+    (``prompt_studio_tool`` is nullable) to preserve legacy behaviour for
+    orphan rows.
+    """
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if _is_service_account(request):
+            return True
+        owner_resource = obj.prompt_studio_tool or obj
+        if _is_resource_owner(request.user, owner_resource):
+            return True
+        return _is_organization_admin(request)
+
+
+class IsParentDeploymentOwner(permissions.BasePermission):
+    """Mutation gate for API keys owned via the parent deployment/pipeline.
+
+    An ``APIKey`` is not a membership resource, so its access is inherited
+    from the parent ``APIDeployment`` or ``Pipeline`` (both nullable — exactly
+    one is set). Admits the parent's owner (creator + co-owners), org admin,
+    or service account -- mirrors ``IsParentToolOwner`` (UN-2202). Falls back
+    to the key's own ``created_by`` when both parents are null.
+    """
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if _is_service_account(request):
+            return True
+        owner_resource = obj.api or obj.pipeline or obj
+        if _is_resource_owner(request.user, owner_resource):
+            return True
+        return _is_organization_admin(request)
+
+
 class IsOrganizationMember(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         user_organization = UserContext.get_organization()
@@ -120,8 +192,8 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            obj.created_by == request.user
-            or obj.shared_users.filter(pk=request.user.pk).exists()
+            _is_resource_owner(request.user, obj)
+            or _is_resource_viewer(request.user, obj)
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
         )
@@ -134,8 +206,8 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            obj.created_by == request.user
-            or obj.shared_users.filter(pk=request.user.pk).exists()
+            _is_resource_owner(request.user, obj)
+            or _is_resource_viewer(request.user, obj)
             or obj.shared_to_org
             or has_group_access(request.user, obj)
             or _is_organization_admin(request)
@@ -158,7 +230,7 @@ class IsFrictionLessAdapter(permissions.BasePermission):
             return False
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         return _is_organization_admin(request)
 
@@ -173,6 +245,6 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return True
-        if obj.created_by == request.user:
+        if _is_resource_owner(request.user, obj):
             return True
         return _is_organization_admin(request)
