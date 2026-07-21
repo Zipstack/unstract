@@ -1,0 +1,30 @@
+"""Regression tests for utils.user_context.UserContext.get_organization.
+
+Pins the no-org short-circuit: with no organization in context (import time,
+management commands with no request), the org lookup must return None without
+touching the DB, so evaluating it on a DB-less/unmigrated setup can't fail.
+"""
+
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from utils.user_context import UserContext
+
+
+class TestGetOrganizationNoContext:
+    def test_returns_none_without_hitting_db(self):
+        with (
+            patch("utils.user_context.StateStore.get", return_value=None),
+            patch("utils.user_context.Organization.objects.get") as mock_get,
+        ):
+            assert UserContext.get_organization() is None
+            mock_get.assert_not_called()
+
+    def test_empty_identifier_short_circuits(self):
+        with (
+            patch("utils.user_context.StateStore.get", return_value=""),
+            patch("utils.user_context.Organization.objects.get") as mock_get,
+        ):
+            assert UserContext.get_organization() is None
+            mock_get.assert_not_called()
