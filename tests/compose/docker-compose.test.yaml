@@ -22,18 +22,13 @@ services:
     environment:
       - ENVIRONMENT=test
 
-  # Execute-path e2e must never reach a real provider. The delay gives each
-  # mocked completion a known cost so per-file durations stay comparable, and
-  # ENVIRONMENT is the mock's second condition — set here rather than inherited
-  # so the tier can't lose its mock to a base-compose edit.
+  # Execute-path e2e must never reach a real provider.
   worker-executor-v2:
     environment:
-      - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
   worker-file-processing-v2:
     environment:
-      - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
   # Only the worker's fallback if it can't reach the backend; kept in step so it
