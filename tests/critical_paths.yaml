@@ -49,6 +49,7 @@ paths:
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."
     covered_by: [e2e-workflow]
+    proof: marker
 
   - id: api-deployment-provision
     description: "Deploying a workflow as an API mints a usable key and a resolvable endpoint."
@@ -63,6 +64,7 @@ paths:
   - id: api-deployment-run
     description: "Deploy a workflow as an API, POST a document, receive structured JSON."
     covered_by: [e2e-api-deployment]
+    proof: marker
 
   - id: prompt-studio-author
     description: "Create a Prompt Studio project and add a prompt to it."
@@ -70,8 +72,9 @@ paths:
     proof: marker
 
   - id: prompt-studio-fetch-response
-    description: "Prompt Studio: create project, add prompt, run single-pass, get response."
+    description: "Prompt Studio: create project, add prompt, run a prompt, get response."
     covered_by: [e2e-prompt-studio]
+    proof: marker
 
   - id: connector-register-test
     description: "Connector credentials are validated against the live system and stored encrypted."
@@ -80,7 +83,8 @@ paths:
 
   - id: pipeline-etl-execute
     description: "Run an ETL pipeline from source connector to destination."
-    covered_by: []   # gap
+    covered_by: [e2e-etl]
+    proof: marker
 
   - id: usage-aggregate-read
     description: "Per-run token usage aggregates correctly and stays scoped to its organization."
@@ -89,12 +93,18 @@ paths:
 
   - id: usage-token-tracking
     description: "Per-execution token usage is recorded and retrievable."
-    covered_by: []   # gap
+    covered_by: [e2e-api-deployment]
+    proof: marker
 
+  # Deliberate gap. The rejoin half is covered by e2e-api-deployment, but the
+  # fan-out half has no observable: no batch or task id is persisted, and timing
+  # can't stand in for one (see the test's module docstring). Closing it needs
+  # batch identity on WorkflowFileExecution, not another test.
   - id: workflow-execution-fan-out
     description: "Multi-file workflow execution fans out to file-processing workers and rejoins."
-    covered_by: []   # gap
+    covered_by: []
 
   - id: callback-result-delivery
     description: "Async results are posted back via the callback worker."
-    covered_by: []   # gap
+    covered_by: [e2e-api-deployment]
+    proof: marker
