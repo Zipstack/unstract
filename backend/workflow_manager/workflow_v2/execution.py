@@ -417,23 +417,29 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         execution. PG-only: ``task_id`` is a UUIDField that can't hold the bigint
         msg_id, so the PG handle lives in its own ``queue_message_id`` column.
         """
-        try:
-            if queue_message_id is None:
-                logger.warning(
-                    f"Skipped setting queue_message_id for execution {execution_id} "
-                    "since it's None"
-                )
-                return
-
-            execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.queue_message_id = queue_message_id
-            execution.save(update_fields=["queue_message_id"])
-            logger.info(
-                f"Successfully set queue_message_id '{queue_message_id}' for "
-                f"execution {execution_id}"
+        if queue_message_id is None:
+            logger.warning(
+                f"Skipped setting queue_message_id for execution {execution_id} "
+                "since it's None"
             )
-        except WorkflowExecution.DoesNotExist:
+            return
+
+        # A DB-side single-column UPDATE, NOT execution.save(): a save() (even with
+        # update_fields) re-runs _handle_execution_cache(), which would republish
+        # this method's stale in-memory status to the Redis execution cache and can
+        # clobber a status the worker has since advanced — the same reason
+        # _set_result_acknowledge uses a queryset .update(). This marker write must
+        # touch ONLY the handle column and never the status/counters or the cache.
+        updated = WorkflowExecution.objects.filter(pk=execution_id).update(
+            queue_message_id=queue_message_id
+        )
+        if not updated:
             logger.error(f"execution doesn't exist {execution_id}")
+            return
+        logger.info(
+            f"Successfully set queue_message_id '{queue_message_id}' for "
+            f"execution {execution_id}"
+        )
 
     @staticmethod
     def convert_tool_instance_model_to_data_class(

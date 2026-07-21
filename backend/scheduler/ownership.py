@@ -24,7 +24,7 @@ import os
 
 from django.db import transaction
 from django.utils import timezone
-from django_celery_beat.models import PeriodicTask
+from django_celery_beat.models import PeriodicTask, PeriodicTasks
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgPeriodicSchedule
 
@@ -124,6 +124,12 @@ def reconcile_ownership_for(
             PeriodicTask.objects.filter(name=pipeline_id).update(
                 enabled=active and not pg_owned
             )
+            # Bulk .update() bypasses django-celery-beat's post_save signal, so
+            # PeriodicTasks.last_update never bumps and DatabaseScheduler never
+            # reloads — Beat would keep firing the schedule from its stale
+            # in-memory copy on a PG hand-over (breaking the no-double-fire
+            # invariant) or never re-enable it on a rollback. Bump explicitly.
+            PeriodicTasks.update_changed()
         logger.info(
             "reconcile_ownership_for: pipeline %s pg_owned=%s (beat_enabled=%s)",
             pipeline_id,

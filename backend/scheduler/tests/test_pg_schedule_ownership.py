@@ -52,6 +52,13 @@ class TestResolveScheduleOwner:
 
 
 class TestReconcileOwnership:
+    @pytest.fixture(autouse=True)
+    def _mock_periodic_tasks(self):
+        # reconcile now bumps PeriodicTasks.last_update after the bulk .update();
+        # mock it so these DB-free tests don't reach the real celery-beat singleton.
+        with patch("scheduler.ownership.PeriodicTasks") as pts:
+            yield pts
+
     def _patches(self, *, owner: bool, rows_matched: int = 1):
         sched = patch("scheduler.ownership.PgPeriodicSchedule")
         pt = patch("scheduler.ownership.PeriodicTask")
@@ -137,6 +144,27 @@ class TestReconcileOwnership:
             Sched.objects.filter.return_value.update.side_effect = RuntimeError("db")
             # Must not raise, and signals failure (None) so the ramp can tally it.
             assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is None
+
+    def test_beat_reload_signalled_after_handover(self, _mock_periodic_tasks):
+        """The Beat PeriodicTask flip uses a bulk .update() (chosen to avoid
+        clobbering a concurrent reconcile), which bypasses django-celery-beat's
+        post_save signal. Without an explicit PeriodicTasks.update_changed() bump,
+        DatabaseScheduler never reloads and Beat keeps firing the handed-over
+        schedule from its stale in-memory copy (breaking no-double-fire)."""
+        sched, pt, resolve, txn = self._patches(owner=True)
+        with sched as Sched, pt, resolve, txn:
+            Sched.objects.filter.return_value.update.return_value = 1
+            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+        _mock_periodic_tasks.update_changed.assert_called_once_with()
+
+    def test_beat_reload_not_signalled_when_no_mirror_row(self, _mock_periodic_tasks):
+        """No mirror row → the method returns before touching the PeriodicTask, so
+        no reload should be signalled either."""
+        sched, pt, resolve, txn = self._patches(owner=True)
+        with sched as Sched, pt, resolve, txn:
+            Sched.objects.filter.return_value.update.return_value = 0
+            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+        _mock_periodic_tasks.update_changed.assert_not_called()
 
 
 class TestReconcileAtomicityRealDB:

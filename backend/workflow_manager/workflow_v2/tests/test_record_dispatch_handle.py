@@ -18,7 +18,10 @@ during handle recording must not skip the wait loop — is covered separately in
 
 from unittest.mock import patch
 
+from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
+
+_MODEL = "workflow_manager.workflow_v2.execution.WorkflowExecution"
 
 _HELPER = (
     "workflow_manager.workflow_v2.workflow_helper.WorkflowExecutionServiceHelper"
@@ -90,3 +93,50 @@ class TestRecordDispatchHandle:
             )
         helper.update_execution_queue_message_id.assert_not_called()
         helper.update_execution_task.assert_not_called()
+
+
+class TestUpdateQueueMessageIdWriteShape:
+    """``update_execution_queue_message_id`` must persist the PG handle with a
+    DB-side single-column queryset ``.update()`` — NOT ``execution.save()``.
+
+    Regression: ``save()`` (even with ``update_fields``) re-runs the model's
+    ``_handle_execution_cache()``, which republishes this method's stale in-memory
+    ``status`` to the Redis execution cache. If that write lands after the worker
+    has advanced status, it reverts the cache to the stale value with no later
+    corrector and the API-deployment sync-poll blocks to its full timeout. The
+    codebase already uses the queryset-``.update()`` pattern for the same reason
+    in ``_set_result_acknowledge``; this pins it for the marker write too.
+    """
+
+    def test_write_uses_queryset_update_not_save(self):
+        with patch(_MODEL) as model:
+            model.objects.filter.return_value.update.return_value = 1
+            WorkflowExecutionServiceHelper.update_execution_queue_message_id(
+                execution_id="exec-1", queue_message_id=1527
+            )
+        # queryset .update() on ONLY the handle column, keyed by pk...
+        model.objects.filter.assert_called_once_with(pk="exec-1")
+        model.objects.filter.return_value.update.assert_called_once_with(
+            queue_message_id=1527
+        )
+        # ...and never the hydrate-then-save() path that republishes the cache.
+        model.objects.get.assert_not_called()
+
+    def test_none_handle_is_a_noop(self):
+        with patch(_MODEL) as model:
+            WorkflowExecutionServiceHelper.update_execution_queue_message_id(
+                execution_id="exec-1", queue_message_id=None
+            )
+        model.objects.filter.assert_not_called()
+
+    def test_missing_execution_does_not_raise(self):
+        """update() returning 0 (row gone) is logged, not raised."""
+        with patch(_MODEL) as model:
+            model.objects.filter.return_value.update.return_value = 0
+            # must not raise
+            WorkflowExecutionServiceHelper.update_execution_queue_message_id(
+                execution_id="missing", queue_message_id=99
+            )
+        model.objects.filter.return_value.update.assert_called_once_with(
+            queue_message_id=99
+        )

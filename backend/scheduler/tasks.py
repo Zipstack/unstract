@@ -8,7 +8,7 @@ from celery import shared_task
 from croniter import croniter
 from django.db import transaction
 from django.utils import timezone
-from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from django_celery_beat.models import CrontabSchedule, PeriodicTask, PeriodicTasks
 from pg_queue.models import PgPeriodicSchedule
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -325,6 +325,12 @@ def enable_task(task_name: str) -> None:
             or False
         )
         PeriodicTask.objects.filter(name=task_name).update(enabled=not pg_owned)
+        # Bulk .update() bypasses django-celery-beat's post_save signal, so
+        # PeriodicTasks.last_update never bumps and DatabaseScheduler never reloads
+        # — the resumed pipeline would stay disabled in Beat's in-memory schedule
+        # and silently never fire (disable_task uses .save() and doesn't have this
+        # gap). Bump last_update explicitly so Beat reloads on the next tick.
+        PeriodicTasks.update_changed()
     # mirror.enabled tracks pipeline.active (True on resume) regardless of owner.
     _mirror_periodic_schedule_set_enabled(task_name, True)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)

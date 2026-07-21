@@ -242,6 +242,7 @@ class TestEnableDisableMirror:
     def test_resume_enables_beat_when_not_pg_owned(self):
         with (
             patch("scheduler.tasks.PeriodicTask") as pt,
+            patch("scheduler.tasks.PeriodicTasks") as pts,
             patch("scheduler.tasks.PipelineProcessor"),
             patch("scheduler.tasks.PgPeriodicSchedule") as sched,
             patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
@@ -252,12 +253,17 @@ class TestEnableDisableMirror:
 
         # Beat enabled via a column-only .update() (no full task.save() to clobber)
         assert pt.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
+        # ...but a bulk .update() skips celery-beat's post_save signal, so the
+        # resume MUST bump PeriodicTasks.last_update or DatabaseScheduler never
+        # reloads and the resumed pipeline silently never fires.
+        pts.update_changed.assert_called_once_with()
 
     def test_resume_keeps_beat_disabled_when_pg_owned(self):
         """The High bug: resuming a PG-owned schedule must NOT re-enable Beat
         (both firing = double-fire)."""
         with (
             patch("scheduler.tasks.PeriodicTask") as pt,
+            patch("scheduler.tasks.PeriodicTasks"),
             patch("scheduler.tasks.PipelineProcessor"),
             patch("scheduler.tasks.PgPeriodicSchedule") as sched,
             patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
