@@ -1,0 +1,79 @@
+{
+  "title": "MiniMax",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: minimax-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your MiniMax API key from [platform.minimax.io](https://platform.minimax.io)."
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "MiniMax-M3",
+      "examples": [
+        "MiniMax-M3",
+        "MiniMax-M2.7"
+      ],
+      "description": "The model name as listed in [MiniMax's model docs](https://platform.minimax.io/docs/api-reference/text-openai-api). Examples: MiniMax-M3, MiniMax-M2.7. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo) for rates and context windows."
+    },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://api.minimax.io/v1",
+      "description": "MiniMax endpoint. Pre-filled with the global OpenAI-compatible base. A base whose path ends in `/anthropic` is sent using the Anthropic-compatible protocol; any other base uses the OpenAI-compatible protocol. China accounts use the `api.minimaxi.com` host. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
+    },
+    "service_tier": {
+      "type": "string",
+      "title": "Service Tier",
+      "enum": [
+        "standard",
+        "priority"
+      ],
+      "default": "standard",
+      "description": "Priority requests receive faster admission at a higher price. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo). Note that cost tracking records standard-tier rates."
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "default": 4096,
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds."
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Thinking",
+      "description": "Override the protocol default for MiniMax-M3: OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.x models always keep thinking enabled. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
+    }
+  }
+}

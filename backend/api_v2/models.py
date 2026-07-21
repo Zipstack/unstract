@@ -3,12 +3,18 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from permissions.models import HasMembersMixin
 from pipeline_v2.models import Pipeline
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import (
+    resources_visible_via_groups,
+    resources_visible_via_memberships,
+)
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -41,19 +47,17 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
-        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
-
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+        member_ids = resources_visible_via_memberships(self.model, user)
         return self.filter(
-            Q(created_by=user)  # Owned by user
-            | Q(shared_users=user)  # Shared with user
+            Q(pk__in=member_ids)  # Owner or direct viewer (created_by audit-only)
             | Q(shared_to_org=True)  # Shared to entire organization
             | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
-class APIDeployment(DefaultOrganizationMixin, BaseModel):
+class APIDeployment(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     display_name = models.CharField(
         max_length=API_NAME_MAX_LENGTH,
@@ -106,9 +110,6 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         editable=False,
     )
     # Sharing fields
-    shared_users = models.ManyToManyField(
-        User, related_name="shared_api_deployments", blank=True
-    )
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this API deployment is shared with the entire organization",
@@ -122,6 +123,11 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         from tenant_account_v2.sharing_helpers import get_resource_share_groups
 
         return get_resource_share_groups(self)
+
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     # Manager
     objects = APIDeploymentModelManager()

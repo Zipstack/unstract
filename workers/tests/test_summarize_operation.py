@@ -1,4 +1,4 @@
-"""Phase 6I Sanity — Backend Summarizer Migration.
+"""Backend Summarizer Migration.
 
 Verifies:
 1. Summarize operation exists and routes through LegacyExecutor
@@ -11,12 +11,10 @@ Verifies:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
-
 
 # Patches
 _PATCH_GET_PROMPT_DEPS = (
@@ -26,6 +24,7 @@ _PATCH_GET_PROMPT_DEPS = (
 
 def _register_legacy():
     from executor.executors.legacy_executor import LegacyExecutor
+
     ExecutorRegistry.clear()
     ExecutorRegistry.register(LegacyExecutor)
 
@@ -34,6 +33,7 @@ def _register_legacy():
 # 1. Summarize operation enum
 # ---------------------------------------------------------------------------
 
+
 class TestSummarizeOperation:
     def test_summarize_enum_exists(self):
         assert hasattr(Operation, "SUMMARIZE")
@@ -41,6 +41,7 @@ class TestSummarizeOperation:
 
     def test_summarize_in_legacy_operation_map(self):
         from executor.executors.legacy_executor import LegacyExecutor
+
         assert "summarize" in LegacyExecutor._OPERATION_MAP
 
 
@@ -48,10 +49,12 @@ class TestSummarizeOperation:
 # 2. Executor params contract
 # ---------------------------------------------------------------------------
 
+
 class TestSummarizeParamsContract:
     def test_summarize_params_match_handler_expectations(self):
         """Verify the params the backend summarizer sends match
-        what _handle_summarize expects."""
+        what _handle_summarize expects.
+        """
         # These are the keys the cloud summarizer.py now sends
         backend_params = {
             "llm_adapter_instance_id": "llm-uuid",
@@ -72,6 +75,7 @@ class TestSummarizeParamsContract:
 # ---------------------------------------------------------------------------
 # 3. Queue routing
 # ---------------------------------------------------------------------------
+
 
 class TestSummarizeQueueRouting:
     def test_summarize_routes_to_legacy_queue(self):
@@ -115,6 +119,7 @@ class TestSummarizeQueueRouting:
 # 4. Result shape
 # ---------------------------------------------------------------------------
 
+
 class TestSummarizeResultShape:
     @patch(_PATCH_GET_PROMPT_DEPS)
     def test_summarize_returns_data_key(self, mock_deps):
@@ -128,7 +133,7 @@ class TestSummarizeResultShape:
             MagicMock(),  # PostProcessor
             MagicMock(),  # VariableReplacement
             MagicMock(),  # JsonRepair
-            mock_llm,     # LLM
+            mock_llm,  # LLM
             MagicMock(),  # Embedding
             MagicMock(),  # VectorDB
         )
@@ -211,6 +216,7 @@ class TestSummarizeResultShape:
 # 5. Full Celery chain
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def eager_app():
     """Configure executor Celery app for eager-mode testing."""
@@ -239,8 +245,13 @@ class TestSummarizeCeleryChain:
         mock_llm.return_value = mock_llm_instance
 
         mock_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm,
+            MagicMock(),
+            MagicMock(),
         )
 
         with patch(

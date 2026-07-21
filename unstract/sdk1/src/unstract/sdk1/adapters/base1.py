@@ -530,7 +530,35 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+_MINIMAX_PROVIDER_PREFIX = "minimax/"
+_MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
+_MINIMAX_CONTEXT_WINDOWS = {
+    "MiniMax-M3": 1_000_000,
+}
+# All M2.x variants share one window. Kept local because LiteLLM overstates it.
+# REF: https://platform.minimax.io/docs/api-reference/text-openai-api
+_MINIMAX_M2_CONTEXT_WINDOW = 204_800
+
+
+def _minimax_provider_prefix(api_base: str) -> str:
+    path = urlparse(api_base).path.rstrip("/").lower()
+    if path.endswith("/anthropic"):
+        return _MINIMAX_ANTHROPIC_PROVIDER_PREFIX
+    return _MINIMAX_PROVIDER_PREFIX
+
+
+def _is_minimax_m2_model(model_id: str) -> bool:
+    return re.match(r"^minimax-m2(?:$|[.-])", model_id, re.IGNORECASE) is not None
+
+
+def _minimax_context_window(model_id: str) -> int | None:
+    if context_window := _MINIMAX_CONTEXT_WINDOWS.get(model_id):
+        return context_window
+    if _is_minimax_m2_model(model_id):
+        return _MINIMAX_M2_CONTEXT_WINDOW
+    return None
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -544,6 +572,74 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class MiniMaxLLMParameters(BaseChatCompletionParameters):
+    """Adapter for MiniMax's OpenAI- and Anthropic-compatible APIs."""
+
+    api_key: str
+    api_base: str = _MINIMAX_API_BASE
+    temperature: float | None = Field(default=1, ge=0, le=2)
+    thinking: dict[str, str] | None = None
+    service_tier: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _MINIMAX_API_BASE
+
+        adapter_metadata["model"] = MiniMaxLLMParameters.validate_model(adapter_metadata)
+        model_id = adapter_metadata["model"].split("/", 1)[-1]
+
+        service_tier = adapter_metadata.get("service_tier")
+        if service_tier not in {None, "standard", "priority"}:
+            raise ValueError("service_tier must be standard or priority.")
+
+        if "enable_thinking" in adapter_metadata:
+            enable_thinking = adapter_metadata.pop("enable_thinking")
+            if not isinstance(enable_thinking, bool):
+                raise ValueError("enable_thinking must be a boolean.")
+            adapter_metadata["thinking"] = {
+                "type": "adaptive" if enable_thinking else "disabled"
+            }
+
+        thinking = adapter_metadata.get("thinking")
+        if thinking is None and _is_minimax_m2_model(model_id):
+            thinking = {"type": "adaptive"}
+            adapter_metadata["thinking"] = thinking
+        if thinking is not None:
+            if not isinstance(thinking, dict) or thinking.get("type") not in {
+                "adaptive",
+                "disabled",
+            }:
+                raise ValueError("thinking.type must be adaptive or disabled.")
+            if _is_minimax_m2_model(model_id) and thinking["type"] == "disabled":
+                raise ValueError(f"{model_id} does not support disabling thinking.")
+
+        validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
+        if context_window := _minimax_context_window(model_id):
+            validated["context_window"] = context_window
+        validated["allowed_openai_params"] = ["service_tier", "thinking"]
+        return validated
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = str(raw_model).strip() if raw_model is not None else ""
+        if not model:
+            raise ValueError("model is required for the MiniMax adapter.")
+        for prefix in (
+            _MINIMAX_PROVIDER_PREFIX,
+            _MINIMAX_ANTHROPIC_PROVIDER_PREFIX,
+        ):
+            if model.startswith(prefix):
+                model = model[len(prefix) :]
+                break
+        api_base = str(adapter_metadata.get("api_base") or _MINIMAX_API_BASE)
+        return f"{_minimax_provider_prefix(api_base)}{model}"
 
 
 class OpenRouterLLMParameters(BaseChatCompletionParameters):
@@ -884,8 +980,7 @@ def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
     token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
     if not isinstance(token, str) or not token.strip():
         raise ValueError(
-            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
-            "auth_type is 'bearer_token'."
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when auth_type is 'bearer_token'."
         )
     validated[_BEDROCK_LITELLM_BEARER_KWARG] = token.strip()
 

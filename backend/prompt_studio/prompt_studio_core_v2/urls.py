@@ -44,6 +44,8 @@ prompt_studio_share = PromptStudioCoreView.as_view({"post": "share"})
 prompt_studio_effective_members = PromptStudioCoreView.as_view(
     {"get": "effective_members"}
 )
+prompt_studio_add_owner = PromptStudioCoreView.as_view({"post": "add_co_owner"})
+prompt_studio_remove_owner = PromptStudioCoreView.as_view({"delete": "remove_co_owner"})
 
 
 prompt_studio_file = PromptStudioCoreView.as_view(
@@ -147,6 +149,16 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/effective-members/",
             prompt_studio_effective_members,
             name="prompt-studio-effective-members",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/owners/",
+            prompt_studio_add_owner,
+            name="prompt-studio-add-owner",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/owners/<int:user_id>/",
+            prompt_studio_remove_owner,
+            name="prompt-studio-remove-owner",
         ),
         path(
             "prompt-studio/file/<uuid:pk>",

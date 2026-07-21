@@ -1,4 +1,4 @@
-"""Phase 2F — single_pass_extraction, summarize, agentic operations tests.
+"""single_pass_extraction, summarize, agentic operations tests.
 
 Verifies:
 1. single_pass_extraction delegates to answer_prompt
@@ -11,7 +11,6 @@ Verifies:
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
@@ -117,13 +116,13 @@ class TestSummarize:
         mock_llm_cls.return_value = mock_llm
 
         mock_get_deps.return_value = (
-            MagicMock(),   # AnswerPromptService
-            MagicMock(),   # RetrievalService
-            MagicMock(),   # VariableReplacementService
-            MagicMock(),   # Index
+            MagicMock(),  # AnswerPromptService
+            MagicMock(),  # RetrievalService
+            MagicMock(),  # VariableReplacementService
+            MagicMock(),  # Index
             mock_llm_cls,  # LLM
-            MagicMock(),   # EmbeddingCompat
-            MagicMock(),   # VectorDB
+            MagicMock(),  # EmbeddingCompat
+            MagicMock(),  # VectorDB
         )
 
         # Mock AnswerPromptService.run_completion
@@ -152,8 +151,13 @@ class TestSummarize:
         mock_llm_cls.return_value = mock_llm
 
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         captured_prompt = {}
@@ -188,8 +192,13 @@ class TestSummarize:
         mock_llm_cls.return_value = MagicMock()
 
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         with patch(
@@ -248,8 +257,13 @@ class TestSummarize:
         mock_llm_cls.return_value = MagicMock()
 
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         with patch(
@@ -279,8 +293,13 @@ class TestSummarize:
         mock_llm_cls.return_value = mock_llm
 
         mock_get_deps.return_value = (
-            MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_llm_cls, MagicMock(), MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            mock_llm_cls,
+            MagicMock(),
+            MagicMock(),
         )
 
         with patch(

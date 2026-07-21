@@ -4,7 +4,10 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwnerOrSharedUserOrSharedToOrg,
+    IsParentToolOwner,
+)
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -26,9 +29,10 @@ class ProfileManagerView(viewsets.ModelViewSet):
     serializer_class = ProfileManagerSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Mutations require ownership; reads honor sharing.
+        # Mutations require ownership of the parent tool (creator + co-owners);
+        # reads honor sharing.
         if self.action in ("create", "destroy", "partial_update", "update"):
-            return [IsOwner()]
+            return [IsParentToolOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:

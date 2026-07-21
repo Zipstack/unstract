@@ -17,8 +17,10 @@ from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -120,12 +122,22 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            return None
+        return ResourceType.TEXT_EXTRACTOR.value
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -133,13 +145,16 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action == "destroy":
+        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "memberships__user"
+        )
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()
             prompt_count_sq = (
@@ -149,8 +164,13 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
+            # keeping the plain field orderable. Only prompt writes bump —
+            # profile/document edits and queryset-level prompt writes do not;
+            # any new write path must bump CustomTool itself
             qs = qs.select_related("created_by").annotate(
-                _prompt_count=Subquery(prompt_count_sq)
+                _prompt_count=Subquery(prompt_count_sq),
             )
         return qs
 
@@ -173,6 +193,11 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
@@ -446,9 +471,12 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
+            # user_id is the file-path owner (project creator);
+            # request_user is who triggered the action (UN-3739)
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -607,6 +635,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         # If document is being indexed, return pending status
@@ -719,6 +748,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         if context is None:
@@ -825,6 +855,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             user_id=user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()

@@ -240,6 +240,7 @@ function createPipelineCardConfig({
   onManageKeys,
   onSetupNotifications,
   onDownloadPostman,
+  onManageCoOwners,
   isClearingFileHistory,
   pipelineType,
   listContext,
@@ -369,7 +370,11 @@ function createPipelineCardConfig({
               itemId={pipeline.id}
               listContext={listContext}
             />
-            <OwnerFieldRow item={pipeline} sessionDetails={sessionDetails} />
+            <OwnerFieldRow
+              item={pipeline}
+              sessionDetails={sessionDetails}
+              onManageCoOwners={() => onManageCoOwners?.(pipeline)}
+            />
             <LastRunFieldRow lastRunTime={pipeline.last_run_time} />
 
             {/* NEXT RUN AT row (only if scheduled) */}
