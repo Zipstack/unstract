@@ -12,15 +12,14 @@ key.
 from __future__ import annotations
 
 import io
-import time
 
 import pytest
 
-from tests.e2e.conftest import ProvisionedWorkflow
+from tests.e2e.conftest import ProvisionedWorkflow, wait_for_execution
 
 pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 
-_TERMINAL = {"COMPLETED", "ERROR", "STOPPED"}
+_EXECUTION_TIMEOUT_SECONDS = 180
 
 
 @pytest.mark.critical_path("workflow-create-execute")
@@ -52,16 +51,10 @@ def test_workflow_execute_completes(
     )
     assert resp.status_code == 200, f"dispatch execution: {resp.text}"
 
-    # Not workflow/execution/<pk>/: that route filters by workflow_id and 404s.
-    final = {}
-    deadline = time.monotonic() + 180
-    while time.monotonic() < deadline:
-        resp = session.get(f"{pw.prefix}/execution/{execution_id}/", timeout=30)
-        resp.raise_for_status()
-        final = resp.json()
-        if final.get("status") in _TERMINAL:
-            break
-        time.sleep(2)
-
+    # Uses /execution/<id>/, not /workflow/execution/<pk>/ which filters by
+    # workflow_id and 404s.
+    final = wait_for_execution(
+        session, pw.prefix, execution_id, timeout=_EXECUTION_TIMEOUT_SECONDS
+    )
     assert final.get("status") == "COMPLETED", final
     assert final.get("successful_files") == 1, final

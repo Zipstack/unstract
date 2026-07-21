@@ -219,13 +219,11 @@ def _validate_platform_groups_depend_on_gate(
     graph: it guarantees the manifest can never ship a platform test that
     bypasses the smoke gate, and that the gate runs first in topological order.
 
-    Note: runtime skip-on-gate-failure (not running dependents when the gate
-    reports red) is NOT implemented yet — ``cmd_run`` executes every runnable
-    group unconditionally. Today this is moot because every dependent is
-    ``optional: true`` (a placeholder), so a smoke failure doesn't gate CI and
-    the dependents collect nothing. When those groups are promoted to active,
-    add dep-failure tracking in ``cmd_run`` so dependents skip cleanly rather
-    than running against a half-up stack — see the TODO there.
+    Runtime skip-on-gate-failure is enforced separately: ``cmd_run`` tracks
+    failed groups and skips (blocks) any dependent whose transitive deps
+    include one, so a red gate stops its dependents from running against a
+    half-up stack. This structural check guarantees the graph such tracking
+    relies on is actually wired.
 
     If the manifest declares ``requires_platform`` groups but doesn't actually
     define the gate, that's a manifest error — silently disabling the check

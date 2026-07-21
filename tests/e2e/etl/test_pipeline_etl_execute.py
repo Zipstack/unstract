@@ -8,16 +8,15 @@ the pipeline ran end to end is the answer landing in the destination store.
 from __future__ import annotations
 
 import io
-import time
 import uuid
 
 import pytest
 
+from tests.e2e.conftest import wait_for_execution
 from tests.e2e.etl.conftest import EtlWorkflow, MinioFixture
 
 pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 
-_TERMINAL = {"COMPLETED", "ERROR", "STOPPED"}
 _EXECUTION_TIMEOUT_SECONDS = 300
 _DOCUMENT = b"ETL probe. This document is about pipeline widgets and invoices."
 
@@ -38,7 +37,12 @@ def test_etl_pipeline_writes_answer_to_destination(
     assert resp.status_code == 200, f"execute pipeline: {resp.text}"
     execution_id = resp.json()["execution"]["execution_id"]
 
-    execution = _poll_execution(etl_workflow, execution_id)
+    execution = wait_for_execution(
+        etl_workflow.session,
+        etl_workflow.prefix,
+        execution_id,
+        timeout=_EXECUTION_TIMEOUT_SECONDS,
+    )
     assert execution.get("status") == "COMPLETED", execution
     assert execution.get("successful_files") == 1, execution
 
@@ -72,24 +76,6 @@ def _create_pipeline(workflow: EtlWorkflow) -> str:
     )
     assert resp.status_code == 201, f"create pipeline: {resp.text}"
     return resp.json()["id"]
-
-
-def _poll_execution(workflow: EtlWorkflow, execution_id: str) -> dict:
-    """Wait for the run to finish; execution is dispatched, never inline."""
-    deadline = time.monotonic() + _EXECUTION_TIMEOUT_SECONDS
-    execution: dict = {}
-    while time.monotonic() < deadline:
-        resp = workflow.session.get(
-            f"{workflow.prefix}/execution/{execution_id}/", timeout=30
-        )
-        resp.raise_for_status()
-        execution = resp.json()
-        if execution.get("status") in _TERMINAL:
-            return execution
-        time.sleep(2)
-    pytest.fail(
-        f"execution not terminal within {_EXECUTION_TIMEOUT_SECONDS}s: {execution}"
-    )
 
 
 def _read_destination_output(store: MinioFixture, output_prefix: str) -> str:

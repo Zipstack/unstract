@@ -10,11 +10,15 @@ from __future__ import annotations
 import os
 import uuid
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import pytest
 import requests
 
 from tests.e2e.conftest import ProvisionedWorkflow
+
+if TYPE_CHECKING:
+    from minio import Minio
 
 # Registry id from unstract.connectors (filesystems/minio).
 _MINIO_CONNECTOR = "minio|c799f6e3-2b57-434e-aaac-b5daa415da19"
@@ -27,7 +31,7 @@ _BUCKET = "unstract"
 class MinioFixture:
     """Where the test and the workers each reach the object store."""
 
-    client: object
+    client: Minio
     bucket: str
     # The workers resolve MinIO over the compose network, the test over a
     # published port, so the two see different endpoints for the same store.
@@ -50,22 +54,35 @@ class EtlWorkflow:
 @pytest.fixture(scope="session")
 def minio_store() -> MinioFixture:
     """The stack's MinIO, or a skip when this runtime doesn't publish one."""
-    minio = pytest.importorskip("minio", reason="minio client not installed")
+    rig_session = os.environ.get("UNSTRACT_RIG_SESSION_ID")
+    try:
+        import minio
+    except ImportError as exc:
+        # The rig injects minio>=7.2.0, so a missing client under it is a
+        # provisioning fault, not a legitimate "not installed" skip.
+        if rig_session:
+            pytest.fail(f"rig run but minio client not importable: {exc}")
+        pytest.skip("minio client not installed")
     endpoint = os.environ.get("UNSTRACT_MINIO_ENDPOINT", "localhost:9000")
     access_key = os.environ.get("UNSTRACT_MINIO_ACCESS_KEY", "minio")
     secret_key = os.environ.get("UNSTRACT_MINIO_SECRET_KEY", "minio123")
-    # Scheme is a var so a TLS-fronted deployment can override; the compose
-    # stack serves MinIO plain over its internal network.
+    # One scheme drives both halves so they can't disagree: the workers' URL and
+    # the test client's TLS flag. The compose stack serves MinIO plain; a
+    # TLS-fronted deployment sets UNSTRACT_MINIO_SCHEME=https.
     scheme = os.environ.get("UNSTRACT_MINIO_SCHEME", "http")
     internal_url = os.environ.get(
         "UNSTRACT_MINIO_INTERNAL_URL", f"{scheme}://unstract-minio:9000"
     )
     client = minio.Minio(
-        endpoint, access_key=access_key, secret_key=secret_key, secure=False
+        endpoint, access_key=access_key, secret_key=secret_key, secure=scheme == "https"
     )
     try:
         exists = client.bucket_exists(_BUCKET)
-    except Exception as exc:  # noqa: BLE001 - any failure here means no store
+    except Exception as exc:  # noqa: BLE001 - narrow verdict below
+        # Under the rig the stack is meant to be up, so an unusable MinIO is a
+        # real failure to surface, not a store that legitimately isn't there.
+        if rig_session:
+            pytest.fail(f"rig provisioned the stack but MinIO is unusable: {exc}")
         pytest.skip(f"MinIO unreachable at {endpoint}: {exc}")
     if not exists:
         pytest.skip(f"MinIO bucket {_BUCKET!r} missing at {endpoint}")
@@ -79,13 +96,11 @@ def minio_store() -> MinioFixture:
 
 
 def _post(session: requests.Session, url: str, **kwargs: object) -> requests.Response:
-    headers = {"X-CSRFToken": session.cookies.get("csrftoken", "")}
-    return session.post(url, headers=headers, timeout=60, **kwargs)
+    return session.post(url, timeout=60, **kwargs)  # CsrfSession stamps the header
 
 
 def _patch(session: requests.Session, url: str, **kwargs: object) -> requests.Response:
-    headers = {"X-CSRFToken": session.cookies.get("csrftoken", "")}
-    return session.patch(url, headers=headers, timeout=60, **kwargs)
+    return session.patch(url, timeout=60, **kwargs)
 
 
 @pytest.fixture(scope="session")

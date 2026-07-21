@@ -610,3 +610,98 @@ def test_inject_infra_env_wires_provisioned_redis() -> None:
     assert env["REDIS_HOST"] == "redis.internal"
     assert env["REDIS_PORT"] == "49999"
     assert env["CELERY_BROKER_BASE_URL"] == "redis://redis.internal:49999"
+
+
+def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch) -> None:
+    """A red gate skips its dependents (and their dependents), records them as
+    blocked with the right ``blocked_by``, and — all groups optional — leaves
+    the overall exit at 0. Pins the cascade `cmd_run` wires together.
+    """
+    import json
+
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  e2e-smoke:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "  e2e-mid:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-smoke]\n"
+        "  e2e-leaf:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-mid]\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    executed: list[str] = []
+
+    def fake_execute_group(group, **kwargs):
+        executed.append(group.name)
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=1,
+            passed=0,
+            failed=1,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 1
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    reports_dir = tmp_path / "reports"
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "e2e-smoke",
+            "e2e-mid",
+            "e2e-leaf",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(reports_dir / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+
+    # Only the gate ran; its dependents were blocked before execution.
+    assert executed == ["e2e-smoke"], executed
+    # All optional, so a red gate never gates the overall exit.
+    assert exit_code == 0, exit_code
+
+    summary = json.loads((reports_dir / "summary.json").read_text())
+    by_name = {g["name"]: g for g in summary["groups"]}
+    assert by_name["e2e-mid"]["status"] == "blocked"
+    assert by_name["e2e-mid"]["blocked_by"] == ["e2e-smoke"]
+    # The intermediate block cascades: leaf names both, proving a blocked group
+    # is itself added to the failed set.
+    assert by_name["e2e-leaf"]["status"] == "blocked"
+    assert by_name["e2e-leaf"]["blocked_by"] == ["e2e-mid", "e2e-smoke"]
+
+    # The blocked groups persisted a junit so CI's `rig report` can render them.
+    assert (reports_dir / "e2e-mid" / "junit.xml").exists()
+    assert (reports_dir / "e2e-leaf" / "junit.xml").exists()

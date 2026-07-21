@@ -9,6 +9,7 @@ a clear message rather than spuriously failing.
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from dataclasses import dataclass
 
@@ -17,9 +18,32 @@ import requests
 
 from tests.rig.runtime import LLM_MOCK_RESPONSE_ENV, PlatformEndpoints
 
-# Adapter registry ids from unstract.sdk1, chosen so no real service is needed:
-# the NoOp rows return canned output and the LLM is mocked. Fake creds persist
-# because adapter create does not validate connectivity.
+# Mirrors unstract.core.data_models.ExecutionStatus.terminal_statuses(); kept a
+# local literal because the e2e venv carries only pytest/requests/minio, and
+# these are the JSON status strings the HTTP API returns anyway.
+TERMINAL_EXECUTION_STATUSES = {"COMPLETED", "ERROR", "STOPPED"}
+
+class CsrfSession(requests.Session):
+    """Stamps X-CSRFToken from its own cookies on unsafe methods.
+
+    Centralises what a handful of per-file helpers each re-implemented (and had
+    already drifted on — some merged caller headers, some dropped them).
+    """
+
+    _UNSAFE = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+    def request(self, method: str, url: str, **kwargs: object) -> requests.Response:
+        if method.upper() in self._UNSAFE:
+            headers = dict(kwargs.get("headers") or {})
+            headers.setdefault("X-CSRFToken", self.cookies.get("csrftoken", ""))
+            kwargs["headers"] = headers
+        return super().request(method, url, **kwargs)
+
+
+# Adapter registry ids from unstract.sdk1, chosen so no real provider is called:
+# the vectordb/x2text NoOp rows return canned output and the LLM is mocked. The
+# embedding adapter is real but never hit — chunk_size=0 keeps indexing off the
+# path. Fake creds persist because adapter create does not validate connectivity.
 _LLM_ADAPTER = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
 _EMBED_ADAPTER = "openai|717a0b0e-3bbc-41dc-9f0c-5689437a1151"
 _VECTORDB_ADAPTER = "noOpVectorDb|ca4d6056-4971-4bc8-97e3-9e36290b5bc0"
@@ -49,7 +73,7 @@ def authed_session(platform: PlatformEndpoints) -> requests.Session:
     should build their own session instead.
     """
     base = platform.backend_url.rstrip("/")
-    session = requests.Session()
+    session = CsrfSession()
 
     resp = session.post(
         f"{base}/api/v1/login",
@@ -90,9 +114,15 @@ def llm_mock_response() -> str:
     """
     value = os.environ.get(LLM_MOCK_RESPONSE_ENV)
     if not value:
+        # Under a rig run the value is mandatory; skipping green would silently
+        # drop the whole execute path. Outside the rig, skip is still right.
+        if os.environ.get("UNSTRACT_RIG_SESSION_ID"):
+            pytest.fail(
+                f"{LLM_MOCK_RESPONSE_ENV} unset under a rig run — the rig must set "
+                "it before booting the platform."
+            )
         pytest.skip(
-            f"{LLM_MOCK_RESPONSE_ENV} not set — execute-path e2e needs the LLM "
-            "mock; the rig sets it when it boots the platform."
+            f"{LLM_MOCK_RESPONSE_ENV} not set — execute-path e2e needs the LLM mock."
         )
     return value
 
@@ -120,15 +150,35 @@ def _org_id(session: requests.Session, base: str) -> str:
 
 
 def _post(session: requests.Session, url: str, **kw: object) -> requests.Response:
-    headers = dict(kw.pop("headers", {}))
-    headers["X-CSRFToken"] = session.cookies.get("csrftoken", "")
-    return session.post(url, headers=headers, timeout=60, **kw)
+    return session.post(url, timeout=60, **kw)  # CsrfSession stamps the header
 
 
 def _patch(session: requests.Session, url: str, **kw: object) -> requests.Response:
-    headers = dict(kw.pop("headers", {}))
-    headers["X-CSRFToken"] = session.cookies.get("csrftoken", "")
-    return session.patch(url, headers=headers, timeout=60, **kw)
+    return session.patch(url, timeout=60, **kw)
+
+
+def wait_for_execution(
+    session: requests.Session,
+    prefix: str,
+    execution_id: str,
+    *,
+    timeout: float = 300.0,
+) -> dict:
+    """Poll an execution until terminal, failing loudly on timeout.
+
+    A timed-out poll fails with the last-seen body so a slow worker reads
+    differently from a genuine terminal failure.
+    """
+    deadline = time.monotonic() + timeout
+    execution: dict = {}
+    while time.monotonic() < deadline:
+        resp = session.get(f"{prefix}/execution/{execution_id}/", timeout=30)
+        resp.raise_for_status()
+        execution = resp.json()
+        if execution.get("status") in TERMINAL_EXECUTION_STATUSES:
+            return execution
+        time.sleep(2)
+    pytest.fail(f"execution not terminal within {timeout}s: {execution}")
 
 
 @pytest.fixture(scope="session")
@@ -162,8 +212,8 @@ def provisioned_workflow(
         assert resp.status_code == 201, f"adapter {adapter_type}: {resp.text}"
         return resp.json()["id"]
 
-    # api_base is required even though the completion is mocked: params are
-    # validated before the mock short-circuits.
+    # api_base is required by the openai adapter's JSON schema, so adapter
+    # creation rejects the row without it even though the completion is mocked.
     llm_id = create_adapter(
         _LLM_ADAPTER,
         "LLM",
@@ -263,8 +313,9 @@ def provisioned_workflow(
             )
             assert resp.status_code == 200, f"patch endpoint: {resp.text}"
             patched += 1
-    # Fail here, not in a downstream execute test, if no endpoint matched.
-    assert patched, f"no endpoint matched workflow_id={workflow_id}: {eps}"
+    # A workflow always has exactly SOURCE+DESTINATION; a half-configured one
+    # here would only surface downstream in an execute test.
+    assert patched == 2, f"expected SOURCE+DESTINATION, patched {patched}: {eps}"
 
     resp = _post(
         s,

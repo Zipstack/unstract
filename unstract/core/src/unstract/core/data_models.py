@@ -407,6 +407,15 @@ ExecutionStatus.failure_statuses = classmethod(_failure_statuses)
 ExecutionStatus.is_failure = classmethod(_is_failure)
 
 
+# Statuses a run cannot move out of. `is_completed` is the boolean form.
+def _terminal_statuses(cls) -> frozenset["ExecutionStatus"]:
+    """Return the set of statuses that represent a finished run."""
+    return frozenset({cls.COMPLETED, cls.ERROR, cls.STOPPED})
+
+
+ExecutionStatus.terminal_statuses = classmethod(_terminal_statuses)
+
+
 def is_failure_run(execution_status: str | None, failed_files: int | None) -> bool:
     """Canonical "did this run fail?" rule, shared across every dispatch path.
 

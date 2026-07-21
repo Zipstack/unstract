@@ -27,7 +27,7 @@ tests/
 │   ├── conftest.py          # `platform` fixture + `provisioned_workflow` chain
 │   ├── smoke/               # Login → /health smoke
 │   ├── workflows/           # Workflow execution e2e (mocked LLM)
-│   ├── api_deployment/      # API deployment e2e: sync, async, fan-out
+│   ├── api_deployment/      # API deployment e2e: run, callback delivery, fan-out (all async)
 │   ├── etl/                 # ETL pipeline e2e (MinIO source + destination)
 │   ├── prompt_studio/       # Prompt Studio fetch-response e2e
 │   └── hurl/                # (future) hurl-based HTTP suites
@@ -156,15 +156,17 @@ The `platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars; e
 
 ### Hermetic LLM (`UNSTRACT_LLM_MOCK_RESPONSE`)
 
-Execute-path e2e tests must not call a real provider, so `ComposeRuntime.up()` sets `UNSTRACT_LLM_MOCK_RESPONSE` (default `MOCK_LLM_OK`) before boot. The test overlay forwards it into the workers, and `unstract.sdk1.llm` passes it to litellm as `mock_response`: litellm returns the string verbatim with fixed usage (10 prompt / 20 completion / 30 total), so both the answer and the token counts are exact-assertable. Sentinels like `litellm.RateLimitError` force error paths. Unset (the production default) the hook is a no-op.
+Execute-path e2e tests must not call a real provider, so the rig sets `UNSTRACT_LLM_MOCK_RESPONSE` (default `MOCK_LLM_OK`) before boot, for any runtime and treating an exported empty string as unset. The test overlay forwards it into the workers, and `unstract.sdk1.llm` passes it to litellm as `mock_response`: for the non-streaming completion path litellm returns the string verbatim with fixed usage (10 prompt / 20 completion / 30 total), so both the answer and the token counts are exact-assertable. Streaming (`stream_complete`) goes through a different litellm path whose usage differs, so don't assume 10/20/30 there. Sentinels like `litellm.RateLimitError` force error paths. Unset (the production default) the hook is a no-op.
 
-It is `setdefault`, so a CI/dev override wins. Running these tests **without** the rig means the var is unset in the workers, so the `llm_mock_response` fixture skips rather than guess — export it on both sides (your shell and the workers) if you boot the stack yourself.
+A CI/dev override wins (the rig only fills an unset value). Running these tests under the rig **fails** if the var is missing; running **without** the rig just skips the execute-path tests — export it on both sides (your shell and the workers) if you boot the stack yourself.
+
+While the mock is active platform-wide, the LLM adapter's test-connection cannot pass: it regex-matches the completion for a specific city, which `MOCK_LLM_OK` won't satisfy — so `adapter-register-llm` stays an e2e gap for now.
 
 Only `LLM` completions are mocked, not embeddings: `provisioned_workflow` pins `chunk_size=0` so indexing never invokes `litellm.embedding`. A test that needs chunking will need the embedding path mocked too.
 
 ### Fan-out (`MAX_PARALLEL_FILE_BATCHES`)
 
-Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay sets it to `3` on `backend`, which is what matters: workers ask the backend for this value and only fall back to their own env if that call fails (the overlay sets it on `worker-api-deployment-v2` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
+Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay defaults it to `3` on `backend`, which is what normally takes effect: workers ask the backend for this value and fall back to their own env only when they can't reach it or it carries no value (the overlay sets it on `worker-api-deployment-v2` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
 
 ### ETL (MinIO)
 

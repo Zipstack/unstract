@@ -16,7 +16,9 @@ from tests.e2e.conftest import ProvisionedWorkflow
 # rejoins, which the synchronous POST cannot wait out reliably under load. Every
 # api-deployment test therefore dispatches async (timeout=0) and polls the
 # status endpoint — the one path the codebase itself proves works.
-_POLL_TIMEOUT_SECONDS = 300
+# Per-test budget. Three tests in this group share one 600s group timeout, so
+# this stays well under a third of it to leave room for provisioning.
+_POLL_TIMEOUT_SECONDS = 150
 # A slow poll response is not a verdict on the execution — keep waiting rather
 # than failing the test on a transient blip.
 _TRANSIENT = (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
@@ -86,13 +88,24 @@ def poll_delivered(
             resp = deployment.session.get(
                 status_url, headers=deployment.auth, params=params, timeout=30
             )
-        except _TRANSIENT:
+        except _TRANSIENT as exc:
+            last = repr(exc)
+            time.sleep(2)
             continue
+        last = resp.text
         if resp.status_code == 200:
             return resp.json()
-        assert resp.status_code == 422, f"poll: HTTP {resp.status_code}: {resp.text}"
-        last = resp.text
-        assert _status_of(resp) not in ("ERROR", "STOPPED"), f"execution failed: {last}"
+        # 406 means the result was already acknowledged and cleared — a prior
+        # 200 was lost in transit, so the body is gone and cannot be recovered.
+        if resp.status_code == 406:
+            pytest.fail(f"result already acknowledged (200 lost in transit): {last}")
+        # 422 is the only "still running / failed" answer; anything else is a
+        # real error the view surfaced (400/500/…), not a poll-protocol hiccup.
+        if resp.status_code != 422:
+            pytest.fail(f"unexpected poll status HTTP {resp.status_code}: {last}")
+        status = _status_of(resp)
+        assert status, f"422 body carried no status (contract change?): {last}"
+        assert status not in ("ERROR", "STOPPED"), f"execution failed: {last}"
         time.sleep(2)
     pytest.fail(f"result never delivered within {_POLL_TIMEOUT_SECONDS}s; last: {last}")
 
@@ -100,13 +113,17 @@ def poll_delivered(
 def _status_of(resp: requests.Response) -> str:
     try:
         return str(resp.json().get("status", ""))
-    except ValueError:  # a non-JSON error body is not a terminal verdict
+    except ValueError:  # a non-JSON body has no status; the caller asserts on it
         return ""
 
 
 @pytest.fixture(scope="session")
 def api_deployment(provisioned_workflow: ProvisionedWorkflow) -> ApiDeployment:
-    """Deploy the provisioned workflow as an API, once for the whole group."""
+    """Deploy the provisioned workflow as an API.
+
+    Session-scoped, so it runs once per xdist worker (not once per group) when
+    the group is parallelised.
+    """
     pw = provisioned_workflow
     api_name = f"e2edep{uuid.uuid4().hex[:8]}"
     resp = pw.session.post(

@@ -18,9 +18,16 @@ def _load_llm_module() -> object:
     import sys
     from types import ModuleType
 
-    # Stub python-magic so importing LLM does not depend on libmagic.
-    sys.modules.setdefault("magic", ModuleType("magic"))
-    return import_module("unstract.sdk1.llm")
+    # Stub python-magic for the import only, so we neither depend on libmagic
+    # nor leave a stub shadowing a real `magic` for the rest of the process.
+    inserted = "magic" not in sys.modules
+    if inserted:
+        sys.modules["magic"] = ModuleType("magic")
+    try:
+        return import_module("unstract.sdk1.llm")
+    finally:
+        if inserted:
+            del sys.modules["magic"]
 
 
 def _inject(kwargs: dict[str, object]) -> dict[str, object]:
@@ -35,6 +42,14 @@ def _reset_warn_cache() -> None:
 
 def test_inject_is_noop_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("UNSTRACT_LLM_MOCK_RESPONSE", raising=False)
+    assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
+
+
+def test_inject_is_noop_when_env_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The overlay exports `UNSTRACT_LLM_MOCK_RESPONSE=` (empty) into workers when
+    # the var is unset upstream; that empty string must stay a no-op, or every
+    # local stack run would silently mock completions.
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "")
     assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
 
 
@@ -71,6 +86,18 @@ def test_inject_does_not_warn_when_env_unset(
     with caplog.at_level("WARNING", logger="unstract.sdk1.llm"):
         _inject({"model": "gpt-4o"})
     assert not caplog.records, caplog.text
+
+
+def test_every_completion_path_injects_the_mock() -> None:
+    # The hook is worthless if a completion method doesn't call it; deleting any
+    # call site would otherwise leave this suite green and only surface as an
+    # opaque "no API key" worker failure in the e2e tier.
+    import inspect
+
+    llm = _load_llm_module()
+    for name in ("complete", "complete_vision", "stream_complete", "acomplete"):
+        src = inspect.getsource(getattr(llm.LLM, name))
+        assert "_inject_mock_response(completion_kwargs)" in src, name
 
 
 def test_litellm_mock_contract_returns_string_and_fixed_usage() -> None:

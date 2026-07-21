@@ -134,8 +134,6 @@ class ComposeRuntime:
     def up(self) -> PlatformEndpoints:
         if shutil.which("docker") is None:
             raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
-        # setdefault so a CI/dev override wins.
-        os.environ.setdefault(LLM_MOCK_RESPONSE_ENV, DEFAULT_LLM_MOCK_RESPONSE)
         files = ["-f", str(BASE_COMPOSE)]
         if COMPOSE_OVERLAY.exists():
             files += ["-f", str(COMPOSE_OVERLAY)]

@@ -66,7 +66,7 @@ paths:
     proof: marker
 
   - id: prompt-studio-fetch-response
-    description: "Prompt Studio: create project, add prompt, run single-pass, get response."
+    description: "Prompt Studio: create project, add prompt, run a prompt, get response."
     covered_by: [e2e-prompt-studio]
     proof: marker
 

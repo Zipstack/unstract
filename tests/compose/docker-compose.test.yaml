@@ -8,7 +8,8 @@ services:
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
       - ENVIRONMENT=test
-      # Workers read this from the backend, so fan-out only happens if it's set here.
+      # Workers ask the backend for this, so this is the value that normally
+      # takes effect for fan-out.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
