@@ -226,15 +226,6 @@ jobs:
             mv reports/.coverage "reports/.coverage.tier-e2e"
           fi
 
-      - name: Capture docker compose logs on failure
-        if: failure()
-        run: |
-          mkdir -p reports
-          docker compose -p unstract-test \
-            -f docker/docker-compose.yaml \
-            -f tests/compose/docker-compose.test.yaml \
-            logs --no-color > reports/docker-compose-logs.txt || true
-
       - name: Upload e2e reports artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

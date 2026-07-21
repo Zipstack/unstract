@@ -38,9 +38,11 @@ LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
 
 # Gives every mocked completion a known cost, so per-file durations are
-# comparable across files instead of being dominated by incidental jitter.
+# comparable across files instead of being dominated by incidental jitter. The
+# value is the whole signal the fan-out test measures against, so it has to stay
+# clear of CI runner contention -- too small and that test reads noise.
 LLM_MOCK_DELAY_ENV = "UNSTRACT_LLM_MOCK_DELAY"
-DEFAULT_LLM_MOCK_DELAY = "2"
+DEFAULT_LLM_MOCK_DELAY = "5"
 
 
 @dataclass(frozen=True)
@@ -153,6 +155,7 @@ class ComposeRuntime:
         files = ["-f", str(BASE_COMPOSE)]
         if COMPOSE_OVERLAY.exists():
             files += ["-f", str(COMPOSE_OVERLAY)]
+        self._dump_logs(files)
         _run(
             [
                 "docker",
@@ -166,6 +169,25 @@ class ComposeRuntime:
             ],
             check=False,
         )
+
+    def _dump_logs(self, files: list[str]) -> None:
+        """Capture service logs while the containers still exist.
+
+        A failing e2e is usually explained by a worker log, and `down -v` is the
+        last thing that can read them -- a CI step afterwards gets an empty file.
+        """
+        target = REPO_ROOT / "reports" / "docker-compose-logs.txt"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            completed = subprocess.run(  # noqa: S603
+                ["docker", "compose", "-p", self.project_name, *files, "logs", "--no-color"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            target.write_text(completed.stdout)
+        except OSError as exc:
+            log.warning("Could not capture compose logs: %s", exc)
 
 
 class TestcontainersRuntime:
