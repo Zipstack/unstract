@@ -60,6 +60,9 @@ _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 # @pytest.mark.critical_path marker args land in junit properties.
 _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
+# saxutils.escape leaves quotes alone, which is wrong inside an attribute.
+_XML_ATTR_ESCAPES = {'"': "&quot;"}
+
 
 @lru_cache(maxsize=1)
 def _rig_session_id() -> str:
@@ -978,7 +981,7 @@ def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
     is_failure = exit_code != 0 and exit_code != 5
     failures = 1 if is_failure else 0
     failure_tag = f'<failure message="hurl exit {exit_code}"/>' if is_failure else ""
-    name = saxutils.escape(group_name, {'"': "&quot;"})
+    name = saxutils.escape(group_name, _XML_ATTR_ESCAPES)
     path.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<testsuite name="{name}" tests="1" failures="{failures}" '
@@ -999,8 +1002,8 @@ def _write_blocked_junit(
     `rig report`, which rebuilds results purely from junit, renders the ⏭️
     blocked row instead of dropping the group.
     """
-    name = saxutils.escape(group_name, {'"': "&quot;"})
-    value = saxutils.escape(",".join(blocked_by), {'"': "&quot;"})
+    name = saxutils.escape(group_name, _XML_ATTR_ESCAPES)
+    value = saxutils.escape(",".join(blocked_by), _XML_ATTR_ESCAPES)
     path.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<testsuite name="{name}" tests="0" failures="0" errors="0" '

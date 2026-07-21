@@ -109,7 +109,7 @@ def test_mock_applies_in_allowed_environments(
 def test_inject_adds_delay_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
     monkeypatch.setenv("UNSTRACT_LLM_MOCK_DELAY", "2")
-    assert _inject({"model": "gpt-4o"})["mock_delay"] == 2.0
+    assert _inject({"model": "gpt-4o"})["mock_delay"] == pytest.approx(2.0)
 
 
 def test_delay_is_inert_without_a_mock_response(monkeypatch: pytest.MonkeyPatch) -> None:
