@@ -474,9 +474,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
-            # Lookup enrichment config, attached to the output upstream when a
-            # lookup is assigned to this agentic-table prompt. None otherwise —
-            # the agentic_table executor runs enrichment only when set.
+            # Set on the output at export by prompt_studio_registry_helper.py
+            # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
         }
         at_ctx = ExecutionContext(
