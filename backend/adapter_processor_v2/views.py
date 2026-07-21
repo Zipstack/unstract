@@ -28,6 +28,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -146,6 +147,7 @@ class AdapterInstanceViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
     serializer_class = AdapterInstanceSerializer
+    pagination_class = OptionalPagination
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -187,7 +189,15 @@ class AdapterInstanceViewSet(
             constant.ADAPTER_NAME,
         ):
             queryset = queryset.filter(**filter_args)
-        return queryset
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(adapter_name__icontains=search)
+
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too. Not modified_at:
+        # that would conflict with the DISTINCT ON in for_user().
+        return queryset.order_by("id")
 
     def get_serializer_class(
         self,
