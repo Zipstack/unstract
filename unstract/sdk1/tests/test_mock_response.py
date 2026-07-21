@@ -38,6 +38,13 @@ def _inject(kwargs: dict[str, object]) -> dict[str, object]:
 @pytest.fixture(autouse=True)
 def _reset_warn_cache() -> None:
     _load_llm_module()._warn_mock_active.cache_clear()
+    _load_llm_module()._warn_mock_refused.cache_clear()
+
+
+@pytest.fixture(autouse=True)
+def _allowed_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The hatch needs a permitted ENVIRONMENT; the guard itself is tested below."""
+    monkeypatch.setenv("ENVIRONMENT", "test")
 
 
 def test_inject_is_noop_when_env_unset(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -58,6 +65,45 @@ def test_inject_sets_mock_response_when_env_set(
 ) -> None:
     monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned answer")
     assert _inject({"model": "gpt-4o"})["mock_response"] == "canned answer"
+
+
+@pytest.mark.parametrize("environment", ["production", "staging", "", "  "])
+def test_mock_refused_outside_allowed_environments(
+    monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    # The whole point of the guard: a stray mock var in a real deployment must
+    # not fake completions and their billing.
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
+
+
+def test_mock_refused_when_environment_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Production k8s sets no ENVIRONMENT at all, so unset must fail closed.
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.delenv("ENVIRONMENT", raising=False)
+    assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
+
+
+def test_refusal_is_warned_so_a_real_bill_is_never_silent(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.setenv("ENVIRONMENT", "production")
+    with caplog.at_level("WARNING", logger="unstract.sdk1.llm"):
+        _inject({"model": "gpt-4o"})
+    assert any("not one of" in r.message for r in caplog.records), caplog.text
+
+
+@pytest.mark.parametrize("environment", ["test", "development", "TEST", " Development "])
+def test_mock_applies_in_allowed_environments(
+    monkeypatch: pytest.MonkeyPatch, environment: str
+) -> None:
+    # `development` is what base compose sets on the workers that run the
+    # injection; a guard that only accepted `test` would kill the local stack.
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.setenv("ENVIRONMENT", environment)
+    assert _inject({"model": "gpt-4o"})["mock_response"] == "canned"
 
 
 def test_inject_adds_delay_when_set(monkeypatch: pytest.MonkeyPatch) -> None:

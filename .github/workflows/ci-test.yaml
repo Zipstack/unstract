@@ -29,8 +29,12 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     outputs:
-      relevant: ${{ steps.filter.outputs.relevant }}
-      e2e_relevant: ${{ steps.filter.outputs.e2e_relevant }}
+      # Filtering is a PR-time saving only. On workflow_dispatch there is no
+      # base to diff, so paths-filter resolves against the default branch and a
+      # manual run on main diffs main against itself — every filter false, every
+      # tier skipped, gate green with nothing run. Force both true off-PR.
+      relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' }}
+      e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -38,6 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Check for changes outside ignored paths
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:

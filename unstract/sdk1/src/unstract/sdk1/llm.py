@@ -38,6 +38,10 @@ _MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 # Seconds to stall a mocked completion. Only meaningful alongside the mock,
 # which is what makes concurrent work take measurable, comparable time.
 _MOCK_DELAY_ENV = "UNSTRACT_LLM_MOCK_DELAY"
+# Second condition on the hatch, so a stray mock var alone can't fake
+# completions and their billing. Deployments that set neither fail closed.
+_ENVIRONMENT_ENV = "ENVIRONMENT"
+_MOCK_ALLOWED_ENVIRONMENTS = frozenset({"test", "development"})
 
 
 @lru_cache(maxsize=1)
@@ -51,9 +55,26 @@ def _warn_mock_active() -> None:
     )
 
 
+@lru_cache(maxsize=1)
+def _warn_mock_refused(environment: str) -> None:
+    # Loud rather than silent: the var being set at all means someone expected
+    # mocking, and they need to know why the bill is real.
+    logger.warning(
+        "%s is set but %s=%r is not one of %s — calling the provider for real.",
+        _MOCK_RESPONSE_ENV,
+        _ENVIRONMENT_ENV,
+        environment,
+        sorted(_MOCK_ALLOWED_ENVIRONMENTS),
+    )
+
+
 def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
     mock = os.getenv(_MOCK_RESPONSE_ENV)
     if not mock or "mock_response" in completion_kwargs:
+        return
+    environment = os.getenv(_ENVIRONMENT_ENV, "").strip().lower()
+    if environment not in _MOCK_ALLOWED_ENVIRONMENTS:
+        _warn_mock_refused(environment)
         return
     _warn_mock_active()
     completion_kwargs["mock_response"] = mock
