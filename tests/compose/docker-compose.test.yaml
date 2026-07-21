@@ -7,20 +7,15 @@ services:
     # contributor run without setting it.
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
-      - ENVIRONMENT=test
       # Workers ask the backend for this, so this is the value that normally
       # takes effect for fan-out.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
 
   runner:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
 
   # Execute-path e2e must never reach a real provider.
   worker-executor-v2:
