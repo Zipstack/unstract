@@ -1,15 +1,17 @@
 """E2E: a multi-file execution fans out to file-processing workers and rejoins.
 
-Fan-out only happens when the backend hands out MAX_PARALLEL_FILE_BATCHES > 1
-(the test overlay sets it); at the default of 1 every file lands in a single
-batch and this would pass while proving nothing. The rejoin is the chord
-callback: one result per file, and per-file rows counted back up into
-successful_files.
+The rejoin is the chord callback: one result per file, and per-file rows counted
+back up into successful_files.
+
+Proving the fan-out half needs care, because nothing records a batch or task id
+— see `_assert_files_ran_concurrently` for the timing argument that stands in
+for it, and why the obvious alternatives don't discriminate.
 """
 
 from __future__ import annotations
 
 import io
+from datetime import datetime
 
 import pytest
 
@@ -31,7 +33,7 @@ _DOCUMENTS = {
 
 @pytest.mark.critical_path("workflow-execution-fan-out")
 def test_multi_file_execution_fans_out_and_rejoins(
-    api_deployment: ApiDeployment, llm_mock_response: str
+    api_deployment: ApiDeployment, llm_mock_response: str, llm_mock_delay: float
 ) -> None:
     # Bodies must differ: identical files are deduplicated by hash on ingest and
     # would come back as fewer results, which reads as a lost file.
@@ -51,29 +53,67 @@ def test_multi_file_execution_fans_out_and_rejoins(
         assert entry["result"]["output"]["answer"] == llm_mock_response, (name, entry)
 
     _assert_totals_rejoined(api_deployment, execution_id)
-    _assert_recorded_per_file(api_deployment, execution_id)
+    rows = _fetch_file_rows(api_deployment, execution_id)
+    assert len(rows) == len(_DOCUMENTS), rows
+    _assert_files_ran_concurrently(rows, llm_mock_delay)
 
 
 def _assert_totals_rejoined(deployment: ApiDeployment, execution_id: str) -> None:
-    """Every fanned-out file is counted back into the execution's totals."""
+    """Every file is counted back into the execution's totals."""
     resp = deployment.session.get(
         f"{deployment.prefix}/execution/{execution_id}/", timeout=30
     )
     resp.raise_for_status()
     execution = resp.json()
     assert execution["total_files"] == len(_DOCUMENTS), execution
-    # Counted from the per-file rows the fanned-out workers wrote, so this is
-    # the rejoin itself rather than a status the dispatcher could set alone.
+    # Counted from the per-file rows the workers wrote, so this is the rejoin
+    # itself rather than a status the dispatcher could set alone.
     assert execution["successful_files"] == len(_DOCUMENTS), execution
     assert execution["failed_files"] == 0, execution
 
 
-def _assert_recorded_per_file(deployment: ApiDeployment, execution_id: str) -> None:
-    """The fan-out granularity is visible per file, not only in the totals."""
+def _fetch_file_rows(deployment: ApiDeployment, execution_id: str) -> list[dict]:
+    """The per-file rows, which exist only because the workers wrote them."""
     resp = deployment.session.get(
         f"{deployment.prefix}/execution/{execution_id}/files/", timeout=30
     )
     resp.raise_for_status()
     body = resp.json()
-    rows = body if isinstance(body, list) else body.get("results", [])
-    assert len(rows) == len(_DOCUMENTS), rows
+    return body if isinstance(body, list) else body.get("results", [])
+
+
+def _assert_files_ran_concurrently(rows: list[dict], delay: float) -> None:
+    """Each file's own clock covers only its own work, so the batches overlapped.
+
+    Every completion stalls for `delay`, and a row's window opens when the worker
+    that owns its batch picks the batch up. Serialised in one batch, all rows
+    open together and each successive file's window has to swallow the ones
+    before it -- roughly delay, 2*delay, 3*delay. Fanned out, each row opens with
+    its own batch, so every window is about one delay wide.
+
+    Comparing durations rather than overlap is deliberate: serialised rows are
+    created in one tight loop, so their windows overlap too and an overlap test
+    would pass on exactly the case it must catch.
+    """
+    windows = [
+        (_parse(row["created_at"]), _parse(row["modified_at"])) for row in rows
+    ]
+    durations = sorted((end - start).total_seconds() for start, end in windows)
+    # Half a delay of headroom: the serial case is a whole delay apart, so this
+    # separates the two without tracking however long the non-LLM work takes.
+    assert durations[-1] - durations[0] < delay / 2, (
+        f"per-file durations {durations} spread by more than half of {delay}s, "
+        "which is what serialising the files into one batch looks like"
+    )
+    # Guards the guard: without the stall taking effect the spread is ~0 either
+    # way, and the assertion above would hold for a serial run too.
+    assert durations[0] >= delay, (
+        f"per-file durations {durations} are below the {delay}s mock delay — "
+        "the workers never applied it, so this proves nothing about fan-out"
+    )
+
+
+def _parse(timestamp: str) -> datetime:
+    # Django serialises UTC as a trailing Z, which fromisoformat rejects
+    # before 3.11.
+    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))

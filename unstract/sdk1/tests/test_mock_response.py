@@ -60,6 +60,30 @@ def test_inject_sets_mock_response_when_env_set(
     assert _inject({"model": "gpt-4o"})["mock_response"] == "canned answer"
 
 
+def test_inject_adds_delay_when_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_DELAY", "2")
+    assert _inject({"model": "gpt-4o"})["mock_delay"] == 2.0
+
+
+def test_delay_is_inert_without_a_mock_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    # litellm ignores mock_delay without mock_response, so setting it alone must
+    # not slow real completions.
+    monkeypatch.delenv("UNSTRACT_LLM_MOCK_RESPONSE", raising=False)
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_DELAY", "2")
+    assert _inject({"model": "gpt-4o"}) == {"model": "gpt-4o"}
+
+
+def test_non_numeric_delay_is_ignored_not_fatal(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A typo in the overlay must degrade to "no delay", not break every
+    # completion in the worker.
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_RESPONSE", "canned")
+    monkeypatch.setenv("UNSTRACT_LLM_MOCK_DELAY", "2s")
+    injected = _inject({"model": "gpt-4o"})
+    assert "mock_delay" not in injected
+    assert injected["mock_response"] == "canned"
+
+
 def test_inject_does_not_clobber_explicit_mock_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -111,6 +135,21 @@ def test_litellm_mock_contract_returns_string_and_fixed_usage() -> None:
     assert resp["usage"]["prompt_tokens"] == 10
     assert resp["usage"]["completion_tokens"] == 20
     assert resp["usage"]["total_tokens"] == 30
+
+
+def test_litellm_honours_mock_delay() -> None:
+    # The fan-out e2e reads per-file durations, so a litellm bump that dropped
+    # mock_delay would turn that test into a tautology rather than fail it.
+    import time
+
+    start = time.monotonic()
+    litellm.completion(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": "anything"}],
+        mock_response="canned answer",
+        mock_delay=0.5,
+    )
+    assert time.monotonic() - start >= 0.5
 
 
 def test_litellm_mock_error_sentinel_raises() -> None:

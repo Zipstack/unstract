@@ -37,6 +37,11 @@ BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
 
+# Gives every mocked completion a known cost, so per-file durations are
+# comparable across files instead of being dominated by incidental jitter.
+LLM_MOCK_DELAY_ENV = "UNSTRACT_LLM_MOCK_DELAY"
+DEFAULT_LLM_MOCK_DELAY = "2"
+
 
 @dataclass(frozen=True)
 class InfraEndpoints:

@@ -35,6 +35,9 @@ logger = logging.getLogger(__name__)
 # Lets tests force a deterministic completion without a provider or a secret.
 # Unset in production, where this is a no-op.
 _MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+# Seconds to stall a mocked completion. Only meaningful alongside the mock,
+# which is what makes concurrent work take measurable, comparable time.
+_MOCK_DELAY_ENV = "UNSTRACT_LLM_MOCK_DELAY"
 
 
 @lru_cache(maxsize=1)
@@ -50,9 +53,16 @@ def _warn_mock_active() -> None:
 
 def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
     mock = os.getenv(_MOCK_RESPONSE_ENV)
-    if mock and "mock_response" not in completion_kwargs:
-        _warn_mock_active()
-        completion_kwargs["mock_response"] = mock
+    if not mock or "mock_response" in completion_kwargs:
+        return
+    _warn_mock_active()
+    completion_kwargs["mock_response"] = mock
+    delay = os.getenv(_MOCK_DELAY_ENV)
+    if delay:
+        try:
+            completion_kwargs["mock_delay"] = float(delay)
+        except ValueError:
+            logger.warning("Ignoring non-numeric %s=%r", _MOCK_DELAY_ENV, delay)
 
 
 # Drop unsupported params rather than raising errors.
