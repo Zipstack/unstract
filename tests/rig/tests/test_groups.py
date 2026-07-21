@@ -80,6 +80,34 @@ def test_expand_topological_order(tmp_path: Path) -> None:
     assert expanded == ["leaf", "mid", "root"]
 
 
+def test_transitive_deps_reaches_indirect_dependencies(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          leaf:
+            tier: unit
+            paths: [x]
+            optional: true
+          mid:
+            tier: unit
+            paths: [x]
+            depends_on: [leaf]
+            optional: true
+          root:
+            tier: e2e
+            paths: [x]
+            depends_on: [mid]
+            optional: true
+        """,
+    )
+    loaded = load_groups(manifest)
+    # Indirect deps count: a red `leaf` must be able to block `root`.
+    assert loaded.transitive_deps("root") == {"mid", "leaf"}
+    assert loaded.transitive_deps("leaf") == set()
+
+
 def test_invalid_tier_rejected(tmp_path: Path) -> None:
     manifest = _write_manifest(
         tmp_path,
