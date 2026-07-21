@@ -1,17 +1,19 @@
-"""E2E: a multi-file execution fans out to file-processing workers and rejoins.
+"""E2E: a multi-file execution rejoins after being dispatched to workers.
 
 The rejoin is the chord callback: one result per file, and per-file rows counted
-back up into successful_files.
+back up into successful_files. That half is directly observable.
 
-Proving the fan-out half needs care, because nothing records a batch or task id
-— see `_assert_files_ran_concurrently` for the timing argument that stands in
-for it, and why the obvious alternatives don't discriminate.
+The fan-out half is NOT asserted here, and the critical path is recorded as a
+gap. Nothing persists a batch or task id, so the only available proxy was
+per-file timing, and timing cannot decide it: on a loaded CI runner three files
+genuinely running in parallel finish further apart than three run serially,
+because the contention they create outweighs the overlap they gain. Closing the
+gap needs batch identity on the row, not a better statistic.
 """
 
 from __future__ import annotations
 
 import io
-from datetime import datetime
 
 import pytest
 
@@ -31,9 +33,8 @@ _DOCUMENTS = {
 }
 
 
-@pytest.mark.critical_path("workflow-execution-fan-out")
-def test_multi_file_execution_fans_out_and_rejoins(
-    api_deployment: ApiDeployment, llm_mock_response: str, llm_mock_delay: float
+def test_multi_file_execution_rejoins(
+    api_deployment: ApiDeployment, llm_mock_response: str
 ) -> None:
     # Bodies must differ: identical files are deduplicated by hash on ingest and
     # would come back as fewer results, which reads as a lost file.
@@ -55,7 +56,6 @@ def test_multi_file_execution_fans_out_and_rejoins(
     _assert_totals_rejoined(api_deployment, execution_id)
     rows = _fetch_file_rows(api_deployment, execution_id)
     assert len(rows) == len(_DOCUMENTS), rows
-    _assert_files_ran_concurrently(rows, llm_mock_delay)
 
 
 def _assert_totals_rejoined(deployment: ApiDeployment, execution_id: str) -> None:
@@ -80,41 +80,3 @@ def _fetch_file_rows(deployment: ApiDeployment, execution_id: str) -> list[dict]
     resp.raise_for_status()
     body = resp.json()
     return body if isinstance(body, list) else body.get("results", [])
-
-
-def _assert_files_ran_concurrently(rows: list[dict], delay: float) -> None:
-    """Each file's own clock covers only its own work, so the batches overlapped.
-
-    Every completion stalls for `delay`, and a row's window opens when the worker
-    that owns its batch picks the batch up. Serialised in one batch, all rows
-    open together and each successive file's window has to swallow the ones
-    before it -- roughly delay, 2*delay, 3*delay. Fanned out, each row opens with
-    its own batch, so every window is about one delay wide.
-
-    Comparing durations rather than overlap is deliberate: serialised rows are
-    created in one tight loop, so their windows overlap too and an overlap test
-    would pass on exactly the case it must catch.
-    """
-    windows = [
-        (_parse(row["created_at"]), _parse(row["modified_at"])) for row in rows
-    ]
-    durations = sorted((end - start).total_seconds() for start, end in windows)
-    # The two outcomes predict a spread of ~0 (fanned out) or ~2*delay (the last
-    # file waiting on the two before it), so one delay is the midpoint between
-    # them. Anything tighter would be measuring runner contention, not batching.
-    assert durations[-1] - durations[0] < delay, (
-        f"per-file durations {durations} spread by more than {delay}s, closer to "
-        f"the {2 * delay}s of serialising the files into one batch than to fan-out"
-    )
-    # Guards the guard: without the stall taking effect the spread is ~0 either
-    # way, and the assertion above would hold for a serial run too.
-    assert durations[0] >= delay, (
-        f"per-file durations {durations} are below the {delay}s mock delay — "
-        "the workers never applied it, so this proves nothing about fan-out"
-    )
-
-
-def _parse(timestamp: str) -> datetime:
-    # Django serialises UTC as a trailing Z, which fromisoformat rejects
-    # before 3.11.
-    return datetime.fromisoformat(timestamp.replace("Z", "+00:00"))

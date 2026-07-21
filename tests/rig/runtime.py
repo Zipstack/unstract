@@ -37,13 +37,6 @@ BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
 
-# Gives every mocked completion a known cost, so per-file durations are
-# comparable across files instead of being dominated by incidental jitter. The
-# value is the whole signal the fan-out test measures against, so it has to stay
-# clear of CI runner contention -- too small and that test reads noise.
-LLM_MOCK_DELAY_ENV = "UNSTRACT_LLM_MOCK_DELAY"
-DEFAULT_LLM_MOCK_DELAY = "5"
-
 
 @dataclass(frozen=True)
 class InfraEndpoints:

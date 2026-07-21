@@ -40,9 +40,7 @@ from tests.rig.reporting import (
     write_summary,
 )
 from tests.rig.runtime import (
-    DEFAULT_LLM_MOCK_DELAY,
     DEFAULT_LLM_MOCK_RESPONSE,
-    LLM_MOCK_DELAY_ENV,
     LLM_MOCK_RESPONSE_ENV,
     PlatformEndpoints,
     PlatformRuntime,
@@ -421,8 +419,6 @@ def cmd_run(args: argparse.Namespace) -> int:
     # workers skip injection and the tests skip green with zero coverage.
     if needs_platform and not os.environ.get(LLM_MOCK_RESPONSE_ENV):
         os.environ[LLM_MOCK_RESPONSE_ENV] = DEFAULT_LLM_MOCK_RESPONSE
-    if needs_platform and not os.environ.get(LLM_MOCK_DELAY_ENV):
-        os.environ[LLM_MOCK_DELAY_ENV] = DEFAULT_LLM_MOCK_DELAY
     # A group can declare `requires_services` (stateful infra like Postgres/
     # Redis) without needing the whole platform — provision just that infra via
     # testcontainers instead of standing up every compose service. Platform wins

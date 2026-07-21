@@ -17,7 +17,6 @@ import pytest
 import requests
 
 from tests.rig.runtime import (
-    LLM_MOCK_DELAY_ENV,
     LLM_MOCK_RESPONSE_ENV,
     PlatformEndpoints,
 )
@@ -129,15 +128,6 @@ def llm_mock_response() -> str:
             f"{LLM_MOCK_RESPONSE_ENV} not set — execute-path e2e needs the LLM mock."
         )
     return value
-
-
-@pytest.fixture(scope="session")
-def llm_mock_delay() -> float:
-    """Seconds each mocked completion stalls, as the workers were told."""
-    value = os.environ.get(LLM_MOCK_DELAY_ENV)
-    if not value:
-        pytest.skip(f"{LLM_MOCK_DELAY_ENV} not set — no known per-file cost to time.")
-    return float(value)
 
 
 @dataclass(frozen=True)

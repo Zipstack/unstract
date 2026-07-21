@@ -30,13 +30,11 @@ services:
     environment:
       - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
-      - UNSTRACT_LLM_MOCK_DELAY=${UNSTRACT_LLM_MOCK_DELAY:-}
 
   worker-file-processing-v2:
     environment:
       - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
-      - UNSTRACT_LLM_MOCK_DELAY=${UNSTRACT_LLM_MOCK_DELAY:-}
 
   # Only the worker's fallback if it can't reach the backend; kept in step so it
   # can't quietly serialise the fan-out test.

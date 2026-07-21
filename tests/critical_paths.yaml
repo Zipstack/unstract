@@ -90,10 +90,13 @@ paths:
     covered_by: [e2e-api-deployment]
     proof: marker
 
+  # Deliberate gap. The rejoin half is covered by e2e-api-deployment, but the
+  # fan-out half has no observable: no batch or task id is persisted, and timing
+  # can't stand in for one (see the test's module docstring). Closing it needs
+  # batch identity on WorkflowFileExecution, not another test.
   - id: workflow-execution-fan-out
     description: "Multi-file workflow execution fans out to file-processing workers and rejoins."
-    covered_by: [e2e-api-deployment]
-    proof: marker
+    covered_by: []
 
   - id: callback-result-delivery
     description: "Async results are posted back via the callback worker."
