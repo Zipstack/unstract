@@ -172,7 +172,9 @@ Defaults to `1`, meaning every file of a multi-file run lands in one batch and i
 
 Nothing persists a batch or task id — the batch index is a discarded loop local, and the celery task id only ever reaches worker stdout — so the e2e test can't asserted fan-out directly. It compares per-file durations instead, which works because `WorkflowFileExecution` rows are created by the worker that owns the batch, not up front by the dispatcher: fanned out, each row's window is one `UNSTRACT_LLM_MOCK_DELAY` wide; serialised into one batch, the windows all open together and grow by a delay per file. Overlap would *not* discriminate — serialised rows are created in one tight loop, so they overlap too.
 
-`UNSTRACT_LLM_MOCK_DELAY` (rig default `2`) stalls every mocked completion by that many seconds, via litellm's `mock_delay`. It applies to all e2e LLM calls, not just the fan-out test — scoping it to one test would mean that test provisioning its own adapter and workflow. The cost is a couple of seconds per test, and it's inert without `UNSTRACT_LLM_MOCK_RESPONSE` (litellm ignores `mock_delay` on a real completion), so it can never slow production.
+`UNSTRACT_LLM_MOCK_DELAY` (rig default `5`) stalls every mocked completion by that many seconds, via litellm's `mock_delay`. It applies to all e2e LLM calls, not just the fan-out test — scoping it to one test would mean that test provisioning its own adapter and workflow, and the workers read the value per completion from their own env, which no test can reach from outside the container. It's inert without `UNSTRACT_LLM_MOCK_RESPONSE` (litellm ignores `mock_delay` on a real completion), so it can never slow production.
+
+The delay is also the fan-out test's entire signal-to-noise budget: the two outcomes it separates are a spread of ~0 and ~`2 × delay`, so the delay has to stay comfortably above however much the durations wander under CI contention. A value that merely works locally makes that test read runner load instead of batching.
 
 ### ETL (MinIO)
 

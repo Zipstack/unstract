@@ -99,11 +99,12 @@ def _assert_files_ran_concurrently(rows: list[dict], delay: float) -> None:
         (_parse(row["created_at"]), _parse(row["modified_at"])) for row in rows
     ]
     durations = sorted((end - start).total_seconds() for start, end in windows)
-    # Half a delay of headroom: the serial case is a whole delay apart, so this
-    # separates the two without tracking however long the non-LLM work takes.
-    assert durations[-1] - durations[0] < delay / 2, (
-        f"per-file durations {durations} spread by more than half of {delay}s, "
-        "which is what serialising the files into one batch looks like"
+    # The two outcomes predict a spread of ~0 (fanned out) or ~2*delay (the last
+    # file waiting on the two before it), so one delay is the midpoint between
+    # them. Anything tighter would be measuring runner contention, not batching.
+    assert durations[-1] - durations[0] < delay, (
+        f"per-file durations {durations} spread by more than {delay}s, closer to "
+        f"the {2 * delay}s of serialising the files into one batch than to fan-out"
     )
     # Guards the guard: without the stall taking effect the spread is ~0 either
     # way, and the assertion above would hold for a serial run too.
