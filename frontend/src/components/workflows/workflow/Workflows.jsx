@@ -32,7 +32,7 @@ import "./Workflows.css";
 
 const { Text } = Typography;
 
-const DEFAULT_PAGE_SIZE = 12;
+const DEFAULT_PAGE_SIZE = 10;
 
 function Workflows() {
   const navigate = useNavigate();

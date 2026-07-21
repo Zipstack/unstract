@@ -42,6 +42,27 @@ class TestOptionalPagination:
         req = _Req({"page": "", "page_size": ""})
         assert OptionalPagination().paginate_queryset(QUERYSET, req) is None
 
+    def test_single_blank_param_does_not_trigger_pagination(self):
+        for params in ({"page": ""}, {"page_size": ""}):
+            assert OptionalPagination().paginate_queryset(QUERYSET, _Req(params)) is None
+
+    def test_blank_page_with_explicit_page_size_serves_first_page(self):
+        """A blank ?page= alongside a real ?page_size= is page 1, not an error.
+
+        DRF reads the page number as `query_params.get("page") or 1`, so a blank
+        value falls back to the first page instead of raising NotFound.
+        """
+        page = OptionalPagination().paginate_queryset(
+            QUERYSET, _Req({"page": "", "page_size": "10"})
+        )
+        assert page == list(range(1, 11))
+
+    def test_blank_page_size_with_explicit_page_uses_default_size(self):
+        page = OptionalPagination().paginate_queryset(
+            QUERYSET, _Req({"page": "2", "page_size": ""})
+        )
+        assert page == list(range(51, 101))
+
     def test_page_param_opts_in(self):
         paginator = OptionalPagination()
         page = paginator.paginate_queryset(QUERYSET, _Req({"page": "1"}))
