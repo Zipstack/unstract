@@ -1041,6 +1041,13 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
+        # Prompt caching is opt-in and applied on the message payload (a
+        # `cache_control` block on the stable system prompt), not as a LiteLLM
+        # completion param, so it is excluded from Pydantic validation and
+        # carried through on the validated dict for the LLM layer to read.
+        # Only Anthropic models on Bedrock support prompt caching.
+        enable_prompt_caching = bool(adapter_metadata.get("enable_prompt_caching", False))
+
         _pack_bedrock_guardrail_config(result_metadata)
 
         # Create validation metadata excluding control fields. `auth_type` is
@@ -1057,6 +1064,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 "guardrail_identifier",
                 "guardrail_version",
                 "guardrail_trace",
+                "enable_prompt_caching",
             )
         }
 
@@ -1075,6 +1083,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # lenient. Reads auth_type from result_metadata since validation_
         # metadata strips it before Pydantic.
         validated = _resolve_bedrock_aws_credentials(result_metadata, validated)
+        validated["enable_prompt_caching"] = enable_prompt_caching
         return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
@@ -1142,6 +1151,12 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
+        # Prompt caching is opt-in and applied on the message payload (a
+        # `cache_control` block on the stable system prompt), not as a LiteLLM
+        # completion param, so it is excluded from Pydantic validation and
+        # carried through on the validated dict for the LLM layer to read.
+        enable_prompt_caching = bool(adapter_metadata.get("enable_prompt_caching", False))
+
         # Create validation metadata excluding control fields
         exclude_fields = (
             "enable_thinking",
@@ -1149,6 +1164,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
             "thinking",
             "enable_extended_context",
             "extra_headers",
+            "enable_prompt_caching",
         )
         validation_metadata = {
             k: v for k, v in result_metadata.items() if k not in exclude_fields
@@ -1163,6 +1179,8 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         # Add extra_headers for extended context (1M tokens) if enabled
         if enable_extended_context:
             validated["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
+
+        validated["enable_prompt_caching"] = enable_prompt_caching
 
         return _strip_deprecated_sampling_params(validated)
 
