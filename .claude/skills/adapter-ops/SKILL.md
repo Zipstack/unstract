@@ -56,7 +56,7 @@ LiteLLM requires provider prefixes on model names:
 
 1. **Run initialization script**:
    ```bash
-   python .claude/skills/unstract-adapter-extension/scripts/init_llm_adapter.py \
+   python .claude/skills/adapter-ops/scripts/init_llm_adapter.py \
      --provider newprovider \
      --name "New Provider" \
      --description "New Provider LLM adapter" \
@@ -122,7 +122,7 @@ LiteLLM requires provider prefixes on model names:
 
 1. **Run initialization script**:
    ```bash
-   python .claude/skills/unstract-adapter-extension/scripts/init_embedding_adapter.py \
+   python .claude/skills/adapter-ops/scripts/init_embedding_adapter.py \
      --provider newprovider \
      --name "New Provider" \
      --description "New Provider embedding adapter" \
@@ -190,10 +190,10 @@ LiteLLM requires provider prefixes on model names:
 
 3. **Run management script** for automated updates:
    ```bash
-   python .claude/skills/unstract-adapter-extension/scripts/manage_models.py \
+   python .claude/skills/adapter-ops/scripts/manage_models.py \
      --adapter llm \
      --provider openai \
-     --action add \
+     --action add-enum \
      --models "gpt-4-turbo,gpt-4o-mini"
    ```
 
@@ -238,17 +238,17 @@ Compare existing adapter schemas against known LiteLLM features to identify pote
 1. **Run the update checker**:
    ```bash
    # Check all adapters
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py
 
    # Check specific adapter type
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py --adapter llm
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py --adapter embedding
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py --adapter llm
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py --adapter embedding
 
    # Check specific provider
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py --provider openai
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py --provider openai
 
    # Output as JSON
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py --json
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py --json
    ```
 
 2. **Review the report**:
@@ -278,7 +278,8 @@ Before submitting adapter changes:
 - [ ] Adapter class inherits from correct parameter class AND `BaseAdapter`
 - [ ] `get_id()` returns unique `{provider}|{uuid}` format
 - [ ] `get_metadata()` returns dict with `name`, `version`, `adapter`, `description`, `is_active`
-- [ ] **CRITICAL: `get_provider()` returns value matching `litellm_provider` in LiteLLM pricing data** (see below)
+- [ ] `get_provider()` matches the static JSON filename (`static/{get_provider()}.json`)
+- [ ] **CRITICAL: the model string produced by `validate_model()` resolves in LiteLLM's cost map** (see below)
 - [ ] `get_adapter_type()` returns correct `AdapterTypes.LLM` or `AdapterTypes.EMBEDDING`
 - [ ] JSON schema has `adapter_name` as required field
 - [ ] `validate()` method adds correct model prefix
@@ -286,43 +287,86 @@ Before submitting adapter changes:
 - [ ] All static methods decorated with `@staticmethod`
 - [ ] Icon path follows pattern `/icons/adapter-icons/{Name}.png`
 
-### Provider Name Verification (MANDATORY)
+### Model Prefix Verification (MANDATORY)
 
-The `get_provider()` return value is used for **cost calculation**. It MUST match the `litellm_provider` field in LiteLLM's pricing data, otherwise costs will show as $0.
+Cost is looked up from the **validated model string**, not from `get_provider()`. The string
+that `validate_model()` produces (e.g. `mistral/mistral-embed`) is passed straight to
+`litellm.cost_per_token()`. If LiteLLM's cost map has no entry for it, the lookup raises, the
+exception is swallowed, and usage records **$0**.
 
-**Before implementing any adapter, verify the provider name:**
+The lookup sites:
+
+| Path | Site |
+|------|------|
+| LLM | `unstract/sdk1/src/unstract/sdk1/audit.py` — `cost_per_token(model=model_name)` |
+| Embedding | `unstract/sdk1/src/unstract/sdk1/usage_handler.py` — `litellm.cost_per_token(...)` |
+
+`model_name` is `self._cost_model or self.kwargs["model"]` — the prefixed string. Both call
+sites catch every exception and fall back to `0.0`, so a miss is **silent**. It will not fail a
+test, a build, or a run. The only symptom is revenue-affecting: zero-cost usage rows.
+
+**Before implementing any adapter, verify the prefix resolves.** Use the pinned LiteLLM in the
+sdk1 venv rather than curling upstream JSON — the pinned version is what actually runs:
 
 ```bash
-# Fetch LiteLLM pricing data and check provider name
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.value.litellm_provider != null)) |
-      map({key: .key, provider: .value.litellm_provider}) |
-      unique_by(.provider) |
-      sort_by(.provider) |
-      .[].provider' | sort -u
+cd unstract/sdk1 && uv run python -c "
+import litellm
+from litellm import cost_per_token
+
+# 1. Does LiteLLM have a native provider for this vendor?
+print([p for p in litellm.provider_list if 'YOUR_VENDOR' in str(p).lower()])
+
+# 2. Which of its models are priced?
+print([k for k in litellm.model_cost if k.lower().startswith('YOUR_PROVIDER/')])
+
+# 3. Does the string your validate_model() emits actually resolve?
+for m in ['YOUR_PROVIDER/some-model', 'custom_openai/some-model']:
+    try:
+        print(m, cost_per_token(model=m, prompt_tokens=1_000_000, completion_tokens=1_000_000))
+    except Exception as e:
+        print(m, 'RAISES', type(e).__name__, '=> cost silently recorded as 0.0')
+"
 ```
 
-**Common provider name mappings:**
-| Display Name | `get_provider()` Value | LiteLLM Provider |
-|--------------|------------------------|------------------|
-| OpenAI | `openai` | `openai` |
-| Anthropic | `anthropic` | `anthropic` |
-| Azure OpenAI | `azure` | `azure` |
-| Azure AI Foundry | `azure_ai` | `azure_ai` |
-| AWS Bedrock | `bedrock` | `bedrock` |
-| Google VertexAI | `vertex_ai` | `vertex_ai` |
-| Mistral | `mistral` | `mistral` |
-| Ollama | `ollama` | `ollama` |
+**Branded OpenAI-compatible adapters: pick the right base class.**
 
-**Example verification for Azure AI Foundry:**
-```bash
-curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
-  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0].value.litellm_provider'
-# Output: "azure_ai"  (NOT "azure_ai_foundry")
-```
+Many vendors speak the OpenAI wire protocol, which tempts you to subclass
+`OpenAICompatibleLLMParameters` and just pin `api_base`. But its `validate_model()`
+unconditionally prepends `custom_openai/`, and **nothing** in LiteLLM's cost map is keyed that
+way. That silently forfeits cost tracking.
 
-**Why this matters:**
-The cost calculation in `platform-service/src/unstract/platform_service/helper/cost_calculation.py` filters models by checking if the provider string is contained in `litellm_provider`. A mismatch (e.g., returning `"azure_ai_foundry"` when LiteLLM uses `"azure_ai"`) causes the cost lookup to fail silently, returning $0.
+| If… | Then | Cost tracking |
+|-----|------|---------------|
+| LiteLLM has a native provider for the vendor | Extend `BaseChatCompletionParameters`, emit `{provider}/{model}` — follow `OpenRouterLLMParameters` | ✅ resolves |
+| LiteLLM has **no** priced models for the vendor | Extend `OpenAICompatibleLLMParameters`, pin `api_base` — follow `NvidiaBuildLLMParameters` | ⚠️ $0 either way, nothing forfeited |
+
+`NvidiaBuildLLMParameters` is only a safe template because LiteLLM prices zero `nvidia_nim/`
+chat models — there is no cost to lose. Do not copy that shape for a vendor LiteLLM *does*
+price. Check first with the snippet above.
+
+**What `get_provider()` is actually for:**
+
+1. Resolving the static schema path — `{type}1/static/{get_provider()}.json` (case-sensitive `open()`).
+2. The `provider` column on the usage row (`audit.py`) — metadata only, not used for pricing.
+
+Keeping it equal to LiteLLM's `litellm_provider` value is still good hygiene, and matters when
+you route natively (the prefix and the provider name coincide). But a correct `get_provider()`
+does **not** on its own guarantee cost resolution — a branded adapter can return `"minimax"`,
+match `litellm_provider` exactly, and still bill $0 because its model string carries the
+`custom_openai/` prefix.
+
+**Common provider names:**
+
+| Display Name | `get_provider()` Value |
+|--------------|------------------------|
+| OpenAI | `openai` |
+| Anthropic | `anthropic` |
+| Azure OpenAI | `azure` |
+| Azure AI Foundry | `azure_ai` |
+| AWS Bedrock | `bedrock` |
+| Google VertexAI | `vertex_ai` |
+| Mistral | `mistral` |
+| Ollama | `ollama` |
 
 ## Maintenance Workflow
 
@@ -332,7 +376,7 @@ Periodic maintenance to keep adapters current with LiteLLM features:
 
 1. **Run the update checker**:
    ```bash
-   python .claude/skills/unstract-adapter-extension/scripts/check_adapter_updates.py
+   python .claude/skills/adapter-ops/scripts/check_adapter_updates.py
    ```
 
 2. **Review LiteLLM changelog** for new provider features:

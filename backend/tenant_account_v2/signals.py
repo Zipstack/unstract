@@ -1,13 +1,16 @@
 import logging
 
 from django.apps import apps
-from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
-from django.db.models.fields.related import ManyToManyRel
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
+from permissions.roles import ResourceRole
 
-from tenant_account_v2.models import GroupMembership, OrganizationMember
+from tenant_account_v2.models import (
+    GroupMembership,
+    OrganizationMember,
+    ResourceMembership,
+)
 from tenant_account_v2.shareable_resources import SHAREABLE_RESOURCES
 
 logger = logging.getLogger(__name__)
@@ -22,13 +25,19 @@ def cleanup_user_org_access(
     Two cleanups:
     1. Group memberships for that org (group-derived access goes away live
        via ``for_user()``).
-    2. Direct ``shared_users`` M2M entries on every shareable resource of
-       that org — closes the rejoin backdoor where a re-invited user would
-       silently regain direct access.
+    2. Direct membership rows on every shareable resource of that org: all
+       VIEWER rows, plus OWNER rows wherever another *live* owner remains
+       (:func:`_purge_replaceable_owner_rows`). Closes the co-owner rejoin
+       backdoor — a re-invited user (same ``User.id``) would otherwise
+       silently regain co-ownership, since ``_is_resource_owner`` grants on
+       any surviving OWNER row with no live-membership check. A sole owner's
+       OWNER row is kept so the resource is never left ownerless (spec §7.4);
+       ``created_by`` (audit) is untouched and admin access is independent
+       (``IsOwner`` OR ``_is_organization_admin``).
 
     Uses a signal (not DB CASCADE) so notification / audit hooks can attach
     here later without a schema change. The whole purge runs in one
-    transaction so a mid-loop failure rolls back rather than leaving the user
+    transaction so a mid-step failure rolls back rather than leaving the user
     partially purged (which would silently re-open the rejoin backdoor).
     """
     with transaction.atomic():
@@ -38,59 +47,93 @@ def cleanup_user_org_access(
         ).delete()
         if deleted_count:
             logger.info(
-                "Removed %s group memberships for user=%s org=%s after OrganizationMember delete",
+                "Removed %s group memberships for user=%s org=%s after "
+                "OrganizationMember delete",
                 deleted_count,
                 instance.user_id,
                 instance.organization_id,
             )
 
-        for resource in SHAREABLE_RESOURCES:
-            try:
-                model = apps.get_model(resource.app_label, resource.model_name)
-            except LookupError:
-                # App not installed in this deployment (e.g. cloud-only
-                # agentic_studio_v1 in pure OSS). Skip cleanly.
-                continue
-            # Delete via the M2M through table, not ``model.objects``: the
-            # default manager is org-scoped on ``UserContext`` (None outside
-            # an HTTP request), so it would match zero rows in tests /
-            # management commands. The through manager is unscoped; scope it
-            # explicitly by the resource's own organization.
-            try:
-                m2m_rel = model._meta.get_field("shared_users").remote_field
-            except FieldDoesNotExist:
-                # A registered model can legitimately lack the sharing field
-                # during the OSS<->cloud sync window (e.g. AgenticProject
-                # before #1508 applies its migration). Group memberships were
-                # already purged above; skip the direct-share purge here.
-                continue
-            assert isinstance(m2m_rel, ManyToManyRel)
-            through = m2m_rel.through
-            source_fk = model._meta.model_name
-            try:
-                removed, _ = through.objects.filter(
-                    user=instance.user,
-                    **{f"{source_fk}__organization": instance.organization},
-                ).delete()
-            except Exception:
-                logger.exception(
-                    "Failed purging shared_users for user=%s on %s.%s org=%s; "
-                    "rolling back the whole purge",
-                    instance.user_id,
-                    resource.app_label,
-                    resource.model_name,
-                    instance.organization_id,
-                )
-                raise
-            if removed:
-                logger.info(
-                    "Removed user=%s from shared_users on %s %s.%s rows in org=%s",
-                    instance.user_id,
-                    removed,
-                    resource.app_label,
-                    resource.model_name,
-                    instance.organization_id,
-                )
+        # Direct access on this org's shareable resources (one polymorphic
+        # table, unscoped by ``UserContext`` which is None outside a request).
+        # VIEWER rows always go.
+        viewer_removed, _ = ResourceMembership.objects.filter(
+            user=instance.user,
+            organization=instance.organization,
+            role=ResourceRole.VIEWER,
+        ).delete()
+
+        owner_removed = _purge_replaceable_owner_rows(instance)
+
+        if viewer_removed or owner_removed:
+            logger.info(
+                "Removed %s VIEWER + %s OWNER memberships for user=%s in org=%s "
+                "(kept rows with no other live owner)",
+                viewer_removed,
+                owner_removed,
+                instance.user_id,
+                instance.organization_id,
+            )
+
+
+def _purge_replaceable_owner_rows(instance: OrganizationMember) -> int:
+    """Delete the departing user's OWNER rows where another LIVE owner remains.
+
+    Sole-owner rows are kept so a resource is never left ownerless (spec §7.4);
+    when every live owner departs at once (bulk removal), all their rows are
+    kept — the N-user generalisation of the same carve-out. Two subtleties:
+
+    - Liveness: the carve-out deliberately keeps departed users' rows, so a
+      surviving OWNER row may belong to an ex-member; counting it as "another
+      owner" would purge the last live owner. Only current org members count.
+      ``_base_manager`` because ``OrganizationMember``'s default manager is
+      org-scoped by ``UserContext`` (None outside a request → an empty live
+      set would silently defeat the purge).
+    - Locking: ``RemoveOwnerSerializer`` guards the same last-owner invariant,
+      so both paths lock the resource's OWNER rows (ordered by pk so
+      overlapping scans cannot deadlock) to serialize concurrent removals.
+      The departing-user exclusion happens in Python — excluding in SQL would
+      let two concurrent departures lock disjoint rows and both purge.
+    """
+    owner_rows = list(
+        ResourceMembership.objects.filter(
+            user=instance.user,
+            organization=instance.organization,
+            role=ResourceRole.OWNER,
+        ).values_list("pk", "content_type_id", "object_id")
+    )
+    if not owner_rows:
+        return 0
+    # Materialised so every lock is held before the purge decision below.
+    # ``content_type_id__in`` + ``organization`` are invariant across the
+    # departing user's rows, so the lock set stays a superset of every
+    # (ct, oid) pair the user owns (contention with the serializer's lock is
+    # preserved) while the (content_type, object_id, role) index applies —
+    # without them this is a full-table scan under FOR UPDATE.
+    peer_rows = list(
+        ResourceMembership.objects.select_for_update()
+        .filter(
+            role=ResourceRole.OWNER,
+            content_type_id__in={ct_id for _, ct_id, _ in owner_rows},
+            object_id__in={oid for _, _, oid in owner_rows},
+            organization=instance.organization,
+        )
+        .order_by("pk")
+        .values_list("user_id", "content_type_id", "object_id")
+    )
+    live_user_ids = set(
+        OrganizationMember._base_manager.filter(
+            organization=instance.organization
+        ).values_list("user_id", flat=True)
+    )
+    co_owned = {
+        (ct_id, oid)
+        for user_id, ct_id, oid in peer_rows
+        if user_id != instance.user_id and user_id in live_user_ids
+    }
+    purge_pks = [pk for pk, ct_id, oid in owner_rows if (ct_id, oid) in co_owned]
+    removed, _ = ResourceMembership.objects.filter(pk__in=purge_pks).delete()
+    return removed
 
 
 def cleanup_resource_group_shares(

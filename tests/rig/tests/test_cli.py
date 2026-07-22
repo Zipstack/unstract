@@ -216,6 +216,86 @@ def test_optional_group_failure_does_not_block_overall_exit(
     )
 
 
+def _run_empty_group_scenario(
+    tmp_path: Path, monkeypatch, *, extra_args: list[str]
+) -> int:
+    """Drive cmd_run with one non-optional pytest group that collects nothing
+    (exit 5). Returns the overall exit code."""
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    (tmp_path / "groups.yaml").write_text(
+        "version: 1\n"
+        "groups:\n"
+        "  unit-empty:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+    )
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    def fake_execute_group(group, **kwargs):
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=5,  # pytest "no tests collected"
+            passed=0,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 5
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-empty",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(tmp_path / "reports"),
+            "--baseline",
+            str(tmp_path / "reports" / "previous-summary.json"),
+            *extra_args,
+        ]
+    )
+    return cli_mod.cmd_run(args)
+
+
+def test_empty_nonoptional_group_fails_build(tmp_path: Path, monkeypatch) -> None:
+    """A non-optional pytest group that collects zero tests is a broken
+    marker/path, not a pass — it must gate the overall exit."""
+    exit_code = _run_empty_group_scenario(tmp_path, monkeypatch, extra_args=[])
+    assert exit_code != 0, (
+        "a non-optional group that collected nothing must fail the build; "
+        f"got exit_code={exit_code}"
+    )
+
+
+def test_empty_group_with_marker_override_does_not_fail(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A ``--marker`` override may legitimately match nothing; the empty-collect
+    gate must not fire in that case."""
+    exit_code = _run_empty_group_scenario(
+        tmp_path, monkeypatch, extra_args=["--marker", "some_marker"]
+    )
+    assert exit_code == 0, (
+        "an empty result under a marker override must not gate the build; "
+        f"got exit_code={exit_code}"
+    )
+
+
 def _run_gap_scenario(
     tmp_path: Path, monkeypatch, *, covered_by: str, fail_on_gap: bool
 ) -> int:
@@ -241,7 +321,6 @@ def _run_gap_scenario(
         "paths:\n"
         "  - id: p1\n"
         "    description: ''\n"
-        "    entry: ''\n"
         f"    covered_by: {covered_by}\n"
     )
     (tmp_path / "groups.yaml").write_text(manifest_yaml)
@@ -611,3 +690,98 @@ def test_inject_infra_env_wires_provisioned_redis() -> None:
     assert env["REDIS_HOST"] == "redis.internal"
     assert env["REDIS_PORT"] == "49999"
     assert env["CELERY_BROKER_BASE_URL"] == "redis://redis.internal:49999"
+
+
+def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch) -> None:
+    """A red gate skips its dependents (and their dependents), records them as
+    blocked with the right ``blocked_by``, and — all groups optional — leaves
+    the overall exit at 0. Pins the cascade `cmd_run` wires together.
+    """
+    import json
+
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  e2e-smoke:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "  e2e-mid:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-smoke]\n"
+        "  e2e-leaf:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-mid]\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    executed: list[str] = []
+
+    def fake_execute_group(group, **kwargs):
+        executed.append(group.name)
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=1,
+            passed=0,
+            failed=1,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 1
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    reports_dir = tmp_path / "reports"
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "e2e-smoke",
+            "e2e-mid",
+            "e2e-leaf",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(reports_dir / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+
+    # Only the gate ran; its dependents were blocked before execution.
+    assert executed == ["e2e-smoke"], executed
+    # All optional, so a red gate never gates the overall exit.
+    assert exit_code == 0, exit_code
+
+    summary = json.loads((reports_dir / "summary.json").read_text())
+    by_name = {g["name"]: g for g in summary["groups"]}
+    assert by_name["e2e-mid"]["status"] == "blocked"
+    assert by_name["e2e-mid"]["blocked_by"] == ["e2e-smoke"]
+    # The intermediate block cascades: leaf names both, proving a blocked group
+    # is itself added to the failed set.
+    assert by_name["e2e-leaf"]["status"] == "blocked"
+    assert by_name["e2e-leaf"]["blocked_by"] == ["e2e-mid", "e2e-smoke"]
+
+    # The blocked groups persisted a junit so CI's `rig report` can render them.
+    assert (reports_dir / "e2e-mid" / "junit.xml").exists()
+    assert (reports_dir / "e2e-leaf" / "junit.xml").exists()

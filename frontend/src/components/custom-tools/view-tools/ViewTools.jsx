@@ -19,7 +19,9 @@ function ViewTools({
   centered,
   isClickable = true,
   handleShare,
+  handleCoOwner,
   showOwner,
+  showModified,
   type,
 }) {
   if (isLoading) {
@@ -58,7 +60,9 @@ function ViewTools({
       centered={centered}
       isClickable={isClickable}
       handleShare={handleShare}
+      handleCoOwner={handleCoOwner}
       showOwner={showOwner}
+      showModified={showModified}
       type={type}
     />
   );
@@ -72,6 +76,7 @@ ViewTools.propTypes = {
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   handleShare: PropTypes.func,
+  handleCoOwner: PropTypes.func,
   titleProp: PropTypes.string.isRequired,
   descriptionProp: PropTypes.string,
   iconProp: PropTypes.string,
@@ -79,6 +84,7 @@ ViewTools.propTypes = {
   centered: PropTypes.bool,
   isClickable: PropTypes.bool,
   showOwner: PropTypes.bool,
+  showModified: PropTypes.bool,
   type: PropTypes.string,
 };
 

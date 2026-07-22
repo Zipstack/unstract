@@ -33,6 +33,10 @@ log = logging.getLogger(__name__)
 COMPOSE_OVERLAY = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 
+# Shared by the workers and the tests, so the exact completion is assertable.
+LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
+
 
 @dataclass(frozen=True)
 class InfraEndpoints:
@@ -144,6 +148,7 @@ class ComposeRuntime:
         files = ["-f", str(BASE_COMPOSE)]
         if COMPOSE_OVERLAY.exists():
             files += ["-f", str(COMPOSE_OVERLAY)]
+        self._dump_logs(files)
         _run(
             [
                 "docker",
@@ -157,6 +162,25 @@ class ComposeRuntime:
             ],
             check=False,
         )
+
+    def _dump_logs(self, files: list[str]) -> None:
+        """Capture service logs while the containers still exist.
+
+        A failing e2e is usually explained by a worker log, and `down -v` is the
+        last thing that can read them -- a CI step afterwards gets an empty file.
+        """
+        target = REPO_ROOT / "reports" / "docker-compose-logs.txt"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            completed = subprocess.run(  # noqa: S603
+                ["docker", "compose", "-p", self.project_name, *files, "logs", "--no-color"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            target.write_text(completed.stdout)
+        except OSError as exc:
+            log.warning("Could not capture compose logs: %s", exc)
 
 
 class TestcontainersRuntime:
@@ -263,16 +287,17 @@ def _run(cmd: list[str], *, check: bool = True) -> None:
 
 
 def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
-    """(service name, health URL) for every HTTP service in the platform.
+    """(service name, health URL) for every HTTP service the e2e tier depends on.
 
     Single source of truth for the readiness probe and the e2e smoke test.
-    Paths are service-specific: runner and x2text mount health under blueprint
-    prefixes, and there is no standalone prompt-service (folded into workers).
+    Paths are service-specific: x2text mounts health under a blueprint prefix,
+    and there is no standalone prompt-service (folded into workers). The runner
+    is intentionally absent — container-based execution is being retired in
+    favour of in-worker execution, so e2e must not depend on it being up.
     """
     return [
         ("backend", endpoints.backend_url.rstrip("/") + "/health"),
         ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
-        ("runner", endpoints.runner_url.rstrip("/") + "/v1/api/health"),
         ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
     ]
 

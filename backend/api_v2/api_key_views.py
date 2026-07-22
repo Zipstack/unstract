@@ -1,4 +1,6 @@
-from permissions.permission import IsOwnerOrSharedUser
+from typing import Any
+
+from permissions.permission import IsOwnerOrSharedUser, IsParentDeploymentOwner
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from rest_framework import serializers, viewsets
@@ -15,7 +17,16 @@ from api_v2.serializers import APIKeyListSerializer, APIKeySerializer
 
 class APIKeyViewSet(viewsets.ModelViewSet):
     queryset = APIKey.objects.all()
-    permission_classes = [IsOwnerOrSharedUser]
+
+    def get_permissions(self) -> list[Any]:
+        # ``api_keys`` object-checks the parent deployment/pipeline directly
+        # and stays viewer-readable. Every other detail action reveals or
+        # mutates a key, so it is gated on the parent's owner — the ``APIKey``
+        # row itself has no memberships, and checking it directly crashed on
+        # the ``shared_users`` fallback for any non-creator (UN-2202).
+        if self.action == "api_keys":
+            return [IsOwnerOrSharedUser()]
+        return [IsParentDeploymentOwner()]
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["api_keys"]:
