@@ -68,6 +68,19 @@
   min-width: 0;
 }
 
+/* The meta cluster is anchored on its right edge (the left column grows to
+   absorb the row's slack), so any column that sizes to its content pushes
+   the ones before it sideways, row by row. Fixed widths keep every row's
+   columns at the same x. */
+.list-view-meta .adapters-list-profile-container {
+  flex: 0 0 240px;
+  justify-content: flex-start;
+}
+
+.list-view-meta .list-view-modified-container {
+  flex: 0 0 170px;
+}
+
 .list-view-meta .shared-username {
   max-width: 200px;
 }
@@ -101,6 +114,8 @@
 
 .adapters-list-title {
   font-size: 16px;
+  /* match the agentic Prompt Studio project list */
+  font-weight: 600;
 }
 
 .adapter-cover-img {
