@@ -76,3 +76,51 @@ def test_tier_only_selects_that_tier_and_deps(tmp_path: Path) -> None:
     manifest = load_groups(_manifest(tmp_path))
     ordered = resolve(manifest, positional=[], tier="unit")
     assert set(ordered) == {"unit-a", "unit-b"}
+
+
+def _cross_tier_manifest(tmp_path: Path) -> Path:
+    p = tmp_path / "groups.yaml"
+    p.write_text(
+        """
+        version: 1
+        groups:
+          unit-a:
+            tier: unit
+            paths: [x]
+            optional: true
+          e2e-smoke:
+            tier: e2e
+            paths: [x]
+            requires_platform: true
+            optional: true
+          e2e-cross:
+            tier: e2e
+            paths: [x]
+            requires_platform: true
+            depends_on: [e2e-smoke, unit-a]
+            optional: true
+        """
+    )
+    return p
+
+
+def test_tier_run_does_not_pull_in_other_tiers(tmp_path: Path) -> None:
+    """Each tier is its own CI leg; a cross-tier dep must not re-run there."""
+    manifest = load_groups(_cross_tier_manifest(tmp_path))
+    ordered = resolve(manifest, positional=[], tier="e2e")
+    assert set(ordered) == {"e2e-smoke", "e2e-cross"}
+    # Intra-tier ordering still holds.
+    assert ordered.index("e2e-smoke") < ordered.index("e2e-cross")
+
+
+def test_explicitly_named_group_survives_tier_filter(tmp_path: Path) -> None:
+    """The filter only drops dep-expanded groups, never an explicit request."""
+    manifest = load_groups(_cross_tier_manifest(tmp_path))
+    ordered = resolve(manifest, positional=["unit-a"], tier="e2e")
+    assert set(ordered) == {"unit-a", "e2e-smoke", "e2e-cross"}
+
+
+def test_cross_tier_dep_still_expands_without_tier_filter(tmp_path: Path) -> None:
+    manifest = load_groups(_cross_tier_manifest(tmp_path))
+    ordered = resolve(manifest, positional=["e2e-cross"])
+    assert set(ordered) == {"unit-a", "e2e-smoke", "e2e-cross"}

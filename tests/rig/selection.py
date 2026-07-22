@@ -7,6 +7,10 @@ Resolution order (de-duped, then dep-expanded, then topo-sorted by the manifest)
 The literal ``all`` expands to every group in the manifest. When the result is
 empty, callers should treat that as "do nothing" rather than silently running
 everything — the CLI surfaces a clear error.
+
+With ``--tier``, dep expansion never reaches outside that tier: each tier runs as
+its own CI leg, so a cross-tier ``depends_on`` would otherwise re-run the same
+group in every leg that transitively depends on it.
 """
 
 from __future__ import annotations
@@ -66,7 +70,18 @@ def resolve(
     if changed_only:
         selected.update(_groups_for_changed_paths(manifest, base=changed_base))
 
-    return manifest.expand(sorted(selected)) if selected else []
+    if not selected:
+        return []
+
+    requested = sorted(selected)
+    expanded = manifest.expand(requested)
+    if tier is not None:
+        # A tier run never pulls in another tier's groups. Tiers run as separate
+        # legs, so a cross-tier `depends_on` would re-run the same group once per
+        # leg; the owning tier's leg covers it. Explicitly requested groups stay.
+        keep = set(requested)
+        expanded = [n for n in expanded if n in keep or manifest.get(n).tier == tier]
+    return expanded
 
 
 def _groups_for_changed_paths(manifest: GroupManifest, *, base: str) -> set[str]:
