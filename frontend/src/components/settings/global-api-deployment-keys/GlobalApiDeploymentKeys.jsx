@@ -72,9 +72,17 @@ const scopeColumn = {
 };
 
 // Scoped keys carry an explicit deployment list; org-wide keys must not (the
-// backend rejects an incoherent pair). Mirror that shaping on the client.
-const shapeApiDeployments = (values) =>
-  values?.allow_all_deployments === false ? values?.api_deployments || [] : [];
+// backend rejects an incoherent pair). Mirror that shaping on the client. The
+// `?? false` default only bites on create — the edit form seeds the checkbox
+// from the record — so one transform serves both.
+const transformPayload = (values) => {
+  const allowAll = values?.allow_all_deployments ?? false;
+  return {
+    ...values,
+    allow_all_deployments: allowAll,
+    api_deployments: allowAll ? [] : values?.api_deployments || [],
+  };
+};
 
 function GlobalApiDeploymentKeys() {
   const [deployments, setDeployments] = useState([]);
@@ -118,15 +126,8 @@ function GlobalApiDeploymentKeys() {
         allow_all_deployments: record?.allow_all_deployments,
         api_deployments: record?.api_deployments?.map((d) => d?.id) || [],
       })}
-      transformCreatePayload={(values) => ({
-        ...values,
-        allow_all_deployments: values?.allow_all_deployments ?? false,
-        api_deployments: shapeApiDeployments(values),
-      })}
-      transformEditPayload={(values) => ({
-        ...values,
-        api_deployments: shapeApiDeployments(values),
-      })}
+      transformCreatePayload={transformPayload}
+      transformEditPayload={transformPayload}
     />
   );
 }

@@ -6,27 +6,14 @@ from utils.user_context import UserContext
 from backend.serializers import AuditSerializer
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 
-
-def _validate_deployment_scope(allow_all, deployments):
-    """Reject incoherent key scopes.
-
-    - ``allow_all=True`` with an explicit deployment list — the list would be
-      silently ignored, so a caller thinking they scoped the key is wrong.
-    - ``allow_all=False`` with no deployments — a live key that authenticates
-      nothing (fails closed, but a support ticket waiting to happen).
-    """
-    if allow_all and deployments:
-        raise serializers.ValidationError(
-            {"api_deployments": "Leave empty when 'allow all deployments' is enabled."}
-        )
-    if not allow_all and not deployments:
-        raise serializers.ValidationError(
-            {
-                "api_deployments": (
-                    "Select at least one deployment or enable 'allow all deployments'."
-                )
-            }
-        )
+ALLOW_ALL_WITH_LIST_ERROR = {
+    "api_deployments": "Leave empty when 'allow all deployments' is enabled."
+}
+NO_DEPLOYMENTS_SELECTED_ERROR = {
+    "api_deployments": (
+        "Select at least one deployment or enable 'allow all deployments'."
+    )
+}
 
 
 class ApiDeploymentMinimalSerializer(serializers.ModelSerializer):
@@ -78,30 +65,41 @@ class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
         fields = ["id", "name", "key", "is_active"]
 
 
-class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
+class _GlobalApiDeploymentKeyWriteSerializer(AuditSerializer):
+    """Shared write-side surface for the create and update serializers.
+
+    Owns the org-scoped ``api_deployments`` field and the description
+    sanitiser; subclasses bring their own ``Meta`` and ``validate``.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Built here rather than declared as a class attribute: any queryset
+        # expression on ``APIDeployment.objects`` runs the org-scoped manager's
+        # ``get_queryset``, which resolves ``UserContext.get_organization()`` —
+        # so a class-level declaration issues a DB query at *import* time, and
+        # blows up wherever the module is imported without a database.
+        #
+        # The org filter is the guard that stops an admin attaching another
+        # org's deployment by UUID.
+        self.fields["api_deployments"] = serializers.PrimaryKeyRelatedField(
+            many=True,
+            required=False,
+            queryset=APIDeployment.objects.filter(
+                organization=UserContext.get_organization()
+            ),
+        )
+
+    def validate_description(self, value):
+        return validate_safe_text(value)
+
+
+class GlobalApiDeploymentKeyCreateSerializer(_GlobalApiDeploymentKeyWriteSerializer):
     description = serializers.CharField(required=True, max_length=512)
-    api_deployments = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=APIDeployment.objects.none(), required=False
-    )
 
     class Meta:
         model = GlobalApiDeploymentKey
         fields = ["name", "description", "allow_all_deployments", "api_deployments"]
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        organization = UserContext.get_organization()
-        # For a many=True relation DRF validates incoming PKs against the
-        # *child* relation's queryset. Setting ``.queryset`` on the
-        # ManyRelatedField wrapper has no effect, leaving validation against the
-        # declared ``APIDeployment.objects.none()`` — which rejects every
-        # deployment ("Invalid pk ... object does not exist"). Scope the child
-        # relation's queryset so same-org deployments are accepted.
-        self.fields[
-            "api_deployments"
-        ].child_relation.queryset = APIDeployment.objects.filter(
-            organization=organization
-        )
 
     def validate_name(self, value):
         value = validate_safe_text(value)
@@ -114,37 +112,24 @@ class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
             )
         return value
 
-    def validate_description(self, value):
-        return validate_safe_text(value)
-
     def validate(self, attrs):
-        _validate_deployment_scope(
-            attrs.get("allow_all_deployments", False),
-            attrs.get("api_deployments") or [],
-        )
+        """Reject incoherent scopes.
+
+        Both fields are always present on create, so an incoherent pair is a
+        caller mistake worth surfacing rather than silently normalising:
+        ``allow_all`` with a list (the list would be ignored at auth time), or
+        neither (a live key that authenticates nothing).
+        """
+        allow_all = attrs.get("allow_all_deployments", False)
+        deployments = attrs.get("api_deployments") or []
+        if allow_all and deployments:
+            raise serializers.ValidationError(ALLOW_ALL_WITH_LIST_ERROR)
+        if not allow_all and not deployments:
+            raise serializers.ValidationError(NO_DEPLOYMENTS_SELECTED_ERROR)
         return attrs
 
 
-class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
-    api_deployments = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=APIDeployment.objects.none(), required=False
-    )
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        organization = UserContext.get_organization()
-        # For a many=True relation DRF validates incoming PKs against the
-        # *child* relation's queryset. Setting ``.queryset`` on the
-        # ManyRelatedField wrapper has no effect, leaving validation against the
-        # declared ``APIDeployment.objects.none()`` — which rejects every
-        # deployment ("Invalid pk ... object does not exist"). Scope the child
-        # relation's queryset so same-org deployments are accepted.
-        self.fields[
-            "api_deployments"
-        ].child_relation.queryset = APIDeployment.objects.filter(
-            organization=organization
-        )
-
+class GlobalApiDeploymentKeyUpdateSerializer(_GlobalApiDeploymentKeyWriteSerializer):
     class Meta:
         model = GlobalApiDeploymentKey
         fields = [
@@ -159,23 +144,47 @@ class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
             "allow_all_deployments": {"required": False},
         }
 
-    def validate_description(self, value):
-        return validate_safe_text(value)
-
     def validate(self, attrs):
-        # Partial updates may omit either field; fall back to the stored value
-        # so the effective scope is always validated as a coherent pair.
+        """Validate the effective scope without trapping partial updates.
+
+        Updates are PATCH-only, so a caller may touch one scope field, both, or
+        neither. Validating the stored list unconditionally makes two legitimate
+        requests fail: flipping a scoped key to allow-all in one field, and
+        editing (or deactivating) a key whose only deployment was deleted.
+        """
         allow_all = attrs.get(
             "allow_all_deployments",
             self.instance.allow_all_deployments if self.instance else False,
         )
-        if "api_deployments" in attrs:
-            deployments = attrs["api_deployments"] or []
-        elif self.instance is not None:
-            deployments = list(self.instance.api_deployments.all())
-        else:
-            deployments = []
-        _validate_deployment_scope(allow_all, deployments)
+        scope_sent = "api_deployments" in attrs
+
+        if allow_all:
+            # ``allow_all`` wins at auth time (see
+            # ``GlobalApiDeploymentKey.has_access_to_deployment``), so a list is
+            # dead weight. Reject one the caller explicitly sent — they believe
+            # they scoped the key — and clear a stale stored one otherwise, so
+            # PATCH {"allow_all_deployments": true} works on its own.
+            if scope_sent and attrs["api_deployments"]:
+                raise serializers.ValidationError(ALLOW_ALL_WITH_LIST_ERROR)
+            attrs["api_deployments"] = []
+            return attrs
+
+        if scope_sent:
+            if not attrs["api_deployments"]:
+                raise serializers.ValidationError(NO_DEPLOYMENTS_SELECTED_ERROR)
+            return attrs
+
+        if (
+            "allow_all_deployments" in attrs
+            and not self.instance.api_deployments.exists()
+        ):
+            # Turning allow-all off without naming deployments would leave a key
+            # that authenticates nothing.
+            raise serializers.ValidationError(NO_DEPLOYMENTS_SELECTED_ERROR)
+
+        # Scope untouched (e.g. PATCH {"is_active": false}) — deliberately not
+        # re-validated, so a key stranded by a deleted deployment stays editable
+        # and, more importantly, deactivatable.
         return attrs
 
     def update(self, instance, validated_data):

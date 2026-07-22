@@ -48,11 +48,14 @@ def validate_name_field(value: str, field_name: str = "This field") -> str:
 # Allow-list of characters permitted in user-facing free text (names,
 # descriptions). Unlike ``validate_no_html_tags`` (which block-lists known
 # dangerous constructs), this is a strict allow-list: alphanumerics, spaces and
-# a small set of common punctuation. Everything else is rejected so no HTML
-# angle brackets (``<``/``>``), quotes, ampersands, backticks or other
-# characters that could break out of an HTML attribute / start a tag / be
-# abused for injection when the value is later rendered in non-React contexts
-# (emails, PDFs, logs) can ever reach storage.
+# a small set of common punctuation. Angle brackets (``<``/``>``), double
+# quotes, ampersands and backticks are rejected, so a stored value cannot start
+# a tag or break out of a double-quoted HTML attribute when rendered in
+# non-React contexts (emails, PDFs, logs).
+#
+# The apostrophe IS allowed (names like "Client's Prod Key" are legitimate), so
+# a single-quoted attribute context — ``title='{value}'`` — is NOT covered by
+# this validator and must still escape the value at render time.
 SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:'()/]+$")
 SAFE_TEXT_ERROR = (
     "Only alphanumeric characters, spaces, hyphens, underscores, "
@@ -66,8 +69,8 @@ def validate_safe_text(value: str) -> str:
 
     Strips surrounding whitespace, rejects empty/whitespace-only input, and
     rejects any character outside the allow-list (which excludes ``<``, ``>``,
-    quotes, ``&`` and similar injection-prone characters). Returns the
-    stripped value on success.
+    double quotes, ``&``, backticks and similar injection-prone characters —
+    but not the apostrophe). Returns the stripped value on success.
     """
     stripped = value.strip()
     if not stripped:

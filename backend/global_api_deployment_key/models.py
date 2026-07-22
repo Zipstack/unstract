@@ -59,6 +59,12 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
         # deployment.
         if self.organization_id != api_deployment.organization_id:
             return False
+        # ``allow_all_deployments`` deliberately wins over ``api_deployments``:
+        # the pair is a mode switch, not a union. The coherent pair can't be
+        # enforced structurally (a CheckConstraint can't span an M2M, and
+        # ``clean()`` runs before M2M rows exist), so the serializers own the
+        # invariant — see ``_GlobalApiDeploymentKeyWriteSerializer`` subclasses,
+        # which reject/clear a list whenever allow-all is set.
         if self.allow_all_deployments:
             return True
         return self.api_deployments.filter(id=api_deployment.id).exists()

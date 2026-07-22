@@ -27,9 +27,9 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         ).prefetch_related("api_deployments")
 
     def get_serializer_class(self):
-        # create/retrieve/partial_update/destroy/rotate are overridden and
-        # instantiate their serializers directly, so only ``list`` (and DRF's
-        # default fallback) routes through here — both use the list serializer.
+        # create/retrieve/partial_update/rotate are overridden and instantiate
+        # their serializers directly, so only ``list``/``destroy`` (and DRF's
+        # default fallback) route through here — all use the list serializer.
         return GlobalApiDeploymentKeyListSerializer
 
     def create(self, request, *args, **kwargs):
@@ -55,11 +55,6 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         updated_instance = serializer.save()
         response_serializer = GlobalApiDeploymentKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
-
-    def destroy(self, request, *args, **kwargs):
-        instance = self.get_object()
-        instance.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()

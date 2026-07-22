@@ -33,11 +33,28 @@ import "./ApiKeyManager.css";
 
 // Allow-list for user-facing free text (key name/description). Matches the
 // backend's utils.input_sanitizer.SAFE_TEXT_PATTERN — alphanumerics, spaces and
-// a small set of punctuation (incl. apostrophe); no angle brackets/quotes/&
-// that could break out of an HTML attribute when rendered in emails/PDFs/logs.
+// a small set of punctuation. Angle brackets, double quotes, & and backticks
+// are rejected so a stored value can't start a tag or break out of a
+// double-quoted attribute in emails/PDFs/logs. The apostrophe IS allowed, so
+// single-quoted attribute contexts must still escape at render time.
 const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:'()/]+$/;
 const SAFE_TEXT_MESSAGE =
   "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, apostrophes, parentheses, and forward slashes are allowed.";
+
+// Static: no props, state or closures, so it lives outside the component
+// (unlike `columns`, which closes over the row handlers).
+const NAME_AND_DESCRIPTION_RULES = {
+  name: [
+    { required: true, message: "Name is required" },
+    { max: 128, message: "Name cannot exceed 128 characters" },
+    { pattern: SAFE_TEXT_REGEX, message: SAFE_TEXT_MESSAGE },
+  ],
+  description: [
+    { required: true, message: "Description is required" },
+    { max: 512, message: "Description cannot exceed 512 characters" },
+    { pattern: SAFE_TEXT_REGEX, message: SAFE_TEXT_MESSAGE },
+  ],
+};
 
 const identity = (v) => v;
 
@@ -119,8 +136,15 @@ function ApiKeyManager({
           )
           .finally(() => setIsSaving(false));
       })
-      .catch(() => {
-        /* Invalid form: antd renders inline field errors; swallow the reject. */
+      .catch((err) => {
+        // validateFields rejects with `errorFields`, which antd already renders
+        // inline. Anything else escaped the .then body (payload shaping) after
+        // isSaving was set, so surface it and release the modal.
+        if (err?.errorFields) {
+          return;
+        }
+        setIsSaving(false);
+        setAlertDetails(handleException(err, "Failed to create API key"));
       });
   };
 
@@ -153,8 +177,13 @@ function ApiKeyManager({
           )
           .finally(() => setIsSaving(false));
       })
-      .catch(() => {
-        /* Invalid form: antd renders inline field errors; swallow the reject. */
+      .catch((err) => {
+        // See handleCreate: only antd's validation reject is silent.
+        if (err?.errorFields) {
+          return;
+        }
+        setIsSaving(false);
+        setAlertDetails(handleException(err, "Failed to update API key"));
       });
   };
 
@@ -239,7 +268,8 @@ function ApiKeyManager({
       title: "Description",
       dataIndex: "description",
       key: "description",
-      width: "15%",
+      // Base columns total 86%, leaving room for one injected column (14%).
+      width: "13%",
       ellipsis: true,
     },
     {
@@ -329,19 +359,6 @@ function ApiKeyManager({
     },
   ];
 
-  const nameAndDescriptionRules = {
-    name: [
-      { required: true, message: "Name is required" },
-      { max: 128, message: "Name cannot exceed 128 characters" },
-      { pattern: SAFE_TEXT_REGEX, message: SAFE_TEXT_MESSAGE },
-    ],
-    description: [
-      { required: true, message: "Description is required" },
-      { max: 512, message: "Description cannot exceed 512 characters" },
-      { pattern: SAFE_TEXT_REGEX, message: SAFE_TEXT_MESSAGE },
-    ],
-  };
-
   return (
     <SettingsLayout>
       <div>
@@ -401,14 +418,14 @@ function ApiKeyManager({
           <Form.Item
             name="name"
             label="Name"
-            rules={nameAndDescriptionRules.name}
+            rules={NAME_AND_DESCRIPTION_RULES.name}
           >
             <Input placeholder="Enter key name" maxLength={128} />
           </Form.Item>
           <Form.Item
             name="description"
             label="Description"
-            rules={nameAndDescriptionRules.description}
+            rules={NAME_AND_DESCRIPTION_RULES.description}
           >
             <Input.TextArea
               placeholder="Enter description"
@@ -441,7 +458,7 @@ function ApiKeyManager({
           <Form.Item
             name="description"
             label="Description"
-            rules={nameAndDescriptionRules.description}
+            rules={NAME_AND_DESCRIPTION_RULES.description}
           >
             <Input.TextArea
               placeholder="Enter description"

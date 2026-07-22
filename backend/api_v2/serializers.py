@@ -417,6 +417,12 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # ``ProfileManager.objects`` is not org-scoped by default, so this
         # check is load-bearing, not merely defense-in-depth.
         if is_global_key:
+            # A profile's org is only derivable through its prompt studio tool.
+            # That FK is nullable, and an unattached profile therefore has no
+            # org to compare against — ``None`` never equals a real org id, so
+            # such a profile is rejected. That is deliberate: with no way to
+            # attribute the profile to an organization, the org-scoped key must
+            # fail closed rather than accept it.
             profile_org_id = (
                 profile.prompt_studio_tool.organization_id
                 if profile.prompt_studio_tool_id
