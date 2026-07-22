@@ -63,9 +63,11 @@
 .list-view-meta {
   align-items: center;
   display: flex;
-  flex: 0 1 auto;
+  /* must not shrink: its columns are fixed below, so a shrinking box would
+     let them spill over the action icons. The left column absorbs the
+     shortfall instead — it ellipsizes, this doesn't. */
+  flex: 0 0 auto;
   gap: 20px;
-  min-width: 0;
 }
 
 /* The meta cluster is anchored on its right edge (the left column grows to
