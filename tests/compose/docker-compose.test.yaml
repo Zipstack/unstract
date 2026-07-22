@@ -7,33 +7,23 @@ services:
     # contributor run without setting it.
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
-      - ENVIRONMENT=test
       # Workers ask the backend for this, so this is the value that normally
       # takes effect for fan-out.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
 
   runner:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
 
-  # Execute-path e2e must never reach a real provider. The delay gives each
-  # mocked completion a known cost so per-file durations stay comparable, and
-  # ENVIRONMENT is the mock's second condition — set here rather than inherited
-  # so the tier can't lose its mock to a base-compose edit.
+  # Execute-path e2e must never reach a real provider.
   worker-executor-v2:
     environment:
-      - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
   worker-file-processing-v2:
     environment:
-      - ENVIRONMENT=test
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
   # Only the worker's fallback if it can't reach the backend; kept in step so it
