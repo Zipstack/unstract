@@ -643,12 +643,12 @@ class LegacyExecutor(BaseExecutor):
                 _absorb(extract_result)
                 extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
                 extraction_time = time.monotonic() - extraction_start
-                # Nest under a reserved "_pipeline" namespace so the metric never
-                # collides with a user-defined output named "extraction" during
-                # the top-level metrics merge (see _merge_pipeline_metrics).
+                # Nest under a reserved "_file" namespace so the metric never
+                # collides with a user-defined output named "text_extraction"
+                # during the top-level metrics merge (see _merge_pipeline_metrics).
                 extraction_metrics = {
-                    PSKeys.PIPELINE: {
-                        PSKeys.EXTRACTION: {PSKeys.TIME_TAKEN: extraction_time}
+                    PSKeys.FILE: {
+                        PSKeys.TEXT_EXTRACTION: {PSKeys.TIME_TAKEN: extraction_time}
                     }
                 }
 
@@ -817,9 +817,9 @@ class LegacyExecutor(BaseExecutor):
         """Populate metadata/metrics in structured_output after pipeline completion.
 
         Args:
-            extraction_metrics: Pipeline-level extraction timing, shaped as
-                ``{"_pipeline": {"extraction": {"time_taken(s)": float}}}``.
-                Nested under the reserved ``_pipeline`` namespace to avoid
+            extraction_metrics: File-level text extraction timing, shaped as
+                ``{"_file": {"text_extraction": {"time_taken(s)": float}}}``.
+                Nested under the reserved ``_file`` namespace to avoid
                 colliding with user-defined output names during the merge.
                 ``None``/empty when extraction is skipped.
         """

@@ -8,6 +8,7 @@ executor invocation.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -294,24 +295,22 @@ class TestNormalPipeline:
 
 
 # ---------------------------------------------------------------------------
-# Tests — Extraction timing metric (UN-2771)
+# Tests — Text extraction timing metric
 # ---------------------------------------------------------------------------
 
 
 class TestExtractionMetrics:
-    """Extraction duration is reported under the reserved _pipeline namespace.
+    """Extraction duration is reported under the reserved _file namespace.
 
-    The metric is nested as ``metrics["_pipeline"]["extraction"]`` rather than a
-    bare top-level ``"extraction"`` key, because sibling keys in this dict are
-    user-defined output/prompt names — a prompt literally named "extraction"
-    would otherwise collide with it.
+    The metric is nested as ``metrics["_file"]["text_extraction"]`` rather than a
+    bare top-level key, because sibling keys in this dict are user-defined
+    output/prompt names — a prompt named "text_extraction" would otherwise
+    collide with it.
     """
 
     def _executor_with_extraction(self, executor, answer_metrics=None):
         executor._handle_extract = MagicMock(
-            return_value=ExecutionResult(
-                success=True, data={"extracted_text": "text"}
-            )
+            return_value=ExecutionResult(success=True, data={"extracted_text": "text"})
         )
         executor._handle_index = MagicMock(
             return_value=ExecutionResult(success=True, data={"doc_id": "d1"})
@@ -325,12 +324,14 @@ class TestExtractionMetrics:
         return executor
 
     def _run(self, executor):
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": _base_pipeline_options(),
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": _base_pipeline_options(),
+            }
+        )
         return executor._handle_structure_pipeline(ctx)
 
     def test_extraction_metrics_recorded(self, executor):
@@ -339,25 +340,23 @@ class TestExtractionMetrics:
         result = self._run(executor)
 
         assert result.success
-        time_taken = result.data["metrics"]["_pipeline"]["extraction"][
-            "time_taken(s)"
-        ]
+        time_taken = result.data["metrics"]["_file"]["text_extraction"]["time_taken(s)"]
         assert isinstance(time_taken, float)
         assert time_taken >= 0
 
     def test_extraction_metric_does_not_collide_with_output_name(self, executor):
-        """A prompt named "extraction" coexists with the pipeline metric."""
+        """A prompt named "text_extraction" coexists with the file metric."""
         self._executor_with_extraction(
             executor,
-            answer_metrics={"extraction": {"llm": {"time_taken(s)": 2.0}}},
+            answer_metrics={"text_extraction": {"llm": {"time_taken(s)": 2.0}}},
         )
         result = self._run(executor)
 
         metrics = result.data["metrics"]
         # The user's prompt metrics are untouched...
-        assert metrics["extraction"] == {"llm": {"time_taken(s)": 2.0}}
-        # ...and the pipeline timing lives in its own namespace.
-        assert "time_taken(s)" in metrics["_pipeline"]["extraction"]
+        assert metrics["text_extraction"] == {"llm": {"time_taken(s)": 2.0}}
+        # ...and the file-level timing lives in its own namespace.
+        assert "time_taken(s)" in metrics["_file"]["text_extraction"]
 
     def test_index_and_extraction_metrics_merged(self, executor):
         """Per-output indexing and pipeline extraction metrics coexist."""
@@ -373,7 +372,7 @@ class TestExtractionMetrics:
         metrics = result.data["metrics"]
         assert "llm" in metrics["field_a"]
         assert "indexing" in metrics["field_a"]
-        assert "time_taken(s)" in metrics["_pipeline"]["extraction"]
+        assert "time_taken(s)" in metrics["_file"]["text_extraction"]
 
     def test_skip_extraction_records_no_extraction_metric(self, executor):
         """Smart-table path skips extract, so no extraction metric is added."""
@@ -385,21 +384,65 @@ class TestExtractionMetrics:
         opts = _base_pipeline_options()
         opts["skip_extraction_and_indexing"] = True
 
-        ctx = _make_pipeline_context({
-            "extract_params": _base_extract_params(),
-            "index_template": _base_index_template(),
-            "answer_params": _base_answer_params(),
-            "pipeline_options": opts,
-        })
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+            }
+        )
         result = executor._handle_structure_pipeline(ctx)
 
         assert result.success
         executor._handle_extract.assert_not_called()
-        assert "_pipeline" not in result.data.get("metrics", {})
+        assert "_file" not in result.data.get("metrics", {})
+
+    def test_single_pass_reports_same_file_metric(self, executor):
+        """Single pass gains the _file bucket beside its flat metrics.
+
+        Single pass skips indexing but shares ``_finalize_pipeline_result``, so
+        it needs no special-casing: its metrics stay flat and simply gain the
+        same ``_file`` sibling the multi-prompt path gets.
+        """
+        self._executor_with_extraction(executor)
+        executor._handle_single_pass_extraction = MagicMock(
+            return_value=ExecutionResult(
+                success=True,
+                data={
+                    "output": {},
+                    "metrics": {
+                        "context_retrieval": {"time_taken(s)": 0.4},
+                        "extraction_llm": {"time_taken(s)": 2.0},
+                    },
+                },
+            )
+        )
+        opts = _base_pipeline_options()
+        opts["is_single_pass_enabled"] = True
+
+        ctx = _make_pipeline_context(
+            {
+                "extract_params": _base_extract_params(),
+                "index_template": _base_index_template(),
+                "answer_params": _base_answer_params(),
+                "pipeline_options": opts,
+            }
+        )
+        result = executor._handle_structure_pipeline(ctx)
+
+        assert result.success
+        metrics = result.data["metrics"]
+        # Flat single-pass metrics survive untouched...
+        assert metrics["context_retrieval"] == {"time_taken(s)": 0.4}
+        assert metrics["extraction_llm"] == {"time_taken(s)": 2.0}
+        # ...beside the same _file bucket the multi-prompt path produces.
+        assert "time_taken(s)" in metrics["_file"]["text_extraction"]
 
     def test_extract_failure_records_no_extraction_metric(self, executor):
         """Timing is taken after the failure early-return, so a failed extract
-        must not report a duration."""
+        must not report a duration.
+        """
         executor._handle_extract = MagicMock(
             return_value=ExecutionResult.failure(error="x2text error")
         )
