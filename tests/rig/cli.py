@@ -98,6 +98,21 @@ def main(argv: list[str] | None = None) -> int:
     return args.func(args)
 
 
+def _default_workers() -> str:
+    """Resolve the xdist worker count ourselves.
+
+    xdist's own `auto` prefers *physical* cores when psutil happens to be
+    importable, which collapses to a single worker on hyperthreaded CI runners
+    — and only for the groups that ship psutil. Beyond ~8 the suites contend on
+    the test database more than they parallelise, so cap it.
+    """
+    try:
+        cpus = len(os.sched_getaffinity(0))  # honours CPU pinning; Linux only
+    except AttributeError:
+        cpus = os.cpu_count() or 1
+    return str(min(cpus, 8))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tests.rig", description="Unstract unified test rig")
     sub = p.add_subparsers(dest="command", required=True)
@@ -117,8 +132,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--no-parallel", dest="parallel", action="store_false")
     pr.add_argument(
         "--workers",
-        default="auto",
-        help="pytest-xdist worker count (default: auto).",
+        default=_default_workers(),
+        help="pytest-xdist worker count (default: usable CPUs, capped).",
     )
     pr.add_argument("--timeout", type=int, help="Per-group timeout override in seconds.")
     pr.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")

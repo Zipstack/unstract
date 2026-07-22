@@ -103,7 +103,10 @@ constraint-dependencies = [
 [tool.pytest.ini_options]
 # Note: test.env is loaded by backend/conftest.py via python-dotenv directly
 # (replaces the unmaintained pytest-dotenv plugin).
-addopts = "-s"
+# --no-migrations builds the schema straight from the models: the migration
+# history is replayed once per xdist worker otherwise, and nothing here asserts
+# on it.
+addopts = "-s --no-migrations"
 python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 markers = [
     "integration: needs live infra (Postgres/Redis); runs in the rig's integration tier, not unit (select with -m integration / exclude with -m 'not integration')",
