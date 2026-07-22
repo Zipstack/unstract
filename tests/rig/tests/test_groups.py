@@ -253,7 +253,8 @@ def _overlay_env(
 ) -> Path:
     """Point the default manifest at a fixture and register an overlay.
 
-    Overlays only apply to the default manifest, so tests must drive that path.
+    Overlays only apply when `load_groups` is called with no path, so tests must
+    drive that call.
     """
     base = _base_manifest(tmp_path)
     overlay = tmp_path / "groups.cloud.yaml"
@@ -320,6 +321,25 @@ def test_explicit_manifest_ignores_overlays(
     )
     monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
     # `base` is deliberately not the default manifest here.
+    assert "unit-cloud" not in load_groups(base).names()
+
+
+def test_explicit_default_path_ignores_overlays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Isolation keys on `path` being omitted, not on which file it names."""
+    base = _overlay_env(
+        tmp_path,
+        monkeypatch,
+        """
+        version: 1
+        groups:
+          unit-cloud:
+            tier: unit
+            paths: [y]
+            optional: true
+        """,
+    )
     assert "unit-cloud" not in load_groups(base).names()
 
 

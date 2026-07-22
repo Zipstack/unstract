@@ -131,9 +131,9 @@ def load_groups(path: Path | None = None) -> GroupManifest:
         groups[name] = _build_group(name, spec, defaults)
 
     # Merge before validation so cross-manifest `depends_on` and the platform
-    # gate are checked over the union. An explicit `path` stays isolated from
-    # the ambient env var.
-    if manifest_path == DEFAULT_MANIFEST:
+    # gate are checked over the union. Keyed on `path` being omitted rather than
+    # on its value: an explicit path means "load exactly this", however spelled.
+    if path is None:
         for extra in _extra_manifest_paths():
             defaults = _merge_manifest(groups, extra, defaults)
 
@@ -184,7 +184,8 @@ def _merge_manifest(
     """Merge an overlay manifest into ``groups`` in place and return the merged
     defaults, so an overlay can also rename the platform gate. Overlay groups
     inherit the base ``defaults`` unless they declare their own; a name collision
-    is an error rather than a silent override."""
+    is an error rather than a silent override.
+    """
     raw = _load_manifest_dict(manifest_path)
     defaults = {**base_defaults, **(raw.get("defaults") or {})}
     for name, spec in (raw["groups"] or {}).items():
