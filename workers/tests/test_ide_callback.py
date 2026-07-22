@@ -95,6 +95,17 @@ def failure_result():
     }
 
 
+@pytest.fixture
+def no_client_plugins():
+    """Pin plugin lookup to the OSS answer for callbacks that aren't testing it.
+
+    Left live, a tree with the plugins installed makes a real HTTP call that only
+    fails after a multi-second connect timeout.
+    """
+    with patch(_PATCH_GET_PLUGIN, return_value=None):
+        yield
+
+
 # ---------------------------------------------------------------------------
 # TestIdeIndexComplete
 # ---------------------------------------------------------------------------
@@ -346,6 +357,7 @@ class TestIdeIndexError:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("no_client_plugins")
 class TestIdePromptComplete:
     """Tests for ide_prompt_complete task."""
 
