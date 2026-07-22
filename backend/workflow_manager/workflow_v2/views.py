@@ -22,6 +22,7 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
 from utils.organization_utils import filter_queryset_by_organization, resolve_organization
+from utils.pagination import OptionalPagination
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -75,6 +76,7 @@ class WorkflowViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
     notification_resource_name_field = "workflow_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -112,11 +114,18 @@ class WorkflowViewSet(
         queryset = queryset.select_related("created_by").prefetch_related(
             "memberships__user"
         )
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(workflow_name__icontains=search)
+
+        # `id` tiebreaker keeps ordering deterministic across paginated requests
+        # (the for_user() manager uses plain .distinct(), so there is no default)
         order_by = self.request.query_params.get("order_by")
-        if order_by == "desc":
-            queryset = queryset.order_by("-modified_at")
-        elif order_by == "asc":
-            queryset = queryset.order_by("modified_at")
+        if order_by == "asc":
+            queryset = queryset.order_by("modified_at", "id")
+        else:
+            queryset = queryset.order_by("-modified_at", "id")
 
         return queryset
 
