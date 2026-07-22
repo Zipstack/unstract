@@ -27,9 +27,8 @@ RUNNERS: tuple[Runner, ...] = get_args(Runner)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "groups.yaml"
 
-# os.pathsep-separated overlay manifests merged on top of the base groups.yaml.
-# Lets a downstream repo (e.g. the cloud build, which copies its plugins into
-# this tree) contribute groups without editing the OSS manifest.
+# os.pathsep-separated overlay manifests, so a downstream repo can contribute
+# groups without editing the base manifest.
 EXTRA_MANIFESTS_ENV = "UNSTRACT_RIG_EXTRA_MANIFESTS"
 
 
@@ -131,10 +130,9 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     for name, spec in (raw["groups"] or {}).items():
         groups[name] = _build_group(name, spec, defaults)
 
-    # Overlay manifests are merged before validation, so cross-manifest
-    # `depends_on` and the platform-gate invariant are checked over the union.
-    # Only the default manifest takes overlays — an explicit `path` (test fixture
-    # or ad-hoc manifest) must stay isolated from the ambient env var.
+    # Merge before validation so cross-manifest `depends_on` and the platform
+    # gate are checked over the union. An explicit `path` stays isolated from
+    # the ambient env var.
     if manifest_path == DEFAULT_MANIFEST:
         for extra in _extra_manifest_paths():
             defaults = _merge_manifest(groups, extra, defaults)
@@ -160,8 +158,8 @@ def _extra_manifest_paths() -> list[Path]:
     for entry in filter(None, (e.strip() for e in raw.split(os.pathsep))):
         p = Path(entry)
         p = p if p.is_absolute() else REPO_ROOT / p
-        # Name the env var here: a bare FileNotFoundError from read_text() gives
-        # no hint about where the bad path came from.
+        # Name the env var — a bare FileNotFoundError won't say where the path
+        # came from.
         if not p.is_file():
             raise ValueError(
                 f"{EXTRA_MANIFESTS_ENV}: {entry!r} is not a file (resolved to {p})"

@@ -251,10 +251,9 @@ def _base_manifest(tmp_path: Path) -> Path:
 def _overlay_env(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
 ) -> Path:
-    """Point the loader's default manifest at a fixture and register an overlay.
+    """Point the default manifest at a fixture and register an overlay.
 
-    Overlays only apply to the default manifest, so the tests drive that path
-    rather than passing an explicit one.
+    Overlays only apply to the default manifest, so tests must drive that path.
     """
     base = _base_manifest(tmp_path)
     overlay = tmp_path / "groups.cloud.yaml"

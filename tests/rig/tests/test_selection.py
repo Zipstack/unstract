@@ -109,7 +109,6 @@ def test_tier_run_does_not_pull_in_other_tiers(tmp_path: Path) -> None:
     manifest = load_groups(_cross_tier_manifest(tmp_path))
     ordered = resolve(manifest, positional=[], tier="e2e")
     assert set(ordered) == {"e2e-smoke", "e2e-cross"}
-    # Intra-tier ordering still holds.
     assert ordered.index("e2e-smoke") < ordered.index("e2e-cross")
 
 

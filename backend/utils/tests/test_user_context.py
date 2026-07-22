@@ -1,8 +1,7 @@
-"""Regression tests for utils.user_context.UserContext.get_organization.
+"""Regression tests for UserContext.get_organization.
 
-Pins the no-org short-circuit: with no organization in context (import time,
-management commands with no request), the org lookup must return None without
-touching the DB, so evaluating it on a DB-less/unmigrated setup can't fail.
+Pins the no-org short-circuit: the lookup must return None without touching the
+DB, so it stays evaluable on a DB-less/unmigrated setup.
 """
 
 from __future__ import annotations
