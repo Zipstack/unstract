@@ -248,7 +248,65 @@ def _base_manifest(tmp_path: Path) -> Path:
     )
 
 
+def _overlay_env(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, body: str
+) -> Path:
+    """Point the loader's default manifest at a fixture and register an overlay.
+
+    Overlays only apply to the default manifest, so the tests drive that path
+    rather than passing an explicit one.
+    """
+    base = _base_manifest(tmp_path)
+    overlay = tmp_path / "groups.cloud.yaml"
+    overlay.write_text(body)
+    monkeypatch.setattr("tests.rig.groups.DEFAULT_MANIFEST", base)
+    monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
+    return base
+
+
 def test_extra_manifest_merged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _overlay_env(
+        tmp_path,
+        monkeypatch,
+        """
+        version: 1
+        groups:
+          unit-cloud:
+            tier: unit
+            paths: [y]
+            depends_on: [unit-base]
+            optional: true
+        """,
+    )
+    manifest = load_groups()
+    assert "unit-cloud" in manifest.names()
+    # Cross-manifest depends_on resolves against the merged set.
+    assert "unit-base" in manifest.expand(["unit-cloud"])
+
+
+def test_extra_manifest_name_collision_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _overlay_env(
+        tmp_path,
+        monkeypatch,
+        """
+        version: 1
+        groups:
+          unit-base:
+            tier: unit
+            paths: [y]
+            optional: true
+        """,
+    )
+    with pytest.raises(ValueError, match="already defined"):
+        load_groups()
+
+
+def test_explicit_manifest_ignores_overlays(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An ad-hoc manifest must not absorb a downstream repo's overlay."""
     base = _base_manifest(tmp_path)
     overlay = tmp_path / "groups.cloud.yaml"
     overlay.write_text(
@@ -258,32 +316,51 @@ def test_extra_manifest_merged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
           unit-cloud:
             tier: unit
             paths: [y]
-            depends_on: [unit-base]
             optional: true
         """
     )
     monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
-    manifest = load_groups(base)
-    assert "unit-cloud" in manifest.names()
-    # Cross-manifest depends_on resolves against the merged set.
-    assert "unit-base" in manifest.expand(["unit-cloud"])
+    # `base` is deliberately not the default manifest here.
+    assert "unit-cloud" not in load_groups(base).names()
 
 
-def test_extra_manifest_name_collision_rejected(
+def test_extra_manifest_defaults_applied(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    base = _base_manifest(tmp_path)
-    overlay = tmp_path / "groups.cloud.yaml"
-    overlay.write_text(
+    """An overlay's own `defaults` reach its groups instead of being dropped."""
+    _overlay_env(
+        tmp_path,
+        monkeypatch,
         """
         version: 1
+        defaults:
+          parallel: false
+          timeout_seconds: 42
         groups:
-          unit-base:
+          unit-cloud:
             tier: unit
             paths: [y]
             optional: true
-        """
+        """,
     )
-    monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(overlay))
-    with pytest.raises(ValueError, match="already defined"):
-        load_groups(base)
+    group = load_groups().get("unit-cloud")
+    assert group.parallel is False
+    assert group.timeout_seconds == 42
+
+
+def test_extra_manifest_malformed_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _overlay_env(tmp_path, monkeypatch, "- not: a-mapping\n")
+    with pytest.raises(ValueError, match="expected top-level `groups:` mapping"):
+        load_groups()
+
+
+def test_extra_manifest_missing_path_names_env_var(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = _base_manifest(tmp_path)
+    monkeypatch.setattr("tests.rig.groups.DEFAULT_MANIFEST", base)
+    monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(tmp_path / "nope.yaml"))
+    with pytest.raises(ValueError, match="UNSTRACT_RIG_EXTRA_MANIFESTS"):
+        load_groups()

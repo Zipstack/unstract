@@ -28,3 +28,15 @@ class TestGetOrganizationNoContext:
         ):
             assert UserContext.get_organization() is None
             mock_get.assert_not_called()
+
+    def test_identifier_present_looks_up_organization(self):
+        """Pins the complement, so inverting the guard can't pass unnoticed."""
+        sentinel = object()
+        with (
+            patch("utils.user_context.StateStore.get", return_value="org-123"),
+            patch(
+                "utils.user_context.Organization.objects.get", return_value=sentinel
+            ) as mock_get,
+        ):
+            assert UserContext.get_organization() is sentinel
+            mock_get.assert_called_once_with(organization_id="org-123")

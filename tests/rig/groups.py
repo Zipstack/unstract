@@ -124,9 +124,7 @@ class GroupManifest:
 def load_groups(path: Path | None = None) -> GroupManifest:
     """Parse the YAML manifest and validate it."""
     manifest_path = path or DEFAULT_MANIFEST
-    raw = yaml.safe_load(manifest_path.read_text())
-    if not isinstance(raw, dict) or "groups" not in raw:
-        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+    raw = _load_manifest_dict(manifest_path)
 
     defaults = raw.get("defaults") or {}
     groups: dict[str, GroupDefinition] = {}
@@ -135,8 +133,11 @@ def load_groups(path: Path | None = None) -> GroupManifest:
 
     # Overlay manifests are merged before validation, so cross-manifest
     # `depends_on` and the platform-gate invariant are checked over the union.
-    for extra in _extra_manifest_paths():
-        _merge_manifest(groups, extra, defaults)
+    # Only the default manifest takes overlays — an explicit `path` (test fixture
+    # or ad-hoc manifest) must stay isolated from the ambient env var.
+    if manifest_path == DEFAULT_MANIFEST:
+        for extra in _extra_manifest_paths():
+            defaults = _merge_manifest(groups, extra, defaults)
 
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
@@ -158,19 +159,35 @@ def _extra_manifest_paths() -> list[Path]:
     paths: list[Path] = []
     for entry in filter(None, (e.strip() for e in raw.split(os.pathsep))):
         p = Path(entry)
-        paths.append(p if p.is_absolute() else REPO_ROOT / p)
+        p = p if p.is_absolute() else REPO_ROOT / p
+        # Name the env var here: a bare FileNotFoundError from read_text() gives
+        # no hint about where the bad path came from.
+        if not p.is_file():
+            raise ValueError(
+                f"{EXTRA_MANIFESTS_ENV}: {entry!r} is not a file (resolved to {p})"
+            )
+        paths.append(p)
     return paths
+
+
+def _load_manifest_dict(manifest_path: Path) -> dict[str, Any]:
+    """Parse a manifest YAML, rejecting anything that is not a ``groups:`` mapping."""
+    if not manifest_path.is_file():
+        raise ValueError(f"{manifest_path}: manifest file not found")
+    raw = yaml.safe_load(manifest_path.read_text())
+    if not isinstance(raw, dict) or "groups" not in raw:
+        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+    return raw
 
 
 def _merge_manifest(
     groups: dict[str, GroupDefinition], manifest_path: Path, base_defaults: dict[str, Any]
-) -> None:
-    """Merge an overlay manifest into ``groups`` in place. Overlay groups inherit
-    the base ``defaults`` unless they declare their own; a name collision is an
-    error rather than a silent override."""
-    raw = yaml.safe_load(manifest_path.read_text())
-    if not isinstance(raw, dict) or "groups" not in raw:
-        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+) -> dict[str, Any]:
+    """Merge an overlay manifest into ``groups`` in place and return the merged
+    defaults, so an overlay can also rename the platform gate. Overlay groups
+    inherit the base ``defaults`` unless they declare their own; a name collision
+    is an error rather than a silent override."""
+    raw = _load_manifest_dict(manifest_path)
     defaults = {**base_defaults, **(raw.get("defaults") or {})}
     for name, spec in (raw["groups"] or {}).items():
         if name in groups:
@@ -178,6 +195,7 @@ def _merge_manifest(
                 f"{manifest_path}: group {name!r} already defined in a prior manifest"
             )
         groups[name] = _build_group(name, spec, defaults)
+    return defaults
 
 
 def _build_group(
