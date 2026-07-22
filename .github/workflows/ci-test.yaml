@@ -25,16 +25,18 @@ jobs:
   # skipped via `if:` reports conclusion `skipped`, which passes. Two scopes:
   # `relevant` gates unit/integration; `e2e_relevant` gates e2e and skips only
   # docs — the e2e image build is the sole CI check that compiles the frontend,
-  # and docker/** changes must be e2e-tested.
+  # and docker/** changes must be e2e-tested. `frontend` gates the JS tiers,
+  # which are the mirror image of `relevant`: only frontend/** matters to them.
   changes:
     runs-on: ubuntu-latest
     outputs:
       # Filtering is a PR-time saving only. On workflow_dispatch there is no
       # base to diff, so paths-filter resolves against the default branch and a
       # manual run on main diffs main against itself — every filter false, every
-      # tier skipped, gate green with nothing run. Force both true off-PR.
+      # tier skipped, gate green with nothing run. Force all true off-PR.
       relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' }}
       e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' }}
+      frontend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -54,6 +56,8 @@ jobs:
               - "!docker/**"
               - "!frontend/**"
               - "!docs/**"
+            frontend:
+              - "frontend/**"
             e2e_relevant:
               - "!docs/**"
 
@@ -121,6 +125,78 @@ jobs:
         with:
           name: reports-${{ matrix.tier }}
           path: reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # Frontend tiers. Runs alongside the python tiers, not after them: nothing is
+  # shared, and the whole job is minutes against e2e's tens of minutes.
+  #
+  # Two vitest projects, one job:
+  #   unit   — happy-dom. Fast, but every rect measures 0, so it cannot see
+  #            layout at all.
+  #   layout — real Chromium. Asserts the geometric contracts of list rows
+  #            (columns line up, nothing spills onto the action icons, nothing
+  #            overflows) at the widths the CSS claims to support. These are
+  #            the regressions that reach staging because a CSS diff looks
+  #            innocent in review.
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Set up bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Install dependencies
+        # --ignore-scripts matches the frontend image build. Playwright's
+        # postinstall browser download is one of the scripts it skips; the
+        # dedicated step below does that explicitly and cacheably instead.
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      # Keyed on the lockfile: the browser build is pinned by the playwright
+      # version in it, so a bump invalidates the cache and re-downloads.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('frontend/bun.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Chromium
+        # The locally installed binary, not `bunx playwright`: that would fetch
+        # whatever version the registry serves, while this is the one pinned in
+        # bun.lock and matched to @vitest/browser.
+        # --with-deps installs the shared libraries headless Chromium needs;
+        # they live outside the cached browser dir, so this runs either way.
+        run: ./node_modules/.bin/playwright install chromium --with-deps
+
+      - name: Run unit tests
+        run: bun run test:unit
+
+      - name: Run layout tests
+        run: bun run test:layout
+
+      - name: Upload layout failure screenshots
+        # Written by vitest's browser mode on failure — a red layout assertion
+        # is far quicker to read as a picture than as coordinates.
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-layout-screenshots
+          path: frontend/src/**/__screenshots__/**
           if-no-files-found: ignore
           retention-days: 14
 
@@ -236,7 +312,10 @@ jobs:
           retention-days: 14
 
   report:
-    needs: [changes, test, e2e]
+    # `frontend` is in `needs` for the gate below only: it emits no junit, so
+    # it contributes nothing to the combined report or the baseline. Without it
+    # a red layout assertion would leave the branch-protection check green.
+    needs: [changes, test, e2e, frontend]
     # `always()` so a red tier still posts a report. Any tier may skip on
     # irrelevant paths; the fail step below distinguishes a legitimate skip
     # from a real tier failure.
@@ -336,7 +415,9 @@ jobs:
           changes_result="${{ needs.changes.result }}"
           test_result="${{ needs.test.result }}"
           e2e_result="${{ needs.e2e.result }}"
+          frontend_result="${{ needs.frontend.result }}"
           # A broken filter job skips both tiers, which would read as pass.
           [ "$changes_result" = "success" ] || exit 1
           [ "$test_result" = "success" ] || [ "$test_result" = "skipped" ] || exit 1
           [ "$e2e_result" = "success" ] || [ "$e2e_result" = "skipped" ] || exit 1
+          [ "$frontend_result" = "success" ] || [ "$frontend_result" = "skipped" ] || exit 1
