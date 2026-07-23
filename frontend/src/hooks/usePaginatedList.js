@@ -1,6 +1,76 @@
 import { useRef, useState } from "react";
 
 /**
+ * Build the query params for a paginated list request, omitting empty
+ * search/sort so non-paginated callers stay unaffected. Callers add any
+ * resource-specific params (e.g. `adapter_type`) to the returned object.
+ *
+ * @param {Object} args
+ * @param {number} args.page - Requested page.
+ * @param {number} args.pageSize - Requested page size.
+ * @param {string} [args.search] - Search term.
+ * @param {string} [args.sortBy] - Sort column key.
+ * @param {string} [args.order] - Sort direction.
+ * @return {Object} Query params.
+ */
+function buildPagedParams({ page, pageSize, search, sortBy, order }) {
+  const params = { page, page_size: pageSize };
+  if (search) {
+    params.search = search;
+  }
+  if (sortBy) {
+    params.sort_by = sortBy;
+    params.order = order;
+  }
+  return params;
+}
+
+/**
+ * Commit a paginated list response, shared by every resource list page.
+ *
+ * Unwraps the opt-in envelope (`{results, count}` or a bare array), drops stale
+ * responses that a newer request already superseded, and steps back a page when
+ * a delete empties the last one — returning that refetch promise so the caller's
+ * `finally` waits for replacement data instead of clearing loading early.
+ *
+ * @param {Object} args
+ * @param {*} args.data - `res.data`: envelope or bare array.
+ * @param {number} args.page - Requested page.
+ * @param {number} args.pageSize - Requested page size.
+ * @param {number} args.seq - This request's sequence token.
+ * @param {{current: number}} args.latestSeqRef - Ref holding the newest token.
+ * @param {Function} args.setList - List state setter.
+ * @param {Function} args.setPagination - Pagination state setter.
+ * @param {Function} args.refetchPrevPage - Refetches `page - 1`; its promise is
+ *   returned so the caller's `finally` waits for it.
+ * @return {Promise|undefined}
+ */
+function applyPagedResponse({
+  data,
+  page,
+  pageSize,
+  seq,
+  latestSeqRef,
+  setList,
+  setPagination,
+  refetchPrevPage,
+}) {
+  // A newer request already fired — ignore this superseded response.
+  if (seq !== latestSeqRef.current) {
+    return undefined;
+  }
+  const results = data?.results ?? data ?? [];
+  const total = data?.count ?? results.length;
+  // Deleting the last row on a page leaves it empty; step back a page.
+  if (results.length === 0 && page > 1 && total > 0) {
+    return refetchPrevPage();
+  }
+  setList(results);
+  setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
+  return undefined;
+}
+
+/**
  * Shared hook for paginated list state and handlers.
  * Uses a ref internally to avoid stale closure issues with fetchData.
  *
@@ -68,4 +138,4 @@ function usePaginatedList({
   };
 }
 
-export { usePaginatedList };
+export { applyPagedResponse, buildPagedParams, usePaginatedList };

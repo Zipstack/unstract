@@ -147,7 +147,11 @@ function ResourceTable({
 
   const renderName = (item) => {
     const icon = iconProp ? item?.[iconProp] : null;
-    const isImage = icon && icon.length > 4;
+    // Adapters/connectors pass image URLs; Prompt Studio passes emoji. Detect an
+    // actual URL/data source rather than a length heuristic — compound (ZWJ)
+    // emoji exceed 4 UTF-16 units and would otherwise render as a broken <img>.
+    const isImage =
+      typeof icon === "string" && /^(https?:\/\/|\/|data:image\/)/.test(icon);
     return (
       <div className="resource-table-name">
         {icon &&

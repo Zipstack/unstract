@@ -61,7 +61,7 @@ def apply_search_and_sort(
         "name": name_field,
         "owner": OWNER_SORT_FIELD,
         "created": CREATED_SORT_FIELD,
-    }.get(params.get("sort_by") or default_sort_by, name_field)
+    }.get((params.get("sort_by") or default_sort_by).lower(), name_field)
     order_prefix = "-" if (params.get("order") or "asc").lower() == "desc" else ""
 
     # Ordering the source by ``pk`` keeps the DISTINCT ON (always the pk) valid

@@ -6,7 +6,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  buildPagedParams,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -81,6 +85,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [allGroupList, setAllGroupList] = useState([]);
   // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
   const fetchListRef = useRef(null);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
 
   const promptStudioCoOwnerService = useMemo(
     () => ({
@@ -172,40 +178,34 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       sortBy = "",
       order = "asc",
     ) => {
-      const params = { page, page_size: pageSize };
-      if (search) {
-        params.search = search;
-      }
-      if (sortBy) {
-        params.sort_by = sortBy;
-        params.order = order;
-      }
+      const params = buildPagedParams({
+        page,
+        pageSize,
+        search,
+        sortBy,
+        order,
+      });
+      const seq = ++seqRef.current;
       setIsLoading(true);
-      axiosPrivate({
+      return axiosPrivate({
         method: "GET",
         url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
         headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         params,
       })
-        .then((res) => {
-          const data = res?.data;
-          // Endpoint is opt-in paginated: envelope when we send ?page, else a
-          // bare array. Handle both so any non-paginated caller stays unaffected.
-          const results = data?.results ?? data ?? [];
-          const total = data?.count ?? results.length;
-          // Deleting the last row on a page leaves it empty; step back a page.
-          if (results.length === 0 && page > 1 && total > 0) {
-            getListOfTools(page - 1, pageSize, search, sortBy, order);
-            return;
-          }
-          setDisplayList(results);
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
+        .then((res) =>
+          applyPagedResponse({
+            data: res?.data,
+            page,
             pageSize,
-            total,
-          }));
-        })
+            seq,
+            latestSeqRef: seqRef,
+            setList: setDisplayList,
+            setPagination,
+            refetchPrevPage: () =>
+              getListOfTools(page - 1, pageSize, search, sortBy, order),
+          }),
+        )
         .catch((err) => {
           setAlertDetails(
             handleException(err, "Failed to get the list of tools"),

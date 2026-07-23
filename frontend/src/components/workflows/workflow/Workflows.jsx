@@ -6,7 +6,11 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  buildPagedParams,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
   useInitialFetchCount,
@@ -55,6 +59,8 @@ function Workflows() {
   const [openModal, toggleModal] = useState(true);
   // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
   const fetchListRef = useRef(null);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
   const [backendErrors, setBackendErrors] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState();
@@ -128,36 +134,24 @@ function Workflows() {
     sortBy = "",
     order = "asc",
   ) => {
+    const params = buildPagedParams({ page, pageSize, search, sortBy, order });
+    const seq = ++seqRef.current;
     setLoading(true);
-    const params = { page, page_size: pageSize };
-    if (search) {
-      params.search = search;
-    }
-    if (sortBy) {
-      params.sort_by = sortBy;
-      params.order = order;
-    }
-    projectApiService
+    return projectApiService
       .getProjectList(params)
-      .then((res) => {
-        const data = res?.data;
-        // Endpoint is opt-in paginated: envelope when we send ?page, else a
-        // bare array. Handle both so nothing breaks if the opt-in is dropped.
-        const results = data?.results ?? data ?? [];
-        const total = data?.count ?? results.length;
-        // Deleting the last row on a page leaves it empty; step back a page.
-        if (results.length === 0 && page > 1 && total > 0) {
-          getProjectList(page - 1, pageSize, search, sortBy, order);
-          return;
-        }
-        setProjectList(results);
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
+      .then((res) =>
+        applyPagedResponse({
+          data: res?.data,
+          page,
           pageSize,
-          total,
-        }));
-      })
+          seq,
+          latestSeqRef: seqRef,
+          setList: setProjectList,
+          setPagination,
+          refetchPrevPage: () =>
+            getProjectList(page - 1, pageSize, search, sortBy, order),
+        }),
+      )
       .catch(() => {
         console.error("Unable to get project list");
         // Avoid an indefinite spinner when the first fetch fails.

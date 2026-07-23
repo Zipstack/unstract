@@ -5,7 +5,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  buildPagedParams,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -60,6 +64,8 @@ function ToolSettings({ type }) {
   const handleException = useExceptionHandler();
   // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
   const fetchListRef = useRef(null);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
 
   const adapterCoOwnerService = useMemo(
     () => ({
@@ -155,43 +161,34 @@ function ToolSettings({ type }) {
       if (!type) {
         return;
       }
-      const params = {
-        adapter_type: type.toUpperCase(),
+      const params = buildPagedParams({
         page,
-        page_size: pageSize,
-      };
-      if (search) {
-        params.search = search;
-      }
-      if (sortBy) {
-        params.sort_by = sortBy;
-        params.order = order;
-      }
+        pageSize,
+        search,
+        sortBy,
+        order,
+      });
+      params.adapter_type = type.toUpperCase();
+      const seq = ++seqRef.current;
       setIsLoading(true);
-      axiosPrivate({
+      return axiosPrivate({
         method: "GET",
         url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter`,
         params,
       })
-        .then((res) => {
-          const data = res?.data;
-          // Endpoint is opt-in paginated: envelope when we send ?page, else a
-          // bare array. Handle both so shared (dropdown) callers stay unaffected.
-          const results = data?.results ?? data ?? [];
-          const total = data?.count ?? results.length;
-          // Deleting the last row on a page leaves it empty; step back a page.
-          if (results.length === 0 && page > 1 && total > 0) {
-            getAdapters(page - 1, pageSize, search, sortBy, order);
-            return;
-          }
-          setDisplayList(results);
-          setPagination((prev) => ({
-            ...prev,
-            current: page,
+        .then((res) =>
+          applyPagedResponse({
+            data: res?.data,
+            page,
             pageSize,
-            total,
-          }));
-        })
+            seq,
+            latestSeqRef: seqRef,
+            setList: setDisplayList,
+            setPagination,
+            refetchPrevPage: () =>
+              getAdapters(page - 1, pageSize, search, sortBy, order),
+          }),
+        )
         .catch((err) => {
           setAlertDetails(handleException(err));
           // Avoid an indefinite spinner when the first fetch fails.
@@ -234,7 +231,12 @@ function ToolSettings({ type }) {
       headers: { "X-CSRFToken": sessionDetails?.csrfToken },
     })
       .then(() => handleListRefresh())
-      .catch((err) => setAlertDetails(handleException(err)));
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+        // Refresh only runs on success; clear loading here so a failed delete
+        // doesn't leave the table stuck under its spinner.
+        setIsLoading(false);
+      });
   };
 
   const handleEdit = (_event, item) => {
