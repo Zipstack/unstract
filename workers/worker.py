@@ -444,36 +444,50 @@ logger.info("✅ Worker infrastructure initialized successfully")
 # Determine worker path dynamically based on worker type
 base_dir = os.path.dirname(os.path.abspath(__file__))
 if worker_type.is_pluggable():
-    # Pluggable workers live inside workers/pluggable_worker/{worker_name}
-    worker_directory = os.path.join("pluggable_worker", worker_type.value)
-    worker_path = os.path.join(base_dir, worker_directory)
+    # Pluggable workers' tasks are ALREADY registered by this point:
+    # build_celery_app() above verifies the plugin via
+    # WorkerBuilder._verify_pluggable_worker_exists, which does
+    # `importlib.import_module("pluggable_worker.{type}.worker")` — a proper
+    # PACKAGE import that runs the plugin's own `from . import tasks`, resolving
+    # its relative imports (`from .clients import ...`) and registering the tasks
+    # on this same app. The generic file-path load below loads tasks.py under a
+    # bare "tasks" spec (no parent package), which BREAKS those relative imports
+    # ("attempted relative import with no known parent package"), so it MUST be
+    # skipped for pluggable workers — otherwise every cloud PG pluggable worker
+    # crashes on startup.
+    logger.info(
+        f"✅ Pluggable worker {worker_type.value} tasks already registered via "
+        "WorkerBuilder (package import); skipping file-path task load"
+    )
 else:
-    # Enum values use underscores (Python module names); a few on-disk dirs
-    # still use hyphens (e.g. api-deployment). Derive the directory from the
+    # Non-pluggable (top-level) workers register tasks via a file-path load of
+    # their tasks.py — they use absolute imports, with their dir on sys.path.
+    # Enum values use underscores (Python module names); a few on-disk dirs still
+    # use hyphens (e.g. api-deployment). Derive the directory from the
     # authoritative import-path map on WorkerType instead of a blind replace.
     worker_directory = worker_type.to_import_path().rsplit(".", 1)[0]
     worker_path = os.path.join(base_dir, worker_directory)
 
-# Add worker directory to path for task imports
-if os.path.exists(worker_path):
-    sys.path.append(worker_path)
-    logger.info(f"✅ Added {worker_directory} to Python path for task imports")
+    # Add worker directory to path for task imports
+    if os.path.exists(worker_path):
+        sys.path.append(worker_path)
+        logger.info(f"✅ Added {worker_directory} to Python path for task imports")
 
-    # Import tasks module to register tasks
-    tasks_file = os.path.join(worker_path, "tasks.py")
-    if os.path.exists(tasks_file):
-        logger.info(f"📋 Loading tasks from: {tasks_file}")
-        # Import the tasks module to register tasks with the app
-        import importlib.util
+        # Import tasks module to register tasks
+        tasks_file = os.path.join(worker_path, "tasks.py")
+        if os.path.exists(tasks_file):
+            logger.info(f"📋 Loading tasks from: {tasks_file}")
+            # Import the tasks module to register tasks with the app
+            import importlib.util
 
-        spec = importlib.util.spec_from_file_location("tasks", tasks_file)
-        tasks_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(tasks_module)
-        logger.info(f"✅ Tasks loaded successfully from {worker_directory}")
+            spec = importlib.util.spec_from_file_location("tasks", tasks_file)
+            tasks_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(tasks_module)
+            logger.info(f"✅ Tasks loaded successfully from {worker_directory}")
+        else:
+            logger.warning(f"⚠️ No tasks.py found at: {tasks_file}")
     else:
-        logger.warning(f"⚠️ No tasks.py found at: {tasks_file}")
-else:
-    logger.error(f"❌ Worker directory not found: {worker_path}")
+        logger.error(f"❌ Worker directory not found: {worker_path}")
 
 # Log successful configuration
 logger.info(f"✅ Successfully loaded {worker_type} worker using WorkerBuilder")
