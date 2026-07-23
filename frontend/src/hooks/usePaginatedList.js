@@ -103,6 +103,12 @@ function usePaginatedList({
   // Page assigns its fetch fn here; handlers call the latest one via the ref.
   const fetchRef = useRef(null);
 
+  // Mirror the latest list params so handleListRefresh always refetches the
+  // CURRENT view, even when captured earlier (e.g. a pending mutation's .then)
+  // before the user changed page/search/sort.
+  const listStateRef = useRef();
+  listStateRef.current = { pagination, searchTerm, sort };
+
   const handlePaginationChange = (page, pageSize) => {
     const newPage = pageSize === pagination.pageSize ? page : 1;
     fetchRef.current?.(newPage, pageSize, searchTerm, sort.sortBy, sort.order);
@@ -128,23 +134,13 @@ function usePaginatedList({
     );
   };
 
-  const handleListRefresh = useCallback(
-    () =>
-      fetchRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-        sort.sortBy,
-        sort.order,
-      ),
-    [
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-      sort.sortBy,
-      sort.order,
-    ],
-  );
+  // Stable identity, reads the latest params from the ref: a refresh captured
+  // before the user navigated still fetches the view they're on now instead of
+  // restoring the stale page/search/order.
+  const handleListRefresh = useCallback(() => {
+    const { pagination: p, searchTerm: term, sort: s } = listStateRef.current;
+    fetchRef.current?.(p.current, p.pageSize, term, s.sortBy, s.order);
+  }, []);
 
   return {
     pagination,
