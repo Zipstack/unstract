@@ -32,6 +32,24 @@ def is_blank(value: Any) -> bool:
     return False
 
 
+def preload_reference_texts(lookup_config: dict[str, Any] | None) -> Any:
+    """Read a lookup's reference files once via the enrichment plugin.
+
+    For callers that enrich many rows against one ``lookup_config`` (per-row
+    enrichment), pass the result as ``reference_texts`` to
+    ``run_lookup_enrichment`` so the remote read isn't repeated per row.
+    Returns ``None`` (fall back to per-call loading) when the plugin/config is
+    unavailable or the read fails.
+    """
+    lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
+    if not (lookup_config and lookup_cls):
+        return None
+    preload = getattr(lookup_cls, "preload_reference_texts", None)
+    if preload is None:
+        return None
+    return preload(lookup_config)
+
+
 def run_lookup_enrichment(
     output: dict[str, Any],
     structured_output: dict[str, Any],
@@ -40,11 +58,15 @@ def run_lookup_enrichment(
     shim: Any,
     llm_cls: Any,
     usage_kwargs: dict[str, Any] | None = None,
+    reference_texts: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """Run lookup enrichment plugin if enabled and available.
 
     Returns any usage records the plugin emitted (recovered even on
     plugin failure) so the caller can extend its billing batch.
+
+    ``reference_texts`` (from :func:`preload_reference_texts`) skips the
+    plugin's per-call remote read of the reference files.
     """
     prompt_name = output[PSKeys.NAME]
     current_value = structured_output.get(prompt_name)
@@ -73,6 +95,7 @@ def run_lookup_enrichment(
             prompt_name=prompt_name,
             shim=shim,
             usage_kwargs=usage_kwargs,
+            reference_texts=reference_texts,
         )
         metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = outcome.llm_metrics
     except Exception:
