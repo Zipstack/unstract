@@ -795,10 +795,20 @@ def _execute_group(
     md_report = group_reports / "report.md"
 
     env = _subprocess_env()
+    # A group may set its own PYTHONPATH (workdir-relative imports); keep the rig
+    # plugin dir on it so `-p rig_critical_path` stays importable instead of being
+    # clobbered by a plain env.update.
+    group_env = dict(group.env)
     env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (str(_PYTEST_PLUGIN_DIR), env.get("PYTHONPATH")) if p
+        p
+        for p in (
+            str(_PYTEST_PLUGIN_DIR),
+            group_env.pop("PYTHONPATH", None),
+            env.get("PYTHONPATH"),
+        )
+        if p
     )
-    env.update(group.env)
+    env.update(group_env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
