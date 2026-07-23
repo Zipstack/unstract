@@ -101,6 +101,21 @@ def main(argv: list[str] | None = None) -> int:
     return args.func(args)
 
 
+def _default_workers() -> str:
+    """Resolve the xdist worker count ourselves.
+
+    xdist's own `auto` prefers *physical* cores when psutil happens to be
+    importable, which collapses to a single worker on hyperthreaded CI runners
+    — and only for the groups that ship psutil. Beyond ~8 the suites contend on
+    the test database more than they parallelise, so cap it.
+    """
+    try:
+        cpus = len(os.sched_getaffinity(0))  # honours CPU pinning; Linux only
+    except AttributeError:
+        cpus = os.cpu_count() or 1
+    return str(min(cpus, 8))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tests.rig", description="Unstract unified test rig")
     sub = p.add_subparsers(dest="command", required=True)
@@ -120,8 +135,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--no-parallel", dest="parallel", action="store_false")
     pr.add_argument(
         "--workers",
-        default="auto",
-        help="pytest-xdist worker count (default: auto).",
+        default=_default_workers(),
+        help="pytest-xdist worker count (default: usable CPUs, capped).",
     )
     pr.add_argument("--timeout", type=int, help="Per-group timeout override in seconds.")
     pr.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")
@@ -784,10 +799,20 @@ def _execute_group(
     md_report = group_reports / "report.md"
 
     env = _subprocess_env()
+    # A group may set its own PYTHONPATH (workdir-relative imports); keep the rig
+    # plugin dir on it so `-p rig_critical_path` stays importable instead of being
+    # clobbered by a plain env.update.
+    group_env = dict(group.env)
     env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (str(_PYTEST_PLUGIN_DIR), env.get("PYTHONPATH")) if p
+        p
+        for p in (
+            str(_PYTEST_PLUGIN_DIR),
+            group_env.pop("PYTHONPATH", None),
+            env.get("PYTHONPATH"),
+        )
+        if p
     )
-    env.update(group.env)
+    env.update(group_env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
