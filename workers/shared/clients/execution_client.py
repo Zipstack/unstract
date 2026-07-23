@@ -134,10 +134,13 @@ class ExecutionAPIClient(BaseAPIClient):
                 message="Successfully retrieved workflow execution",
             )
         except Exception as e:
+            # Preserve the HTTP status (404 vs 5xx) so callers — the reaper's
+            # orphan-claim sweep — can tell "execution deleted" from a transient blip.
             return ExecutionResponse.error_response(
                 error=str(e),
                 execution_id=str(execution_id),
                 message="Failed to retrieve workflow execution",
+                status_code=getattr(e, "status_code", None),
             )
 
     def get_workflow_definition(
@@ -270,6 +273,7 @@ class ExecutionAPIClient(BaseAPIClient):
         attempts: int | None = None,
         execution_time: float | None = None,
         organization_id: str | None = None,
+        cascade_terminal_files: bool = False,
     ) -> APIResponse:
         """Update workflow execution status.
 
@@ -283,6 +287,9 @@ class ExecutionAPIClient(BaseAPIClient):
             attempts: Optional attempts count
             execution_time: Optional execution time
             organization_id: Optional organization ID override
+            cascade_terminal_files: When True and *status* is terminal, the backend
+                also marks this execution's non-terminal file executions to the same
+                terminal status, atomically (the reaper uses this on recovery).
 
         Returns:
             APIResponse with update result
@@ -292,6 +299,8 @@ class ExecutionAPIClient(BaseAPIClient):
 
         data = {"status": status_str}
 
+        if cascade_terminal_files:
+            data["cascade_terminal_files"] = True
         if error_message is not None:
             data["error_message"] = error_message
         if total_files is not None:
@@ -317,6 +326,36 @@ class ExecutionAPIClient(BaseAPIClient):
 
         # Convert dict response to consistent APIResponse
         return convert_dict_response(response, APIResponse)
+
+    def recover_stuck_pg_executions(
+        self,
+        stuck_seconds: int | None = None,
+        limit: int | None = None,
+    ) -> APIResponse:
+        """Trigger the backend safety-net that finalizes PG executions stranded
+        non-terminal after all their files completed.
+
+        Called org-agnostically by the leader-elected reaper (no ``X-Organization-ID``
+        header) — the endpoint scans across orgs, scoped to PG rows by
+        ``queue_message_id``, and heals each server-side. See
+        ``WorkflowExecutionInternalViewSet.recover_stuck_pg_executions``.
+        """
+        data: dict[str, Any] = {}
+        if stuck_seconds is not None:
+            data["stuck_seconds"] = stuck_seconds
+        if limit is not None:
+            data["limit"] = limit
+        response = self.post(
+            self._build_url("workflow_execution", "recover_stuck_pg_executions/"),
+            data,
+        )
+        # The endpoint returns a FLAT body — {"recovered":.., "skipped":.., "scanned":..,
+        # "failed":..} — with no {"data": ...} envelope. convert_dict_response() reads
+        # response["data"], which is absent → it would silently zero every counter the
+        # reaper logs from. Surface the whole body as `.data` instead.
+        return APIResponse.success_response(
+            data=response if isinstance(response, dict) else None
+        )
 
     def batch_update_execution_status(
         self,

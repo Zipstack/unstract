@@ -4,13 +4,16 @@ This module provides strongly-typed dataclasses for workflow execution contexts,
 replacing fragile dictionary-based parameter passing with type-safe structures.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 # Import shared domain models from core
 from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
     ExecutionStatus,
     PreCreatedFileData,
+    normalize_transport,
     serialize_dataclass_to_dict,
 )
 
@@ -19,6 +22,8 @@ if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
 
 from ..enums import PipelineType
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -385,6 +390,11 @@ class WorkflowContextData:
     settings: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     is_scheduled: bool = False
+    # Transport this execution rides end-to-end (9e). Populated from the inbound
+    # task payload; the fan-out read that keeps the pipeline on one transport
+    # lands in PR 2. Defaults to legacy Celery; coerced fail-closed in
+    # __post_init__ so a garbage payload value can't reach the PR 2 read site.
+    transport: str = DEFAULT_WORKFLOW_TRANSPORT
     pre_created_file_executions: dict[str, PreCreatedFileData] = field(
         default_factory=dict
     )
@@ -413,6 +423,16 @@ class WorkflowContextData:
                 f"Invalid workflow_type '{self.workflow_type}'. "
                 f"Must be one of: {valid_types}"
             )
+
+        # Coerce transport fail-closed: a garbage payload value (version skew,
+        # bad PG JSONB) degrades to Celery here rather than reaching the PR 2
+        # fan-out read. Unlike workflow_type (no safe default → raise), transport
+        # is reversible by design, so it falls back instead of crashing.
+        self.transport = normalize_transport(
+            self.transport,
+            logger=logger,
+            context=f" (execution {self.execution_id})",
+        )
 
     @property
     def file_count(self) -> int:
