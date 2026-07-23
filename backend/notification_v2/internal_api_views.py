@@ -14,6 +14,7 @@ import logging
 from datetime import timedelta
 from typing import Any, cast
 
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.conf import settings
 from django.db import transaction
@@ -37,6 +38,7 @@ from notification_v2.helper import (
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
+from notification_v2.notification_dispatch import dispatch_webhook_notification
 
 logger = logging.getLogger(__name__)
 
@@ -513,6 +515,21 @@ def _reclaim_stale_sending() -> int:
     return int(reclaimed)
 
 
+def _org_identifier(org_pk: Any) -> str | None:
+    """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
+
+    ``resolve_transport`` keys its Flipt decision on the org's string identifier,
+    but the buffer stores/uses the Organization pk. One indexed pk lookup per
+    dispatch group (post-commit) — negligible before the webhook HTTP call it
+    precedes. ``None`` (org deleted) fails closed to Celery in resolve_transport.
+    """
+    return (
+        Organization.objects.filter(pk=org_pk)
+        .values_list("organization_id", flat=True)
+        .first()
+    )
+
+
 def _send_clubbed(
     *,
     url: str,
@@ -540,8 +557,12 @@ def _send_clubbed(
     ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
-        celery_app.send_task(
-            "send_webhook_notification",
+        # Flag-gated transport (UN-3753): PG queue when pg_queue_enabled for this
+        # org, else Celery (byte-identical to the prior send_task). resolve_transport
+        # keys on the org STRING id, but the buffer/worker contract below uses the
+        # org pk — hence _org_identifier(org_id) for routing, org_id in kwargs.
+        dispatch_webhook_notification(
+            celery_app=celery_app,
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
                 "max_retries": max_retries,
@@ -557,6 +578,7 @@ def _send_clubbed(
                 "organization_id": org_id,
             },
             queue="notifications",
+            organization_id=_org_identifier(org_id),
         )
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
