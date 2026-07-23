@@ -5,6 +5,16 @@ ExecutionContext dict, runs the appropriate executor via
 ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
+# Import the executor implementations so their ``@ExecutorRegistry.register``
+# decorators run before ``execute_extraction`` can be invoked. Coupling this to
+# the task module (not only the Celery ``executor/worker.py`` entrypoint) ensures
+# the registry is populated wherever the task is registered — in particular the PG
+# executor consumer, which bootstraps via the root-worker import that loads
+# ``executor/tasks.py`` (this module) but NOT ``executor/worker.py`` where this
+# import historically lived; without it the consumer hits "No executor
+# registered". Import is idempotent (module cached), so the Celery entrypoint
+# importing it again is harmless.
+import executor.executors  # noqa: E402, F401
 from queue_backend import worker_task
 from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName

@@ -7,6 +7,7 @@ An organization must never lose its only admin via a role change. The guard
 
 import secrets
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from django.test import TestCase
 from tenant_account_v2.models import OrganizationMember
@@ -31,6 +32,15 @@ class LastAdminGuardTests(TestCase):
             name="org-a", display_name="Org A", organization_id="org-a"
         )
         UserContext.set_organization_identifier(self.org.organization_id)
+        # Pin the built-in auth service: role vocabulary is plugin-defined, so
+        # UserRole below is only meaningful while no auth plugin is installed.
+        registry = patch(
+            "account_v2.authentication_controller."
+            "AuthenticationPluginRegistry.is_plugin_available",
+            return_value=False,
+        )
+        registry.start()
+        self.addCleanup(registry.stop)
         self.controller = AuthenticationController()
         self.admin = _make_member(self.org, "admin@example.com", UserRole.ADMIN.value)
 
