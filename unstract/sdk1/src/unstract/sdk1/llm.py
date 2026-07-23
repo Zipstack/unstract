@@ -31,6 +31,18 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
+
+def is_prompt_caching_enabled() -> bool:
+    """Whether LLM prompt caching is enabled platform-wide (opt-in, default off).
+
+    A single master switch (``ENABLE_PROMPT_CACHING`` env var) that turns the
+    caching capability on for every ``LLM`` on a supported provider, so callers
+    don't each have to pass ``enable_prompt_caching``. Consumers still decide
+    *what* to cache by passing ``cache_prefix``. Exposed for consumers that gate
+    their own prompt-restructuring on the same flag.
+    """
+    return os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower() == "true"
+
 # Drop unsupported params rather than raising errors.
 # Set once at module level instead of per-call to avoid repeated
 # global mutation in concurrent environments.
@@ -236,6 +248,7 @@ class LLM:
             self._enable_prompt_caching = (
                 bool(self.kwargs.pop("enable_prompt_caching", False))
                 or enable_prompt_caching
+                or is_prompt_caching_enabled()
             )
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
@@ -375,9 +388,14 @@ class LLM:
                 },
                 {"role": "user", "content": prompt},
             ]
+        # Caching inactive (opt-in off, or an unsupported provider): emit no
+        # cache_control, but if the caller split the prompt into
+        # (cache_prefix, prompt) the model must still see the full text —
+        # concatenate rather than drop the prefix.
+        user_content = cache_prefix + prompt if cache_prefix is not None else prompt
         return [
             {"role": "system", "content": self._system_prompt},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_content},
         ]
 
     @capture_metrics

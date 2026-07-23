@@ -23,6 +23,18 @@ from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 logger = logging.getLogger(__name__)
 
 
+def is_prompt_caching_enabled() -> bool:
+    """Whether LLM prompt caching is enabled for extraction (opt-in, default off).
+
+    When enabled, the extraction prompt is reordered so the reused document
+    context becomes a cached prefix (see ``construct_cached_prompt``) and the
+    extraction ``LLM`` is built with provider caching on. Gated by the
+    ``ENABLE_PROMPT_CACHING`` env var so the reorder + caching can be rolled out
+    and A/B-evaluated before it is on everywhere.
+    """
+    return os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower() == "true"
+
+
 def _resolve_host_addresses(host: str) -> set[str]:
     """Resolve a hostname or IP string to a set of IP address strings."""
     try:
@@ -148,20 +160,31 @@ class AnswerPromptService:
         if not enable_word_confidence or summarize_as_source:
             word_confidence_postamble = ""
 
-        prompt = AnswerPromptService.construct_prompt(
-            preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-            prompt=output[prompt],
-            postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-            grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-            context=context,
-            platform_postamble=platform_postamble,
-            word_confidence_postamble=word_confidence_postamble,
-            prompt_type=prompt_type,
-        )
-        output[PSKeys.COMBINED_PROMPT] = prompt
+        prompt_args = {
+            "preamble": tool_settings.get(PSKeys.PREAMBLE, ""),
+            "prompt": output[prompt],
+            "postamble": tool_settings.get(PSKeys.POSTAMBLE, ""),
+            "grammar_list": tool_settings.get(PSKeys.GRAMMAR, []),
+            "context": context,
+            "platform_postamble": platform_postamble,
+            "word_confidence_postamble": word_confidence_postamble,
+            "prompt_type": prompt_type,
+        }
+        cache_prefix: str | None = None
+        if is_prompt_caching_enabled():
+            # Reorder so the reused document context becomes a cached prefix.
+            # The text the model sees is ``cache_prefix + prompt_str``.
+            cache_prefix, prompt_str = AnswerPromptService.construct_cached_prompt(
+                **prompt_args
+            )
+            output[PSKeys.COMBINED_PROMPT] = cache_prefix + prompt_str
+        else:
+            prompt_str = AnswerPromptService.construct_prompt(**prompt_args)
+            output[PSKeys.COMBINED_PROMPT] = prompt_str
         return AnswerPromptService.run_completion(
             llm=llm,
-            prompt=prompt,
+            prompt=prompt_str,
+            cache_prefix=cache_prefix,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
             prompt_type=prompt_type,
@@ -219,9 +242,47 @@ class AnswerPromptService:
         return prompt
 
     @staticmethod
+    def construct_cached_prompt(
+        preamble: str,
+        prompt: str,
+        postamble: str,
+        grammar_list: list[dict[str, Any]],
+        context: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str = "text",
+    ) -> tuple[str, str]:
+        """Build ``(cache_prefix, volatile)`` with the document context first.
+
+        Same content as :meth:`construct_prompt`, but the reused ``context`` is
+        moved to the front so it forms a cacheable prefix that repeats across
+        every prompt run against the same document, while the per-prompt
+        question is the volatile suffix. The model sees ``cache_prefix +
+        volatile``. This reorders the prompt (context before question instead of
+        after), which is why it is flag-gated and A/B-evaluated.
+        """
+        if prompt_type == PSKeys.JSON:
+            json_postamble = os.environ.get(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
+        if platform_postamble:
+            platform_postamble += "\n\n"
+            if word_confidence_postamble:
+                platform_postamble += f"{word_confidence_postamble}\n\n"
+        cache_prefix = f"Context:\n---------------\n{context}\n-----------------\n\n"
+        volatile = (
+            f"{preamble}\n\nQuestion or Instruction: {prompt}"
+            + AnswerPromptService._build_grammar_notes(grammar_list)
+            + f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+        )
+        return cache_prefix, volatile
+
+    @staticmethod
     def run_completion(
         llm: Any,
         prompt: str,
+        cache_prefix: str | None = None,
         metadata: dict[str, str] | None = None,
         prompt_key: str | None = None,
         prompt_type: str | None = "text",
@@ -249,6 +310,7 @@ class AnswerPromptService:
         try:
             completion = llm.complete(
                 prompt=prompt,
+                cache_prefix=cache_prefix,
                 process_text=process_text,
                 extract_json=prompt_type.lower() != PSKeys.TEXT,
             )

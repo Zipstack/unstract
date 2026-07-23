@@ -148,21 +148,37 @@ def test_build_messages_cache_prefix_splits_user_turn() -> None:
     assert seen == "STABLE" + "VOLATILE"
 
 
-def test_build_messages_cache_prefix_ignored_when_caching_off() -> None:
+def test_build_messages_cache_prefix_preserved_when_caching_off() -> None:
+    """Caching off must NOT drop the prefix — the model still sees prefix+prompt.
+
+    Regression guard: a consumer that splits its prompt into (cache_prefix,
+    prompt) must produce the full text even on an unsupported provider / with
+    caching disabled, otherwise the prefix (e.g. instructions/context) is lost.
+    """
     llm = _StubLLM("SYSTEM", enable_prompt_caching=False)
     assert llm._build_messages("VOLATILE", cache_prefix="STABLE") == [
         {"role": "system", "content": "SYSTEM"},
-        {"role": "user", "content": "VOLATILE"},
+        {"role": "user", "content": "STABLE" + "VOLATILE"},
     ]
 
 
-# ── constructor opt-in (real LLM, no flag in adapter metadata) ──────────────
+def test_build_messages_cache_prefix_preserved_for_unsupported_provider() -> None:
+    """Flag on, but a provider we don't emit cache_control for -> full prompt, no tag."""
+    llm = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="openai")
+    assert llm._build_messages("VOLATILE", cache_prefix="STABLE") == [
+        {"role": "system", "content": "SYSTEM"},
+        {"role": "user", "content": "STABLE" + "VOLATILE"},
+    ]
+
+
+# ── constructor / env opt-in (real LLM, no flag in adapter metadata) ────────
 
 _ANTHROPIC_ADAPTER_ID = "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203"
 
 
-def test_constructor_flag_forces_caching_without_metadata() -> None:
+def test_constructor_flag_forces_caching_without_metadata(monkeypatch) -> None:
     """A caller that builds by adapter without the stored flag can still opt in."""
+    monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
     from unstract.sdk1.llm import LLM
 
     meta = {"model": "claude-opus-4-8", "api_key": "sk-test"}
@@ -178,9 +194,21 @@ def test_constructor_flag_forces_caching_without_metadata() -> None:
     assert messages[1]["content"][0]["cache_control"] == {"type": "ephemeral"}
 
 
-def test_constructor_flag_defaults_off() -> None:
+def test_constructor_flag_defaults_off(monkeypatch) -> None:
+    monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
     from unstract.sdk1.llm import LLM
 
     meta = {"model": "claude-opus-4-8", "api_key": "sk-test"}
     llm = LLM(adapter_id=_ANTHROPIC_ADAPTER_ID, adapter_metadata=meta, system_prompt="S")
     assert llm._enable_prompt_caching is False
+
+
+def test_env_var_enables_caching_platform_wide(monkeypatch) -> None:
+    """The ENABLE_PROMPT_CACHING master switch turns caching on with no per-call flag."""
+    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "true")
+    from unstract.sdk1.llm import LLM, is_prompt_caching_enabled
+
+    assert is_prompt_caching_enabled() is True
+    meta = {"model": "claude-opus-4-8", "api_key": "sk-test"}
+    llm = LLM(adapter_id=_ANTHROPIC_ADAPTER_ID, adapter_metadata=meta, system_prompt="S")
+    assert llm._enable_prompt_caching is True

@@ -1928,6 +1928,8 @@ class LegacyExecutor(BaseExecutor):
         from executor.executors.constants import PromptServiceConstants as PSKeys
 
         try:
+            # Caching is enabled globally via the ENABLE_PROMPT_CACHING master
+            # switch (honored inside the SDK ``LLM``); no per-call flag needed.
             llm = llm_cls(
                 adapter_instance_id=output[PSKeys.LLM],
                 tool=shim,
