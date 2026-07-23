@@ -215,13 +215,13 @@ class PluginManager:
                     "metadata": metadata,
                 }
 
-                # Add optional fields if present
-                if "entrypoint_cls" in metadata:
-                    plugin_data["entrypoint_cls"] = metadata["entrypoint_cls"]
-                if "exception_cls" in metadata:
-                    plugin_data["exception_cls"] = metadata["exception_cls"]
-                if "service_class" in metadata:
-                    plugin_data["service_class"] = metadata["service_class"]
+                # Add optional class/entrypoint fields if present (any key ending in
+                # _cls or _class, e.g. entrypoint_cls, exception_cls, service_class,
+                # headers_cache_class) so new plugin metadata fields don't need this
+                # loader updated every time.
+                for key, value in metadata.items():
+                    if key.endswith(("_cls", "_class")) and key not in plugin_data:
+                        plugin_data[key] = value
 
                 self.plugins[plugin_name] = plugin_data
 
