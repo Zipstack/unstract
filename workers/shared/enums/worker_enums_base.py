@@ -58,13 +58,22 @@ class WorkerType(str, Enum):
         if self.is_pluggable():
             return f"pluggable_worker.{self.value}.tasks"
 
-        # Map to actual directory structure
+        return f"{self.to_directory()}.tasks"
+
+    def to_directory(self) -> str:
+        """Return the on-disk directory name for this (non-pluggable) worker.
+
+        Single source of truth for the naming-convention mapping: enum values use
+        underscores (Python module names), but a few on-disk dirs use hyphens
+        (e.g. ``api-deployment``). ``to_import_path`` builds on this, and the
+        file-path task loader in ``worker.py`` reads it directly rather than
+        slicing the import path.
+        """
         directory_mapping = {
             "api_deployment": "api-deployment",
             # All others use same name for directory and module
         }
-        directory = directory_mapping.get(self.value, self.value)
-        return f"{directory}.tasks"
+        return directory_mapping.get(self.value, self.value)
 
     def is_pluggable(self) -> bool:
         """Check if this worker type is a pluggable worker.

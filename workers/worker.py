@@ -5,6 +5,7 @@ This module serves as the main entry point for all Celery workers.
 It uses WorkerBuilder to ensure proper configuration including chord retry settings.
 """
 
+import importlib.util
 import logging
 import os
 import sys
@@ -440,40 +441,69 @@ logger.info("🏗️ Initializing worker infrastructure (singleton pattern)...")
 initialize_worker_infrastructure()
 logger.info("✅ Worker infrastructure initialized successfully")
 
-# Import tasks from the worker-specific directory
-# Determine worker path dynamically based on worker type
-base_dir = os.path.dirname(os.path.abspath(__file__))
-if worker_type.is_pluggable():
-    # Pluggable workers live inside workers/pluggable_worker/{worker_name}
-    worker_directory = os.path.join("pluggable_worker", worker_type.value)
-    worker_path = os.path.join(base_dir, worker_directory)
-else:
-    # Enum values use underscores (Python module names); a few on-disk dirs
-    # still use hyphens (e.g. api-deployment). Derive the directory from the
-    # authoritative import-path map on WorkerType instead of a blind replace.
-    worker_directory = worker_type.to_import_path().rsplit(".", 1)[0]
-    worker_path = os.path.join(base_dir, worker_directory)
 
-# Add worker directory to path for task imports
-if os.path.exists(worker_path):
+def load_worker_tasks(worker_type: WorkerType) -> None:
+    """Register the worker type's Celery tasks.
+
+    Pluggable workers are already registered by this point: ``build_celery_app()``
+    above verified the plugin via ``WorkerBuilder._verify_pluggable_worker_exists``,
+    which does ``importlib.import_module("pluggable_worker.<type>.worker")`` — a
+    proper PACKAGE import that runs the plugin's own task-registration code (e.g.
+    ``from . import tasks``, which may use relative imports such as
+    ``from .clients import ...``). Celery binds those tasks to the worker's app
+    when it finalizes, so they are registered by this point. The generic file-path
+    load below is therefore SKIPPED for pluggable workers — it loads ``tasks.py``
+    under a bare ``"tasks"`` spec with no parent package, which breaks any relative
+    imports in the plugin's ``tasks.py`` ("attempted relative import with no known
+    parent package").
+
+    Non-pluggable (top-level) workers use absolute imports; their ``tasks.py`` is
+    loaded by file path with the worker directory on ``sys.path``.
+    """
+    if worker_type.is_pluggable():
+        logger.info(
+            f"✅ Pluggable worker {worker_type.value} tasks already registered via "
+            "WorkerBuilder (package import); skipping file-path task load"
+        )
+        return
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    worker_directory = worker_type.to_directory()
+    worker_path = os.path.join(base_dir, worker_directory)
+    if not os.path.exists(worker_path):
+        logger.error(f"❌ Worker directory not found: {worker_path}")
+        return
+
     sys.path.append(worker_path)
     logger.info(f"✅ Added {worker_directory} to Python path for task imports")
 
-    # Import tasks module to register tasks
     tasks_file = os.path.join(worker_path, "tasks.py")
-    if os.path.exists(tasks_file):
-        logger.info(f"📋 Loading tasks from: {tasks_file}")
-        # Import the tasks module to register tasks with the app
-        import importlib.util
-
-        spec = importlib.util.spec_from_file_location("tasks", tasks_file)
-        tasks_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(tasks_module)
-        logger.info(f"✅ Tasks loaded successfully from {worker_directory}")
-    else:
+    if not os.path.exists(tasks_file):
         logger.warning(f"⚠️ No tasks.py found at: {tasks_file}")
-else:
-    logger.error(f"❌ Worker directory not found: {worker_path}")
+        return
+
+    logger.info(f"📋 Loading tasks from: {tasks_file}")
+    spec = importlib.util.spec_from_file_location("tasks", tasks_file)
+    tasks_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tasks_module)
+    logger.info(f"✅ Tasks loaded successfully from {worker_directory}")
+
+
+load_worker_tasks(worker_type)
+
+# A worker that boots with no registered tasks starts but silently processes
+# nothing (Celery does not error on an empty registry). Surface that misconfig —
+# as a WARNING, not a hard failure: pluggable tasks bind on app finalize
+# (@shared_task / connect_on_app_finalize), which can be after this point, so a
+# raise here would false-positive on a correctly-configured pluggable worker.
+_registered_tasks = [name for name in app.tasks if not name.startswith("celery.")]
+if not _registered_tasks:
+    logger.warning(
+        f"⚠️ No non-celery tasks registered yet for worker '{worker_type.value}' "
+        f"(pluggable={worker_type.is_pluggable()}). If this persists past app "
+        "finalize the worker will start but process nothing — check the "
+        "worker/plugin task registration."
+    )
 
 # Log successful configuration
 logger.info(f"✅ Successfully loaded {worker_type} worker using WorkerBuilder")
