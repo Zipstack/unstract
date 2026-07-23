@@ -38,7 +38,10 @@ from notification_v2.helper import (
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
-from notification_v2.notification_dispatch import dispatch_webhook_notification
+from notification_v2.notification_dispatch import (
+    PermanentDispatchError,
+    dispatch_webhook_notification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -601,13 +604,16 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-    except (ValueError, TypeError):
-        # PERMANENT dispatch errors — enqueue_task validation (priority range /
-        # reply_key+callback exclusivity) or payload serialization — fail
+    except PermanentDispatchError:
+        # PG-ONLY permanent failure — enqueue_task validation (priority range /
+        # reply_key+callback exclusivity) or payload serialization — fails
         # identically every flush tick. Dead-letter now (distinct metric) instead
         # of reverting to PENDING and re-rendering + re-dispatching + emitting a
-        # broker_failure traceback until the attempt cap. Guard on SENDING so a row
-        # the worker already resolved isn't clobbered.
+        # broker_failure traceback until the attempt cap. The Celery path never
+        # raises this, so the flag-off flow is unchanged: a Celery send_task failure
+        # is an ordinary Exception handled by the transient branch below, exactly as
+        # before UN-3753. Guard on SENDING so a row the worker already resolved
+        # isn't clobbered.
         logger.exception(
             "metric=notification_batch_dispatched_total platform=%s "
             "result=dispatch_error org_id=%s webhook_url_hash=%s rows=%d",

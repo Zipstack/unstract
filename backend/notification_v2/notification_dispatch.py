@@ -30,6 +30,18 @@ logger = logging.getLogger(__name__)
 WEBHOOK_NOTIFICATION_TASK = "send_webhook_notification"
 
 
+class PermanentDispatchError(Exception):
+    """A dispatch failure that would fail identically on every retry.
+
+    Raised ONLY on the PG path, when ``enqueue_task`` rejects the message for a
+    permanent reason (priority range / reply_key+callback exclusivity validation,
+    or a payload that can't be JSON-serialized). The Celery path never raises it,
+    so a caller can dead-letter on this exception without altering the flag-off
+    (Celery) error flow — a Celery ``send_task`` failure stays an ordinary
+    ``Exception`` the caller's transient handler owns, exactly as before.
+    """
+
+
 def dispatch_webhook_notification(
     *,
     celery_app: Any,
@@ -75,16 +87,23 @@ def dispatch_webhook_notification(
     # Use the shared is_pg_transport() — the single source for "what counts as PG
     # transport" — rather than opening a second comparison site.
     if is_pg_transport(transport):
-        enqueue_task(
-            task_name=WEBHOOK_NOTIFICATION_TASK,
-            queue=queue,
-            args=args,
-            kwargs=kwargs,
-            # enqueue_task's org_id is str-typed — coerce None→"" (unlike the
-            # routing arg above, this `or ""` is load-bearing).
-            org_id=org_string_id or "",
-            task_id=dispatch_id,
-        )
+        try:
+            enqueue_task(
+                task_name=WEBHOOK_NOTIFICATION_TASK,
+                queue=queue,
+                args=args,
+                kwargs=kwargs,
+                # enqueue_task's org_id is str-typed — coerce None→"" (unlike the
+                # routing arg above, this `or ""` is load-bearing).
+                org_id=org_string_id or "",
+                task_id=dispatch_id,
+            )
+        except (ValueError, TypeError) as exc:
+            # PG-only permanent failure (enqueue_task validation / JSON encode):
+            # re-raise as PermanentDispatchError so the caller dead-letters it.
+            # A transient PG error (DB down) is NOT wrapped — it propagates as an
+            # ordinary Exception into the caller's retry (revert-to-PENDING) path.
+            raise PermanentDispatchError(str(exc)) from exc
         logger.info(
             "Webhook notification enqueued on PG '%s' queue (task_id=%s)",
             queue,

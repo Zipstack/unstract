@@ -7,8 +7,10 @@ the two highest-risk regressions at the buffer-flush call site:
    the org **pk** stays in the worker kwargs (swapping them passes every seam test
    yet mis-routes every org to Celery and strands the mark endpoint);
 2. failure recovery — a transient/broker error refunds and reverts SENDING rows to
-   PENDING, while a permanent (ValueError/TypeError) enqueue error dead-letters
-   instead of retrying forever.
+   PENDING, while a permanent PG enqueue error (surfaced as ``PermanentDispatchError``,
+   raised only on the PG path) dead-letters instead of retrying forever. A Celery
+   send_task failure is an ordinary ``Exception`` → the PENDING path, so flag-off is
+   byte-identical.
 
 Mock-based (no broker/DB): patch the module's collaborators.
 """
@@ -70,13 +72,16 @@ class TestSendClubbedFailureRecovery:
         assert ukw["status"] == BufferStatus.PENDING.value
         assert ukw["dispatched_at"] is None
 
-    def test_permanent_error_dead_letters(self):
+    def test_permanent_pg_error_dead_letters(self):
+        # The PG path surfaces a permanent enqueue failure as PermanentDispatchError;
+        # only that dead-letters. (A raw ValueError from the Celery path can't occur,
+        # and would fall through to the transient PENDING branch, unchanged.)
         with (
             patch.object(views, "_org_identifier", return_value="o"),
             patch.object(
                 views,
                 "dispatch_webhook_notification",
-                side_effect=ValueError("priority out of range"),
+                side_effect=views.PermanentDispatchError("priority out of range"),
             ),
             patch.object(views, "NotificationBuffer") as buf,
         ):

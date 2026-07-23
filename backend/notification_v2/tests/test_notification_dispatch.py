@@ -69,8 +69,8 @@ class TestDispatchWebhookNotification:
         assert result is celery.send_task.return_value.id
 
     def test_pg_enqueue_failure_propagates_with_no_celery_fallback(self):
-        # No silent Celery fallback on PG failure — the caller (_send_clubbed)
-        # reverts the buffer rows to PENDING for a clean retry next tick.
+        # No silent Celery fallback on a TRANSIENT PG failure — it propagates raw
+        # (not wrapped), so the caller (_send_clubbed) reverts rows to PENDING.
         celery = MagicMock()
         with (
             patch.object(nd, "resolve_transport", return_value="pg_queue"),
@@ -79,6 +79,20 @@ class TestDispatchWebhookNotification:
             with pytest.raises(RuntimeError, match="pg down"):
                 _dispatch(celery)
         celery.send_task.assert_not_called()
+
+    def test_pg_permanent_enqueue_error_is_wrapped(self):
+        # A PERMANENT enqueue error (ValueError/TypeError: validation / JSON encode)
+        # is re-raised as PermanentDispatchError so the caller dead-letters it —
+        # raised ONLY on the PG path, so the Celery flow is never affected.
+        celery = MagicMock()
+        for exc in (ValueError("priority out of range"), TypeError("not serializable")):
+            with (
+                patch.object(nd, "resolve_transport", return_value="pg_queue"),
+                patch.object(nd, "enqueue_task", side_effect=exc),
+            ):
+                with pytest.raises(nd.PermanentDispatchError):
+                    _dispatch(celery)
+            celery.send_task.assert_not_called()
 
     def test_none_org_fails_closed_to_celery(self):
         # A missing org string (org deleted) must not route to PG — resolve_transport
