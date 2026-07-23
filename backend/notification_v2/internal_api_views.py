@@ -14,6 +14,7 @@ import logging
 from datetime import timedelta
 from typing import Any, cast
 
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.conf import settings
 from django.db import transaction
@@ -37,6 +38,10 @@ from notification_v2.helper import (
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
+from notification_v2.notification_dispatch import (
+    PermanentDispatchError,
+    dispatch_webhook_notification,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -513,6 +518,34 @@ def _reclaim_stale_sending() -> int:
     return int(reclaimed)
 
 
+def _org_identifier(org_pk: int) -> str | None:
+    """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
+
+    ``resolve_transport`` keys its Flipt decision on the org's string identifier,
+    but the buffer stores/uses the Organization pk. One indexed pk lookup per
+    dispatch group (post-commit) — negligible relative to the downstream webhook
+    dispatch.
+
+    Data-anomaly guard: ``NotificationBuffer.organization`` is
+    ``on_delete=CASCADE``, so a live buffer row with a missing org is unreachable
+    in normal operation. A ``None`` here therefore signals a dangling FK — we log
+    it (the only org-traceable breadcrumb; resolve_transport's own warning is keyed
+    on the random dispatch uuid) and fail closed to Celery in resolve_transport.
+    """
+    org_string_id = (
+        Organization.objects.filter(pk=org_pk)
+        .values_list("organization_id", flat=True)
+        .first()
+    )
+    if org_string_id is None:
+        logger.warning(
+            "metric=notification_org_identifier_missing_total org_pk=%s "
+            "(dangling FK; notification routing falls back to Celery)",
+            org_pk,
+        )
+    return org_string_id
+
+
 def _send_clubbed(
     *,
     url: str,
@@ -540,8 +573,12 @@ def _send_clubbed(
     ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
-        celery_app.send_task(
-            "send_webhook_notification",
+        # Flag-gated transport (UN-3753): PG queue when pg_queue_enabled for this
+        # org, else Celery (byte-identical to the prior send_task). resolve_transport
+        # keys on the org STRING id, but the buffer/worker contract below uses the
+        # org pk — hence _org_identifier(org_id) for routing, org_id in kwargs.
+        dispatch_webhook_notification(
+            celery_app=celery_app,
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
                 "max_retries": max_retries,
@@ -557,6 +594,7 @@ def _send_clubbed(
                 "organization_id": org_id,
             },
             queue="notifications",
+            org_string_id=_org_identifier(org_id),
         )
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
@@ -566,7 +604,34 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
+    except PermanentDispatchError:
+        # PG-ONLY permanent failure — enqueue_task validation (priority range /
+        # reply_key+callback exclusivity) or payload serialization — fails
+        # identically every flush tick. Dead-letter now (distinct metric) instead
+        # of reverting to PENDING and re-rendering + re-dispatching + emitting a
+        # broker_failure traceback until the attempt cap. The Celery path never
+        # raises this, so the flag-off flow is unchanged: a Celery send_task failure
+        # is an ordinary Exception handled by the transient branch below, exactly as
+        # before UN-3753. Guard on SENDING so a row the worker already resolved
+        # isn't clobbered.
+        logger.exception(
+            "metric=notification_batch_dispatched_total platform=%s "
+            "result=dispatch_error org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+        NotificationBuffer.objects.filter(
+            id__in=buffer_ids,
+            status=BufferStatus.SENDING.value,
+        ).update(status=BufferStatus.DEAD_LETTER.value)
     except Exception:
+        # TRANSIENT transport/broker failure — revert to PENDING (outside the
+        # committed txn) so the next flush tick retries; refund the SENDING-claim
+        # attempt since nothing was queued or sent. Guard on SENDING so a row the
+        # worker already marked terminal (broker raised post-delivery) isn't
+        # resurrected into a duplicate.
         logger.exception(
             "metric=notification_batch_dispatched_total platform=%s "
             "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
@@ -575,10 +640,6 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-        # Revert to PENDING (outside the committed txn) so a transient broker
-        # outage retries next tick; refund the SENDING-claim attempt since nothing
-        # was queued or sent. Guard on SENDING so a row the worker already marked
-        # terminal (broker raised post-delivery) isn't resurrected into a duplicate.
         NotificationBuffer.objects.filter(
             id__in=buffer_ids,
             status=BufferStatus.SENDING.value,
