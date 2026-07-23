@@ -184,7 +184,10 @@ function ResourceTable({
 
   const renderOwner = (item) => {
     const email = item?.[ownerEmailProp];
-    const isMe = item?.is_owner || (email && email === sessionDetails?.email);
+    // "Me" must track the DISPLAYED owner, not the viewer's own membership —
+    // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
+    // the shown email so the creator viewing their own resource still reads "Me".
+    const isMe = Boolean(email) && email === sessionDetails?.email;
     const name = isMe ? "Me" : email?.split("@")[0] || "Unknown";
     const extra =
       item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
