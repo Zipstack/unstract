@@ -175,6 +175,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           }),
         )
         .catch((err) => {
+          // A newer request superseded this one — don't surface its error.
+          if (seq !== seqRef.current) {
+            return;
+          }
           setAlertDetails(
             handleException(err, "Failed to get the list of tools"),
           );
@@ -182,7 +186,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           setDisplayList((prev) => prev ?? []);
         })
         .finally(() => {
-          setIsLoading(false);
+          // Only the newest request owns the shared loading state.
+          if (seq === seqRef.current) {
+            setIsLoading(false);
+          }
         });
     },
     [

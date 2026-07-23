@@ -124,12 +124,19 @@ function ConnectorsPage() {
           }),
         )
         .catch((err) => {
+          // A newer request superseded this one — don't surface its error.
+          if (seq !== seqRef.current) {
+            return;
+          }
           setAlertDetails(handleException(err, "Failed to load connectors"));
           // Avoid an indefinite spinner when the first fetch fails.
           setDisplayList((prev) => prev ?? []);
         })
         .finally(() => {
-          setLoading(false);
+          // Only the newest request owns the shared loading state.
+          if (seq === seqRef.current) {
+            setLoading(false);
+          }
         });
     },
     [axiosPrivate, getUrl, setPagination, setAlertDetails, handleException],

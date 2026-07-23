@@ -158,12 +158,19 @@ function ToolSettings({ type }) {
           }),
         )
         .catch((err) => {
+          // A newer request superseded this one — don't surface its error.
+          if (seq !== seqRef.current) {
+            return;
+          }
           setAlertDetails(handleException(err));
           // Avoid an indefinite spinner when the first fetch fails.
           setDisplayList((prev) => prev ?? []);
         })
         .finally(() => {
-          setIsLoading(false);
+          // Only the newest request owns the shared loading state.
+          if (seq === seqRef.current) {
+            setIsLoading(false);
+          }
         });
     },
     [

@@ -121,12 +121,19 @@ function Workflows() {
         }),
       )
       .catch(() => {
+        // A newer request superseded this one — don't surface its error.
+        if (seq !== seqRef.current) {
+          return;
+        }
         console.error("Unable to get project list");
         // Avoid an indefinite spinner when the first fetch fails.
         setProjectList((prev) => prev ?? []);
       })
       .finally(() => {
-        setLoading(false);
+        // Only the newest request owns the shared loading state.
+        if (seq === seqRef.current) {
+          setLoading(false);
+        }
       });
   };
   fetchRef.current = getProjectList;
