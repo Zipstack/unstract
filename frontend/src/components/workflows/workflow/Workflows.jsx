@@ -1,5 +1,5 @@
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
-import { Pagination, Typography } from "antd";
+import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -18,13 +18,13 @@ import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { ResourceTable } from "../../widgets/resource-table/ResourceTable.jsx";
 import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
@@ -69,22 +69,32 @@ function Workflows() {
     pagination,
     setPagination,
     searchTerm,
+    sort,
     handlePaginationChange,
     handleSearch,
+    handleSortChange,
   } = usePaginatedList({
     fetchData: (...args) => fetchListRef.current?.(...args),
     defaultPageSize: DEFAULT_PAGE_SIZE,
   });
 
-  // Refresh the current page (preserves page + active search) after mutations
+  // Refresh the current page (preserves page + active search/sort) after mutations
   const handleListRefresh = useCallback(
     () =>
       fetchListRef.current?.(
         pagination.current,
         pagination.pageSize,
         searchTerm,
+        sort.sortBy,
+        sort.order,
       ),
-    [pagination.current, pagination.pageSize, searchTerm],
+    [
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+      sort.sortBy,
+      sort.order,
+    ],
   );
   const {
     coOwnerOpen,
@@ -115,11 +125,17 @@ function Workflows() {
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
     search = "",
+    sortBy = "",
+    order = "asc",
   ) => {
     setLoading(true);
     const params = { page, page_size: pageSize };
     if (search) {
       params.search = search;
+    }
+    if (sortBy) {
+      params.sort_by = sortBy;
+      params.order = order;
     }
     projectApiService
       .getProjectList(params)
@@ -131,7 +147,7 @@ function Workflows() {
         const total = data?.count ?? results.length;
         // Deleting the last row on a page leaves it empty; step back a page.
         if (results.length === 0 && page > 1 && total > 0) {
-          getProjectList(page - 1, pageSize, search);
+          getProjectList(page - 1, pageSize, search, sortBy, order);
           return;
         }
         setProjectList(results);
@@ -423,33 +439,27 @@ function Workflows() {
             <EmptyState text="No results found for this search" />
           )}
           {projectList?.length > 0 && (
-            <>
-              <ViewTools
-                isLoading={loading}
-                isEmpty={false}
-                listOfTools={projectList}
-                setOpenAddTool={toggleModal}
-                handleEdit={updateProject}
-                handleDelete={deleteProject}
-                handleShare={handleShare}
-                handleCoOwner={handleCoOwner}
-                titleProp="workflow_name"
-                descriptionProp="description"
-                idProp="id"
-                type="Workflow"
-              />
-              {pagination.total > pagination.pageSize && (
-                <div className="workflows-pagination">
-                  <Pagination
-                    current={pagination.current}
-                    pageSize={pagination.pageSize}
-                    total={pagination.total}
-                    onChange={handlePaginationChange}
-                    showSizeChanger={false}
-                  />
-                </div>
-              )}
-            </>
+            <ResourceTable
+              dataSource={projectList}
+              loading={loading}
+              pagination={pagination}
+              sort={sort}
+              onPaginationChange={handlePaginationChange}
+              onSortChange={handleSortChange}
+              titleProp="workflow_name"
+              descriptionProp="description"
+              idProp="id"
+              dateProp="created_at"
+              ownerEmailProp="created_by_email"
+              handleEdit={updateProject}
+              handleShare={handleShare}
+              handleDelete={deleteProject}
+              handleCoOwner={handleCoOwner}
+              sessionDetails={sessionDetails}
+              showOwner
+              isClickable
+              type="Workflow"
+            />
           )}
           {editingProject && (
             <LazyLoader

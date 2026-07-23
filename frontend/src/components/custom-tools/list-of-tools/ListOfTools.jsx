@@ -1,11 +1,12 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -13,11 +14,15 @@ import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
+import { ResourceTable } from "../../widgets/resource-table/ResourceTable";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ImportTool } from "../import-tool/ImportTool";
-import { ViewTools } from "../view-tools/ViewTools";
 import "./ListOfTools.css";
+
+const DEFAULT_PAGE_SIZE = 10;
 
 const DefaultCustomButtons = ({
   setOpenImportTool,
@@ -52,7 +57,7 @@ DefaultCustomButtons.propTypes = {
 };
 
 function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
-  const [isListLoading, setIsListLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
   const [isImportLoading, setIsImportLoading] = useState(false);
@@ -64,8 +69,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const handleException = useExceptionHandler();
   const groupsApi = groupsService();
 
-  const [listOfTools, setListOfTools] = useState([]);
-  const [filteredListOfTools, setFilteredListOfTools] = useState([]);
+  // undefined = not fetched yet (spinner); [] = fetched-empty (empty state)
+  const [displayList, setDisplayList] = useState();
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -73,6 +78,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const [allGroupList, setAllGroupList] = useState([]);
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
+  const fetchListRef = useRef(null);
+
   const promptStudioCoOwnerService = useMemo(
     () => ({
       getAllUsers: () =>
@@ -107,6 +116,39 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   );
 
   const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    sort,
+    handlePaginationChange,
+    handleSearch,
+    handleSortChange,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search/sort) after mutations
+  const handleListRefresh = useCallback(
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+        sort.sortBy,
+        sort.order,
+      ),
+    [
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+      sort.sortBy,
+      sort.order,
+    ],
+  );
+
+  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -119,49 +161,85 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   } = useCoOwnerManagement({
     service: promptStudioCoOwnerService,
     setAlertDetails,
-    onListRefresh: () => getListOfTools(),
+    onListRefresh: handleListRefresh,
   });
-  const [allGroupList, setAllGroupList] = useState([]);
+
+  const getListOfTools = useCallback(
+    (
+      page = 1,
+      pageSize = DEFAULT_PAGE_SIZE,
+      search = "",
+      sortBy = "",
+      order = "asc",
+    ) => {
+      const params = { page, page_size: pageSize };
+      if (search) {
+        params.search = search;
+      }
+      if (sortBy) {
+        params.sort_by = sortBy;
+        params.order = order;
+      }
+      setIsLoading(true);
+      axiosPrivate({
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        params,
+      })
+        .then((res) => {
+          const data = res?.data;
+          // Endpoint is opt-in paginated: envelope when we send ?page, else a
+          // bare array. Handle both so any non-paginated caller stays unaffected.
+          const results = data?.results ?? data ?? [];
+          const total = data?.count ?? results.length;
+          // Deleting the last row on a page leaves it empty; step back a page.
+          if (results.length === 0 && page > 1 && total > 0) {
+            getListOfTools(page - 1, pageSize, search, sortBy, order);
+            return;
+          }
+          setDisplayList(results);
+          setPagination((prev) => ({
+            ...prev,
+            current: page,
+            pageSize,
+            total,
+          }));
+        })
+        .catch((err) => {
+          setAlertDetails(
+            handleException(err, "Failed to get the list of tools"),
+          );
+          // Avoid an indefinite spinner when the first fetch fails.
+          setDisplayList((prev) => prev ?? []);
+        })
+        .finally(() => {
+          setIsLoading(false);
+        });
+    },
+    [
+      sessionDetails?.orgId,
+      sessionDetails?.csrfToken,
+      axiosPrivate,
+      setPagination,
+      setAlertDetails,
+      handleException,
+    ],
+  );
+  fetchListRef.current = getListOfTools;
 
   useEffect(() => {
-    getListOfTools();
+    setSearchTerm("");
+    setDisplayList(undefined);
+    getListOfTools(1, DEFAULT_PAGE_SIZE, "", "", "asc");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    setFilteredListOfTools(listOfTools);
-  }, [listOfTools]);
-
-  const getListOfTools = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-
-    setIsListLoading(true);
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setListOfTools(data);
-        setFilteredListOfTools(data);
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to get the list of tools"),
-        );
-      })
-      .finally(() => {
-        setIsListLoading(false);
-      });
-  };
 
   const handleAddNewTool = (body) => {
     let method = "POST";
     let url = `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`;
-    const isEdit = editItem && Object.keys(editItem)?.length > 0;
-    if (isEdit) {
+    const isEditFlow = editItem && Object.keys(editItem)?.length > 0;
+    if (isEditFlow) {
       method = "PATCH";
       url += `${editItem?.tool_id}/`;
     }
@@ -178,8 +256,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
 
       axiosPrivate(requestOptions)
         .then((res) => {
-          const tool = res?.data;
-          updateList(isEdit, tool);
+          setEditItem(null);
+          // Refetch the current page to reflect server truth rather than
+          // splicing a stale list (list-only fields like prompt_count).
+          handleListRefresh();
           setOpenAddTool(false);
           resolve(res?.data);
         })
@@ -189,31 +269,12 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     });
   };
 
-  const updateList = (isEdit, data) => {
-    let tools = [...listOfTools];
-
-    if (isEdit) {
-      // Merge — the PATCH response (CustomToolSerializer) lacks list-only
-      // fields like prompt_count; replacing wholesale would drop them
-      tools = tools.map((item) =>
-        item?.tool_id === data?.tool_id ? { ...item, ...data } : item,
-      );
-      setEditItem(null);
-    } else {
-      tools.push(data);
-    }
-    setListOfTools(tools);
-  };
-
   const handleEdit = (_event, tool) => {
-    const editToolData = [...listOfTools].find(
-      (item) => item?.tool_id === tool.tool_id,
-    );
-    if (!editToolData) {
+    if (!tool) {
       return;
     }
     setIsEdit(true);
-    setEditItem(editToolData);
+    setEditItem(tool);
     setOpenAddTool(true);
   };
 
@@ -227,27 +288,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     };
 
     axiosPrivate(requestOptions)
-      .then(() => {
-        const tools = [...listOfTools].filter(
-          (filterToll) => filterToll?.tool_id !== tool.tool_id,
-        );
-        setListOfTools(tools);
-      })
+      .then(() => handleListRefresh())
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to Delete"));
       });
-  };
-
-  const onSearch = (search, setSearch) => {
-    if (search?.length === 0) {
-      setSearch(listOfTools);
-    }
-    const filteredList = [...listOfTools].filter((tool) => {
-      const name = tool.tool_name?.toUpperCase();
-      const searchUpperCase = search.toUpperCase();
-      return name.includes(searchUpperCase);
-    });
-    setSearch(filteredList);
   };
 
   const showAddTool = () => {
@@ -315,7 +359,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         setOpenImportTool(false);
 
         // Refresh the list of tools to show the new imported project
-        getListOfTools();
+        handleListRefresh();
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to import project"));
@@ -325,7 +369,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       });
   };
 
-  const handleShare = (_event, promptProject, isEdit) => {
+  const handleShare = (_event, promptProject, isEditShare) => {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${promptProject?.tool_id}`,
@@ -346,7 +390,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       .then((res) => {
         setOpenSharePermissionModal(true);
         setPromptDetails(res?.data);
-        setIsPermissionEdit(isEdit);
+        setIsPermissionEdit(isEditShare);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -410,27 +454,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     handleCoOwnerAction(tool.tool_id);
   };
 
-  const defaultContent = (
-    <div className="list-of-tools-body">
-      <ViewTools
-        isLoading={isListLoading}
-        isEmpty={!listOfTools?.length}
-        listOfTools={filteredListOfTools}
-        setOpenAddTool={setOpenAddTool}
-        handleEdit={handleEdit}
-        handleDelete={handleDelete}
-        titleProp="tool_name"
-        descriptionProp="description"
-        iconProp="icon"
-        idProp="tool_id"
-        type="Prompt Project"
-        handleShare={handleShare}
-        handleCoOwner={handleCoOwner}
-        showModified
-      />
-    </div>
-  );
-
   const customButtonsElement = useMemo(
     () => (
       <DefaultCustomButtons
@@ -447,16 +470,51 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       <ToolNavBar
         title="Prompt Studio"
         enableSearch
-        onSearch={onSearch}
-        searchList={listOfTools}
-        setSearchList={setFilteredListOfTools}
+        onSearch={(value) => handleSearch(value)}
         customButtons={customButtonsElement}
         segmentOptions={segmentOptions}
         segmentValue={segmentValue}
         segmentFilter={onSegmentChange}
       />
       <div className="list-of-tools-layout">
-        <div className="list-of-tools-island">{defaultContent}</div>
+        <div className="list-of-tools-island">
+          <div className="list-of-tools-body">
+            {displayList === undefined && <SpinnerLoader />}
+            {displayList?.length === 0 && !searchTerm && (
+              <EmptyState
+                text="No prompt projects available"
+                btnText="New Project"
+                handleClick={handleNewProjectBtnClick}
+              />
+            )}
+            {displayList?.length === 0 && searchTerm && (
+              <EmptyState text="No results found for this search" />
+            )}
+            {displayList?.length > 0 && (
+              <ResourceTable
+                dataSource={displayList}
+                loading={isLoading}
+                pagination={pagination}
+                sort={sort}
+                onPaginationChange={handlePaginationChange}
+                onSortChange={handleSortChange}
+                titleProp="tool_name"
+                descriptionProp="description"
+                iconProp="icon"
+                idProp="tool_id"
+                dateProp="created_at"
+                ownerEmailProp="created_by_email"
+                handleEdit={handleEdit}
+                handleShare={handleShare}
+                handleDelete={handleDelete}
+                handleCoOwner={handleCoOwner}
+                sessionDetails={sessionDetails}
+                isClickable={true}
+                type="Prompt Project"
+              />
+            )}
+          </div>
+        </div>
       </div>
       {openAddTool && (
         <AddCustomToolFormModal

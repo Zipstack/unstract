@@ -1,21 +1,25 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { groupsService } from "../components/groups/groups-service.js";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
+import { EmptyState } from "../components/widgets/empty-state/EmptyState.jsx";
+import { ResourceTable } from "../components/widgets/resource-table/ResourceTable";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
+import { SpinnerLoader } from "../components/widgets/spinner-loader/SpinnerLoader.jsx";
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
-import { useListSearch } from "../hooks/useListSearch";
+import { usePaginatedList } from "../hooks/usePaginatedList";
 import useRequestUrl from "../hooks/useRequestUrl";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
+
+const DEFAULT_PAGE_SIZE = 10;
 
 function ConnectorsPage() {
   const [loading, setLoading] = useState(false);
@@ -27,6 +31,8 @@ function ConnectorsPage() {
   const [groupList, setGroupList] = useState([]);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
+  // undefined = not fetched yet (spinner); [] = fetched-empty (empty state)
+  const [displayList, setDisplayList] = useState();
   const groupsApi = groupsService();
 
   const axiosPrivate = useAxiosPrivate();
@@ -34,6 +40,8 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
+  const fetchListRef = useRef(null);
 
   const connectorCoOwnerService = useMemo(
     () => ({
@@ -62,6 +70,38 @@ function ConnectorsPage() {
   );
 
   const {
+    pagination,
+    setPagination,
+    searchTerm,
+    sort,
+    handlePaginationChange,
+    handleSearch,
+    handleSortChange,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search/sort) after mutations
+  const handleListRefresh = useCallback(
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+        sort.sortBy,
+        sort.order,
+      ),
+    [
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+      sort.sortBy,
+      sort.order,
+    ],
+  );
+
+  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -74,27 +114,65 @@ function ConnectorsPage() {
   } = useCoOwnerManagement({
     service: connectorCoOwnerService,
     setAlertDetails,
-    onListRefresh: () => fetchConnectors(),
+    onListRefresh: handleListRefresh,
   });
-  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
-    useListSearch("connector_name");
+
+  const getConnectors = useCallback(
+    (
+      page = 1,
+      pageSize = DEFAULT_PAGE_SIZE,
+      search = "",
+      sortBy = "",
+      order = "asc",
+    ) => {
+      const params = { page, page_size: pageSize };
+      if (search) {
+        params.search = search;
+      }
+      if (sortBy) {
+        params.sort_by = sortBy;
+        params.order = order;
+      }
+      setLoading(true);
+      axiosPrivate
+        .get(getUrl("connector/"), { params })
+        .then((res) => {
+          const data = res?.data;
+          // Endpoint is opt-in paginated: envelope when we send ?page, else a
+          // bare array. Handle both so shared (dropdown) callers stay unaffected.
+          const results = data?.results ?? data ?? [];
+          const total = data?.count ?? results.length;
+          // Deleting the last row on a page leaves it empty; step back a page.
+          if (results.length === 0 && page > 1 && total > 0) {
+            getConnectors(page - 1, pageSize, search, sortBy, order);
+            return;
+          }
+          setDisplayList(results);
+          setPagination((prev) => ({
+            ...prev,
+            current: page,
+            pageSize,
+            total,
+          }));
+        })
+        .catch((err) => {
+          setAlertDetails(handleException(err, "Failed to load connectors"));
+          // Avoid an indefinite spinner when the first fetch fails.
+          setDisplayList((prev) => prev ?? []);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    },
+    [axiosPrivate, getUrl, setPagination, setAlertDetails, handleException],
+  );
+  fetchListRef.current = getConnectors;
 
   useEffect(() => {
-    fetchConnectors();
+    getConnectors(1, DEFAULT_PAGE_SIZE, "", "", "asc");
     fetchUsers();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const fetchConnectors = async () => {
-    setLoading(true);
-    try {
-      const response = await axiosPrivate.get(getUrl("connector/"));
-      setMasterList(response.data || []);
-    } catch (error) {
-      setAlertDetails(handleException(error, "Failed to load connectors"));
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const fetchUsers = async () => {
     try {
@@ -134,7 +212,7 @@ function ConnectorsPage() {
         type: "success",
         content: "Connector deleted successfully",
       });
-      fetchConnectors();
+      handleListRefresh();
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to delete connector"));
     }
@@ -204,14 +282,18 @@ function ConnectorsPage() {
   };
 
   const handleCoOwner = (_event, connector) => {
-    if (!connector?.id) return;
+    if (!connector?.id) {
+      return;
+    }
     handleCoOwnerAction(connector.id);
   };
 
   const handleConnectorSaved = () => {
     setModalVisible(false);
     setEditingConnector(null);
-    fetchConnectors();
+    // New/edited connectors land on some page under the active sort — refetch
+    // the current page to reflect server truth rather than splicing a stale array.
+    handleListRefresh();
     setAlertDetails({
       type: "success",
       content: editingConnector
@@ -235,30 +317,45 @@ function ConnectorsPage() {
       <ToolNavBar
         title="Connectors"
         enableSearch
-        setSearchList={setDisplayList}
-        onSearch={onSearch}
+        onSearch={(value) => handleSearch(value)}
         customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
-          <ViewTools
-            listOfTools={displayList}
-            isLoading={loading}
-            handleDelete={handleDeleteConnector}
-            handleEdit={handleEditConnector}
-            handleShare={handleShareConnector}
-            handleCoOwner={handleCoOwner}
-            setOpenAddTool={setModalVisible}
-            idProp="id"
-            titleProp="connector_name"
-            descriptionProp="connector_type"
-            iconProp="icon"
-            showOwner={true}
-            type="Connector"
-            isEmpty={!listRef.current.length}
-            centered
-            isClickable={false}
-          />
+          {displayList === undefined && <SpinnerLoader />}
+          {displayList?.length === 0 && !searchTerm && (
+            <EmptyState
+              text="No connectors available"
+              btnText="New Connector"
+              handleClick={handleCreateConnector}
+            />
+          )}
+          {displayList?.length === 0 && searchTerm && (
+            <EmptyState text="No results found for this search" />
+          )}
+          {displayList?.length > 0 && (
+            <ResourceTable
+              dataSource={displayList}
+              loading={loading}
+              pagination={pagination}
+              sort={sort}
+              onPaginationChange={handlePaginationChange}
+              onSortChange={handleSortChange}
+              titleProp="connector_name"
+              descriptionProp="description"
+              iconProp="icon"
+              idProp="id"
+              dateProp="created_at"
+              ownerEmailProp="created_by_email"
+              handleEdit={handleEditConnector}
+              handleShare={handleShareConnector}
+              handleDelete={handleDeleteConnector}
+              handleCoOwner={handleCoOwner}
+              sessionDetails={sessionDetails}
+              isClickable={false}
+              type="Connector"
+            />
+          )}
         </div>
       </div>
       <AddSourceModal
