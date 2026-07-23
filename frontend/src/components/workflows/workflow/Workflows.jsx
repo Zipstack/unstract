@@ -54,6 +54,8 @@ function Workflows() {
   );
 
   const [projectList, setProjectList] = useState();
+  // Fetch failure (vs. genuinely empty) — drives a retryable error state.
+  const [loadError, setLoadError] = useState(false);
   const [editingProject, setEditProject] = useState();
   const [loading, setLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
@@ -104,6 +106,7 @@ function Workflows() {
   ) => {
     const params = buildPagedParams({ page, pageSize, search, sortBy, order });
     const seq = ++seqRef.current;
+    setLoadError(false);
     setLoading(true);
     return projectApiService
       .getProjectList(params)
@@ -126,8 +129,8 @@ function Workflows() {
           return;
         }
         console.error("Unable to get project list");
-        // Avoid an indefinite spinner when the first fetch fails.
-        setProjectList((prev) => prev ?? []);
+        // Surface a retryable error instead of a misleading empty state.
+        setLoadError(true);
       })
       .finally(() => {
         // Only the newest request owns the shared loading state.
@@ -391,7 +394,14 @@ function Workflows() {
       />
       <div className="workflows-pg-layout">
         <div className="workflows-pg-body">
-          {projectList === undefined && <SpinnerLoader />}
+          {projectList === undefined && !loadError && <SpinnerLoader />}
+          {projectList === undefined && loadError && (
+            <EmptyState
+              text="Couldn't load. Please try again."
+              btnText="Retry"
+              handleClick={handleListRefresh}
+            />
+          )}
           {projectList?.length === 0 && !searchTerm && (
             <div className="list-of-workflows-body">
               <EmptyState

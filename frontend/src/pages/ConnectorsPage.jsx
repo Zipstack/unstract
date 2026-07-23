@@ -37,6 +37,8 @@ function ConnectorsPage() {
   const [isShareLoading, setIsShareLoading] = useState(false);
   // undefined = not fetched yet (spinner); [] = fetched-empty (empty state)
   const [displayList, setDisplayList] = useState();
+  // Fetch failure (vs. genuinely empty) — drives a retryable error state.
+  const [loadError, setLoadError] = useState(false);
   const groupsApi = groupsService();
 
   const axiosPrivate = useAxiosPrivate();
@@ -107,6 +109,7 @@ function ConnectorsPage() {
         order,
       });
       const seq = ++seqRef.current;
+      setLoadError(false);
       setLoading(true);
       return axiosPrivate
         .get(getUrl("connector/"), { params })
@@ -129,8 +132,8 @@ function ConnectorsPage() {
             return;
           }
           setAlertDetails(handleException(err, "Failed to load connectors"));
-          // Avoid an indefinite spinner when the first fetch fails.
-          setDisplayList((prev) => prev ?? []);
+          // Surface a retryable error instead of a misleading empty state.
+          setLoadError(true);
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.
@@ -297,7 +300,14 @@ function ConnectorsPage() {
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
-          {displayList === undefined && <SpinnerLoader />}
+          {displayList === undefined && !loadError && <SpinnerLoader />}
+          {displayList === undefined && loadError && (
+            <EmptyState
+              text="Couldn't load. Please try again."
+              btnText="Retry"
+              handleClick={handleListRefresh}
+            />
+          )}
           {displayList?.length === 0 && !searchTerm && (
             <EmptyState
               text="No connectors available"

@@ -58,6 +58,8 @@ function ToolSettings({ type }) {
   const [editItemId, setEditItemId] = useState(null);
   // undefined = not fetched yet (spinner); [] = fetched-empty (empty state)
   const [displayList, setDisplayList] = useState();
+  // Fetch failure (vs. genuinely empty) — drives a retryable error state.
+  const [loadError, setLoadError] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -138,6 +140,7 @@ function ToolSettings({ type }) {
       });
       params.adapter_type = type.toUpperCase();
       const seq = ++seqRef.current;
+      setLoadError(false);
       setIsLoading(true);
       return axiosPrivate({
         method: "GET",
@@ -163,8 +166,8 @@ function ToolSettings({ type }) {
             return;
           }
           setAlertDetails(handleException(err));
-          // Avoid an indefinite spinner when the first fetch fails.
-          setDisplayList((prev) => prev ?? []);
+          // Surface a retryable error instead of a misleading empty state.
+          setLoadError(true);
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.
@@ -361,7 +364,14 @@ function ToolSettings({ type }) {
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
-            {displayList === undefined && <SpinnerLoader />}
+            {displayList === undefined && !loadError && <SpinnerLoader />}
+            {displayList === undefined && loadError && (
+              <EmptyState
+                text="Couldn't load. Please try again."
+                btnText="Retry"
+                handleClick={handleListRefresh}
+              />
+            )}
             {displayList?.length === 0 && !searchTerm && (
               <EmptyState
                 text={`No ${titles[type]?.toLowerCase() || "adapters"} available`}

@@ -75,6 +75,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
 
   // undefined = not fetched yet (spinner); [] = fetched-empty (empty state)
   const [displayList, setDisplayList] = useState();
+  // Fetch failure (vs. genuinely empty) — drives a retryable error state.
+  const [loadError, setLoadError] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -154,6 +156,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         order,
       });
       const seq = ++seqRef.current;
+      setLoadError(false);
       setIsLoading(true);
       return axiosPrivate({
         method: "GET",
@@ -182,8 +185,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           setAlertDetails(
             handleException(err, "Failed to get the list of tools"),
           );
-          // Avoid an indefinite spinner when the first fetch fails.
-          setDisplayList((prev) => prev ?? []);
+          // Surface a retryable error instead of a misleading empty state.
+          setLoadError(true);
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.
@@ -454,7 +457,14 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">
           <div className="list-of-tools-body">
-            {displayList === undefined && <SpinnerLoader />}
+            {displayList === undefined && !loadError && <SpinnerLoader />}
+            {displayList === undefined && loadError && (
+              <EmptyState
+                text="Couldn't load. Please try again."
+                btnText="Retry"
+                handleClick={handleListRefresh}
+              />
+            )}
             {displayList?.length === 0 && !searchTerm && (
               <EmptyState
                 text="No prompt projects available"
