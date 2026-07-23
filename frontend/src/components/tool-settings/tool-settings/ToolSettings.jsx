@@ -202,6 +202,10 @@ function ToolSettings({ type }) {
   const addNewItem = () => handleListRefresh();
 
   const handleDelete = (_event, adapter) => {
+    // Snapshot the request token: a fetch (search/sort/paginate/refresh) that
+    // starts while this delete is in flight bumps it, so we don't clear its
+    // loading on a failed delete.
+    const seq = seqRef.current;
     setIsLoading(true);
     axiosPrivate({
       method: "DELETE",
@@ -211,9 +215,11 @@ function ToolSettings({ type }) {
       .then(() => handleListRefresh())
       .catch((err) => {
         setAlertDetails(handleException(err));
-        // Refresh only runs on success; clear loading here so a failed delete
-        // doesn't leave the table stuck under its spinner.
-        setIsLoading(false);
+        // Refresh owns loading on success; on failure clear it only if no newer
+        // fetch has taken over (else that request still owns the spinner).
+        if (seq === seqRef.current) {
+          setIsLoading(false);
+        }
       });
   };
 
