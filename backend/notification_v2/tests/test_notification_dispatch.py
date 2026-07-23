@@ -26,13 +26,13 @@ _KWARGS = {
 _QUEUE = "notifications"
 
 
-def _dispatch(celery_app, organization_id="org_x"):
+def _dispatch(celery_app, org_string_id="org_x"):
     return nd.dispatch_webhook_notification(
         celery_app=celery_app,
         args=_ARGS,
         kwargs=_KWARGS,
         queue=_QUEUE,
-        organization_id=organization_id,
+        org_string_id=org_string_id,
     )
 
 
@@ -88,7 +88,7 @@ class TestDispatchWebhookNotification:
             patch.object(nd, "resolve_transport", return_value="celery") as resolve,
             patch.object(nd, "enqueue_task") as enqueue,
         ):
-            _dispatch(celery, organization_id=None)
+            _dispatch(celery, org_string_id=None)
         assert resolve.call_args.kwargs["organization_id"] is None
         celery.send_task.assert_called_once()
         enqueue.assert_not_called()

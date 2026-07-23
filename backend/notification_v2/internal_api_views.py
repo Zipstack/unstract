@@ -515,19 +515,32 @@ def _reclaim_stale_sending() -> int:
     return int(reclaimed)
 
 
-def _org_identifier(org_pk: Any) -> str | None:
+def _org_identifier(org_pk: int) -> str | None:
     """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
 
     ``resolve_transport`` keys its Flipt decision on the org's string identifier,
     but the buffer stores/uses the Organization pk. One indexed pk lookup per
-    dispatch group (post-commit) — negligible before the webhook HTTP call it
-    precedes. ``None`` (org deleted) fails closed to Celery in resolve_transport.
+    dispatch group (post-commit) — negligible relative to the downstream webhook
+    dispatch.
+
+    Data-anomaly guard: ``NotificationBuffer.organization`` is
+    ``on_delete=CASCADE``, so a live buffer row with a missing org is unreachable
+    in normal operation. A ``None`` here therefore signals a dangling FK — we log
+    it (the only org-traceable breadcrumb; resolve_transport's own warning is keyed
+    on the random dispatch uuid) and fail closed to Celery in resolve_transport.
     """
-    return (
+    org_string_id = (
         Organization.objects.filter(pk=org_pk)
         .values_list("organization_id", flat=True)
         .first()
     )
+    if org_string_id is None:
+        logger.warning(
+            "metric=notification_org_identifier_missing_total org_pk=%s "
+            "(dangling FK; notification routing falls back to Celery)",
+            org_pk,
+        )
+    return org_string_id
 
 
 def _send_clubbed(
@@ -578,7 +591,7 @@ def _send_clubbed(
                 "organization_id": org_id,
             },
             queue="notifications",
-            organization_id=_org_identifier(org_id),
+            org_string_id=_org_identifier(org_id),
         )
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
@@ -588,7 +601,31 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
+    except (ValueError, TypeError):
+        # PERMANENT dispatch errors — enqueue_task validation (priority range /
+        # reply_key+callback exclusivity) or payload serialization — fail
+        # identically every flush tick. Dead-letter now (distinct metric) instead
+        # of reverting to PENDING and re-rendering + re-dispatching + emitting a
+        # broker_failure traceback until the attempt cap. Guard on SENDING so a row
+        # the worker already resolved isn't clobbered.
+        logger.exception(
+            "metric=notification_batch_dispatched_total platform=%s "
+            "result=dispatch_error org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+        NotificationBuffer.objects.filter(
+            id__in=buffer_ids,
+            status=BufferStatus.SENDING.value,
+        ).update(status=BufferStatus.DEAD_LETTER.value)
     except Exception:
+        # TRANSIENT transport/broker failure — revert to PENDING (outside the
+        # committed txn) so the next flush tick retries; refund the SENDING-claim
+        # attempt since nothing was queued or sent. Guard on SENDING so a row the
+        # worker already marked terminal (broker raised post-delivery) isn't
+        # resurrected into a duplicate.
         logger.exception(
             "metric=notification_batch_dispatched_total platform=%s "
             "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
@@ -597,10 +634,6 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-        # Revert to PENDING (outside the committed txn) so a transient broker
-        # outage retries next tick; refund the SENDING-claim attempt since nothing
-        # was queued or sent. Guard on SENDING so a row the worker already marked
-        # terminal (broker raised post-delivery) isn't resurrected into a duplicate.
         NotificationBuffer.objects.filter(
             id__in=buffer_ids,
             status=BufferStatus.SENDING.value,

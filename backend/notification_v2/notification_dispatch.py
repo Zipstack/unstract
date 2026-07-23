@@ -36,7 +36,7 @@ def dispatch_webhook_notification(
     args: list[Any],
     kwargs: dict[str, Any],
     queue: str,
-    organization_id: str | None,
+    org_string_id: str | None,
 ) -> str:
     """Dispatch ``send_webhook_notification`` on the resolved transport.
 
@@ -49,25 +49,28 @@ def dispatch_webhook_notification(
         args: Positional task args, forwarded verbatim.
         kwargs: Keyword task args, forwarded verbatim. For the buffered path this
             carries ``organization_id`` = the buffer's org **pk** (the worker's
-            buffer-mark contract) — distinct from the ``organization_id`` param
-            below, which is the string identifier used only for flag routing.
+            buffer-mark contract) — deliberately a DIFFERENT identifier from the
+            ``org_string_id`` param below (the two must not be conflated).
         queue: Target queue name, forwarded verbatim.
-        organization_id: The org's **string** identifier
+        org_string_id: The org's **string** identifier
             (``Organization.organization_id``), used solely for the Flipt
-            transport decision. ``None`` (or empty) fails closed to Celery.
+            transport decision — NOT the org pk carried in ``kwargs``. ``None`` (or
+            empty) fails closed to Celery.
 
     Returns:
         A task id string — the Celery ``AsyncResult`` id on the Celery path, or
-        the minted PG task id on the PG path (usable by callers that surface it
-        in an API response).
+        the minted PG task id on the PG path. Returned for symmetry / any future
+        caller; the sole current caller (fire-and-forget) discards it.
     """
     # A buffered notification is a single fire-and-forget task with no natural
     # sticky entity, so mint a fresh id to drive Flipt's percentage bucketing and
     # to serve as the PG task id.
     dispatch_id = str(uuid.uuid4())
+    # resolve_transport already normalizes falsy input to Celery, so pass the id
+    # straight through (no `or None` needed).
     transport = resolve_transport(
         execution_id=dispatch_id,
-        organization_id=organization_id or None,
+        organization_id=org_string_id,
     )
     # Use the shared is_pg_transport() — the single source for "what counts as PG
     # transport" — rather than opening a second comparison site.
@@ -77,7 +80,9 @@ def dispatch_webhook_notification(
             queue=queue,
             args=args,
             kwargs=kwargs,
-            org_id=organization_id or "",
+            # enqueue_task's org_id is str-typed — coerce None→"" (unlike the
+            # routing arg above, this `or ""` is load-bearing).
+            org_id=org_string_id or "",
             task_id=dispatch_id,
         )
         logger.info(
