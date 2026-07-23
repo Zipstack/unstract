@@ -1,6 +1,7 @@
 """Unit tests for retry_utils module."""
 
 import errno
+import time
 from collections.abc import Callable
 from unittest.mock import MagicMock, Mock
 
@@ -14,6 +15,12 @@ from unstract.sdk1.utils.retry_utils import (
     retry_platform_service_call,
     retry_with_exponential_backoff,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch: MonkeyPatch) -> None:
+    """Backoff logic is under test, not wall-clock timing — skip real sleeps."""
+    monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
 
 
 class TestIsRetryableError:

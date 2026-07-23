@@ -9,6 +9,7 @@ All specialized clients inherit from BaseAPIClient to get consistent HTTP behavi
 
 import json
 import os
+import random
 import time
 import uuid
 from typing import Any
@@ -17,6 +18,8 @@ import requests
 from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+from unstract.flags.feature_flag import check_feature_flag_status
 
 from ..data.models import APIResponse
 from ..enums import HTTPMethod
@@ -27,6 +30,47 @@ logger = WorkerLogger.get_logger(__name__)
 
 # HTTP Content Type Constants
 APPLICATION_JSON = "application/json"
+
+
+# Single PG-queue rollout flag (same key as pg_queue.flags / executor_rpc).
+_PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
+
+
+def _pg_queue_jitter_enabled() -> bool:
+    """Whether retry jitter is on — gated by the single ``pg_queue_enabled`` Flipt
+    flag (fail-closed to False, like ``check_feature_flag_status`` itself), so the
+    Celery flow's retry cadence is unchanged and the jitter tracks the PG rollout.
+
+    The retry path carries no per-execution/org context, so the flag is evaluated
+    globally (entity ``"default"``) — a coarse "is PG being rolled out" gate, which
+    is all a transport-agnostic HTTP-retry hardening needs.
+    """
+    try:
+        return check_feature_flag_status(flag_key=_PG_QUEUE_FLAG_KEY, entity_id="default")
+    except Exception:
+        return False
+
+
+def _backoff_with_jitter(backoff_factor: float, attempt: int) -> float:
+    """Exponential backoff, with equal jitter when the PG-queue flag is on.
+
+    Without jitter, every concurrent worker retrying a saturated backend sleeps on
+    the identical 1s/2s/4s schedule and their retries arrive in synchronized waves
+    (thundering herd) that keep failing together — the condition behind the PG
+    finalization-write failures under high concurrency. Equal jitter spreads each
+    retry across [base/2, base] so the waves de-correlate.
+
+    Gated by the ``pg_queue_enabled`` Flipt flag (fail-closed): OFF keeps the exact
+    exponential backoff for the Celery flow; evaluated at call time on the rare
+    retry path (behind a sleep + network round-trip), so the Flipt cost is
+    irrelevant and it stays runtime-togglable via the flag.
+    """
+    base = backoff_factor * (2**attempt)
+    if base <= 0:
+        return 0.0
+    if not _pg_queue_jitter_enabled():
+        return base  # exact exponential backoff (unchanged for the Celery flow)
+    return base / 2 + random.uniform(0, base / 2)
 
 
 class InternalAPIClientError(Exception):
@@ -42,9 +86,19 @@ class AuthenticationError(InternalAPIClientError):
 
 
 class APIRequestError(InternalAPIClientError):
-    """Raised when API request fails."""
+    """Raised when an API request fails.
 
-    pass
+    ``status_code`` carries the HTTP status for a non-timeout 4xx or a retry-exhausted
+    5xx (e.g. 404 / 500). It is ``None`` for transport-level failures **and** for the
+    few paths that don't thread it (429-exhausted, data-serialization, generic
+    fallback). Only rely on it for those 4xx/5xx cases — do not assume "any HTTP error
+    carries a code". Callers use it to distinguish a deterministic 404 (resource gone)
+    from a transient 5xx.
+    """
+
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class BaseAPIClient:
@@ -291,7 +345,10 @@ class BaseAPIClient:
                     error_msg = f"Client error: {response.status_code} {response.reason}"
                     response_text = self._safe_get_response_text(response)
                     logger.error(f"{error_msg}: {response_text}")
-                    raise APIRequestError(f"{error_msg}: {response_text}")
+                    raise APIRequestError(
+                        f"{error_msg}: {response_text}",
+                        status_code=response.status_code,
+                    )
 
                 # Handle server errors (retry these)
                 if response.status_code in retry_statuses:
@@ -299,7 +356,7 @@ class BaseAPIClient:
                     response_text = self._safe_get_response_text(response)
 
                     if attempt < max_retries:
-                        sleep_time = backoff_factor * (2**attempt)
+                        sleep_time = _backoff_with_jitter(backoff_factor, attempt)
                         logger.warning(
                             f"{error_msg} - retrying in {sleep_time:.1f}s (attempt {attempt + 1}/{max_retries + 1})"
                         )
@@ -309,7 +366,10 @@ class BaseAPIClient:
                         logger.error(
                             f"{error_msg} - max retries exceeded: {response_text}"
                         )
-                        raise APIRequestError(f"{error_msg}: {response_text}")
+                        raise APIRequestError(
+                            f"{error_msg}: {response_text}",
+                            status_code=response.status_code,
+                        )
 
                 # Handle rate limiting (429)
                 rate_limit_status = 429
@@ -350,7 +410,7 @@ class BaseAPIClient:
                 )
 
                 if attempt < max_retries:
-                    sleep_time = backoff_factor * (2**attempt)
+                    sleep_time = _backoff_with_jitter(backoff_factor, attempt)
                     logger.warning(
                         f"Request {error_type} error - retrying in {sleep_time:.1f}s (attempt {attempt + 1}/{max_retries + 1}): {str(e)}"
                     )

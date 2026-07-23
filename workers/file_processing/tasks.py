@@ -11,6 +11,11 @@ import time
 from typing import Any
 
 from queue_backend import worker_task
+from queue_backend.barrier import BarrierContext
+from queue_backend.pg_barrier import (
+    SKIPPED_TERMINAL_EXECUTION_KEY,
+    run_batch_with_barrier,
+)
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -49,6 +54,7 @@ from unstract.core.data_models import (
     FileHashData,
     PreCreatedFileData,
     WorkerFileData,
+    WorkflowTransport,
 )
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
@@ -222,30 +228,125 @@ def _enhance_batch_with_mrq_flags(
         )
 
 
-def _process_file_batch_core(
-    task_instance, file_batch_data: dict[str, Any]
-) -> dict[str, Any]:
-    """Core implementation of file batch processing.
+class _TerminalExecutionSkip(Exception):
+    """A batch was delivered for an execution already in a terminal state.
 
-    This function contains the actual processing logic that both the new task
-    and Django compatibility task will use.
+    Raised by :func:`_raise_if_execution_terminal` (called from
+    :func:`_setup_execution_context`) when the execution's status is
+    COMPLETED/ERROR/STOPPED. On the PG queue (at-least-once), a batch can be
+    redelivered — or a stale batch consumed — *after* the reaper has recovered
+    the execution (marked it ERROR) and deleted its barrier. Reprocessing would
+    resurrect the execution back to EXECUTING and re-run its files (double LLM /
+    destination write). The batch is skipped instead.
 
-    Args:
-        task_instance: The Celery task instance (self)
-        file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+    Gated to the PG path (``is_pg``): a no-op on Celery, so the existing Celery
+    flow is behaviorally unchanged. It's PG-specific because the **reaper** that
+    marks an in-flight execution terminal (and tears its barrier down) is a
+    PG-only mechanism — the Celery chord has no equivalent.
 
-    Returns:
-        Dictionary with successful_files and failed_files counts
+    This is a validate-first *narrowing*, not a transactional guarantee: the
+    status read and the later ``EXECUTING`` write are not atomic, so a reaper
+    transition landing in that window can still resurrect the execution. The
+    reaper's terminal file-cascade is the backstop for that residual case.
     """
-    celery_task_id = (
-        task_instance.request.id if hasattr(task_instance, "request") else "unknown"
-    )
 
+    def __init__(self, execution_id: str, status: str | None) -> None:
+        self.execution_id = execution_id
+        self.status = status
+        super().__init__(
+            f"Execution {execution_id} already terminal ({status}); "
+            f"skipping stale/redelivered batch"
+        )
+
+
+def _raise_if_execution_terminal(
+    workflow_execution: dict[str, Any], execution_id: str, *, is_pg: bool
+) -> None:
+    """PG-path-only validate-first guard: refuse to (re)process a batch whose
+    execution is already terminal. See :class:`_TerminalExecutionSkip`.
+
+    No-op on the Celery path (``is_pg=False``) — the resurrection this prevents
+    is PG-specific, so gating leaves the Celery flow behaviorally unchanged. A
+    missing or unrecognized status is treated as non-terminal (fail open —
+    proceed as normal), but both are logged on the PG path so a degraded
+    execution-fetch response or a new/renamed status isn't silently masked (an
+    unrecognized terminal-ish state would otherwise let a stale batch through).
+    """
+    if not is_pg:
+        return
+    status = workflow_execution.get("status")
+    if not status:
+        # Fail open (proceed), but surface it — a missing status is an
+        # API-contract regression, not a normal active execution.
+        logger.warning(
+            f"[exec:{execution_id}] terminal guard: execution-fetch returned no "
+            f"status; proceeding (fail-open) but the response looks degraded."
+        )
+        return
+    if status in ExecutionStatus.terminal_values():
+        raise _TerminalExecutionSkip(execution_id, status)
+    if status not in {s.value for s in ExecutionStatus}:
+        # Recognized non-terminal (PENDING/EXECUTING) proceeds silently; an
+        # UNRECOGNIZED value is surfaced so a new terminal-ish state or an enum
+        # typo can't silently defeat the guard.
+        logger.warning(
+            f"[exec:{execution_id}] terminal guard: unrecognized execution "
+            f"status {status!r}; treating as non-terminal (proceeding)."
+        )
+
+
+def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
+    """Batch result for a batch skipped because its execution is already terminal.
+
+    The files were never attempted; they are counted as failed (not left
+    unaccounted). The UI derives in-progress as ``total - successful - failed``,
+    so reporting ``failed=total`` keeps a consumer that ever aggregates this
+    result from rendering the files as perpetually in-progress. The
+    ``SKIPPED_TERMINAL_EXECUTION_KEY`` marker tells ``run_batch_with_barrier`` to
+    bypass the barrier decrement (a terminal execution's barrier is by definition
+    already torn down).
+    """
+    n_files = len(batch_data.files)
+    result = BatchExecutionResult(
+        total_files=n_files,
+        successful_files=0,
+        failed_files=n_files,
+        execution_time=0.0,
+        organization_id=batch_data.file_data.organization_id,
+    ).to_dict()
+    result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
+    return result
+
+
+def _run_batch_stages(
+    file_batch_data: dict[str, Any], celery_task_id: str, *, is_pg: bool
+) -> dict[str, Any]:
+    """The actual batch work (validate → setup → pre-create → process → compile).
+
+    Transport-agnostic: identical on the Celery chord path and the PG
+    fire-and-forget path. The task instance isn't needed here — its only use
+    (deriving ``celery_task_id``) happens in the caller. Returns the
+    JSON-serialisable batch result.
+
+    ``is_pg`` (keyword-only, no default so a PG call site can't silently forget
+    it) forwards to the terminal guard; see :class:`_TerminalExecutionSkip`.
+    """
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
-    # Step 2: Setup execution context
-    context = _setup_execution_context(batch_data, celery_task_id)
+    # Step 2: Setup execution context. The terminal guard inside it may skip a
+    # stale/redelivered batch for an already-terminal execution — see
+    # :class:`_TerminalExecutionSkip`.
+    try:
+        context = _setup_execution_context(batch_data, celery_task_id, is_pg=is_pg)
+    except _TerminalExecutionSkip as skip:
+        logger.warning(
+            f"[exec:{skip.execution_id}] Skipping batch of "
+            f"{len(batch_data.files)} file(s): execution already terminal "
+            f"({skip.status}) — stale/redelivered after reaper-recovery; not "
+            f"reprocessing."
+        )
+        return _terminal_skip_result(batch_data)
 
     # Step 3: Handle manual review logic
     # context = _handle_manual_review_logic(context)
@@ -260,6 +361,47 @@ def _process_file_batch_core(
     return _compile_batch_result(context)
 
 
+def _process_file_batch_core(
+    task_instance,
+    file_batch_data: dict[str, Any],
+    barrier_context: BarrierContext | None = None,
+) -> dict[str, Any]:
+    """Core implementation of file batch processing.
+
+    This function contains the actual processing logic that both the new task
+    and Django compatibility task will use.
+
+    Args:
+        task_instance: The Celery task instance (self)
+        file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+        barrier_context: Present only on the 9e PG fire-and-forget path — carries
+            ``execution_id`` / ``batch_index`` / ``callback_descriptor`` so the
+            batch claims its slot and runs the barrier decrement in-body (a
+            PG-consumed task fires no Celery ``.link``). ``None`` on the Celery
+            chord path, where the chord ``.link`` drives the decrement instead.
+
+    Returns:
+        Dictionary with successful_files and failed_files counts
+    """
+    celery_task_id = (
+        task_instance.request.id if hasattr(task_instance, "request") else "unknown"
+    )
+
+    if barrier_context is None:
+        # Celery chord path — the chord's .link runs the decrement after this.
+        # is_pg=False disables the terminal guard → Celery flow unchanged.
+        return _run_batch_stages(file_batch_data, celery_task_id, is_pg=False)
+
+    # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
+    # the stages, then decrement the barrier in-body / self-chain the callback.
+    # is_pg=True enables the terminal guard (skip a stale/redelivered batch for a
+    # reaper-recovered execution).
+    return run_batch_with_barrier(
+        barrier_context,
+        lambda: _run_batch_stages(file_batch_data, celery_task_id, is_pg=True),
+    )
+
+
 @worker_task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH,
@@ -272,18 +414,26 @@ def _process_file_batch_core(
     # Timeout inherited from global Celery config (FILE_PROCESSING_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
-def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
-    """Process a batch of files in parallel using Celery.
+def process_file_batch(
+    self,
+    file_batch_data: dict[str, Any],
+    _barrier_context: BarrierContext | None = None,
+) -> dict[str, Any]:
+    """Process a batch of files in parallel.
 
     This is the main task entry point for new workers.
 
     Args:
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+        _barrier_context: Injected only when this task is dispatched onto the PG
+            queue (9e fire-and-forget path) by ``PgBarrier`` — carries the barrier
+            coordination context (``execution_id`` / ``batch_index`` /
+            ``callback_descriptor``). Absent on the Celery chord path.
 
     Returns:
         Dictionary with successful_files and failed_files counts
     """
-    return _process_file_batch_core(self, file_batch_data)
+    return _process_file_batch_core(self, file_batch_data, _barrier_context)
 
 
 def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatchData:
@@ -320,19 +470,24 @@ def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatch
 
 
 def _setup_execution_context(
-    batch_data: FileBatchData, celery_task_id: str
+    batch_data: FileBatchData, celery_task_id: str, *, is_pg: bool
 ) -> WorkflowContextData:
     """Setup execution context with validation and API client initialization.
 
     Args:
         batch_data: Validated batch data
         celery_task_id: Celery task ID for tracking
+        is_pg: Whether this batch runs on the PG (at-least-once) transport.
+            Keyword-only, no default so a PG call site can't silently forget it.
+            Enables the terminal guard; a no-op on Celery.
 
     Returns:
         WorkflowContextData containing type-safe execution context
 
     Raises:
         ValueError: If required context fields are missing
+        _TerminalExecutionSkip: On the PG path, if the execution is already
+            terminal (a stale/redelivered batch after reaper-recovery).
     """
     # Extract context using dataclass
     file_data = batch_data.file_data
@@ -371,6 +526,11 @@ def _setup_execution_context(
         raise Exception(f"Failed to get execution context: {execution_response.error}")
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
+
+    # Validate-first terminal guard (PG only) — skip a stale/redelivered batch
+    # for an already-terminal execution, before we touch status or process
+    # anything. See :class:`_TerminalExecutionSkip`.
+    _raise_if_execution_terminal(workflow_execution, execution_id, is_pg=is_pg)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
     # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
@@ -439,13 +599,18 @@ def _setup_execution_context(
             f"File history from fallback access for workflow {workflow_id}: use_file_history = {use_file_history}"
         )
 
-    # Create type-safe workflow context
+    # Create type-safe workflow context. Set the transport authoritatively from
+    # is_pg (the batch-level fact) — WorkerFileData carries none — so the
+    # destination layer can apply PG-only guards.
     context_data = WorkflowContextData(
         workflow_id=workflow_id,
         workflow_name=workflow_name,
         workflow_type=workflow_type,
         execution_id=execution_id,
         organization_context=org_context,
+        transport=(
+            WorkflowTransport.PG_QUEUE.value if is_pg else WorkflowTransport.CELERY.value
+        ),
         files={
             f"file_{i}": file for i, file in enumerate(files)
         },  # Convert list to dict format
@@ -710,6 +875,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
             workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
             workflow_logger=workflow_logger,  # Pass workflow logger for UI logging
+            transport=context.transport,  # Drives the PG-only destination guard
         )
 
         # Handle file processing result
@@ -1479,6 +1645,7 @@ def _process_file(
     workflow_file_execution_id: str = None,
     workflow_file_execution_object: Any = None,
     workflow_logger: Any = None,
+    transport: str | None = None,
 ) -> dict[str, Any]:
     """Process a single file matching Django backend _process_file pattern.
 
@@ -1492,6 +1659,8 @@ def _process_file(
         file_hash: FileHashData instance with type-safe access
         api_client: Internal API client
         workflow_execution: Workflow execution context
+        transport: Execution transport (celery | pg_queue); drives PG-only
+            destination guards downstream.
 
     Returns:
         File execution result
@@ -1507,6 +1676,7 @@ def _process_file(
         workflow_file_execution_id=workflow_file_execution_id,
         workflow_file_execution_object=workflow_file_execution_object,
         workflow_logger=workflow_logger,
+        transport=transport,
     )
 
 

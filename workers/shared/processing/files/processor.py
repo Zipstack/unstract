@@ -477,6 +477,7 @@ class FileProcessor:
         workflow_file_execution_id: str = None,
         workflow_file_execution_object: Any = None,
         workflow_logger: WorkerWorkflowLogger = None,
+        transport: str | None = None,
     ) -> FileProcessingResult:
         """Main orchestrator method that replaces the complex _process_file method.
 
@@ -512,6 +513,7 @@ class FileProcessor:
             workflow_logger=workflow_logger,
             current_file_idx=current_file_idx,
             total_files=total_files,
+            transport=transport,
         )
 
         logger.debug(

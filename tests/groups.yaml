@@ -43,12 +43,32 @@ groups:
     tier: unit
     workdir: workers
     paths: [tests, shared/tests]
-    # Negative filter like the other unit groups: worker tests aren't tagged
-    # `unit`. Tests tagged `integration`/`slow` are excluded here but not yet
-    # routed to any group — add one before relying on those markers.
+    # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
+    # so select by exclusion. `conftest.py` marks real-Postgres tests
+    # `integration` (routed to the `integration-workers` group); `slow` tests are
+    # also excluded from this fast lane. (`markers: "unit"` here previously
+    # matched *zero* tests — the suite silently never ran in CI.)
     markers: "not integration and not slow"
     uv_sync_group: test
     coverage_source: shared
+
+  integration-workers:
+    tier: integration
+    workdir: workers
+    paths: [tests, shared/tests]
+    # Real-Postgres tests: barrier-decrement races, reaper, batch dedup, leader
+    # election, result backend. `conftest.py` marks these `integration` (any
+    # test using a real-connection fixture). They skip when Postgres is
+    # unreachable or the pg_queue schema isn't migrated.
+    markers: "integration"
+    uv_sync_group: test
+    coverage_source: shared
+    requires_services: [postgres]
+    # Optional until CI provisions a *migrated* database and sets
+    # REQUIRE_PG_TESTS=1 — that env flips the graceful skips into hard failures
+    # (see conftest `_skip_or_fail_no_pg`) so the lane can't pass having run
+    # nothing. Until then it runs-and-skips against a bare Postgres.
+    optional: true
 
   unit-backend:
     tier: unit
