@@ -202,25 +202,16 @@ function ToolSettings({ type }) {
   const addNewItem = () => handleListRefresh();
 
   const handleDelete = (_event, adapter) => {
-    // Snapshot the request token: a fetch (search/sort/paginate/refresh) that
-    // starts while this delete is in flight bumps it, so we don't clear its
-    // loading on a failed delete.
-    const seq = seqRef.current;
-    setIsLoading(true);
+    // Don't drive the shared list-loading from a row delete (as the other lists
+    // avoid): success refetches via handleListRefresh, which owns the spinner;
+    // failure just surfaces a toast. Keeps deletes out of the loading races.
     axiosPrivate({
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: { "X-CSRFToken": sessionDetails?.csrfToken },
     })
       .then(() => handleListRefresh())
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-        // Refresh owns loading on success; on failure clear it only if no newer
-        // fetch has taken over (else that request still owns the spinner).
-        if (seq === seqRef.current) {
-          setIsLoading(false);
-        }
-      });
+      .catch((err) => setAlertDetails(handleException(err)));
   };
 
   const handleEdit = (_event, item) => {
