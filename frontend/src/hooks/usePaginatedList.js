@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 /**
  * Build the query params for a paginated list request, omitting empty
@@ -72,21 +72,23 @@ function applyPagedResponse({
 
 /**
  * Shared hook for paginated list state and handlers.
- * Uses a ref internally to avoid stale closure issues with fetchData.
  *
- * @param {Object} options
- * @param {Function} options.fetchData - fn(page, pageSize, search, sortBy, order)
+ * Owns `fetchRef` — the page assigns its fetch fn to `fetchRef.current`, and the
+ * hook's handlers (search/sort/paginate) plus `handleListRefresh` invoke the
+ * latest one, so pages don't re-derive that wiring. `handleListRefresh` refetches
+ * the current page preserving active search/sort — pass it to mutation callbacks.
+ *
+ * @param {Object} [options]
  * @param {number} [options.defaultPageSize=10]
  * @param {string} [options.defaultSortBy=""] - initial sort column key
  * @param {string} [options.defaultOrder="asc"] - initial sort direction
- * @return {Object} Pagination/sort state and handlers
+ * @return {Object} Pagination/sort state, `fetchRef`, and handlers.
  */
 function usePaginatedList({
-  fetchData,
   defaultPageSize = 10,
   defaultSortBy = "",
   defaultOrder = "asc",
-}) {
+} = {}) {
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: defaultPageSize,
@@ -98,8 +100,8 @@ function usePaginatedList({
     order: defaultOrder,
   });
 
-  const fetchRef = useRef(fetchData);
-  fetchRef.current = fetchData;
+  // Page assigns its fetch fn here; handlers call the latest one via the ref.
+  const fetchRef = useRef(null);
 
   const handlePaginationChange = (page, pageSize) => {
     const newPage = pageSize === pagination.pageSize ? page : 1;
@@ -126,15 +128,35 @@ function usePaginatedList({
     );
   };
 
+  const handleListRefresh = useCallback(
+    () =>
+      fetchRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+        sort.sortBy,
+        sort.order,
+      ),
+    [
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+      sort.sortBy,
+      sort.order,
+    ],
+  );
+
   return {
     pagination,
     setPagination,
     searchTerm,
     setSearchTerm,
     sort,
+    fetchRef,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
+    handleListRefresh,
   };
 }
 

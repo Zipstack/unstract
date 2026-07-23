@@ -16,7 +16,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
-import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
+import { CoOwnerModal } from "../../widgets/co-owner-management/CoOwnerModal";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { ResourceTable } from "../../widgets/resource-table/ResourceTable";
@@ -83,8 +83,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
   const [allGroupList, setAllGroupList] = useState([]);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
-  const fetchListRef = useRef(null);
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
 
@@ -127,44 +125,14 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     searchTerm,
     setSearchTerm,
     sort,
+    fetchRef,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
+    handleListRefresh,
+  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
 
-  // Refresh the current page (preserves page + active search/sort) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-        sort.sortBy,
-        sort.order,
-      ),
-    [
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-      sort.sortBy,
-      sort.order,
-    ],
-  );
-
-  const {
-    coOwnerOpen,
-    setCoOwnerOpen,
-    coOwnerData,
-    coOwnerLoading,
-    coOwnerAllUsers,
-    coOwnerResourceId,
-    handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
-  } = useCoOwnerManagement({
+  const coOwner = useCoOwnerManagement({
     service: promptStudioCoOwnerService,
     setAlertDetails,
     onListRefresh: handleListRefresh,
@@ -226,7 +194,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       handleException,
     ],
   );
-  fetchListRef.current = getListOfTools;
+  fetchRef.current = getListOfTools;
 
   useEffect(() => {
     setSearchTerm("");
@@ -451,7 +419,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   };
 
   const handleCoOwner = (_event, tool) => {
-    handleCoOwnerAction(tool.tool_id);
+    coOwner.handleCoOwner(tool.tool_id);
   };
 
   const customButtonsElement = useMemo(
@@ -542,18 +510,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         onApply={onShare}
         isSharableToOrg={true}
       />
-      <CoOwnerManagement
-        open={coOwnerOpen}
-        setOpen={setCoOwnerOpen}
-        resourceId={coOwnerResourceId}
-        resourceType="Prompt Project"
-        allUsers={coOwnerAllUsers}
-        coOwners={coOwnerData.coOwners}
-        createdBy={coOwnerData.createdBy}
-        loading={coOwnerLoading}
-        onAddCoOwner={onAddCoOwner}
-        onRemoveCoOwner={onRemoveCoOwner}
-      />
+      <CoOwnerModal coOwner={coOwner} resourceType="Prompt Project" />
     </>
   );
 }

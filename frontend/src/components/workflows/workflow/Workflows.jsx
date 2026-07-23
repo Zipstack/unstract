@@ -1,7 +1,7 @@
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
@@ -24,7 +24,7 @@ import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
-import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
+import { CoOwnerModal } from "../../widgets/co-owner-management/CoOwnerModal.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
@@ -57,8 +57,6 @@ function Workflows() {
   const [editingProject, setEditProject] = useState();
   const [loading, setLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
-  const fetchListRef = useRef(null);
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
   const [backendErrors, setBackendErrors] = useState(null);
@@ -76,43 +74,13 @@ function Workflows() {
     setPagination,
     searchTerm,
     sort,
+    fetchRef,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
-
-  // Refresh the current page (preserves page + active search/sort) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-        sort.sortBy,
-        sort.order,
-      ),
-    [
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-      sort.sortBy,
-      sort.order,
-    ],
-  );
-  const {
-    coOwnerOpen,
-    setCoOwnerOpen,
-    coOwnerData,
-    coOwnerLoading,
-    coOwnerAllUsers,
-    coOwnerResourceId,
-    handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
-  } = useCoOwnerManagement({
+    handleListRefresh,
+  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
+  const coOwner = useCoOwnerManagement({
     service: projectApiService,
     setAlertDetails,
     onListRefresh: handleListRefresh,
@@ -161,7 +129,7 @@ function Workflows() {
         setLoading(false);
       });
   };
-  fetchListRef.current = getProjectList;
+  fetchRef.current = getProjectList;
 
   function editProject(name, description) {
     setLoading(true);
@@ -370,7 +338,7 @@ function Workflows() {
 
   const handleCoOwner = (event, workflow) => {
     event.stopPropagation();
-    handleCoOwnerAction(workflow.id);
+    coOwner.handleCoOwner(workflow.id);
   };
 
   const handleNewWorkflowBtnClick = () => {
@@ -483,19 +451,8 @@ function Workflows() {
               isSharableToOrg={true}
             />
           )}
-          {coOwnerOpen && (
-            <CoOwnerManagement
-              open={coOwnerOpen}
-              setOpen={setCoOwnerOpen}
-              resourceId={coOwnerResourceId}
-              resourceType="Workflow"
-              allUsers={coOwnerAllUsers}
-              coOwners={coOwnerData.coOwners}
-              createdBy={coOwnerData.createdBy}
-              loading={coOwnerLoading}
-              onAddCoOwner={onAddCoOwner}
-              onRemoveCoOwner={onRemoveCoOwner}
-            />
+          {coOwner.coOwnerOpen && (
+            <CoOwnerModal coOwner={coOwner} resourceType="Workflow" />
           )}
         </div>
       </div>

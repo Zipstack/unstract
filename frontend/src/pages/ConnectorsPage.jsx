@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { groupsService } from "../components/groups/groups-service.js";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
-import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
+import { CoOwnerModal } from "../components/widgets/co-owner-management/CoOwnerModal";
 import { EmptyState } from "../components/widgets/empty-state/EmptyState.jsx";
 import { ResourceTable } from "../components/widgets/resource-table/ResourceTable";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
@@ -44,8 +44,6 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
-  const fetchListRef = useRef(null);
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
 
@@ -80,44 +78,14 @@ function ConnectorsPage() {
     setPagination,
     searchTerm,
     sort,
+    fetchRef,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
+    handleListRefresh,
+  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
 
-  // Refresh the current page (preserves page + active search/sort) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-        sort.sortBy,
-        sort.order,
-      ),
-    [
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-      sort.sortBy,
-      sort.order,
-    ],
-  );
-
-  const {
-    coOwnerOpen,
-    setCoOwnerOpen,
-    coOwnerData,
-    coOwnerLoading,
-    coOwnerAllUsers,
-    coOwnerResourceId,
-    handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
-  } = useCoOwnerManagement({
+  const coOwner = useCoOwnerManagement({
     service: connectorCoOwnerService,
     setAlertDetails,
     onListRefresh: handleListRefresh,
@@ -166,7 +134,7 @@ function ConnectorsPage() {
     },
     [axiosPrivate, getUrl, setPagination, setAlertDetails, handleException],
   );
-  fetchListRef.current = getConnectors;
+  fetchRef.current = getConnectors;
 
   useEffect(() => {
     getConnectors(1, DEFAULT_PAGE_SIZE, "", "", "asc");
@@ -285,7 +253,7 @@ function ConnectorsPage() {
     if (!connector?.id) {
       return;
     }
-    handleCoOwnerAction(connector.id);
+    coOwner.handleCoOwner(connector.id);
   };
 
   const handleConnectorSaved = () => {
@@ -377,18 +345,7 @@ function ConnectorsPage() {
         loading={isShareLoading}
         isSharableToOrg={true}
       />
-      <CoOwnerManagement
-        open={coOwnerOpen}
-        setOpen={setCoOwnerOpen}
-        resourceId={coOwnerResourceId}
-        resourceType="Connector"
-        allUsers={coOwnerAllUsers}
-        coOwners={coOwnerData.coOwners}
-        createdBy={coOwnerData.createdBy}
-        loading={coOwnerLoading}
-        onAddCoOwner={onAddCoOwner}
-        onRemoveCoOwner={onRemoveCoOwner}
-      />
+      <CoOwnerModal coOwner={coOwner} resourceType="Connector" />
     </div>
   );
 }

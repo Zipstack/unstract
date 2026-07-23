@@ -18,7 +18,7 @@ import { groupsService } from "../../groups/groups-service.js";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
-import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
+import { CoOwnerModal } from "../../widgets/co-owner-management/CoOwnerModal";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { ResourceTable } from "../../widgets/resource-table/ResourceTable";
@@ -62,8 +62,6 @@ function ToolSettings({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration order).
-  const fetchListRef = useRef(null);
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
 
@@ -106,44 +104,14 @@ function ToolSettings({ type }) {
     searchTerm,
     setSearchTerm,
     sort,
+    fetchRef,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
+    handleListRefresh,
+  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
 
-  // Refresh the current page (preserves page + active search/sort) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-        sort.sortBy,
-        sort.order,
-      ),
-    [
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-      sort.sortBy,
-      sort.order,
-    ],
-  );
-
-  const {
-    coOwnerOpen,
-    setCoOwnerOpen,
-    coOwnerData,
-    coOwnerLoading,
-    coOwnerAllUsers,
-    coOwnerResourceId,
-    handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
-  } = useCoOwnerManagement({
+  const coOwner = useCoOwnerManagement({
     service: adapterCoOwnerService,
     setAlertDetails,
     onListRefresh: handleListRefresh,
@@ -207,7 +175,7 @@ function ToolSettings({ type }) {
       handleException,
     ],
   );
-  fetchListRef.current = getAdapters;
+  fetchRef.current = getAdapters;
 
   useEffect(() => {
     setSearchTerm("");
@@ -351,7 +319,7 @@ function ToolSettings({ type }) {
       });
       return;
     }
-    handleCoOwnerAction(adapter.id);
+    coOwner.handleCoOwner(adapter.id);
   };
 
   const handleOpenAddSourceModal = () => {
@@ -442,18 +410,7 @@ function ToolSettings({ type }) {
         onApply={onShare}
         isSharableToOrg={true}
       />
-      <CoOwnerManagement
-        open={coOwnerOpen}
-        setOpen={setCoOwnerOpen}
-        resourceId={coOwnerResourceId}
-        resourceType="Adapter"
-        allUsers={coOwnerAllUsers}
-        coOwners={coOwnerData.coOwners}
-        createdBy={coOwnerData.createdBy}
-        loading={coOwnerLoading}
-        onAddCoOwner={onAddCoOwner}
-        onRemoveCoOwner={onRemoveCoOwner}
-      />
+      <CoOwnerModal coOwner={coOwner} resourceType="Adapter" />
     </div>
   );
 }
