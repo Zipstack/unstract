@@ -45,9 +45,15 @@ def preload_reference_texts(lookup_config: dict[str, Any] | None) -> Any:
     if not (lookup_config and lookup_cls):
         return None
     preload = getattr(lookup_cls, "preload_reference_texts", None)
-    if preload is None:
+    if not callable(preload):
         return None
-    return preload(lookup_config)
+    try:
+        return preload(lookup_config)
+    except Exception:
+        # Honour the None-on-failure contract even if the plugin's preload
+        # raises — the caller falls back to per-call reference loading.
+        logger.exception("Failed to preload lookup reference texts")
+        return None
 
 
 def run_lookup_enrichment(
