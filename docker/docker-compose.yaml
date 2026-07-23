@@ -39,7 +39,6 @@ services:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
@@ -60,7 +59,6 @@ services:
       - rabbitmq
       - db
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-metrics
 
     labels:
@@ -83,7 +81,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-ide-callback
       - WORKER_TYPE=ide_callback
       - WORKER_NAME=ide-callback-worker
@@ -107,7 +104,6 @@ services:
     ports:
       - "5555:5555"
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-flower
     volumes:
       - unstract_data:/data
@@ -129,7 +125,6 @@ services:
       - db
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-beat
 
   # Frontend React app
@@ -143,7 +138,6 @@ services:
       - backend
       - reverse-proxy
     environment:
-      - ENVIRONMENT=development
       # Running platform version, surfaced on the profile page. Reuses the same
       # ${VERSION} that tags the image, so it always matches what's deployed
       # (and updates on RC->stable promotion, which only retags — doesn't rebuild).
@@ -219,7 +213,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-api-deployment-v2
       - WORKER_TYPE=api_deployment
       - CELERY_QUEUES_API_DEPLOYMENT=${CELERY_QUEUES_API_DEPLOYMENT:-celery_api_deployments}
@@ -252,7 +245,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-callback-v2
       - WORKER_TYPE=callback
       - WORKER_NAME=callback-worker-v2
@@ -294,7 +286,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-file-processing-v2
       - WORKER_TYPE=file_processing
       - WORKER_MODE=oss
@@ -332,7 +323,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-general-v2
       - WORKER_TYPE=general
       - WORKER_NAME=general-worker-v2
@@ -360,7 +350,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-notification-v2
       - WORKER_TYPE=notification
       - WORKER_NAME=notification-worker-v2
@@ -409,7 +398,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-log-consumer-v2
       - WORKER_TYPE=log_consumer
       - WORKER_NAME=log-consumer-worker-v2
@@ -458,7 +446,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-log-history-scheduler-v2
       # Scheduler interval in seconds
       - LOG_HISTORY_CONSUMER_INTERVAL=${LOG_HISTORY_CONSUMER_INTERVAL:-5}
@@ -483,7 +470,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-scheduler-v2
       - WORKER_TYPE=scheduler
       - WORKER_NAME=scheduler-worker-v2
@@ -529,7 +515,6 @@ services:
       - rabbitmq
       - platform-service
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-executor-v2
       - WORKER_TYPE=executor
       - WORKER_NAME=executor-worker-v2

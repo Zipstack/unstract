@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Any, NoReturn, cast
 
 import litellm
@@ -30,6 +31,30 @@ from unstract.sdk1.utils.retry_utils import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Lets tests force a deterministic completion without a provider or a secret.
+# Unset in production, where this is a no-op.
+_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+
+
+@lru_cache(maxsize=1)
+def _warn_mock_active() -> None:
+    # Once per process: the hatch is silent otherwise, and a stray env var in
+    # production would fake every completion and its billing.
+    logger.warning(
+        "%s is set — returning canned completions instead of calling the "
+        "provider, with synthetic token usage. Unset it outside tests.",
+        _MOCK_RESPONSE_ENV,
+    )
+
+
+def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
+    mock = os.getenv(_MOCK_RESPONSE_ENV)
+    if not mock or "mock_response" in completion_kwargs:
+        return
+    _warn_mock_active()
+    completion_kwargs["mock_response"] = mock
+
 
 # Drop unsupported params rather than raising errors.
 # Set once at module level instead of per-call to avoid repeated
@@ -328,6 +353,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("context_window", None)
 
@@ -451,6 +477,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("context_window", None)
 
@@ -519,6 +546,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("context_window", None)
 
@@ -591,6 +619,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("context_window", None)
 

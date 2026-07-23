@@ -1,12 +1,12 @@
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
-import { Typography } from "antd";
-import isEmpty from "lodash/isEmpty";
+import { Pagination, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
   useInitialFetchCount,
@@ -32,6 +32,8 @@ import "./Workflows.css";
 
 const { Text } = Typography;
 
+const DEFAULT_PAGE_SIZE = 10;
+
 function Workflows() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -51,7 +53,8 @@ function Workflows() {
   const [editingProject, setEditProject] = useState();
   const [loading, setLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
-  const projectListRef = useRef();
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
+  const fetchListRef = useRef(null);
   const [backendErrors, setBackendErrors] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState();
@@ -61,10 +64,27 @@ function Workflows() {
   const [allGroups, setAllGroups] = useState([]);
 
   const { setAlertDetails } = useAlertStore();
+
+  const {
+    pagination,
+    setPagination,
+    searchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search) after mutations
   const handleListRefresh = useCallback(
-    () => getProjectList(),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+      ),
+    [pagination.current, pagination.pageSize, searchTerm],
   );
   const {
     coOwnerOpen,
@@ -91,28 +111,47 @@ function Workflows() {
     }
   }, [location.pathname]);
 
-  function getProjectList() {
+  const getProjectList = (
+    page = 1,
+    pageSize = DEFAULT_PAGE_SIZE,
+    search = "",
+  ) => {
+    setLoading(true);
+    const params = { page, page_size: pageSize };
+    if (search) {
+      params.search = search;
+    }
     projectApiService
-      .getProjectList()
+      .getProjectList(params)
       .then((res) => {
-        projectListRef.current = res.data;
-        setProjectList(res.data);
+        const data = res?.data;
+        // Endpoint is opt-in paginated: envelope when we send ?page, else a
+        // bare array. Handle both so nothing breaks if the opt-in is dropped.
+        const results = data?.results ?? data ?? [];
+        const total = data?.count ?? results.length;
+        // Deleting the last row on a page leaves it empty; step back a page.
+        if (results.length === 0 && page > 1 && total > 0) {
+          getProjectList(page - 1, pageSize, search);
+          return;
+        }
+        setProjectList(results);
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total,
+        }));
       })
       .catch(() => {
         console.error("Unable to get project list");
+        // Avoid an indefinite spinner when the first fetch fails.
+        setProjectList((prev) => prev ?? []);
+      })
+      .finally(() => {
+        setLoading(false);
       });
-  }
-
-  function onSearch(searchText, setSearchList) {
-    if (!searchText.trim()) {
-      setSearchList(projectListRef.current);
-      return;
-    }
-    const filteredList = projectListRef.current.filter((item) =>
-      item.workflow_name.toLowerCase().includes(searchText.toLowerCase()),
-    );
-    setSearchList(filteredList);
-  }
+  };
+  fetchListRef.current = getProjectList;
 
   function editProject(name, description) {
     setLoading(true);
@@ -121,7 +160,7 @@ function Workflows() {
       .then((res) => {
         closeNewProject();
         if (editingProject?.name) {
-          getProjectList();
+          handleListRefresh();
         } else {
           openProject(res.data);
         }
@@ -129,7 +168,6 @@ function Workflows() {
           type: "success",
           content: "Workflow updated successfully",
         });
-        getProjectList();
       })
       .catch((err) => {
         setAlertDetails(
@@ -220,7 +258,7 @@ function Workflows() {
         projectApiService
           .deleteProject(project.id)
           .then(() => {
-            getProjectList();
+            handleListRefresh();
             setAlertDetails({
               type: "success",
               content: "Workflow deleted successfully",
@@ -307,7 +345,7 @@ function Workflows() {
         type: "success",
         content: "Workflow sharing updated successfully",
       });
-      getProjectList();
+      handleListRefresh();
       // Close only on success; keep the modal open on failure so the user
       // can see the rejected entries and retry.
       setShareOpen(false);
@@ -363,15 +401,13 @@ function Workflows() {
       <ToolNavBar
         title="Workflows"
         enableSearch
-        searchList={projectList}
-        setSearchList={setProjectList}
         customButtons={newWorkflowButton}
-        onSearch={onSearch}
+        onSearch={(value) => handleSearch(value)}
       />
       <div className="workflows-pg-layout">
         <div className="workflows-pg-body">
-          {!projectListRef.current && <SpinnerLoader />}
-          {projectListRef.current && isEmpty(projectListRef?.current) && (
+          {projectList === undefined && <SpinnerLoader />}
+          {projectList?.length === 0 && !searchTerm && (
             <div className="list-of-workflows-body">
               <EmptyState
                 text="No Workflow available"
@@ -383,24 +419,37 @@ function Workflows() {
               />
             </div>
           )}
-          {isEmpty(projectList) && !isEmpty(projectListRef?.current) && (
+          {projectList?.length === 0 && searchTerm && (
             <EmptyState text="No results found for this search" />
           )}
-          {!isEmpty(projectList) && (
-            <ViewTools
-              isLoading={loading}
-              isEmpty={!projectList?.length}
-              listOfTools={projectList}
-              setOpenAddTool={toggleModal}
-              handleEdit={updateProject}
-              handleDelete={deleteProject}
-              handleShare={handleShare}
-              handleCoOwner={handleCoOwner}
-              titleProp="workflow_name"
-              descriptionProp="description"
-              idProp="id"
-              type="Workflow"
-            />
+          {projectList?.length > 0 && (
+            <>
+              <ViewTools
+                isLoading={loading}
+                isEmpty={false}
+                listOfTools={projectList}
+                setOpenAddTool={toggleModal}
+                handleEdit={updateProject}
+                handleDelete={deleteProject}
+                handleShare={handleShare}
+                handleCoOwner={handleCoOwner}
+                titleProp="workflow_name"
+                descriptionProp="description"
+                idProp="id"
+                type="Workflow"
+              />
+              {pagination.total > pagination.pageSize && (
+                <div className="workflows-pagination">
+                  <Pagination
+                    current={pagination.current}
+                    pageSize={pagination.pageSize}
+                    total={pagination.total}
+                    onChange={handlePaginationChange}
+                    showSizeChanger={false}
+                  />
+                </div>
+              )}
+            </>
           )}
           {editingProject && (
             <LazyLoader

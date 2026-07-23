@@ -187,7 +187,6 @@ groups:
     requires_platform: true
     critical: true
     depends_on: [e2e-smoke]
-    optional: true
 
   e2e-api-deployment:
     tier: e2e
@@ -195,7 +194,6 @@ groups:
     requires_platform: true
     critical: true
     depends_on: [e2e-smoke]
-    optional: true
 
   e2e-prompt-studio:
     tier: e2e
@@ -203,7 +201,13 @@ groups:
     requires_platform: true
     critical: true
     depends_on: [e2e-smoke]
-    optional: true
+
+  e2e-etl:
+    tier: e2e
+    paths: [tests/e2e/etl]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
 
   e2e-hurl:
     tier: e2e
