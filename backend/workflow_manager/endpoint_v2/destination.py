@@ -1017,6 +1017,7 @@ class DestinationConnector(BaseConnector):
             file_content=file_content_base64,
             whisper_hash=whisper_hash,
             file_execution_id=file_execution_id,
+            execution_id=self.execution_id,
             extracted_text=extracted_text,
             ttl_seconds=ttl_seconds,
             hitl_reason=hitl_reason,

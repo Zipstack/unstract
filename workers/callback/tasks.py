@@ -8,6 +8,7 @@ import time
 from typing import Any
 
 from queue_backend import worker_task
+from queue_backend.pg_barrier import PG_TRANSPORT_CALLBACK_KWARG
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -66,6 +67,10 @@ class CallbackContext:
         self.pipeline_data: dict[str, Any] | None = None
         self.api_client: InternalAPIClient | None = None
         self.file_executions: list[dict[str, Any]] = []
+        # Execution status as of extraction (the source-of-truth fetch already made
+        # here) — lets the PG duplicate guard skip a redelivered callback without a
+        # second round-trip.
+        self.execution_status: str | None = None
 
 
 def _initialize_performance_managers():
@@ -360,6 +365,7 @@ def _update_execution_status_unified(
     aggregated_results: dict[str, Any],
     organization_id: str,
     error_message: str | None = None,
+    is_pg: bool = False,
 ) -> dict[str, Any]:
     """Unified workflow execution status update for all callback types.
 
@@ -414,6 +420,18 @@ def _update_execution_status_unified(
         logger.error(
             f"Failed to update execution status for {execution_id}: {e}", exc_info=True
         )
+        # On the PG path this finalization write is the single terminalizing step.
+        # Swallowing a failure here strands the execution in EXECUTING forever: the
+        # consumer acks/deletes the message, the barrier row is already gone, and
+        # the reaper has no handle — every safety net is silently defeated. Re-raise
+        # so PG's at-least-once vt-redelivery retries the write and, if it keeps
+        # failing, poison-drops the batch to a terminal ERROR. A post-success
+        # redelivery is idempotency-guarded by _callback_already_ran (skips once
+        # COMPLETED; ERROR/STOPPED are intentionally re-run, so a failed-write
+        # ERROR execution simply retries the write). The Celery path keeps the
+        # legacy swallow (its chord retry covers it) so this is a PG-only change.
+        if is_pg:
+            raise
         # Return error result instead of re-raising to maintain callback flow
         return {
             "status": "failed",
@@ -788,6 +806,8 @@ def _extract_callback_parameters(
         context.workflow_id = execution_info.get(
             "workflow_id"
         ) or workflow_definition.get("workflow_id")
+        # Status from the same fetch, for the PG duplicate guard (no extra call).
+        context.execution_status = execution_info.get("status")
 
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
@@ -1360,6 +1380,37 @@ def _track_subscription_usage_if_available(
         }
 
 
+def _callback_already_ran(execution_status: str | None) -> bool:
+    """PG at-least-once duplicate guard: ``True`` if a previous delivery of this
+    aggregating callback already ran to completion.
+
+    Gated on COMPLETED **only** — that status is set exclusively by a successful
+    callback, so it is the unambiguous "a prior callback finalized this" signal.
+    ERROR / STOPPED are deliberately excluded: they can be set by OTHER paths
+    (external stop, upstream error, the reaper), so treating them as "already ran"
+    would make the *first, legitimate* callback for such an execution skip its side
+    effects (incl. resource cleanup). A redelivered callback (the send commit-retry
+    double-enqueue, an idle-reaped ack, a vt overrun) of a COMPLETED execution must
+    skip — re-running re-fires customer webhooks and double-counts billing.
+
+    A pure predicate over the status the caller already has (no fetch, no ``except``
+    that could silently degrade the guard on a programming error). PG only — the
+    caller gates on the transport marker, so Celery never reaches here.
+    """
+    return execution_status == ExecutionStatus.COMPLETED.value
+
+
+def _skipped_duplicate_callback(execution_id: str) -> dict[str, Any]:
+    """Idempotent result for a PG callback skipped as a duplicate (shared by both
+    callback entry points so the contract can't drift).
+    """
+    return {
+        "status": "skipped_duplicate_callback",
+        "execution_id": execution_id,
+        "duplicate_callback_skipped": True,
+    }
+
+
 def _process_batch_callback_core(
     task_instance, results, *args, **kwargs
 ) -> dict[str, Any]:
@@ -1378,6 +1429,10 @@ def _process_batch_callback_core(
     """
     # Initialize performance optimizations
     _initialize_performance_managers()
+
+    # PG at-least-once duplicate guard (see _callback_already_ran).
+    # Popped BEFORE parameter extraction so the marker never flows into the context.
+    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
 
     # Extract and validate all parameters using single source of truth
     context = _extract_callback_parameters(task_instance, results, kwargs)
@@ -1401,6 +1456,18 @@ def _process_batch_callback_core(
                 f"Starting batch callback processing for execution {context.execution_id}"
             )
 
+            # Skip a redelivered callback whose execution a prior delivery already
+            # completed — don't re-fire webhooks / re-count billing. Reuses the
+            # status from _extract_callback_parameters' fetch (no extra call).
+            # (Returns through the outer finally, which closes the api_client.)
+            if is_pg and _callback_already_ran(context.execution_status):
+                logger.warning(
+                    f"PG callback: execution {context.execution_id} already COMPLETED "
+                    f"— a previous callback finalized it; skipping duplicate side "
+                    f"effects (status update, subscription billing, webhooks)."
+                )
+                return _skipped_duplicate_callback(context.execution_id)
+
             try:
                 # Use unified status determination with timeout detection (shared with API callback)
                 aggregated_results, execution_status, expected_files = (
@@ -1419,6 +1486,7 @@ def _process_batch_callback_core(
                     aggregated_results=aggregated_results,
                     organization_id=context.organization_id,
                     error_message=None,
+                    is_pg=is_pg,
                 )
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
@@ -1575,6 +1643,8 @@ def process_batch_callback_api(
     execution_id = kwargs.get("execution_id")
     pipeline_id = kwargs.get("pipeline_id")
     organization_id = kwargs.get("organization_id")
+    # PG at-least-once duplicate guard marker (see _callback_already_ran).
+    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
 
     if not execution_id:
         raise ValueError("execution_id is required in kwargs")
@@ -1602,6 +1672,18 @@ def process_batch_callback_api(
         execution_context = execution_response.data
         workflow_execution = execution_context.get("execution", {})
         workflow = execution_context.get("workflow", {})
+
+        # PG at-least-once duplicate guard: a redelivered callback whose execution a
+        # prior delivery already completed must skip its side effects. Reuses the
+        # status just fetched — no extra round-trip. (Returns through the finally
+        # below, which closes the api_client.)
+        if is_pg and _callback_already_ran(workflow_execution.get("status")):
+            logger.warning(
+                f"PG API callback: execution {execution_id} already COMPLETED — a "
+                f"previous callback finalized it; skipping duplicate side effects "
+                f"(status update, subscription billing, webhooks)."
+            )
+            return _skipped_duplicate_callback(execution_id)
 
         # Extract schema_name and workflow_id from context
         schema_name = organization_id  # For API callbacks, schema_name = organization_id
@@ -1664,6 +1746,7 @@ def process_batch_callback_api(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
+                    is_pg=is_pg,
                 )
 
                 # Create minimal context for unified pipeline handling

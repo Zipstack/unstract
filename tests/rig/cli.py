@@ -52,6 +52,9 @@ from tests.rig.selection import resolve
 # Pytest exit codes that the rig treats as non-failure for aggregation:
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
+#       NOTE: exit-5 is non-failing here for *optional* groups only. A required
+#       group that collects nothing (exit 5) is caught by the explicit guard in
+#       cmd_run ("Empty collection (exit 5) is a failure…") and fails loudly.
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 
 # Injected into every group's pytest run (PYTHONPATH + -p) so
@@ -524,8 +527,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             ):
                 overall_exit = exit_code
             # A non-optional pytest group that collected zero tests (exit 5) is
-            # almost always a broken marker/path, not intent — fail rather than
-            # fold in green. Skip hurl (its exit 5 means "no files", a
+            # almost always a broken marker/path (e.g. the `unit-workers`
+            # regression where `-m "unit"` matched zero tests), not intent — fail
+            # rather than fold in green. Skip hurl (its exit 5 means "no files", a
             # placeholder) and dev runs with a marker/paths override that may
             # legitimately match nothing.
             if (

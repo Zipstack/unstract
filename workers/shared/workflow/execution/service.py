@@ -25,6 +25,7 @@ from unstract.core.data_models import (
     FileOperationConstants,
     WorkflowDefinitionResponseData,
     WorkflowEndpointConfigData,
+    is_pg_transport,
 )
 
 # Import file execution tracking for proper recovery mechanism
@@ -1361,6 +1362,61 @@ class WorkerWorkflowExecutionService:
         logger.error("No connector_id found in any configuration source")
         return None, {}
 
+    def _pg_destination_already_written(
+        self,
+        *,
+        file_hash: FileHashData,
+        transport: str | None,
+        use_file_history: bool,
+        workflow_id: str,
+        is_api: bool,
+    ) -> bool:
+        """True if this file's destination write already completed in a prior run.
+
+        On the PG (at-least-once) transport a batch can be re-run after a crash
+        or reaper-recovery, and such a re-run bypasses discovery's FileHistory
+        filter — so re-check by hash (plus path for non-API) at the write
+        boundary. Returns True only if a COMPLETED FileHistory record already
+        exists for this file.
+
+        Scoped two ways:
+        - to the PG transport (the re-run duplicate this prevents is PG-specific;
+          always False on Celery, so that path is unchanged), and
+        - to ``use_file_history``: a workflow run with file history off is
+          contractually "rewrite every run" (mirrors the discovery FileHistory
+          filter), so its write is never skipped.
+
+        Fail-open on any lookup error (never block a legitimate write), logging
+        at error level so a persistent lookup regression is visible rather than a
+        silent, permanent no-op.
+        """
+        if not is_pg_transport(transport):
+            return False
+        if not use_file_history:
+            return False
+        cache_key = file_hash.file_hash
+        if not cache_key:
+            return False
+        # API executions use unique per-execution paths, so match on hash only.
+        lookup_file_path = None if is_api else file_hash.file_path
+        try:
+            history_result = self.api_client.get_file_history_by_cache_key(
+                cache_key=cache_key,
+                workflow_id=workflow_id,
+                file_path=lookup_file_path,
+            )
+        except Exception:
+            logger.error(
+                f"PG duplicate-write guard: FileHistory lookup failed for "
+                f"'{file_hash.file_name}'; proceeding with the write (fail-open).",
+                exc_info=True,
+            )
+            return False
+        if not history_result or not history_result.get("found"):
+            return False
+        file_history = history_result.get("file_history") or {}
+        return file_history.get("status") == ExecutionStatus.COMPLETED.value
+
     def _handle_destination_processing(
         self,
         file_processing_context: FileProcessingContext,
@@ -1469,6 +1525,31 @@ class WorkerWorkflowExecutionService:
                     destination_display = destination._get_destination_display_name()
                     logger.info(
                         f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to {destination_display}"
+                    )
+
+                # PG-only re-run duplicate-write guard: a re-run after a crash /
+                # reaper-recovery bypasses discovery's FileHistory filter, so
+                # re-check by hash at the write boundary. If this file's
+                # destination write already completed in a prior run, skip it,
+                # avoiding a duplicate destination write. A no-op on the Celery
+                # transport, so that path is unchanged; fail-open so a lookup
+                # error never blocks a write.
+                if self._pg_destination_already_written(
+                    file_hash=file_hash,
+                    transport=file_processing_context.transport,
+                    use_file_history=use_file_history,
+                    workflow_id=workflow_id,
+                    is_api=destination.is_api,
+                ):
+                    logger.info(
+                        f"[exec:{execution_id}] Skipping destination write for "
+                        f"'{file_hash.file_name}' — already completed in a prior "
+                        f"run (FileHistory hit); avoiding a duplicate write."
+                    )
+                    # Distinct from the handle_output()->None "internal race" skip
+                    # below: this is a deliberate re-run dedup, not a race.
+                    return FinalOutputResult(
+                        output=None, metadata=None, error=None, processed=False
                     )
 
                 # Process final output through destination (exact backend signature + workers-specific params)

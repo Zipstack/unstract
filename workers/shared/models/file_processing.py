@@ -32,6 +32,7 @@ class FileProcessingContext:
         workflow_logger: Any = None,  # Type as Any to avoid import dependency
         current_file_idx: int = 1,
         total_files: int = 1,
+        transport: str | None = None,
     ):
         self.file_data = file_data
         self.file_hash = file_hash
@@ -42,6 +43,10 @@ class FileProcessingContext:
         self.workflow_logger = workflow_logger
         self.current_file_idx = current_file_idx
         self.total_files = total_files
+        # Execution transport (celery | pg_queue). Authoritative here because
+        # WorkerFileData carries no transport; threaded from the batch context so
+        # the destination layer can apply PG-only guards.
+        self.transport = transport
 
         # Extract common identifiers
         self.execution_id = file_data.execution_id

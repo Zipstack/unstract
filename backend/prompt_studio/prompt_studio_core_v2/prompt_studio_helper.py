@@ -80,7 +80,6 @@ from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
 from unstract.sdk1.utils.indexing import IndexingUtils
@@ -325,9 +324,18 @@ class PromptStudioHelper:
         )
 
     @staticmethod
-    def _get_dispatcher() -> ExecutionDispatcher:
-        """Get an ExecutionDispatcher for the executor worker."""
-        return ExecutionDispatcher(celery_app=celery_app)
+    def _get_dispatcher():
+        """Executor dispatcher for the executor worker.
+
+        Gate-routed: when ``pg_queue_enabled`` is on the blocking
+        ``dispatch()`` rides the PG request-reply transport; otherwise — and for
+        all async/callback dispatches — it is the unchanged Celery
+        ``ExecutionDispatcher``. The decision is read per dispatch, so flipping
+        the flag is an instant, no-redeploy rollout/rollback.
+        """
+        from pg_queue.executor_rpc import get_executor_dispatcher
+
+        return get_executor_dispatcher(celery_app=celery_app)
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
