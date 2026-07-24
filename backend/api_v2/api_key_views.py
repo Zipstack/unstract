@@ -3,7 +3,7 @@ from typing import Any
 from permissions.permission import IsOwnerOrSharedUser, IsParentDeploymentOwner
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.pipeline_processor import PipelineProcessor
-from rest_framework import serializers, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -32,6 +32,33 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         if self.action in ["api_keys"]:
             return APIKeyListSerializer
         return APIKeySerializer
+
+    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Create an API key, deriving the target from the URL.
+
+        `POST keys/api/<api_id>/` and `POST keys/pipeline/<pipeline_id>/`
+        already name the resource in the path, so callers should not have to
+        repeat it in the body. Fall back to whatever the body carries, keeping
+        the body-only routes (`keys/api/`, `keys/pipeline/`) working.
+        """
+        api_id = kwargs.get("api_id")
+        pipeline_id = kwargs.get("pipeline_id")
+
+        if api_id or pipeline_id:
+            request_data = request.data.copy()
+            if api_id:
+                request_data.setdefault("api", api_id)
+            if pipeline_id:
+                request_data.setdefault("pipeline", pipeline_id)
+            serializer = self.get_serializer(data=request_data)
+            serializer.is_valid(raise_exception=True)
+            self.perform_create(serializer)
+            headers = self.get_success_headers(serializer.data)
+            return Response(
+                serializer.data, status=status.HTTP_201_CREATED, headers=headers
+            )
+
+        return super().create(request, *args, **kwargs)
 
     @action(detail=True, methods=["get"])
     def api_keys(

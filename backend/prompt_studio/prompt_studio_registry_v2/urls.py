@@ -9,6 +9,11 @@ urlpatterns = [
         PromptStudioRegistryView.as_view({"get": "list"}),
         name="prompt_studio_registry_list",
     ),
+    path(
+        "registry/<uuid:pk>/",
+        PromptStudioRegistryView.as_view({"delete": "destroy"}),
+        name="prompt_studio_registry_detail",
+    ),
 ]
 
 # Optional: Apply format suffix patterns
