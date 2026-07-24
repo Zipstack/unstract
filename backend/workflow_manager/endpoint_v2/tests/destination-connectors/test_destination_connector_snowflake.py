@@ -1,13 +1,18 @@
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.snowflake import SnowflakeDB
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.snowflake import SnowflakeDB
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorSnowflake(TestCase):
     """Integration test for insert_into_db method with real Snowflake connector."""
 
@@ -162,9 +167,7 @@ class TestDestinationConnectorSnowflake(TestCase):
         endpoint = Mock()
         endpoint.connector_instance = mock_connector_instance
         endpoint.configuration = {
-            DestinationKey.TABLE: self.test_table_name.split(".")[
-                -1
-            ],  # Just table name
+            DestinationKey.TABLE: self.test_table_name.split(".")[-1],  # Just table name
             DestinationKey.INCLUDE_AGENT: True,
             DestinationKey.INCLUDE_TIMESTAMP: True,
             DestinationKey.AGENT_NAME: "Unstract/DBWriter",

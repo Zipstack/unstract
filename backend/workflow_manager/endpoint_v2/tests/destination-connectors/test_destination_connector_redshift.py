@@ -1,13 +1,18 @@
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.redshift import Redshift
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.redshift import Redshift
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorRedshift(TestCase):
     """Integration test for insert_into_db method with real Redshift connector."""
 
@@ -72,9 +77,7 @@ class TestDestinationConnectorRedshift(TestCase):
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that the table has expected columns with correct data types."""
-        table_info = self.redshift_connector.get_information_schema(
-            table_name=table_name
-        )
+        table_info = self.redshift_connector.get_information_schema(table_name=table_name)
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
