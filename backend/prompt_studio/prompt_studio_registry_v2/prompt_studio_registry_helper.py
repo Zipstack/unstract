@@ -440,6 +440,12 @@ class PromptStudioRegistryHelper:
             tool_metadata[JsonSchemaKey.FUNCTION_NAME] = prompts.get(
                 JsonSchemaKey.PROMPT_REGISTRY_ID
             )
+            # Back-reference to the Prompt Studio project that produced this
+            # entry. Without it callers can only correlate on `name`, which is
+            # ambiguous when two projects share one.
+            tool_metadata[JsonSchemaKey.CUSTOM_TOOL] = prompts.get(
+                JsonSchemaKey.CUSTOM_TOOL
+            )
             tool_list.append(tool_metadata)
             tool_metadata = {}
         return tool_list
