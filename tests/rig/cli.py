@@ -33,12 +33,15 @@ from tests.rig.groups import (
     load_groups,
 )
 from tests.rig.reporting import (
+    STATUS_PASS,
     GroupResult,
     parse_junit,
     passed_critical_path_ids,
     write_summary,
 )
 from tests.rig.runtime import (
+    DEFAULT_LLM_MOCK_RESPONSE,
+    LLM_MOCK_RESPONSE_ENV,
     PlatformEndpoints,
     PlatformRuntime,
     TestcontainersRuntime,
@@ -49,11 +52,17 @@ from tests.rig.selection import resolve
 # Pytest exit codes that the rig treats as non-failure for aggregation:
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
+#       NOTE: exit-5 is non-failing here for *optional* groups only. A required
+#       group that collects nothing (exit 5) is caught by the explicit guard in
+#       cmd_run ("Empty collection (exit 5) is a failure…") and fails loudly.
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 
 # Injected into every group's pytest run (PYTHONPATH + -p) so
 # @pytest.mark.critical_path marker args land in junit properties.
 _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
+
+# saxutils.escape leaves quotes alone, which is wrong inside an attribute.
+_XML_ATTR_ESCAPES = {'"': "&quot;"}
 
 
 @lru_cache(maxsize=1)
@@ -92,6 +101,21 @@ def main(argv: list[str] | None = None) -> int:
     return args.func(args)
 
 
+def _default_workers() -> str:
+    """Resolve the xdist worker count ourselves.
+
+    xdist's own `auto` prefers *physical* cores when psutil happens to be
+    importable, which collapses to a single worker on hyperthreaded CI runners
+    — and only for the groups that ship psutil. Beyond ~8 the suites contend on
+    the test database more than they parallelise, so cap it.
+    """
+    try:
+        cpus = len(os.sched_getaffinity(0))  # honours CPU pinning; Linux only
+    except AttributeError:
+        cpus = os.cpu_count() or 1
+    return str(min(cpus, 8))
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="tests.rig", description="Unstract unified test rig")
     sub = p.add_subparsers(dest="command", required=True)
@@ -111,8 +135,8 @@ def _build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--no-parallel", dest="parallel", action="store_false")
     pr.add_argument(
         "--workers",
-        default="auto",
-        help="pytest-xdist worker count (default: auto).",
+        default=_default_workers(),
+        help="pytest-xdist worker count (default: usable CPUs, capped).",
     )
     pr.add_argument("--timeout", type=int, help="Per-group timeout override in seconds.")
     pr.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")
@@ -408,6 +432,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     needs_platform = any(manifest.get(n).requires_platform for n in runnable)
+    # Every runtime (not just compose) needs the mock value present for the
+    # execute-path e2e, and an exported empty string counts as unset — else the
+    # workers skip injection and the tests skip green with zero coverage.
+    if needs_platform and not os.environ.get(LLM_MOCK_RESPONSE_ENV):
+        os.environ[LLM_MOCK_RESPONSE_ENV] = DEFAULT_LLM_MOCK_RESPONSE
     # A group can declare `requires_services` (stateful infra like Postgres/
     # Redis) without needing the whole platform — provision just that infra via
     # testcontainers instead of standing up every compose service. Platform wins
@@ -436,18 +465,36 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             endpoints = runtime.up()
 
-        # TODO(runtime-gate-skip): groups run unconditionally in topo order;
-        # there is no skip-if-a-dependency-failed logic yet. The dep edge to
-        # the platform gate (e2e-smoke) is enforced structurally at load time
-        # (_validate_platform_groups_depend_on_gate), but at runtime a red gate
-        # does not stop its dependents from running against a half-up stack.
-        # Moot today since every platform dependent is `optional: true`
-        # (placeholder). When promoting them to active, track failed groups
-        # here and skip any group whose (transitive) deps include a failure,
-        # writing a synthetic "skipped (dependency failed)" result. Decide then:
-        # does an optional/non-failing-exit gate cascade, and how far?
+        # Groups run in topo order, so a dependency's result is always known by
+        # the time its dependents come up. A red dep means the precondition it
+        # gates (e.g. e2e-smoke: is the platform actually up?) does not hold, so
+        # running its dependents only yields noise against a half-up stack.
+        #
+        # `optional` cascades like any other dep: it governs whether a failure
+        # gates CI, not whether the stack can be trusted. The skip itself never
+        # sets overall_exit — the failing dep already did if it was non-optional,
+        # and a blocked group attests no coverage, so --fail-on-critical-gap
+        # still catches a critical path that silently stopped being covered.
+        # Groups something else depends on: an empty run (exit 5) of one of
+        # these leaves its precondition unverified, so it must block dependents
+        # rather than reading as a clean pass.
+        depended_on: set[str] = set()
+        for n in runnable:
+            depended_on |= manifest.transitive_deps(n)
+        failed_groups: set[str] = set()
         for name in runnable:
             group = manifest.get(name)
+            blocked_by = tuple(sorted(manifest.transitive_deps(name) & failed_groups))
+            if blocked_by:
+                print(
+                    f"\n[rig] SKIP {name} "
+                    f"(dependency failed or was blocked: {', '.join(blocked_by)})"
+                )
+                group_results.append(_blocked_result(group, blocked_by))
+                failed_groups.add(name)
+                if not args.dry_run:
+                    _persist_blocked_group(reports_dir, group, blocked_by)
+                continue
             print(
                 f"\n[rig] running group: {name} "
                 f"(tier={group.tier}, runner={group.runner})"
@@ -467,6 +514,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             if result is not None:
                 group_results.append(result)
+            # Tracked regardless of `optional` — see the cascade note above.
+            # An empty run (exit 5) blocks dependents only when something depends
+            # on this group: a gate that collected nothing verified nothing, but
+            # a leaf placeholder collecting nothing gates no one.
+            if (
+                exit_code not in _NON_FAILING_PYTEST_EXIT_CODES
+                or (result is not None and (result.errors or result.failed))
+                or (exit_code == 5 and name in depended_on)
+            ):
+                failed_groups.add(name)
             # `optional: true` groups run and surface their result in the
             # summary, but never gate the overall exit. This honors the
             # developer intent for groups that need infra we don't provision in
@@ -485,8 +542,9 @@ def cmd_run(args: argparse.Namespace) -> int:
             ):
                 overall_exit = exit_code
             # A non-optional pytest group that collected zero tests (exit 5) is
-            # almost always a broken marker/path, not intent — fail rather than
-            # fold in green. Skip hurl (its exit 5 means "no files", a
+            # almost always a broken marker/path (e.g. the `unit-workers`
+            # regression where `-m "unit"` matched zero tests), not intent — fail
+            # rather than fold in green. Skip hurl (its exit 5 means "no files", a
             # placeholder) and dev runs with a marker/paths override that may
             # legitimately match nothing.
             if (
@@ -625,6 +683,21 @@ def cmd_run(args: argparse.Namespace) -> int:
 # ── execution helpers ─────────────────────────────────────────────────────────
 
 
+def _blocked_result(group: GroupDefinition, blocked_by: tuple[str, ...]) -> GroupResult:
+    """A group that never ran because a dependency failed or was itself blocked."""
+    return GroupResult(
+        name=group.name,
+        tier=group.tier,
+        exit_code=0,
+        passed=0,
+        failed=0,
+        errors=0,
+        skipped=0,
+        duration_seconds=0.0,
+        blocked_by=blocked_by,
+    )
+
+
 def _db_env_from_postgres_url(url: str) -> dict[str, str]:
     """Translate a provisioned Postgres URL into the discrete ``DB_*`` vars
     Django reads (``backend/settings/base.py``).
@@ -679,7 +752,7 @@ def _coverage_attesting_groups(results: list[GroupResult]) -> set[str]:
     # "empty" (exit 5) stays non-failing for the build, but a covering group
     # that collected zero tests must not attest critical-path coverage — a
     # broken marker expression would otherwise report ✅ with zero tests run.
-    return {r.name for r in results if r.status == "pass"}
+    return {r.name for r in results if r.status == STATUS_PASS}
 
 
 def _marker_proven_paths(
@@ -726,10 +799,20 @@ def _execute_group(
     md_report = group_reports / "report.md"
 
     env = _subprocess_env()
+    # A group may set its own PYTHONPATH (workdir-relative imports); keep the rig
+    # plugin dir on it so `-p rig_critical_path` stays importable instead of being
+    # clobbered by a plain env.update.
+    group_env = dict(group.env)
     env["PYTHONPATH"] = os.pathsep.join(
-        p for p in (str(_PYTEST_PLUGIN_DIR), env.get("PYTHONPATH")) if p
+        p
+        for p in (
+            str(_PYTEST_PLUGIN_DIR),
+            group_env.pop("PYTHONPATH", None),
+            env.get("PYTHONPATH"),
+        )
+        if p
     )
-    env.update(group.env)
+    env.update(group_env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
@@ -804,6 +887,7 @@ RIG_PYTEST_PLUGINS = (
     "pytest-cov>=4.1.0",
     "pytest-mock>=3.12.0",
     "requests>=2.31.0",
+    "minio>=7.2.0",
 )
 
 
@@ -936,7 +1020,7 @@ def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
     is_failure = exit_code != 0 and exit_code != 5
     failures = 1 if is_failure else 0
     failure_tag = f'<failure message="hurl exit {exit_code}"/>' if is_failure else ""
-    name = saxutils.escape(group_name, {'"': "&quot;"})
+    name = saxutils.escape(group_name, _XML_ATTR_ESCAPES)
     path.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<testsuite name="{name}" tests="1" failures="{failures}" '
@@ -945,6 +1029,48 @@ def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
         f"</testcase>\n"
         f"</testsuite>\n"
     )
+
+
+def _write_blocked_junit(
+    path: Path, group_name: str, blocked_by: tuple[str, ...]
+) -> None:
+    """Synthesise a junit for a group that never ran because a dependency did
+    not pass.
+
+    Carries the blocking group names as a property (zero test counters) so CI's
+    `rig report`, which rebuilds results purely from junit, renders the ⏭️
+    blocked row instead of dropping the group.
+    """
+    name = saxutils.escape(group_name, _XML_ATTR_ESCAPES)
+    value = saxutils.escape(",".join(blocked_by), _XML_ATTR_ESCAPES)
+    path.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        f'<testsuite name="{name}" tests="0" failures="0" errors="0" '
+        'skipped="0" time="0">\n'
+        "  <properties>\n"
+        f'    <property name="rig-blocked-by" value="{value}"/>\n'
+        "  </properties>\n"
+        "</testsuite>\n"
+    )
+
+
+def _persist_blocked_group(
+    reports_dir: Path, group: GroupDefinition, blocked_by: tuple[str, ...]
+) -> None:
+    """Write a blocked group's junit + exit.txt so it survives the artifact
+    round-trip into CI's `rig report`. Best-effort: a read-only reports dir
+    shouldn't abort the run.
+    """
+    group_reports = reports_dir / group.name
+    try:
+        group_reports.mkdir(parents=True, exist_ok=True)
+        _write_blocked_junit(group_reports / "junit.xml", group.name, blocked_by)
+        (group_reports / "exit.txt").write_text("0")
+    except OSError as err:
+        print(
+            f"[rig] could not persist blocked group {group.name}: {err}",
+            file=sys.stderr,
+        )
 
 
 def _spawn(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> int:

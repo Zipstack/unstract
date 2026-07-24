@@ -24,11 +24,12 @@ tests/
 │   ├── coverage.py          # Per-group coverage files + combine
 │   └── critical_paths.py    # Gap + regression detection
 ├── e2e/
-│   ├── conftest.py          # Session-scoped `platform` fixture
+│   ├── conftest.py          # `platform` fixture + `provisioned_workflow` chain
 │   ├── smoke/               # Login → /health smoke
-│   ├── workflows/           # (future) workflow execution e2e
-│   ├── api_deployment/      # (future) API deployment e2e
-│   ├── prompt_studio/       # (future) Prompt Studio e2e
+│   ├── workflows/           # Workflow execution e2e (mocked LLM)
+│   ├── api_deployment/      # API deployment e2e: run, callback delivery, fan-out (all async)
+│   ├── etl/                 # ETL pipeline e2e (MinIO source + destination)
+│   ├── prompt_studio/       # Prompt Studio fetch-response e2e
 │   └── hurl/                # (future) hurl-based HTTP suites
 ├── integration/             # Cross-service tests needing infra but not full platform
 ├── fixtures/                # Sample PDFs, JSON, adapter configs
@@ -152,6 +153,34 @@ Three modes behind one protocol, chosen by `--runtime` or `UNSTRACT_E2E_RUNTIME`
 The rig brings the platform up **once** per `run` invocation (if any selected group has `requires_platform: true`) and exports its URLs via env vars (`UNSTRACT_BACKEND_URL`, `UNSTRACT_PROMPT_SERVICE_URL`, etc.). The rig uses `env.setdefault(...)` so a pre-set value (e.g. from `local` runtime or a developer override) wins over the runtime's default — useful when iterating against a custom stack, but means stale shell env can mask wiring bugs. The smoke test asserts the fixture's URL matches the env var to catch this.
 
 The `platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars; e2e tests run elsewhere (without the rig) just skip with a clear message.
+
+### Hermetic LLM (`UNSTRACT_LLM_MOCK_RESPONSE`)
+
+Execute-path e2e tests must not call a real provider, so the rig sets `UNSTRACT_LLM_MOCK_RESPONSE` (default `MOCK_LLM_OK`) before boot, for any runtime and treating an exported empty string as unset. The test overlay forwards it into the workers, and `unstract.sdk1.llm` passes it to litellm as `mock_response`: for the non-streaming completion path litellm returns the string verbatim with fixed usage (10 prompt / 20 completion / 30 total), so both the answer and the token counts are exact-assertable. Streaming (`stream_complete`) goes through a different litellm path whose usage differs, so don't assume 10/20/30 there. Sentinels like `litellm.RateLimitError` force error paths. Unset (the production default) the hook is a no-op.
+
+The variable being set is the only condition, deliberately. A second gate on `ENVIRONMENT` was tried and removed: it did not defend against the case it was written for — a worker env block copied out of this overlay carries both variables together — and compose declared `ENVIRONMENT` on every service anyway, so any deployment derived from it satisfied the gate. Nothing read that variable, so it was dropped everywhere along with the gate. What remains is that the hatch is off unless someone sets it, and that it warns once per process while active. Making fake spend safe to *detect* rather than trying to prevent the config wants the usage record itself to say it was mocked.
+
+A CI/dev override wins (the rig only fills an unset value). Running these tests under the rig **fails** if the var is missing; running **without** the rig just skips the execute-path tests — export it on both sides (your shell and the workers) if you boot the stack yourself.
+
+While the mock is active platform-wide, the LLM adapter's test-connection cannot pass: it regex-matches the completion for a specific city, which `MOCK_LLM_OK` won't satisfy — so `adapter-register-llm` stays an e2e gap for now.
+
+Only `LLM` completions are mocked, not embeddings: `provisioned_workflow` pins `chunk_size=0` so indexing never invokes `litellm.embedding`. A test that needs chunking will need the embedding path mocked too.
+
+### Fan-out (`MAX_PARALLEL_FILE_BATCHES`)
+
+Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay defaults it to `3` on `backend`, which is what normally takes effect: workers ask the backend for this value and fall back to their own env only when they can't reach it or it carries no value (the overlay sets it on `worker-api-deployment-v2` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
+
+**The fan-out half is an open gap** (`workflow-execution-fan-out` in `critical_paths.yaml`), and closing it needs a product change, not a cleverer test. Nothing persists a batch or task id: the batch index is a discarded loop local, and the celery task id only ever reaches worker stdout. That leaves per-file timing as the only proxy, and timing does not work here — measured on CI, three files genuinely fanned out finished *further* apart (durations `6.6 / 18.1 / 22.9`) than the ~2s steps seen when they share a batch, because three concurrent tool containers on a loaded runner cost more in contention than they gain in overlap. No threshold separates those two distributions, and no delay value fixes it: the contention scales with the parallelism being measured.
+
+Worth stating plainly because the design is tempting: overlap of the row windows doesn't discriminate either, since a serialised batch pre-creates all its rows in one call and they overlap trivially.
+
+What would close it is a batch or task identifier on `WorkflowFileExecution` — the test then asserts N distinct ids for N files, with no timing and no stall. That is also ordinary execution observability, which is the argument for doing it in the product rather than the test.
+
+`e2e-api-deployment` still asserts the rejoin: one result per file, all files counted into `successful_files`, one row per file.
+
+### ETL (MinIO)
+
+`tests/e2e/etl` runs a pipeline from a source connector to a destination connector. MinIO is the only storage connector the compose stack both boots and registers — the local-filesystem one would need no infra but is never registered (`local_storage/` has no `__init__.py`, so `register_connectors` skips it), which is why the mounted `./workflow_data:/data` volume can't be used as an ETL endpoint. The test seeds and reads its objects over the published port (`UNSTRACT_MINIO_ENDPOINT`, default `localhost:9000`) while the workers reach the same store over the compose network (`UNSTRACT_MINIO_INTERNAL_URL`, default `http://unstract-minio:9000`). It skips when no MinIO answers, so it does not fail a runtime that publishes none.
 
 ---
 

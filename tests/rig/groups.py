@@ -9,6 +9,7 @@ unless the group is marked ``optional: true`` (which is how we declare
 from __future__ import annotations
 
 import graphlib
+import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,6 +26,10 @@ RUNNERS: tuple[Runner, ...] = get_args(Runner)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "groups.yaml"
+
+# os.pathsep-separated overlay manifests, so a downstream repo can contribute
+# groups without editing the base manifest.
+EXTRA_MANIFESTS_ENV = "UNSTRACT_RIG_EXTRA_MANIFESTS"
 
 
 @dataclass(frozen=True)
@@ -81,6 +86,18 @@ class GroupManifest:
     def names_by_tier(self, tier: Tier) -> list[str]:
         return sorted(n for n, g in self.groups.items() if g.tier == tier)
 
+    def transitive_deps(self, name: str) -> set[str]:
+        """Return every group ``name`` depends on, directly or otherwise."""
+        self.get(name)  # raises on unknown
+        deps: set[str] = set()
+        frontier = [name]
+        while frontier:
+            for dep in self.get(frontier.pop()).depends_on:
+                if dep not in deps:
+                    deps.add(dep)
+                    frontier.append(dep)
+        return deps
+
     def expand(self, selected: list[str]) -> list[str]:
         """Return ``selected`` plus the transitive closure of their ``depends_on``,
         in topological order (dependencies before dependents).
@@ -106,14 +123,19 @@ class GroupManifest:
 def load_groups(path: Path | None = None) -> GroupManifest:
     """Parse the YAML manifest and validate it."""
     manifest_path = path or DEFAULT_MANIFEST
-    raw = yaml.safe_load(manifest_path.read_text())
-    if not isinstance(raw, dict) or "groups" not in raw:
-        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+    raw = _load_manifest_dict(manifest_path)
 
     defaults = raw.get("defaults") or {}
     groups: dict[str, GroupDefinition] = {}
     for name, spec in (raw["groups"] or {}).items():
         groups[name] = _build_group(name, spec, defaults)
+
+    # Merge before validation so cross-manifest `depends_on` and the platform
+    # gate are checked over the union. Keyed on `path` being omitted rather than
+    # on its value: an explicit path means "load exactly this", however spelled.
+    if path is None:
+        for extra in _extra_manifest_paths():
+            defaults = _merge_manifest(groups, extra, defaults)
 
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
@@ -121,6 +143,58 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     smoke_gate = defaults.get("platform_gate_group", "e2e-smoke")
     _validate_platform_groups_depend_on_gate(groups, gate=smoke_gate)
     return GroupManifest(groups=groups)
+
+
+def _extra_manifest_paths() -> list[Path]:
+    """Overlay manifest paths from ``UNSTRACT_RIG_EXTRA_MANIFESTS``.
+
+    Relative paths resolve against ``REPO_ROOT`` so a downstream repo can point
+    at a manifest it copied into this tree (e.g. ``tests/groups.cloud.yaml``).
+    """
+    raw = os.environ.get(EXTRA_MANIFESTS_ENV, "").strip()
+    if not raw:
+        return []
+    paths: list[Path] = []
+    for entry in filter(None, (e.strip() for e in raw.split(os.pathsep))):
+        p = Path(entry)
+        p = p if p.is_absolute() else REPO_ROOT / p
+        # Name the env var — a bare FileNotFoundError won't say where the path
+        # came from.
+        if not p.is_file():
+            raise ValueError(
+                f"{EXTRA_MANIFESTS_ENV}: {entry!r} is not a file (resolved to {p})"
+            )
+        paths.append(p)
+    return paths
+
+
+def _load_manifest_dict(manifest_path: Path) -> dict[str, Any]:
+    """Parse a manifest YAML, rejecting anything that is not a ``groups:`` mapping."""
+    if not manifest_path.is_file():
+        raise ValueError(f"{manifest_path}: manifest file not found")
+    raw = yaml.safe_load(manifest_path.read_text())
+    if not isinstance(raw, dict) or not isinstance(raw.get("groups"), dict):
+        raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
+    return raw
+
+
+def _merge_manifest(
+    groups: dict[str, GroupDefinition], manifest_path: Path, base_defaults: dict[str, Any]
+) -> dict[str, Any]:
+    """Merge an overlay manifest into ``groups`` in place and return the merged
+    defaults, so an overlay can also rename the platform gate. Overlay groups
+    inherit the base ``defaults`` unless they declare their own; a name collision
+    is an error rather than a silent override.
+    """
+    raw = _load_manifest_dict(manifest_path)
+    defaults = {**base_defaults, **(raw.get("defaults") or {})}
+    for name, spec in (raw["groups"] or {}).items():
+        if name in groups:
+            raise ValueError(
+                f"{manifest_path}: group {name!r} already defined in a prior manifest"
+            )
+        groups[name] = _build_group(name, spec, defaults)
+    return defaults
 
 
 def _build_group(
@@ -207,13 +281,11 @@ def _validate_platform_groups_depend_on_gate(
     graph: it guarantees the manifest can never ship a platform test that
     bypasses the smoke gate, and that the gate runs first in topological order.
 
-    Note: runtime skip-on-gate-failure (not running dependents when the gate
-    reports red) is NOT implemented yet — ``cmd_run`` executes every runnable
-    group unconditionally. Today this is moot because every dependent is
-    ``optional: true`` (a placeholder), so a smoke failure doesn't gate CI and
-    the dependents collect nothing. When those groups are promoted to active,
-    add dep-failure tracking in ``cmd_run`` so dependents skip cleanly rather
-    than running against a half-up stack — see the TODO there.
+    Runtime skip-on-gate-failure is enforced separately: ``cmd_run`` tracks
+    failed groups and skips (blocks) any dependent whose transitive deps
+    include one, so a red gate stops its dependents from running against a
+    half-up stack. This structural check guarantees the graph such tracking
+    relies on is actually wired.
 
     If the manifest declares ``requires_platform`` groups but doesn't actually
     define the gate, that's a manifest error — silently disabling the check

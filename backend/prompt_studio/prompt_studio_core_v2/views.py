@@ -21,6 +21,7 @@ from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -31,6 +32,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -83,6 +85,8 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from unstract.core.data_models import PgTaskStatus
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -128,6 +132,7 @@ class PromptStudioCoreView(
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -172,7 +177,12 @@ class PromptStudioCoreView(
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
-        return qs
+            search = self.request.query_params.get("search")
+            if search:
+                qs = qs.filter(tool_name__icontains=search)
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too.
+        return qs.order_by("tool_id")
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
@@ -903,6 +913,51 @@ class PromptStudioCoreView(
         """
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()
+
+        # Gate on the same per-org ``pg_queue_enabled`` flag the executor dispatch
+        # uses (``resolve_pg_transport`` — bucketed per org): flag ON → the task rode
+        # PG, which records its terminal state in ``pg_task_result`` (the eager PG
+        # executor never writes a Celery result backend, so ``AsyncResult`` alone
+        # would poll "processing" forever — UN-3693); flag OFF (default) → Celery,
+        # unchanged, and PG is not touched. ``entity_id``/``context`` match
+        # ``resolve_pg_transport`` so the per-org bucket agrees with the dispatch.
+        # No wrapper: ``check_feature_flag_status`` already fails closed to ``False``
+        # (its own try/except + warning) on any Flipt error → reads as "off" → Celery.
+        org_id = str(UserSessionUtils.get_organization_id(request) or "")
+        pg_enabled = check_feature_flag_status(
+            flag_key=PG_QUEUE_FLAG_KEY,
+            entity_id=org_id or "default",
+            context={"organization_id": org_id},
+        )
+        if pg_enabled:
+            from pg_queue.models import PgTaskResult
+
+            try:
+                row = (
+                    PgTaskResult.objects.filter(task_id=task_id)
+                    .values("status", "error")
+                    .first()
+                )
+            except Exception:
+                # A transient DB blip degrades to "processing" (a poll retries) rather
+                # than a bare 500 that a status-code-keyed client would misread as a
+                # terminal task failure.
+                logger.exception(
+                    "task_status: pg_task_result read failed for %s; treating as "
+                    "pending",
+                    task_id,
+                )
+                row = None
+            # No row → not finished yet (there is no "pending" row). Status compared
+            # against PgTaskStatus (the writer's source of truth), not a bare literal.
+            if row is None:
+                return Response({"task_id": task_id, "status": "processing"})
+            if row["status"] == PgTaskStatus.COMPLETED.value:
+                return Response({"task_id": task_id, "status": "completed"})
+            return Response(
+                {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         result = AsyncResult(task_id, app=celery_app)
         if not result.ready():
