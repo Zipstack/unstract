@@ -1,11 +1,13 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { unwrapList } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -51,6 +53,8 @@ DefaultCustomButtons.propTypes = {
   handleNewProjectBtnClick: PropTypes.func.isRequired,
 };
 
+const DEFAULT_PAGE_SIZE = 10;
+
 function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
@@ -65,7 +69,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const groupsApi = groupsService();
 
   const [listOfTools, setListOfTools] = useState([]);
-  const [filteredListOfTools, setFilteredListOfTools] = useState([]);
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
+  const fetchListRef = useRef(null);
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -107,6 +112,28 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   );
 
   const {
+    pagination,
+    setPagination,
+    searchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search) after mutations
+  const handleListRefresh = useCallback(
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+      ),
+    [pagination.current, pagination.pageSize, searchTerm],
+  );
+
+  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -119,7 +146,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   } = useCoOwnerManagement({
     service: promptStudioCoOwnerService,
     setAlertDetails,
-    onListRefresh: () => getListOfTools(),
+    onListRefresh: handleListRefresh,
   });
   const [allGroupList, setAllGroupList] = useState([]);
 
@@ -127,25 +154,35 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     getListOfTools();
   }, []);
 
-  useEffect(() => {
-    setFilteredListOfTools(listOfTools);
-  }, [listOfTools]);
+  const getListOfTools = (
+    page = 1,
+    pageSize = DEFAULT_PAGE_SIZE,
+    search = "",
+  ) => {
+    const params = { page, page_size: pageSize };
+    if (search) {
+      params.search = search;
+    }
 
-  const getListOfTools = () => {
-    const requestOptions = {
+    setIsListLoading(true);
+    axiosPrivate({
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
-    };
-
-    setIsListLoading(true);
-    axiosPrivate(requestOptions)
+      params,
+    })
       .then((res) => {
-        const data = res?.data;
-        setListOfTools(data);
-        setFilteredListOfTools(data);
+        const results = unwrapList(res);
+        const total = res?.data?.count ?? results.length;
+        // Deleting the last row on a page leaves it empty; step back a page.
+        if (results.length === 0 && page > 1 && total > 0) {
+          getListOfTools(page - 1, pageSize, search);
+          return;
+        }
+        setListOfTools(results);
+        setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
       })
       .catch((err) => {
         setAlertDetails(
@@ -156,6 +193,12 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         setIsListLoading(false);
       });
   };
+
+  // Effect, not a render-time write: mutating a ref during render is unsafe
+  // under concurrent rendering, where a render can be discarded.
+  useEffect(() => {
+    fetchListRef.current = getListOfTools;
+  });
 
   const handleAddNewTool = (body) => {
     let method = "POST";
@@ -178,8 +221,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
 
       axiosPrivate(requestOptions)
         .then((res) => {
-          const tool = res?.data;
-          updateList(isEdit, tool);
+          if (isEdit) {
+            setEditItem(null);
+          }
+          handleListRefresh();
           setOpenAddTool(false);
           resolve(res?.data);
         })
@@ -187,22 +232,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           reject(err);
         });
     });
-  };
-
-  const updateList = (isEdit, data) => {
-    let tools = [...listOfTools];
-
-    if (isEdit) {
-      // Merge — the PATCH response (CustomToolSerializer) lacks list-only
-      // fields like prompt_count; replacing wholesale would drop them
-      tools = tools.map((item) =>
-        item?.tool_id === data?.tool_id ? { ...item, ...data } : item,
-      );
-      setEditItem(null);
-    } else {
-      tools.push(data);
-    }
-    setListOfTools(tools);
   };
 
   const handleEdit = (_event, tool) => {
@@ -228,26 +257,11 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
 
     axiosPrivate(requestOptions)
       .then(() => {
-        const tools = [...listOfTools].filter(
-          (filterToll) => filterToll?.tool_id !== tool.tool_id,
-        );
-        setListOfTools(tools);
+        handleListRefresh();
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to Delete"));
       });
-  };
-
-  const onSearch = (search, setSearch) => {
-    if (search?.length === 0) {
-      setSearch(listOfTools);
-    }
-    const filteredList = [...listOfTools].filter((tool) => {
-      const name = tool.tool_name?.toUpperCase();
-      const searchUpperCase = search.toUpperCase();
-      return name.includes(searchUpperCase);
-    });
-    setSearch(filteredList);
   };
 
   const showAddTool = () => {
@@ -315,7 +329,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         setOpenImportTool(false);
 
         // Refresh the list of tools to show the new imported project
-        getListOfTools();
+        handleListRefresh();
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to import project"));
@@ -414,8 +428,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     <div className="list-of-tools-body">
       <ViewTools
         isLoading={isListLoading}
-        isEmpty={!listOfTools?.length}
-        listOfTools={filteredListOfTools}
+        isEmpty={!listOfTools?.length && !searchTerm}
+        listOfTools={listOfTools}
         setOpenAddTool={setOpenAddTool}
         handleEdit={handleEdit}
         handleDelete={handleDelete}
@@ -427,6 +441,11 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         handleShare={handleShare}
         handleCoOwner={handleCoOwner}
         showModified
+        pagination={{
+          ...pagination,
+          onChange: handlePaginationChange,
+          itemLabel: "projects",
+        }}
       />
     </div>
   );
@@ -447,9 +466,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       <ToolNavBar
         title="Prompt Studio"
         enableSearch
-        onSearch={onSearch}
-        searchList={listOfTools}
-        setSearchList={setFilteredListOfTools}
+        onSearch={(value) => handleSearch(value)}
         customButtons={customButtonsElement}
         segmentOptions={segmentOptions}
         segmentValue={segmentValue}

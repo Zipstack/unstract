@@ -20,6 +20,7 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -195,15 +196,10 @@ function AddLlmProfile({
   };
 
   const setAdaptorProfilesDropdown = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter`,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-
+    fetchAllPages(axiosPrivate, {
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+    })
+      .then((data) => {
         const llm = [];
         const vectorDb = [];
         const embedding = [];

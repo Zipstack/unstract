@@ -1,9 +1,10 @@
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
-import { Pagination, Typography } from "antd";
+import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
+import { unwrapList } from "../../../helpers/pagination";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { usePaginatedList } from "../../../hooks/usePaginatedList";
@@ -124,11 +125,8 @@ function Workflows() {
     projectApiService
       .getProjectList(params)
       .then((res) => {
-        const data = res?.data;
-        // Endpoint is opt-in paginated: envelope when we send ?page, else a
-        // bare array. Handle both so nothing breaks if the opt-in is dropped.
-        const results = data?.results ?? data ?? [];
-        const total = data?.count ?? results.length;
+        const results = unwrapList(res);
+        const total = res?.data?.count ?? results.length;
         // Deleting the last row on a page leaves it empty; step back a page.
         if (results.length === 0 && page > 1 && total > 0) {
           getProjectList(page - 1, pageSize, search);
@@ -151,7 +149,12 @@ function Workflows() {
         setLoading(false);
       });
   };
-  fetchListRef.current = getProjectList;
+
+  // Effect, not a render-time write: mutating a ref during render is unsafe
+  // under concurrent rendering, where a render can be discarded.
+  useEffect(() => {
+    fetchListRef.current = getProjectList;
+  });
 
   function editProject(name, description) {
     setLoading(true);
@@ -423,33 +426,25 @@ function Workflows() {
             <EmptyState text="No results found for this search" />
           )}
           {projectList?.length > 0 && (
-            <>
-              <ViewTools
-                isLoading={loading}
-                isEmpty={false}
-                listOfTools={projectList}
-                setOpenAddTool={toggleModal}
-                handleEdit={updateProject}
-                handleDelete={deleteProject}
-                handleShare={handleShare}
-                handleCoOwner={handleCoOwner}
-                titleProp="workflow_name"
-                descriptionProp="description"
-                idProp="id"
-                type="Workflow"
-              />
-              {pagination.total > pagination.pageSize && (
-                <div className="workflows-pagination">
-                  <Pagination
-                    current={pagination.current}
-                    pageSize={pagination.pageSize}
-                    total={pagination.total}
-                    onChange={handlePaginationChange}
-                    showSizeChanger={false}
-                  />
-                </div>
-              )}
-            </>
+            <ViewTools
+              isLoading={loading}
+              isEmpty={false}
+              listOfTools={projectList}
+              setOpenAddTool={toggleModal}
+              handleEdit={updateProject}
+              handleDelete={deleteProject}
+              handleShare={handleShare}
+              handleCoOwner={handleCoOwner}
+              titleProp="workflow_name"
+              descriptionProp="description"
+              idProp="id"
+              type="Workflow"
+              pagination={{
+                ...pagination,
+                onChange: handlePaginationChange,
+                itemLabel: "workflows",
+              }}
+            />
           )}
           {editingProject && (
             <LazyLoader

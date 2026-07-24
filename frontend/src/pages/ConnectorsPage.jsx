@@ -1,6 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { groupsService } from "../components/groups/groups-service.js";
@@ -8,17 +8,23 @@ import { AddSourceModal } from "../components/input-output/add-source-modal/AddS
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
+import { unwrapList } from "../helpers/pagination";
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
-import { useListSearch } from "../hooks/useListSearch";
+import { usePaginatedList } from "../hooks/usePaginatedList";
 import useRequestUrl from "../hooks/useRequestUrl";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
 
+const DEFAULT_PAGE_SIZE = 10;
+
 function ConnectorsPage() {
   const [loading, setLoading] = useState(false);
+  const [connectorList, setConnectorList] = useState([]);
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
+  const fetchListRef = useRef(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConnector, setEditingConnector] = useState(null);
   const [shareModalVisible, setShareModalVisible] = useState(false);
@@ -62,6 +68,28 @@ function ConnectorsPage() {
   );
 
   const {
+    pagination,
+    setPagination,
+    searchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search) after mutations
+  const handleListRefresh = useCallback(
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+      ),
+    [pagination.current, pagination.pageSize, searchTerm],
+  );
+
+  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -74,27 +102,46 @@ function ConnectorsPage() {
   } = useCoOwnerManagement({
     service: connectorCoOwnerService,
     setAlertDetails,
-    onListRefresh: () => fetchConnectors(),
+    onListRefresh: handleListRefresh,
   });
-  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
-    useListSearch("connector_name");
 
   useEffect(() => {
     fetchConnectors();
     fetchUsers();
   }, []);
 
-  const fetchConnectors = async () => {
+  const fetchConnectors = async (
+    page = 1,
+    pageSize = DEFAULT_PAGE_SIZE,
+    search = "",
+  ) => {
+    const params = { page, page_size: pageSize };
+    if (search) {
+      params.search = search;
+    }
     setLoading(true);
     try {
-      const response = await axiosPrivate.get(getUrl("connector/"));
-      setMasterList(response.data || []);
+      const response = await axiosPrivate.get(getUrl("connector/"), { params });
+      const results = unwrapList(response);
+      const total = response?.data?.count ?? results.length;
+      // Deleting the last row on a page leaves it empty; step back a page.
+      if (results.length === 0 && page > 1 && total > 0) {
+        return fetchConnectors(page - 1, pageSize, search);
+      }
+      setConnectorList(results);
+      setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load connectors"));
     } finally {
       setLoading(false);
     }
   };
+
+  // Effect, not a render-time write: mutating a ref during render is unsafe
+  // under concurrent rendering, where a render can be discarded.
+  useEffect(() => {
+    fetchListRef.current = fetchConnectors;
+  });
 
   const fetchUsers = async () => {
     try {
@@ -134,7 +181,7 @@ function ConnectorsPage() {
         type: "success",
         content: "Connector deleted successfully",
       });
-      fetchConnectors();
+      handleListRefresh();
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to delete connector"));
     }
@@ -211,7 +258,7 @@ function ConnectorsPage() {
   const handleConnectorSaved = () => {
     setModalVisible(false);
     setEditingConnector(null);
-    fetchConnectors();
+    handleListRefresh();
     setAlertDetails({
       type: "success",
       content: editingConnector
@@ -235,14 +282,13 @@ function ConnectorsPage() {
       <ToolNavBar
         title="Connectors"
         enableSearch
-        setSearchList={setDisplayList}
-        onSearch={onSearch}
+        onSearch={(value) => handleSearch(value)}
         customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
           <ViewTools
-            listOfTools={displayList}
+            listOfTools={connectorList}
             isLoading={loading}
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
@@ -255,9 +301,14 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!listRef.current.length}
+            isEmpty={!connectorList.length && !searchTerm}
             centered
             isClickable={false}
+            pagination={{
+              ...pagination,
+              onChange: handlePaginationChange,
+              itemLabel: "connectors",
+            }}
           />
         </div>
       </div>

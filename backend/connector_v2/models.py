@@ -51,7 +51,7 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
-            .distinct("id")
+            .distinct()
         )
 
 

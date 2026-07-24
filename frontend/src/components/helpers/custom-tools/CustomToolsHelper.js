@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -117,16 +118,13 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["shareId"] = data?.share_id;
-        const reqOpsLlmProfiles = {
-          method: "GET",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-        };
 
-        return handleApiRequest(reqOpsLlmProfiles);
+        return fetchAllPages(axiosPrivate, {
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+        });
       })
-      .then((res) => {
-        const data = res?.data;
-        updatedCusTool["adapters"] = data;
+      .then((adapters) => {
+        updatedCusTool["adapters"] = adapters;
 
         if (fetchLookupAssignments) {
           const toolId = updatedCusTool["details"]?.tool_id;

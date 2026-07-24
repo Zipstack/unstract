@@ -148,6 +148,9 @@ class AdapterInstanceViewSet(
 ):
     serializer_class = AdapterInstanceSerializer
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["adapter_name", "created_at", "modified_at"]
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -194,10 +197,7 @@ class AdapterInstanceViewSet(
         if search:
             queryset = queryset.filter(adapter_name__icontains=search)
 
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too. Not modified_at:
-        # that would conflict with the DISTINCT ON in for_user().
-        return queryset.order_by("id")
+        return queryset
 
     def get_serializer_class(
         self,

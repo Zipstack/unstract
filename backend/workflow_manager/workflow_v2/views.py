@@ -77,6 +77,9 @@ class WorkflowViewSet(
 ):
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["workflow_name", "created_at", "modified_at"]
     notification_resource_name_field = "workflow_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -118,14 +121,6 @@ class WorkflowViewSet(
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(workflow_name__icontains=search)
-
-        # `id` tiebreaker keeps ordering deterministic across paginated requests
-        # (the for_user() manager uses plain .distinct(), so there is no default)
-        order_by = self.request.query_params.get("order_by")
-        if order_by == "asc":
-            queryset = queryset.order_by("modified_at", "id")
-        else:
-            queryset = queryset.order_by("-modified_at", "id")
 
         return queryset
 

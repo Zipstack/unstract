@@ -14,6 +14,7 @@ import { cloneDeep, isEqual } from "lodash";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -141,15 +142,11 @@ function ConfigureConnectorModal({
 
     setIsLoadingConnectors(true);
 
-    const requestOptions = {
-      method: "GET",
-      url: getUrl(`connector/?connector_mode=${connectionType}`),
-    };
-
-    axiosPrivate(requestOptions)
-      .then((response) => {
-        const connectors = response?.data || [];
-
+    fetchAllPages(axiosPrivate, {
+      url: getUrl("connector/"),
+      params: { connector_mode: connectionType },
+    })
+      .then((connectors) => {
         // Separate regular connectors from "Add new connector" option
         const regularConnectors = connectors.map((conn) => ({
           value: conn?.id,

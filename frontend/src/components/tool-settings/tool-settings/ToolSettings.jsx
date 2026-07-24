@@ -1,11 +1,12 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { unwrapList } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useListSearch } from "../../../hooks/useListSearch";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -36,8 +37,13 @@ const btnText = {
   ocr: "New OCR",
 };
 
+const DEFAULT_PAGE_SIZE = 10;
+
 function ToolSettings({ type }) {
   const [isLoading, setIsLoading] = useState(false);
+  const [adapterList, setAdapterList] = useState([]);
+  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
+  const fetchListRef = useRef(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
@@ -87,6 +93,29 @@ function ToolSettings({ type }) {
   );
 
   const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+  });
+
+  // Refresh the current page (preserves page + active search) after mutations
+  const handleListRefresh = useCallback(
+    () =>
+      fetchListRef.current?.(
+        pagination.current,
+        pagination.pageSize,
+        searchTerm,
+      ),
+    [pagination.current, pagination.pageSize, searchTerm],
+  );
+
+  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -99,39 +128,45 @@ function ToolSettings({ type }) {
   } = useCoOwnerManagement({
     service: adapterCoOwnerService,
     setAlertDetails,
-    onListRefresh: () => getAdapters(),
+    onListRefresh: handleListRefresh,
   });
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
-  const {
-    listRef,
-    displayList,
-    setDisplayList,
-    setMasterList,
-    updateMasterList,
-    onSearch,
-    clearSearch,
-  } = useListSearch("adapter_name");
 
+  // Adapter type is a separate listing; reset paging and search when it changes.
   useEffect(() => {
-    clearSearch();
-    setMasterList([]);
+    setSearchTerm("");
+    setAdapterList([]);
     if (!type) {
       return;
     }
-    getAdapters();
+    getAdapters(1, DEFAULT_PAGE_SIZE, "");
   }, [type]);
 
-  const getAdapters = () => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/adapter?adapter_type=${type.toUpperCase()}`,
+  const getAdapters = (page = 1, pageSize = DEFAULT_PAGE_SIZE, search = "") => {
+    const params = {
+      adapter_type: type.toUpperCase(),
+      page,
+      page_size: pageSize,
     };
+    if (search) {
+      params.search = search;
+    }
     setIsLoading(true);
-    axiosPrivate(requestOptions)
+    axiosPrivate({
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+      params,
+    })
       .then((res) => {
-        setMasterList(res?.data || []);
+        const results = unwrapList(res);
+        const total = res?.data?.count ?? results.length;
+        // Deleting the last row on a page leaves it empty; step back a page.
+        if (results.length === 0 && page > 1 && total > 0) {
+          getAdapters(page - 1, pageSize, search);
+          return;
+        }
+        setAdapterList(results);
+        setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -141,26 +176,15 @@ function ToolSettings({ type }) {
       });
   };
 
-  const addNewItem = (row, isEdit) => {
-    if (isEdit) {
-      updateMasterList((currentList) =>
-        currentList.map((tableRow) => {
-          if (tableRow?.id !== row?.id) {
-            return tableRow;
-          }
-          return { ...tableRow, adapter_name: row?.adapter_name };
-        }),
-      );
-    } else {
-      updateMasterList((currentList) => [...currentList, row]);
-    }
-  };
+  // Effect, not a render-time write: mutating a ref during render is unsafe
+  // under concurrent rendering, where a render can be discarded.
+  useEffect(() => {
+    fetchListRef.current = getAdapters;
+  });
 
-  const handleDeleteSuccess = (adapterId) => {
-    updateMasterList((currentList) =>
-      currentList.filter((row) => row?.id !== adapterId),
-    );
-  };
+  const addNewItem = () => handleListRefresh();
+
+  const handleDeleteSuccess = () => handleListRefresh();
 
   const handleDelete = (_event, adapter) => {
     const requestOptions = {
@@ -173,7 +197,7 @@ function ToolSettings({ type }) {
 
     setIsLoading(true);
     axiosPrivate(requestOptions)
-      .then(() => handleDeleteSuccess(adapter?.id))
+      .then(() => handleDeleteSuccess())
       .catch((err) => setAlertDetails(handleException(err)))
       .finally(() => setIsLoading(false));
   };
@@ -297,8 +321,7 @@ function ToolSettings({ type }) {
         title={titles[type]}
         enableSearch
         searchKey={type}
-        setSearchList={setDisplayList}
-        onSearch={onSearch}
+        onSearch={(value) => handleSearch(value)}
         customButtons={
           <CustomButton
             type="primary"
@@ -313,7 +336,7 @@ function ToolSettings({ type }) {
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
             <ViewTools
-              listOfTools={displayList}
+              listOfTools={adapterList}
               isLoading={isLoading}
               handleDelete={handleDelete}
               setOpenAddTool={setOpenAddSourcesModal}
@@ -333,7 +356,7 @@ function ToolSettings({ type }) {
               titleProp="adapter_name"
               descriptionProp="description"
               iconProp="icon"
-              isEmpty={!listRef.current.length}
+              isEmpty={!adapterList.length && !searchTerm}
               centered
               isClickable={false}
               handleShare={handleShare}
@@ -341,6 +364,11 @@ function ToolSettings({ type }) {
               showOwner={true}
               showModified
               type="Adapter"
+              pagination={{
+                ...pagination,
+                onChange: handlePaginationChange,
+                itemLabel: "adapters",
+              }}
             />
           </div>
         </div>

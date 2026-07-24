@@ -1,1 +1,5 @@
 /* Styles for ViewTools */
+
+.view-tools-pagination {
+  padding: 12px 16px;
+}
