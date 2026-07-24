@@ -1,0 +1,169 @@
+/* Styles for the sortable resource list table (Name / Owned By / Created / Actions) */
+
+.resource-table {
+  /* Fill the content width like the design; proportional column widths (set on
+     each column) keep it balanced without one column hogging the slack. */
+  width: 100%;
+  padding: 0 4px 24px 4px;
+}
+
+/* Let wide content scroll inside the table instead of the page body */
+.resource-table .ant-table-content {
+  overflow-x: auto;
+}
+
+/* Keep every cell aligned with the (multi-line) Name cell */
+.resource-table .ant-table-cell {
+  vertical-align: middle;
+}
+
+/* Header row: light, subtle, with uppercase gray labels */
+.resource-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  padding-top: 14px;
+  padding-bottom: 14px;
+}
+
+/* Sort-dropdown trigger / plain header label */
+.resource-table-th {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.resource-table-th.static {
+  cursor: default;
+}
+
+.resource-table-th.right {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.resource-table-th.active {
+  color: #1677ff;
+}
+
+/* Stacked up/down carets — the sortable indicator, blue when active */
+.resource-table-sort-icon {
+  display: inline-flex;
+  flex-direction: column;
+  font-size: 9px;
+  line-height: 0.6;
+  color: #bfbfbf;
+}
+
+.resource-table-th.active .resource-table-sort-icon {
+  color: #1677ff;
+}
+
+.resource-table-row-clickable {
+  cursor: pointer;
+}
+
+/* Name column: icon + stacked title/description */
+.resource-table-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.resource-table-name-img {
+  width: 36px;
+  height: 36px;
+  max-width: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.resource-table-name-emoji {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+/* The fixed-width Name column bounds this; min-width:0 lets the title/desc
+   ellipsize within the cell. */
+.resource-table-name-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.resource-table-name-title {
+  font-size: 15px;
+}
+
+.resource-table-name-desc {
+  font-size: 12px;
+}
+
+/* Owned By column: avatar + name/email, clickable to manage co-owners */
+.resource-table-owner {
+  min-width: 0;
+}
+
+.resource-table-owner-avatar {
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.resource-table-owner-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.resource-table-owner-name {
+  font-weight: 500;
+  max-width: 190px;
+}
+
+.resource-table-owner-email {
+  font-size: 12px;
+  max-width: 190px;
+}
+
+.resource-table-owner-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+}
+
+.resource-table-owner-btn:hover .resource-table-owner-name {
+  color: #1890ff;
+}
+
+/* Actions column */
+.resource-table-actions {
+  justify-content: flex-end;
+}
+
+.resource-table .disabled-icon {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Destructive action is red, per the design */
+.resource-table .delete-icon:not(.disabled-icon) {
+  color: #ff4d4f;
+}

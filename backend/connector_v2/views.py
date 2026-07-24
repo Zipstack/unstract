@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
@@ -105,10 +106,6 @@ class ConnectorInstanceViewSet(
         if filter_args:
             queryset = queryset.filter(**filter_args)
 
-        search = self.request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(connector_name__icontains=search)
-
         # Filter by connector_mode
         connector_mode_param = self.request.query_params.get("connector_mode")
         if connector_mode_param:
@@ -127,10 +124,16 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too. Not modified_at:
-        # that would conflict with the DISTINCT ON in for_user().
-        return queryset.order_by("id")
+        # Owner-inclusive search + per-column sort (name/owner/created); re-wraps
+        # via pk__in to drop the DISTINCT ON in for_user() so any column sorts.
+        return apply_search_and_sort(
+            queryset,
+            model=ConnectorInstance,
+            name_field="connector_name",
+            request=self.request,
+            select_related=("created_by",),
+            prefetch_related=("memberships__user",),
+        )
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.

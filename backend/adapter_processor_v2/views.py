@@ -28,6 +28,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
@@ -190,14 +191,16 @@ class AdapterInstanceViewSet(
         ):
             queryset = queryset.filter(**filter_args)
 
-        search = self.request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(adapter_name__icontains=search)
-
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too. Not modified_at:
-        # that would conflict with the DISTINCT ON in for_user().
-        return queryset.order_by("id")
+        # Owner-inclusive search + per-column sort (name/owner/created); re-wraps
+        # via pk__in to drop the DISTINCT ON in for_user() so any column sorts.
+        return apply_search_and_sort(
+            queryset,
+            model=AdapterInstance,
+            name_field="adapter_name",
+            request=self.request,
+            select_related=("created_by",),
+            prefetch_related=("memberships__user",),
+        )
 
     def get_serializer_class(
         self,

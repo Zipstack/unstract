@@ -43,6 +43,21 @@ class HasMembersMixin:
             for m in self.memberships.all()  # type: ignore[attr-defined]
         )
 
+    def owner_email(self) -> str | None:
+        # Email for the "Owned By" label. ``created_by`` is audit-only (UN-2202)
+        # and the creator can be removed as owner, so it must not name the owner.
+        # Reads the prefetched ``memberships`` (list views set ``memberships__user``)
+        # to stay query-free; earliest live OWNER wins so the label names the same
+        # roster as ``co_owners_count()`` and is stable across page loads.
+        owners = [
+            m
+            for m in self.memberships.all()  # type: ignore[attr-defined]
+            if m.role == ResourceRole.OWNER and not m.user.is_service_account
+        ]
+        if not owners:
+            return None
+        return min(owners, key=lambda m: m.created_at).user.email
+
     def is_owner(self, user: Any) -> bool:
         if user is None:
             return False

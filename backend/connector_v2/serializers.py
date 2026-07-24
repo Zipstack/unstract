@@ -176,6 +176,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
         request = self.context.get("request")
         rep["is_owner"] = instance.is_owner(request.user) if request else False
         rep["co_owners_count"] = instance.co_owners_count()
+        rep["owner_email"] = instance.owner_email()
 
         return rep
 

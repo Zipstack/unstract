@@ -32,6 +32,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
+from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
@@ -161,7 +162,21 @@ class PromptStudioCoreView(
             "memberships__user"
         )
         if self.action == "list":
-            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            # Owner-inclusive search + per-column sort (name/owner/created);
+            # re-wraps via pk__in to drop the DISTINCT ON in for_user() so any
+            # column sorts.
+            qs = apply_search_and_sort(
+                qs,
+                model=CustomTool,
+                name_field="tool_name",
+                request=self.request,
+                select_related=("created_by",),
+                prefetch_related=("memberships__user",),
+            )
+            # apply_search_and_sort returns a fresh CustomTool.objects chain, so
+            # the prompt_count annotation goes on afterwards. Subquery keeps the
+            # count out of the outer GROUP BY, which would otherwise collide with
+            # the sort column.
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -169,19 +184,9 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # modified_at needs no annotation: prompt writes bump the parent
-            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
-            # keeping the plain field orderable. Only prompt writes bump —
-            # profile/document edits and queryset-level prompt writes do not;
-            # any new write path must bump CustomTool itself
-            qs = qs.select_related("created_by").annotate(
-                _prompt_count=Subquery(prompt_count_sq),
-            )
-            search = self.request.query_params.get("search")
-            if search:
-                qs = qs.filter(tool_name__icontains=search)
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too.
+            return qs.annotate(_prompt_count=Subquery(prompt_count_sq))
+        # Order by the DISTINCT ON field so pagination is deterministic for the
+        # admin/service (non-list) branch.
         return qs.order_by("tool_id")
 
     def get_object(self):
