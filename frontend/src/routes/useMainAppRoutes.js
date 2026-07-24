@@ -41,6 +41,10 @@ const DeploymentsPage = lazyNamed(
   () => import("../pages/DeploymentsPage.jsx"),
   "DeploymentsPage",
 );
+const GlobalApiDeploymentKeysPage = lazyNamed(
+  () => import("../pages/GlobalApiDeploymentKeysPage.jsx"),
+  "GlobalApiDeploymentKeysPage",
+);
 const GroupsPage = lazyNamed(
   () => import("../pages/GroupsPage.jsx"),
   "GroupsPage",
@@ -306,6 +310,10 @@ function useMainAppRoutes() {
           <Route
             path="settings/platform-api-keys"
             element={<PlatformApiKeysPage />}
+          />
+          <Route
+            path="settings/global-api-deployment-keys"
+            element={<GlobalApiDeploymentKeysPage />}
           />
         </Route>
         <Route path="settings/triad" element={<DefaultTriad />} />

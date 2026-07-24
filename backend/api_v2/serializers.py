@@ -401,6 +401,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # Get context from serializer
         api = self.context.get("api")
         api_key = self.context.get("api_key")
+        is_global_key = self.context.get("is_global_key", False)
 
         if not api or not api_key:
             raise ValidationError("Unable to validate LLM profile ownership")
@@ -410,6 +411,29 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             profile = ProfileManager.objects.get(profile_id=value)
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
+
+        # Global API Keys are org-level (not tied to a single user), so the
+        # per-user ownership check below does not apply. We must still confirm
+        # the profile belongs to the same organization as the deployment,
+        # otherwise a caller could reference another org's profile by UUID.
+        # ``ProfileManager.objects`` is not org-scoped by default, so this
+        # check is load-bearing, not merely defense-in-depth.
+        if is_global_key:
+            # A profile's org is only derivable through its prompt studio tool.
+            # That FK is nullable, and an unattached profile therefore has no
+            # org to compare against — ``None`` never equals a real org id, so
+            # such a profile is rejected. That is deliberate: with no way to
+            # attribute the profile to an organization, the org-scoped key must
+            # fail closed rather than accept it.
+            profile_org_id = (
+                profile.prompt_studio_tool.organization_id
+                if profile.prompt_studio_tool_id
+                else None
+            )
+            if profile_org_id != api.organization_id:
+                # Generic error avoids confirming another org's profile exists.
+                raise ValidationError("Profile not found")
+            return value
 
         # Get the specific API key being used
         try:
