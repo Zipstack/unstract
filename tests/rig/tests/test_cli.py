@@ -669,6 +669,57 @@ def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
     }
 
 
+def test_inject_infra_env_mirrors_postgres_onto_test_db_prefix() -> None:
+    """The workers' real-Postgres fixtures connect via ``TEST_DB_*`` (so a
+    developer run keeps hitting their own compose DB). Without the mirror they
+    fall back to the dev-compose defaults and every such test skips on connect
+    while the provisioned container sits idle.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://tcuser:tcpass@127.0.0.1:49231/testdb"
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env: dict[str, str] = {}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["TEST_DB_HOST"] == "127.0.0.1"
+    assert env["TEST_DB_PORT"] == "49231"
+    assert env["TEST_DB_NAME"] == "testdb"
+    assert env["TEST_DB_USER"] == "tcuser"
+    assert env["TEST_DB_PASSWORD"] == "tcpass"  # NOSONAR - test placeholder
+    # The queue's search_path and the schema migrations land in must agree, and
+    # a provisioned Postgres only has `public`.
+    assert env["DB_SCHEMA"] == "public"
+    assert env["TEST_DB_SCHEMA"] == "public"
+
+
+def test_inject_infra_env_keeps_group_declared_schema() -> None:
+    """A group that declares its own DB_SCHEMA keeps it — on both prefixes."""
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://u:p@127.0.0.1:5432/db"  # NOSONAR
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env = {"DB_SCHEMA": "unstract"}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["DB_SCHEMA"] == "unstract"
+    assert env["TEST_DB_SCHEMA"] == "unstract"
+
+
 def test_inject_infra_env_wires_provisioned_redis() -> None:
     """A group declaring `requires_services: [redis]` must get REDIS_HOST/PORT +
     the Celery broker URL rewritten to the provisioned endpoint — otherwise

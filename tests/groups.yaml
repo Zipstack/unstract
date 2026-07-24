@@ -52,24 +52,6 @@ groups:
     uv_sync_group: test
     coverage_source: shared
 
-  integration-workers:
-    tier: integration
-    workdir: workers
-    paths: [tests, shared/tests]
-    # Real-Postgres tests: barrier-decrement races, reaper, batch dedup, leader
-    # election, result backend. `conftest.py` marks these `integration` (any
-    # test using a real-connection fixture). They skip when Postgres is
-    # unreachable or the pg_queue schema isn't migrated.
-    markers: "integration"
-    uv_sync_group: test
-    coverage_source: shared
-    requires_services: [postgres]
-    # Optional until CI provisions a *migrated* database and sets
-    # REQUIRE_PG_TESTS=1 — that env flips the graceful skips into hard failures
-    # (see conftest `_skip_or_fail_no_pg`) so the lane can't pass having run
-    # nothing. Until then it runs-and-skips against a bare Postgres.
-    optional: true
-
   unit-backend:
     tier: unit
     workdir: backend
@@ -78,7 +60,9 @@ groups:
     paths: ["."]
     markers: "not integration"
     uv_sync_group: test
-    # Shared with integration-backend so both halves use identical settings.
+    # Shared with integration-backend so both halves use identical settings,
+    # and with integration-workers' `migrate` step so the schema it applies
+    # comes from the same Django configuration the backend tests run against.
     env: &backend_test_env
       DJANGO_SETTINGS_MODULE: backend.settings.test
       # Tenancy is row-level, not schema-per-tenant; tests run in public.
@@ -133,6 +117,30 @@ groups:
     env: *backend_test_env
     requires_services: [postgres, redis, minio]
     coverage_source: .
+
+  integration-workers:
+    tier: integration
+    workdir: workers
+    paths: [tests, shared/tests]
+    # Real-Postgres tests: barrier-decrement races, reaper, batch dedup, leader
+    # election, result backend. `conftest.py` marks these `integration` (any
+    # test using a real-connection fixture) and connects over TEST_DB_*, which
+    # the rig points at the provisioned container.
+    markers: "integration"
+    uv_sync_group: test
+    coverage_source: shared
+    requires_services: [postgres]
+    # The pg_queue tables these tests read are Django-managed models living in
+    # the backend (`backend/pg_queue`), so the provisioned database gets its
+    # schema from the real migration rather than DDL duplicated in a fixture.
+    migrate:
+      workdir: backend
+      apps: [pg_queue]
+      env: *backend_test_env
+    # Optional until REQUIRE_PG_TESTS=1 flips the fixtures' graceful skips into
+    # hard failures (see conftest `_skip_or_fail_no_pg`) so the lane can't pass
+    # having run nothing.
+    optional: true
 
   integration-connectors:
     tier: integration

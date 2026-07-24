@@ -383,3 +383,68 @@ def test_extra_manifest_missing_path_names_env_var(
     monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(tmp_path / "nope.yaml"))
     with pytest.raises(ValueError, match="UNSTRACT_RIG_EXTRA_MANIFESTS"):
         load_groups()
+
+
+def test_migrate_spec_parsed(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+            requires_services: [postgres]
+            migrate:
+              workdir: backend
+              apps: [pg_queue]
+              env:
+                DB_SCHEMA: public
+        """,
+    )
+    spec = load_groups(manifest).get("a").migrate
+    assert spec is not None
+    assert spec.apps == ("pg_queue",)
+    assert spec.env["DB_SCHEMA"] == "public"
+    assert spec.absolute_workdir().name == "backend"
+
+
+def test_migrate_requires_provisioned_postgres(tmp_path: Path) -> None:
+    """A migrate spec without a provisioned database would target whatever the
+    ambient DB_* happens to point at — reject it at load.
+    """
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+            migrate:
+              workdir: backend
+        """,
+    )
+    with pytest.raises(ValueError, match="requires_services"):
+        load_groups(manifest)
+
+
+def test_migrate_workdir_must_hold_manage_py(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+            requires_services: [postgres]
+            migrate:
+              workdir: workers
+        """,
+    )
+    with pytest.raises(ValueError, match="manage.py"):
+        load_groups(manifest)

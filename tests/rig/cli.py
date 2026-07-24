@@ -30,6 +30,7 @@ from tests.rig.groups import (
     REPO_ROOT,
     TIERS,
     GroupDefinition,
+    MigrateSpec,
     load_groups,
 )
 from tests.rig.reporting import (
@@ -63,6 +64,11 @@ _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
 # saxutils.escape leaves quotes alone, which is wrong inside an attribute.
 _XML_ATTR_ESCAPES = {'"': "&quot;"}
+
+# Cap the pre-group `manage.py migrate`. It runs outside the group's own
+# timeout budget, so without this a wedged connection hangs the job to the CI
+# ceiling.
+_MIGRATE_TIMEOUT_SECONDS = 300
 
 
 @lru_cache(maxsize=1)
@@ -730,7 +736,17 @@ def _inject_infra_env(
         return
     infra = endpoints.infra
     if "postgres" in group.requires_services and infra.postgres_url:
-        env.update(_db_env_from_postgres_url(infra.postgres_url))
+        db_env = _db_env_from_postgres_url(infra.postgres_url)
+        env.update(db_env)
+        # A rig-provisioned Postgres is bare — `public` is the only schema it
+        # has. Groups needing another one declare DB_SCHEMA themselves.
+        env.setdefault("DB_SCHEMA", "public")
+        db_env["DB_SCHEMA"] = env["DB_SCHEMA"]
+        # The workers' real-Postgres fixtures read TEST_DB_* so that a developer
+        # run keeps pointing at their own compose database. Mirror the
+        # provisioned values onto that prefix, or those tests silently connect
+        # to the dev-compose defaults instead of the container the rig started.
+        env.update({f"TEST_{key}": value for key, value in db_env.items()})
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.
         env.setdefault(
@@ -837,19 +853,23 @@ def _execute_group(
 
     workdir = group.absolute_workdir()
 
-    if group.runner == "hurl":
+    migrate_exit = 0 if group.migrate is None else _run_migrations(group.migrate, env=env)
+
+    if migrate_exit != 0:
+        # Without the schema every DB-backed test in the group skips (or, under
+        # REQUIRE_PG_TESTS, fails on a missing table) — noise that hides the
+        # real cause. Report the migration failure as the group's result instead.
+        print(
+            f"[rig] ❌ migrations failed for {group.name} (exit {migrate_exit}); "
+            f"not running the group",
+            file=sys.stderr,
+        )
+        _write_synthetic_junit_safe(junit, group.name, migrate_exit)
+        exit_code = migrate_exit
+    elif group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
-        # Match the exit.txt write's defensive handling: a read-only reports
-        # dir or full disk shouldn't abort the whole run and orphan completed
-        # groups before the summary renders.
-        try:
-            _write_synthetic_junit(junit, group.name, exit_code)
-        except OSError as err:
-            print(
-                f"[rig] could not write synthetic junit for {group.name}: {err}",
-                file=sys.stderr,
-            )
+        _write_synthetic_junit_safe(junit, group.name, exit_code)
     else:
         cmd = _pytest_command(
             group,
@@ -917,6 +937,40 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # NOTE: rig pytest plugins (pytest-timeout, pytest-md-report, etc.) are
     # injected via `uv run --with ...` in _pytest_command, not installed here.
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
+
+
+def _run_migrations(spec: MigrateSpec, *, env: dict[str, str]) -> int:
+    """Apply Django migrations to the rig-provisioned database.
+
+    Runs after infra is up and immediately before the group, so only groups
+    declaring ``migrate:`` pay for it. Inherits the group's env (which already
+    carries the provisioned ``DB_*``) with the spec's own settings layered on
+    top — the migrating project needs its own Django settings, not the group's.
+    """
+    workdir = spec.absolute_workdir()
+    base = ["uv", "run", "python"] if shutil.which("uv") else [sys.executable]
+    cmd = [*base, "manage.py", "migrate", *spec.apps, "--noinput"]
+    print(
+        f"[rig] migrating provisioned database via {spec.workdir}: "
+        f"{' '.join(spec.apps) or 'all apps'}"
+    )
+    return _spawn(
+        cmd, env={**env, **spec.env}, cwd=workdir, timeout=_MIGRATE_TIMEOUT_SECONDS
+    )
+
+
+def _write_synthetic_junit_safe(path: Path, group_name: str, exit_code: int) -> None:
+    """Mirror the exit.txt write's defensive handling: a read-only reports dir
+    or full disk shouldn't abort the whole run and orphan completed groups
+    before the summary renders.
+    """
+    try:
+        _write_synthetic_junit(path, group_name, exit_code)
+    except OSError as err:
+        print(
+            f"[rig] could not write synthetic junit for {group_name}: {err}",
+            file=sys.stderr,
+        )
 
 
 def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
@@ -1007,7 +1061,8 @@ def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:
 
 
 def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
-    """Synthesise a JUnit XML for hurl runs.
+    """Synthesise a JUnit XML for a group pytest never wrote one for (hurl runs,
+    or a group whose pre-run migration failed).
 
     Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
     hurl group would show ⚪ via :class:`GroupResult` while also being counted
