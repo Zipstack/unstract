@@ -9,6 +9,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
 
+from prompt_studio.permission import IsRegistryToolOwner
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
 from prompt_studio.prompt_studio_registry_v2.serializers import (
     PromptStudioRegistrySerializer,
@@ -27,6 +28,13 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
 
     versioning_class = URLPathVersioning
     serializer_class = PromptStudioRegistrySerializer
+
+    def get_permissions(self) -> list[Any]:
+        # `list` stays as it was - visibility is already derived by
+        # `list_tools`. Only the destructive detail route is gated.
+        if self.action == "destroy":
+            return [IsRegistryToolOwner()]
+        return super().get_permissions()
 
     def get_queryset(self) -> QuerySet | None:
         # Detail routes address a single row by PK; the list filters below are
