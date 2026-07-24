@@ -81,6 +81,8 @@ function ConnectorsPage() {
     searchTerm,
     sort,
     fetchRef,
+    requestList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
@@ -123,7 +125,7 @@ function ConnectorsPage() {
             setList: setDisplayList,
             setPagination,
             refetchPrevPage: () =>
-              getConnectors(page - 1, pageSize, search, sortBy, order),
+              requestList(page - 1, pageSize, search, sortBy, order),
           }),
         )
         .catch((err) => {
@@ -134,6 +136,8 @@ function ConnectorsPage() {
           setAlertDetails(handleException(err, "Failed to load connectors"));
           // Surface a retryable error instead of a misleading empty state.
           setLoadError(true);
+          // Failed request — realign requestedRef with the still-shown view.
+          syncRequested();
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.

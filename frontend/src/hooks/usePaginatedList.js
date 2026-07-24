@@ -103,21 +103,47 @@ function usePaginatedList({
   // Page assigns its fetch fn here; handlers call the latest one via the ref.
   const fetchRef = useRef(null);
 
-  // Mirror the latest list params so handleListRefresh always refetches the
-  // CURRENT view, even when captured earlier (e.g. a pending mutation's .then)
-  // before the user changed page/search/sort.
-  const listStateRef = useRef();
-  listStateRef.current = { pagination, searchTerm, sort };
+  // Mirrors the on-screen view each render (pagination only advances when a
+  // response applies), so a FAILED request can realign requestedRef with what's
+  // actually displayed. See syncRequested.
+  const appliedRef = useRef(null);
+  appliedRef.current = {
+    page: pagination.current,
+    pageSize: pagination.pageSize,
+    search: searchTerm,
+    sortBy: sort.sortBy,
+    order: sort.order,
+  };
+
+  // Params of the LAST request, recorded at fetch time (not read from state,
+  // which lags — pagination only updates when a response applies). handleList-
+  // Refresh replays these, so a refresh captured during an in-flight navigation
+  // still targets the view the user asked for rather than snapping back.
+  const requestedRef = useRef({
+    page: 1,
+    pageSize: defaultPageSize,
+    search: "",
+    sortBy: defaultSortBy,
+    order: defaultOrder,
+  });
+
+  // Single fetch entry: records the requested view before firing, so every
+  // path (navigation, stepback, reset) keeps requestedRef in sync with what
+  // ends up on screen. Pages route their stepback (refetchPrevPage) through it.
+  const requestList = (page, pageSize, search, sortBy, order) => {
+    requestedRef.current = { page, pageSize, search, sortBy, order };
+    fetchRef.current?.(page, pageSize, search, sortBy, order);
+  };
 
   const handlePaginationChange = (page, pageSize) => {
     const newPage = pageSize === pagination.pageSize ? page : 1;
-    fetchRef.current?.(newPage, pageSize, searchTerm, sort.sortBy, sort.order);
+    requestList(newPage, pageSize, searchTerm, sort.sortBy, sort.order);
   };
 
   const handleSearch = (searchText) => {
     const term = searchText?.trim() || "";
     setSearchTerm(term);
-    fetchRef.current?.(1, pagination.pageSize, term, sort.sortBy, sort.order);
+    requestList(1, pagination.pageSize, term, sort.sortBy, sort.order);
   };
 
   // Table header sort click: reset to page 1 (the page a row sits on changes)
@@ -125,7 +151,7 @@ function usePaginatedList({
   const handleSortChange = (sortBy, order) => {
     const nextSort = { sortBy: sortBy || "", order: order || "asc" };
     setSort(nextSort);
-    fetchRef.current?.(
+    requestList(
       1,
       pagination.pageSize,
       searchTerm,
@@ -134,12 +160,27 @@ function usePaginatedList({
     );
   };
 
-  // Stable identity, reads the latest params from the ref: a refresh captured
-  // before the user navigated still fetches the view they're on now instead of
-  // restoring the stale page/search/order.
+  // Reset to a fresh default view (state + requestedRef) and fetch — used when
+  // a persistent instance changes what it lists (e.g. ToolSettings adapter type)
+  // so search box, sort header, and requestedRef all start clean.
+  const resetList = () => {
+    setSearchTerm("");
+    setSort({ sortBy: defaultSortBy, order: defaultOrder });
+    requestList(1, defaultPageSize, "", defaultSortBy, defaultOrder);
+  };
+
+  // Realign requestedRef with the displayed view — call from a page's catch when
+  // its newest request failed (setList was skipped, so the screen still shows the
+  // previous view). Stops the next handleListRefresh from replaying the failed
+  // target (e.g. jumping to a page whose fetch errored).
+  const syncRequested = () => {
+    requestedRef.current = { ...appliedRef.current };
+  };
+
+  // Stable identity; replays the last requested params.
   const handleListRefresh = useCallback(() => {
-    const { pagination: p, searchTerm: term, sort: s } = listStateRef.current;
-    fetchRef.current?.(p.current, p.pageSize, term, s.sortBy, s.order);
+    const { page, pageSize, search, sortBy, order } = requestedRef.current;
+    fetchRef.current?.(page, pageSize, search, sortBy, order);
   }, []);
 
   return {
@@ -149,6 +190,9 @@ function usePaginatedList({
     setSearchTerm,
     sort,
     fetchRef,
+    requestList,
+    resetList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
     handleSortChange,

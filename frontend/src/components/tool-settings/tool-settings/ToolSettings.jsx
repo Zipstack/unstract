@@ -104,9 +104,11 @@ function ToolSettings({ type }) {
     pagination,
     setPagination,
     searchTerm,
-    setSearchTerm,
     sort,
     fetchRef,
+    requestList,
+    resetList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
@@ -157,7 +159,7 @@ function ToolSettings({ type }) {
             setList: setDisplayList,
             setPagination,
             refetchPrevPage: () =>
-              getAdapters(page - 1, pageSize, search, sortBy, order),
+              requestList(page - 1, pageSize, search, sortBy, order),
           }),
         )
         .catch((err) => {
@@ -168,6 +170,8 @@ function ToolSettings({ type }) {
           setAlertDetails(handleException(err));
           // Surface a retryable error instead of a misleading empty state.
           setLoadError(true);
+          // Failed request — realign requestedRef with the still-shown view.
+          syncRequested();
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.
@@ -188,12 +192,14 @@ function ToolSettings({ type }) {
   fetchRef.current = getAdapters;
 
   useEffect(() => {
-    setSearchTerm("");
     setDisplayList(undefined);
     if (!type) {
       return;
     }
-    getAdapters(1, DEFAULT_PAGE_SIZE, "", "", "asc");
+    // Persistent instance across adapter types: reset search/sort/requestedRef
+    // together so the new type starts clean and later refreshes don't replay
+    // the previous type's view.
+    resetList();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 

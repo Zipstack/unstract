@@ -128,6 +128,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     setSearchTerm,
     sort,
     fetchRef,
+    requestList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
@@ -174,7 +176,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
             setList: setDisplayList,
             setPagination,
             refetchPrevPage: () =>
-              getListOfTools(page - 1, pageSize, search, sortBy, order),
+              requestList(page - 1, pageSize, search, sortBy, order),
           }),
         )
         .catch((err) => {
@@ -187,6 +189,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           );
           // Surface a retryable error instead of a misleading empty state.
           setLoadError(true);
+          // Failed request — realign requestedRef with the still-shown view.
+          syncRequested();
         })
         .finally(() => {
           // Only the newest request owns the shared loading state.

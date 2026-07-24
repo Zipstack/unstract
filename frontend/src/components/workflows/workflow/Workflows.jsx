@@ -58,6 +58,9 @@ function Workflows() {
   const [loadError, setLoadError] = useState(false);
   const [editingProject, setEditProject] = useState();
   const [loading, setLoading] = useState(false);
+  // Modal-local save spinner — kept off the shared list-loading so an edit can't
+  // race the post-edit refetch for the list's loading state.
+  const [editLoading, setEditLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
@@ -77,6 +80,8 @@ function Workflows() {
     searchTerm,
     sort,
     fetchRef,
+    requestList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
     handleSortChange,
@@ -120,7 +125,7 @@ function Workflows() {
           setList: setProjectList,
           setPagination,
           refetchPrevPage: () =>
-            getProjectList(page - 1, pageSize, search, sortBy, order),
+            requestList(page - 1, pageSize, search, sortBy, order),
         }),
       )
       .catch(() => {
@@ -131,6 +136,8 @@ function Workflows() {
         console.error("Unable to get project list");
         // Surface a retryable error instead of a misleading empty state.
         setLoadError(true);
+        // Failed request — realign requestedRef with the still-shown view.
+        syncRequested();
       })
       .finally(() => {
         // Only the newest request owns the shared loading state.
@@ -142,7 +149,10 @@ function Workflows() {
   fetchRef.current = getProjectList;
 
   function editProject(name, description) {
-    setLoading(true);
+    // Drive the modal-local editLoading, not the shared list-loading: on success
+    // the edit path's handleListRefresh owns the list spinner (new path navigates
+    // away), so editProject can't clear a pending refetch's loading.
+    setEditLoading(true);
     projectApiService
       .editProject(name, description, editingProject?.id)
       .then((res) => {
@@ -166,7 +176,7 @@ function Workflows() {
         );
       })
       .finally(() => {
-        setLoading(false);
+        setEditLoading(false);
       });
   }
 
@@ -448,7 +458,7 @@ function Workflows() {
               description={editingProject.description}
               onDone={editProject}
               onClose={closeNewProject}
-              loading={loading}
+              loading={editLoading}
               toggleModal={toggleModal}
               openModal={openModal}
               backendErrors={backendErrors}
