@@ -1,13 +1,18 @@
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.oracle_db import OracleDB
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.oracle_db import OracleDB
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorOracle(TestCase):
     """Integration test for insert_into_db method with real Oracle DB connector."""
 

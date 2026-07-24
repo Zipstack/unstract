@@ -30,6 +30,7 @@ from tests.rig.groups import (
     REPO_ROOT,
     TIERS,
     GroupDefinition,
+    MigrateSpec,
     load_groups,
 )
 from tests.rig.reporting import (
@@ -63,6 +64,11 @@ _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
 # saxutils.escape leaves quotes alone, which is wrong inside an attribute.
 _XML_ATTR_ESCAPES = {'"': "&quot;"}
+
+# Cap the pre-group `manage.py migrate`. It runs outside the group's own
+# timeout budget, so without this a wedged connection hangs the job to the CI
+# ceiling.
+_MIGRATE_TIMEOUT_SECONDS = 300
 
 
 @lru_cache(maxsize=1)
@@ -456,14 +462,31 @@ def cmd_run(args: argparse.Namespace) -> int:
             endpoints = runtime.up()
         elif needs_services and not args.dry_run:
             # Infra-only: testcontainers Postgres/Redis/etc., no platform
-            # services. ponytail: up() starts the full infra set even if a run
-            # only needs Postgres; trim to the requested services if startup
-            # cost ever matters.
+            # services. up() starts the full infra set even if a run only needs
+            # Postgres; trim to the requested services if startup cost matters.
             runtime = TestcontainersRuntime()
             print(
                 f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
             )
             endpoints = runtime.up()
+
+        # Schema for the database the rig just provisioned. Guarded on
+        # `postgres_url` so it only fires for a rig-owned container: under the
+        # compose runtime the platform's own backend migrates on startup, and
+        # migrating its database from here would be both redundant and wrong.
+        if endpoints is not None and manifest.postgres_migrate is not None:
+            postgres_url = endpoints.infra.postgres_url
+            if postgres_url:
+                migrate_exit = _run_migrations(
+                    manifest.postgres_migrate, postgres_url=postgres_url
+                )
+                if migrate_exit != 0:
+                    # Every DB-backed test would skip on a missing table, which
+                    # reads as "nothing to run" rather than a broken database.
+                    raise RuntimeError(
+                        f"migrations failed against the provisioned database "
+                        f"(exit {migrate_exit}); aborting before any group runs"
+                    )
 
         # Groups run in topo order, so a dependency's result is always known by
         # the time its dependents come up. A red dep means the precondition it
@@ -730,7 +753,17 @@ def _inject_infra_env(
         return
     infra = endpoints.infra
     if "postgres" in group.requires_services and infra.postgres_url:
-        env.update(_db_env_from_postgres_url(infra.postgres_url))
+        db_env = _db_env_from_postgres_url(infra.postgres_url)
+        env.update(db_env)
+        # A rig-provisioned Postgres is bare — `public` is the only schema it
+        # has. Groups needing another one declare DB_SCHEMA themselves.
+        env.setdefault("DB_SCHEMA", "public")
+        db_env["DB_SCHEMA"] = env["DB_SCHEMA"]
+        # The workers' real-Postgres fixtures read TEST_DB_* so that a developer
+        # run keeps pointing at their own compose database. Mirror the
+        # provisioned values onto that prefix, or those tests silently connect
+        # to the dev-compose defaults instead of the container the rig started.
+        env.update({f"TEST_{key}": value for key, value in db_env.items()})
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.
         env.setdefault(
@@ -840,16 +873,12 @@ def _execute_group(
     if group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
-        # Match the exit.txt write's defensive handling: a read-only reports
-        # dir or full disk shouldn't abort the whole run and orphan completed
-        # groups before the summary renders.
-        try:
-            _write_synthetic_junit(junit, group.name, exit_code)
-        except OSError as err:
-            print(
-                f"[rig] could not write synthetic junit for {group.name}: {err}",
-                file=sys.stderr,
-            )
+        _write_synthetic_junit_safe(junit, group.name, exit_code)
+    elif (isolation_error := _config_isolation_error(group, workdir)) is not None:
+        print(isolation_error, file=sys.stderr)
+        # 4 is pytest's usage-error code, so this gates like any hard failure.
+        exit_code = 4
+        _write_synthetic_junit_safe(junit, group.name, exit_code)
     else:
         cmd = _pytest_command(
             group,
@@ -919,6 +948,45 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
 
 
+def _run_migrations(spec: MigrateSpec, *, postgres_url: str) -> int:
+    """Apply Django migrations to the rig-provisioned database.
+
+    Runs once, right after the container is up and before any group, because the
+    schema is a property of the database rather than of a group. Only the
+    migrating project's own Django settings are layered over the connection env
+    — a group's environment is irrelevant here and may not even exist yet.
+    """
+    env = {
+        **os.environ,
+        **_db_env_from_postgres_url(postgres_url),
+        # A rig-provisioned Postgres is bare; `public` is the only schema it has.
+        "DB_SCHEMA": "public",
+        **spec.env,
+    }
+    workdir = spec.absolute_workdir()
+    base = ["uv", "run", "python"] if shutil.which("uv") else [sys.executable]
+    cmd = [*base, "manage.py", "migrate", *spec.apps, "--noinput"]
+    print(
+        f"[rig] migrating provisioned database via {spec.workdir}: "
+        f"{' '.join(spec.apps) or 'all apps'}"
+    )
+    return _spawn(cmd, env=env, cwd=workdir, timeout=_MIGRATE_TIMEOUT_SECONDS)
+
+
+def _write_synthetic_junit_safe(path: Path, group_name: str, exit_code: int) -> None:
+    """Mirror the exit.txt write's defensive handling: a read-only reports dir
+    or full disk shouldn't abort the whole run and orphan completed groups
+    before the summary renders.
+    """
+    try:
+        _write_synthetic_junit(path, group_name, exit_code)
+    except OSError as err:
+        print(
+            f"[rig] could not write synthetic junit for {group_name}: {err}",
+            file=sys.stderr,
+        )
+
+
 def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
     if not shutil.which("uv"):
         return [sys.executable, "-m", "pytest"]
@@ -931,6 +999,62 @@ def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
     if group.install_editable:
         with_args += ["--with-editable", str(workdir)]
     return ["uv", "run", *with_args, "pytest"]
+
+
+# Order matters: pytest picks the first of these it finds walking upward.
+_PYTEST_CONFIG_FILES = (
+    ("pytest.ini", None),
+    (".pytest.ini", None),
+    ("pyproject.toml", "[tool.pytest.ini_options]"),
+    ("tox.ini", "[pytest]"),
+    ("setup.cfg", "[tool:pytest]"),
+)
+
+
+def _resolve_pytest_configfile(workdir: Path) -> Path | None:
+    """Find the config file pytest would adopt when invoked from `workdir`.
+
+    Mirrors pytest's upward search. `pytest.ini` counts even when empty; the
+    shared files only count when they carry a pytest section.
+    """
+    for directory in [workdir, *workdir.parents]:
+        for name, required_section in _PYTEST_CONFIG_FILES:
+            candidate = directory / name
+            if not candidate.is_file():
+                continue
+            if required_section is None:
+                return candidate
+            try:
+                if required_section in candidate.read_text(encoding="utf-8"):
+                    return candidate
+            except OSError:
+                continue
+        if directory == REPO_ROOT:
+            break
+    return None
+
+
+def _config_isolation_error(group: GroupDefinition, workdir: Path) -> str | None:
+    """Reject a group that would silently inherit an unrelated project's config.
+
+    `cd workdir && pytest` does not pin config to workdir — pytest walks up. A
+    nested project without its own config therefore adopts its parent's
+    `addopts` (coverage targets, --strict-config), which fails in ways that
+    have nothing to do with the group's tests. Inheriting the repo-root config
+    is the normal monorepo case and stays allowed; inheriting some *other*
+    project's config never is.
+    """
+    configfile = _resolve_pytest_configfile(workdir)
+    if configfile is None or configfile.parent in (workdir, REPO_ROOT):
+        return None
+    return (
+        f"[rig] group '{group.name}' would run under {configfile}, which belongs "
+        f"to neither its workdir ({workdir}) nor the repo root.\n"
+        f"[rig] pytest resolves config by walking up from the workdir, so this "
+        f"group inherits that project's addopts.\n"
+        f"[rig] fix: add a [tool.pytest.ini_options] section to "
+        f"{workdir / 'pyproject.toml'}."
+    )
 
 
 def _pytest_command(
@@ -1007,7 +1131,8 @@ def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:
 
 
 def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
-    """Synthesise a JUnit XML for hurl runs.
+    """Synthesise a JUnit XML for a group pytest never wrote one for (hurl runs,
+    or a group whose pre-run migration failed).
 
     Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
     hurl group would show ⚪ via :class:`GroupResult` while also being counted

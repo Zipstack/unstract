@@ -383,3 +383,85 @@ def test_extra_manifest_missing_path_names_env_var(
     monkeypatch.setenv("UNSTRACT_RIG_EXTRA_MANIFESTS", str(tmp_path / "nope.yaml"))
     with pytest.raises(ValueError, match="UNSTRACT_RIG_EXTRA_MANIFESTS"):
         load_groups()
+
+
+def test_postgres_migrate_spec_parsed(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        defaults:
+          postgres_migrate:
+            workdir: backend
+            apps: [pg_queue]
+            env:
+              DB_SCHEMA: public
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+            requires_services: [postgres]
+        """,
+    )
+    spec = load_groups(manifest).postgres_migrate
+    assert spec is not None
+    assert spec.apps == ("pg_queue",)
+    assert spec.env["DB_SCHEMA"] == "public"
+    assert spec.absolute_workdir().name == "backend"
+
+
+def test_postgres_migrate_absent_by_default(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+        """,
+    )
+    assert load_groups(manifest).postgres_migrate is None
+
+
+def test_postgres_migrate_workdir_must_hold_manage_py(tmp_path: Path) -> None:
+    """A bad workdir would otherwise surface only after infra is up, as every
+    DB-backed test skipping on a missing table."""
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        defaults:
+          postgres_migrate:
+            workdir: workers
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+            requires_services: [postgres]
+        """,
+    )
+    with pytest.raises(ValueError, match="manage.py"):
+        load_groups(manifest)
+
+
+def test_postgres_migrate_requires_workdir(tmp_path: Path) -> None:
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        defaults:
+          postgres_migrate:
+            apps: [pg_queue]
+        groups:
+          a:
+            tier: integration
+            paths: [x]
+            optional: true
+        """,
+    )
+    with pytest.raises(ValueError, match="workdir"):
+        load_groups(manifest)
