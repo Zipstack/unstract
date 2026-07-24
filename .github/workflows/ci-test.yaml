@@ -1,4 +1,13 @@
-name: Run unit + integration tests (rig)
+name: Run tests (unit + integration + e2e)
+
+# Multi-job, one report. unit/integration run as parallel matrix legs on
+# testcontainers; e2e builds images and boots the full platform via compose on
+# its own runner (images don't travel across jobs). The report job needs all
+# three, merges every tier's junit into ONE critical-path evaluation, and posts
+# a single sticky PR comment — so e2e coverage (e.g. auth-login) shows up next
+# to unit/integration. Tiers never run in one rig invocation: the rig picks one
+# infra mode per call, so mixing compose e2e with testcontainers integration
+# would point the backend at the compose DB hostname, unreachable from pytest.
 
 on:
   push:
@@ -6,21 +15,34 @@ on:
       - main
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+    branches:
+      - main
+  workflow_dispatch:
 
 jobs:
   # Path filtering at job level, not trigger paths-ignore: an untriggered
   # workflow reports no check run, so a required check waits forever; a job
-  # skipped via `if:` reports conclusion `skipped`, which passes.
+  # skipped via `if:` reports conclusion `skipped`, which passes. Two scopes:
+  # `relevant` gates unit/integration; `e2e_relevant` gates e2e and skips only
+  # docs — the e2e image build is the sole CI check that compiles the frontend,
+  # and docker/** changes must be e2e-tested.
   changes:
     runs-on: ubuntu-latest
     outputs:
-      relevant: ${{ steps.filter.outputs.relevant }}
+      # Filtering is a PR-time saving only. On workflow_dispatch there is no
+      # base to diff, so paths-filter resolves against the default branch and a
+      # manual run on main diffs main against itself — every filter false, every
+      # tier skipped, gate green with nothing run. Force both true off-PR.
+      relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' }}
+      e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' }}
     steps:
       - name: Checkout repository
-        # paths-filter needs the local git history for push events.
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Check for changes outside ignored paths
+        if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
         id: filter
         with:
@@ -32,75 +54,62 @@ jobs:
               - "!docker/**"
               - "!frontend/**"
               - "!docs/**"
+            e2e_relevant:
+              - "!docs/**"
 
   # Tiers share no state (separate runners, disjoint groups), so they run as
-  # parallel matrix legs; whatever needs both tiers' results happens in `report`.
+  # parallel matrix legs; cross-tier reconciliation happens in `report`.
   test:
     needs: changes
     if: needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     strategy:
-      # One tier failing must not cancel the other; the report job needs
-      # whatever results exist from both.
+      # One tier failing must not cancel the other; report needs both results.
       fail-fast: false
       matrix:
         tier: [unit, integration]
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          fetch-depth: 0  # rig --changed-only needs git history
+          fetch-depth: 0 # rig --changed-only needs git history
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           version: "0.6.14"
           python-version: 3.12.9
+          enable-cache: true
 
       - name: Cache tox environments
         uses: actions/cache@v5
         with:
           path: .tox/
-          # Tier in the key: legs build different tox envs, and parallel
-          # saves to one key race (first save wins).
+          # Tier in the key: legs build different tox envs, and parallel saves
+          # to one key race (first save wins).
           key: ${{ runner.os }}-tox-uv-${{ matrix.tier }}-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
           restore-keys: |
             ${{ runner.os }}-tox-uv-${{ matrix.tier }}-
             ${{ runner.os }}-tox-uv-
 
-      - name: Restore main-branch test baseline (for regression detection)
-        # Restore-only: the report job is the sole baseline writer (a save
-        # here would claim this run's key with an unmerged file). Baseline is
-        # separate from the e2e workflow's — their scope_groups don't overlap,
-        # and a cross-lane restore would flag the other lane's paths as
-        # regressions.
-        uses: actions/cache/restore@v5
-        with:
-          path: reports/previous-summary.json
-          key: unstract-test-baseline-ut-main-${{ github.run_id }}
-          restore-keys: |
-            unstract-test-baseline-ut-main-
-            unstract-test-baseline-ut-
-
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv
 
       - name: Validate test manifests
-        # Cheap pre-flight: catches groups.yaml / critical_paths.yaml schema
-        # errors before we spend minutes on tier runs.
+        # Cheap pre-flight: catches manifest schema errors before tier runs.
         run: tox -e rig -- validate
 
       - name: Run ${{ matrix.tier }} tier
-        # Gap check on PRs too: main is gap-free and PRs test the merge ref,
-        # so a gap here can only be PR-introduced. No --update-baseline:
-        # parallel writes would race; the report job merges once (main only).
+        # Gap check on PRs too: main is gap-free and PRs test the merge ref, so
+        # an in-scope gap here is PR-introduced. No baseline restore or
+        # --update-baseline — the report job is the sole regression authority
+        # (a per-tier eval would flag other tiers' paths as missing).
         run: tox -e ${{ matrix.tier }} -- --fail-on-critical-gap
 
       - name: Suffix coverage data for cross-tier merge
-        # Both tiers emit a bare reports/.coverage that would clobber on
-        # download; suffixed names match the `.coverage.*` glob `report
-        # combine` unions.
+        # Every tier emits a bare reports/.coverage that would clobber on
+        # download; suffixed names match the `.coverage.*` glob combine unions.
         if: always()
         run: |
           if [ -f reports/.coverage ]; then
@@ -109,37 +118,144 @@ jobs:
 
       - name: Upload tier reports artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: reports-${{ matrix.tier }}
-          # Baseline excluded: it's cache-managed, and a stale copy inside the
-          # artifact would overwrite the report job's freshly restored one.
-          path: |
-            reports/
-            !reports/previous-summary.json
+          path: reports/
           if-no-files-found: ignore
           retention-days: 14
 
-  report:
-    needs: [changes, test]
-    # `always()` so a red tier still gets a PR report. Skip only a legitimate
-    # skip — irrelevant paths / draft, decided by a *successful* changes job.
-    # A failed changes job skips the tiers, so this must run and go red
-    # (final step) instead of green-skipping the required check.
-    if: >-
-      always() && (needs.changes.result != 'success'
-      || (needs.changes.outputs.relevant == 'true' && github.event.pull_request.draft == false))
+  # Builds images then runs e2e against the full compose platform. Gated by
+  # `e2e_relevant`, which unlike `relevant` keeps docker/** and frontend/** in
+  # scope — both are built here — and skips only docs-only changes.
+  e2e:
+    needs: changes
+    if: needs.changes.outputs.e2e_relevant == 'true' && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
-
+    timeout-minutes: 45
+    env:
+      # One tag end to end: docker-compose.build.yaml tags images with VERSION,
+      # the base compose boots ${VERSION}, and the test overlay pins its
+      # services via UNSTRACT_TEST_VERSION. Keep them identical.
+      VERSION: ${{ github.sha }}
+      UNSTRACT_TEST_VERSION: ${{ github.sha }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Login to Docker Hub
+        # Authenticated pulls avoid the anonymous rate limit shared by all
+        # runners. Forks have no access to secrets.
+        if: github.event.pull_request == null || github.event.pull_request.head.repo.fork == false
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           version: "0.6.14"
           python-version: 3.12.9
+          enable-cache: true
+
+      - name: Cache tox environments
+        uses: actions/cache@v5
+        with:
+          path: .tox/
+          key: ${{ runner.os }}-tox-uv-e2e-${{ hashFiles('**/pyproject.toml', '**/tox.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-tox-uv-e2e-
+            ${{ runner.os }}-tox-uv-
+
+      - name: Install tox with UV
+        run: uv tool install tox --with tox-uv
+
+      - name: Validate test manifests
+        # Cheap pre-flight before the multi-minute image build.
+        run: tox -e rig -- validate
+
+      - name: Set up env files
+        run: ./run-platform.sh -e
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+
+      # Bake instead of `compose build` so each ephemeral runner restores layers
+      # from the GHA cache the release workflow also writes (matching per-service
+      # scopes), instead of building cold every run. `load` exports the images
+      # into the daemon so the compose stack can boot them.
+      - name: Build service images
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7
+        with:
+          files: ./docker/docker-compose.build.yaml
+          load: true
+          set: |
+            *.context=.
+            *.args.VERSION=${{ github.sha }}
+            frontend.cache-from=type=gha,scope=frontend
+            frontend.cache-to=type=gha,mode=max,scope=frontend
+            backend.cache-from=type=gha,scope=backend
+            backend.cache-to=type=gha,mode=max,scope=backend
+            runner.cache-from=type=gha,scope=runner
+            runner.cache-to=type=gha,mode=max,scope=runner
+            tool-sidecar.cache-from=type=gha,scope=tool-sidecar
+            tool-sidecar.cache-to=type=gha,mode=max,scope=tool-sidecar
+            platform-service.cache-from=type=gha,scope=platform-service
+            platform-service.cache-to=type=gha,mode=max,scope=platform-service
+            x2text-service.cache-from=type=gha,scope=x2text-service
+            x2text-service.cache-to=type=gha,mode=max,scope=x2text-service
+            tool-classifier.cache-from=type=gha,scope=tool-classifier
+            tool-classifier.cache-to=type=gha,mode=max,scope=tool-classifier
+            tool-text_extractor.cache-from=type=gha,scope=tool-text_extractor
+            tool-text_extractor.cache-to=type=gha,mode=max,scope=tool-text_extractor
+            worker-unified.cache-from=type=gha,scope=worker-unified
+            worker-unified.cache-to=type=gha,mode=max,scope=worker-unified
+
+      - name: Run e2e tier (rig boots the platform via compose)
+        env:
+          UNSTRACT_E2E_RUNTIME: compose
+        # Gap check only; report owns baseline/regression across all tiers.
+        run: tox -e e2e -- --fail-on-critical-gap
+
+      - name: Suffix coverage data for cross-tier merge
+        if: always()
+        run: |
+          if [ -f reports/.coverage ]; then
+            mv reports/.coverage "reports/.coverage.tier-e2e"
+          fi
+
+      - name: Upload e2e reports artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: reports-e2e
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  report:
+    needs: [changes, test, e2e]
+    # `always()` so a red tier still posts a report. Any tier may skip on
+    # irrelevant paths; the fail step below distinguishes a legitimate skip
+    # from a real tier failure.
+    if: always() && github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
+        with:
+          version: "0.6.14"
+          python-version: 3.12.9
+          enable-cache: true
 
       - name: Cache tox environments
         uses: actions/cache@v5
@@ -150,17 +266,18 @@ jobs:
             ${{ runner.os }}-tox-uv-rig-
             ${{ runner.os }}-tox-uv-
 
-      - name: Restore main-branch test baseline
+      - name: Install tox with UV
+        run: uv tool install tox --with tox-uv
+
+      - name: Restore main-branch test baseline (for regression detection)
+        # One unified baseline across all tiers; this job is its sole
+        # reader+writer. Restore-only here, save below on green main.
         uses: actions/cache/restore@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-ut-main-${{ github.run_id }}
+          key: unstract-test-baseline-main-${{ github.run_id }}
           restore-keys: |
-            unstract-test-baseline-ut-main-
-            unstract-test-baseline-ut-
-
-      - name: Install tox with UV
-        run: uv tool install tox --with tox-uv
+            unstract-test-baseline-main-
 
       - name: Download tier reports
         uses: actions/download-artifact@v4
@@ -169,24 +286,27 @@ jobs:
           path: reports/
           merge-multiple: true
 
-      - name: Combine reports from both tiers
-        # On green main builds also merge covered paths into the baseline
-        # (single writer; the rig refuses the merge if any group is red).
+      - name: Combine tiers into one report
+        # Merges every tier's junit into a single critical-path evaluation + PR
+        # comment. --update-baseline is main-only and green-only — a PR must not
+        # write main's baseline, nor a red build a partial one.
         run: |
           flags=""
-          if [ "${{ github.ref }}" = "refs/heads/main" ] && [ "${{ needs.test.result }}" = "success" ]; then
+          if [ "${{ github.ref }}" = "refs/heads/main" ] \
+            && [ "${{ needs.test.result }}" = "success" ] \
+            && [ "${{ needs.e2e.result }}" = "success" ]; then
             flags="--update-baseline"
           fi
           tox -e rig -- report combine $flags
 
       - name: Save updated baseline
-        # actions/cache saves only on a miss; the run id keys each main build
-        # a fresh entry, and restore-keys' prefix pulls the latest next run.
+        # actions/cache saves only on a miss; the run id keys each main build a
+        # fresh entry, and restore-keys' prefix pulls the latest next run.
         if: github.ref == 'refs/heads/main'
         uses: actions/cache/save@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-ut-main-${{ github.run_id }}
+          key: unstract-test-baseline-main-${{ github.run_id }}
 
       - name: Render combined test report to PR
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
@@ -199,21 +319,27 @@ jobs:
       - name: Output combined report to job summary
         if: always() && hashFiles('reports/summary.md') != ''
         shell: bash
-        run: |
-          cat reports/summary.md >> $GITHUB_STEP_SUMMARY
+        run: cat reports/summary.md >> $GITHUB_STEP_SUMMARY
 
-      - name: Upload reports artifact
+      - name: Upload combined reports artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: test-reports-unit-integration
+          name: test-reports
           path: reports/
           if-no-files-found: ignore
           retention-days: 14
 
       - name: Fail if any tier failed
-        # Lets this job serve as the single branch-protection check: a matrix
-        # `result` is success only when every leg passed.
+        # Single branch-protection check. A skipped tier means irrelevant paths
+        # (path-filter skip == pass); only an actual failure fails the gate.
+        # Runs after the comment so a red tier still reports.
         if: always()
         run: |
-          [ "${{ needs.test.result }}" = "success" ] || exit 1
+          changes_result="${{ needs.changes.result }}"
+          test_result="${{ needs.test.result }}"
+          e2e_result="${{ needs.e2e.result }}"
+          # A broken filter job skips both tiers, which would read as pass.
+          [ "$changes_result" = "success" ] || exit 1
+          [ "$test_result" = "success" ] || [ "$test_result" = "skipped" ] || exit 1
+          [ "$e2e_result" = "success" ] || [ "$e2e_result" = "skipped" ] || exit 1

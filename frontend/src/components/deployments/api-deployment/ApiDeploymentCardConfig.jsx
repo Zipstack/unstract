@@ -38,6 +38,7 @@ function createApiDeploymentCardConfig({
   onSetupNotifications,
   onCodeSnippets,
   onDownloadPostman,
+  onManageCoOwners,
   listContext,
 }) {
   return {
@@ -128,7 +129,11 @@ function createApiDeploymentCardConfig({
               itemId={deployment.id}
               listContext={listContext}
             />
-            <OwnerFieldRow item={deployment} sessionDetails={sessionDetails} />
+            <OwnerFieldRow
+              item={deployment}
+              sessionDetails={sessionDetails}
+              onManageCoOwners={() => onManageCoOwners?.(deployment)}
+            />
             <LastRunFieldRow lastRunTime={deployment.last_run_time} />
             <Last5RunsFieldRow
               statuses={deployment.last_5_run_statuses}

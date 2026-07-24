@@ -18,32 +18,47 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 # Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). The patterns are regex-searched against the model id
-# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
-# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
-# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
-# covers every encoding of the id we have observed:
-#   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
-#   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
-#   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
+# `top_p`, `top_k`). Anthropic removed the sampling params starting with Claude
+# Opus 4.7, and every model released since — Opus 4.8, Sonnet 5, Fable 5,
+# Mythos 5 — rejects them with a 400 (directly, and through the Bedrock / Azure
+# AI Foundry / Vertex proxies). Opus 4.6 / Sonnet 4.6 and older still accept
+# them, so detection is a narrow allowlist rather than a broad `claude-*` match.
+#
+# Each stem is compiled into a pattern that is regex-searched against the model
+# id after lowercasing and normalizing `.` / `_` to `-`. The match is anchored
+# at the trailing edge so unrelated future ids (`claude-sonnet-50`,
+# `claude-opus-4-70`, `claude-sonnet-5verbose`) do not match. One stem covers
+# every encoding of the id we have observed, e.g. for `claude-sonnet-5`:
+#   - Native Anthropic              `claude-sonnet-5`, `anthropic/claude-sonnet-5`
+#   - Bedrock foundation model      `anthropic.claude-sonnet-5-<date>-v1:0`
+#   - Bedrock cross-region profile  `us.anthropic.claude-sonnet-5-...`,
 #                                   `eu.`, `apac.`, `global.` variants
 #   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
-#                                    anthropic.claude-opus-4-7-...`
+#                                    anthropic.claude-sonnet-5-...`
 #   - Bedrock inference-profile ARN `arn:aws:bedrock:<region>:<account>:
-#                                    inference-profile/us.anthropic.claude-opus-4-7-...`
-#   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
-#   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
+#                                    inference-profile/us.anthropic.claude-sonnet-5-...`
+#   - Vertex AI                     `vertex_ai/claude-sonnet-5@<date>`
+#   - Azure AI Foundry              deployments whose name embeds `claude-sonnet-5`
 # Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
 # through because the regex is anchored only at the trailing edge.
-# Add new entries here when Anthropic deprecates sampling on more models.
+# Keep this list current — add a stem here when Anthropic deprecates sampling on
+# a new model.
 # Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
 # delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
 # `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
-# `v` is intentionally rejected so alpha continuations like `4-7verbose` do
-# not silently match.
-# See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
-_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
+# `v` is intentionally rejected so alpha continuations like `sonnet-5verbose`
+# do not silently match.
+# See https://docs.claude.com/en/about-claude/models/overview
+_SAMPLING_DEPRECATED_MODEL_STEMS: tuple[str, ...] = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(rf"{re.escape(stem)}(?=$|[-:@/]|v\d)")
+    for stem in _SAMPLING_DEPRECATED_MODEL_STEMS
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
@@ -63,7 +78,7 @@ def _looks_like_opaque_aip_arn(value: str | None) -> bool:
 
     Bedrock AIP ARNs do not carry the underlying foundation-model id in the
     string, so the sampling-strip detector cannot decide whether the call is
-    bound for Claude Opus 4.7.
+    bound for a sampling-deprecated Claude model (Opus 4.7 and later).
     """
     return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
 
@@ -72,12 +87,14 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     """Return True when the model rejects sampling parameters.
 
     Anthropic deprecated `temperature`, `top_p`, and `top_k` starting with
-    Claude Opus 4.7; sending any of them yields a 400 from Anthropic and from
-    the providers that proxy it (Bedrock, Azure AI Foundry, Vertex AI).
+    Claude Opus 4.7, and every model released since (Opus 4.8, Sonnet 5,
+    Fable 5, Mythos 5) rejects them too; sending any of them yields a 400 from
+    Anthropic and from the providers that proxy it (Bedrock, Azure AI Foundry,
+    Vertex AI). See `_SAMPLING_DEPRECATED_MODEL_STEMS` for the covered set.
 
     The check normalizes case and `.`/`_` separators to `-`, then regex-
     searches against the patterns with a trailing-edge boundary, so
-    `claude-opus-4-70` and `claude-opus-4-7verbose` do not match. This
+    `claude-sonnet-50` and `claude-sonnet-5verbose` do not match. This
     catches every format that embeds the model id (foundation model ids,
     cross-region profiles, foundation-model ARNs, inference-profile ARNs,
     Vertex `@`-suffixed ids).
@@ -89,7 +106,8 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
       from the string. Pass the AIP ARN in `model_id` and keep the standard
       model id in `model`, or the strip won't fire.
     - Azure AI Foundry deployment names that omit the model id; rename the
-      deployment to include `claude-opus-4-7` so detection works.
+      deployment to include the model id (e.g. `claude-sonnet-5`) so detection
+      works.
     """
     if not model:
         return False
@@ -512,7 +530,35 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+_MINIMAX_PROVIDER_PREFIX = "minimax/"
+_MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
+_MINIMAX_CONTEXT_WINDOWS = {
+    "MiniMax-M3": 1_000_000,
+}
+# All M2.x variants share one window. Kept local because LiteLLM overstates it.
+# REF: https://platform.minimax.io/docs/api-reference/text-openai-api
+_MINIMAX_M2_CONTEXT_WINDOW = 204_800
+
+
+def _minimax_provider_prefix(api_base: str) -> str:
+    path = urlparse(api_base).path.rstrip("/").lower()
+    if path.endswith("/anthropic"):
+        return _MINIMAX_ANTHROPIC_PROVIDER_PREFIX
+    return _MINIMAX_PROVIDER_PREFIX
+
+
+def _is_minimax_m2_model(model_id: str) -> bool:
+    return re.match(r"^minimax-m2(?:$|[.-])", model_id, re.IGNORECASE) is not None
+
+
+def _minimax_context_window(model_id: str) -> int | None:
+    if context_window := _MINIMAX_CONTEXT_WINDOWS.get(model_id):
+        return context_window
+    if _is_minimax_m2_model(model_id):
+        return _MINIMAX_M2_CONTEXT_WINDOW
+    return None
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -526,6 +572,74 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class MiniMaxLLMParameters(BaseChatCompletionParameters):
+    """Adapter for MiniMax's OpenAI- and Anthropic-compatible APIs."""
+
+    api_key: str
+    api_base: str = _MINIMAX_API_BASE
+    temperature: float | None = Field(default=1, ge=0, le=2)
+    thinking: dict[str, str] | None = None
+    service_tier: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _MINIMAX_API_BASE
+
+        adapter_metadata["model"] = MiniMaxLLMParameters.validate_model(adapter_metadata)
+        model_id = adapter_metadata["model"].split("/", 1)[-1]
+
+        service_tier = adapter_metadata.get("service_tier")
+        if service_tier not in {None, "standard", "priority"}:
+            raise ValueError("service_tier must be standard or priority.")
+
+        if "enable_thinking" in adapter_metadata:
+            enable_thinking = adapter_metadata.pop("enable_thinking")
+            if not isinstance(enable_thinking, bool):
+                raise ValueError("enable_thinking must be a boolean.")
+            adapter_metadata["thinking"] = {
+                "type": "adaptive" if enable_thinking else "disabled"
+            }
+
+        thinking = adapter_metadata.get("thinking")
+        if thinking is None and _is_minimax_m2_model(model_id):
+            thinking = {"type": "adaptive"}
+            adapter_metadata["thinking"] = thinking
+        if thinking is not None:
+            if not isinstance(thinking, dict) or thinking.get("type") not in {
+                "adaptive",
+                "disabled",
+            }:
+                raise ValueError("thinking.type must be adaptive or disabled.")
+            if _is_minimax_m2_model(model_id) and thinking["type"] == "disabled":
+                raise ValueError(f"{model_id} does not support disabling thinking.")
+
+        validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
+        if context_window := _minimax_context_window(model_id):
+            validated["context_window"] = context_window
+        validated["allowed_openai_params"] = ["service_tier", "thinking"]
+        return validated
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = str(raw_model).strip() if raw_model is not None else ""
+        if not model:
+            raise ValueError("model is required for the MiniMax adapter.")
+        for prefix in (
+            _MINIMAX_PROVIDER_PREFIX,
+            _MINIMAX_ANTHROPIC_PROVIDER_PREFIX,
+        ):
+            if model.startswith(prefix):
+                model = model[len(prefix) :]
+                break
+        api_base = str(adapter_metadata.get("api_base") or _MINIMAX_API_BASE)
+        return f"{_minimax_provider_prefix(api_base)}{model}"
 
 
 class OpenRouterLLMParameters(BaseChatCompletionParameters):
@@ -866,8 +980,7 @@ def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
     token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
     if not isinstance(token, str) or not token.strip():
         raise ValueError(
-            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
-            "auth_type is 'bearer_token'."
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when auth_type is 'bearer_token'."
         )
     validated[_BEDROCK_LITELLM_BEARER_KWARG] = token.strip()
 
@@ -1640,4 +1753,31 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
             )
         if not model.startswith("gemini/"):
             model = f"gemini/{model}"
+        return model
+
+
+class MistralEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/mistral."""
+
+    api_key: str
+    embed_batch_size: int | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = MistralEmbeddingParameters.validate_model(metadata_copy)
+
+        return MistralEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Mistral embedding adapter. "
+                "Example: 'mistral-embed'"
+            )
+        if not model.startswith("mistral/"):
+            model = f"mistral/{model}"
         return model

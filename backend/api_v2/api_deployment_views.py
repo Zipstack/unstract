@@ -5,8 +5,10 @@ from typing import Any
 
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -242,11 +244,25 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class APIDeploymentViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     pagination_class = CustomPagination
+    notification_resource_name_field = "display_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -258,8 +274,11 @@ class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             .values("created_at")[:1]
         )
 
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             APIDeployment.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
             .annotate(last_run_time_annotated=Subquery(last_run_subquery))
             .order_by(F("last_run_time_annotated").desc(nulls_last=True))
         )
@@ -302,6 +321,11 @@ class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
@@ -342,9 +366,11 @@ class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             )
             workflow_ids = tool_instances.values_list("workflow_id", flat=True).distinct()
 
-            # Get API deployments for these workflows
-            deployments = APIDeployment.objects.filter(
-                workflow_id__in=workflow_ids, created_by=request.user
+            # Get API deployments for these workflows the user can access —
+            # ``created_by`` is audit-only; access flows through memberships,
+            # sharing, and the admin/SA bypasses (UN-2202).
+            deployments = APIDeployment.objects.for_user(request.user).filter(
+                workflow_id__in=workflow_ids
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)
@@ -381,9 +407,15 @@ class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         )
         return response
 
-    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
-        """List users who have access to this API deployment."""
+        """List users who have access to this API deployment.
+
+        Viewer-tier by design (``get_permissions`` →
+        ``IsOwnerOrSharedUserOrSharedToOrg``): a shared user may open the owner
+        popup (co-owners spec §10). ``get_permissions`` ignores any
+        ``permission_classes`` set on the decorator, so none is set here.
+        """
         instance = self.get_object()
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)

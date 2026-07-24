@@ -8,16 +8,20 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from backend.constants import RequestKey
@@ -27,7 +31,7 @@ from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
-from .serializers import ConnectorInstanceSerializer
+from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
 if notification_plugin:
@@ -37,12 +41,27 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    pagination_class = OptionalPagination
+    notification_resource_name_field = "connector_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.CONNECTOR.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["update", "destroy", "partial_update"]:
+        if self.action in [
+            "update",
+            "destroy",
+            "partial_update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -69,7 +88,12 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
             )
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = ConnectorInstance.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            ConnectorInstance.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
+        )
 
         filter_args = FilterHelper.build_filter_args(
             self.request,
@@ -80,6 +104,10 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
         )
         if filter_args:
             queryset = queryset.filter(**filter_args)
+
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(connector_name__icontains=search)
 
         # Filter by connector_mode
         connector_mode_param = self.request.query_params.get("connector_mode")
@@ -99,7 +127,10 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
                 )
                 queryset = queryset.none()
 
-        return queryset
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too. Not modified_at:
+        # that would conflict with the DISTINCT ON in for_user().
+        return queryset.order_by("id")
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.
@@ -217,8 +248,18 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
                 f"{CIKey.CONNECTOR_EXISTS}, \
                     {CIKey.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(self, request: Request, pk: Any = None) -> Response:
+        connector = self.get_object()
+        return Response(SharedUserListSerializer(connector).data)
 
     def perform_destroy(self, instance: ConnectorInstance) -> None:
         """Override perform_destroy to handle ProtectedError gracefully.

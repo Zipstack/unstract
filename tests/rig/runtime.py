@@ -33,6 +33,10 @@ log = logging.getLogger(__name__)
 COMPOSE_OVERLAY = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 
+# Shared by the workers and the tests, so the exact completion is assertable.
+LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
+
 
 @dataclass(frozen=True)
 class InfraEndpoints:
@@ -144,6 +148,7 @@ class ComposeRuntime:
         files = ["-f", str(BASE_COMPOSE)]
         if COMPOSE_OVERLAY.exists():
             files += ["-f", str(COMPOSE_OVERLAY)]
+        self._dump_logs(files)
         _run(
             [
                 "docker",
@@ -157,6 +162,25 @@ class ComposeRuntime:
             ],
             check=False,
         )
+
+    def _dump_logs(self, files: list[str]) -> None:
+        """Capture service logs while the containers still exist.
+
+        A failing e2e is usually explained by a worker log, and `down -v` is the
+        last thing that can read them -- a CI step afterwards gets an empty file.
+        """
+        target = REPO_ROOT / "reports" / "docker-compose-logs.txt"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            completed = subprocess.run(  # noqa: S603
+                ["docker", "compose", "-p", self.project_name, *files, "logs", "--no-color"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            target.write_text(completed.stdout)
+        except OSError as exc:
+            log.warning("Could not capture compose logs: %s", exc)
 
 
 class TestcontainersRuntime:
@@ -262,14 +286,27 @@ def _run(cmd: list[str], *, check: bool = True) -> None:
         ) from exc
 
 
-def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
-    """Poll each service's /health endpoint until all respond or timeout.
+def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
+    """(service name, health URL) for every HTTP service the e2e tier depends on.
 
-    If ``requests`` isn't importable (e.g. running the rig on a bare interpreter
-    just to list groups), readiness probing is skipped. That's safe because the
-    only caller, ``ComposeRuntime.up``, is on the e2e path where requests is in
-    the rig's deps; getting here without requests installed implies a broken
-    install and the developer will surface it shortly.
+    Single source of truth for the readiness probe and the e2e smoke test.
+    Paths are service-specific: x2text mounts health under a blueprint prefix,
+    and there is no standalone prompt-service (folded into workers). The runner
+    is intentionally absent — container-based execution is being retired in
+    favour of in-worker execution, so e2e must not depend on it being up.
+    """
+    return [
+        ("backend", endpoints.backend_url.rstrip("/") + "/health"),
+        ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
+        ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
+    ]
+
+
+def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
+    """Poll each service's health endpoint until all respond or timeout.
+
+    Skips probing if ``requests`` isn't importable — the rig may run on a bare
+    interpreter just to list groups. The e2e path always has requests installed.
     """
     try:
         import requests
@@ -277,13 +314,7 @@ def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> 
         log.warning("`requests` not installed; skipping platform readiness probe")
         return
 
-    targets = [
-        endpoints.backend_url.rstrip("/") + "/health/",
-        endpoints.prompt_service_url.rstrip("/") + "/health",
-        endpoints.platform_service_url.rstrip("/") + "/health",
-        endpoints.runner_url.rstrip("/") + "/health",
-        endpoints.x2text_url.rstrip("/") + "/health",
-    ]
+    targets = [url for _, url in health_targets(endpoints)]
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:
         if all(_responds(t, requests) for t in targets):

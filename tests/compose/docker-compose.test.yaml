@@ -1,28 +1,33 @@
-# E2E test overlay for docker/docker-compose.yaml.
-#
-# Used by tests/rig/runtime.py's ComposeRuntime:
-#   docker compose -f docker/docker-compose.yaml \
-#                  -f tests/compose/docker-compose.test.yaml up -d --wait
-#
-# Keep this file minimal so e2e tests run against images as close to production
-# as possible. Override only what the test stack actually needs (test creds,
-# pinned image tags, ENVIRONMENT=test sentinel).
+# E2E overlay for docker/docker-compose.yaml — override only what the test
+# stack needs, so e2e runs against production-like images.
 
 services:
   backend:
-    # Defaults to `latest` so contributors can run without setting
-    # UNSTRACT_TEST_VERSION. CI will pin it to the built image SHA once the
-    # image-build wiring lands (see .github/workflows/ci-test-e2e.yaml header).
+    # CI pins the tag to the SHA built in the same run; `latest` lets a
+    # contributor run without setting it.
     image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
     environment:
-      - ENVIRONMENT=test
+      # Workers ask the backend for this, so this is the value that normally
+      # takes effect for fan-out.
+      - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
-    environment:
-      - ENVIRONMENT=test
 
   runner:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
+
+  # Execute-path e2e must never reach a real provider.
+  worker-executor-v2:
     environment:
-      - ENVIRONMENT=test
+      - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
+
+  worker-file-processing-v2:
+    environment:
+      - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
+
+  # Only the worker's fallback if it can't reach the backend; kept in step so it
+  # can't quietly serialise the fan-out test.
+  worker-api-deployment-v2:
+    environment:
+      - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}

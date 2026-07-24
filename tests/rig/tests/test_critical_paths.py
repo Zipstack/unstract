@@ -19,7 +19,7 @@ from tests.rig.critical_paths import (
 def _registry(*ids_and_covers: tuple[str, tuple[str, ...]]) -> CriticalPathRegistry:
     return CriticalPathRegistry(
         paths=tuple(
-            CriticalPath(id=i, description="", entry="", covered_by=c)
+            CriticalPath(id=i, description="", covered_by=c)
             for i, c in ids_and_covers
         )
     )
@@ -97,7 +97,7 @@ def test_critical_path_status_rejects_contradictions() -> None:
     """Make the contradictory states unrepresentable."""
     from tests.rig.critical_paths import CriticalPath, CriticalPathStatus
 
-    path = CriticalPath(id="p", description="", entry="", covered_by=("g",))
+    path = CriticalPath(id="p", description="", covered_by=("g",))
     with pytest.raises(ValueError, match="covered.*non-empty"):
         CriticalPathStatus(path=path, state="covered", covering_groups_run=())
     with pytest.raises(ValueError, match="empty covering_groups_run"):
@@ -211,7 +211,7 @@ def test_scope_none_preserves_legacy_behavior() -> None:
 
 def _marker_path(path_id: str, covers: tuple[str, ...]) -> CriticalPath:
     return CriticalPath(
-        id=path_id, description="", entry="", covered_by=covers, proof="marker"
+        id=path_id, description="", covered_by=covers, proof="marker"
     )
 
 

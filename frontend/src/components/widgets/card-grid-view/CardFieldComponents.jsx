@@ -117,22 +117,44 @@ CardActionBox.propTypes = {
  * Reusable owner field row
  * @return {JSX.Element} Rendered owner field row
  */
-function OwnerFieldRow({ item, sessionDetails }) {
-  const isOwner = item.created_by === sessionDetails?.userId;
+function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
+  const isOwner = item?.is_owner ?? item.created_by === sessionDetails?.userId;
   const email = item.created_by_email;
-  const ownerDisplay = isOwner ? "You" : email?.split("@")[0] || "Unknown";
+  const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
+  const extra =
+    item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+  const ownerDisplay = `${name}${extra}`;
+
+  const ownerContent = (
+    <Space size={10} className="card-list-field-value">
+      <UserOutlined />
+      <Tooltip title={email}>
+        <Typography.Text>{ownerDisplay}</Typography.Text>
+      </Tooltip>
+    </Space>
+  );
 
   return (
     <Flex align="center" className="card-list-field-row">
       <Typography.Text type="secondary" className="card-list-field-label">
         Owner
       </Typography.Text>
-      <Space size={10} className="card-list-field-value">
-        <UserOutlined />
-        <Tooltip title={email}>
-          <Typography.Text>{ownerDisplay}</Typography.Text>
+      {onManageCoOwners ? (
+        <Tooltip title="Manage Co-Owners">
+          <button
+            type="button"
+            className="card-owner-clickable"
+            onClick={(e) => {
+              e.stopPropagation();
+              onManageCoOwners();
+            }}
+          >
+            {ownerContent}
+          </button>
         </Tooltip>
-      </Space>
+      ) : (
+        ownerContent
+      )}
     </Flex>
   );
 }
@@ -140,6 +162,7 @@ function OwnerFieldRow({ item, sessionDetails }) {
 OwnerFieldRow.propTypes = {
   item: PropTypes.object.isRequired,
   sessionDetails: PropTypes.object,
+  onManageCoOwners: PropTypes.func,
 };
 
 /**

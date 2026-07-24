@@ -24,12 +24,18 @@ from tests.rig.critical_paths import CriticalPathStatus
 
 log = logging.getLogger(__name__)
 
-ResultStatus = Literal["pass", "empty", "fail"]
+ResultStatus = Literal["pass", "empty", "fail", "blocked"]
+
+STATUS_PASS: ResultStatus = "pass"
+STATUS_EMPTY: ResultStatus = "empty"
+STATUS_FAIL: ResultStatus = "fail"
+STATUS_BLOCKED: ResultStatus = "blocked"
 
 _STATUS_ICONS: dict[ResultStatus, str] = {
-    "pass": "✅",
-    "empty": "⚪",
-    "fail": "❌",
+    STATUS_PASS: "✅",
+    STATUS_EMPTY: "⚪",
+    STATUS_FAIL: "❌",
+    STATUS_BLOCKED: "⏭️",
 }
 
 
@@ -43,14 +49,28 @@ class GroupResult:
     errors: int
     skipped: int
     duration_seconds: float
+    # Names of failed dependencies that stopped this group from running. Never
+    # green, so it attests no coverage and the path reports as a gap.
+    blocked_by: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        # A blocked group never ran, so its counters must be zero; otherwise
+        # `status` would report "blocked" while the markdown row prints stray
+        # failures and coverage attestation drops it.
+        if self.blocked_by and (
+            self.exit_code or self.passed or self.failed or self.errors or self.skipped
+        ):
+            raise ValueError("a blocked group never ran; its counters must be zero")
 
     @property
     def status(self) -> ResultStatus:
+        if self.blocked_by:
+            return STATUS_BLOCKED
         if self.exit_code == 5:  # pytest "no tests collected"
-            return "empty"
+            return STATUS_EMPTY
         if self.exit_code == 0 and self.failed == 0 and self.errors == 0:
-            return "pass"
-        return "fail"
+            return STATUS_PASS
+        return STATUS_FAIL
 
     @property
     def status_icon(self) -> str:
@@ -118,6 +138,23 @@ def parse_junit(group_name: str, tier: str, reports_dir: Path) -> GroupResult | 
         skipped += sk
         passed += max(total - f - e - sk, 0)
 
+    blocked_by = _read_blocked_by(root)
+    if blocked_by:
+        # A blocked group's synthetic junit carries zero counters; return it as
+        # blocked so CI's `rig report` (which rebuilds from junit) renders the
+        # ⏭️ row instead of dropping the group entirely.
+        return GroupResult(
+            name=group_name,
+            tier=tier,
+            exit_code=0,
+            passed=0,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration_seconds=duration,
+            blocked_by=blocked_by,
+        )
+
     if not saw_attributes:
         # Junit that parses but has no counters anywhere is almost certainly a
         # truncated write. Don't count it as green.
@@ -137,6 +174,17 @@ def parse_junit(group_name: str, tier: str, reports_dir: Path) -> GroupResult | 
         skipped=skipped,
         duration_seconds=duration,
     )
+
+
+def _read_blocked_by(root: ET.Element) -> tuple[str, ...]:
+    """Read the ``rig-blocked-by`` property a blocked group's synthetic junit
+    carries, if any.
+    """
+    for prop in root.iter("property"):
+        if prop.get("name") == "rig-blocked-by":
+            value = prop.get("value") or ""
+            return tuple(d for d in value.split(",") if d)
+    return ()
 
 
 def passed_critical_path_ids(group_name: str, reports_dir: Path) -> set[str]:
@@ -199,7 +247,9 @@ def write_summary(
     summary_json.write_text(
         json.dumps(
             {
-                "groups": [asdict(r) for r in group_results],
+                # `status` is a property, so it isn't in asdict; emit it
+                # explicitly or a consumer can't tell blocked from empty.
+                "groups": [{**asdict(r), "status": r.status} for r in group_results],
                 "critical_paths": [
                     {
                         "id": s.path.id,
@@ -245,9 +295,16 @@ def _render_markdown(
         )
         lines.append("|---|---|---|---:|---:|---:|---:|---:|")
         for r in group_results:
+            # Without the reason a blocked row is all zeros, indistinguishable
+            # from a group that simply had nothing to run.
+            note = (
+                f" — blocked by {', '.join(f'`{d}`' for d in r.blocked_by)}"
+                if r.blocked_by
+                else ""
+            )
             lines.append(
-                f"| {r.status_icon} | `{r.name}` | {r.tier} | {r.passed} | {r.failed} "
-                f"| {r.errors} | {r.skipped} | {r.duration_seconds:.1f} |"
+                f"| {r.status_icon} | `{r.name}`{note} | {r.tier} | {r.passed} "
+                f"| {r.failed} | {r.errors} | {r.skipped} | {r.duration_seconds:.1f} |"
             )
         totals = _totals(group_results)
         lines.append(
@@ -270,9 +327,7 @@ def _render_markdown(
             lines.append("### ❌ Regressions (must be zero)")
             lines.append("")
             for s in regressions:
-                lines.append(
-                    f"- **{s.path.id}** — {s.path.description} (entry: `{s.path.entry}`)"
-                )
+                lines.append(f"- **{s.path.id}** — {s.path.description}")
             lines.append("")
         if gaps:
             lines.append("### ⚠️ Critical paths not yet covered")
@@ -281,7 +336,7 @@ def _render_markdown(
                 covers = ", ".join(s.path.covered_by) or "_no groups declared_"
                 lines.append(
                     f"- **{s.path.id}** — {s.path.description} "
-                    f"(entry: `{s.path.entry}`; declared coverage: {covers})"
+                    f"(declared coverage: {covers})"
                 )
             lines.append("")
         if covered:

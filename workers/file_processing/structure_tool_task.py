@@ -25,12 +25,15 @@ from typing import Any
 from file_processing.worker import app
 from queue_backend import FairnessKey, worker_task
 from queue_backend.fairness import WorkloadType
+from queue_backend.pg_queue.executor_rpc import (
+    RoutingExecutionDispatcher,
+    get_executor_dispatcher,
+)
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
 
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -276,7 +279,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
 
     platform_helper = _create_platform_helper(shim, file_execution_id)
-    dispatcher = ExecutionDispatcher(celery_app=app)
+    # Gate-routed: PG executor RPC when pg_queue_enabled is on, else the unchanged
+    # Celery ExecutionDispatcher (zero-regression by construction — see executor_rpc).
+    dispatcher = get_executor_dispatcher(celery_app=app)
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----
@@ -473,6 +478,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "parallel_pages": at_settings.get("parallel_pages", 4),
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
+            "group_key": at_settings.get("group_key", ""),
+            # Set on the output at export by prompt_studio_registry_helper.py
+            # when a lookup is assigned; None otherwise.
+            "lookup_config": at_output.get("lookup_config"),
         }
         at_ctx = ExecutionContext(
             executor_name="agentic_table",
@@ -675,7 +684,7 @@ def _run_agentic_extraction(
     input_file_path: str,
     output_dir_path: str,
     tool_instance_metadata: dict,
-    dispatcher: ExecutionDispatcher,
+    dispatcher: RoutingExecutionDispatcher,
     shim: Any,
     file_execution_id: str,
     execution_id: str,

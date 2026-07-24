@@ -85,3 +85,9 @@
   flex: 1;
   overflow-y: auto;
 }
+
+.workflows-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
+}
