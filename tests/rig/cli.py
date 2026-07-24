@@ -850,6 +850,17 @@ def _execute_group(
                 f"[rig] could not write synthetic junit for {group.name}: {err}",
                 file=sys.stderr,
             )
+    elif (isolation_error := _config_isolation_error(group, workdir)) is not None:
+        print(isolation_error, file=sys.stderr)
+        # 4 is pytest's usage-error code, so this gates like any hard failure.
+        exit_code = 4
+        try:
+            _write_synthetic_junit(junit, group.name, exit_code)
+        except OSError as err:
+            print(
+                f"[rig] could not write synthetic junit for {group.name}: {err}",
+                file=sys.stderr,
+            )
     else:
         cmd = _pytest_command(
             group,
@@ -931,6 +942,62 @@ def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
     if group.install_editable:
         with_args += ["--with-editable", str(workdir)]
     return ["uv", "run", *with_args, "pytest"]
+
+
+# Order matters: pytest picks the first of these it finds walking upward.
+_PYTEST_CONFIG_FILES = (
+    ("pytest.ini", None),
+    (".pytest.ini", None),
+    ("pyproject.toml", "[tool.pytest.ini_options]"),
+    ("tox.ini", "[pytest]"),
+    ("setup.cfg", "[tool:pytest]"),
+)
+
+
+def _resolve_pytest_configfile(workdir: Path) -> Path | None:
+    """Find the config file pytest would adopt when invoked from `workdir`.
+
+    Mirrors pytest's upward search. `pytest.ini` counts even when empty; the
+    shared files only count when they carry a pytest section.
+    """
+    for directory in [workdir, *workdir.parents]:
+        for name, required_section in _PYTEST_CONFIG_FILES:
+            candidate = directory / name
+            if not candidate.is_file():
+                continue
+            if required_section is None:
+                return candidate
+            try:
+                if required_section in candidate.read_text(encoding="utf-8"):
+                    return candidate
+            except OSError:
+                continue
+        if directory == REPO_ROOT:
+            break
+    return None
+
+
+def _config_isolation_error(group: GroupDefinition, workdir: Path) -> str | None:
+    """Reject a group that would silently inherit an unrelated project's config.
+
+    `cd workdir && pytest` does not pin config to workdir — pytest walks up. A
+    nested project without its own config therefore adopts its parent's
+    `addopts` (coverage targets, --strict-config), which fails in ways that
+    have nothing to do with the group's tests. Inheriting the repo-root config
+    is the normal monorepo case and stays allowed; inheriting some *other*
+    project's config never is.
+    """
+    configfile = _resolve_pytest_configfile(workdir)
+    if configfile is None or configfile.parent in (workdir, REPO_ROOT):
+        return None
+    return (
+        f"[rig] group '{group.name}' would run under {configfile}, which belongs "
+        f"to neither its workdir ({workdir}) nor the repo root.\n"
+        f"[rig] pytest resolves config by walking up from the workdir, so this "
+        f"group inherits that project's addopts.\n"
+        f"[rig] fix: add a [tool.pytest.ini_options] section to "
+        f"{workdir / 'pyproject.toml'}."
+    )
 
 
 def _pytest_command(

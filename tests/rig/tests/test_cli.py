@@ -785,3 +785,79 @@ def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch)
     # The blocked groups persisted a junit so CI's `rig report` can render them.
     assert (reports_dir / "e2e-mid" / "junit.xml").exists()
     assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
+
+
+def _make_group(name: str, workdir: str):
+    from tests.rig.groups import GroupDefinition
+
+    return GroupDefinition(name=name, tier="unit", workdir=workdir, paths=["tests"])
+
+
+def _pytest_section(path: Path) -> None:
+    path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+
+
+def test_resolve_configfile_skips_pyproject_without_pytest_section(
+    tmp_path: Path,
+) -> None:
+    """A pyproject without the pytest table is not a config file to pytest."""
+    from tests.rig import cli
+
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "root"\n')
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "pyproject.toml").write_text('[project]\nname = "child"\n')
+
+    assert cli._resolve_pytest_configfile(child) is None
+
+
+def test_resolve_configfile_finds_nearest_ancestor(tmp_path: Path) -> None:
+    from tests.rig import cli
+
+    _pytest_section(tmp_path / "pyproject.toml")
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) == tmp_path / "pyproject.toml"
+
+
+def test_config_isolation_allows_own_config(tmp_path: Path, monkeypatch) -> None:
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+    _pytest_section(workdir / "pyproject.toml")
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_allows_repo_root_config(tmp_path: Path, monkeypatch) -> None:
+    """Inheriting the monorepo-wide config is the normal case, not a defect."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    _pytest_section(tmp_path / "pyproject.toml")
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_rejects_sibling_project_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A nested project inheriting its parent project's config is the bug."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    parent = tmp_path / "workers"
+    nested = parent / "plugins" / "agentic_table"
+    nested.mkdir(parents=True)
+    _pytest_section(parent / "pyproject.toml")
+
+    error = cli._config_isolation_error(_make_group("unit-nested", "x"), nested)
+
+    assert error is not None
+    assert "unit-nested" in error
+    assert str(parent / "pyproject.toml") in error
