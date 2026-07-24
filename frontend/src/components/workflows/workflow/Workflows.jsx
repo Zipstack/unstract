@@ -1,13 +1,12 @@
 import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { unwrapList } from "../../../helpers/pagination";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import { usePaginatedResource } from "../../../hooks/usePaginatedResource";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
   useInitialFetchCount,
@@ -50,12 +49,8 @@ function Workflows() {
     getPromptStudioCount,
   );
 
-  const [projectList, setProjectList] = useState();
   const [editingProject, setEditProject] = useState();
-  const [loading, setLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
-  const fetchListRef = useRef(null);
   const [backendErrors, setBackendErrors] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState();
@@ -67,26 +62,20 @@ function Workflows() {
   const { setAlertDetails } = useAlertStore();
 
   const {
+    items: projectList,
+    isLoading: loading,
+    setIsLoading: setLoading,
     pagination,
-    setPagination,
     searchTerm,
+    fetchPage,
+    refresh: handleListRefresh,
     handlePaginationChange,
     handleSearch,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
+  } = usePaginatedResource({
+    request: (params) => projectApiService.getProjectList(params),
+    onError: () => console.error("Unable to get project list"),
     defaultPageSize: DEFAULT_PAGE_SIZE,
   });
-
-  // Refresh the current page (preserves page + active search) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-      ),
-    [pagination.current, pagination.pageSize, searchTerm],
-  );
   const {
     coOwnerOpen,
     setCoOwnerOpen,
@@ -108,53 +97,9 @@ function Workflows() {
 
   useEffect(() => {
     if (location.pathname === `/${orgName}/workflows`) {
-      getProjectList();
+      fetchPage();
     }
   }, [location.pathname]);
-
-  const getProjectList = (
-    page = 1,
-    pageSize = DEFAULT_PAGE_SIZE,
-    search = "",
-  ) => {
-    setLoading(true);
-    const params = { page, page_size: pageSize };
-    if (search) {
-      params.search = search;
-    }
-    projectApiService
-      .getProjectList(params)
-      .then((res) => {
-        const results = unwrapList(res);
-        const total = res?.data?.count ?? results.length;
-        // Deleting the last row on a page leaves it empty; step back a page.
-        if (results.length === 0 && page > 1 && total > 0) {
-          getProjectList(page - 1, pageSize, search);
-          return;
-        }
-        setProjectList(results);
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
-          pageSize,
-          total,
-        }));
-      })
-      .catch(() => {
-        console.error("Unable to get project list");
-        // Avoid an indefinite spinner when the first fetch fails.
-        setProjectList((prev) => prev ?? []);
-      })
-      .finally(() => {
-        setLoading(false);
-      });
-  };
-
-  // Effect, not a render-time write: mutating a ref during render is unsafe
-  // under concurrent rendering, where a render can be discarded.
-  useEffect(() => {
-    fetchListRef.current = getProjectList;
-  });
 
   function editProject(name, description) {
     setLoading(true);
@@ -409,8 +354,8 @@ function Workflows() {
       />
       <div className="workflows-pg-layout">
         <div className="workflows-pg-body">
-          {projectList === undefined && <SpinnerLoader />}
-          {projectList?.length === 0 && !searchTerm && (
+          {loading && !projectList.length && <SpinnerLoader />}
+          {!loading && projectList.length === 0 && !searchTerm && (
             <div className="list-of-workflows-body">
               <EmptyState
                 text="No Workflow available"
@@ -422,10 +367,10 @@ function Workflows() {
               />
             </div>
           )}
-          {projectList?.length === 0 && searchTerm && (
+          {!loading && projectList.length === 0 && searchTerm && (
             <EmptyState text="No results found for this search" />
           )}
-          {projectList?.length > 0 && (
+          {projectList.length > 0 && (
             <ViewTools
               isLoading={loading}
               isEmpty={false}

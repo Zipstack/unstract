@@ -1,12 +1,11 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { unwrapList } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import { usePaginatedResource } from "../../../hooks/usePaginatedResource";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -40,10 +39,6 @@ const btnText = {
 const DEFAULT_PAGE_SIZE = 10;
 
 function ToolSettings({ type }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [adapterList, setAdapterList] = useState([]);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
-  const fetchListRef = useRef(null);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
@@ -93,27 +88,27 @@ function ToolSettings({ type }) {
   );
 
   const {
-    pagination,
-    setPagination,
+    items: adapterList,
+    setItems: setAdapterList,
+    isLoading,
+    setIsLoading,
     searchTerm,
     setSearchTerm,
+    pagination,
+    fetchPage,
+    refresh: handleListRefresh,
     handlePaginationChange,
     handleSearch,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
+  } = usePaginatedResource({
+    request: (params) =>
+      axiosPrivate({
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+        params: { ...params, adapter_type: type?.toUpperCase() },
+      }),
+    onError: (err) => setAlertDetails(handleException(err)),
     defaultPageSize: DEFAULT_PAGE_SIZE,
   });
-
-  // Refresh the current page (preserves page + active search) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-      ),
-    [pagination.current, pagination.pageSize, searchTerm],
-  );
 
   const {
     coOwnerOpen,
@@ -139,48 +134,8 @@ function ToolSettings({ type }) {
     if (!type) {
       return;
     }
-    getAdapters(1, DEFAULT_PAGE_SIZE, "");
+    fetchPage(1, DEFAULT_PAGE_SIZE, "");
   }, [type]);
-
-  const getAdapters = (page = 1, pageSize = DEFAULT_PAGE_SIZE, search = "") => {
-    const params = {
-      adapter_type: type.toUpperCase(),
-      page,
-      page_size: pageSize,
-    };
-    if (search) {
-      params.search = search;
-    }
-    setIsLoading(true);
-    axiosPrivate({
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-      params,
-    })
-      .then((res) => {
-        const results = unwrapList(res);
-        const total = res?.data?.count ?? results.length;
-        // Deleting the last row on a page leaves it empty; step back a page.
-        if (results.length === 0 && page > 1 && total > 0) {
-          getAdapters(page - 1, pageSize, search);
-          return;
-        }
-        setAdapterList(results);
-        setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
-  };
-
-  // Effect, not a render-time write: mutating a ref during render is unsafe
-  // under concurrent rendering, where a render can be discarded.
-  useEffect(() => {
-    fetchListRef.current = getAdapters;
-  });
 
   const addNewItem = () => handleListRefresh();
 

@@ -1,13 +1,12 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { unwrapList } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import { usePaginatedResource } from "../../../hooks/usePaginatedResource";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -56,7 +55,6 @@ DefaultCustomButtons.propTypes = {
 const DEFAULT_PAGE_SIZE = 10;
 
 function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
-  const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
   const [isImportLoading, setIsImportLoading] = useState(false);
@@ -68,9 +66,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const handleException = useExceptionHandler();
   const groupsApi = groupsService();
 
-  const [listOfTools, setListOfTools] = useState([]);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
-  const fetchListRef = useRef(null);
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -112,26 +107,26 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   );
 
   const {
+    items: listOfTools,
+    isLoading: isListLoading,
     pagination,
-    setPagination,
     searchTerm,
+    fetchPage,
+    refresh: handleListRefresh,
     handlePaginationChange,
     handleSearch,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
+  } = usePaginatedResource({
+    request: (params) =>
+      axiosPrivate({
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        params,
+      }),
+    onError: (err) =>
+      setAlertDetails(handleException(err, "Failed to get the list of tools")),
     defaultPageSize: DEFAULT_PAGE_SIZE,
   });
-
-  // Refresh the current page (preserves page + active search) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-      ),
-    [pagination.current, pagination.pageSize, searchTerm],
-  );
 
   const {
     coOwnerOpen,
@@ -151,54 +146,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [allGroupList, setAllGroupList] = useState([]);
 
   useEffect(() => {
-    getListOfTools();
+    fetchPage();
   }, []);
-
-  const getListOfTools = (
-    page = 1,
-    pageSize = DEFAULT_PAGE_SIZE,
-    search = "",
-  ) => {
-    const params = { page, page_size: pageSize };
-    if (search) {
-      params.search = search;
-    }
-
-    setIsListLoading(true);
-    axiosPrivate({
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-      params,
-    })
-      .then((res) => {
-        const results = unwrapList(res);
-        const total = res?.data?.count ?? results.length;
-        // Deleting the last row on a page leaves it empty; step back a page.
-        if (results.length === 0 && page > 1 && total > 0) {
-          getListOfTools(page - 1, pageSize, search);
-          return;
-        }
-        setListOfTools(results);
-        setPagination((prev) => ({ ...prev, current: page, pageSize, total }));
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, "Failed to get the list of tools"),
-        );
-      })
-      .finally(() => {
-        setIsListLoading(false);
-      });
-  };
-
-  // Effect, not a render-time write: mutating a ref during render is unsafe
-  // under concurrent rendering, where a render can be discarded.
-  useEffect(() => {
-    fetchListRef.current = getListOfTools;
-  });
 
   const handleAddNewTool = (body) => {
     let method = "POST";

@@ -2,9 +2,10 @@
 
 Workflows, Prompt Studio, adapters and connectors share one listing shape:
 ``for_user()`` sharing predicate -> ``.distinct()`` -> declarative ``ordering``
--> ``OptionalPagination``. These tests pin the three ways that combination can
-silently serve wrong rows — non-deterministic page boundaries, duplicate rows
-from the sharing predicate, and a search applied after the count.
+-> ``OptionalPagination``. These tests pin the ways that combination can
+silently serve wrong rows — non-deterministic page boundaries, a client
+``?ordering=`` that drops the pk tie-breaker, duplicate rows from the sharing
+predicate, and a search applied after the count.
 
 DB-backed (Django ``TestCase``), so ``backend/conftest.py`` auto-marks these
 ``integration``.
@@ -14,6 +15,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any, NamedTuple
 
@@ -32,6 +34,9 @@ from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 from workflow_manager.workflow_v2.views import WorkflowViewSet
+
+# Fixed so ordering assertions never depend on wall-clock ties.
+BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
 
 @lru_cache(maxsize=1)
@@ -123,29 +128,74 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
     def _names(self, endpoint: ListEndpoint, rows) -> list[str]:
         return [row[endpoint.name_field] for row in rows]
 
-    def test_pages_partition_the_result_set(self) -> None:
-        """Page 2 must not repeat or drop rows from page 1.
+    def _stamp(self, obj: Any, when: datetime) -> None:
+        """Pin ``modified_at``, which ``auto_now`` would otherwise overwrite."""
+        type(obj).objects.filter(pk=obj.pk).update(modified_at=when)
 
-        Without a deterministic ``ordering`` the two requests run independent
-        queries, so rows can appear twice or vanish entirely between them.
+    def test_pages_partition_the_result_set_newest_first(self) -> None:
+        """Pages follow the declared ``-modified_at`` and together cover the set.
+
+        Asserting the sequence, not just membership: page boundaries are only
+        stable if every request evaluates the same ordering, so a lost or
+        arbitrary ordering has to fail here rather than pass on set equality.
         """
         for endpoint in LIST_ENDPOINTS:
             with self.subTest(kind=endpoint.kind):
-                expected = {f"{endpoint.kind}-page-{i}" for i in range(5)}
-                for name in sorted(expected):
-                    self._create(endpoint, name)
+                # Created oldest-first, so the expected listing is the reverse.
+                for i in range(5):
+                    obj = self._create(endpoint, f"{endpoint.kind}-page-{i}")
+                    self._stamp(obj, BASE_TIME + timedelta(minutes=i))
+                expected = [f"{endpoint.kind}-page-{i}" for i in reversed(range(5))]
 
-                page1 = self._list(endpoint, self.owner, page=1, page_size=2)
-                page2 = self._list(endpoint, self.owner, page=2, page_size=2)
-                page3 = self._list(endpoint, self.owner, page=3, page_size=2)
+                pages = [
+                    self._list(endpoint, self.owner, page=n, page_size=2)
+                    for n in (1, 2, 3)
+                ]
+                names = [
+                    n
+                    for page in pages
+                    for n in self._names(endpoint, page.data["results"])
+                ]
 
-                names1 = self._names(endpoint, page1.data["results"])
-                names2 = self._names(endpoint, page2.data["results"])
-                names3 = self._names(endpoint, page3.data["results"])
+                assert pages[0].data["count"] == len(expected)
+                assert names == expected
 
-                assert page1.data["count"] == len(expected)
-                assert not set(names1) & set(names2)
-                assert set(names1) | set(names2) | set(names3) == expected
+    def test_client_ordering_keeps_pk_tiebreaker(self) -> None:
+        """``?ordering=`` replaces the view default, so pk must still be appended.
+
+        Every row here shares one ``modified_at``. Primary keys are random
+        UUIDs, so ordering by pk is unrelated to insertion order — the returned
+        sequence only matches if pk survived as the tie-breaker.
+        """
+        for endpoint in LIST_ENDPOINTS:
+            with self.subTest(kind=endpoint.kind):
+                created = []
+                for i in range(6):
+                    obj = self._create(endpoint, f"{endpoint.kind}-tied-{i}")
+                    self._stamp(obj, BASE_TIME)
+                    created.append(obj)
+                expected = [
+                    getattr(obj, endpoint.name_field)
+                    for obj in sorted(created, key=lambda o: str(o.pk))
+                ]
+
+                pages = [
+                    self._list(
+                        endpoint,
+                        self.owner,
+                        page=n,
+                        page_size=3,
+                        ordering="modified_at",
+                    )
+                    for n in (1, 2)
+                ]
+                names = [
+                    n
+                    for page in pages
+                    for n in self._names(endpoint, page.data["results"])
+                ]
+
+                assert names == expected
 
     def test_multi_predicate_share_yields_one_row(self) -> None:
         """A resource reachable by several sharing predicates lists once.
