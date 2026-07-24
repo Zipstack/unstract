@@ -107,6 +107,7 @@ Optional knobs (see `groups.yaml` for examples):
 | `install_editable` | Runs `uv pip install -e .` in the workdir. |
 | `pip_install` | Explicit deps to install before pytest. |
 | `requires_services` | Infra needed (`postgres`, `redis`, `minio`, ...). |
+| `migrate` | `{workdir, apps, env}` — runs `manage.py migrate` against the provisioned Postgres before the group, for tests that read tables another service's ORM owns. |
 | `requires_platform` | Set true for e2e — rig brings the full platform up. |
 | `depends_on` | Other groups that must run first. |
 | `critical` | Marks the group as covering a critical path. |
