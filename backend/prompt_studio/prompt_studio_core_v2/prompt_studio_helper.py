@@ -772,6 +772,11 @@ class PromptStudioHelper:
                 profile_manager_id=profile_manager_id
             )
 
+        # A prompt need not carry its own profile FK - fall back to the project
+        # default, matching index_document and single-pass extraction.
+        if not profile_manager:
+            profile_manager = ProfileManager.get_default_llm_profile(tool)
+
         if not profile_manager:
             raise DefaultProfileError()
 
@@ -1885,6 +1890,11 @@ class PromptStudioHelper:
             profile_manager = ProfileManagerHelper.get_profile_manager(
                 profile_manager_id=profile_manager_id
             )
+
+        # A prompt need not carry its own profile FK - fall back to the project
+        # default, matching index_document and single-pass extraction.
+        if not profile_manager:
+            profile_manager = ProfileManager.get_default_llm_profile(tool)
 
         if not profile_manager:
             raise DefaultProfileError()

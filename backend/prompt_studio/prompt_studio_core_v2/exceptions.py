@@ -44,8 +44,9 @@ class AnswerFetchError(APIException):
 class DefaultProfileError(APIException):
     status_code = 500
     default_detail = (
-        "Default LLM profile is not configured."
-        "Please set an LLM profile as default to continue."
+        "No LLM profile could be resolved for this prompt. "
+        "Either attach an LLM profile to the prompt, or set one as the "
+        "project default to continue."
     )
 
 
