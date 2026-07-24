@@ -462,14 +462,31 @@ def cmd_run(args: argparse.Namespace) -> int:
             endpoints = runtime.up()
         elif needs_services and not args.dry_run:
             # Infra-only: testcontainers Postgres/Redis/etc., no platform
-            # services. ponytail: up() starts the full infra set even if a run
-            # only needs Postgres; trim to the requested services if startup
-            # cost ever matters.
+            # services. up() starts the full infra set even if a run only needs
+            # Postgres; trim to the requested services if startup cost matters.
             runtime = TestcontainersRuntime()
             print(
                 f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
             )
             endpoints = runtime.up()
+
+        # Schema for the database the rig just provisioned. Guarded on
+        # `postgres_url` so it only fires for a rig-owned container: under the
+        # compose runtime the platform's own backend migrates on startup, and
+        # migrating its database from here would be both redundant and wrong.
+        if endpoints is not None and manifest.postgres_migrate is not None:
+            postgres_url = endpoints.infra.postgres_url
+            if postgres_url:
+                migrate_exit = _run_migrations(
+                    manifest.postgres_migrate, postgres_url=postgres_url
+                )
+                if migrate_exit != 0:
+                    # Every DB-backed test would skip on a missing table, which
+                    # reads as "nothing to run" rather than a broken database.
+                    raise RuntimeError(
+                        f"migrations failed against the provisioned database "
+                        f"(exit {migrate_exit}); aborting before any group runs"
+                    )
 
         # Groups run in topo order, so a dependency's result is always known by
         # the time its dependents come up. A red dep means the precondition it
@@ -853,20 +870,7 @@ def _execute_group(
 
     workdir = group.absolute_workdir()
 
-    migrate_exit = 0 if group.migrate is None else _run_migrations(group.migrate, env=env)
-
-    if migrate_exit != 0:
-        # Without the schema every DB-backed test in the group skips (or, under
-        # REQUIRE_PG_TESTS, fails on a missing table) — noise that hides the
-        # real cause. Report the migration failure as the group's result instead.
-        print(
-            f"[rig] ❌ migrations failed for {group.name} (exit {migrate_exit}); "
-            f"not running the group",
-            file=sys.stderr,
-        )
-        _write_synthetic_junit_safe(junit, group.name, migrate_exit)
-        exit_code = migrate_exit
-    elif group.runner == "hurl":
+    if group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
         _write_synthetic_junit_safe(junit, group.name, exit_code)
@@ -939,14 +943,21 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
 
 
-def _run_migrations(spec: MigrateSpec, *, env: dict[str, str]) -> int:
+def _run_migrations(spec: MigrateSpec, *, postgres_url: str) -> int:
     """Apply Django migrations to the rig-provisioned database.
 
-    Runs after infra is up and immediately before the group, so only groups
-    declaring ``migrate:`` pay for it. Inherits the group's env (which already
-    carries the provisioned ``DB_*``) with the spec's own settings layered on
-    top — the migrating project needs its own Django settings, not the group's.
+    Runs once, right after the container is up and before any group, because the
+    schema is a property of the database rather than of a group. Only the
+    migrating project's own Django settings are layered over the connection env
+    — a group's environment is irrelevant here and may not even exist yet.
     """
+    env = {
+        **os.environ,
+        **_db_env_from_postgres_url(postgres_url),
+        # A rig-provisioned Postgres is bare; `public` is the only schema it has.
+        "DB_SCHEMA": "public",
+        **spec.env,
+    }
     workdir = spec.absolute_workdir()
     base = ["uv", "run", "python"] if shutil.which("uv") else [sys.executable]
     cmd = [*base, "manage.py", "migrate", *spec.apps, "--noinput"]
@@ -954,9 +965,7 @@ def _run_migrations(spec: MigrateSpec, *, env: dict[str, str]) -> int:
         f"[rig] migrating provisioned database via {spec.workdir}: "
         f"{' '.join(spec.apps) or 'all apps'}"
     )
-    return _spawn(
-        cmd, env={**env, **spec.env}, cwd=workdir, timeout=_MIGRATE_TIMEOUT_SECONDS
-    )
+    return _spawn(cmd, env=env, cwd=workdir, timeout=_MIGRATE_TIMEOUT_SECONDS)
 
 
 def _write_synthetic_junit_safe(path: Path, group_name: str, exit_code: int) -> None:

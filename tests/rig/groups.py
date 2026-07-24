@@ -36,10 +36,11 @@ EXTRA_MANIFESTS_ENV = "UNSTRACT_RIG_EXTRA_MANIFESTS"
 class MigrateSpec:
     """A ``manage.py migrate`` run against the rig-provisioned database.
 
-    Declared by groups whose tests read tables owned by another service's ORM.
-    Applying the real migrations (rather than hand-written DDL in a fixture)
-    keeps the throwaway schema identical to the one the models generate, so
-    tests that assert on constraints stay meaningful.
+    Schema belongs to the database, not to any one group, so this is declared
+    once per manifest and applied when the rig provisions Postgres. Applying the
+    real migrations (rather than hand-written DDL in a fixture) keeps the
+    throwaway schema identical to the one the models generate, so tests that
+    assert on constraints stay meaningful.
     """
 
     workdir: str
@@ -69,7 +70,6 @@ class GroupDefinition:
     install_editable: bool = False
     requires_services: tuple[str, ...] = ()
     requires_platform: bool = False
-    migrate: MigrateSpec | None = None
     depends_on: tuple[str, ...] = ()
     critical: bool = False
     coverage_source: str | None = None
@@ -94,6 +94,9 @@ class GroupDefinition:
 @dataclass(frozen=True)
 class GroupManifest:
     groups: dict[str, GroupDefinition]
+    # Applied once, when the rig provisions Postgres — see `postgres_migrate`
+    # in the manifest defaults.
+    postgres_migrate: MigrateSpec | None = None
 
     def get(self, name: str) -> GroupDefinition:
         if name not in self.groups:
@@ -163,10 +166,12 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
     _validate_paths(groups)
-    _validate_migrate_specs(groups)
     smoke_gate = defaults.get("platform_gate_group", "e2e-smoke")
     _validate_platform_groups_depend_on_gate(groups, gate=smoke_gate)
-    return GroupManifest(groups=groups)
+    return GroupManifest(
+        groups=groups,
+        postgres_migrate=_build_postgres_migrate(defaults.get("postgres_migrate")),
+    )
 
 
 def _extra_manifest_paths() -> list[Path]:
@@ -257,7 +262,6 @@ def _build_group(
         install_editable=bool(spec.get("install_editable", False)),
         requires_services=tuple(spec.get("requires_services") or ()),
         requires_platform=bool(spec.get("requires_platform", False)),
-        migrate=_build_migrate(name, spec.get("migrate")),
         depends_on=tuple(spec.get("depends_on") or ()),
         critical=bool(spec.get("critical", False)),
         coverage_source=spec.get("coverage_source"),
@@ -267,40 +271,30 @@ def _build_group(
     )
 
 
-def _build_migrate(name: str, spec: Any) -> MigrateSpec | None:
+def _build_postgres_migrate(spec: Any) -> MigrateSpec | None:
+    """Parse and validate ``defaults.postgres_migrate``.
+
+    A bad spec is a silent no-show at runtime — every DB-backed test skips on a
+    missing table — so both the shape and the ``manage.py`` are checked at load.
+    """
     if spec is None:
         return None
     if not isinstance(spec, dict) or not spec.get("workdir"):
         raise ValueError(
-            f"group {name!r}: `migrate` must be a mapping with a `workdir` "
+            f"`defaults.postgres_migrate` must be a mapping with a `workdir` "
             f"(got {spec!r})"
         )
-    return MigrateSpec(
+    migrate = MigrateSpec(
         workdir=spec["workdir"],
         apps=tuple(spec.get("apps") or ()),
         env=dict(spec.get("env") or {}),
     )
-
-
-def _validate_migrate_specs(groups: dict[str, GroupDefinition]) -> None:
-    """A migrate spec is only meaningful against a database the rig provisions,
-    and only runnable if the named workdir actually holds a ``manage.py``.
-    Both are silent no-shows at runtime otherwise (every DB-backed test skips on
-    a missing table), so fail at manifest load instead.
-    """
-    for name, g in groups.items():
-        if g.migrate is None:
-            continue
-        if "postgres" not in g.requires_services:
-            raise ValueError(
-                f"group {name!r}: `migrate` requires `requires_services: [postgres]` "
-                f"— there is no provisioned database to migrate otherwise"
-            )
-        manage_py = g.migrate.absolute_workdir() / "manage.py"
-        if not manage_py.is_file():
-            raise ValueError(
-                f"group {name!r}: `migrate.workdir` has no manage.py: {manage_py}"
-            )
+    manage_py = migrate.absolute_workdir() / "manage.py"
+    if not manage_py.is_file():
+        raise ValueError(
+            f"`defaults.postgres_migrate.workdir` has no manage.py: {manage_py}"
+        )
+    return migrate
 
 
 def _validate_no_cycles(groups: dict[str, GroupDefinition]) -> None:
