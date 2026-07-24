@@ -118,6 +118,9 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
+# Mount point for the hosted MCP server. Changing this invalidates the MCP
+# endpoint URLs already configured in users' MCP clients.
+MCP_PATH_PREFIX = os.environ.get("MCP_PATH_PREFIX", "mcp").strip("/")
 
 # Maximum file size for presigned URLs in API deployments (in MB)
 API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
@@ -379,6 +382,7 @@ SHARED_APPS = (
     "pipeline_v2",
     "platform_settings_v2",
     "api_v2",
+    "mcp_v2",
     "usage_v2",
     "notification_v2",
     "prompt_studio.prompt_profile_manager_v2",
@@ -649,6 +653,10 @@ WHITELISTED_PATHS_LIST = [
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # White lists workflow-api-deployment path
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
+
+# White lists the hosted MCP server, which authenticates with the API
+# deployment's own key rather than a session.
+WHITELISTED_PATHS.append(f"/{MCP_PATH_PREFIX}")
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")

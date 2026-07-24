@@ -66,6 +66,11 @@ paths:
     covered_by: [e2e-api-deployment]
     proof: marker
 
+  - id: mcp-server-auth
+    description: "Unauthenticated or mis-scoped hosted-MCP calls are rejected before any tool runs."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: prompt-studio-author
     description: "Create a Prompt Studio project and add a prompt to it."
     covered_by: [integration-backend]
