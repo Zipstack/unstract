@@ -93,3 +93,31 @@ def test_disabled_plugin_is_not_loaded(plugins_pkg_dir):
     manager = _load(plugins_pkg_dir)
 
     assert not manager.has_plugin("sample_plugin")
+
+
+def test_inactive_plugin_is_not_loaded(plugins_pkg_dir):
+    _write_plugin(
+        plugins_pkg_dir,
+        "sample_plugin",
+        '{"name": "sample_plugin", "is_active": False}',
+    )
+
+    manager = _load(plugins_pkg_dir)
+
+    assert not manager.has_plugin("sample_plugin")
+
+
+def test_class_field_propagates_regardless_of_value(plugins_pkg_dir):
+    """A *_class/*_cls field is propagated by name, not filtered by its value -
+    a plugin can legitimately set one to None before it's populated at runtime.
+    """
+    _write_plugin(
+        plugins_pkg_dir,
+        "sample_plugin",
+        '{"name": "sample_plugin", "headers_cache_class": None}',
+    )
+
+    plugin = _load(plugins_pkg_dir).get_plugin("sample_plugin")
+
+    assert "headers_cache_class" in plugin
+    assert plugin["headers_cache_class"] is None

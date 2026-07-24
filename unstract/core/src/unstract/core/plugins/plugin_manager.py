@@ -11,6 +11,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+# Metadata keys ending in either suffix are treated as class/entrypoint handles
+# and promoted onto the registered plugin dict (e.g. entrypoint_cls,
+# exception_cls, service_class).
+_CLASS_HANDLE_SUFFIXES = ("_cls", "_class")
+
 
 class PluginManager:
     """Generic plugin manager for loading and managing application plugins.
@@ -215,12 +220,15 @@ class PluginManager:
                     "metadata": metadata,
                 }
 
-                # Add optional class/entrypoint fields if present (any key ending in
-                # _cls or _class, e.g. entrypoint_cls, exception_cls, service_class,
-                # headers_cache_class) so new plugin metadata fields don't need this
-                # loader updated every time.
+                # Add optional class/entrypoint fields if present, so new plugin
+                # metadata fields don't need this loader updated every time.
                 for key, value in metadata.items():
-                    if key.endswith(("_cls", "_class")) and key not in plugin_data:
+                    if not isinstance(key, str):
+                        continue
+                    # `key not in plugin_data` is defensive: none of the fixed
+                    # keys above (version/module/metadata) end in a class-handle
+                    # suffix, so this never actually excludes anything today.
+                    if key.endswith(_CLASS_HANDLE_SUFFIXES) and key not in plugin_data:
                         plugin_data[key] = value
 
                 self.plugins[plugin_name] = plugin_data
