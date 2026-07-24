@@ -173,9 +173,10 @@ class PromptStudioCoreView(
                 select_related=("created_by",),
                 prefetch_related=("memberships__user",),
             )
-            # The pk__in re-wrap drops annotations, so re-apply prompt_count on
-            # the re-wrapped result. Subquery avoids conflict with the
-            # distinct("tool_id") that for_user() carries.
+            # apply_search_and_sort returns a fresh CustomTool.objects chain, so
+            # the prompt_count annotation goes on afterwards. Subquery keeps the
+            # count out of the outer GROUP BY, which would otherwise collide with
+            # the sort column.
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()

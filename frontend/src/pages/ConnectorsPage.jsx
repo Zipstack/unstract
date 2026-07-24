@@ -304,25 +304,25 @@ function ConnectorsPage() {
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
-          {displayList === undefined && !loadError && <SpinnerLoader />}
-          {displayList === undefined && loadError && (
+          {loadError && (
             <EmptyState
               text="Couldn't load. Please try again."
               btnText="Retry"
               handleClick={handleListRefresh}
             />
           )}
-          {displayList?.length === 0 && !searchTerm && (
+          {!loadError && displayList === undefined && <SpinnerLoader />}
+          {!loadError && displayList?.length === 0 && !searchTerm && (
             <EmptyState
               text="No connectors available"
               btnText="New Connector"
               handleClick={handleCreateConnector}
             />
           )}
-          {displayList?.length === 0 && searchTerm && (
+          {!loadError && displayList?.length === 0 && searchTerm && (
             <EmptyState text="No results found for this search" />
           )}
-          {displayList?.length > 0 && (
+          {!loadError && displayList?.length > 0 && (
             <ResourceTable
               dataSource={displayList}
               loading={loading}
@@ -335,7 +335,7 @@ function ConnectorsPage() {
               iconProp="icon"
               idProp="id"
               dateProp="created_at"
-              ownerEmailProp="created_by_email"
+              ownerEmailProp="owner_email"
               handleEdit={handleEditConnector}
               handleShare={handleShareConnector}
               handleDelete={handleDeleteConnector}

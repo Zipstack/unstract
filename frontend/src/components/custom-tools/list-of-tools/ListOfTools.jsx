@@ -461,25 +461,25 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">
           <div className="list-of-tools-body">
-            {displayList === undefined && !loadError && <SpinnerLoader />}
-            {displayList === undefined && loadError && (
+            {loadError && (
               <EmptyState
                 text="Couldn't load. Please try again."
                 btnText="Retry"
                 handleClick={handleListRefresh}
               />
             )}
-            {displayList?.length === 0 && !searchTerm && (
+            {!loadError && displayList === undefined && <SpinnerLoader />}
+            {!loadError && displayList?.length === 0 && !searchTerm && (
               <EmptyState
                 text="No prompt projects available"
                 btnText="New Project"
                 handleClick={handleNewProjectBtnClick}
               />
             )}
-            {displayList?.length === 0 && searchTerm && (
+            {!loadError && displayList?.length === 0 && searchTerm && (
               <EmptyState text="No results found for this search" />
             )}
-            {displayList?.length > 0 && (
+            {!loadError && displayList?.length > 0 && (
               <ResourceTable
                 dataSource={displayList}
                 loading={isLoading}
@@ -492,7 +492,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
                 iconProp="icon"
                 idProp="tool_id"
                 dateProp="created_at"
-                ownerEmailProp="created_by_email"
+                ownerEmailProp="owner_email"
                 handleEdit={handleEdit}
                 handleShare={handleShare}
                 handleDelete={handleDelete}

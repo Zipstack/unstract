@@ -128,12 +128,12 @@ function Workflows() {
             requestList(page - 1, pageSize, search, sortBy, order),
         }),
       )
-      .catch(() => {
+      .catch((err) => {
         // A newer request superseded this one — don't surface its error.
         if (seq !== seqRef.current) {
           return;
         }
-        console.error("Unable to get project list");
+        setAlertDetails(handleException(err, "Unable to load workflows"));
         // Surface a retryable error instead of a misleading empty state.
         setLoadError(true);
         // Failed request — realign requestedRef with the still-shown view.
@@ -404,15 +404,15 @@ function Workflows() {
       />
       <div className="workflows-pg-layout">
         <div className="workflows-pg-body">
-          {projectList === undefined && !loadError && <SpinnerLoader />}
-          {projectList === undefined && loadError && (
+          {loadError && (
             <EmptyState
               text="Couldn't load. Please try again."
               btnText="Retry"
               handleClick={handleListRefresh}
             />
           )}
-          {projectList?.length === 0 && !searchTerm && (
+          {!loadError && projectList === undefined && <SpinnerLoader />}
+          {!loadError && projectList?.length === 0 && !searchTerm && (
             <div className="list-of-workflows-body">
               <EmptyState
                 text="No Workflow available"
@@ -424,10 +424,10 @@ function Workflows() {
               />
             </div>
           )}
-          {projectList?.length === 0 && searchTerm && (
+          {!loadError && projectList?.length === 0 && searchTerm && (
             <EmptyState text="No results found for this search" />
           )}
-          {projectList?.length > 0 && (
+          {!loadError && projectList?.length > 0 && (
             <ResourceTable
               dataSource={projectList}
               loading={loading}
@@ -439,7 +439,7 @@ function Workflows() {
               descriptionProp="description"
               idProp="id"
               dateProp="created_at"
-              ownerEmailProp="created_by_email"
+              ownerEmailProp="owner_email"
               handleEdit={updateProject}
               handleShare={handleShare}
               handleDelete={deleteProject}

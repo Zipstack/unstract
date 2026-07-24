@@ -103,9 +103,11 @@ function usePaginatedList({
   // Page assigns its fetch fn here; handlers call the latest one via the ref.
   const fetchRef = useRef(null);
 
-  // Mirrors the on-screen view each render (pagination only advances when a
-  // response applies), so a FAILED request can realign requestedRef with what's
-  // actually displayed. See syncRequested.
+  // page/pageSize mirror the on-screen view (setPagination only runs when a
+  // response applies); search/sortBy/order are the LAST-REQUESTED values, since
+  // handleSearch/handleSortChange commit them before firing and don't roll back
+  // on failure. syncRequested copies this into requestedRef so a later refresh
+  // targets the displayed page rather than a mid-flight one.
   const appliedRef = useRef(null);
   appliedRef.current = {
     page: pagination.current,
@@ -132,7 +134,9 @@ function usePaginatedList({
   // ends up on screen. Pages route their stepback (refetchPrevPage) through it.
   const requestList = (page, pageSize, search, sortBy, order) => {
     requestedRef.current = { page, pageSize, search, sortBy, order };
-    fetchRef.current?.(page, pageSize, search, sortBy, order);
+    // Return the fetch promise so a stepback (refetchPrevPage) propagates up
+    // through applyPagedResponse, as its JSDoc documents.
+    return fetchRef.current?.(page, pageSize, search, sortBy, order);
   };
 
   const handlePaginationChange = (page, pageSize) => {

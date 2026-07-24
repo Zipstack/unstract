@@ -367,25 +367,25 @@ function ToolSettings({ type }) {
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
-            {displayList === undefined && !loadError && <SpinnerLoader />}
-            {displayList === undefined && loadError && (
+            {loadError && (
               <EmptyState
                 text="Couldn't load. Please try again."
                 btnText="Retry"
                 handleClick={handleListRefresh}
               />
             )}
-            {displayList?.length === 0 && !searchTerm && (
+            {!loadError && displayList === undefined && <SpinnerLoader />}
+            {!loadError && displayList?.length === 0 && !searchTerm && (
               <EmptyState
                 text={`No ${titles[type]?.toLowerCase() || "adapters"} available`}
                 btnText={btnText[type]}
                 handleClick={handleOpenAddSourceModal}
               />
             )}
-            {displayList?.length === 0 && searchTerm && (
+            {!loadError && displayList?.length === 0 && searchTerm && (
               <EmptyState text="No results found for this search" />
             )}
-            {displayList?.length > 0 && (
+            {!loadError && displayList?.length > 0 && (
               <ResourceTable
                 dataSource={displayList}
                 loading={isLoading}
@@ -398,7 +398,7 @@ function ToolSettings({ type }) {
                 iconProp="icon"
                 idProp="id"
                 dateProp="created_at"
-                ownerEmailProp="created_by_email"
+                ownerEmailProp="owner_email"
                 handleEdit={handleEdit}
                 handleShare={handleShare}
                 handleDelete={handleDelete}
