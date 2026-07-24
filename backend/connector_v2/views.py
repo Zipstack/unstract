@@ -47,6 +47,9 @@ class ConnectorInstanceViewSet(
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["connector_name", "created_at", "modified_at"]
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -127,10 +130,7 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too. Not modified_at:
-        # that would conflict with the DISTINCT ON in for_user().
-        return queryset.order_by("id")
+        return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.

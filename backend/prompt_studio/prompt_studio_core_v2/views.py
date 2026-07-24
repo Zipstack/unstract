@@ -133,6 +133,9 @@ class PromptStudioCoreView(
 
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["tool_name", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -161,7 +164,8 @@ class PromptStudioCoreView(
             "memberships__user"
         )
         if self.action == "list":
-            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            # Subquery rather than a join-aggregate: Count() over a join would
+            # need a GROUP BY that fights the queryset's distinct()
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -180,9 +184,7 @@ class PromptStudioCoreView(
             search = self.request.query_params.get("search")
             if search:
                 qs = qs.filter(tool_name__icontains=search)
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too.
-        return qs.order_by("tool_id")
+        return qs
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
