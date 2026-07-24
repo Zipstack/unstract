@@ -47,14 +47,25 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
+        challenge_llm_property: dict[str, Any] = {
+            "type": "string",
+            "title": "Challenger LLM",
+            "adapterType": "LLM",
+            "description": "LLM to use for LLMChallenge",
+            "adapterIdKey": "challenge_llm_adapter_id",
+        }
+        if not tool.enable_challenge:
+            # With LLMChallenge off the tool instance stores challenge_llm as ""
+            # (no spec default to seed it). Declaring adapterType here would make
+            # the tool instance schema carry an enum of real adapter IDs only,
+            # which "" can never satisfy - so deployment validation rejects a
+            # tool that never used LLMChallenge in the first place. Leave the
+            # property a free-form string until the feature is switched on.
+            challenge_llm_property.pop("adapterType")
+            challenge_llm_property["default"] = ""
+
         properties = {
-            "challenge_llm": {
-                "type": "string",
-                "title": "Challenger LLM",
-                "adapterType": "LLM",
-                "description": "LLM to use for LLMChallenge",
-                "adapterIdKey": "challenge_llm_adapter_id",
-            },
+            "challenge_llm": challenge_llm_property,
             "enable_challenge": {
                 "type": "boolean",
                 "title": "Enable LLMChallenge",
@@ -87,10 +98,15 @@ class PromptStudioRegistryHelper:
             },
         }
 
+        # challenge_llm is only meaningful when LLMChallenge is enabled. Marking
+        # it required unconditionally makes a tool instance that never set one
+        # fail validation at deployment time, long after export succeeded.
+        required = [JsonSchemaKey.CHALLENGE_LLM] if tool.enable_challenge else []
+
         spec = Spec(
             title=str(tool.tool_id),
             description=tool.description,
-            required=[JsonSchemaKey.CHALLENGE_LLM],
+            required=required,
             properties=properties,
         )
         return spec
