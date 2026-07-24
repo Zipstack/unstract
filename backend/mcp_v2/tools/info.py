@@ -54,8 +54,9 @@ def read_me_first(context: MCPContext) -> dict[str, Any]:
             "few seconds between polls.",
         ],
         "notes": [
-            "Documents are fetched server-side from the URLs you provide, so "
-            "they must be reachable by Unstract (for example a pre-signed URL).",
+            "Documents are fetched server-side from the URLs you provide, and "
+            "only S3 pre-signed URLs are accepted — an ordinary public link "
+            "is rejected. Upload to S3 and pre-sign it first if needed.",
             "extractDocument consumes the organization's extraction quota. "
             "Never call it speculatively, and never retry a call that already "
             "returned an execution_id — poll instead.",

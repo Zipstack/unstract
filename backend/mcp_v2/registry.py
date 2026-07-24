@@ -116,8 +116,10 @@ def build_registry() -> MCPToolRegistry:
             description=(
                 "Run the connected Unstract API deployment over one or more "
                 "documents and return the structured extraction result.\n\n"
-                "Documents are supplied as URLs, which Unstract fetches "
-                "server-side. Extraction is asynchronous: when it does not "
+                "Documents are supplied as S3 pre-signed URLs, which Unstract "
+                "fetches server-side — ordinary public links are rejected, so "
+                "upload to S3 and pre-sign first if the document is not "
+                "already there. Extraction is asynchronous: when it does not "
                 "finish within `timeout` seconds this returns "
                 "`execution_status: PENDING` along with an `execution_id`. Poll "
                 "`getExecutionStatus` with that id to collect the result.\n\n"

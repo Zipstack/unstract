@@ -11,6 +11,7 @@ from api_v2.exceptions import RateLimitExceeded
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import ExecutionQuerySerializer, ExecutionRequestSerializer
 from rest_framework.exceptions import ValidationError
+from tags.serializers import TagParamsSerializer
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
@@ -19,9 +20,12 @@ from mcp_v2.exceptions import MCPToolError
 
 logger = logging.getLogger(__name__)
 
-# Mirrors ExecutionRequestSerializer.MAX_FILES_ALLOWED. Declared in the JSON
-# schema too, so a well-behaved client is stopped before the request is made.
+# Mirrors the serializer limits into the JSON schema, so a well-behaved client
+# is stopped before it spends a round trip on a request that cannot validate.
+# Sourced from the serializers rather than copied, so the advertised schema
+# tracks the limits actually enforced.
 MAX_DOCUMENTS = ExecutionRequestSerializer.MAX_FILES_ALLOWED
+MAX_TAGS = TagParamsSerializer.MAX_TAGS_ALLOWED
 
 # An agent polling with getExecutionStatus does not benefit from holding the
 # HTTP request open for the full 300s the REST API permits, and a long-held
@@ -62,9 +66,9 @@ def extract_document_schema() -> dict[str, Any]:
                 "minItems": 1,
                 "maxItems": MAX_DOCUMENTS,
                 "description": (
-                    "URLs of the documents to extract. Unstract fetches these "
-                    "server-side, so each must be reachable by the Unstract "
-                    "backend — typically a pre-signed URL."
+                    "S3 pre-signed URLs of the documents to extract. Unstract "
+                    "fetches these server-side. Only S3 pre-signed URLs are "
+                    "accepted — an ordinary public http(s) link is rejected."
                 ),
             },
             "timeout": {
@@ -99,7 +103,12 @@ def extract_document_schema() -> dict[str, Any]:
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Tags to associate with this execution.",
+                "maxItems": MAX_TAGS,
+                "description": (
+                    f"Tags to associate with this execution (at most "
+                    f"{MAX_TAGS}). Each tag must start with a letter and "
+                    "contain only letters, numbers, underscores and hyphens."
+                ),
             },
             "llm_profile_id": {
                 "type": "string",
@@ -164,12 +173,13 @@ def extract_document(
     validated = serializer.validated_data
     presigned_urls = validated.get(ApiExecution.PRESIGNED_URLS, [])
 
-    file_objs: list[Any] = []
-    DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
-
     organization = context.api.organization
     execution_id = str(uuid.uuid4())
 
+    # Take the rate-limit slot before downloading anything. The REST view
+    # fetches first because it already holds the uploaded files in the request
+    # body; here the fetch is ours to make, and doing it for a call we are
+    # about to reject would pull every document over the network for nothing.
     can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
         organization, execution_id
     )
@@ -181,6 +191,8 @@ def extract_document(
         )
 
     try:
+        file_objs: list[Any] = []
+        DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
         response = DeploymentHelper.execute_workflow(
             organization_name=context.org_name,
             api=context.api,
@@ -194,11 +206,15 @@ def extract_document(
             llm_profile_id=validated.get(ApiExecution.LLM_PROFILE_ID),
             execution_id=execution_id,
         )
-    except RateLimitExceeded:
-        # Slot was acquired above, so a limit raised from deeper in the stack
-        # is a different limit; still release ours before surfacing it.
+    except RateLimitExceeded as error:
+        # A limit raised from deeper in the stack is a different limit than the
+        # one checked above, but it is still the agent's to wait out — so
+        # convert it rather than letting it fall through to the generic
+        # "failed unexpectedly" branch below.
         APIDeploymentRateLimiter.release_slot(organization, execution_id)
-        raise
+        raise MCPToolError(
+            f"Rate limit exceeded: {error.detail}. Retry once running extractions finish."
+        ) from error
     except Exception as error:
         APIDeploymentRateLimiter.release_slot(organization, execution_id)
         logger.exception(

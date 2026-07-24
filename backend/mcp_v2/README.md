@@ -56,8 +56,9 @@ claude mcp add --transport http unstract \
 | `extractDocument` | Run extraction over document URLs. **Consumes quota.** |
 | `getExecutionStatus` | Poll for the result of a pending extraction. |
 
-Documents are passed as URLs and fetched server-side, so they must be reachable
-by the backend — typically a pre-signed URL. Extraction is asynchronous:
+Documents are passed as **S3 pre-signed URLs** and fetched server-side; the
+execution serializer rejects anything else, so a plain public link will not
+work. Extraction is asynchronous:
 `extractDocument` returns an `execution_id` when it does not finish within the
 timeout, and the agent polls `getExecutionStatus` with it.
 
