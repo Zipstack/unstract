@@ -88,6 +88,7 @@ class JsonSchemaKey:
     EMBEDDING_SUFFIX = "embedding_suffix"
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
+    CUSTOM_TOOL = "custom_tool"
     NOTES = "NOTES"
     TOOL_SETTINGS = "tool_settings"
     ENABLE_CHALLENGE = "enable_challenge"
