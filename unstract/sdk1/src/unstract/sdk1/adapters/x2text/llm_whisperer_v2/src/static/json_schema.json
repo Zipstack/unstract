@@ -52,8 +52,7 @@
         "Text",
         "Image (PDF only)"
       ],
-      "default": "layout_preserving",
-      "description": "Output format, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes). Note: **Image** mode returns per-page images instead of text and supports **PDF input only**."
+      "default": "layout_preserving"
     },
     "line_splitter_tolerance": {
       "type": "number",
@@ -64,7 +63,7 @@
     "line_splitter_strategy": {
       "type": "string",
       "title": "Line Splitter Strategy",
-      "default":"left-priority",
+      "default": "left-priority",
       "description": "An advanced option for customizing the line splitting process."
     },
     "horizontal_stretch_factor": {
@@ -164,10 +163,15 @@
       },
       "then": {
         "properties": {
-          "image_pdf_only_notice": {
-            "type": "null",
-            "title": "Image output mode - PDF only",
-            "description": "Image output mode returns per-page images and supports **PDF input files only**. Non-PDF inputs are rejected before processing."
+          "output_mode": {
+            "description": "**Image mode returns per-page images instead of text and accepts PDF input files only** — non-PDF inputs are rejected before processing."
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "output_mode": {
+            "description": "Output format, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes)."
           }
         }
       }
