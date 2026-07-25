@@ -68,8 +68,8 @@ class MCPToolRegistry:
         return [tool.to_mcp_schema() for tool in self._tools.values()]
 
 
-def build_registry() -> MCPToolRegistry:
-    """Build the registry of tools exposed by the Unstract MCP server.
+def build_deployment_registry() -> MCPToolRegistry:
+    """Build the tools exposed by the deployment-scoped MCP server.
 
     Imported lazily inside the function so that registering a tool cannot
     trigger Django model imports at module-import time.
@@ -151,6 +151,92 @@ def build_registry() -> MCPToolRegistry:
     return registry
 
 
-# Single shared registry. The tool set is static, so building it once at import
-# time is safe and keeps per-request work down.
-TOOL_REGISTRY = build_registry()
+def build_platform_registry() -> MCPToolRegistry:
+    """Build the tools exposed by the organization-scoped MCP server.
+
+    Read-only by design. Every tool here is reachable by any caller holding a
+    platform key, and an agent will eventually call a destructive tool by
+    mistake — so writes are deferred until there is a per-tool authorization
+    story stronger than the key's HTTP-method tier.
+    """
+    from mcp_server.tools.platform import (
+        list_api_deployments,
+        list_prompt_studio_projects,
+        list_workflows,
+        no_args_schema,
+        platform_read_me_first,
+        whoami,
+    )
+
+    registry = MCPToolRegistry()
+
+    registry.register(
+        MCPTool(
+            name="readMeFirst",
+            description=(
+                "START HERE. Returns a guide to this MCP server: what it can "
+                "see in the connected Unstract organization, the available "
+                "tools, and the recommended call sequence. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=platform_read_me_first,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="whoami",
+            description=(
+                "Describe the credential this session is using: the "
+                "organization it belongs to, its permission tier, and the "
+                "scope of what it can see. Call this when a tool returns less "
+                "or more than you expected. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=whoami,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listApiDeployments",
+            description=(
+                "List the organization's API deployments — the deployed "
+                "extraction endpoints. Use this to discover what can be "
+                "extracted and to find the api_name needed to connect a "
+                "deployment-scoped MCP session. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=list_api_deployments,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listWorkflows",
+            description=(
+                "List the organization's workflows — the pipelines that API "
+                "deployments and ETL pipelines run. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=list_workflows,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listPromptStudioProjects",
+            description=(
+                "List the organization's Prompt Studio projects, where "
+                "extraction prompts are authored before being exported as "
+                "tools and deployed. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=list_prompt_studio_projects,
+        )
+    )
+
+    return registry
+
+
+# Registries are static, so building them once at import time is safe and keeps
+# per-request work down. Kept separate rather than merged with a filter, so a
+# tool cannot be exposed on the wrong server by forgetting a flag.
+DEPLOYMENT_TOOLS = build_deployment_registry()
+PLATFORM_TOOLS = build_platform_registry()

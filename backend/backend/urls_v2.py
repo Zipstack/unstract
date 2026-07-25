@@ -65,4 +65,8 @@ urlpatterns = [
     path("execution/", include("workflow_manager.file_execution.urls")),
     path("metrics/", include("dashboard_metrics.urls")),
     path("platform-api/", include("platform_api.urls")),
+    # Organization-scoped MCP server. Mounted here rather than under
+    # MCP_PATH_PREFIX so CustomAuthMiddleware authenticates the platform API
+    # key — that prefix is whitelisted and would bypass auth entirely.
+    path("mcp/", include("mcp_server.platform_urls")),
 ]

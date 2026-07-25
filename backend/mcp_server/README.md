@@ -1,11 +1,31 @@
-# Hosted MCP server
+# Hosted MCP servers
 
-Exposes an Unstract API deployment to coding agents over the
-[Model Context Protocol](https://modelcontextprotocol.io), so an agent can run
-document extraction as a tool call instead of hand-rolling HTTP requests.
+Exposes Unstract to coding agents over the
+[Model Context Protocol](https://modelcontextprotocol.io), so an agent can
+discover and run document extraction as tool calls instead of hand-rolling HTTP
+requests.
 
-The server is hosted inside the existing backend — it is a Django app served by
-the same gunicorn process, not a separate service to deploy or scale.
+Both servers are hosted inside the existing backend — Django views served by the
+same gunicorn process, not separate services to deploy or scale. They share the
+JSON-RPC transport in `transport.py` and differ only in how a caller is
+authenticated and which tools they expose.
+
+| | Deployment server | Platform server |
+| --- | --- | --- |
+| Scope | one API deployment | one organization |
+| Credential | that deployment's API key | a platform API key |
+| Authenticated by | the view itself | `CustomAuthMiddleware` |
+| URL | `/mcp/<org>/<api_name>/` | `/api/v1/unstract/<org>/mcp/` |
+| Tools | extract, poll status | read-only discovery |
+
+The split is not cosmetic. A deployment key grants exactly one workflow and
+resolves to no user, so it cannot authorize anything organization-wide; a
+platform key resolves to a service-account user and is checked by the shared
+auth middleware. Neither key works on the other server.
+
+---
+
+# Deployment server
 
 ## Endpoint
 
@@ -90,7 +110,7 @@ internal detail does not leak to the client.
 
 ## Design notes
 
-- **Auth reuses the deployment key path.** `_resolve_context` calls the same
+- **Auth reuses the deployment key path.** `resolve_context` calls the same
   `DeploymentHelper` validation the REST endpoint uses, so the two surfaces
   cannot drift apart on who is allowed in.
 - **Execution reuses `ExecutionRequestSerializer`.** URL validation and the
@@ -102,9 +122,93 @@ internal detail does not leak to the client.
   protocol errors as unrecoverable transport faults; an agent-fixable problem
   comes back as `isError: true` content it can read and retry.
 
+---
+
+# Platform server
+
+Organization-scoped and **read-only**: it lets an agent discover what exists in
+an Unstract organization — deployments, workflows, Prompt Studio projects — but
+cannot run or change anything.
+
+## Endpoint
+
+```
+POST /api/v1/unstract/<org_name>/mcp/
+Authorization: Bearer <platform_api_key>
+```
+
+```bash
+claude mcp add --transport http unstract-platform \
+  https://<host>/api/v1/unstract/<org_name>/mcp/ \
+  --header "Authorization: Bearer <platform_api_key>"
+```
+
+Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
+
+## Tools
+
+| Tool | Purpose |
+| --- | --- |
+| `readMeFirst` | Orientation, including what this credential can see. |
+| `whoami` | The key's organization, permission tier and visibility scope. |
+| `listApiDeployments` | Deployed extraction endpoints, with their `api_name`. |
+| `listWorkflows` | The pipelines behind them. |
+| `listPromptStudioProjects` | Where extraction prompts are authored. |
+
+To actually extract, an agent calls `listApiDeployments` to find an `api_name`,
+then opens a **separate** session against the deployment server above.
+
+## Why the URL matters
+
+This server is mounted under the tenant prefix, next to `platform-api/`, and
+**not** under `MCP_PATH_PREFIX`. `WHITELISTED_PATHS` is matched with
+`startswith`, so `/mcp/...` is exempt from `CustomAuthMiddleware` while
+`/api/v1/unstract/<org>/mcp/` is not — which is exactly how this server
+inherits platform-key authentication.
+
+Moving these URLs under the whitelisted prefix would silently remove all
+authentication. `test_platform_auth.py::test_the_endpoint_is_not_whitelisted`
+guards against that.
+
+Because auth lives in middleware, its tests go through `django.test.Client` and
+the real URL. A test using `APIRequestFactory` or calling the view directly
+bypasses the middleware and would pass against a completely open endpoint.
+
+## Two constraints worth knowing
+
+**A `read`-tier key cannot use this server at all.** The middleware's tier check
+gates on HTTP method, and every MCP call is a `POST`, which `read` disallows —
+so a read-only key is refused before reaching the view, even though every tool
+here is read-only. Use a `read_write` key. Changing that would mean special-
+casing MCP paths in the middleware, which is a decision for maintainers rather
+than something this app should do unilaterally.
+
+**These tools see the whole organization.** A platform key resolves to a service
+account, and `is_service_account=True` makes `for_user()` managers return
+`self.all()` — so listings ignore per-user sharing regardless of the `USER` role
+the key was created with. `whoami` and `readMeFirst` both say so, because an
+agent that assumed otherwise would draw wrong conclusions from a listing.
+
+## Adding a tool here
+
+Same registry mechanics as the deployment server, with `PlatformMCPContext`
+(`user`, `platform_key`, `org_name`) as the first argument. Query through the
+model's `for_user(context.user)` manager so the platform's own visibility rules
+apply, and cap results — `LIST_LIMIT` with a `truncated` note, never silent
+truncation.
+
+Write tools are deliberately absent. `check_tool_allowed` already refuses a
+`writes=True` tool to a `read`-tier key, so the guard is in place, but the
+read-only promise is pinned by
+`test_platform_tier_guard.py::test_platform_registry_is_entirely_read_only` —
+adding a write tool will fail that test and force a deliberate decision about
+whether an agent should hold that power.
+
+---
+
 ## Not implemented
 
 OAuth 2.1 with dynamic client registration, which MCP defines for browser-based
-one-click connectors. Header/path bearer auth covers Claude Code and
-API clients. Adding OAuth is additive — it would mount discovery endpoints
-alongside this router without changing the transport.
+one-click connectors. Bearer auth covers Claude Code and API clients on both
+servers. Adding OAuth is additive — it would mount discovery endpoints
+alongside these routers without changing the transport.

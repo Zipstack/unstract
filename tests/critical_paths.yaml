@@ -71,6 +71,11 @@ paths:
     covered_by: [integration-backend]
     proof: marker
 
+  - id: mcp-platform-auth
+    description: "The org-scoped MCP endpoint stays behind the platform-API-key middleware; unauthenticated or mis-scoped calls reach no tool."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: prompt-studio-author
     description: "Create a Prompt Studio project and add a prompt to it."
     covered_by: [integration-backend]

@@ -17,7 +17,7 @@ from rest_framework.test import APIRequestFactory
 from mcp_server.constants import JSONRPC, MCPServer
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
-from mcp_server.registry import TOOL_REGISTRY
+from mcp_server.registry import DEPLOYMENT_TOOLS
 from mcp_server.views import MCPServerView
 
 ORG_ID = "org-mcp"
@@ -61,16 +61,16 @@ class MCPProtocolTest(SimpleTestCase):
         def boom(*args, **kwargs):
             raise error
 
-        original = TOOL_REGISTRY.get(name)
+        original = DEPLOYMENT_TOOLS.get(name)
         return patch.object(
-            TOOL_REGISTRY, "get", return_value=replace(original, handler=boom)
+            DEPLOYMENT_TOOLS, "get", return_value=replace(original, handler=boom)
         )
 
     def _call(self, body):
         """POST a JSON-RPC body with auth stubbed out."""
         request = self.factory.post(f"/mcp/{ORG_ID}/{API_NAME}/", body, format="json")
         with patch.object(
-            MCPServerView, "_resolve_context", return_value=self.context
+            MCPServerView, "resolve_context", return_value=self.context
         ):
             response = self.view(
                 request, org_name=ORG_ID, api_name=API_NAME, api_key="test-key"
@@ -206,7 +206,7 @@ class MCPProtocolTest(SimpleTestCase):
             format="json",
         )
         with patch.object(
-            MCPServerView, "_resolve_context", return_value=self.context
+            MCPServerView, "resolve_context", return_value=self.context
         ):
             response = self.view(
                 request, org_name=ORG_ID, api_name=API_NAME, api_key="test-key"

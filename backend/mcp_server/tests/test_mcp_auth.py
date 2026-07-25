@@ -79,7 +79,7 @@ class MCPServerAuthTest(TestCase):
         return self.view(request, **kwargs)
 
     @pytest.mark.critical_path("mcp-server-auth")
-    @patch("mcp_server.views.TOOL_REGISTRY.get")
+    @patch("mcp_server.registry.DEPLOYMENT_TOOLS.get")
     def test_bad_credentials_rejected_before_dispatch(self, registry_get) -> None:
         cases = [
             ("missing header", "live-api", None, ORG_ID),

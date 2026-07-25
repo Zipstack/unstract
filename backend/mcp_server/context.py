@@ -5,8 +5,33 @@ transport view. Tools receive the result and never repeat that work.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from api_v2.models import APIDeployment
+
+
+@dataclass(frozen=True)
+class PlatformMCPContext:
+    """Everything a tool needs about an organization-scoped caller.
+
+    Built from what ``CustomAuthMiddleware`` already resolved — this server
+    does not re-authenticate. Deliberately shares no base class with
+    ``MCPContext``: the two servers expose disjoint tool sets, and a common
+    base would invite a tool to be written against whichever fields happen to
+    overlap.
+
+    Attributes:
+        user: The service-account user the platform key resolves to. Passed to
+            org-scoped managers so tools inherit the platform's own sharing
+            rules rather than reimplementing them.
+        platform_key: The validated key, carried for its permission tier.
+        org_name: Organization identifier from the URL, already validated
+            against the key's own organization by the middleware.
+    """
+
+    user: Any
+    platform_key: Any
+    org_name: str
 
 
 @dataclass(frozen=True)
