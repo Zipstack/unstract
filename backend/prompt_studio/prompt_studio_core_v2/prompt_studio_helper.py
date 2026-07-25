@@ -77,6 +77,11 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    ImageOutputConfig,
+    OutputModes,
+    WhispererConfig,
+)
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -549,6 +554,12 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_profile_manager_owner_access(
             default_profile, request_user=request_user
         )
+
+        # Fail fast when an image-output x2text adapter is paired with a
+        # non-PDF input, so the user sees the PDF-only message here (before the
+        # executor task is dispatched) rather than as an extraction failure
+        # inside the worker (UNS-757).
+        PromptStudioHelper._validate_image_output_pdf_only(default_profile, file_name)
 
         # Common path decomposition used by extract, summarize, and index
         directory, filename = os.path.split(file_path)
@@ -1363,6 +1374,34 @@ class PromptStudioHelper:
         return prompt_instances
 
     @staticmethod
+    def _validate_image_output_pdf_only(
+        profile_manager: ProfileManager, file_name: str
+    ) -> None:
+        """Reject non-PDF inputs when the x2text adapter is in image mode.
+
+        Image output mode (LLMWhisperer V2) supports PDF input only. The SDK
+        adapter enforces this at extraction time; this mirror-check runs at
+        index time so the user gets the identical PDF-only message before any
+        extraction work is dispatched. The message is sourced from the SDK
+        (``ImageOutputConfig.PDF_ONLY_ERROR``) so both layers stay in sync.
+
+        Only fires when the adapter config carries ``output_mode == "image"``,
+        which is unique to LLMWhisperer V2 — other x2text adapters are
+        unaffected.
+        """
+        x2text = profile_manager.x2text
+        if x2text is None:
+            return
+        metadata = x2text.metadata or {}
+        if metadata.get(WhispererConfig.OUTPUT_MODE) != OutputModes.IMAGE.value:
+            return
+        if not file_name.lower().endswith(ImageOutputConfig.PDF_EXTENSION):
+            raise IndexingAPIError(
+                detail=ImageOutputConfig.PDF_ONLY_ERROR,
+                status_code=400,
+            )
+
+    @staticmethod
     def index_document(
         tool_id: str,
         file_name: str,
@@ -1437,6 +1476,11 @@ class PromptStudioHelper:
             PromptStudioHelper.validate_profile_manager_owner_access(
                 summary_profile, request_user=request_user
             )
+
+        # Fail fast when an image-output x2text adapter is paired with a
+        # non-PDF input, so the user sees the PDF-only message at index time
+        # instead of after extraction is dispatched (UNS-757).
+        PromptStudioHelper._validate_image_output_pdf_only(default_profile, file_name)
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
