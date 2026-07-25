@@ -5,6 +5,9 @@ from typing import Any
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
+from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
+    PromptStudioRegistryHelper,
+)
 from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -170,11 +173,26 @@ class ToolInstanceSerializer(AuditSerializer):
         validated_data[TIKey.PK] = uuid.uuid4()
         # TODO: Use version from tool props
         validated_data[TIKey.VERSION] = ""
+        tool_settings = ToolProcessor.get_default_settings(tool)
+        # `get_default_settings` seeds an adapter-valued property with "" when
+        # the spec carries no default (e.g. challenge_llm). The exported tool
+        # already resolved a real value for it, so prefer that - otherwise the
+        # instance stores "", which fails deployment validation against the
+        # adapter enum. Only spec-declared keys are overlaid; the export's
+        # settings are a superset (llm, vector-db, ...) and the rest are not
+        # part of the instance schema. Non-Prompt-Studio tools resolve to {}
+        # here, making this a no-op for them.
+        resolved_settings = PromptStudioRegistryHelper.get_resolved_settings(
+            prompt_registry_id=str(tool_uid)
+        )
+        for key in tool_settings:
+            if key in resolved_settings:
+                tool_settings[key] = resolved_settings[key]
         validated_data[TIKey.METADATA] = {
             # TODO: Review and remove tool instance ID
             WorkflowKey.WF_TOOL_INSTANCE_ID: str(validated_data[TIKey.PK]),
             PromptStudioRegistryKeys.PROMPT_REGISTRY_ID: str(tool_uid),
-            **ToolProcessor.get_default_settings(tool),
+            **tool_settings,
         }
         if TIKey.STEP not in validated_data:
             validated_data[TIKey.STEP] = workflow.tool_instances.count() + 1

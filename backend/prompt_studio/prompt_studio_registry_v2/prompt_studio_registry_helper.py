@@ -144,6 +144,31 @@ class PromptStudioRegistryHelper:
         )
 
     @staticmethod
+    def get_resolved_settings(prompt_registry_id: str) -> dict[str, Any]:
+        """Return the settings export already resolved for this exported tool.
+
+        ``frame_export_json`` resolves adapter-valued settings at export time -
+        notably ``challenge_llm``, which falls back to the default profile's LLM
+        when the project set none - and stores them under
+        ``tool_metadata[tool_settings]``. ``Tool`` (built from ``tool_spec`` /
+        ``tool_property``) does not carry them, so callers that only have a
+        ``Tool`` cannot see the resolved values.
+
+        Returns an empty dict when the registry row is missing or carries no
+        settings, so callers can treat "no resolved settings" as a no-op.
+        """
+        try:
+            prompt_registry_tool = PromptStudioRegistry.objects.get(pk=prompt_registry_id)
+        except Exception as e:
+            logger.warning(
+                f"Error while fetching resolved settings for prompt registry ID "
+                f"{prompt_registry_id}: {e}"
+            )
+            return {}
+        metadata = prompt_registry_tool.tool_metadata or {}
+        return metadata.get(JsonSchemaKey.TOOL_SETTINGS, {}) or {}
+
+    @staticmethod
     def update_or_create_psr_tool(
         custom_tool: CustomTool,
         shared_with_org: bool,
