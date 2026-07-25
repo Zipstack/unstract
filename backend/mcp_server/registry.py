@@ -33,6 +33,11 @@ class MCPTool:
             "POST" for mutations, "DELETE" for destructive operations (which
             only ``full_access`` permits). Unused by the deployment server,
             whose key has no tiers.
+        billable: True when invoking the tool costs money — LLM inference,
+            embedding, indexing, or a pipeline run. Budgeted per organization
+            by ``mcp_server.spend_guard``. Deliberately distinct from
+            ``writes``: a tool can mutate cheaply (pausing a schedule) or cost
+            money without changing configuration (running an extraction).
     """
 
     name: str
@@ -41,6 +46,7 @@ class MCPTool:
     handler: Callable[..., Any]
     writes: bool = False
     required_method: str = "GET"
+    billable: bool = False
 
     def to_mcp_schema(self) -> dict[str, Any]:
         """Serialize to the shape returned by `tools/list`."""
@@ -178,6 +184,19 @@ def build_platform_registry() -> MCPToolRegistry:
       destroys work that no inverse call restores. The write tools here are
       reversible by construction.
     """
+    from mcp_server.tools.observability import (
+        get_execution_detail,
+        get_execution_detail_schema,
+        get_usage_summary,
+        get_usage_summary_schema,
+        get_workflow_endpoints,
+        get_workflow_endpoints_schema,
+        list_executions,
+        list_executions_schema,
+        list_tags,
+        list_tool_instances,
+        list_tool_instances_schema,
+    )
     from mcp_server.tools.platform import (
         _ORG_WIDE_WARNING,
         execute_pipeline,
@@ -193,6 +212,16 @@ def build_platform_registry() -> MCPToolRegistry:
         set_pipeline_active,
         set_pipeline_active_schema,
         whoami,
+    )
+    from mcp_server.tools.prompt_studio import (
+        bulk_fetch_response,
+        bulk_fetch_response_schema,
+        fetch_response,
+        fetch_response_schema,
+        index_document,
+        index_document_schema,
+        single_pass_extraction,
+        single_pass_extraction_schema,
     )
 
     registry = MCPToolRegistry()
@@ -321,6 +350,162 @@ def build_platform_registry() -> MCPToolRegistry:
             handler=execute_pipeline,
             writes=True,
             required_method="POST",
+            billable=True,
+        )
+    )
+
+    # ---- observability: what happened, and what it cost ----
+
+    registry.register(
+        MCPTool(
+            name="listExecutions",
+            description=(
+                "List recent workflow executions, newest first, with per-run "
+                "status and file counts.\n\n"
+                "This is the tool for 'did that run?' and 'why did it fail?'. "
+                "Optionally filter by workflow_id or status."
+            ),
+            input_schema=list_executions_schema(),
+            handler=list_executions,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="getExecutionDetail",
+            description=(
+                "Get per-file detail for one execution — which files "
+                "succeeded, which failed, and the error for each. Use after "
+                "listExecutions has identified a run worth investigating."
+            ),
+            input_schema=get_execution_detail_schema(),
+            handler=get_execution_detail,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="getUsageSummary",
+            description=(
+                "Aggregate token and cost usage recorded for this "
+                "organization. Historical accounting of what has already been "
+                "spent — not a budget or a limit. Takes no arguments."
+            ),
+            input_schema=get_usage_summary_schema(),
+            handler=get_usage_summary,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="getWorkflowEndpoints",
+            description=(
+                "Describe how a workflow is wired: its source and destination "
+                "endpoint types, and the name of the connector each uses.\n\n"
+                "Connector credentials and endpoint configuration are "
+                "deliberately not returned — only the shape of the connection."
+            ),
+            input_schema=get_workflow_endpoints_schema(),
+            handler=get_workflow_endpoints,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listToolInstances",
+            description=(
+                "List the tool steps configured inside a workflow, in "
+                "execution order. Use this to understand what a workflow "
+                "actually does before running it."
+            ),
+            input_schema=list_tool_instances_schema(),
+            handler=list_tool_instances,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listTags",
+            description=(
+                "List the organization's tags, which label workflow "
+                "executions for grouping and filtering. Takes no arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=list_tags,
+        )
+    )
+
+    # ---- billable Prompt Studio operations ----
+    #
+    # Each drives real LLM inference or embedding work, so each is billable and
+    # budgeted per organization by mcp_server.spend_guard.
+
+    registry.register(
+        MCPTool(
+            name="indexDocument",
+            description=(
+                "Index a document in a Prompt Studio project so prompts can be "
+                "run against it.\n\n"
+                "**Costs money**: this embeds the document and writes to the "
+                "vector store. Index once, then run as many prompts as you "
+                "need against it — do not re-index between prompts.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=index_document_schema(),
+            handler=index_document,
+            writes=True,
+            required_method="POST",
+            billable=True,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="fetchResponse",
+            description=(
+                "Run one Prompt Studio prompt against an indexed document and "
+                "return the extracted response.\n\n"
+                "**Costs money**: this is a live LLM call. If you need several "
+                "prompts against the same document, use bulkFetchResponse "
+                "instead — it is cheaper and avoids an indexing race.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=fetch_response_schema(),
+            handler=fetch_response,
+            writes=True,
+            required_method="POST",
+            billable=True,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="bulkFetchResponse",
+            description=(
+                "Run several Prompt Studio prompts against one document in a "
+                "single pass.\n\n"
+                "**Costs money.** Prefer this over repeated fetchResponse "
+                "calls: it indexes once and dispatches one task, which is both "
+                "cheaper and avoids the 'document being indexed' race that "
+                "concurrent single calls provoke.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=bulk_fetch_response_schema(),
+            handler=bulk_fetch_response,
+            writes=True,
+            required_method="POST",
+            billable=True,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="singlePassExtraction",
+            description=(
+                "Run a Prompt Studio project's entire prompt set against a "
+                "document in one LLM pass.\n\n"
+                "**Costs money**, and is the most expensive tool here. Use it "
+                "when you want the project's full output; use fetchResponse "
+                "when you want one field.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=single_pass_extraction_schema(),
+            handler=single_pass_extraction,
+            writes=True,
+            required_method="POST",
+            billable=True,
         )
     )
 

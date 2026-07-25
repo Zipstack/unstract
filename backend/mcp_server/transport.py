@@ -216,6 +216,18 @@ class BaseMCPView(views.APIView):
         """
         return None
 
+    def check_spend_allowed(self, tool: Any, context: Any) -> str | None:
+        """Claim budget for a billable tool.
+
+        Return None to allow, or a message explaining that the budget is spent.
+        Called once per invocation immediately before the handler runs, so
+        overriding servers should treat it as consuming, not merely checking.
+
+        The default allows everything — the deployment server's costs are
+        already bounded by the API deployment rate limiter.
+        """
+        return None
+
     def _call_tool(
         self, request_id: Any, params: dict[str, Any], context: Any
     ) -> JsonResponse:
@@ -241,6 +253,15 @@ class BaseMCPView(views.APIView):
             return rpc_error(
                 request_id, JSONRPC.UNAUTHORIZED, "Permission denied", refusal
             )
+
+        # Budget is checked after permission and before the handler, so an
+        # unauthorized call never consumes budget. Unlike the permission
+        # refusal above this is temporal, so it comes back as an isError
+        # *result* the agent can read and retry — a protocol error would read
+        # as "this tool does not work" and stop it retrying later.
+        over_budget = self.check_spend_allowed(tool, context)
+        if over_budget is not None:
+            return rpc_result(request_id, tool_content(over_budget, is_error=True))
 
         arguments = params.get("arguments") or {}
         if not isinstance(arguments, dict):

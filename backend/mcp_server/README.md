@@ -147,21 +147,81 @@ Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
 
 ## Tools
 
+**Discovery** — what exists:
+
 | Tool | Tier | Purpose |
 | --- | --- | --- |
 | `readMeFirst` | read | Orientation, including what this credential can reach. |
-| `whoami` | read | The key's organization, tier and what it may do. |
+| `whoami` | read | The key's organization, tier, and remaining spend budget. |
 | `listApiDeployments` | read | Deployed extraction endpoints, with their `api_name`. |
 | `listWorkflows` | read | The workflows behind them. |
 | `listPipelines` | read | ETL and task pipelines, with schedule and last-run state. |
 | `listPromptStudioProjects` | read | Where extraction prompts are authored. |
+| `getWorkflowEndpoints` | read | How a workflow is wired — shape only, never config. |
+| `listToolInstances` | read | The tool steps inside a workflow. |
+| `listTags` | read | Execution tags. |
+
+**Observability** — what happened:
+
+| Tool | Tier | Purpose |
+| --- | --- | --- |
+| `listExecutions` | read | Recent runs and their status. Start here to debug. |
+| `getExecutionDetail` | read | Per-file results and errors for one run. |
+| `getUsageSummary` | read | Tokens and cost recorded so far. |
+
+**State changes** — cheap, reversible:
+
+| Tool | Tier | Purpose |
+| --- | --- | --- |
 | `setApiDeploymentActive` | `read_write` | Take a deployment offline, or bring it back. |
 | `setPipelineActive` | `read_write` | Pause or resume a pipeline's schedule. |
-| `executePipeline` | `read_write` | Trigger a real pipeline run. **Consumes quota.** |
 
-To actually extract a document, an agent calls `listApiDeployments` to find an
-`api_name`, then opens a **separate** session against the deployment server
-above.
+**Billable** — each call costs real money, and is budgeted:
+
+| Tool | Tier | Purpose |
+| --- | --- | --- |
+| `executePipeline` | `read_write` | Trigger a real pipeline run. |
+| `indexDocument` | `read_write` | Embed a document so prompts can run against it. |
+| `fetchResponse` | `read_write` | Run one prompt against an indexed document. |
+| `bulkFetchResponse` | `read_write` | Run several prompts in one pass. |
+| `singlePassExtraction` | `read_write` | Run a project's whole prompt set. |
+
+To extract a document through a *deployed* API, an agent calls
+`listApiDeployments` to find an `api_name`, then opens a **separate** session
+against the deployment server above. The Prompt Studio tools here are for
+working with prompts before they are deployed.
+
+## The spend guard
+
+The billable tools drive LLM inference, embedding and vector-store writes. An
+agent looping over a list, or retrying on a misread error, can spend a great
+deal without anyone watching — so they are budgeted per organization over a
+rolling window (`MCP_BILLABLE_CALL_LIMIT`, default 50 per
+`MCP_BILLABLE_WINDOW_SECONDS`, default one hour).
+
+**It counts calls, not tokens or currency.** Unstract's open-source backend
+records usage after the fact but has no pre-flight allowance to check against —
+subscription and quota enforcement live in the enterprise overlay, which this
+app cannot depend on. A call counter is the strongest guard implementable here,
+and it is a blunt one: it bounds how *often* an agent triggers paid work, not
+how expensive each call is.
+
+Three behaviours are deliberate:
+
+- **Budget is consumed on invocation and never refunded**, including when the
+  tool then fails. A Prompt Studio call that fails partway may already have
+  spent tokens upstream, and refunding on failure would let an agent burn
+  unbounded spend by failing in a loop. This is the opposite of the rate-limit
+  slot in `tools/execution.py`, which models concurrency rather than cost.
+- **Exhaustion is temporary, not a permission error.** It comes back as an
+  `isError` result naming when to retry, so the agent waits rather than
+  concluding the tool is forbidden.
+- **It fails open.** If the cache is unavailable the call is allowed and the
+  event logged. This guard bounds runaway loops; it is not a licence check, and
+  taking the whole MCP surface offline because Redis blipped would be worse.
+
+`whoami` reports the remaining budget so an agent can pace itself instead of
+discovering the limit by hitting it.
 
 ## How write tools are authorized
 
@@ -180,16 +240,64 @@ that guard, so a test asserts none exists.
 
 ## What is deliberately not exposed
 
-**Credential operations.** Creating or rotating an API key returns the secret in
-its response. An MCP tool for it would hand an agent — one that may be
-processing untrusted document content — a way to mint or exfiltrate credentials.
-The codebase already reasons this way: see `CanRotatePlatformApiKey`'s docstring
-on why rotation is `full_access`-only. A test asserts no tool name suggests
-credential handling.
+The platform has a much larger API surface than this server wraps. What is left
+out is left out on purpose, and falls into three groups.
 
-**Deletions.** Removing a workflow, deployment or Prompt Studio project destroys
-work that no inverse call restores. Every write tool here is reversible by
-construction — the opposite call puts things back.
+### Anything whose response carries a credential
+
+Several subsystems return decrypted secrets as part of their ordinary
+responses — connector configuration includes the credentials used to reach the
+source system, adapter configuration includes the provider API key, notification
+configuration includes the webhook's authorization token, and the key-management
+endpoints return key material by design.
+
+**No tool wraps any of them.** An agent's context is not a safe place for a
+credential: it is logged, it may be replayed to a model provider, and an agent
+processing an untrusted document can be induced to repeat what it has seen.
+
+Concretely, this server has no tool for:
+
+- connector or adapter configuration (`listConnectors`, `getAdapter`, …)
+- platform, deployment, or platform-API key management — including **creating
+  or rotating** a key, which returns the new secret in its response
+- notification / webhook configuration
+- the Postman collection export, which embeds a live API key
+
+Two mechanisms keep this true as tools are added:
+
+- `test_no_credential_leak.py` seeds an organization with recognizable fake
+  secrets, invokes **every** read tool in the registry, and fails if any of them
+  appears in the output. New tools are covered the moment they are registered.
+- A test asserts that no tool name suggests credential handling, and none
+  suggests connector or adapter access.
+
+Where a tool must touch something adjacent to a credential, it names the fields
+it returns rather than serializing a model. `getWorkflowEndpoints` is the case
+to look at: a workflow endpoint points at a connector instance, so the tool
+returns the *shape* of the connection — endpoint type, connection type,
+connector name — and never the configuration. Free-form error text from failed
+executions is additionally passed through `redact_secrets`, because a failing
+connector reports the connection string it tried.
+
+### Destructive operations
+
+Deleting a workflow, deployment, Prompt Studio project, tag or connector
+destroys work that no inverse call restores; so does removing organization
+members. Every write tool here is reversible by construction — the opposite call
+puts things back — and `required_method="DELETE"` exists so that if a
+destructive tool is ever added it is `full_access`-only from the start.
+
+Also excluded: password resets, role assignment and revocation, and member
+removal. These change who can access the organization, which is not a decision
+to delegate to an agent.
+
+### Everything else, for now
+
+Not excluded on principle, simply not built: file upload/download,
+tool-instance and endpoint *configuration* (as opposed to reading their shape),
+Prompt Studio project/prompt authoring and import/export, and the connector and
+adapter *test* endpoints (which make live outbound calls). These are candidates
+for later, with the same rules applied.
 
 ## Why the URL matters
 
@@ -232,6 +340,11 @@ through the model's `for_user(context.user)` manager so the platform's own
 visibility rules apply, and cap listings — `LIST_LIMIT` with a `truncated` note,
 never silent truncation.
 
+**Never** build a response with `serializer.data`, `model_to_dict`, or a `**`
+splat. Name every field. Several models decrypt credentials on attribute
+access, so wholesale serialization is how a secret escapes — see the exclusion
+list above.
+
 For a write tool, also:
 
 - set `writes=True` and a `required_method` (`"POST"` for a mutation, `"DELETE"`
@@ -244,6 +357,13 @@ For a write tool, also:
   here than anywhere else;
 - return `changed: False` rather than silently succeeding on a no-op, so an
   agent can tell "I did this" from "this was already so".
+
+For a tool that costs money, also set `billable=True`. That flag is the only
+thing wiring it into the spend guard, so forgetting it leaves the tool
+unbudgeted — `test_spend_guard.py` names the tools that must carry it.
+
+If a tool returns free-form text that originates outside this app (an error
+message, a log line), pass it through `redact_secrets` first.
 
 ---
 

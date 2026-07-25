@@ -119,6 +119,14 @@ API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
 
+# Budget for billable MCP tool calls (LLM inference, indexing, pipeline runs),
+# counted per organization over a rolling window. Bounds how often an agent can
+# trigger paid work; it counts calls, not tokens — see mcp_server/spend_guard.py.
+MCP_BILLABLE_CALL_LIMIT = int(os.environ.get("MCP_BILLABLE_CALL_LIMIT", 50))
+MCP_BILLABLE_WINDOW_SECONDS = int(
+    os.environ.get("MCP_BILLABLE_WINDOW_SECONDS", 3600)
+)
+
 # Maximum file size for presigned URLs in API deployments (in MB)
 API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
     os.environ.get("API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB", 20)

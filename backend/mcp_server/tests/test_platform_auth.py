@@ -126,18 +126,23 @@ class PlatformMCPAuthTest(TestCase):
         response = self._post(f"Bearer {self.key.key}")
 
         assert response.status_code == 200, response.content
-        tools = json.loads(response.content)["result"]["tools"]
-        assert [t["name"] for t in tools] == [
-            "readMeFirst",
+        tools = [t["name"] for t in json.loads(response.content)["result"]["tools"]]
+
+        # readMeFirst must lead: agents weight earlier tools more heavily, and
+        # it is what explains the budget and the org-wide reach of the rest.
+        assert tools[0] == "readMeFirst"
+        # A representative tool from each group, rather than the full ordered
+        # list — pinning all 19 makes this fail on every addition without
+        # telling anyone anything useful.
+        assert {
             "whoami",
             "listApiDeployments",
-            "listWorkflows",
-            "listPromptStudioProjects",
-            "listPipelines",
+            "listExecutions",
+            "getUsageSummary",
             "setApiDeploymentActive",
-            "setPipelineActive",
             "executePipeline",
-        ]
+            "bulkFetchResponse",
+        } <= set(tools)
 
     @pytest.mark.critical_path("mcp-platform-auth")
     def test_the_endpoint_is_not_whitelisted(self) -> None:

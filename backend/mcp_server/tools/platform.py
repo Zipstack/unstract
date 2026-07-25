@@ -24,6 +24,7 @@ from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from mcp_server import spend_guard
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
 
@@ -77,8 +78,8 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
             "scoped to a whole organization: it discovers what exists and can "
             "change the running state of those resources."
         ),
-        "read_tools": [
-            {"name": "whoami", "purpose": "See this credential's org, tier and scope."},
+        "discovery_tools": [
+            {"name": "whoami", "purpose": "See this credential's org, tier and budget."},
             {
                 "name": "listApiDeployments",
                 "purpose": "Find deployed extraction endpoints.",
@@ -89,8 +90,31 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
                 "name": "listPromptStudioProjects",
                 "purpose": "Find where extraction prompts are authored.",
             },
+            {
+                "name": "getWorkflowEndpoints",
+                "purpose": "See how a workflow is wired (shape only, no config).",
+            },
+            {
+                "name": "listToolInstances",
+                "purpose": "See the tool steps inside a workflow.",
+            },
+            {"name": "listTags", "purpose": "List execution tags."},
         ],
-        "write_tools": [
+        "observability_tools": [
+            {
+                "name": "listExecutions",
+                "purpose": "Recent runs and their status. Start here to debug.",
+            },
+            {
+                "name": "getExecutionDetail",
+                "purpose": "Per-file results and errors for one run.",
+            },
+            {
+                "name": "getUsageSummary",
+                "purpose": "Tokens and cost recorded so far.",
+            },
+        ],
+        "state_change_tools": [
             {
                 "name": "setApiDeploymentActive",
                 "purpose": "Take a deployment offline, or bring it back.",
@@ -99,17 +123,41 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
                 "name": "setPipelineActive",
                 "purpose": "Pause or resume a pipeline's schedule.",
             },
+        ],
+        "billable_tools": [
             {
                 "name": "executePipeline",
-                "purpose": "Trigger a real pipeline run. Consumes quota.",
+                "purpose": "Trigger a real pipeline run.",
+            },
+            {
+                "name": "indexDocument",
+                "purpose": "Embed a document so prompts can run against it.",
+            },
+            {
+                "name": "fetchResponse",
+                "purpose": "Run one prompt against an indexed document.",
+            },
+            {
+                "name": "bulkFetchResponse",
+                "purpose": "Run several prompts in one pass. Prefer over looping.",
+            },
+            {
+                "name": "singlePassExtraction",
+                "purpose": "Run a project's whole prompt set. Most expensive.",
             },
         ],
         "before_writing": (
-            "Write tools change state for the whole organization and take "
-            "effect immediately — there is no staging or dry-run mode. "
-            "executePipeline in particular does real work and consumes quota; "
-            "it is not a way to test a pipeline. Confirm the target with a "
-            "list tool first."
+            "State-change tools take effect immediately for the whole "
+            "organization — there is no staging or dry-run mode. Confirm the "
+            "target with a discovery tool first."
+        ),
+        "before_spending": (
+            "Billable tools cost real money each call: they drive LLM "
+            "inference, embedding and vector-store writes. They are budgeted "
+            "per organization — call whoami to see how much of that budget "
+            "remains. Index a document once and then run prompts against it; "
+            "prefer bulkFetchResponse over repeated fetchResponse calls; and "
+            "never call a billable tool to 'test' whether something works."
         ),
         "not_available": (
             "Creating or rotating API keys, and deleting workflows, "
@@ -143,6 +191,8 @@ def whoami(context: PlatformMCPContext) -> dict[str, Any]:
     except ValueError:
         can_write = can_delete = False
 
+    budget = spend_guard.peek(context.org_name)
+
     return {
         "organization": context.org_name,
         "key_name": key.name,
@@ -150,6 +200,17 @@ def whoami(context: PlatformMCPContext) -> dict[str, Any]:
         "is_service_account": bool(getattr(context.user, "is_service_account", False)),
         "can_use_write_tools": can_write,
         "can_use_destructive_tools": can_delete,
+        "billable_budget": {
+            "used": budget.used,
+            "limit": budget.limit,
+            "remaining": max(0, budget.limit - budget.used),
+            "window_minutes": round(budget.window_seconds / 60),
+            "note": (
+                "Counts calls to billable tools, not tokens. Pace yourself "
+                "against `remaining`; when it reaches zero, billable tools are "
+                "refused until the window rolls over."
+            ),
+        },
         "visibility": (
             "All resources in the organization. Service-account credentials "
             "bypass per-user sharing filters, so this key can read AND modify "

@@ -29,6 +29,7 @@ from typing import Any
 from platform_api.models import ApiKeyPermission
 from rest_framework.request import Request
 
+from mcp_server import spend_guard
 from mcp_server.context import PlatformMCPContext
 from mcp_server.registry import PLATFORM_TOOLS
 from mcp_server.transport import BaseMCPView
@@ -39,8 +40,11 @@ logger = logging.getLogger(__name__)
 class PlatformMCPServerView(BaseMCPView):
     """MCP JSON-RPC endpoint scoped to an organization.
 
-    Exposes read-only discovery tools over the organization's resources,
-    authenticated by a platform API key.
+    Exposes discovery, observability, state-change and billable tools over the
+    organization's resources, authenticated by a platform API key. Tool access
+    is gated twice: by the key's permission tier (``check_tool_allowed``) and,
+    for tools that cost money, by a per-organization budget
+    (``check_spend_allowed``).
     """
 
     registry = PLATFORM_TOOLS
@@ -142,3 +146,19 @@ class PlatformMCPServerView(BaseMCPView):
             f"Tool '{tool.name}' requires a platform API key permitting "
             f"{tool.required_method}; this key is '{permission.value}'."
         )
+
+    def check_spend_allowed(self, tool: Any, context: PlatformMCPContext) -> str | None:
+        """Claim one unit of the organization's billable-call budget.
+
+        Only billable tools consume budget; everything else is free. The claim
+        is made here rather than inside each handler so a new billable tool
+        cannot be added without being budgeted — the flag on the registry entry
+        is the only thing it has to get right.
+        """
+        if not tool.billable:
+            return None
+
+        state = spend_guard.consume(context.org_name)
+        if state.allowed:
+            return None
+        return state.message()
