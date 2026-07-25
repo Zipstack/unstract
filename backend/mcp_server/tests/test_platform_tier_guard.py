@@ -1,9 +1,10 @@
-"""The per-tool permission guard on the platform server.
+"""Per-tool authorization on the platform server.
 
-The platform registry is read-only today, so this guard never fires in
-practice. It is tested anyway: it exists so that adding the first write tool is
-already protected, and an unexercised guard is one that quietly stops working
-before anyone depends on it.
+The auth middleware checks the key's permission tier against the request's HTTP
+method — but every MCP call is a POST, so its verdict cannot distinguish
+``listWorkflows`` from ``executePipeline``. This guard re-applies the tier
+against the method each tool *declares*, and is the only thing standing between
+a low-tier key and a write tool.
 """
 
 from __future__ import annotations
@@ -14,23 +15,24 @@ from django.test import SimpleTestCase
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.platform_views import PlatformMCPServerView
-from mcp_server.registry import MCPTool, PLATFORM_TOOLS
+from mcp_server.registry import PLATFORM_TOOLS, MCPTool
 
 
-def a_tool(writes: bool) -> MCPTool:
+def a_tool(required_method: str, writes: bool = True) -> MCPTool:
     return MCPTool(
         name="doThing",
         description="d",
         input_schema={"type": "object", "properties": {}},
         handler=lambda ctx: None,
         writes=writes,
+        required_method=required_method,
     )
 
 
 def context_for(tier: str) -> PlatformMCPContext:
     return PlatformMCPContext(
         user=Mock(is_service_account=True),
-        platform_key=Mock(permission=tier, name="k"),
+        platform_key=Mock(permission=tier),
         org_name="org-tier",
     )
 
@@ -39,38 +41,84 @@ class PlatformTierGuardTest(SimpleTestCase):
     def setUp(self) -> None:
         self.view = PlatformMCPServerView()
 
-    def test_read_tier_is_refused_a_write_tool(self) -> None:
-        refusal = self.view.check_tool_allowed(a_tool(writes=True), context_for("read"))
+    def test_tier_matrix(self) -> None:
+        """The whole authorization model in one table.
 
-        assert refusal is not None
+        Mirrors ``ApiKeyPermission.allows`` deliberately: if that mapping ever
+        changes, this fails and forces the MCP surface to be reconsidered
+        rather than silently inheriting a wider grant.
+        """
+        cases = [
+            # tier,         method,     allowed
+            ("read", "GET", True),
+            ("read", "POST", False),
+            ("read", "DELETE", False),
+            ("read_write", "GET", True),
+            ("read_write", "POST", True),
+            # read_write must NOT reach destructive tools.
+            ("read_write", "DELETE", False),
+            ("full_access", "GET", True),
+            ("full_access", "POST", True),
+            ("full_access", "DELETE", True),
+        ]
+        for tier, method, allowed in cases:
+            with self.subTest(f"{tier} -> {method}"):
+                refusal = self.view.check_tool_allowed(
+                    a_tool(method), context_for(tier)
+                )
+                assert (refusal is None) == allowed, (
+                    f"{tier} {method}: expected allowed={allowed}, got {refusal!r}"
+                )
+
+    def test_refusal_names_the_tool_and_the_tier(self) -> None:
+        """The refusal is read by an agent, which should be able to tell its
+        operator what to change rather than just retrying.
+        """
+        refusal = self.view.check_tool_allowed(a_tool("DELETE"), context_for("read_write"))
+
+        assert "doThing" in refusal
+        assert "DELETE" in refusal
         assert "read_write" in refusal
 
-    def test_read_write_tier_is_allowed_a_write_tool(self) -> None:
-        assert (
-            self.view.check_tool_allowed(a_tool(writes=True), context_for("read_write"))
-            is None
-        )
+    def test_unrecognised_tier_is_refused(self) -> None:
+        refusal = self.view.check_tool_allowed(a_tool("GET"), context_for("wat"))
 
-    def test_read_tier_is_allowed_a_read_tool(self) -> None:
-        """The guard must not block reads — a read key that reaches the server
-        should still be able to use every read tool on it.
+        assert refusal is not None
+
+    def test_every_write_tool_declares_a_non_get_method(self) -> None:
+        """The invariant that keeps the guard meaningful.
+
+        A ``writes=True`` tool left at the default ``required_method="GET"``
+        would be reachable by any key that can reach the server at all — the
+        guard would pass it silently. This is what makes registering a write
+        tool safe by default.
         """
-        assert (
-            self.view.check_tool_allowed(a_tool(writes=False), context_for("read"))
-            is None
-        )
-
-    def test_platform_registry_is_entirely_read_only(self) -> None:
-        """Pins the documented promise that this server changes nothing.
-
-        If someone registers a write tool here, this fails and forces them to
-        confirm the tier guard and the README claim still hold.
-        """
-        writers = [
-            name for name in PLATFORM_TOOLS.names() if PLATFORM_TOOLS.get(name).writes
+        unguarded = [
+            name
+            for name in PLATFORM_TOOLS.names()
+            if PLATFORM_TOOLS.get(name).writes
+            and PLATFORM_TOOLS.get(name).required_method == "GET"
         ]
 
-        assert writers == [], (
-            f"Platform MCP server advertises itself as read-only but exposes "
-            f"write tools: {writers}"
+        assert unguarded == [], (
+            f"These platform tools mutate state but declare required_method="
+            f"'GET', so the tier guard will not protect them: {unguarded}"
+        )
+
+    def test_no_credential_tools_are_exposed(self) -> None:
+        """API key creation and rotation return the secret in their response.
+
+        Exposing either as an MCP tool would hand an agent — one that may be
+        processing untrusted document content — a way to mint or exfiltrate
+        credentials. Named explicitly so adding one is a deliberate act.
+        """
+        forbidden = ("key", "credential", "secret", "token", "rotate")
+        offenders = [
+            name
+            for name in PLATFORM_TOOLS.names()
+            if any(word in name.lower() for word in forbidden)
+        ]
+
+        assert offenders == [], (
+            f"Platform MCP server must not expose credential tools: {offenders}"
         )

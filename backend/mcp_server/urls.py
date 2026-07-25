@@ -1,10 +1,15 @@
-"""URLs for the hosted MCP server.
+"""URLs for the deployment-scoped MCP server.
 
-Mounted alongside the API deployment execution endpoint so an MCP endpoint is
-the same shape as the REST endpoint for the same deployment:
+Included from ``api_v2/execution_urls.py`` so the MCP endpoint hangs directly
+off the deployment's own execution URL — the same resource, reached two ways:
 
-    POST /deployment/api/<org_name>/<api_name>/     (REST)
-    POST /mcp/<org_name>/<api_name>/                (MCP)
+    POST /deployment/api/<org_name>/<api_name>/         (REST)
+    POST /deployment/api/<org_name>/<api_name>/mcp      (MCP)
+
+Sitting under ``API_DEPLOYMENT_PATH_PREFIX`` means these paths are already
+covered by that prefix's entry in ``WHITELISTED_PATHS``, so
+``CustomAuthMiddleware`` skips them and the view authenticates the deployment
+key itself — exactly as it does for the execution endpoint next door.
 """
 
 from django.urls import re_path
@@ -15,7 +20,7 @@ mcp_server = MCPServerView.as_view()
 
 urlpatterns = [
     re_path(
-        r"^(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/?$",
+        r"^api/(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/mcp/?$",
         mcp_server,
         name="mcp_server",
     ),
@@ -23,7 +28,7 @@ urlpatterns = [
     # Authorization header to the request. The key is a UUID, so the pattern
     # cannot collide with the header-authenticated route above.
     re_path(
-        r"^(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/"
+        r"^api/(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/mcp/"
         r"(?P<api_key>[0-9a-fA-F-]{36})/?$",
         mcp_server,
         name="mcp_server_with_key",

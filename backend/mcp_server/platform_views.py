@@ -66,9 +66,12 @@ class PlatformMCPServerView(BaseMCPView):
         return (
             "Unstract runs LLM-driven extraction over unstructured documents "
             "and returns structured JSON. This server is scoped to the "
-            f"organization '{context.org_name}' and is read-only: it discovers "
-            "deployments, workflows and Prompt Studio projects but cannot run "
-            "or change anything. Call readMeFirst before any other tool."
+            f"organization '{context.org_name}'. It can discover deployments, "
+            "workflows, pipelines and Prompt Studio projects, and can change "
+            "their running state — activating deployments, pausing schedules, "
+            "triggering pipeline runs. Those writes affect the whole "
+            "organization and consume quota. Call readMeFirst before any "
+            "other tool."
         )
 
     def resolve_context(
@@ -103,25 +106,39 @@ class PlatformMCPServerView(BaseMCPView):
             # Fall back to the key's own organization so the context is never
             # built with a null org, whatever the routing did.
             org_name=org_name or str(platform_key.organization.organization_id),
+            request=request,
         )
 
     def check_tool_allowed(self, tool: Any, context: PlatformMCPContext) -> str | None:
-        """Refuse write tools to keys below the read_write tier.
+        """Apply the platform key's permission tier to this specific tool.
 
-        The middleware's tier check gates on HTTP method, and every MCP call is
-        a POST — so it cannot distinguish a tool that reads from one that
-        writes. This is where that distinction is actually enforced.
+        The middleware already checked the tier, but it can only check it
+        against the HTTP method of the request — and every MCP call is a POST.
+        That makes its verdict uselessly coarse here: it cannot tell
+        ``listWorkflows`` from ``executePipeline``.
 
-        Today the platform registry is entirely read-only, so this never fires.
-        It is here so that adding the first write tool is a one-line change
-        that is already guarded, rather than a silent privilege widening.
+        So each tool declares the method its REST equivalent would use, and the
+        tier is re-evaluated against that. This deliberately reuses
+        ``ApiKeyPermission.allows`` rather than inventing a second permission
+        scheme, so a tool marked DELETE is full_access-only for exactly the
+        same reason a REST DELETE is.
         """
-        if not tool.writes:
+        try:
+            permission = ApiKeyPermission(context.platform_key.permission)
+        except ValueError:
+            # The middleware rejects unrecognised tiers, so this is
+            # unreachable in practice; refusing is the safe answer if it ever
+            # becomes reachable.
+            logger.error(
+                f"Unrecognised platform key tier "
+                f"'{context.platform_key.permission}'; refusing tool access."
+            )
+            return "This API key has an unrecognised permission tier."
+
+        if permission.allows(tool.required_method):
             return None
 
-        if context.platform_key.permission == ApiKeyPermission.READ.value:
-            return (
-                f"Tool '{tool.name}' modifies data and requires a platform API "
-                "key with the read_write or full_access permission."
-            )
-        return None
+        return (
+            f"Tool '{tool.name}' requires a platform API key permitting "
+            f"{tool.required_method}; this key is '{permission.value}'."
+        )

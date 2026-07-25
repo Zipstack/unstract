@@ -133,6 +133,10 @@ class PlatformMCPAuthTest(TestCase):
             "listApiDeployments",
             "listWorkflows",
             "listPromptStudioProjects",
+            "listPipelines",
+            "setApiDeploymentActive",
+            "setPipelineActive",
+            "executePipeline",
         ]
 
     @pytest.mark.critical_path("mcp-platform-auth")

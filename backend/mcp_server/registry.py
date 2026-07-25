@@ -25,6 +25,14 @@ class MCPTool:
         handler: Callable invoked as ``handler(context, **arguments)``.
         writes: True when the tool has side effects (consumes quota, starts an
             execution). Read-only tools are safe to retry; write tools are not.
+        required_method: The HTTP method this tool's REST equivalent would use.
+            Platform API key tiers are defined in terms of HTTP methods
+            (``ApiKeyPermission.allows``), and every MCP call is a POST — so
+            declaring the *equivalent* method is what lets the existing tier
+            semantics apply per tool instead of per request. "GET" for reads,
+            "POST" for mutations, "DELETE" for destructive operations (which
+            only ``full_access`` permits). Unused by the deployment server,
+            whose key has no tiers.
     """
 
     name: str
@@ -32,6 +40,7 @@ class MCPTool:
     input_schema: dict[str, Any]
     handler: Callable[..., Any]
     writes: bool = False
+    required_method: str = "GET"
 
     def to_mcp_schema(self) -> dict[str, Any]:
         """Serialize to the shape returned by `tools/list`."""
@@ -154,17 +163,35 @@ def build_deployment_registry() -> MCPToolRegistry:
 def build_platform_registry() -> MCPToolRegistry:
     """Build the tools exposed by the organization-scoped MCP server.
 
-    Read-only by design. Every tool here is reachable by any caller holding a
-    platform key, and an agent will eventually call a destructive tool by
-    mistake — so writes are deferred until there is a per-tool authorization
-    story stronger than the key's HTTP-method tier.
+    Each tool declares the HTTP method its REST equivalent would use, which is
+    how the platform key's existing permission tier applies per tool rather
+    than per request — see ``MCPTool.required_method``.
+
+    Two categories are deliberately absent:
+
+    * **Credential operations.** Creating or rotating an API key returns the
+      secret in its response, so an MCP tool for it would be an exfiltration
+      path for an agent processing untrusted document content. The codebase
+      already reasons this way — see ``CanRotatePlatformApiKey``'s docstring on
+      why rotation is ``full_access``-only.
+    * **Deletions.** Removing a workflow, deployment or Prompt Studio project
+      destroys work that no inverse call restores. The write tools here are
+      reversible by construction.
     """
     from mcp_server.tools.platform import (
+        _ORG_WIDE_WARNING,
+        execute_pipeline,
+        execute_pipeline_schema,
         list_api_deployments,
+        list_pipelines,
         list_prompt_studio_projects,
         list_workflows,
         no_args_schema,
         platform_read_me_first,
+        set_api_deployment_active,
+        set_api_deployment_active_schema,
+        set_pipeline_active,
+        set_pipeline_active_schema,
         whoami,
     )
 
@@ -229,6 +256,71 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=no_args_schema(),
             handler=list_prompt_studio_projects,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listPipelines",
+            description=(
+                "List the organization's ETL and task pipelines, with their "
+                "schedule state and the status of their last run. Takes no "
+                "arguments."
+            ),
+            input_schema=no_args_schema(),
+            handler=list_pipelines,
+        )
+    )
+
+    registry.register(
+        MCPTool(
+            name="setApiDeploymentActive",
+            description=(
+                "Activate or deactivate an API deployment. A deactivated "
+                "deployment rejects extraction requests; activating it again "
+                "restores service.\n\n"
+                "Use this to take a misbehaving deployment offline, or to "
+                "bring one back. The change is immediate and affects every "
+                "caller of that deployment, not just this session.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=set_api_deployment_active_schema(),
+            handler=set_api_deployment_active,
+            writes=True,
+            required_method="POST",
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="setPipelineActive",
+            description=(
+                "Enable or pause a pipeline's schedule. A paused pipeline "
+                "stops running on its schedule but is not deleted, and "
+                "enabling it resumes the existing schedule.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=set_pipeline_active_schema(),
+            handler=set_pipeline_active,
+            writes=True,
+            required_method="POST",
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="executePipeline",
+            description=(
+                "Trigger an immediate run of an ETL or task pipeline, "
+                "independently of its schedule.\n\n"
+                "This does real work: it processes whatever documents the "
+                "pipeline's source currently holds and writes to its "
+                "destination, consuming the organization's quota. It is not a "
+                "dry run and cannot be undone — do not call it to 'test' a "
+                "pipeline.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=execute_pipeline_schema(),
+            handler=execute_pipeline,
+            writes=True,
+            required_method="POST",
         )
     )
 

@@ -27,11 +27,17 @@ class PlatformMCPContext:
         platform_key: The validated key, carried for its permission tier.
         org_name: Organization identifier from the URL, already validated
             against the key's own organization by the middleware.
+        request: The DRF request. Carried because several platform helpers
+            (notably ``PipelineManager.execute_pipeline``) take a request
+            rather than a user and mutate ``request.data`` on the way through.
+            Passing the real request is safer than fabricating one, since it
+            keeps the org and auth state those helpers read.
     """
 
     user: Any
     platform_key: Any
     org_name: str
+    request: Any = None
 
 
 @dataclass(frozen=True)

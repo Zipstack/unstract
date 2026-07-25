@@ -71,7 +71,7 @@ class MCPServerAuthTest(TestCase):
             "method": "tools/list",
         }
         request = self.factory.post(
-            f"/mcp/{org}/{api_name}/", body, format="json", **headers
+            f"/deployment/api/{org}/{api_name}/mcp", body, format="json", **headers
         )
         kwargs = {"org_name": org, "api_name": api_name}
         if path_key is not None:
@@ -145,6 +145,43 @@ class MCPServerAuthTest(TestCase):
             path_key=str(uuid.uuid4()),
         )
         assert response.status_code == 401, response.content
+
+    @pytest.mark.critical_path("mcp-server-auth")
+    def test_mcp_url_hangs_off_the_execution_url(self) -> None:
+        """Pins the endpoint's address and its relationship to the REST one.
+
+        The MCP endpoint is a suffix on the deployment's own execution URL, so
+        the two are visibly the same resource. It must also stay inside the
+        whitelisted deployment prefix: this server authenticates a deployment
+        key itself, and routing it somewhere the session middleware applies
+        would break every client.
+        """
+        from django.conf import settings
+        from django.test import Client
+        from django.urls import resolve
+
+        base = f"/deployment/api/{ORG_ID}/live-api"
+
+        assert resolve(f"{base}/mcp").url_name == "mcp_server"
+        assert resolve(f"{base}/mcp/{self.key.api_key}/").url_name == (
+            "mcp_server_with_key"
+        )
+        # The execution endpoint must still resolve to execution, not MCP.
+        assert resolve(f"{base}/").url_name == "api_deployment_execution"
+
+        assert any(
+            f"{base}/mcp".startswith(path) for path in settings.WHITELISTED_PATHS
+        ), "deployment MCP path must stay inside the whitelisted deployment prefix"
+
+        # And it must really answer there, not merely resolve.
+        response = Client().post(
+            f"{base}/mcp",
+            data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/list"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION=f"Bearer {self.key.api_key}",
+        )
+        assert response.status_code == 200, response.content
+        assert "readMeFirst" in response.content.decode()
 
     @pytest.mark.critical_path("mcp-server-auth")
     def test_get_probe_does_not_leak_deployment_details(self) -> None:
