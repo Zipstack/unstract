@@ -23,7 +23,7 @@ urlpatterns = [
         include("pipeline_v2.public_api_urls"),
     ),
     # Hosted MCP server, authenticated by the API deployment's own key
-    path(f"{settings.MCP_PATH_PREFIX}/", include("mcp_v2.urls")),
+    path(f"{settings.MCP_PATH_PREFIX}/", include("mcp_server.urls")),
     path("", include("health.urls")),
     # Internal API for worker communication
     path("internal/", include("backend.internal_base_urls")),

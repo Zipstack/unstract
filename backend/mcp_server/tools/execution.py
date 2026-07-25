@@ -15,8 +15,8 @@ from tags.serializers import TagParamsSerializer
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
-from mcp_v2.context import MCPContext
-from mcp_v2.exceptions import MCPToolError
+from mcp_server.context import MCPContext
+from mcp_server.exceptions import MCPToolError
 
 logger = logging.getLogger(__name__)
 

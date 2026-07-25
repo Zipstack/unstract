@@ -10,7 +10,7 @@ from __future__ import annotations
 from django.test import SimpleTestCase
 from rest_framework.exceptions import ValidationError
 
-from mcp_v2.tools.execution import _format_validation_error
+from mcp_server.tools.execution import _format_validation_error
 
 
 class FormatValidationErrorTest(SimpleTestCase):

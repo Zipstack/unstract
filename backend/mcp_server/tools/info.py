@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from mcp_v2.context import MCPContext
+from mcp_server.context import MCPContext
 
 logger = logging.getLogger(__name__)
 

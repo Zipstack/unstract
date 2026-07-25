@@ -74,13 +74,13 @@ def build_registry() -> MCPToolRegistry:
     Imported lazily inside the function so that registering a tool cannot
     trigger Django model imports at module-import time.
     """
-    from mcp_v2.tools.execution import (
+    from mcp_server.tools.execution import (
         extract_document,
         extract_document_schema,
         get_execution_status,
         get_execution_status_schema,
     )
-    from mcp_v2.tools.info import get_api_info, get_api_info_schema, read_me_first
+    from mcp_server.tools.info import get_api_info, get_api_info_schema, read_me_first
 
     registry = MCPToolRegistry()
 

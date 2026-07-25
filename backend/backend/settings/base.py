@@ -382,7 +382,7 @@ SHARED_APPS = (
     "pipeline_v2",
     "platform_settings_v2",
     "api_v2",
-    "mcp_v2",
+    "mcp_server",
     "usage_v2",
     "notification_v2",
     "prompt_studio.prompt_profile_manager_v2",

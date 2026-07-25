@@ -14,11 +14,11 @@ from unittest.mock import patch
 from django.test import SimpleTestCase
 from rest_framework.test import APIRequestFactory
 
-from mcp_v2.constants import JSONRPC, MCPServer
-from mcp_v2.context import MCPContext
-from mcp_v2.exceptions import MCPToolError
-from mcp_v2.registry import TOOL_REGISTRY
-from mcp_v2.views import MCPServerView
+from mcp_server.constants import JSONRPC, MCPServer
+from mcp_server.context import MCPContext
+from mcp_server.exceptions import MCPToolError
+from mcp_server.registry import TOOL_REGISTRY
+from mcp_server.views import MCPServerView
 
 ORG_ID = "org-mcp"
 API_NAME = "live-api"

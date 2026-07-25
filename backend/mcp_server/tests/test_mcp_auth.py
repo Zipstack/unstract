@@ -23,7 +23,7 @@ from rest_framework.test import APIRequestFactory
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from mcp_v2.views import MCPServerView
+from mcp_server.views import MCPServerView
 
 ORG_ID = "org-mcp"
 
@@ -79,7 +79,7 @@ class MCPServerAuthTest(TestCase):
         return self.view(request, **kwargs)
 
     @pytest.mark.critical_path("mcp-server-auth")
-    @patch("mcp_v2.views.TOOL_REGISTRY.get")
+    @patch("mcp_server.views.TOOL_REGISTRY.get")
     def test_bad_credentials_rejected_before_dispatch(self, registry_get) -> None:
         cases = [
             ("missing header", "live-api", None, ORG_ID),

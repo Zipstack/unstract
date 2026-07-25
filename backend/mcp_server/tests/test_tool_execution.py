@@ -17,9 +17,9 @@ from django.test import SimpleTestCase
 from rest_framework.exceptions import ValidationError
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
-from mcp_v2.context import MCPContext
-from mcp_v2.exceptions import MCPToolError
-from mcp_v2.tools.execution import extract_document, get_execution_status
+from mcp_server.context import MCPContext
+from mcp_server.exceptions import MCPToolError
+from mcp_server.tools.execution import extract_document, get_execution_status
 
 # The execution serializer accepts only HTTPS S3 pre-signed URLs; using a
 # realistic one here keeps these tests honest about what the tool accepts.
@@ -52,17 +52,17 @@ class ExtractDocumentTest(SimpleTestCase):
         """Drive extract_document with the whole execution stack stubbed."""
         with (
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.load_presigned_files"
+                "mcp_server.tools.execution.DeploymentHelper.load_presigned_files"
             ) as load_files,
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
                 return_value=(True, {}),
             ),
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.release_slot"
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.release_slot"
             ) as release,
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.execute_workflow",
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow",
                 return_value=execute_return
                 if execute_return is not None
                 else {"execution_status": "COMPLETED", "message": "ok"},
@@ -131,7 +131,7 @@ class ExtractDocumentTest(SimpleTestCase):
 
     def test_inactive_deployment_rejected_before_quota_is_spent(self) -> None:
         with patch(
-            "mcp_v2.tools.execution.DeploymentHelper.execute_workflow"
+            "mcp_server.tools.execution.DeploymentHelper.execute_workflow"
         ) as execute:
             with self.assertRaises(MCPToolError):
                 extract_document(make_context(active=False), document_urls=[DOC_URL])
@@ -144,7 +144,7 @@ class ExtractDocumentTest(SimpleTestCase):
         an ordinary link must be told why, not just that it failed.
         """
         with patch(
-            "mcp_v2.tools.execution.DeploymentHelper.execute_workflow"
+            "mcp_server.tools.execution.DeploymentHelper.execute_workflow"
         ) as execute:
             with self.assertRaises(MCPToolError) as caught:
                 extract_document(
@@ -157,10 +157,10 @@ class ExtractDocumentTest(SimpleTestCase):
     def test_invalid_url_rejected_before_quota_is_spent(self) -> None:
         with (
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.check_and_acquire"
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire"
             ) as acquire,
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.execute_workflow"
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow"
             ) as execute,
         ):
             with self.assertRaises(MCPToolError):
@@ -175,17 +175,17 @@ class ExtractDocumentTest(SimpleTestCase):
         """
         with (
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.load_presigned_files"
+                "mcp_server.tools.execution.DeploymentHelper.load_presigned_files"
             ) as load_files,
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
                 return_value=(
                     False,
                     {"current_usage": 5, "limit": 5, "limit_type": "organization"},
                 ),
             ),
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.execute_workflow"
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow"
             ) as execute,
         ):
             with self.assertRaises(MCPToolError) as caught:
@@ -201,18 +201,18 @@ class ExtractDocumentTest(SimpleTestCase):
         """
         with (
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.load_presigned_files",
+                "mcp_server.tools.execution.DeploymentHelper.load_presigned_files",
                 side_effect=RuntimeError("403 Forbidden"),
             ),
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
                 return_value=(True, {}),
             ),
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.release_slot"
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.release_slot"
             ) as release,
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.execute_workflow"
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow"
             ) as execute,
         ):
             with self.assertRaises(MCPToolError):
@@ -226,16 +226,16 @@ class ExtractDocumentTest(SimpleTestCase):
         release must survive the failure path.
         """
         with (
-            patch("mcp_v2.tools.execution.DeploymentHelper.load_presigned_files"),
+            patch("mcp_server.tools.execution.DeploymentHelper.load_presigned_files"),
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
                 return_value=(True, {}),
             ),
             patch(
-                "mcp_v2.tools.execution.APIDeploymentRateLimiter.release_slot"
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.release_slot"
             ) as release,
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.execute_workflow",
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow",
                 side_effect=RuntimeError("boom"),
             ),
         ):
@@ -252,11 +252,11 @@ class GetExecutionStatusTest(SimpleTestCase):
     def _run(self, response: ExecutionResponse, **kwargs):
         with (
             patch(
-                "mcp_v2.tools.execution.ExecutionQuerySerializer.is_valid",
+                "mcp_server.tools.execution.ExecutionQuerySerializer.is_valid",
                 return_value=True,
             ),
             patch(
-                "mcp_v2.tools.execution.ExecutionQuerySerializer.validated_data",
+                "mcp_server.tools.execution.ExecutionQuerySerializer.validated_data",
                 {
                     "execution_id": EXECUTION_ID,
                     "include_metadata": kwargs.get("include_metadata", False),
@@ -267,11 +267,11 @@ class GetExecutionStatusTest(SimpleTestCase):
                 },
             ),
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.get_execution_status",
+                "mcp_server.tools.execution.DeploymentHelper.get_execution_status",
                 return_value=response,
             ),
             patch(
-                "mcp_v2.tools.execution.DeploymentHelper.process_completed_execution"
+                "mcp_server.tools.execution.DeploymentHelper.process_completed_execution"
             ) as process,
         ):
             result = get_execution_status(
@@ -332,7 +332,7 @@ class GetExecutionStatusTest(SimpleTestCase):
         fault — the agent may simply have mistyped it.
         """
         with patch(
-            "mcp_v2.tools.execution.ExecutionQuerySerializer.is_valid",
+            "mcp_server.tools.execution.ExecutionQuerySerializer.is_valid",
             side_effect=ValidationError({"execution_id": ["Invalid execution_id."]}),
         ):
             with self.assertRaises(MCPToolError) as caught:

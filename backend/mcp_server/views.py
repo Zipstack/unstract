@@ -16,10 +16,10 @@ from rest_framework import status, views
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from mcp_v2.constants import JSONRPC, MCPMethod, MCPServer
-from mcp_v2.context import MCPContext
-from mcp_v2.exceptions import MCPToolError
-from mcp_v2.registry import TOOL_REGISTRY
+from mcp_server.constants import JSONRPC, MCPMethod, MCPServer
+from mcp_server.context import MCPContext
+from mcp_server.exceptions import MCPToolError
+from mcp_server.registry import TOOL_REGISTRY
 
 logger = logging.getLogger(__name__)
 

@@ -9,7 +9,7 @@ the same shape as the REST endpoint for the same deployment:
 
 from django.urls import re_path
 
-from mcp_v2.views import MCPServerView
+from mcp_server.views import MCPServerView
 
 mcp_server = MCPServerView.as_view()
 
