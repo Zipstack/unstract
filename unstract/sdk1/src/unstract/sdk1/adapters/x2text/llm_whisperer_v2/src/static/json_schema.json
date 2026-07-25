@@ -44,10 +44,16 @@
       "title": "Output Mode",
       "enum": [
         "layout_preserving",
-        "text"
+        "text",
+        "image"
+      ],
+      "enumNames": [
+        "Layout Preserving",
+        "Text",
+        "Image (PDF only)"
       ],
       "default": "layout_preserving",
-      "description": "Output format, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes)"
+      "description": "Output format, described in the [LLMWhisperer documentation](https://docs.unstract.com/llmwhisperer/llm_whisperer/apis/llm_whisperer_text_extraction_api/#output-modes). Note: **Image** mode returns per-page images instead of text and supports **PDF input only**."
     },
     "line_splitter_tolerance": {
       "type": "number",

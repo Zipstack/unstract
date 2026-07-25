@@ -12,6 +12,7 @@ class Modes(Enum):
 class OutputModes(Enum):
     LAYOUT_PRESERVING = "layout_preserving"
     TEXT = "text"
+    IMAGE = "image"
 
 
 class HTTPMethod(Enum):
@@ -31,6 +32,12 @@ class WhispererEndpoint:
     STATUS = "whisper-status"
     RETRIEVE = "whisper-retrieve"
     HIGHLIGHTS = "highlights"
+    # Image output mode (pdf-to-images) endpoints. These are NOT exposed by the
+    # llmwhisperer-client package, so the adapter calls them via raw requests
+    # (decision 2A). See ImageOutputConfig for the assumed service contract.
+    PDF_TO_IMAGES = "pdf-to-images"
+    PDF_TO_IMAGES_STATUS = "pdf-to-images-status"
+    PDF_TO_IMAGES_RETRIEVE = "pdf-to-images-retrieve"
 
 
 class WhispererEnv:
@@ -47,6 +54,16 @@ class WhispererEnv:
     MAX_RETRIES = "ADAPTER_LLMW_MAX_RETRIES"
     RETRY_MIN_WAIT = "ADAPTER_LLMW_RETRY_MIN_WAIT"
     RETRY_MAX_WAIT = "ADAPTER_LLMW_RETRY_MAX_WAIT"
+    # Max retry attempts for per-page FileStorage writes when persisting page
+    # images (image output mode). Applies to Unstract-side storage writes only,
+    # not to calls made to the LLMWhisperer service.
+    PAGE_STORE_MAX_RETRIES = "ADAPTER_LLMW_PAGE_STORE_MAX_RETRIES"
+    # Image output mode HTTP tuning. Submit/status calls use a short timeout;
+    # the ZIP download uses a distinct, longer timeout (large multi-page PDFs).
+    IMAGE_REQUEST_TIMEOUT = "ADAPTER_LLMW_IMAGE_REQUEST_TIMEOUT"
+    IMAGE_DOWNLOAD_TIMEOUT = "ADAPTER_LLMW_IMAGE_DOWNLOAD_TIMEOUT"
+    IMAGE_POLL_INTERVAL = "ADAPTER_LLMW_IMAGE_POLL_INTERVAL"
+    IMAGE_POLL_MAX_ATTEMPTS = "ADAPTER_LLMW_IMAGE_POLL_MAX_ATTEMPTS"
     LOG_LEVEL = "LOG_LEVEL"
 
 
@@ -114,3 +131,68 @@ class WhispererDefaults:
     MAX_RETRIES = int(os.getenv(WhispererEnv.MAX_RETRIES, 3))
     RETRY_MIN_WAIT = float(os.getenv(WhispererEnv.RETRY_MIN_WAIT, 1.0))
     RETRY_MAX_WAIT = float(os.getenv(WhispererEnv.RETRY_MAX_WAIT, 60.0))
+    PAGE_STORE_MAX_RETRIES = int(os.getenv(WhispererEnv.PAGE_STORE_MAX_RETRIES, 3))
+    IMAGE_REQUEST_TIMEOUT = int(os.getenv(WhispererEnv.IMAGE_REQUEST_TIMEOUT, 30))
+    IMAGE_DOWNLOAD_TIMEOUT = int(os.getenv(WhispererEnv.IMAGE_DOWNLOAD_TIMEOUT, 300))
+    IMAGE_POLL_INTERVAL = float(os.getenv(WhispererEnv.IMAGE_POLL_INTERVAL, 3.0))
+    IMAGE_POLL_MAX_ATTEMPTS = int(os.getenv(WhispererEnv.IMAGE_POLL_MAX_ATTEMPTS, 100))
+
+
+class ImageOutputConfig:
+    """Config and service contract for LLMWhisperer image output mode.
+
+    CONTRACT SOURCE: verified against LLMWhisperer Service **PR #536** (branch
+    ``image-output``; PR #647 is a sub-fix). The endpoints are NOT exposed by
+    the installed ``llmwhisperer-client``, so the adapter calls them via raw
+    ``requests`` (decision 2A). Everything the adapter relies on is centralised
+    here.
+
+    Flow (raw ``requests``, base = ``{url}/api/v2``):
+
+    - Submit:   ``POST {base}/pdf-to-images?format=png`` with the PDF bytes
+                -> JSON ``{"message": "...", "status": "processing",
+                           "whisper_hash": "<run_id>|<data_hash>"}`` (HTTP 202)
+    - Status:   ``GET  {base}/pdf-to-images-status?whisper_hash=<id>``
+                -> JSON ``{"status": "accepted|processing|processed|...",
+                           "message": "..."}``. NOTE: no page count is exposed
+                           (page count is billing-internal only).
+    - Retrieve: ``GET  {base}/pdf-to-images-retrieve?whisper_hash=<id>``
+                -> ``application/zip`` stream of ``page_001.png``, ...
+                ONE-TIME by default: the service flips status to ``RETRIEVED``
+                before streaming and rejects a second retrieve unless the
+                deployment sets ``RESULT_PERSISTENCE=true``. Hence the adapter
+                downloads exactly once and never retries the retrieve.
+    """
+
+    # --- Response field names ---
+    STATUS = "status"
+    # Not currently returned by pdf-to-images-status (billing-internal). Kept as
+    # a forward-compatible hook for verify_page_count().
+    PROCESSED_PAGE_COUNT = "processed_page_count"
+    MESSAGE = "message"
+
+    # Terminal service states. Ready-to-retrieve == PROCESSED (WhisperStatus).
+    STATUS_SUCCESS = frozenset({"processed"})
+    STATUS_FAILURE = frozenset({"error", "failed", "unknown"})
+
+    # --- Submit query params ---
+    IMAGE_FORMAT_PARAM = "format"
+    DEFAULT_IMAGE_FORMAT = "png"
+    FILE_NAME_PARAM = "file_name"
+
+    # --- Per-page image naming / storage layout ---
+    PAGE_IMAGE_PREFIX = "page_"
+    PAGE_IMAGE_EXTENSION = ".png"
+    PAGE_NUMBER_PADDING = 3
+    PAGES_SUBFOLDER = "pages"
+
+    # --- UI / validation (single source of truth) ---
+    # Display label for the image output mode option (UNS-754).
+    IMAGE_MODE_LABEL = "Image (PDF only)"
+    PDF_EXTENSION = ".pdf"
+    # Shared by runtime (process) and UI validation so the message is identical
+    # regardless of where the PDF-only check fires (UNS-757).
+    PDF_ONLY_ERROR = (
+        "Image output mode supports PDF input only. "
+        "Please provide a PDF file or select a text output mode."
+    )
