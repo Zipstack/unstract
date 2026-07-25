@@ -9,7 +9,6 @@ Network and the image helper flow are stubbed — no live service is contacted.
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
-
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.x2text.dto import PageImageReference
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
