@@ -13,6 +13,8 @@ whole was wrong. So the invariant is asserted over the registry, not per tool.
 
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 from django.test import SimpleTestCase
 
 from mcp_server.registry import DEPLOYMENT_TOOLS, PLATFORM_TOOLS
@@ -126,4 +128,114 @@ class DeploymentRegistryReachabilityTest(SimpleTestCase):
 
         assert unproducible == {}, (
             f"Unreachable on the deployment server: {unproducible}"
+        )
+
+
+class ReadMeFirstMatchesTheRegistryTest(SimpleTestCase):
+    """``readMeFirst`` must name every tool the server actually exposes.
+
+    This is the tool whose entire job is telling an agent how to reach the
+    others, and its listing is hand-maintained prose rather than a projection
+    of the registry — so it drifts silently. It already did: the two tools that
+    produce ``document_id`` and ``prompt_id`` were added to the registry and
+    not to the guide, leaving an agent that trusts the guide able to see the
+    billable tools with no way to call them.
+
+    Kept as a listing rather than generated from the registry on purpose. The
+    ``purpose`` text is written for an agent deciding *whether* to call a tool
+    — which is worth more than the tool's own description — so the value is in
+    a human writing it. This test only enforces that the set is complete.
+    """
+
+    # Keys in the platform guide that enumerate tools. Named explicitly so
+    # adding a new grouping is a deliberate act rather than a silent hole.
+    PLATFORM_LISTING_KEYS = (
+        "discovery_tools",
+        "observability_tools",
+        "state_change_tools",
+        "billable_tools",
+    )
+
+    def _named_in(self, guide: dict, keys) -> set[str]:
+        return {
+            entry["name"]
+            for key in keys
+            for entry in guide[key]
+            if isinstance(entry, dict) and "name" in entry
+        }
+
+    def test_platform_guide_names_every_platform_tool(self) -> None:
+        from mcp_server.tools.platform import platform_read_me_first
+
+        guide = platform_read_me_first(
+            Mock(org_name="org-guide", platform_key=Mock(permission="read_write"))
+        )
+        listed = self._named_in(guide, self.PLATFORM_LISTING_KEYS)
+
+        # readMeFirst does not list itself; an agent has already called it.
+        registered = set(PLATFORM_TOOLS.names()) - {"readMeFirst"}
+
+        assert registered - listed == set(), (
+            f"readMeFirst does not mention {sorted(registered - listed)}. An "
+            "agent that trusts the guide will never call them — add each to "
+            "the appropriate listing in platform_read_me_first."
+        )
+        assert listed - registered == set(), (
+            f"readMeFirst advertises tools that do not exist: "
+            f"{sorted(listed - registered)}."
+        )
+
+    def test_billable_tools_are_listed_as_billable(self) -> None:
+        """A costly tool listed under discovery reads as free to call.
+
+        The grouping is the guide's main signal about consequence, so a tool
+        in the wrong group actively misleads rather than merely omitting.
+        """
+        from mcp_server.tools.platform import platform_read_me_first
+
+        guide = platform_read_me_first(
+            Mock(org_name="org-guide", platform_key=Mock(permission="read_write"))
+        )
+        listed_billable = self._named_in(guide, ("billable_tools",))
+        actually_billable = {
+            name for name in PLATFORM_TOOLS.names() if PLATFORM_TOOLS.get(name).billable
+        }
+
+        assert listed_billable == actually_billable, (
+            "readMeFirst's billable_tools must match the registry's billable "
+            f"flags exactly. Listed: {sorted(listed_billable)}, actual: "
+            f"{sorted(actually_billable)}."
+        )
+
+    def test_free_tools_are_not_listed_as_billable(self) -> None:
+        """The producers exist so an agent can find ids *before* spending.
+
+        Listing them as billable would push an agent to avoid the very step
+        that makes the billable tools callable.
+        """
+        from mcp_server.tools.platform import platform_read_me_first
+
+        guide = platform_read_me_first(
+            Mock(org_name="org-guide", platform_key=Mock(permission="read_write"))
+        )
+        listed_discovery = self._named_in(guide, ("discovery_tools",))
+
+        for producer in ("listPromptStudioDocuments", "listPrompts"):
+            assert producer in listed_discovery, (
+                f"{producer} produces the ids the billable tools need, so it "
+                "belongs in discovery_tools where an agent looks first."
+            )
+
+    def test_deployment_guide_names_every_deployment_tool(self) -> None:
+        from mcp_server.tools.info import read_me_first
+
+        guide = read_me_first(
+            Mock(api=Mock(display_name="d", description="x", is_active=True))
+        )
+        listed = self._named_in(guide, ("tools",))
+        registered = set(DEPLOYMENT_TOOLS.names()) - {"readMeFirst"}
+
+        assert listed == registered, (
+            f"Deployment readMeFirst is out of sync. Missing: "
+            f"{sorted(registered - listed)}, phantom: {sorted(listed - registered)}."
         )

@@ -91,6 +91,20 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
                 "purpose": "Find where extraction prompts are authored.",
             },
             {
+                "name": "listPromptStudioDocuments",
+                "purpose": (
+                    "List a project's documents. The only source of the "
+                    "document_id every billable tool below requires."
+                ),
+            },
+            {
+                "name": "listPrompts",
+                "purpose": (
+                    "List a project's prompts. The only source of the "
+                    "prompt_id fetchResponse and bulkFetchResponse require."
+                ),
+            },
+            {
                 "name": "getWorkflowEndpoints",
                 "purpose": "See how a workflow is wired (shape only, no config).",
             },
