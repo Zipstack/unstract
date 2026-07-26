@@ -1,5 +1,5 @@
-import { Button } from "antd";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 
 import "./CustomButton.css";
 

@@ -1,5 +1,4 @@
 import {
-  Button,
   Col,
   Input,
   InputNumber,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Text, Typography } from "@/components/ui/typography";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";

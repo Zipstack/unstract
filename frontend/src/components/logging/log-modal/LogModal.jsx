@@ -1,7 +1,8 @@
-import { Button, Dropdown, Modal, Table, Tooltip } from "antd";
+import { Dropdown, Modal, Table, Tooltip } from "antd";
 import { Copy, Download } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 
 import "./LogModal.css";
 import {

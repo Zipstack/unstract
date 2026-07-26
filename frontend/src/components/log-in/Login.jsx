@@ -1,4 +1,5 @@
-import { Button, Col, Row } from "antd";
+import { Col, Row } from "antd";
+import { Button } from "@/components/ui/antd-button";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";

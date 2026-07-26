@@ -1,7 +1,8 @@
-import { Button, Space, Tag } from "antd";
+import { Space, Tag } from "antd";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 export const LogsHeader = memo(function LogsHeader({

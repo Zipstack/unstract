@@ -1,7 +1,8 @@
-import { Button, Modal } from "antd";
+import { Modal } from "antd";
 import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

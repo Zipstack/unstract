@@ -1,8 +1,9 @@
-import { Button, Form, Input, Modal, Space } from "antd";
+import { Form, Input, Modal, Space } from "antd";
 import { CircleHelp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
 import { workflowService } from "../../components/workflows/workflow/workflow-service";

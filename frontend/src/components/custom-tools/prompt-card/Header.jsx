@@ -1,13 +1,4 @@
-import {
-  Button,
-  Checkbox,
-  Col,
-  Dropdown,
-  Input,
-  Row,
-  Tag,
-  Tooltip,
-} from "antd";
+import { Checkbox, Col, Dropdown, Input, Row, Tag, Tooltip } from "antd";
 import debounce from "lodash/debounce";
 import {
   CircleCheck,
@@ -20,6 +11,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 
 import {
   PROMPT_RUN_TYPES,

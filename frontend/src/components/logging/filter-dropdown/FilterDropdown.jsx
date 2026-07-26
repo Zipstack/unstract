@@ -1,6 +1,7 @@
-import { Button, Radio, Space } from "antd";
+import { Radio, Space } from "antd";
 import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 
 const FilterIcon = ({ filtered }) => (
   <Filter style={{ color: filtered ? "#1677ff" : undefined }} />

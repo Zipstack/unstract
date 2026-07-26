@@ -1,17 +1,9 @@
-import {
-  Button,
-  Col,
-  Divider,
-  Input,
-  InputNumber,
-  Row,
-  Switch,
-  Tag,
-} from "antd";
+import { Col, Divider, Input, InputNumber, Row, Switch, Tag } from "antd";
 import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

@@ -1,6 +1,7 @@
-import { Button, Tooltip } from "antd";
+import { Tooltip } from "antd";
 import { Move } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 
 import { PromptOutputsModal } from "./PromptOutputsModal";
 

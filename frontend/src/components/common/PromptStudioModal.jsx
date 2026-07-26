@@ -1,6 +1,7 @@
-import { Button, Modal } from "antd";
+import { Modal } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 
 import { useSessionStore } from "../../store/session-store";
 import "./PromptStudioModal.css";

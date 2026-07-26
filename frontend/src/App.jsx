@@ -1,9 +1,10 @@
-import { Button, ConfigProvider, notification, theme } from "antd";
+import { ConfigProvider, notification, theme } from "antd";
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Toaster } from "@/components/ui/sonner";
 import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";

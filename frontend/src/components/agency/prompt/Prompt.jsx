@@ -1,6 +1,7 @@
-import { Button, Input } from "antd";
+import { Input } from "antd";
 import { Minus, Pencil } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

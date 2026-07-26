@@ -1,17 +1,8 @@
-import {
-  Button,
-  Col,
-  Collapse,
-  Form,
-  Input,
-  Row,
-  Select,
-  Space,
-  theme,
-} from "antd";
+import { Col, Collapse, Form, Input, Row, Select, Space, theme } from "antd";
 import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";

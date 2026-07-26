@@ -1,7 +1,8 @@
-import { Button, Card, Col, Row, Space, Spin, Tooltip } from "antd";
+import { Card, Col, Row, Space, Spin, Tooltip } from "antd";
 import { ArrowLeft, CircleCheck, Copy, Mail, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 import "./Profile.css";
 

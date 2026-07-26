@@ -1,7 +1,8 @@
-import { Button, Tooltip } from "antd";
+import { Tooltip } from "antd";
 import { Maximize, Minimize } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 
 function ExpandCardBtn({ expandCard, setExpandCard }) {
   const [icon, setIcon] = useState(null);

@@ -1,7 +1,8 @@
-import { Avatar, Button, List, Modal, Popconfirm, Select } from "antd";
+import { Avatar, List, Modal, Popconfirm, Select } from "antd";
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";

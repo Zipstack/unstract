@@ -1,7 +1,8 @@
-import { Button, Card } from "antd";
+import { Card } from "antd";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import "./SetOrg.css"; // Import your CSS file for styling
 import axios from "axios";
 import Proptypes from "prop-types";

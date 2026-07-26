@@ -1,6 +1,6 @@
-import { Button } from "antd";
 import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 
 import "./Footer.css";
 import { promptType } from "../../../helpers/GetStaticData";

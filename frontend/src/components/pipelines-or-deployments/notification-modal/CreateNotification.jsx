@@ -1,6 +1,7 @@
-import { Button, Checkbox, Form, Input, Select, Space } from "antd";
+import { Checkbox, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 
 const DEFAULT_FORM_DETAILS = {

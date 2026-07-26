@@ -2,10 +2,11 @@ import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
-import { Button, Result } from "antd";
+import { Result } from "antd";
 import { FileWarning, RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";

@@ -1,6 +1,7 @@
-import { Button, Space, Switch, Table, Tooltip } from "antd";
+import { Space, Switch, Table, Tooltip } from "antd";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";

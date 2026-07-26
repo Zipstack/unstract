@@ -1,13 +1,4 @@
-import {
-  Button,
-  Card,
-  Checkbox,
-  Dropdown,
-  Flex,
-  Input,
-  Table,
-  Tooltip,
-} from "antd";
+import { Card, Checkbox, Dropdown, Flex, Input, Table, Tooltip } from "antd";
 import {
   Calendar,
   CircleX,
@@ -23,6 +14,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

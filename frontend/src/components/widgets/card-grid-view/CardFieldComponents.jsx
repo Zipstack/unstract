@@ -1,13 +1,4 @@
-import {
-  Avatar,
-  Button,
-  Card,
-  Dropdown,
-  Flex,
-  Popconfirm,
-  Space,
-  Tooltip,
-} from "antd";
+import { Avatar, Card, Dropdown, Flex, Popconfirm, Space, Tooltip } from "antd";
 import {
   Clock,
   Copy,
@@ -21,6 +12,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {

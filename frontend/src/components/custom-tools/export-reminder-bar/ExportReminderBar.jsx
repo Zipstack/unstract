@@ -1,6 +1,7 @@
-import { Alert, Button, Space } from "antd";
+import { Alert, Space } from "antd";
 import { CircleAlert } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/antd-button";
 import "./ExportReminderBar.css";
 
 function ExportReminderBar({ message, onExport, isExporting }) {

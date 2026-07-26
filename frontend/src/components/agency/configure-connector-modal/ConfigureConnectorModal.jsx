@@ -1,8 +1,9 @@
-import { Button, Col, Image, Modal, Row, Select, Space, Tabs } from "antd";
+import { Col, Image, Modal, Row, Select, Space, Tabs } from "antd";
 import { cloneDeep, isEqual } from "lodash";
 import { CloudDownload, CloudUpload } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

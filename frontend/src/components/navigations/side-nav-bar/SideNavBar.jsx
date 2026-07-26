@@ -1,17 +1,9 @@
-import {
-  Button,
-  Divider,
-  Image,
-  Layout,
-  Popover,
-  Space,
-  Tag,
-  Tooltip,
-} from "antd";
+import { Divider, Image, Layout, Popover, Space, Tag, Tooltip } from "antd";
 import { ChevronsRight, FileCheck, GitBranch } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";

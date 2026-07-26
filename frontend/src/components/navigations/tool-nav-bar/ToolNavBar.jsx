@@ -1,9 +1,10 @@
-import { Button, Segmented } from "antd";
+import { Segmented } from "antd";
 import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
 import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/antd-button";
 import { Typography } from "@/components/ui/typography";
 
 import "./ToolNavBar.css";
