@@ -6,10 +6,25 @@ class MCPServer:
 
     NAME: str = "unstract"
     VERSION: str = "0.1.0"
-    # Protocol revision this transport implements. Clients that request a
-    # different revision are answered with this one, per the MCP spec's
-    # version-negotiation rules.
-    PROTOCOL_VERSION: str = "2024-11-05"
+
+    # Protocol revision this transport implements, and the one offered to a
+    # client that asks for something unsupported. This is 2025-06-18 because
+    # that is the revision whose rules the transport actually follows —
+    # Streamable HTTP, and answering GET with 405 rather than an SSE stream.
+    PROTOCOL_VERSION: str = "2025-06-18"
+
+    # Revisions this server will speak if a client asks for one by name.
+    #
+    # 2024-11-05 is kept because the request/response subset used here — the
+    # `initialize` handshake, `tools/list`, `tools/call` and `ping` — is
+    # unchanged between the two, and a client pinned to it works against this
+    # server today. What differs is the parts this server does not implement
+    # anyway (server-initiated streaming, session ids), so accepting the older
+    # revision costs nothing and disconnects no one.
+    #
+    # Ordered newest first: `initialize` echoes the client's revision when it
+    # appears here, and otherwise offers the first entry.
+    SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = ("2025-06-18", "2024-11-05")
 
 
 class JSONRPC:

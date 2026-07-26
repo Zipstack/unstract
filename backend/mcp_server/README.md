@@ -63,6 +63,14 @@ POST /deployment/api/<org_name>/<api_name>/mcp/<api_key>/
 
 The path key takes precedence over the header when both are present.
 
+Both servers speak MCP revision **2025-06-18** (Streamable HTTP), and also
+accept a client that asks for `2024-11-05`: the subset implemented here —
+`initialize`, `tools/list`, `tools/call`, `ping` — is identical across the two,
+so refusing the older revision would disconnect working clients for no
+behavioural reason. Per the spec's negotiation rule `initialize` *echoes* the
+client's revision when it is one of these and offers `2025-06-18` otherwise,
+rather than announcing its own regardless.
+
 `GET` on either URL answers `405 Method Not Allowed` with `Allow: POST`. Under
 Streamable HTTP a client issues `GET` to open a server-to-client SSE stream,
 and a server that offers none must decline — every tool call here is

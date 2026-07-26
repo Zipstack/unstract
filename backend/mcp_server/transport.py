@@ -28,6 +28,30 @@ from mcp_server.registry import MCPToolRegistry
 logger = logging.getLogger(__name__)
 
 
+def negotiate_protocol_version(requested: Any) -> str:
+    """Choose the protocol revision to answer `initialize` with.
+
+    The spec's rule is an echo, not an announcement: "If the server supports
+    the requested protocol version, it MUST respond with the same version.
+    Otherwise, the server MUST respond with another protocol version it
+    supports" (rev 2025-06-18, Lifecycle → Version Negotiation).
+
+    So a client asking for a revision this server speaks gets that revision
+    back, and anything else — an unknown revision, a malformed value, or an
+    omitted field — is answered with this server's preferred one. The client
+    then decides whether it can live with that and disconnects if not, which
+    is why an unsupported request is not an error response here.
+    """
+    if isinstance(requested, str) and requested in MCPServer.SUPPORTED_PROTOCOL_VERSIONS:
+        return requested
+    if requested is not None:
+        logger.info(
+            f"MCP client requested unsupported protocol version {requested!r}; "
+            f"offering {MCPServer.PROTOCOL_VERSION}"
+        )
+    return MCPServer.PROTOCOL_VERSION
+
+
 def rpc_result(request_id: Any, result: Any) -> JsonResponse:
     """Build a JSON-RPC success response.
 
@@ -187,7 +211,9 @@ class BaseMCPView(views.APIView):
             return rpc_result(
                 request_id,
                 {
-                    "protocolVersion": MCPServer.PROTOCOL_VERSION,
+                    "protocolVersion": negotiate_protocol_version(
+                        params.get("protocolVersion")
+                    ),
                     "capabilities": {"tools": {"listChanged": False}},
                     "serverInfo": {
                         "name": MCPServer.NAME,

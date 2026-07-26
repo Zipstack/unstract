@@ -18,6 +18,7 @@ from mcp_server.constants import JSONRPC, MCPServer
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
 from mcp_server.registry import DEPLOYMENT_TOOLS
+from mcp_server.transport import negotiate_protocol_version
 from mcp_server.views import MCPServerView
 
 ORG_ID = "org-mcp"
@@ -90,6 +91,33 @@ class MCPProtocolTest(SimpleTestCase):
         # The agent is told which deployment it is attached to, so it does not
         # have to guess what the tools will operate on.
         assert "Invoice Extractor" in result["instructions"]
+
+    def test_initialize_echoes_the_clients_requested_revision(self) -> None:
+        """Through the real view, so the handler is proven wired to the
+        negotiation and not merely to the constant.
+        """
+        _, body = self._call(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "2024-11-05"},
+            }
+        )
+
+        assert body["result"]["protocolVersion"] == "2024-11-05"
+
+    def test_initialize_offers_our_revision_when_the_client_asks_for_junk(self) -> None:
+        _, body = self._call(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {"protocolVersion": "1.0.0"},
+            }
+        )
+
+        assert body["result"]["protocolVersion"] == MCPServer.PROTOCOL_VERSION
 
     def test_notification_gets_no_result_body(self) -> None:
         """Notifications carry no id; answering one with a result would be a
@@ -214,3 +242,48 @@ class MCPProtocolTest(SimpleTestCase):
 
         body = json.loads(response.content)
         assert body["error"]["code"] == JSONRPC.INVALID_REQUEST
+
+
+class ProtocolVersionNegotiationTest(SimpleTestCase):
+    """`initialize` echoes the client's revision when it is one we speak.
+
+    The spec's rule is an echo, not an announcement — a server that always
+    replies with its own preferred revision silently tells every client on an
+    older one to disconnect. Tested against the pure function rather than the
+    view so the cases stay readable; the view path is covered above.
+    """
+
+    def test_a_supported_revision_is_echoed_back(self) -> None:
+        for revision in MCPServer.SUPPORTED_PROTOCOL_VERSIONS:
+            assert negotiate_protocol_version(revision) == revision
+
+    def test_the_older_revision_is_still_accepted(self) -> None:
+        """Named explicitly rather than left to the loop above.
+
+        The request/response subset this server implements is identical across
+        the two revisions, so dropping the older one would disconnect working
+        clients for no behavioural reason.
+        """
+        assert negotiate_protocol_version("2024-11-05") == "2024-11-05"
+
+    def test_an_unknown_revision_is_answered_with_our_preferred_one(self) -> None:
+        """Not an error: the spec has the server offer what it does support and
+        lets the client decide whether to continue.
+        """
+        assert negotiate_protocol_version("1.0.0") == MCPServer.PROTOCOL_VERSION
+        assert negotiate_protocol_version("2099-01-01") == MCPServer.PROTOCOL_VERSION
+
+    def test_a_missing_or_malformed_version_falls_back(self) -> None:
+        """Clients in the wild omit the field or send the wrong type; neither
+        should fail the handshake before any tool is reachable.
+        """
+        for bad in (None, 20250618, {"version": "2025-06-18"}, []):
+            assert negotiate_protocol_version(bad) == MCPServer.PROTOCOL_VERSION
+
+    def test_the_preferred_revision_is_the_one_the_transport_implements(self) -> None:
+        """The bug this replaced: the server advertised 2024-11-05 while the
+        transport followed 2025-06-18 rules (405 on GET rather than an SSE
+        stream). The version string must track the behaviour.
+        """
+        assert MCPServer.PROTOCOL_VERSION == "2025-06-18"
+        assert MCPServer.SUPPORTED_PROTOCOL_VERSIONS[0] == MCPServer.PROTOCOL_VERSION
