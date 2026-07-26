@@ -193,6 +193,17 @@ class NoCredentialLeakTest(TestCase):
         }
 
         checked = []
+        # The seeded execution has status ERROR, which ExecutionStatus counts
+        # as terminal — so getExecutionStatus takes its is_completed branch and
+        # reads results through a raw Redis client that
+        # override_settings(CACHES=...) does not reach, exactly like
+        # _handle_execution_cache above. Stubbed to keep this test off live
+        # infra; the cached results are not what is being scanned here.
+        result_cache = patch(
+            "workflow_manager.endpoint_v2.result_cache_utils."
+            "ResultCacheUtils.get_api_results",
+            return_value=[],
+        )
         for name, tool in self._read_tools():
             kwargs = arguments.get(name, {})
             required = tool.input_schema.get("required", [])
@@ -204,7 +215,8 @@ class NoCredentialLeakTest(TestCase):
                     f"no fixture for it — add one so it stays covered."
                 )
 
-            result = tool.handler(self.context, **kwargs)
+            with result_cache:
+                result = tool.handler(self.context, **kwargs)
             blob = json.dumps(result, default=str)
             checked.append(name)
 

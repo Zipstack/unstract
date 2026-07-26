@@ -8,6 +8,7 @@ asserting. Needs a live DB (integration tier).
 from __future__ import annotations
 
 import json
+from typing import Any
 from unittest.mock import Mock, patch
 
 from account_v2.models import Organization, User
@@ -20,10 +21,15 @@ from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManag
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.tools.platform_execution import (
+    get_platform_execution_status,
+    platform_extract_document,
+)
 from mcp_server.tools.platform import (
     execute_pipeline,
     list_api_deployments,
@@ -397,3 +403,129 @@ class PromptStudioProducerToolsTest(TestCase):
 
         names = [row["document_name"] for row in result["documents"]]
         assert names == ["invoice-001.pdf"], "a sibling project's document leaked"
+
+
+class PlatformExtractionScopeTest(TestCase):
+    """The organization boundary on platform-side extraction.
+
+    On the deployment server the API key narrowed a caller to one deployment,
+    so an execution id from elsewhere was unreachable by construction. Nothing
+    narrows a platform caller, and ``get_status_of_async_task`` resolves a bare
+    ``WorkflowExecution.objects.get(id=...)`` with no tenant filter — this
+    deployment runs one shared schema (``TENANT_APPS`` is empty), so there is
+    no per-tenant database to fall back on. These tests pin the check that
+    replaces the one the credential used to provide.
+    """
+
+    def setUp(self) -> None:
+        self.org = Organization.objects.create(
+            name="org-extract",
+            display_name="Extract Org",
+            organization_id="org-extract",
+        )
+        UserContext.set_organization_identifier("org-extract")
+        self.user = User.objects.create(
+            username="svc-extract",
+            email="svc-extract@platform.internal",
+            user_id="uid-extract",
+            is_service_account=True,
+        )
+        OrganizationMember.objects.create(
+            user=self.user, organization=self.org, role="user"
+        )
+        self.key = PlatformApiKey.objects.create(
+            name="extract-key",
+            description="d",
+            organization=self.org,
+            api_user=self.user,
+            permission="read_write",
+        )
+        self.workflow = Workflow.objects.create(
+            workflow_name="extract-wf", is_active=True
+        )
+        self.api = APIDeployment.objects.create(
+            api_name="extract-api", display_name="Extract API", workflow=self.workflow
+        )
+        self.context = PlatformMCPContext(
+            user=self.user,
+            platform_key=self.key,
+            org_name="org-extract",
+            request=Mock(data={}),
+        )
+
+    def _execution_for(self, workflow) -> Any:
+        with patch(
+            "workflow_manager.workflow_v2.models.execution."
+            "WorkflowExecution._handle_execution_cache"
+        ):
+            return WorkflowExecution.objects.create(
+                workflow_id=workflow.id, status="PENDING"
+            )
+
+    def test_another_organizations_execution_is_not_readable(self) -> None:
+        """The boundary this change actually creates. A platform key must not
+        be able to poll an execution belonging to another tenant.
+        """
+        UserContext.set_organization_identifier("org-extract-other")
+        Organization.objects.create(
+            name="org-extract-other",
+            display_name="Other",
+            organization_id="org-extract-other",
+        )
+        other_wf = Workflow.objects.create(workflow_name="other-wf", is_active=True)
+        APIDeployment.objects.create(
+            api_name="other-api", display_name="Other API", workflow=other_wf
+        )
+        foreign = self._execution_for(other_wf)
+
+        UserContext.set_organization_identifier("org-extract")
+
+        with self.assertRaises(MCPToolError) as caught:
+            get_platform_execution_status(self.context, execution_id=str(foreign.id))
+
+        # The message must not confirm the id exists elsewhere.
+        assert "org-extract-other" not in str(caught.exception)
+
+    def test_an_unknown_execution_is_refused(self) -> None:
+        with self.assertRaises(MCPToolError):
+            get_platform_execution_status(
+                self.context, execution_id="00000000-0000-0000-0000-000000000000"
+            )
+
+    def test_a_pipeline_run_is_refused_with_a_pointer_to_the_right_tool(self) -> None:
+        """The second gate. A workflow in this org that is not behind an API
+        deployment has no deployment to build a context from, so it must be
+        refused rather than fail deeper with an unhelpful error.
+        """
+        pipeline_wf = Workflow.objects.create(
+            workflow_name="pipeline-only-wf", is_active=True
+        )
+        execution = self._execution_for(pipeline_wf)
+
+        with self.assertRaises(MCPToolError) as caught:
+            get_platform_execution_status(self.context, execution_id=str(execution.id))
+
+        assert "getExecutionDetail" in str(caught.exception)
+
+    def test_extraction_refuses_a_deployment_outside_the_organization(self) -> None:
+        UserContext.set_organization_identifier("org-extract-far")
+        Organization.objects.create(
+            name="org-extract-far",
+            display_name="Far",
+            organization_id="org-extract-far",
+        )
+        far_wf = Workflow.objects.create(workflow_name="far-wf", is_active=True)
+        APIDeployment.objects.create(
+            api_name="far-api", display_name="Far API", workflow=far_wf
+        )
+
+        UserContext.set_organization_identifier("org-extract")
+
+        with self.assertRaises(MCPToolError) as caught:
+            platform_extract_document(
+                self.context,
+                api_name="far-api",
+                document_urls=["https://s3.example.com/doc.pdf?X-Amz-Signature=x"],
+            )
+
+        assert "listApiDeployments" in str(caught.exception)
