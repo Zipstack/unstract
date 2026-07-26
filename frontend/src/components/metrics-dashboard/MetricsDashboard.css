@@ -30,8 +30,7 @@
 }
 
 /* Tab content padding — direct child only */
-.metrics-dashboard-container
-  > .ant-tabs
+.metrics-dashboard-container > .ant-tabs
   > .ant-tabs-content-holder
   > .ant-tabs-content {
   padding: 16px;

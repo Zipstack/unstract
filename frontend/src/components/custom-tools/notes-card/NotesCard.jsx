@@ -1,10 +1,5 @@
-import {
-  CheckCircleOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
 import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
+import { CircleCheck, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import "./NotesCard.css";
 import { useEffect, useState } from "react";
@@ -123,7 +118,7 @@ function NotesCard({
                 {updateStatus?.status ===
                   promptStudioUpdateStatus.isUpdating && (
                   <Tag
-                    icon={<SyncOutlined spin />}
+                    icon={<RefreshCw spin />}
                     color="processing"
                     className="display-flex-align-center"
                   >
@@ -132,7 +127,7 @@ function NotesCard({
                 )}
                 {updateStatus?.status === promptStudioUpdateStatus.done && (
                   <Tag
-                    icon={<CheckCircleOutlined />}
+                    icon={<CircleCheck />}
                     color="success"
                     className="display-flex-align-center"
                   >
@@ -152,7 +147,7 @@ function NotesCard({
                 className="display-flex-align-center"
                 onClick={enableEdit}
               >
-                <EditOutlined className="prompt-card-actions-head" />
+                <Pencil className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
             <ConfirmModal
@@ -161,7 +156,7 @@ function NotesCard({
             >
               <Tooltip title="Delete">
                 <Button size="small" type="text">
-                  <DeleteOutlined className="delete-icon" />
+                  <Trash2 className="delete-icon" />
                 </Button>
               </Tooltip>
             </ConfirmModal>

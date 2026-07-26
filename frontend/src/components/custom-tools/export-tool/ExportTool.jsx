@@ -1,9 +1,4 @@
 import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
-import {
   Avatar,
   List,
   Modal,
@@ -12,6 +7,7 @@ import {
   Select,
   Typography,
 } from "antd";
+import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import "./ExportTool.css";
@@ -120,11 +116,11 @@ function ExportTool({
                     description={`Are you sure to remove ${item?.email}?`}
                     okText="Yes"
                     cancelText="No"
-                    icon={<QuestionCircleOutlined />}
+                    icon={<CircleHelp />}
                     onConfirm={(event) => handleDeleteUser(item?.id)}
                   >
                     <Typography.Text>
-                      <DeleteOutlined className="action-icon-buttons" />
+                      <Trash2 className="action-icon-buttons" />
                     </Typography.Text>
                   </Popconfirm>
                 </div>
@@ -133,10 +129,7 @@ function ExportTool({
               <List.Item.Meta
                 title={
                   <>
-                    <Avatar
-                      className="shared-user-avatar"
-                      icon={<UserOutlined />}
-                    />
+                    <Avatar className="shared-user-avatar" icon={<User />} />
                     <Typography.Text className="export-username">
                       {item?.email}
                     </Typography.Text>

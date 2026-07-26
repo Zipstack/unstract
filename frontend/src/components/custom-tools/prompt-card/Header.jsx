@@ -1,14 +1,4 @@
 import {
-  CheckCircleOutlined,
-  DeleteOutlined,
-  InfoCircleOutlined,
-  LoadingOutlined,
-  MoreOutlined,
-  PlayCircleFilled,
-  PlayCircleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import {
   Button,
   Checkbox,
   Col,
@@ -19,6 +9,15 @@ import {
   Tooltip,
 } from "antd";
 import debounce from "lodash/debounce";
+import {
+  CircleCheck,
+  CirclePlay,
+  EllipsisVertical,
+  Info,
+  LoaderCircle,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 
@@ -224,7 +223,7 @@ function Header({
               >
                 Value Required{" "}
                 <Tooltip title="Marks this as a required field. Saving this record won't be allowed in Human Quality Review should this field be empty.">
-                  <InfoCircleOutlined />
+                  <Info />
                 </Tooltip>
               </Checkbox>
             )}
@@ -237,7 +236,7 @@ function Header({
                   All JSON Values Required
                 </Checkbox>
                 <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
-                  <InfoCircleOutlined />
+                  <Info />
                 </Tooltip>
                 <Checkbox
                   checked={required === "any"}
@@ -247,7 +246,7 @@ function Header({
                   At least 1 JSON Value Required
                 </Checkbox>
                 <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
-                  <InfoCircleOutlined />
+                  <Info />
                 </Tooltip>
                 <div
                   style={{
@@ -263,7 +262,7 @@ function Header({
                   >
                     Enable Postprocessing Webhook{" "}
                     <Tooltip title="Enable external webhook call to postprocess JSON responses before returning to user.">
-                      <InfoCircleOutlined />
+                      <Info />
                     </Tooltip>
                   </Checkbox>
                   {webhookEnabled && (
@@ -300,7 +299,7 @@ function Header({
             handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
             content="The prompt will be permanently deleted."
           >
-            <DeleteOutlined /> Delete
+            <Trash2 /> Delete
           </ConfirmModal>
         ),
         key: "delete",
@@ -352,7 +351,7 @@ function Header({
           {progressMsg?.message && (
             <Tooltip title={progressMsg?.message || ""}>
               <Tag
-                icon={isCoverageLoading && <LoadingOutlined spin />}
+                icon={isCoverageLoading && <LoaderCircle spin />}
                 color={progressMsg?.level === "ERROR" ? "error" : "processing"}
                 className="display-flex-align-center"
               >
@@ -368,7 +367,7 @@ function Header({
             <div>
               {updateStatus?.status === promptStudioUpdateStatus.isUpdating && (
                 <Tag
-                  icon={<SyncOutlined spin />}
+                  icon={<RefreshCw spin />}
                   color="processing"
                   className="display-flex-align-center"
                 >
@@ -379,7 +378,7 @@ function Header({
             <div>
               {updateStatus?.status === promptStudioUpdateStatus.done && (
                 <Tag
-                  icon={<CheckCircleOutlined />}
+                  icon={<CircleCheck />}
                   color="success"
                   className="display-flex-align-center"
                 >
@@ -391,7 +390,7 @@ function Header({
               {updateStatus?.status ===
                 promptStudioUpdateStatus.validationError && (
                 <Tag
-                  icon={<CheckCircleOutlined />}
+                  icon={<CircleCheck />}
                   color="error"
                   className="display-flex-align-center"
                 >
@@ -428,7 +427,7 @@ function Header({
                   !!runGate?.disabled
                 }
               >
-                <PlayCircleOutlined className="prompt-card-actions-head" />
+                <CirclePlay className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
             <Tooltip
@@ -454,7 +453,7 @@ function Header({
                   !!runGate?.disabled
                 }
               >
-                <PlayCircleFilled className="prompt-card-actions-head" />
+                <CirclePlay className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
           </>
@@ -482,7 +481,7 @@ function Header({
             type="text"
             className="prompt-card-action-button"
           >
-            <MoreOutlined className="prompt-card-actions-head" />
+            <EllipsisVertical className="prompt-card-actions-head" />
           </Button>
         </Dropdown>
       </Col>

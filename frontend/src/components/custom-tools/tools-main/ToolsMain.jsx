@@ -1,5 +1,5 @@
-import { TableOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { Tabs, Tooltip } from "antd";
+import { List, Table } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { getSequenceNumber, promptType } from "../../../helpers/GetStaticData";
@@ -41,7 +41,7 @@ function ToolsMain() {
       key: "1",
       label: isSimplePromptStudio ? (
         <Tooltip title="Fields">
-          <UnorderedListOutlined />
+          <List />
         </Tooltip>
       ) : (
         "Document Parser"
@@ -51,7 +51,7 @@ function ToolsMain() {
       key: "2",
       label: isSimplePromptStudio ? (
         <Tooltip title="Combined Output">
-          <TableOutlined />
+          <Table />
         </Tooltip>
       ) : (
         "Combined Output"

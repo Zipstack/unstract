@@ -1,9 +1,9 @@
-import { FileExclamationOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import { Button, Result } from "antd";
+import { FileWarning, RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -31,11 +31,11 @@ function PdfLoadError({ error, onRetry, reportError }) {
   return (
     <div className="pdf-viewer-error">
       <Result
-        icon={<FileExclamationOutlined style={{ color: "#ff4d4f" }} />}
+        icon={<FileWarning style={{ color: "#ff4d4f" }} />}
         title="Failed to Load PDF"
         subTitle={errorMessage}
         extra={
-          <Button type="primary" icon={<ReloadOutlined />} onClick={onRetry}>
+          <Button type="primary" icon={<RotateCw />} onClick={onRetry}>
             Retry
           </Button>
         }
@@ -165,7 +165,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
     return (
       <div ref={parentRef} className="doc-manager-body pdf-viewer-error">
         <Result
-          icon={<FileExclamationOutlined style={{ color: "#faad14" }} />}
+          icon={<FileWarning style={{ color: "#faad14" }} />}
           title="No PDF Available"
           subTitle="The PDF document URL is not available. Please ensure the document has been processed correctly."
         />

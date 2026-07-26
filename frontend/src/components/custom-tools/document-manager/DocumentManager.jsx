@@ -1,9 +1,4 @@
-import {
-  FilePdfOutlined,
-  FileTextOutlined,
-  LeftOutlined,
-  RightOutlined,
-} from "@ant-design/icons";
+import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
@@ -133,7 +128,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           key: "1",
           label: (
             <Tooltip title="PDF View">
-              <FilePdfOutlined />
+              <FileText />
             </Tooltip>
           ),
         },
@@ -141,7 +136,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           key: "2",
           label: (
             <Tooltip title="Raw View">
-              <FileTextOutlined />
+              <FileText />
             </Tooltip>
           ),
         },
@@ -468,7 +463,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                 }
                 onClick={handlePageLeft}
               >
-                <LeftOutlined className="doc-manager-paginate-icon" />
+                <ChevronLeft className="doc-manager-paginate-icon" />
               </Button>
               <Button
                 type="text"
@@ -481,7 +476,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                 }
                 onClick={handlePageRight}
               >
-                <RightOutlined className="doc-manager-paginate-icon" />
+                <ChevronRight className="doc-manager-paginate-icon" />
               </Button>
             </div>
           </Space>

@@ -1,5 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
 import { Button, Input, Select, Space, Table, Typography } from "antd";
+import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -115,7 +115,7 @@ function CustomSynonyms() {
             isDisabled={listOfSynonyms?.length === 0}
           >
             <Button size="small" disabled={isPublicSource} type="text">
-              <DeleteOutlined className="cus-syn-del" />
+              <Trash2 className="cus-syn-del" />
             </Button>
           </ConfirmModal>
         ),
@@ -225,7 +225,7 @@ function CustomSynonyms() {
           <div>
             <CustomButton
               type="primary"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={handleAddRow}
               disabled={isPublicSource || synonyms?.length >= SYNONYMS_LIMIT}
             >

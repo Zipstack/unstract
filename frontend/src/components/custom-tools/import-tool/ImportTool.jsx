@@ -1,5 +1,5 @@
-import { InboxOutlined } from "@ant-design/icons";
 import { Modal, message, Typography, Upload } from "antd";
+import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
 
@@ -106,7 +106,7 @@ function ImportTool({ open, setOpen, onImport, loading }) {
 
         <Dragger {...uploadProps}>
           <p className="ant-upload-drag-icon">
-            <InboxOutlined />
+            <Inbox />
           </p>
           <p className="ant-upload-text">
             Click or drag file to this area to upload

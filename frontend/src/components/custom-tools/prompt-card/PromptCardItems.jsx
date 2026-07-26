@@ -1,4 +1,3 @@
-import { SearchOutlined } from "@ant-design/icons";
 import {
   Button,
   Card,
@@ -10,6 +9,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -279,7 +279,7 @@ function PromptCardItems({
                           {isCoverageLoading ? (
                             <SpinnerLoader size="small" />
                           ) : (
-                            <SearchOutlined className="font-size-12" />
+                            <Search className="font-size-12" />
                           )}
                           <Typography.Link className="font-size-12">
                             Coverage: {promptCoverage?.length || 0} of{" "}

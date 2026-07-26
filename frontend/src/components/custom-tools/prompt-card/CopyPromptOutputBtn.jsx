@@ -1,5 +1,5 @@
-import { CopyOutlined } from "@ant-design/icons";
 import { Button, Tooltip } from "antd";
+import { Copy } from "lucide-react";
 import PropTypes from "prop-types";
 
 function CopyPromptOutputBtn({ isDisabled, copyToClipboard }) {
@@ -12,7 +12,7 @@ function CopyPromptOutputBtn({ isDisabled, copyToClipboard }) {
         onClick={copyToClipboard}
         disabled={isDisabled}
       >
-        <CopyOutlined className="prompt-card-actions-head" />
+        <Copy className="prompt-card-actions-head" />
       </Button>
     </Tooltip>
   );

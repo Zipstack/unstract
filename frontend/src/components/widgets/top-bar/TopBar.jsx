@@ -1,6 +1,6 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Col, Input, Row, Typography } from "antd";
 import debounce from "lodash/debounce";
+import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
 import "./TopBar.css";
 import { useNavigate } from "react-router-dom";
@@ -35,7 +35,7 @@ function TopBar({
   return (
     <Row align="middle" justify="space-between" className="search-nav">
       <Col>
-        <ArrowLeftOutlined onClick={() => navigate(-1)} />
+        <ArrowLeft onClick={() => navigate(-1)} />
         <Typography className="topbar-title">{title}</Typography>
       </Col>
       <Col>

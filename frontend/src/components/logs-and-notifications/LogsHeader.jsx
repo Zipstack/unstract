@@ -1,5 +1,5 @@
-import { CloseOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button, Space, Tag, Typography } from "antd";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo } from "react";
 
@@ -10,9 +10,9 @@ export const LogsHeader = memo(function LogsHeader({
   onToggleExpand,
   onMinimize,
 }) {
-  const expandCollapseIcon = isFull ? <DownOutlined /> : <UpOutlined />;
+  const expandCollapseIcon = isFull ? <ChevronDown /> : <ChevronUp />;
 
-  const minimizeIcon = <CloseOutlined />;
+  const minimizeIcon = <X />;
 
   return (
     <div className="logs-header-container">

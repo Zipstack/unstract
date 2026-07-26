@@ -1,5 +1,5 @@
-import { CheckCircleFilled } from "@ant-design/icons";
 import { Button, Card, Col, Layout, Row, Space, Typography } from "antd";
+import { CircleCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import ConnectEmbedding from "../../assets/connect_embedding.svg";
@@ -111,7 +111,7 @@ function OnBoard() {
                   <Col span={4} align="center" justify="center">
                     {adaptersList?.includes(step.type) ? (
                       <div>
-                        <CheckCircleFilled className="configured-icon" />
+                        <CircleCheck className="configured-icon" />
                         <span className="configured-text">Configured</span>
                       </div>
                     ) : (

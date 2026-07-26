@@ -1,9 +1,9 @@
-import { FilterOutlined } from "@ant-design/icons";
 import { Button, Radio, Space } from "antd";
+import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
 
 const FilterIcon = ({ filtered }) => (
-  <FilterOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
+  <Filter style={{ color: filtered ? "#1677ff" : undefined }} />
 );
 
 const FilterDropdown = ({

@@ -1,6 +1,6 @@
-import { SearchOutlined } from "@ant-design/icons";
 import { Col, Input, Row, Spin, Tabs, Typography } from "antd";
 import debounce from "lodash/debounce";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -96,7 +96,7 @@ function ConnectorListModal({
       <div className="connector-search-section">
         <Input
           placeholder="Search for connectors..."
-          prefix={<SearchOutlined className="search-icon" />}
+          prefix={<Search className="search-icon" />}
           onChange={handleSearchChange}
           value={searchText}
           size="large"

@@ -1,7 +1,7 @@
-import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Segmented, Typography } from "antd";
 import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
+import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
@@ -44,7 +44,7 @@ function ToolNavBar({
           <Button
             type="text"
             shape="circle"
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft />}
             onClick={handleBack}
           />
         )}
@@ -60,7 +60,7 @@ function ToolNavBar({
                   <Button
                     type="text"
                     size="small"
-                    icon={<EditOutlined />}
+                    icon={<Pencil />}
                     className="tool-nav-bar__edit-icon"
                     onClick={onEditTitle}
                     aria-label="Edit title"

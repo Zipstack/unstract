@@ -1,5 +1,5 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Modal } from "antd";
+import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -166,7 +166,7 @@ function AddSourceModal({
         type="text"
         shape="circle"
         size="small"
-        icon={<ArrowLeftOutlined />}
+        icon={<ArrowLeft />}
         onClick={handleBack}
         aria-label="Go back to source selection"
       />

@@ -1,5 +1,5 @@
-import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
 import { Button, Card, Input, List, Tag, Typography } from "antd";
+import { FileText, Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -66,7 +66,7 @@ function ToolSelectionSidebar({
           </Typography.Title>
           <Input
             placeholder="Search Prompt Studio project..."
-            prefix={<SearchOutlined />}
+            prefix={<Search />}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="tool-search-input"
@@ -97,7 +97,7 @@ function ToolSelectionSidebar({
                           {tool.icon ? (
                             <ToolIcon iconSrc={tool.icon} showBorder={true} />
                           ) : (
-                            <FileTextOutlined className="tool-icon" />
+                            <FileText className="tool-icon" />
                           )}
                         </div>
                         <div className="tool-details">

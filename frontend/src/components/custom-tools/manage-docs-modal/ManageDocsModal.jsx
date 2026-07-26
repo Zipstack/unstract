@@ -1,10 +1,4 @@
 import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  DeleteOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
-import {
   Button,
   Divider,
   Modal,
@@ -16,6 +10,7 @@ import {
   Typography,
   Upload,
 } from "antd";
+import { CircleCheck, CircleX, RotateCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -116,7 +111,7 @@ function ManageDocsModal({
   const successIndex = (
     <Typography.Text>
       <span style={{ marginRight: "8px" }}>
-        <CheckCircleFilled style={{ color: "#52C41A" }} />
+        <CircleCheck style={{ color: "#52C41A" }} />
       </span>{" "}
       Indexed
     </Typography.Text>
@@ -125,7 +120,7 @@ function ManageDocsModal({
   const failedIndex = (
     <Typography.Text>
       <span style={{ marginRight: "8px" }}>
-        <CloseCircleFilled style={{ color: "#FF4D4F" }} />
+        <CircleX style={{ color: "#FF4D4F" }} />
       </span>{" "}
       Not Indexed
     </Typography.Text>
@@ -157,7 +152,7 @@ function ManageDocsModal({
   const failedSummary = (
     <Typography.Text>
       <span style={{ marginRight: "8px" }}>
-        <CloseCircleFilled style={{ color: "#FF4D4F" }} />
+        <CircleX style={{ color: "#FF4D4F" }} />
       </span>{" "}
       Not Summarized
     </Typography.Text>
@@ -481,7 +476,7 @@ function ManageDocsModal({
                 <Tooltip title="Index">
                   <Button
                     size="small"
-                    icon={<ReloadOutlined />}
+                    icon={<RotateCw />}
                     onClick={() => handleReIndexBtnClick(item)}
                     disabled={
                       isMultiPassExtractLoading ||
@@ -502,7 +497,7 @@ function ManageDocsModal({
               <Tooltip title="Delete">
                 <Button
                   size="small"
-                  icon={<DeleteOutlined />}
+                  icon={<Trash2 />}
                   disabled={
                     isMultiPassExtractLoading ||
                     isSinglePassExtractLoading ||

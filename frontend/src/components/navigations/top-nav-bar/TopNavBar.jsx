@@ -1,11 +1,4 @@
 import {
-  LoginOutlined,
-  LogoutOutlined,
-  SettingOutlined,
-  UserOutlined,
-  UserSwitchOutlined,
-} from "@ant-design/icons";
-import {
   Alert,
   Button,
   Col,
@@ -16,6 +9,7 @@ import {
   Typography,
 } from "antd";
 import axios from "axios";
+import { LogIn, LogOut, Settings, User, UserRoundCog } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -266,7 +260,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     };
 
     const handleClick = isLoggedIn ? logout : handleLogin;
-    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const icon = isLoggedIn ? <LogOut /> : <LogIn />;
     const label = isLoggedIn ? "Logout" : "Login";
 
     return [
@@ -281,7 +275,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               disabled={shouldDisableRouting}
               type="text"
             >
-              <UserOutlined /> Profile
+              <User /> Profile
             </Button>
           ),
         },
@@ -300,7 +294,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             placement="left"
           >
             <div className="ant-dropdown-trigger">
-              <UserSwitchOutlined /> Switch Org
+              <UserRoundCog /> Switch Org
             </div>
           </Dropdown>
         ),
@@ -324,7 +318,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               className="logout-button"
               type="text"
             >
-              <SettingOutlined /> Custom Plans
+              <Settings /> Custom Plans
             </Button>
           ),
         },

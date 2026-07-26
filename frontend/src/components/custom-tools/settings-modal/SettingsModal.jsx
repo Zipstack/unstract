@@ -1,11 +1,11 @@
-import {
-  CodeOutlined,
-  DatabaseOutlined,
-  DiffOutlined,
-  FileTextOutlined,
-  MessageOutlined,
-} from "@ant-design/icons";
 import { Col, Menu, Modal, Row, Typography } from "antd";
+import {
+  Code,
+  Database,
+  FileText,
+  GitCompare,
+  MessageSquare,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { getMenuItem } from "../../../helpers/GetStaticData";
@@ -44,11 +44,11 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
 
   useEffect(() => {
     const items = [
-      getMenuItem("LLM Profiles", 1, <CodeOutlined />),
-      getMenuItem("Custom Data", 9, <DatabaseOutlined />),
-      getMenuItem("Grammar", 5, <MessageOutlined />),
-      getMenuItem("Preamble", 6, <DiffOutlined />),
-      getMenuItem("Postamble", 7, <DiffOutlined />),
+      getMenuItem("LLM Profiles", 1, <Code />),
+      getMenuItem("Custom Data", 9, <Database />),
+      getMenuItem("Grammar", 5, <MessageSquare />),
+      getMenuItem("Preamble", 6, <GitCompare />),
+      getMenuItem("Postamble", 7, <GitCompare />),
     ];
 
     const listOfComponents = {
@@ -74,7 +74,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />),
+        getMenuItem("SummarizedExtraction", 2, <FileText />),
       );
       listOfComponents[2] = (
         <SummarizeManager handleUpdateTool={handleUpdateTool} />
@@ -86,7 +86,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
+        getMenuItem("Evaluation Manager", 3, <FileText />),
       );
       listOfComponents[3] = (
         <EvaluationManager handleUpdateTool={handleUpdateTool} />
@@ -95,11 +95,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
     }
 
     if (ChallengeManager) {
-      items.splice(
-        position,
-        0,
-        getMenuItem("LLMChallenge", 4, <FileTextOutlined />),
-      );
+      items.splice(position, 0, getMenuItem("LLMChallenge", 4, <FileText />));
       listOfComponents[4] = (
         <ChallengeManager
           handleUpdateTool={handleUpdateTool}
@@ -109,7 +105,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       position++;
     }
     if (HighlightManager) {
-      items.push(getMenuItem("Highlighting", 8, <FileTextOutlined />));
+      items.push(getMenuItem("Highlighting", 8, <FileText />));
       listOfComponents[8] = (
         <HighlightManager
           handleUpdateTool={handleUpdateTool}

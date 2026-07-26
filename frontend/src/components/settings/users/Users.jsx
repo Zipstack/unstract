@@ -1,11 +1,5 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EllipsisOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
 import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
+import { Ellipsis, Pencil, Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./Users.css";
@@ -112,7 +106,7 @@ function Users() {
         }
       >
         <div>
-          <EditOutlined />
+          <Pencil />
         </div>
         <div>
           <Typography.Text>Edit</Typography.Text>
@@ -130,7 +124,7 @@ function Users() {
         onClick={showModal}
       >
         <div>
-          <DeleteOutlined />
+          <Trash2 />
         </div>
         <div>
           <Typography.Text>Delete</Typography.Text>
@@ -161,7 +155,7 @@ function Users() {
         trigger={["click"]}
         placement="bottomLeft"
       >
-        <EllipsisOutlined
+        <Ellipsis
           rotate={90}
           style={{ cursor: "pointer" }}
           onClick={() => setSelectedUserEmail(record)}
@@ -205,7 +199,7 @@ function Users() {
         {!sessionDetails?.provider && (
           <CustomButton
             type="primary"
-            icon={<PlusOutlined />}
+            icon={<Plus />}
             onClick={handleInviteUsers}
           >
             Invite User
@@ -213,7 +207,7 @@ function Users() {
         )}
         <Button
           shape="circle"
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={getAllUsers}
           className="user-reload-button"
         />

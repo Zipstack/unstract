@@ -1,5 +1,5 @@
-import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
+import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
 
 import "./Footer.css";
@@ -16,7 +16,7 @@ function Footer({ activeKey, addPromptInstance }) {
           <div>
             <Button
               type="link"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={() => addPromptInstance(promptType.notes)}
               disabled={isPublicSource}
             >
@@ -26,7 +26,7 @@ function Footer({ activeKey, addPromptInstance }) {
           <div>
             <Button
               type="link"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={() => addPromptInstance(promptType.prompt)}
               disabled={isPublicSource}
             >

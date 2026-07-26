@@ -1,5 +1,5 @@
-import { FilterOutlined } from "@ant-design/icons";
 import { Button, Card, Dropdown, Empty, Spin } from "antd";
+import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 import {
@@ -328,7 +328,7 @@ function TrendAnalysisChart({ data, loading }) {
         }}
         trigger={["click"]}
       >
-        <Button icon={<FilterOutlined />} size="small">
+        <Button icon={<Filter />} size="small">
           Filter
         </Button>
       </Dropdown>

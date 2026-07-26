@@ -1,5 +1,5 @@
-import { ReloadOutlined } from "@ant-design/icons";
 import { Button, Switch, Tooltip, Typography } from "antd";
+import { RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
 import "./LogsRefreshControls.css";
 
@@ -22,7 +22,7 @@ function LogsRefreshControls({
           disabled={disabled}
         />
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={onRefresh}
           className="logs-refresh-btn"
           disabled={disabled}

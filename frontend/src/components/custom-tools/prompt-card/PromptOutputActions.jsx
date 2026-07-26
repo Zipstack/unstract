@@ -1,5 +1,5 @@
-import { PlayCircleFilled, PlayCircleOutlined } from "@ant-design/icons";
 import { Button, Tooltip } from "antd";
+import { CirclePlay } from "lucide-react";
 import PropTypes from "prop-types";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -29,7 +29,7 @@ function PromptOutputActions({
             isPublicSource
           }
         >
-          <PlayCircleOutlined className="prompt-card-actions-head" />
+          <CirclePlay className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
       <Tooltip title="Run All">
@@ -43,7 +43,7 @@ function PromptOutputActions({
             isPublicSource
           }
         >
-          <PlayCircleFilled className="prompt-card-actions-head" />
+          <CirclePlay className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
     </>

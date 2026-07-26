@@ -1,8 +1,8 @@
 import { Button, Input, Modal, Typography } from "antd";
+import { ArrowDown, ArrowUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import "./PromptCard.css";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { uniqueId } from "lodash";
 import debounce from "lodash/debounce";
 
@@ -161,7 +161,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
             onClick={handlePrev}
             disabled={highlightedChunks.length === 0}
           >
-            <ArrowUpOutlined />
+            <ArrowUp />
           </Button>
           <span className="page-count-container">
             {highlightedChunks.length > 0 ? currentIndex + 1 : 0}/{" "}
@@ -172,7 +172,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
             onClick={handleNext}
             disabled={highlightedChunks.length === 0}
           >
-            <ArrowDownOutlined />
+            <ArrowDown />
           </Button>
         </div>
       </div>

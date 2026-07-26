@@ -1,5 +1,5 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Button, Select, Typography } from "antd";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -178,7 +178,7 @@ function DefaultTriad() {
           type="text"
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
-          <ArrowLeftOutlined />
+          <ArrowLeft />
         </Button>
         <Typography.Text className="plt-set-head-typo">
           Default LLM Profile

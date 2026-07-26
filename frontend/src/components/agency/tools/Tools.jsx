@@ -1,6 +1,6 @@
-import { SearchOutlined } from "@ant-design/icons";
 import { Input } from "antd";
 import debounce from "lodash/debounce";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import "./Tools.css";
 
@@ -68,7 +68,7 @@ function Tools() {
           className="tool-chest-input"
           placeholder="Search for tool"
           onChange={onSearchDebounce}
-          prefix={<SearchOutlined className="icon" />}
+          prefix={<Search className="icon" />}
         />
       </div>
       <div className="wf-tools-list">

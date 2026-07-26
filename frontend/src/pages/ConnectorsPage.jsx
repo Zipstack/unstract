@@ -1,5 +1,5 @@
-import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
+import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
@@ -221,11 +221,7 @@ function ConnectorsPage() {
   };
 
   const newConnectorButton = (
-    <Button
-      type="primary"
-      icon={<PlusOutlined />}
-      onClick={handleCreateConnector}
-    >
+    <Button type="primary" icon={<Plus />} onClick={handleCreateConnector}>
       New Connector
     </Button>
   );

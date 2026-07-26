@@ -7,13 +7,8 @@ import {
   Select,
   Typography,
 } from "antd";
+import { CircleHelp, Trash2, User, Users } from "lucide-react";
 import "./SharePermission.css";
-import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  TeamOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -162,7 +157,7 @@ function SharePermission({
                   }'?`}
                   okText="Yes"
                   cancelText="No"
-                  icon={<QuestionCircleOutlined style={{ color: "#faad14" }} />}
+                  icon={<CircleHelp style={{ color: "#faad14" }} />}
                   onConfirm={() => {
                     if (item.kind === "user") {
                       handleDeleteUser(item.id);
@@ -172,7 +167,7 @@ function SharePermission({
                   }}
                 >
                   <Typography.Text>
-                    <DeleteOutlined className="action-icon-buttons" />
+                    <Trash2 className="action-icon-buttons" />
                   </Typography.Text>
                 </Popconfirm>
               )
@@ -183,9 +178,7 @@ function SharePermission({
                 <>
                   <Avatar
                     className="shared-user-avatar"
-                    icon={
-                      item.kind === "user" ? <UserOutlined /> : <TeamOutlined />
-                    }
+                    icon={item.kind === "user" ? <User /> : <Users />}
                   />
                   <Typography.Text className="shared-username">
                     {item.kind === "user" ? item.email : item.name}

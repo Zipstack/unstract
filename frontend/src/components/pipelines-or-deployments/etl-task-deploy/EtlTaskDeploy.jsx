@@ -1,6 +1,6 @@
-import { ClockCircleOutlined, ScheduleOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Modal, Select, Space, Typography } from "antd";
 import cronstrue from "cronstrue";
+import { CalendarClock, Clock } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -357,14 +357,14 @@ const EtlTaskDeploy = ({
               <Button
                 type="primary"
                 onClick={showCronGenerator}
-                icon={<ScheduleOutlined />}
+                icon={<CalendarClock />}
                 className="cron-string-btn"
               />
             </div>
           </Form.Item>
           <Space>
             <div className="cron-summary-div">
-              <ClockCircleOutlined />
+              <Clock />
             </div>
             <div>
               <Typography.Text className="summary-text">

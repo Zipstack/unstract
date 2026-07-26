@@ -1,6 +1,6 @@
-import { SearchOutlined } from "@ant-design/icons";
 import { Input, List, Segmented } from "antd";
 import debounce from "lodash/debounce";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -74,7 +74,7 @@ function ListOfSources({
         <div className="searchbox">
           <Input
             placeholder="Search"
-            prefix={<SearchOutlined className="search-outlined" />}
+            prefix={<Search className="search-outlined" />}
             onChange={handleInputChange}
           />
         </div>

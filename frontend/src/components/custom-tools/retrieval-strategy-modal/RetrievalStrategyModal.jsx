@@ -1,13 +1,4 @@
 import {
-  ForkOutlined,
-  MergeCellsOutlined,
-  QuestionCircleOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  ShareAltOutlined,
-  TableOutlined,
-} from "@ant-design/icons";
-import {
   Alert,
   Button,
   Divider,
@@ -17,6 +8,15 @@ import {
   Spin,
   Typography,
 } from "antd";
+import {
+  CircleHelp,
+  GitFork,
+  Merge,
+  RotateCw,
+  Search,
+  Share2,
+  Table,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -27,13 +27,13 @@ import "./RetrievalStrategyModal.css";
 const { Title, Text, Paragraph } = Typography;
 
 const ICON_MAP = {
-  SearchOutlined: <SearchOutlined />,
-  QuestionCircleOutlined: <QuestionCircleOutlined />,
-  ForkOutlined: <ForkOutlined />,
-  ReloadOutlined: <ReloadOutlined />,
-  ShareAltOutlined: <ShareAltOutlined />,
-  TableOutlined: <TableOutlined />,
-  MergeCellsOutlined: <MergeCellsOutlined />,
+  Search: <Search />,
+  CircleHelp: <CircleHelp />,
+  GitFork: <GitFork />,
+  RotateCw: <RotateCw />,
+  Share2: <Share2 />,
+  Table: <Table />,
+  Merge: <Merge />,
 };
 
 const RetrievalStrategyModal = ({
@@ -71,7 +71,7 @@ const RetrievalStrategyModal = ({
   // Transform strategies to include React icons
   const strategiesWithIcons = retrievalStrategies.map((strategy) => ({
     ...strategy,
-    icon: ICON_MAP[strategy.icon] || <SearchOutlined />,
+    icon: ICON_MAP[strategy.icon] || <Search />,
   }));
 
   const selectedDetails = strategiesWithIcons.find(

@@ -1,5 +1,5 @@
-import { CloseOutlined } from "@ant-design/icons";
 import { Card, Col, Progress, Row, Typography } from "antd";
+import { X } from "lucide-react";
 import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
@@ -161,7 +161,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
                         handleConfirm={() => deleteStep()}
                         content="Want to delete this step"
                       >
-                        <CloseOutlined />
+                        <X />
                       </ConfirmModal>
                     </div>
                   )}

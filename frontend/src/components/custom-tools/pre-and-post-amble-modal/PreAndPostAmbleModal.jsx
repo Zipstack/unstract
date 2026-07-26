@@ -1,5 +1,5 @@
-import { ExpandOutlined } from "@ant-design/icons";
 import { Button, Input, Modal, Space, Typography } from "antd";
+import { Expand } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import "./PreAndPostAmbleModal.css";
@@ -119,7 +119,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
               autoSize={{ minRows: 4 }}
             />
             <Button
-              icon={<ExpandOutlined />}
+              icon={<Expand />}
               className="expand-button"
               onClick={toggleExpandModal}
               type="text"

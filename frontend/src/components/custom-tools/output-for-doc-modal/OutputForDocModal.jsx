@@ -1,10 +1,6 @@
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  InfoCircleFilled,
-} from "@ant-design/icons";
 import { Button, Modal, Table, Tabs, Tooltip, Typography } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
+import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
@@ -270,13 +266,13 @@ function OutputForDocModal({
               <Typography.Text>
                 <span style={{ marginRight: "8px" }}>
                   {status === outputStatus.yet_to_process && (
-                    <InfoCircleFilled style={{ color: "#F0AD4E" }} />
+                    <Info style={{ color: "#F0AD4E" }} />
                   )}
                   {status === outputStatus.fail && (
-                    <CloseCircleFilled style={{ color: "#FF4D4F" }} />
+                    <CircleX style={{ color: "#FF4D4F" }} />
                   )}
                   {status === outputStatus.success && (
-                    <CheckCircleFilled style={{ color: "#52C41A" }} />
+                    <CircleCheck style={{ color: "#52C41A" }} />
                   )}
                 </span>{" "}
                 {message}

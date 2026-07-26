@@ -1,6 +1,6 @@
-import { CheckCircleOutlined, CopyOutlined } from "@ant-design/icons";
 import { Modal, Select, Tabs, Tooltip } from "antd";
 import Handlebars from "handlebars";
+import { CircleCheck, Copy } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -188,11 +188,11 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
             <button className="copyCodeBtn" onClick={handleCopyClick}>
               {copied ? (
                 <Tooltip title="Copied">
-                  <CheckCircleOutlined />
+                  <CircleCheck />
                 </Tooltip>
               ) : (
                 <Tooltip title="Copy snippet">
-                  <CopyOutlined />
+                  <Copy />
                 </Tooltip>
               )}
             </button>

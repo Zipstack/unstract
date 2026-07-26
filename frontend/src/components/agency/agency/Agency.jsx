@@ -1,11 +1,4 @@
 import {
-  BugOutlined,
-  HistoryOutlined,
-  LoadingOutlined,
-  PlayCircleOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
   Alert,
   Button,
   Col,
@@ -15,6 +8,7 @@ import {
   Select,
   Typography,
 } from "antd";
+import { Bug, CirclePlay, History, LoaderCircle, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -1033,19 +1027,19 @@ function Agency() {
     {
       key: "run-workflow",
       label: "Run Workflow",
-      icon: <PlayCircleOutlined />,
+      icon: <CirclePlay />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "view-file-history",
       label: "View File History",
-      icon: <HistoryOutlined />,
+      icon: <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
-      icon: isClearingFileHistory ? <LoadingOutlined /> : <HistoryOutlined />,
+      icon: isClearingFileHistory ? <LoaderCircle /> : <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
   ];
@@ -1089,7 +1083,7 @@ function Agency() {
           >
             <Button
               type="primary"
-              icon={<SettingOutlined />}
+              icon={<Settings />}
               loading={loadingType === "EXECUTE" || isClearingFileHistory}
               disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >
@@ -1251,7 +1245,7 @@ function Agency() {
         <div className="debug-panel">
           <div className="debug-panel-header">
             <div className="debug-panel-title">
-              <BugOutlined />
+              <Bug />
               <Typography.Text>Debug Panel</Typography.Text>
             </div>
             <Button

@@ -1,9 +1,4 @@
 import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  InfoCircleOutlined,
-} from "@ant-design/icons";
-import {
   Alert,
   Card,
   Empty,
@@ -14,6 +9,7 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -55,7 +51,7 @@ const columns = [
       <span>
         Tokens{" "}
         <Tooltip title="Total LLM tokens consumed by this deployment">
-          <InfoCircleOutlined className="llm-usage-info-icon" />
+          <Info className="llm-usage-info-icon" />
         </Tooltip>
       </span>
     ),
@@ -95,12 +91,12 @@ const columns = [
             <span>{total.toLocaleString()}</span>
             {completed > 0 && (
               <span className="execution-success">
-                <CheckCircleOutlined /> {formatCompactNumber(completed)}
+                <CircleCheck /> {formatCompactNumber(completed)}
               </span>
             )}
             {failed > 0 && (
               <span className="execution-error">
-                <CloseCircleOutlined /> {formatCompactNumber(failed)}
+                <CircleX /> {formatCompactNumber(failed)}
               </span>
             )}
           </span>

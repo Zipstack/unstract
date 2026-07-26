@@ -1,5 +1,5 @@
-import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
 import { Button, Dropdown, Modal, Table, Tooltip } from "antd";
+import { Copy, Download } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -246,7 +246,7 @@ function LogModal({
           {displayId && (
             <Button
               className="copy-btn-outlined"
-              icon={<CopyOutlined />}
+              icon={<Copy />}
               aria-label="Copy execution ID"
               onClick={() => copyToClipboard(displayId, "File Execution ID")}
             />
@@ -263,7 +263,7 @@ function LogModal({
               <span>
                 <Button
                   className="export-btn-outlined"
-                  icon={<DownloadOutlined />}
+                  icon={<Download />}
                   loading={exporting}
                   disabled={!pagination.total || exporting}
                 >

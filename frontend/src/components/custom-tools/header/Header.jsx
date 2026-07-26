@@ -1,5 +1,5 @@
-import { SettingOutlined } from "@ant-design/icons";
 import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
+import { Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
 import { ExportToolIcon } from "../../../assets";
@@ -335,10 +335,7 @@ function Header({
         )}
         <div>
           <Tooltip title="Settings">
-            <Button
-              icon={<SettingOutlined />}
-              onClick={() => setOpenSettings(true)}
-            />
+            <Button icon={<Settings />} onClick={() => setOpenSettings(true)} />
           </Tooltip>
         </div>
         {CloneButton && <CloneButton setOpenCloneModal={setOpenCloneModal} />}

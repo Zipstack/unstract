@@ -1,5 +1,5 @@
-import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Typography } from "antd";
+import { ArrowLeft, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -19,14 +19,14 @@ function HeaderTitle() {
           type="text"
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
-          <ArrowLeftOutlined />
+          <ArrowLeft />
         </Button>
       </div>
       <div>
         <Typography.Text className="custom-tools-name" strong>
           {details?.tool_name}
         </Typography.Text>
-        <Button size="small" type="text" icon={<EditOutlined />} disabled />
+        <Button size="small" type="text" icon={<Pencil />} disabled />
       </div>
     </div>
   );

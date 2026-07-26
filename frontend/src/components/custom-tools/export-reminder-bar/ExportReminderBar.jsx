@@ -1,5 +1,5 @@
-import { ExclamationCircleOutlined } from "@ant-design/icons";
 import { Alert, Button, Space } from "antd";
+import { CircleAlert } from "lucide-react";
 import PropTypes from "prop-types";
 import "./ExportReminderBar.css";
 
@@ -9,7 +9,7 @@ function ExportReminderBar({ message, onExport, isExporting }) {
       <Alert
         message={
           <Space className="export-reminder-content">
-            <ExclamationCircleOutlined />
+            <CircleAlert />
             <span className="export-reminder-text">{message}</span>
             <Button
               type="primary"

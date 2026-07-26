@@ -1,14 +1,14 @@
-import {
-  ApiOutlined,
-  CheckCircleOutlined,
-  DollarOutlined,
-  EyeOutlined,
-  FileTextOutlined,
-  RocketOutlined,
-  ThunderboltOutlined,
-  WarningOutlined,
-} from "@ant-design/icons";
 import { Col, Empty, Row, Spin } from "antd";
+import {
+  CircleCheck,
+  DollarSign,
+  Eye,
+  FileText,
+  Plug,
+  Rocket,
+  TriangleAlert,
+  Zap,
+} from "lucide-react";
 import PropTypes from "prop-types";
 
 import "./MetricsDashboard.css";
@@ -17,7 +17,7 @@ import "./MetricsDashboard.css";
 const METRIC_CONFIG = {
   pages_processed: {
     label: "Pages Processed",
-    icon: <FileTextOutlined />,
+    icon: <FileText />,
     bgColor: "#e8f5e9",
     iconBg: "#c8e6c9",
     iconColor: "#2e7d32",
@@ -25,7 +25,7 @@ const METRIC_CONFIG = {
   },
   documents_processed: {
     label: "Documents Processed",
-    icon: <FileTextOutlined />,
+    icon: <FileText />,
     bgColor: "#fff3e0",
     iconBg: "#ffe0b2",
     iconColor: "#e65100",
@@ -33,7 +33,7 @@ const METRIC_CONFIG = {
   },
   llm_calls: {
     label: "LLM Calls",
-    icon: <ApiOutlined />,
+    icon: <Plug />,
     bgColor: "#e0f2f1",
     iconBg: "#b2dfdb",
     iconColor: "#00695c",
@@ -41,7 +41,7 @@ const METRIC_CONFIG = {
   },
   prompt_executions: {
     label: "Prompt Executions",
-    icon: <ThunderboltOutlined />,
+    icon: <Zap />,
     bgColor: "#ede7f6",
     iconBg: "#d1c4e9",
     iconColor: "#4527a0",
@@ -49,7 +49,7 @@ const METRIC_CONFIG = {
   },
   deployed_api_requests: {
     label: "API Requests",
-    icon: <RocketOutlined />,
+    icon: <Rocket />,
     bgColor: "#e3f2fd",
     iconBg: "#bbdefb",
     iconColor: "#1565c0",
@@ -57,7 +57,7 @@ const METRIC_CONFIG = {
   },
   llm_usage: {
     label: "LLM Usage Cost",
-    icon: <DollarOutlined />,
+    icon: <DollarSign />,
     bgColor: "#fce4ec",
     iconBg: "#f8bbd9",
     iconColor: "#c2185b",
@@ -67,7 +67,7 @@ const METRIC_CONFIG = {
   },
   etl_pipeline_executions: {
     label: "ETL Executions",
-    icon: <RocketOutlined />,
+    icon: <Rocket />,
     bgColor: "#ffebee",
     iconBg: "#ffcdd2",
     iconColor: "#c62828",
@@ -75,7 +75,7 @@ const METRIC_CONFIG = {
   },
   challenges: {
     label: "Challenges",
-    icon: <ThunderboltOutlined />,
+    icon: <Zap />,
     bgColor: "#fce4ec",
     iconBg: "#f8bbd9",
     iconColor: "#ad1457",
@@ -83,7 +83,7 @@ const METRIC_CONFIG = {
   },
   summarization_calls: {
     label: "Summarizations",
-    icon: <ThunderboltOutlined />,
+    icon: <Zap />,
     bgColor: "#e0f7fa",
     iconBg: "#b2ebf2",
     iconColor: "#00838f",
@@ -91,7 +91,7 @@ const METRIC_CONFIG = {
   },
   failed_pages: {
     label: "Failed Pages",
-    icon: <WarningOutlined />,
+    icon: <TriangleAlert />,
     bgColor: "#fff1f0",
     iconBg: "#ffccc7",
     iconColor: "#cf1322",
@@ -99,7 +99,7 @@ const METRIC_CONFIG = {
   },
   hitl_reviews: {
     label: "HITL Reviews",
-    icon: <EyeOutlined />,
+    icon: <Eye />,
     bgColor: "#f3e8ff",
     iconBg: "#e0cffc",
     iconColor: "#6d28d9",
@@ -107,7 +107,7 @@ const METRIC_CONFIG = {
   },
   hitl_completions: {
     label: "HITL Completions",
-    icon: <CheckCircleOutlined />,
+    icon: <CircleCheck />,
     bgColor: "#ecfdf5",
     iconBg: "#d1fae5",
     iconColor: "#059669",
@@ -189,7 +189,7 @@ function MetricsSummary({ data, loading }) {
       {sortedMetrics.map((metric) => {
         const config = METRIC_CONFIG[metric.metric_name] || {
           label: metric.metric_name,
-          icon: <ApiOutlined />,
+          icon: <Plug />,
           bgColor: "#f5f5f5",
           iconBg: "#e0e0e0",
           iconColor: "#616161",

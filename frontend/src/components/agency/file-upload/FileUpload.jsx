@@ -1,5 +1,8 @@
-import { UploadOutlined } from "@ant-design/icons";
+// Aliased: antd's `Upload` component (still in use until P3) would otherwise be
+// shadowed by the lucide icon of the same name.
+
 import { Button, Modal, message, Upload } from "antd";
+import { Upload as UploadIcon } from "lucide-react";
 import PropTypes from "prop-types";
 import {
   WORKFLOW_PAGE_MAX_FILES,
@@ -66,7 +69,7 @@ const FileUpload = ({
         maxCount={WORKFLOW_PAGE_MAX_FILES}
         multiple={true}
       >
-        <Button icon={<UploadOutlined />}>Select File</Button>
+        <Button icon={<UploadIcon className="size-4" />}>Select File</Button>
       </Upload>
     </Modal>
   );

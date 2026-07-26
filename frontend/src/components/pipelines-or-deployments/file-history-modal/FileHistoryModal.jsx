@@ -1,12 +1,4 @@
 import {
-  ClearOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  ExclamationCircleFilled,
-  FilterOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
-import {
   Button,
   Col,
   Input,
@@ -22,6 +14,14 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import {
+  CircleAlert,
+  Copy,
+  Eraser,
+  Filter,
+  RotateCw,
+  Trash2,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
@@ -385,7 +385,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Button
               type="text"
               size="small"
-              icon={<CopyOutlined />}
+              icon={<Copy />}
               onClick={(e) => {
                 e.stopPropagation();
                 handleCopy(text, "File path");
@@ -467,7 +467,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Button
               type="text"
               size="small"
-              icon={<CopyOutlined />}
+              icon={<Copy />}
               onClick={(e) => {
                 e.stopPropagation();
                 handleCopy(error, "Error message");
@@ -491,7 +491,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
           okText="Yes"
           cancelText="No"
         >
-          <Button type="link" danger icon={<DeleteOutlined />} size="small">
+          <Button type="link" danger icon={<Trash2 />} size="small">
             Delete
           </Button>
         </Popconfirm>
@@ -575,14 +575,14 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
               <Space size="small" className="full-width">
                 <Button
                   type="primary"
-                  icon={<FilterOutlined />}
+                  icon={<Filter />}
                   onClick={handleApplyFilters}
                   className="flex-button"
                 >
                   {hasUnappliedChanges ? "Apply *" : "Apply"}
                 </Button>
                 <Button
-                  icon={<ReloadOutlined />}
+                  icon={<RotateCw />}
                   onClick={handleResetFilters}
                   className="flex-button"
                 >
@@ -606,7 +606,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             >
               <Button
                 danger
-                icon={<DeleteOutlined />}
+                icon={<Trash2 />}
                 disabled={selectedRowKeys.length === 0}
               >
                 Delete Selected ({selectedRowKeys.length})
@@ -614,7 +614,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             </Popconfirm>
 
             <Button
-              icon={<ClearOutlined />}
+              icon={<Eraser />}
               onClick={handlePrepareBulkClear}
               loading={fetchingCount}
               disabled={!hasAppliedFilters || pagination.total === 0}
@@ -626,7 +626,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Modal
               title={
                 <Space>
-                  <ExclamationCircleFilled className="warning-icon" />
+                  <CircleAlert className="warning-icon" />
                   <span>Clear with filters</span>
                 </Space>
               }
@@ -654,7 +654,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             </Modal>
 
             <Button
-              icon={<ReloadOutlined />}
+              icon={<RotateCw />}
               onClick={() =>
                 fetchFileHistories(pagination.current, pagination.pageSize)
               }

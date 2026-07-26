@@ -1,5 +1,5 @@
-import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
+import { ArrowDown, Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 
@@ -28,7 +28,7 @@ const DefaultCustomButtons = ({
     <Space gap={16}>
       <CustomButton
         type="default"
-        icon={<ArrowDownOutlined />}
+        icon={<ArrowDown />}
         onClick={() => setOpenImportTool(true)}
         loading={isImportLoading}
       >
@@ -36,7 +36,7 @@ const DefaultCustomButtons = ({
       </CustomButton>
       <CustomButton
         type="primary"
-        icon={<PlusOutlined />}
+        icon={<Plus />}
         onClick={handleNewProjectBtnClick}
       >
         New Project

@@ -1,5 +1,5 @@
-import { CaretDownOutlined } from "@ant-design/icons";
 import { Tree, Typography } from "antd";
+import { ChevronDown } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 
@@ -145,7 +145,7 @@ function FileExplorer({
             rootClassName="explorerTree"
             showLine
             treeData={tree}
-            switcherIcon={<CaretDownOutlined />}
+            switcherIcon={<ChevronDown />}
             expandedKeys={expandedKeys}
             selectedKeys={selectedKeys}
             autoExpandParent={autoExpandParent}

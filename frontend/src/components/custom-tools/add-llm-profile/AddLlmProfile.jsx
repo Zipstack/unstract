@@ -1,10 +1,4 @@
 import {
-  ArrowLeftOutlined,
-  CaretRightOutlined,
-  DownOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
   Button,
   Col,
   Collapse,
@@ -16,6 +10,7 @@ import {
   Typography,
   theme,
 } from "antd";
+import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -277,11 +272,11 @@ function AddLlmProfile({
                   : "Select retrieval strategy"}
               </span>
               <div className="retrieval-strategy-actions">
-                <SettingOutlined
+                <Settings
                   className="retrieval-strategy-settings-icon"
                   title="Configure retrieval strategy"
                 />
-                <DownOutlined className="retrieval-strategy-dropdown-icon" />
+                <ChevronDown className="retrieval-strategy-dropdown-icon" />
               </div>
             </button>
           </Form.Item>
@@ -380,7 +375,7 @@ function AddLlmProfile({
   };
 
   const handleCaretIcon = (isActive) => {
-    return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
+    return <ChevronRight rotate={isActive ? 90 : 0} />;
   };
 
   const handleLlmChangeForTokens = async (value) => {
@@ -464,7 +459,7 @@ function AddLlmProfile({
         <SpaceWrapper>
           <div>
             <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
-              <ArrowLeftOutlined />
+              <ArrowLeft />
             </Button>
             <Typography.Text className="add-cus-tool-header">
               {modalTitle}

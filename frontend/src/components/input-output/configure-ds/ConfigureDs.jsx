@@ -1,5 +1,5 @@
-import { InfoCircleOutlined } from "@ant-design/icons";
 import { Col, Popover, Row } from "antd";
+import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
@@ -383,7 +383,7 @@ function ConfigureDs({
             trigger="click"
             placement="bottomRight"
           >
-            <InfoCircleOutlined className="config-doc-icon" />
+            <Info className="config-doc-icon" />
           </Popover>
         </div>
       )}

@@ -1,5 +1,5 @@
-import { DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button, Card, Flex, Space, Tooltip, Typography } from "antd";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
@@ -235,7 +235,7 @@ function CardItem({
       <Button
         type="text"
         className="card-expand-chevron"
-        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+        icon={isExpanded ? <ChevronUp /> : <ChevronDown />}
         onClick={handleToggleExpand}
       />
     );

@@ -1,5 +1,7 @@
-import { PlusOutlined, UserOutlined } from "@ant-design/icons";
+// Aliased: this file defines its own `User` component below.
+
 import { Pagination, Typography } from "antd";
+import { Plus, User as UserIcon } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -379,7 +381,7 @@ function Workflows() {
   const newWorkflowButton = (
     <CustomButton
       type="primary"
-      icon={<PlusOutlined />}
+      icon={<Plus />}
       onClick={handleNewWorkflowBtnClick}
     >
       New Workflow
@@ -502,7 +504,7 @@ function Workflows() {
 function User({ name }) {
   return name ? (
     <div className="sessionDetails">
-      <UserOutlined />
+      <UserIcon className="size-3.5" />
       <Text italic ellipsis>
         {name}
       </Text>

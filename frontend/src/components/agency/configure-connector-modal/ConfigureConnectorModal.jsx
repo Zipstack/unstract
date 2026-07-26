@@ -1,4 +1,3 @@
-import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
 import {
   Button,
   Col,
@@ -11,6 +10,7 @@ import {
   Typography,
 } from "antd";
 import { cloneDeep, isEqual } from "lodash";
+import { CloudDownload, CloudUpload } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -617,9 +617,9 @@ function ConfigureConnectorModal({
         {!connDetails?.id && connMode !== "API" && (
           <div className="connector-placeholder">
             {connType === "input" ? (
-              <CloudDownloadOutlined className="connector-placeholder-icon" />
+              <CloudDownload className="connector-placeholder-icon" />
             ) : (
-              <CloudUploadOutlined className="connector-placeholder-icon" />
+              <CloudUpload className="connector-placeholder-icon" />
             )}
             <Typography.Text className="connector-placeholder-text">
               Select an existing connector or create a new connector to continue
