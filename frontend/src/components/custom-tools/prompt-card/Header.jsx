@@ -1,4 +1,3 @@
-import { Checkbox, Input } from "antd";
 import debounce from "lodash/debounce";
 import {
   CircleCheck,
@@ -12,6 +11,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Checkbox, Input } from "@/components/ui/antd-inputs";
 import { Col, Row } from "@/components/ui/antd-layout";
 import { Tag } from "@/components/ui/antd-leaves";
 import { Dropdown, Tooltip } from "@/components/ui/antd-overlays";

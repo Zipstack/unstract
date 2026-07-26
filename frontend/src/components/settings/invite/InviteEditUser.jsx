@@ -1,6 +1,7 @@
-import { Form, Input, Select } from "antd";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Form } from "@/components/ui/antd-form";
+import { Input, Select } from "@/components/ui/antd-inputs";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";

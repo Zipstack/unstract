@@ -1,9 +1,10 @@
-import { Select, Tabs } from "antd";
+import { Tabs } from "antd";
 import { cloneDeep, isEqual } from "lodash";
 import { CloudDownload, CloudUpload } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Image } from "@/components/ui/antd-leaves";
 import { Modal } from "@/components/ui/antd-overlays";

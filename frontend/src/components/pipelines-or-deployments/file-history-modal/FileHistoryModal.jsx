@@ -1,4 +1,4 @@
-import { Input, InputNumber, Select, Table } from "antd";
+import { Table } from "antd";
 import {
   CircleAlert,
   Copy,
@@ -10,6 +10,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Input, InputNumber, Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Tag } from "@/components/ui/antd-leaves";
 import { Modal, Popconfirm, Tooltip } from "@/components/ui/antd-overlays";

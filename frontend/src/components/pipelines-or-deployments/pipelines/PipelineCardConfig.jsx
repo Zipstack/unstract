@@ -1,4 +1,3 @@
-import { Switch } from "antd";
 import cronstrue from "cronstrue";
 import {
   Bell,
@@ -16,6 +15,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Switch } from "@/components/ui/antd-inputs";
 import { Flex, Space } from "@/components/ui/antd-layout";
 import { Avatar, Tag } from "@/components/ui/antd-leaves";
 import { Tooltip } from "@/components/ui/antd-overlays";

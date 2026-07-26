@@ -1,6 +1,6 @@
-import { Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Select } from "@/components/ui/antd-inputs";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 

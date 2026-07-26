@@ -1,8 +1,9 @@
-import { Input, List, Segmented } from "antd";
+import { List, Segmented } from "antd";
 import debounce from "lodash/debounce";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/antd-inputs";
 
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
 import "./ListOfSources.css";

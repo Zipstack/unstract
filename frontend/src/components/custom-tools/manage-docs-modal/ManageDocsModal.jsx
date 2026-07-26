@@ -1,9 +1,10 @@
-import { Radio, Table, Upload } from "antd";
+import { Table, Upload } from "antd";
 import { CircleCheck, CircleX, RotateCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Radio } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Divider, Tag } from "@/components/ui/antd-leaves";
 import { Modal, Tooltip } from "@/components/ui/antd-overlays";

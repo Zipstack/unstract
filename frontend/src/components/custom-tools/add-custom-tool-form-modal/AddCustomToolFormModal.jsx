@@ -1,8 +1,9 @@
-import { Form, Input } from "antd";
 import EmojiPicker from "emoji-picker-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Form } from "@/components/ui/antd-form";
+import { Input } from "@/components/ui/antd-inputs";
 import { Modal, Popover } from "@/components/ui/antd-overlays";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";

@@ -1,8 +1,10 @@
-import { Form, Input, Select, theme } from "antd";
+import { theme } from "antd";
 import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Form } from "@/components/ui/antd-form";
+import { Input, Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Collapse } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";

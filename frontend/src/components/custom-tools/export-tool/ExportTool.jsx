@@ -1,7 +1,8 @@
-import { List, Radio, Select } from "antd";
+import { List } from "antd";
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Radio, Select } from "@/components/ui/antd-inputs";
 import { Avatar } from "@/components/ui/antd-leaves";
 import { Modal, Popconfirm } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";

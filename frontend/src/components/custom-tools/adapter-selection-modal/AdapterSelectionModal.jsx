@@ -1,6 +1,7 @@
-import { Form, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/antd-form";
+import { Select } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Divider } from "@/components/ui/antd-leaves";
 import { Modal } from "@/components/ui/antd-overlays";

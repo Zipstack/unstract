@@ -1,7 +1,7 @@
-import { Radio } from "antd";
 import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/antd-button";
+import { Radio } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 
 const FilterIcon = ({ filtered }) => (

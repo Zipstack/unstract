@@ -1,8 +1,9 @@
-import { Form, Input } from "antd";
 import { Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Form } from "@/components/ui/antd-form";
+import { Input } from "@/components/ui/antd-inputs";
 import { Dropdown, Modal, Tooltip } from "@/components/ui/antd-overlays";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

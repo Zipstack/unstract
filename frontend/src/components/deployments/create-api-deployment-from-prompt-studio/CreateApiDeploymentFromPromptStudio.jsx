@@ -1,8 +1,10 @@
-import { Form, Input, Steps } from "antd";
+import { Steps } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Form } from "@/components/ui/antd-form";
+import { Input } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Divider, Spin } from "@/components/ui/antd-leaves";
 import { Modal } from "@/components/ui/antd-overlays";

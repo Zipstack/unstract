@@ -1,8 +1,9 @@
-import { Card, Select } from "antd";
+import { Card } from "antd";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Select } from "@/components/ui/antd-inputs";
 import { Row, Space } from "@/components/ui/antd-layout";
 import { Divider, Tag } from "@/components/ui/antd-leaves";
 import { Collapse } from "@/components/ui/antd-overlays";

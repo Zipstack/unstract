@@ -1,7 +1,8 @@
-import { Switch, Table } from "antd";
+import { Table } from "antd";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/antd-button";
+import { Switch } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Tooltip } from "@/components/ui/antd-overlays";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";

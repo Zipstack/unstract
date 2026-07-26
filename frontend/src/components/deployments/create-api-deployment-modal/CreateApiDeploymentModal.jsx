@@ -1,6 +1,7 @@
-import { Form, Input, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/antd-form";
+import { Input, Select } from "@/components/ui/antd-inputs";
 import { Modal } from "@/components/ui/antd-overlays";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";

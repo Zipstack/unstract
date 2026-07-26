@@ -1,5 +1,5 @@
-import { Form } from "antd";
 import PropTypes from "prop-types";
+import { Form } from "@/components/ui/antd-form";
 import { Typography } from "@/components/ui/antd-typography";
 import "./RjsfWidgetLayout.css";
 import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown";

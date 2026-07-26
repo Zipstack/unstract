@@ -1,5 +1,5 @@
-import { Checkbox } from "antd";
 import PropTypes from "prop-types";
+import { Checkbox } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 

@@ -1,7 +1,7 @@
-import { Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Image } from "@/components/ui/antd-leaves";
 import { Tooltip } from "@/components/ui/antd-overlays";

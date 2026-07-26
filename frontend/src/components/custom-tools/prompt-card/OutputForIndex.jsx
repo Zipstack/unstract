@@ -1,8 +1,8 @@
-import { Input } from "antd";
 import { ArrowDown, ArrowUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Input } from "@/components/ui/antd-inputs";
 import { Modal } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 import "./PromptCard.css";
