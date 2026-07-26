@@ -15,6 +15,7 @@ from django.test import SimpleTestCase, override_settings
 
 from mcp_server import spend_guard
 from mcp_server.context import PlatformMCPContext
+from mcp_server.exceptions import MCPToolError
 from mcp_server.platform_views import PlatformMCPServerView
 from mcp_server.registry import PLATFORM_TOOLS, MCPTool
 
@@ -207,6 +208,10 @@ class SpendGuardDispatchTest(SimpleTestCase):
         tool = replace(
             PLATFORM_TOOLS.get("executePipeline"),
             handler=lambda ctx, **kw: {"ran": True},
+            # The real preflight resolves a pipeline_id against the DB, which
+            # this unit-tier test has no fixture for. Budget behaviour is what
+            # is under test here; preflight has its own tests below.
+            preflight=None,
         )
         with patch.object(PLATFORM_TOOLS, "get", return_value=tool):
             response = self.view._call_tool(
@@ -349,3 +354,120 @@ class BillableRegistryInvariantTest(SimpleTestCase):
         ]
 
         assert wrong == [], f"Billable tools must not be GET-tier: {wrong}"
+
+
+@override_settings(
+    MCP_BILLABLE_CALL_LIMIT=2, MCP_BILLABLE_WINDOW_SECONDS=60, CACHES=LOCMEM
+)
+class PreflightProtectsTheBudgetTest(SimpleTestCase):
+    """A call that could never have run must not cost a billable slot.
+
+    The budget is consumed on invocation and never refunded, which is right
+    for a call that may have spent tokens upstream — but wrong for one refused
+    on an argument the server could check for free. ``extractDocument`` is the
+    case that motivated this: ``api_name`` is caller-supplied prose rather than
+    an id copied from a listing, so an agent guessing at names could exhaust
+    the window without ever reaching an LLM.
+    """
+
+    def setUp(self) -> None:
+        cache.delete(f"mcp:billable:{ORG}")
+        self.view = PlatformMCPServerView()
+        self.context = context()
+
+    def tearDown(self) -> None:
+        cache.delete(f"mcp:billable:{ORG}")
+
+    def _call(self, tool: MCPTool, arguments: dict):
+        with patch.object(PLATFORM_TOOLS, "get", return_value=tool):
+            response = self.view._call_tool(
+                request_id=1,
+                params={"name": tool.name, "arguments": arguments},
+                context=self.context,
+            )
+        return json.loads(response.content)
+
+    def _billable_tool(self, preflight) -> MCPTool:
+        from dataclasses import replace
+
+        return replace(
+            PLATFORM_TOOLS.get("extractDocument"),
+            handler=lambda ctx, **kw: {"ran": True},
+            preflight=preflight,
+        )
+
+    def test_a_failed_preflight_does_not_consume_budget(self) -> None:
+        def refuse(ctx, **kwargs):
+            raise MCPToolError("No API deployment named 'typo'.")
+
+        body = self._call(self._billable_tool(refuse), {"api_name": "typo"})
+
+        assert body["result"]["isError"] is True
+        assert "typo" in body["result"]["content"][0]["text"]
+        assert spend_guard.peek(ORG).used == 0, (
+            "a call refused before it could run must not cost a billable slot"
+        )
+
+    def test_repeated_bad_names_never_exhaust_the_window(self) -> None:
+        """The failure mode this exists to prevent: an agent guessing at
+        deployment names locking the organization out of real extractions.
+        """
+
+        def refuse(ctx, **kwargs):
+            raise MCPToolError("No such deployment.")
+
+        for _ in range(5):
+            self._call(self._billable_tool(refuse), {"api_name": "guess"})
+
+        assert spend_guard.peek(ORG).used == 0
+
+        # The budget is still intact for a call that does resolve.
+        body = self._call(self._billable_tool(lambda ctx, **kw: None), {})
+        assert body["result"]["isError"] is False
+        assert spend_guard.peek(ORG).used == 1
+
+    def test_a_passing_preflight_still_consumes_budget(self) -> None:
+        """Preflight guards the budget; it must not become a way around it."""
+        body = self._call(self._billable_tool(lambda ctx, **kw: None), {})
+
+        assert body["result"]["isError"] is False
+        assert spend_guard.peek(ORG).used == 1
+
+    def test_preflight_runs_before_the_budget_not_merely_instead_of_it(self) -> None:
+        """Ordering, pinned directly.
+
+        If the budget were claimed first and the preflight merely reported the
+        refusal, the counter would still have moved. Exhausting the budget and
+        then calling with a bad name distinguishes the two: with correct
+        ordering the caller is told the name is wrong, not that it is broke.
+        """
+
+        def refuse(ctx, **kwargs):
+            raise MCPToolError("No API deployment named 'typo'.")
+
+        for _ in range(2):
+            self._call(self._billable_tool(lambda ctx, **kw: None), {})
+        assert spend_guard.peek(ORG).used == 2  # exhausted
+
+        body = self._call(self._billable_tool(refuse), {"api_name": "typo"})
+
+        text = body["result"]["content"][0]["text"]
+        assert "typo" in text, f"budget refusal masked the real problem: {text}"
+
+    def test_every_billable_tool_has_a_preflight(self) -> None:
+        """Each billable tool resolves something before it spends, so each can
+        refuse for free. A new one without a preflight silently reintroduces
+        the burn-a-slot-on-a-typo behaviour.
+        """
+        unguarded = [
+            name
+            for name in PLATFORM_TOOLS.names()
+            if PLATFORM_TOOLS.get(name).billable
+            and PLATFORM_TOOLS.get(name).preflight is None
+        ]
+
+        assert unguarded == [], (
+            "These billable tools consume budget before validating their "
+            f"arguments: {unguarded}. Give each a preflight that resolves its "
+            "target, or state here why it cannot fail cheaply."
+        )

@@ -105,6 +105,25 @@ def platform_extract_document_schema() -> dict[str, Any]:
     }
 
 
+def preflight_extract_document(
+    context: PlatformMCPContext, api_name: str, **_ignored: Any
+) -> None:
+    """Resolve the named deployment before any budget is claimed.
+
+    ``api_name`` is the one argument here an agent can plausibly get wrong: it
+    is a human-chosen string rather than an id copied from a listing, so a
+    guess or a typo is likely. The budget is never refunded, so without this
+    check each wrong guess would cost a billable slot for a call that reached
+    no LLM at all — and an agent guessing repeatedly could exhaust the window
+    without ever running an extraction.
+
+    Extra keyword arguments are accepted and ignored so that adding an argument
+    to the tool does not require touching this function; the handler is what
+    validates the rest.
+    """
+    _resolve_deployment(context, api_name)
+
+
 def platform_extract_document(
     context: PlatformMCPContext,
     api_name: str,

@@ -39,6 +39,17 @@ class MCPTool:
             by ``mcp_server.spend_guard``. Deliberately distinct from
             ``writes``: a tool can mutate cheaply (pausing a schedule) or cost
             money without changing configuration (running an extraction).
+        preflight: Optional ``preflight(context, **arguments)`` run *before* the
+            billable budget is claimed. It exists because the budget is
+            consumed on invocation and never refunded, so a call refused for a
+            reason the caller could have been told about up front — a
+            deployment name that does not resolve — would otherwise burn a slot
+            having spent nothing. Raise ``MCPToolError`` to refuse.
+
+            Only for checks that are cheap and certain: resolving a named
+            resource, not anything that could itself fail transiently. A tool
+            whose arguments are all opaque ids the caller got from a listing
+            does not need one.
     """
 
     name: str
@@ -48,6 +59,7 @@ class MCPTool:
     writes: bool = False
     required_method: str = "GET"
     billable: bool = False
+    preflight: Callable[..., Any] | None = None
 
     def to_mcp_schema(self) -> dict[str, Any]:
         """Serialize to the shape returned by `tools/list`."""
@@ -208,6 +220,7 @@ def build_platform_registry() -> MCPToolRegistry:
         list_workflows,
         no_args_schema,
         platform_read_me_first,
+        preflight_pipeline,
         set_api_deployment_active,
         set_api_deployment_active_schema,
         set_pipeline_active,
@@ -219,6 +232,7 @@ def build_platform_registry() -> MCPToolRegistry:
         platform_execution_status_schema,
         platform_extract_document,
         platform_extract_document_schema,
+        preflight_extract_document,
     )
     from mcp_server.tools.prompt_studio import (
         bulk_fetch_response,
@@ -231,6 +245,7 @@ def build_platform_registry() -> MCPToolRegistry:
         list_prompt_studio_documents_schema,
         list_prompts,
         list_prompts_schema,
+        preflight_project,
         single_pass_extraction,
         single_pass_extraction_schema,
     )
@@ -393,6 +408,7 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            preflight=preflight_pipeline,
         )
     )
 
@@ -493,6 +509,7 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            preflight=preflight_project,
         )
     )
     registry.register(
@@ -511,6 +528,7 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            preflight=preflight_project,
         )
     )
     registry.register(
@@ -530,6 +548,7 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            preflight=preflight_project,
         )
     )
     registry.register(
@@ -548,6 +567,7 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            preflight=preflight_project,
         )
     )
     registry.register(
@@ -570,6 +590,9 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+            # api_name is caller-supplied prose rather than an id from a
+            # listing, so resolve it before the budget is claimed.
+            preflight=preflight_extract_document,
         )
     )
     registry.register(

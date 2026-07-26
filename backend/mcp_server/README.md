@@ -236,6 +236,17 @@ deal without anyone watching — so they are budgeted per organization over a
 rolling window (`MCP_BILLABLE_CALL_LIMIT`, default 50 per
 `MCP_BILLABLE_WINDOW_SECONDS`, default one hour).
 
+**A call that could never have run does not cost a slot.** The budget is
+consumed on invocation and never refunded, which is right for a call that may
+have spent tokens upstream — but wrong for one refused on an argument the
+server could check for free. Every billable tool therefore declares a
+`preflight` that resolves its target (the deployment, project or pipeline it
+names) *before* the budget is claimed. This matters most for `extractDocument`,
+whose `api_name` is caller-supplied prose rather than an id copied from a
+listing: without it, an agent guessing at names could exhaust the window
+without ever reaching an LLM. `test_spend_guard.py` fails if a billable tool is
+registered without one.
+
 **It counts calls, not tokens or currency.** Unstract's open-source backend
 records usage after the fact but has no pre-flight allowance to check against —
 subscription and quota enforcement live in the enterprise overlay, which this

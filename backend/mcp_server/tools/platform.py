@@ -428,6 +428,29 @@ def execute_pipeline_schema() -> dict[str, Any]:
     }
 
 
+def _resolve_pipeline(context: PlatformMCPContext, pipeline_id: str) -> Pipeline:
+    """Find a pipeline the caller may reach, or refuse."""
+    pipeline = Pipeline.objects.for_user(context.user).filter(id=pipeline_id).first()
+    if pipeline is None:
+        raise MCPToolError(
+            f"No pipeline with id '{pipeline_id}' in organization "
+            f"'{context.org_name}'. Call listPipelines to see valid ids."
+        )
+    return pipeline
+
+
+def preflight_pipeline(
+    context: PlatformMCPContext, pipeline_id: str, **_ignored: Any
+) -> None:
+    """Resolve the pipeline before any budget is claimed.
+
+    ``execute_pipeline`` resolves it again inside the handler, but that runs
+    after the budget is consumed and the budget is never refunded — so a stale
+    id would cost a billable slot for a run that never started.
+    """
+    _resolve_pipeline(context, pipeline_id)
+
+
 def execute_pipeline(context: PlatformMCPContext, pipeline_id: str) -> dict[str, Any]:
     """Trigger a run of an ETL or task pipeline.
 
@@ -437,12 +460,7 @@ def execute_pipeline(context: PlatformMCPContext, pipeline_id: str) -> dict[str,
     """
     from pipeline_v2.manager import PipelineManager
 
-    pipeline = Pipeline.objects.for_user(context.user).filter(id=pipeline_id).first()
-    if pipeline is None:
-        raise MCPToolError(
-            f"No pipeline with id '{pipeline_id}' in organization "
-            f"'{context.org_name}'. Call listPipelines to see valid ids."
-        )
+    pipeline = _resolve_pipeline(context, pipeline_id)
 
     if context.request is None:
         # The manager mutates request.data on the way to the workflow viewset,

@@ -265,15 +265,6 @@ class BaseMCPView(views.APIView):
                 request_id, JSONRPC.UNAUTHORIZED, "Permission denied", refusal
             )
 
-        # Budget is checked after permission and before the handler, so an
-        # unauthorized call never consumes budget. Unlike the permission
-        # refusal above this is temporal, so it comes back as an isError
-        # *result* the agent can read and retry — a protocol error would read
-        # as "this tool does not work" and stop it retrying later.
-        over_budget = self.check_spend_allowed(tool, context)
-        if over_budget is not None:
-            return rpc_result(request_id, tool_content(over_budget, is_error=True))
-
         arguments = params.get("arguments") or {}
         if not isinstance(arguments, dict):
             return rpc_error(
@@ -282,6 +273,35 @@ class BaseMCPView(views.APIView):
                 "Invalid params",
                 "'arguments' must be an object",
             )
+
+        # Validate the arguments a billable tool was given *before* claiming
+        # budget. The budget is consumed on invocation and never refunded, so
+        # without this a caller naming a deployment that does not exist would
+        # pay a slot for a call that spent nothing upstream — and an agent
+        # guessing at a name could exhaust the window without ever running a
+        # single extraction.
+        if tool.preflight is not None:
+            try:
+                tool.preflight(context, **arguments)
+            except MCPToolError as error:
+                return rpc_result(request_id, tool_content(str(error), is_error=True))
+            except TypeError as error:
+                logger.warning(
+                    f"MCP tool '{tool_name}' preflight rejected arguments: {error}"
+                )
+                return rpc_error(
+                    request_id, JSONRPC.INVALID_PARAMS, "Invalid params", str(error)
+                )
+
+        # Budget is checked after permission and preflight, and before the
+        # handler, so neither an unauthorized call nor one that could never
+        # have run consumes budget. Unlike the permission refusal above this is
+        # temporal, so it comes back as an isError *result* the agent can read
+        # and retry — a protocol error would read as "this tool does not work"
+        # and stop it retrying later.
+        over_budget = self.check_spend_allowed(tool, context)
+        if over_budget is not None:
+            return rpc_result(request_id, tool_content(over_budget, is_error=True))
 
         try:
             result = tool.handler(context, **arguments)

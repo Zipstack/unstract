@@ -349,3 +349,19 @@ def list_prompts(context: PlatformMCPContext, project_id: str) -> dict[str, Any]
             for prompt in prompts
         ],
     }
+
+
+def preflight_project(
+    context: PlatformMCPContext, project_id: str, **_ignored: Any
+) -> None:
+    """Resolve the project before any budget is claimed.
+
+    Every billable tool in this module already calls ``_resolve_project`` — but
+    inside the handler, which runs *after* the budget is consumed. A stale or
+    mistyped ``project_id`` would therefore cost a slot for a call that never
+    reached an LLM. Running the same resolution first makes that refusal free.
+
+    Cheap and deterministic by design: a single indexed lookup the handler
+    repeats anyway, not work that could itself fail transiently.
+    """
+    _resolve_project(context, project_id)
