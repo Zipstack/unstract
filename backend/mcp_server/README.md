@@ -54,8 +54,12 @@ POST /deployment/api/<org_name>/<api_name>/mcp/<api_key>/
 
 The path key takes precedence over the header when both are present.
 
-`GET` on either URL returns server identity for clients that probe before
-connecting. It is unauthenticated and reveals nothing about the deployment.
+`GET` on either URL answers `405 Method Not Allowed` with `Allow: POST`. Under
+Streamable HTTP a client issues `GET` to open a server-to-client SSE stream,
+and a server that offers none must decline — every tool call here is
+request/response, so there is nothing to stream. The 405 still carries a small
+server-identity body for uptime probes and humans with `curl`; it is
+unauthenticated and reveals nothing about the deployment behind it.
 
 ## Connecting
 

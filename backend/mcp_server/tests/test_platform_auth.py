@@ -107,9 +107,10 @@ class PlatformMCPAuthTest(TestCase):
     def test_read_tier_key_cannot_reach_the_server(self) -> None:
         """A documented limitation, pinned so it cannot change silently.
 
-        The middleware's tier check gates on HTTP method and every MCP call is
-        a POST, so a `read` key is refused outright — even though this server
-        exposes nothing but read tools.
+        The middleware's tier check gates on HTTP method and every JSON-RPC
+        message arrives as a POST whatever the tool inside it does, so a `read`
+        key is refused outright — even though this server exposes plenty of
+        read tools.
         """
         self.key.permission = "read"
         self.key.save()

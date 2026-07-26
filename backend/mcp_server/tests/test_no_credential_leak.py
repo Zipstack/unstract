@@ -29,6 +29,8 @@ from connector_v2.models import ConnectorInstance
 from django.test import TestCase, override_settings
 from platform_api.models import PlatformApiKey
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -119,8 +121,24 @@ class NoCredentialLeakTest(TestCase):
         APIDeployment.objects.create(
             api_name="leak-api", display_name="Leak API", workflow=self.workflow
         )
-        CustomTool.objects.create(
+        self.project = CustomTool.objects.create(
             tool_name="Leak Prompts", description="d", author="acme"
+        )
+        DocumentManager.objects.create(
+            document_name="leak-doc.pdf", tool=self.project
+        )
+        # The webhook URL carries a canary because ToolStudioPrompt is the one
+        # model in this sweep with a credential-bearing field that is not a
+        # connector or adapter — a serializer-built response would carry it
+        # straight out, and this is what catches that.
+        ToolStudioPrompt.objects.create(
+            prompt_key="leak_check",
+            prompt="What is the total?",
+            tool_id=self.project,
+            sequence_number=1,
+            prompt_type="Text",
+            enforce_type="text",
+            postprocessing_webhook_url=f"https://hooks.internal/x?token={LLM_API_KEY}",
         )
         # WorkflowExecution.save() mirrors into a Redis-backed execution cache
         # via its own client, which override_settings(CACHES=...) does not
@@ -167,6 +185,8 @@ class NoCredentialLeakTest(TestCase):
             "listExecutions": {},
             "getUsageSummary": {},
             "getExecutionDetail": {"execution_id": str(self.execution.id)},
+            "listPromptStudioDocuments": {"project_id": str(self.project.tool_id)},
+            "listPrompts": {"project_id": str(self.project.tool_id)},
         }
 
         checked = []
