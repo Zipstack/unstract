@@ -2,7 +2,7 @@
 
 .list-of-tools-layout {
   height: 100%;
-  background-color: var(--page-bg-2);
+  background-color: var(--legacy-page-bg-2);
   padding: 12px;
   overflow-y: auto;
 }
@@ -27,7 +27,7 @@
 }
 
 .list-of-tools-island {
-  background-color: var(--page-bg-1);
+  background-color: var(--legacy-page-bg-1);
   height: 100%;
   padding: 20px;
   overflow-y: auto;

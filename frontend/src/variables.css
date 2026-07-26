@@ -1,43 +1,44 @@
 :root {
-  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  --white: #ffffff;
-  --black: #000000;
+  --legacy-font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+  --legacy-white: #ffffff;
+  --legacy-black: #000000;
 
-  --primary: #092c4c;
-  --secondary: #0c3861;
+  --legacy-primary: #092c4c;
+  --legacy-secondary: #0c3861;
 
-  --font-color-1: #ffffff;
+  --legacy-font-color-1: #ffffff;
 
   /* font sizes */
-  --font-size-16: 16px;
-  --font-size-14: 14px;
+  --legacy-font-size-16: 16px;
+  --legacy-font-size-14: 14px;
 
   /* font weights */
-  --font-weight-400: 400;
-  --font-weight-500: 500;
-  --font-weight-600: 600;
+  --legacy-font-weight-400: 400;
+  --legacy-font-weight-500: 500;
+  --legacy-font-weight-600: 600;
 
-  --page-bg-1: #ffffff;
-  --page-bg-2: #e9e9e9;
-  --page-bg-3: #f5f7f9;
+  --legacy-page-bg-1: #ffffff;
+  --legacy-page-bg-2: #e9e9e9;
+  --legacy-page-bg-3: #f5f7f9;
 
-  --border-color-1: #e1e1e1;
-  --border-color-2: #efeaea;
+  --legacy-border-color-1: #e1e1e1;
+  --legacy-border-color-2: #efeaea;
 }
 
 .dark {
-  --white: #000000;
-  --black: #ffffff;
+  --legacy-white: #000000;
+  --legacy-black: #ffffff;
 
-  --primary: #092c4c;
-  --secondary: #0c3861;
+  --legacy-primary: #092c4c;
+  --legacy-secondary: #0c3861;
 
-  --font-color-1: #ffffff;
+  --legacy-font-color-1: #ffffff;
 
-  --page-bg-1: #000000;
-  --page-bg-2: #141414;
-  --page-bg-3: #111418;
+  --legacy-page-bg-1: #000000;
+  --legacy-page-bg-2: #141414;
+  --legacy-page-bg-3: #111418;
 
-  --border-color-1: #1d1d1d;
-  --border-color-2: #383535;
+  --legacy-border-color-1: #1d1d1d;
+  --legacy-border-color-2: #383535;
 }

@@ -1,8 +1,11 @@
 import { Button, ConfigProvider, notification, theme } from "antd";
 import axios from "axios";
+import { ThemeProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
+import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
@@ -14,6 +17,15 @@ import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
+
+/**
+ * Which notification surface renders `useAlertStore` alerts.
+ *
+ * P0 keeps antd so behaviour is unchanged; P2-06 switches this to "sonner"
+ * and removes the antd branch entirely (§7 coexistence).
+ * @type {"antd" | "sonner"}
+ */
+const ALERT_SURFACE = "antd";
 
 const GLOBAL_INTERCEPTOR_FLAG = Symbol.for("unstract.requestIdInterceptor");
 if (!axios[GLOBAL_INTERCEPTOR_FLAG]) {
@@ -84,14 +96,23 @@ function App() {
       </>
     );
 
-    notificationAPI.open({
-      message: alertDetails?.title,
-      description,
-      type: alertDetails?.type,
-      duration: alertDetails?.duration,
-      btn,
-      key: alertDetails?.key,
-    });
+    // P0-16 / §7 coexistence: exactly one notification surface is active at a
+    // time. antd owns it until P2-06 migrates the imperative call-sites, at
+    // which point ALERT_SURFACE flips to "sonner" and the antd branch (and its
+    // `btn`/`contextHolder` scaffolding) is deleted. Emitting on both would
+    // double every alert.
+    if (ALERT_SURFACE === "sonner") {
+      showAppToast(alertDetails);
+    } else {
+      notificationAPI.open({
+        message: alertDetails?.title,
+        description,
+        type: alertDetails?.type,
+        duration: alertDetails?.duration,
+        btn,
+        key: alertDetails?.key,
+      });
+    }
 
     const logSuffix = [
       showExecutionId && `Execution ID: \`${alertDetails.executionId}\``,
@@ -131,6 +152,7 @@ function App() {
       }}
     >
       <HelmetProvider>
+        <SyncShadcnTheme currentTheme={sessionDetails.currentTheme} />
         {isLogoutLoading && (
           <div className="fullscreen-loader">
             <GenericLoader />
@@ -141,6 +163,7 @@ function App() {
           <PageTitle title={"Unstract"} />
           {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
           {contextHolder}
+          <Toaster />
           <Router />
         </BrowserRouter>
       </HelmetProvider>
@@ -148,4 +171,40 @@ function App() {
   );
 }
 
-export { App };
+/**
+ * P0-15: mirror the existing session theme onto next-themes so ONE piece of
+ * state drives both antd's algorithm and the `.dark` class that the Midnight
+ * Bloom tokens key off.
+ *
+ * `sessionDetails.currentTheme` remains the single source of truth — this only
+ * reflects it. How the theme is persisted, and where the user toggles it, are
+ * deliberately unchanged (C4).
+ */
+function SyncShadcnTheme({ currentTheme }) {
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    setTheme(currentTheme === THEME.DARK ? THEME.DARK : THEME.LIGHT);
+  }, [currentTheme, setTheme]);
+
+  return null;
+}
+
+/**
+ * next-themes owns the `.dark` class on <html>. `enableSystem` is off because
+ * the app's theme is driven by the user's stored preference, not the OS.
+ */
+function AppWithProviders() {
+  return (
+    <ThemeProvider
+      attribute="class"
+      enableSystem={false}
+      defaultTheme={THEME.LIGHT}
+      disableTransitionOnChange
+    >
+      <App />
+    </ThemeProvider>
+  );
+}
+
+export { AppWithProviders as App };

@@ -2,7 +2,7 @@
 
 .metrics-dashboard {
   padding: 12px;
-  background-color: var(--page-bg-2);
+  background-color: var(--legacy-page-bg-2);
   flex: 1;
   overflow: hidden;
   display: flex;
@@ -10,7 +10,7 @@
 }
 
 .metrics-dashboard-container {
-  background-color: var(--page-bg-1);
+  background-color: var(--legacy-page-bg-1);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -30,7 +30,8 @@
 }
 
 /* Tab content padding — direct child only */
-.metrics-dashboard-container > .ant-tabs
+.metrics-dashboard-container
+  > .ant-tabs
   > .ant-tabs-content-holder
   > .ant-tabs-content {
   padding: 16px;

@@ -1,5 +1,5 @@
 .profile-page {
-  background-color: var(--page-bg-2);
+  background-color: var(--legacy-page-bg-2);
   min-height: 100%;
   padding: 0;
 }
@@ -70,7 +70,7 @@
   justify-content: center;
   align-items: center;
   min-height: 300px;
-  background-color: var(--white);
+  background-color: var(--legacy-white);
   border-radius: 14px;
 }
 

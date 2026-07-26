@@ -1,3 +1,4 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
@@ -87,6 +88,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       optionalPluginImports(),
+      // Tailwind v4. Must come after optionalPluginImports() so missing
+      // cloud-plugin imports are still resolved to stubs first.
+      tailwindcss(),
       react({
         // Include .js files for JSX transformation
         include: "**/*.{jsx,js}",

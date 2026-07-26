@@ -6,7 +6,7 @@
 }
 
 .topNav {
-  background-color: var(--primary);
+  background-color: var(--legacy-primary);
   padding-block: 14px;
   padding-inline-start: 20px;
   padding-inline-end: 12px;

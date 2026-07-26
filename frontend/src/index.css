@@ -1,4 +1,227 @@
-@import "variables.css";
+/* ------------------------------------------------------------------
+ * Tailwind v4 must be imported FIRST so its layer ordering is correct.
+ * (UN_SHADCN_IMPL_PLAN P0-10)
+ * ------------------------------------------------------------------ */
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
+/* Legacy Unstract vars, prefixed --legacy-* so they cannot collide with the
+ * shadcn semantic tokens below (D6). Removed entirely in P4. */
+@import "./variables.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------
+ * `inline` is MANDATORY. With a plain `@theme`, Tailwind snapshots the
+ * light value at build time and dark mode silently breaks. (P0-11)
+ * ------------------------------------------------------------------ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+}
+
+/* ------------------------------------------------------------------
+ * Midnight Bloom — light (UN_SHADCN_SPEC §2.5.1, verbatim).
+ * Type/spacing/leading scales are deliberately NOT declared: they are
+ * identical to Tailwind v4 stock (§2.5.0).
+ * ------------------------------------------------------------------ */
+:root {
+  /* Base palette */
+  --violet-50: #f1effe;
+  --violet-100: #e4e0fd;
+  --violet-300: #b7adf6;
+  --violet-500: #6f5cef; /* brand primary */
+  --violet-600: #5a45e6;
+  --violet-700: #4a37c8;
+  --purple-200: #f1e5ff;
+  --purple-400: #d9b8ff;
+  --purple-500: #9747ff;
+  --purple-600: #8638e5;
+  --sky-200: #d3e6fb;
+  --sky-300: #97caf5; /* secondary */
+  --sky-500: #5f8ad0;
+  --neutral-0: #ffffff;
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-150: #f0f0f0;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d3d3d3;
+  --neutral-400: #a1a1a1;
+  --neutral-500: #737373;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-850: #1f1f1f;
+  --neutral-900: #1a1a1a;
+  --neutral-925: #171717;
+  --neutral-950: #0a0a0a;
+  --red-600: #b41b30;
+  --red-300: #fca5a5;
+
+  /* Semantic aliases */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  --card: #fcfcfc;
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: #19191a;
+  --primary: var(--violet-500);
+  --primary-foreground: var(--neutral-50);
+  --secondary: var(--sky-300);
+  --secondary-foreground: #19191a;
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: #6161cc;
+  --destructive: var(--red-600);
+  --destructive-foreground: var(--neutral-0);
+  --success: #15803d;
+  --warning: #b45309;
+  --border: var(--neutral-200);
+  --input: var(--neutral-300);
+  --ring: var(--primary);
+
+  --chart-1: #a7c7ea;
+  --chart-2: #5f8ad0;
+  --chart-3: #4d73c7;
+  --chart-4: #4060b4;
+  --chart-5: #3b4e91;
+
+  --sidebar: var(--neutral-0);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--primary);
+
+  --radius: 10px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --font-display: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo,
+    Consolas, monospace;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --tracking-tighter: -0.04em;
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.025em;
+
+  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Midnight Bloom — dark (UN_SHADCN_SPEC §2.5.2, verbatim).
+ * The rgba() values are INTENTIONAL, not opaque colours (§2.5.3b). */
+.dark {
+  --background: var(--neutral-900);
+  --foreground: var(--neutral-50);
+  --card: #19191a;
+  --card-foreground: var(--neutral-50);
+  --popover: var(--neutral-925);
+  --popover-foreground: var(--neutral-50);
+  --primary: var(--violet-500);
+  --primary-foreground: var(--neutral-50);
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: var(--neutral-50);
+  --muted: var(--neutral-800);
+  --muted-foreground: var(--neutral-400);
+  --accent: #2a2a2d;
+  --accent-foreground: #c1c5fb;
+  --destructive: #e5484d;
+  --destructive-foreground: var(--neutral-50);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: #343434;
+  --ring: var(--primary);
+
+  --sidebar: var(--neutral-925);
+  --sidebar-foreground: var(--neutral-50);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: var(--neutral-50);
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: var(--primary);
+
+  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.45),
+    0 1px 2px -1px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.5),
+    0 2px 4px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.55),
+    0 4px 6px -4px rgba(0, 0, 0, 0.55);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.6),
+    0 8px 10px -6px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* ------------------------------------------------------------------
+ * Existing Unstract rules — unchanged below this line, except the
+ * body font-family fix noted in P0-12.
+ * ------------------------------------------------------------------ */
 
 html,
 #root {
@@ -6,18 +229,22 @@ html,
 }
 
 body {
-  font-family: var(--font-family) !important;
+  /* P0-12: `!important` dropped and repointed at --font-sans; it otherwise
+   * overrode the design token on every element. */
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   height: 100%;
-  background-color: var(--page-bg-2);
+  background-color: var(--legacy-page-bg-2);
+  /* NOTE (P0-12): `overflow: hidden` interacts with Radix's scroll-lock on
+   * dialogs. Left as-is for P0; re-test at the first P2 dialog conversion. */
   min-width: 1024px;
   overflow: hidden;
 }
 
 .page-bg-2 {
-  background-color: var(--page-bg-2);
+  background-color: var(--legacy-page-bg-2);
 }
 
 .center {
