@@ -187,6 +187,9 @@ class NoCredentialLeakTest(TestCase):
             "getExecutionDetail": {"execution_id": str(self.execution.id)},
             "listPromptStudioDocuments": {"project_id": str(self.project.tool_id)},
             "listPrompts": {"project_id": str(self.project.tool_id)},
+            # Seeded against this org's workflow, so the tool gets past its
+            # org-scope check and actually renders a response to scan.
+            "getExecutionStatus": {"execution_id": str(self.execution.id)},
         }
 
         checked = []

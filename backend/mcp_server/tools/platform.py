@@ -127,6 +127,13 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
                 "name": "getUsageSummary",
                 "purpose": "Tokens and cost recorded so far.",
             },
+            {
+                "name": "getExecutionStatus",
+                "purpose": (
+                    "Poll an extraction started by extractDocument. Free to "
+                    "call, unlike the extraction itself."
+                ),
+            },
         ],
         "state_change_tools": [
             {
@@ -159,6 +166,13 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
                 "name": "singlePassExtraction",
                 "purpose": "Run a project's whole prompt set. Most expensive.",
             },
+            {
+                "name": "extractDocument",
+                "purpose": (
+                    "Run a deployment's extraction workflow over documents. "
+                    "Needs an api_name from listApiDeployments."
+                ),
+            },
         ],
         "before_writing": (
             "State-change tools take effect immediately for the whole "
@@ -178,11 +192,15 @@ def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
             "deployments or projects, are deliberately not exposed here."
         ),
         "to_run_an_extraction": (
-            "This server cannot extract. Call listApiDeployments to get an "
-            "api_name, then open a separate MCP session against that "
-            "deployment's own endpoint — /deployment/api/<org>/<api_name>/mcp "
-            "— using that deployment's API key. That session exposes "
-            "extractDocument."
+            "Call listApiDeployments for an api_name, then extractDocument "
+            "with that name and your document URLs. If the response is not "
+            "already COMPLETED, poll getExecutionStatus with the returned "
+            "execution_id.\n\n"
+            "The same extraction is also available on a deployment-scoped "
+            "server at /deployment/api/<org>/<api_name>/mcp, which takes that "
+            "one deployment's own API key and can reach nothing else. Both "
+            "run the identical workflow — pick this server for one credential "
+            "across the organization, or that one for a narrower blast radius."
         ),
         "scope_warning": (
             "This credential is a service account, which reaches ALL resources "

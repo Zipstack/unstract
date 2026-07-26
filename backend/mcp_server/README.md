@@ -16,12 +16,21 @@ authenticated and which tools they expose.
 | Credential | that deployment's API key | a platform API key |
 | Authenticated by | the view itself | `CustomAuthMiddleware` |
 | URL | `/deployment/api/<org>/<api_name>/mcp` | `/api/v1/unstract/<org>/mcp/` |
-| Tools | extract, poll status | discovery + state changes |
+| Tools | extract, poll status | extract, plus discovery, observability, state changes and Prompt Studio |
 
 The split is not cosmetic. A deployment key grants exactly one workflow and
 resolves to no user, so it cannot authorize anything organization-wide; a
 platform key resolves to a service-account user and is checked by the shared
 auth middleware. Neither key works on the other server.
+
+**Both servers run extraction, and that is deliberate.** They are two blast
+radii for the same operation. A deployment key reaches one deployment, so a
+leaked one costs one workflow — but obtaining it is a separate step, and the
+platform server cannot hand it over (key retrieval is excluded, see below). A
+platform key reaches every deployment in the organization and needs no second
+credential. Requiring the narrow key bought no safety when the platform server
+already spends money through `executePipeline` and Prompt Studio; it only made
+extraction awkward to reach. Pick whichever tradeoff you want.
 
 ---
 
@@ -174,6 +183,7 @@ Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
 | `listExecutions` | read | Recent runs and their status. Start here to debug. |
 | `getExecutionDetail` | read | Per-file results and errors for one run. |
 | `getUsageSummary` | read | Tokens and cost recorded so far. |
+| `getExecutionStatus` | read | Poll an extraction started by `extractDocument`. |
 
 **State changes** — cheap, reversible:
 
@@ -191,11 +201,32 @@ Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
 | `fetchResponse` | `read_write` | Run one prompt against an indexed document. |
 | `bulkFetchResponse` | `read_write` | Run several prompts in one pass. |
 | `singlePassExtraction` | `read_write` | Run a project's whole prompt set. |
+| `extractDocument` | `read_write` | Run a named deployment's extraction workflow. |
 
 To extract a document through a *deployed* API, an agent calls
-`listApiDeployments` to find an `api_name`, then opens a **separate** session
-against the deployment server above. The Prompt Studio tools here are for
-working with prompts before they are deployed.
+`listApiDeployments` for an `api_name`, then `extractDocument` with that name —
+no second credential and no second session. Polling is free: `getExecutionStatus`
+is a read tool, so an agent waiting on a result never spends budget to check on
+it. The Prompt Studio tools are for working with prompts *before* they are
+deployed; `extractDocument` runs what is already deployed.
+
+Two things differ from the same tool on the deployment server, both because the
+caller is org-scoped rather than deployment-scoped:
+
+- **`api_name` is a required argument.** The deployment server learns its target
+  from the credential; here the agent names it.
+- **`llm_profile_id` is not offered.** That argument is validated against the
+  API key's owner, and a platform key resolves to a service account with no
+  meaningful owner to check against. Supplying some deployment's key to satisfy
+  the check would assert a principal the caller is not, so the argument is
+  dropped instead. Pinned by `test_registry_reachability.py`, because the
+  coupling is otherwise invisible: the field is what would make the serializer
+  read an `api_key` this context does not have.
+
+`getExecutionStatus` re-checks the execution against the organization before
+returning it. `DeploymentHelper.get_execution_status` does a bare lookup by id
+with no tenant filter, and this deployment runs one shared schema rather than a
+schema per tenant, so the check is made here rather than assumed.
 
 ## The spend guard
 

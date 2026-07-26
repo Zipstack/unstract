@@ -33,8 +33,18 @@ PLATFORM_ID_PRODUCERS = {
     "pipeline_id": "listPipelines",
     "workflow_id": "listWorkflows",
     "api_id": "listApiDeployments",
+    # listExecutions produces ids for past runs; extractDocument returns the id
+    # of the run it just started. Either is a valid handle for polling.
     "execution_id": "listExecutions",
+    # Not an id by name, but just as unguessable: an agent cannot invent a
+    # deployment's api_name any more than it can invent a UUID.
+    "api_name": "listApiDeployments",
 }
+
+# Argument names that identify a specific resource the caller must already
+# know. Extends past the ``_id`` suffix because ``api_name`` is an opaque
+# handle in every way that matters here.
+_OPAQUE_SUFFIXES = ("_id", "_ids", "_name")
 
 DEPLOYMENT_ID_PRODUCERS = {
     # The deployment server is scoped to a single API, and its execution id is
@@ -50,7 +60,7 @@ def _required_ids(registry) -> dict[str, list[str]]:
         schema = registry.get(name).input_schema
         required = set(schema.get("required", []))
         for argument in schema.get("properties", {}):
-            if argument in required and argument.endswith(("_id", "_ids")):
+            if argument in required and argument.endswith(_OPAQUE_SUFFIXES):
                 consumed.setdefault(argument, []).append(name)
     return consumed
 
@@ -239,3 +249,59 @@ class ReadMeFirstMatchesTheRegistryTest(SimpleTestCase):
             f"Deployment readMeFirst is out of sync. Missing: "
             f"{sorted(registered - listed)}, phantom: {sorted(listed - registered)}."
         )
+
+
+class PlatformExtractionShapeTest(SimpleTestCase):
+    """Invariants of extraction on the organization-scoped server.
+
+    Both servers run the same extraction. What differs is the credential, and
+    two consequences of that are enforced here because neither is visible at
+    the call site.
+    """
+
+    def test_platform_extraction_does_not_offer_an_llm_profile(self) -> None:
+        """The coupling that keeps a missing api_key from ever being read.
+
+        ``ExecutionRequestSerializer.validate_llm_profile_id`` resolves the
+        profile against the API key's owner. A platform caller has no
+        deployment key — ``MCPContext.api_key`` is None — and the only reason
+        that is safe is that this argument is never offered, so DRF never runs
+        that validator. Adding the field back would surface as "Unable to
+        validate LLM profile ownership" from a code path with no obvious link
+        to this schema.
+        """
+        schema = PLATFORM_TOOLS.get("extractDocument").input_schema
+
+        assert "llm_profile_id" not in schema["properties"], (
+            "llm_profile_id is validated against the API key's owner, which a "
+            "platform key does not have. Offering it here would either break "
+            "at runtime or require borrowing another principal's key."
+        )
+
+    def test_platform_extraction_still_mirrors_the_deployment_limits(self) -> None:
+        """The platform schema is derived from the deployment one, so the file
+        cap and tag rules cannot drift between the two servers.
+        """
+        platform = PLATFORM_TOOLS.get("extractDocument").input_schema["properties"]
+        deployment = DEPLOYMENT_TOOLS.get("extractDocument").input_schema["properties"]
+
+        assert platform["document_urls"] == deployment["document_urls"]
+        assert platform["timeout"] == deployment["timeout"]
+        assert platform["tags"] == deployment["tags"]
+
+    def test_platform_extraction_requires_naming_a_deployment(self) -> None:
+        """The deployment server gets its target from the credential; here the
+        agent must name one, so it is required rather than optional.
+        """
+        schema = PLATFORM_TOOLS.get("extractDocument").input_schema
+
+        assert "api_name" in schema["required"]
+        assert "document_urls" in schema["required"]
+
+    def test_polling_is_free_but_extracting_is_not(self) -> None:
+        """An agent told that polling costs money will avoid polling, which is
+        the one thing it should do freely while waiting.
+        """
+        assert PLATFORM_TOOLS.get("extractDocument").billable is True
+        assert PLATFORM_TOOLS.get("getExecutionStatus").billable is False
+        assert PLATFORM_TOOLS.get("getExecutionStatus").required_method == "GET"

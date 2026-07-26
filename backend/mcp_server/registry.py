@@ -214,6 +214,12 @@ def build_platform_registry() -> MCPToolRegistry:
         set_pipeline_active_schema,
         whoami,
     )
+    from mcp_server.tools.platform_execution import (
+        get_platform_execution_status,
+        platform_execution_status_schema,
+        platform_extract_document,
+        platform_extract_document_schema,
+    )
     from mcp_server.tools.prompt_studio import (
         bulk_fetch_response,
         bulk_fetch_response_schema,
@@ -542,6 +548,43 @@ def build_platform_registry() -> MCPToolRegistry:
             writes=True,
             required_method="POST",
             billable=True,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="extractDocument",
+            description=(
+                "Run a named API deployment's extraction workflow over one or "
+                "more documents.\n\n"
+                "**Costs money** and consumes the organization's extraction "
+                "quota. Call listApiDeployments first for a valid `api_name`; "
+                "the deployment fixes the prompts and output schema, so you "
+                "supply documents, not instructions.\n\n"
+                "The same operation is available on a deployment-scoped MCP "
+                "server, where the credential reaches only one deployment. "
+                "Use that one if you want a narrower blast radius.\n\n"
+                f"{_ORG_WIDE_WARNING}"
+            ),
+            input_schema=platform_extract_document_schema(),
+            handler=platform_extract_document,
+            writes=True,
+            required_method="POST",
+            billable=True,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="getExecutionStatus",
+            description=(
+                "Poll for the result of an extraction started by "
+                "extractDocument. Free to call.\n\n"
+                "If extractDocument already returned execution_status "
+                "COMPLETED, the result is in that response and no polling is "
+                "needed. Otherwise poll this until COMPLETED or ERROR, "
+                "pausing a few seconds between calls."
+            ),
+            input_schema=platform_execution_status_schema(),
+            handler=get_platform_execution_status,
         )
     )
 

@@ -11,15 +11,22 @@ _REQUEST_ADMIN_CACHE_ATTR = "_cached_is_organization_admin"
 
 
 def _is_service_account(request: Request) -> bool:
-    """Allow service accounts through for all non-DELETE methods.
+    """Allow service accounts through regardless of HTTP method.
 
-    Two constraints are enforced upstream in the authentication middleware
-    before this check is ever reached:
-      1. DELETE is blocked for all API keys.
-      2. Write methods (POST/PUT/PATCH) are blocked for READ-only API keys.
+    The authentication middleware has already checked the key's permission
+    tier against the request method (``ApiKeyPermission.allows``) before this
+    is reached, so the method itself needs no second look here:
+      1. ``read`` keys reach only GET/HEAD/OPTIONS.
+      2. ``read_write`` keys add POST/PUT/PATCH.
+      3. ``full_access`` keys add DELETE.
 
-    Therefore any service-account request that arrives here is permitted to
-    proceed regardless of HTTP method.
+    Note the third case: an earlier version of this docstring said DELETE was
+    blocked for all API keys, which stopped being true when ``full_access``
+    was introduced. A ``full_access`` service-account request does reach this
+    check on DELETE and is allowed through — object-level ownership is not
+    consulted, because a service account is org-wide by design. That tier is
+    the only thing standing between an API key and deleting any resource in
+    the organization, so grant it deliberately.
     """
     return getattr(request.user, "is_service_account", False)
 

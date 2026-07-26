@@ -322,6 +322,9 @@ class BillableRegistryInvariantTest(SimpleTestCase):
             "fetchResponse",
             "bulkFetchResponse",
             "singlePassExtraction",
+            # The most expensive tool on the server: it runs a whole
+            # extraction workflow and consumes the org's extraction quota.
+            "extractDocument",
         }
 
         unguarded = [

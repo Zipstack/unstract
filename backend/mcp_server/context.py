@@ -46,13 +46,22 @@ class MCPContext:
 
     Attributes:
         api: The API deployment this MCP server session is scoped to.
-        api_key: The validated API key used to authenticate the request.
-            Carried through because downstream execution helpers record it
-            against the execution.
+        api_key: The validated API key used to authenticate the request, or
+            ``None`` when the caller reached this deployment with an
+            organization-scoped platform key instead.
+
+            It is read in exactly one place: validating that an
+            ``llm_profile_id`` belongs to the key's owner
+            (``ExecutionRequestSerializer.validate_llm_profile_id``). The
+            platform server therefore does not offer that argument, so the
+            validator never runs and the ``None`` is never dereferenced — see
+            ``tools/platform_execution``. Supplying some other deployment's key
+            to fill the field would make that ownership check pass against a
+            principal the caller is not.
         org_name: Organization identifier taken from the URL, matching the
             value already placed in the state store by the auth layer.
     """
 
     api: APIDeployment
-    api_key: str
+    api_key: str | None
     org_name: str
