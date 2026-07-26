@@ -259,3 +259,93 @@ def single_pass_extraction(
         context, "single_pass_extraction", project_id, {"document_id": document_id}
     )
     return _result(response, project)
+
+
+def list_prompt_studio_documents_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "string",
+                "description": (
+                    "UUID of the Prompt Studio project, from listPromptStudioProjects."
+                ),
+            },
+        },
+        "required": ["project_id"],
+    }
+
+
+def list_prompt_studio_documents(
+    context: PlatformMCPContext, project_id: str
+) -> dict[str, Any]:
+    """List the documents already uploaded to a Prompt Studio project.
+
+    This is the only producer of the ``document_id`` that every billable tool
+    in this module requires, so without it those tools are unreachable.
+
+    Documents are resolved *through* the project rather than by a direct
+    ``DocumentManager`` lookup. The platform key authenticates as a service
+    account, for which ``for_user`` returns everything, so the project join in
+    ``_resolve_project`` is the scoping that actually holds.
+    """
+    project = _resolve_project(context, project_id)
+    documents = project.document_managers.all().order_by("document_name")
+
+    return {
+        "project_id": str(project.tool_id),
+        "project_name": project.tool_name,
+        "documents": [
+            {
+                "document_id": str(document.document_id),
+                "document_name": document.document_name,
+            }
+            for document in documents
+        ],
+    }
+
+
+def list_prompts_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "project_id": {
+                "type": "string",
+                "description": (
+                    "UUID of the Prompt Studio project, from listPromptStudioProjects."
+                ),
+            },
+        },
+        "required": ["project_id"],
+    }
+
+
+def list_prompts(context: PlatformMCPContext, project_id: str) -> dict[str, Any]:
+    """List a project's prompts, which is where ``prompt_id`` comes from.
+
+    The response is built field by field rather than through a serializer.
+    ``ToolStudioPrompt`` carries a ``profile_manager`` FK — the LLM, embedding
+    and vector-store adapters backing the prompt — and a
+    ``postprocessing_webhook_url``. A serializer would carry both out to the
+    agent, which is exactly what this server's README promises it does not do.
+    Adding a field here is therefore a deliberate act.
+    """
+    project = _resolve_project(context, project_id)
+    prompts = project.mapped_prompt.all().order_by("sequence_number")
+
+    return {
+        "project_id": str(project.tool_id),
+        "project_name": project.tool_name,
+        "prompts": [
+            {
+                "prompt_id": str(prompt.prompt_id),
+                "prompt_key": prompt.prompt_key,
+                "prompt": prompt.prompt,
+                "prompt_type": prompt.prompt_type,
+                "enforce_type": prompt.enforce_type,
+                "sequence_number": prompt.sequence_number,
+                "active": prompt.active,
+            }
+            for prompt in prompts
+        ],
+    }

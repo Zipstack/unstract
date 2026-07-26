@@ -1,0 +1,129 @@
+"""Every id a tool asks for must be obtainable from another tool.
+
+An MCP client sees only ``tools/list``. It has no database, no UI and no way to
+guess a UUID, so a tool whose required argument no other tool ever returns is
+dead on arrival — it will be listed, attempted, and fail every time.
+
+This shipped once already: the four billable Prompt Studio tools all required a
+``document_id`` while nothing in the registry produced one, which made the most
+expensive tools on the server the only unreachable ones. The failure was
+invisible because each tool was correct in isolation; only the registry as a
+whole was wrong. So the invariant is asserted over the registry, not per tool.
+"""
+
+from __future__ import annotations
+
+from django.test import SimpleTestCase
+
+from mcp_server.registry import DEPLOYMENT_TOOLS, PLATFORM_TOOLS
+
+# Which tool an agent is expected to call to obtain each opaque id.
+#
+# Written out rather than inferred from response shapes: handlers return plain
+# dicts built at runtime, so inference would mean executing them, and a map
+# that guesses would quietly bless the next unreachable id. Adding an entry
+# here is a deliberate statement that the named tool really does return it.
+PLATFORM_ID_PRODUCERS = {
+    "project_id": "listPromptStudioProjects",
+    "document_id": "listPromptStudioDocuments",
+    "prompt_id": "listPrompts",
+    "prompt_ids": "listPrompts",
+    "pipeline_id": "listPipelines",
+    "workflow_id": "listWorkflows",
+    "api_id": "listApiDeployments",
+    "execution_id": "listExecutions",
+}
+
+DEPLOYMENT_ID_PRODUCERS = {
+    # The deployment server is scoped to a single API, and its execution id is
+    # handed back by the extraction call itself rather than by a listing.
+    "execution_id": "extractDocument",
+}
+
+
+def _required_ids(registry) -> dict[str, list[str]]:
+    """Map each id-shaped argument to the tools that require it."""
+    consumed: dict[str, list[str]] = {}
+    for name in registry.names():
+        schema = registry.get(name).input_schema
+        required = set(schema.get("required", []))
+        for argument in schema.get("properties", {}):
+            if argument in required and argument.endswith(("_id", "_ids")):
+                consumed.setdefault(argument, []).append(name)
+    return consumed
+
+
+class PlatformRegistryReachabilityTest(SimpleTestCase):
+    def test_every_required_id_has_a_declared_producer(self) -> None:
+        consumed = _required_ids(PLATFORM_TOOLS)
+
+        unproducible = {
+            argument: tools
+            for argument, tools in consumed.items()
+            if argument not in PLATFORM_ID_PRODUCERS
+        }
+
+        assert unproducible == {}, (
+            "These tools require an id no tool is declared to produce, so an "
+            f"agent can never call them: {unproducible}. Either add the tool "
+            "that returns the id, or record its producer in "
+            "PLATFORM_ID_PRODUCERS."
+        )
+
+    def test_every_declared_producer_is_actually_registered(self) -> None:
+        """The map is only as good as its referents.
+
+        A producer that was renamed or dropped would leave the test above
+        passing while the id became unobtainable again.
+        """
+        missing = sorted(
+            {
+                producer
+                for producer in PLATFORM_ID_PRODUCERS.values()
+                if PLATFORM_TOOLS.get(producer) is None
+            }
+        )
+
+        assert missing == [], f"Declared id producers are not registered: {missing}"
+
+    def test_the_billable_prompt_studio_chain_is_walkable(self) -> None:
+        """The specific path that was broken, pinned end to end.
+
+        Named separately from the general invariant because this is the
+        sequence an agent must actually perform to spend money: project, then
+        document, then prompt, then the billable call.
+        """
+        for step in (
+            "listPromptStudioProjects",
+            "listPromptStudioDocuments",
+            "listPrompts",
+            "fetchResponse",
+        ):
+            assert PLATFORM_TOOLS.get(step) is not None, f"{step} is missing"
+
+        for producer in ("listPromptStudioDocuments", "listPrompts"):
+            tool = PLATFORM_TOOLS.get(producer)
+            assert tool.billable is False, (
+                f"{producer} exists so an agent can find ids before spending; "
+                "making it billable would put the discovery step behind the "
+                "budget it is meant to help the agent respect."
+            )
+            assert tool.required_method == "GET", (
+                f"{producer} only reads, so a read-tier key must reach it — "
+                "otherwise the billable tools stay unreachable for that key."
+            )
+
+
+class DeploymentRegistryReachabilityTest(SimpleTestCase):
+    def test_every_required_id_has_a_declared_producer(self) -> None:
+        consumed = _required_ids(DEPLOYMENT_TOOLS)
+
+        unproducible = {
+            argument: tools
+            for argument, tools in consumed.items()
+            if argument not in DEPLOYMENT_ID_PRODUCERS
+        }
+
+        assert unproducible == {}, (
+            f"Unreachable on the deployment server: {unproducible}"
+        )

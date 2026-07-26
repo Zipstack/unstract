@@ -7,6 +7,7 @@ asserting. Needs a live DB (integration tier).
 
 from __future__ import annotations
 
+import json
 from unittest.mock import Mock, patch
 
 from account_v2.models import Organization, User
@@ -15,6 +16,8 @@ from django.test import TestCase
 from pipeline_v2.models import Pipeline
 from platform_api.models import PlatformApiKey
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
+from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -30,6 +33,10 @@ from mcp_server.tools.platform import (
     set_api_deployment_active,
     set_pipeline_active,
     whoami,
+)
+from mcp_server.tools.prompt_studio import (
+    list_prompt_studio_documents,
+    list_prompts,
 )
 
 ORG_ID = "org-tools"
@@ -271,3 +278,122 @@ class PlatformToolsTest(TestCase):
         assert result["organization"] == ORG_ID
         # It must also point at the other server, since this one cannot extract.
         assert "extractDocument" in result["to_run_an_extraction"]
+
+
+class PromptStudioProducerToolsTest(TestCase):
+    """The two tools that make the billable Prompt Studio tools reachable.
+
+    ``indexDocument``, ``fetchResponse``, ``bulkFetchResponse`` and
+    ``singlePassExtraction`` all require ids an agent has no way to invent.
+    These tools are the only source of them, so their payload shape is load
+    bearing in a way a listing's usually is not — a missing ``document_id``
+    field here silently disables every billable tool on the server.
+    """
+
+    def setUp(self) -> None:
+        self.org = Organization.objects.create(
+            name="org-producers",
+            display_name="Producers Org",
+            organization_id="org-producers",
+        )
+        UserContext.set_organization_identifier("org-producers")
+        self.user = User.objects.create(
+            username="svc-producers",
+            email="svc-producers@platform.internal",
+            user_id="uid-producers",
+            is_service_account=True,
+        )
+        OrganizationMember.objects.create(
+            user=self.user, organization=self.org, role="user"
+        )
+        self.key = PlatformApiKey.objects.create(
+            name="producers-key",
+            description="d",
+            organization=self.org,
+            api_user=self.user,
+            permission="read_write",
+        )
+        self.project = CustomTool.objects.create(
+            tool_name="Invoice Prompts", description="Prompt project", author="acme"
+        )
+        self.document = DocumentManager.objects.create(
+            document_name="invoice-001.pdf", tool=self.project
+        )
+        self.prompt = ToolStudioPrompt.objects.create(
+            prompt_key="invoice_number",
+            prompt="What is the invoice number?",
+            tool_id=self.project,
+            sequence_number=1,
+            prompt_type="Text",
+            enforce_type="text",
+            # Set deliberately: the redaction assertion below is only meaningful
+            # if there is a webhook URL that *could* have leaked.
+            postprocessing_webhook_url="https://hooks.internal/acme?token=s3cr3t",
+        )
+        self.context = PlatformMCPContext(
+            user=self.user,
+            platform_key=self.key,
+            org_name="org-producers",
+            request=Mock(data={}),
+        )
+
+    def test_documents_are_listed_with_the_id_billable_tools_need(self) -> None:
+        result = list_prompt_studio_documents(
+            self.context, project_id=str(self.project.tool_id)
+        )
+
+        assert result["documents"] == [
+            {
+                "document_id": str(self.document.document_id),
+                "document_name": "invoice-001.pdf",
+            }
+        ]
+
+    def test_prompts_are_listed_with_the_id_fetch_response_needs(self) -> None:
+        result = list_prompts(self.context, project_id=str(self.project.tool_id))
+
+        assert len(result["prompts"]) == 1
+        row = result["prompts"][0]
+        assert row["prompt_id"] == str(self.prompt.prompt_id)
+        assert row["prompt_key"] == "invoice_number"
+        assert row["prompt"] == "What is the invoice number?"
+
+    def test_listing_prompts_does_not_leak_adapters_or_webhooks(self) -> None:
+        """The promise the README makes, pinned.
+
+        ``ToolStudioPrompt`` carries a ``profile_manager`` FK — the LLM,
+        embedding and vector-store adapters behind the prompt — and a
+        webhook URL that may embed a token. A serializer would have carried
+        both out to the agent, which is why the handler builds its dict by
+        hand. This test is what stops someone swapping it back.
+        """
+        result = list_prompts(self.context, project_id=str(self.project.tool_id))
+
+        payload = json.dumps(result)
+        assert "profile_manager" not in payload
+        assert "postprocessing_webhook_url" not in payload
+        assert "s3cr3t" not in payload, "a webhook token reached the agent"
+        assert "hooks.internal" not in payload
+
+    def test_an_unknown_project_is_refused_with_a_usable_message(self) -> None:
+        with self.assertRaises(MCPToolError) as caught:
+            list_prompts(self.context, project_id="00000000-0000-0000-0000-000000000000")
+
+        assert "listPromptStudioProjects" in str(caught.exception)
+
+    def test_documents_do_not_leak_across_projects(self) -> None:
+        """Documents are resolved through the project, never by a bare id
+        lookup. The platform key is a service account, for which ``for_user``
+        returns everything, so the project join is the scoping that holds.
+        """
+        other = CustomTool.objects.create(
+            tool_name="Other Project", description="d", author="acme"
+        )
+        DocumentManager.objects.create(document_name="secret.pdf", tool=other)
+
+        result = list_prompt_studio_documents(
+            self.context, project_id=str(self.project.tool_id)
+        )
+
+        names = [row["document_name"] for row in result["documents"]]
+        assert names == ["invoice-001.pdf"], "a sibling project's document leaked"

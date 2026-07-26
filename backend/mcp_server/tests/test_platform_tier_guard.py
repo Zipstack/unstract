@@ -1,7 +1,8 @@
 """Per-tool authorization on the platform server.
 
 The auth middleware checks the key's permission tier against the request's HTTP
-method — but every MCP call is a POST, so its verdict cannot distinguish
+method — but every JSON-RPC message arrives as an HTTP POST whatever the tool
+inside it does, so the middleware's verdict cannot distinguish
 ``listWorkflows`` from ``executePipeline``. This guard re-applies the tier
 against the method each tool *declares*, and is the only thing standing between
 a low-tier key and a write tool.

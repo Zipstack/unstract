@@ -157,6 +157,8 @@ Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
 | `listWorkflows` | read | The workflows behind them. |
 | `listPipelines` | read | ETL and task pipelines, with schedule and last-run state. |
 | `listPromptStudioProjects` | read | Where extraction prompts are authored. |
+| `listPromptStudioDocuments` | read | Documents in a project. The only source of `document_id`. |
+| `listPrompts` | read | A project's prompts. The only source of `prompt_id`. |
 | `getWorkflowEndpoints` | read | How a workflow is wired — shape only, never config. |
 | `listToolInstances` | read | The tool steps inside a workflow. |
 | `listTags` | read | Execution tags. |
@@ -246,8 +248,9 @@ bound, not an audited ledger.
 ## How write tools are authorized
 
 Platform API key tiers are defined in terms of HTTP methods
-(`ApiKeyPermission.allows`), but every MCP call is a `POST` — so the auth
-middleware's tier check cannot tell `listWorkflows` from `executePipeline`.
+(`ApiKeyPermission.allows`), but every JSON-RPC message arrives as an HTTP
+`POST` whatever the tool inside it does — so the auth middleware's tier check
+cannot tell `listWorkflows` from `executePipeline`.
 
 Each tool therefore declares the method its REST equivalent would use
 (`required_method`), and `check_tool_allowed` re-applies the key's tier against
@@ -311,13 +314,43 @@ Also excluded: password resets, role assignment and revocation, and member
 removal. These change who can access the organization, which is not a decision
 to delegate to an agent.
 
+### Endpoints that reach out to a caller-influenced host
+
+The connector and adapter *test* endpoints exist to verify a configuration by
+making a live outbound call to the host it names. Exposing them would hand any
+platform API key a request-forgery primitive: the agent chooses the
+destination, the server makes the call from inside the deployment's network,
+and the response comes back. That the same endpoints also take credentials as
+*input* is a second reason, but the outbound call is the disqualifying one.
+
+Prompt Studio project **import** is excluded on the same grounds — it ingests a
+bundle the caller supplies. **Export** is excluded because a project bundle may
+carry adapter references, which is the credential rule above applied to a file
+rather than a JSON field.
+
+### Workflow endpoint and tool-instance *configuration*
+
+Reading the shape of a workflow's endpoints is exposed
+(`getWorkflowEndpoints`, `listToolInstances`); writing it is not. Endpoint
+configuration is where connector instances are bound to a workflow, so a write
+there redirects where a workflow reads its input from and writes its output to
+— without changing anything that a later read would show as unusual. That is a
+data-exfiltration path dressed as a settings change, so it stays out.
+
 ### Everything else, for now
 
-Not excluded on principle, simply not built: file upload/download,
-tool-instance and endpoint *configuration* (as opposed to reading their shape),
-Prompt Studio project/prompt authoring and import/export, and the connector and
-adapter *test* endpoints (which make live outbound calls). These are candidates
-for later, with the same rules applied.
+Not excluded on principle, simply not built: file upload/download, and Prompt
+Studio project and prompt *authoring*. The coherent scope of this server is
+that an agent operates on projects and documents a human has already set up —
+it can discover them, run them, and read the results, but it does not create
+the raw material. These are candidates for later, with the same rules applied.
+
+Document and prompt *listing* used to sit in this section. It has since been
+built (`listPromptStudioDocuments`, `listPrompts`) because it was not a nicety:
+those two tools are the only source of the `document_id` and `prompt_id` that
+every billable Prompt Studio tool requires, so without them those tools were
+listed but uncallable. `tests/test_registry_reachability.py` now fails if any
+tool requires an id that no tool is declared to produce.
 
 ## Why the URL matters
 
@@ -339,7 +372,8 @@ bypasses the middleware and would pass against a completely open endpoint.
 ## Two constraints worth knowing
 
 **A `read`-tier key cannot use this server at all.** The middleware's tier check
-gates on HTTP method, and every MCP call is a `POST`, which `read` disallows —
+gates on HTTP method, and every JSON-RPC message is a `POST`, which `read`
+disallows —
 so a read-only key is refused before reaching the view, even for the read tools.
 Use a `read_write` key. Changing that would mean special-casing MCP paths in the
 middleware, which is a decision for maintainers rather than something this app

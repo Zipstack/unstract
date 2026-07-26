@@ -117,7 +117,8 @@ class PlatformMCPServerView(BaseMCPView):
         """Apply the platform key's permission tier to this specific tool.
 
         The middleware already checked the tier, but it can only check it
-        against the HTTP method of the request — and every MCP call is a POST.
+        against the HTTP method of the request — and every JSON-RPC message
+        arrives as an HTTP POST, whatever the tool inside it does.
         That makes its verdict uselessly coarse here: it cannot tell
         ``listWorkflows`` from ``executePipeline``.
 

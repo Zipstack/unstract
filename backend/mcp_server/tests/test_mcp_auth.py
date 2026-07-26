@@ -187,10 +187,15 @@ class MCPServerAuthTest(TestCase):
     def test_get_probe_does_not_leak_deployment_details(self) -> None:
         """The unauthenticated GET probe advertises the server, not the
         deployment behind it.
+
+        It answers 405: a Streamable HTTP client issues GET to open an SSE
+        stream, and this server pushes nothing, so declining is the conformant
+        response. The identity body rides along for uptime probes.
         """
         request = self.factory.get(f"/mcp/{ORG_ID}/live-api/")
         response = self.view(request, org_name=ORG_ID, api_name="live-api")
 
-        assert response.status_code == 200
+        assert response.status_code == 405
+        assert response["Allow"] == "POST"
         assert response.data["name"] == "unstract"
         assert "live-api" not in json.dumps(response.data)

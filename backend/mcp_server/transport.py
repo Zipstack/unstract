@@ -120,13 +120,24 @@ class BaseMCPView(views.APIView):
         }
 
     def get(self, request: Request, **kwargs: Any) -> Response:
-        """Advertise server identity.
+        """Refuse the SSE stream, but say who is here.
 
-        Clients probe with GET to check connectivity before opening a session.
-        Deliberately free of tenant detail — it reveals only that an MCP server
-        is mounted here.
+        Under Streamable HTTP a client issues GET to open a server-to-client
+        SSE stream, and a server that offers none must answer 405 (spec rev
+        2025-06-18). Nothing here pushes messages — every tool call is
+        request/response — so 405 is the honest answer, and returning
+        ``200 application/json`` instead would leave a conformant client
+        parsing an identity document as an event stream.
+
+        The body is kept anyway: uptime checks and humans with curl probe this
+        path, and a 405 may carry one. It stays deliberately free of tenant
+        detail — it reveals only that an MCP server is mounted here.
         """
-        return Response(self.server_info())
+        response = Response(self.server_info(), status=405)
+        # RFC 9110 requires Allow on a 405, and it tells a client which method
+        # this endpoint actually speaks.
+        response["Allow"] = "POST"
+        return response
 
     def post(self, request: Request, **kwargs: Any) -> JsonResponse:
         """Handle a single JSON-RPC request."""

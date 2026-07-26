@@ -27,7 +27,8 @@ class MCPTool:
             execution). Read-only tools are safe to retry; write tools are not.
         required_method: The HTTP method this tool's REST equivalent would use.
             Platform API key tiers are defined in terms of HTTP methods
-            (``ApiKeyPermission.allows``), and every MCP call is a POST — so
+            (``ApiKeyPermission.allows``), and every JSON-RPC message arrives
+            as an HTTP POST regardless of the tool it carries — so
             declaring the *equivalent* method is what lets the existing tier
             semantics apply per tool instead of per request. "GET" for reads,
             "POST" for mutations, "DELETE" for destructive operations (which
@@ -220,6 +221,10 @@ def build_platform_registry() -> MCPToolRegistry:
         fetch_response_schema,
         index_document,
         index_document_schema,
+        list_prompt_studio_documents,
+        list_prompt_studio_documents_schema,
+        list_prompts,
+        list_prompts_schema,
         single_pass_extraction,
         single_pass_extraction_schema,
     )
@@ -285,6 +290,37 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=no_args_schema(),
             handler=list_prompt_studio_projects,
+        )
+    )
+    # Registered next to the project listing rather than beside the billable
+    # tools they feed: an agent reads this list top-down, and the id-producing
+    # step belongs immediately after the project it drills into.
+    registry.register(
+        MCPTool(
+            name="listPromptStudioDocuments",
+            description=(
+                "List the documents uploaded to a Prompt Studio project.\n\n"
+                "Call this to obtain the `document_id` that indexDocument, "
+                "fetchResponse, bulkFetchResponse and singlePassExtraction "
+                "require. Free to call — it reads metadata only and runs no "
+                "inference."
+            ),
+            input_schema=list_prompt_studio_documents_schema(),
+            handler=list_prompt_studio_documents,
+        )
+    )
+    registry.register(
+        MCPTool(
+            name="listPrompts",
+            description=(
+                "List a Prompt Studio project's prompts: their keys, text, "
+                "type and order.\n\n"
+                "Call this to obtain the `prompt_id` that fetchResponse and "
+                "bulkFetchResponse require, or to see what a project extracts "
+                "before spending money running it. Free to call."
+            ),
+            input_schema=list_prompts_schema(),
+            handler=list_prompts,
         )
     )
     registry.register(
