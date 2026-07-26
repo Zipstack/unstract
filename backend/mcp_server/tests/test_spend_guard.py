@@ -108,12 +108,22 @@ class SpendGuardTest(SimpleTestCase):
         the whole MCP surface offline because Redis blipped would be the worse
         failure, so it allows and logs.
         """
-        with patch(
-            "mcp_server.spend_guard.cache.add", side_effect=RuntimeError("redis down")
-        ):
+        broken = Mock()
+        broken.add.side_effect = RuntimeError("redis down")
+        with patch("mcp_server.spend_guard.get_cache", return_value=broken):
             state = spend_guard.consume(ORG)
 
         assert state.allowed is True
+
+    def test_peek_also_fails_open(self) -> None:
+        """whoami reports the budget, so an unreachable cache must not break it."""
+        broken = Mock()
+        broken.get.side_effect = RuntimeError("redis down")
+        with patch("mcp_server.spend_guard.get_cache", return_value=broken):
+            state = spend_guard.peek(ORG)
+
+        assert state.allowed is True
+        assert state.used == 0
 
 
 @override_settings(
@@ -235,6 +245,69 @@ class SpendGuardDispatchTest(SimpleTestCase):
         body = json.loads(response.content)
 
         assert body["result"]["isError"] is False
+
+
+class RedisDbSelectionTest(SimpleTestCase):
+    """Which Redis DB the budget lives in.
+
+    ``MCP_REDIS_DB`` defaults to ``REDIS_DB``, so the shipped behaviour is
+    "same DB as everything else" and nothing about the existing deployment
+    changes. The knob exists so MCP state can be moved later without that being
+    a breaking change.
+    """
+
+    @override_settings(REDIS_DB="0", MCP_REDIS_DB=0)
+    def test_matching_db_uses_the_shared_django_cache(self) -> None:
+        """The default path. Using the shared cache is what keeps
+        ``override_settings(CACHES=...)`` working in tests and keeps the guard
+        consistent with every other cache user in the backend.
+        """
+        from django.core.cache import cache as django_cache
+
+        assert spend_guard.get_cache() is django_cache
+
+    @override_settings(REDIS_DB="", MCP_REDIS_DB=0)
+    def test_unset_redis_db_is_treated_as_zero(self) -> None:
+        """REDIS_DB ships as an empty string, which downstream code coerces to
+        0. The comparison here must coerce the same way or the guard would
+        wrongly conclude the DBs differ and build a needless client.
+        """
+        from django.core.cache import cache as django_cache
+
+        assert spend_guard.get_cache() is django_cache
+
+    @override_settings(REDIS_DB="0", MCP_REDIS_DB=7)
+    def test_differing_db_does_not_use_the_shared_cache(self) -> None:
+        """An operator who set a different DB must actually get a different
+        client — silently continuing on DB 0 would make the setting a lie.
+        """
+        from django.core.cache import cache as django_cache
+
+        with patch("mcp_server.spend_guard._dedicated_cache") as dedicated:
+            client = spend_guard.get_cache()
+
+        dedicated.assert_called_once_with(7)
+        assert client is not django_cache
+
+    @override_settings(
+        REDIS_DB="0",
+        MCP_REDIS_DB=7,
+        CACHES={
+            **LOCMEM,
+            "mcp": {
+                "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+                "LOCATION": "mcp-alias-test",
+            },
+        },
+    )
+    def test_an_explicit_mcp_cache_alias_wins(self) -> None:
+        """If an operator configures a CACHES['mcp'] alias they control pooling
+        and auth themselves, which is better than this module inferring them
+        from the default cache's settings.
+        """
+        from django.core.cache import caches
+
+        assert spend_guard.get_cache() is caches["mcp"]
 
 
 class BillableRegistryInvariantTest(SimpleTestCase):

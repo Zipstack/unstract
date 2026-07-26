@@ -30,7 +30,7 @@ import logging
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.core.cache import cache
+from django.core.cache import cache as default_cache
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,62 @@ _KEY_PREFIX = "mcp:billable"
 
 def _key(org_id: str) -> str:
     return f"{_KEY_PREFIX}:{org_id}"
+
+
+def _default_redis_db() -> int:
+    """The DB the project's shared cache is configured to use."""
+    return int(getattr(settings, "REDIS_DB", "") or 0)
+
+
+def get_cache():
+    """Return the cache client for MCP budget state.
+
+    ``MCP_REDIS_DB`` defaults to ``REDIS_DB``, so ordinarily this is just the
+    project's shared cache and everything behaves as any other cache user does
+    — including honouring ``override_settings(CACHES=...)`` in tests.
+
+    When the two differ, an operator has deliberately moved MCP state to its
+    own Redis DB. ``django.core.cache`` cannot express that (the DB is fixed by
+    ``CACHES``), so a dedicated client is built for that DB. This mirrors how
+    ``CacheService.clear_cache_optimized`` reaches the workers' DB: use the
+    Django cache by default, drop to a raw client only when a specific DB is
+    required.
+    """
+    configured_db = int(getattr(settings, "MCP_REDIS_DB", _default_redis_db()))
+    if configured_db == _default_redis_db():
+        return default_cache
+
+    return _dedicated_cache(configured_db)
+
+
+def _dedicated_cache(db: int):
+    """Build a cache client pinned to ``db``.
+
+    Deliberately constructed per call rather than cached at import: settings can
+    change under ``override_settings`` in tests, and this path is only taken by
+    installations that opted into a separate DB, where one extra client
+    construction per billable call is immaterial next to the LLM call it guards.
+    """
+    from django.core.cache import caches
+    from django.core.cache.backends.base import InvalidCacheBackendError
+
+    # Prefer an explicitly configured alias if the operator added one; it lets
+    # them control pooling and auth the same way as the default cache.
+    try:
+        return caches["mcp"]
+    except InvalidCacheBackendError:
+        pass
+
+    from django_redis.cache import RedisCache
+
+    base = settings.CACHES["default"]
+    options = dict(base.get("OPTIONS", {}))
+    options["DB"] = db
+    location = base["LOCATION"]
+    if isinstance(location, str) and location.rsplit("/", 1)[-1].isdigit():
+        location = f"{location.rsplit('/', 1)[0]}/{db}"
+
+    return RedisCache(location, {**base, "OPTIONS": options})
 
 
 @dataclass(frozen=True)
@@ -88,7 +144,7 @@ def peek(org_id: str) -> BudgetState:
     limit = get_limit()
     window = get_window_seconds()
     try:
-        used = cache.get(_key(org_id)) or 0
+        used = get_cache().get(_key(org_id)) or 0
     except Exception as error:
         # Reporting the budget must never be the thing that breaks whoami —
         # `consume` fails open for the same reason, and a read is even less
@@ -114,6 +170,7 @@ def consume(org_id: str) -> BudgetState:
     limit = get_limit()
     window = get_window_seconds()
     key = _key(org_id)
+    cache = get_cache()
 
     try:
         # `add` only sets when absent, so it both initialises the counter and

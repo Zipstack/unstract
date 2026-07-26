@@ -103,6 +103,12 @@ REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_DB = os.environ.get("REDIS_DB", "")
+# Redis DB for MCP server state (currently the billable-call budget). Defaults
+# to REDIS_DB, so out of the box MCP state shares the general cache DB and
+# nothing changes. It exists as a separate knob so MCP state can later be moved
+# to its own DB — for isolation, or so a cache flush does not reset in-flight
+# budget windows — without that becoming a breaking change.
+MCP_REDIS_DB = int(os.environ.get("MCP_REDIS_DB") or REDIS_DB or 0)
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )

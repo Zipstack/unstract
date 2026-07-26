@@ -223,6 +223,26 @@ Three behaviours are deliberate:
 `whoami` reports the remaining budget so an agent can pace itself instead of
 discovering the limit by hitting it.
 
+### Where the counter lives
+
+One key per organization, `mcp:billable:<org_id>`, expired by TTL — there is no
+window-start timestamp, so the window begins at the first billable call rather
+than at a wall-clock boundary. `cache.add` initialises the counter without
+disturbing an in-flight window, and `cache.incr` is atomic, so concurrent
+requests cannot race past the limit.
+
+`MCP_REDIS_DB` selects the Redis DB and **defaults to `REDIS_DB`**, so out of
+the box MCP state shares the general cache DB and behaves like any other cache
+user — including honouring `override_settings(CACHES=...)` in tests. Set it only
+to move MCP state onto its own DB; the guard then builds a client for that DB,
+preferring a `CACHES["mcp"]` alias if one is configured. The knob exists so that
+move is available later without being a breaking change.
+
+Note the consequence of the default: sharing DB 0 means a `FLUSHDB` or a
+cache-wide eviction resets every organization's window. That is a fail-open
+outcome, consistent with the rest of the guard's design — this is a loop
+bound, not an audited ledger.
+
 ## How write tools are authorized
 
 Platform API key tiers are defined in terms of HTTP methods
