@@ -1,6 +1,6 @@
 import { Space, Tooltip } from "antd";
 import { Info } from "lucide-react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 function PromptsReorderTitle() {
   return (

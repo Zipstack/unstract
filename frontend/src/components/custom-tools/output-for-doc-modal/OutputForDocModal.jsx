@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";

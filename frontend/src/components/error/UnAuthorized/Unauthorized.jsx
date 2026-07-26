@@ -1,4 +1,4 @@
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import "./Unauthorized.css";
 

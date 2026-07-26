@@ -1,6 +1,6 @@
 import { Col, Image, Modal, Row } from "antd";
 import PropTypes from "prop-types";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";

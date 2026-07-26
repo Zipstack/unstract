@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { memo, useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./PromptsReorder.css";
 import { Card } from "antd";
 

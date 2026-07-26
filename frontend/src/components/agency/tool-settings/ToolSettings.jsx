@@ -1,7 +1,7 @@
 import { Empty } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";

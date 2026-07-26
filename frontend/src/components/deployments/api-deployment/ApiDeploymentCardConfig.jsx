@@ -8,7 +8,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import PropTypes from "prop-types";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {

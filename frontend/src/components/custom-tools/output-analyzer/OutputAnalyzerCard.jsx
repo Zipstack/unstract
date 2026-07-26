@@ -2,7 +2,7 @@ import { Col, Divider, Flex, Row, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

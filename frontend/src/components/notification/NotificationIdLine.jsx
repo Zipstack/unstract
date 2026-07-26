@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 function NotificationIdLine({ label, value, stacked = false }) {
   if (!value) {

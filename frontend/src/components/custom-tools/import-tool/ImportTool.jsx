@@ -2,7 +2,7 @@ import { Modal, message, Upload } from "antd";
 import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { Text } from "@/components/ui/typography";
+import { Text } from "@/components/ui/antd-typography";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";
 import "./ImportTool.css";

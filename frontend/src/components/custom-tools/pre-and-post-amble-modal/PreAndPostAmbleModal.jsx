@@ -3,7 +3,7 @@ import { Expand } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./PreAndPostAmbleModal.css";
 
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

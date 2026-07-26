@@ -1,6 +1,6 @@
 import { Col, Row } from "antd";
 import { useEffect, useRef } from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import "../../agency/display-logs/DisplayLogs.css";
 import { getDateTimeString } from "../../../helpers/GetStaticData";

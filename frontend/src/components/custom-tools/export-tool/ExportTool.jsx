@@ -2,7 +2,7 @@ import { Avatar, List, Modal, Popconfirm, Radio, Select } from "antd";
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./ExportTool.css";
 
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";

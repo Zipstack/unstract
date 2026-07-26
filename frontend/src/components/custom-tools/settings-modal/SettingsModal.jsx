@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import { getMenuItem } from "../../../helpers/GetStaticData";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { CustomDataSettings } from "../custom-data-settings/CustomDataSettings";

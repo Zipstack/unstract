@@ -1,5 +1,5 @@
 import { useLocation } from "react-router-dom";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import "./OAuthStatus.css";
 

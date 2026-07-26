@@ -2,7 +2,7 @@ import { Card, Dropdown, Popconfirm } from "antd";
 import { CircleHelp, EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./GridView.css";
 
 function GridView({ listOfTools, handleEdit, handleDelete }) {

@@ -143,13 +143,9 @@ function App() {
           sessionDetails.currentTheme === THEME.DARK
             ? darkAlgorithm
             : defaultAlgorithm,
-        components: {
-          Button: {
-            colorPrimary: "#092C4C",
-            colorPrimaryHover: "#0e4274",
-            colorPrimaryActive: "#092C4C",
-          },
-        },
+        // The Button override that used to live here (colorPrimary #092C4C)
+        // is gone: no antd Buttons remain after P1-04, so it styled nothing.
+        // Primary buttons now take --primary from the Midnight Bloom palette.
       }}
     >
       <HelmetProvider>

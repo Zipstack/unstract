@@ -23,7 +23,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
-import { Text, Typography } from "@/components/ui/typography";
+import { Text, Typography } from "@/components/ui/antd-typography";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";

@@ -2,7 +2,7 @@ import Editor from "@monaco-editor/react";
 import { Alert, Space, Tag } from "antd";
 import { CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

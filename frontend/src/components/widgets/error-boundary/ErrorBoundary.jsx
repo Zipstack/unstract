@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import { Component } from "react";
-import { Text } from "@/components/ui/typography";
+import { Text } from "@/components/ui/antd-typography";
 
 // Shallow element-wise compare; resetKeys are typically fresh arrays each
 // render (e.g. [location.pathname]), so a reference check would never match.

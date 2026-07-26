@@ -2,7 +2,7 @@ import { Alert, Card, Empty, Spin, Table, Tabs, Tag, Tooltip } from "antd";
 import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Text } from "@/components/ui/typography";
+import { Text } from "@/components/ui/antd-typography";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";

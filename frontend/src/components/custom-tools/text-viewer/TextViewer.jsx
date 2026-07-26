@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import React from "react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 function TextViewer({ text }) {
   return (

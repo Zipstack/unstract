@@ -1,6 +1,6 @@
 import { Input, Table, Tooltip } from "antd";
 import { CircleX, Hourglass, Info, Search } from "lucide-react";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./LogsTable.css";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";

@@ -2,7 +2,7 @@ import { Tree } from "antd";
 import { ChevronDown } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { Text } from "@/components/ui/typography";
+import { Text } from "@/components/ui/antd-typography";
 
 import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";

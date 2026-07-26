@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import { Text } from "@/components/ui/typography";
+import { Text } from "@/components/ui/antd-typography";
 import { useSessionStore } from "../../store/session-store";
 
 import "./MetricsDashboard.css";

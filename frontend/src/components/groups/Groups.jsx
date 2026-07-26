@@ -2,7 +2,7 @@ import { Dropdown, Modal, Space, Table } from "antd";
 import { Ellipsis, Pencil, Plus, RotateCw, Trash2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../layouts/island-layout/IslandLayout.jsx";

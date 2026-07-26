@@ -13,7 +13,7 @@ import {
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {
   copyToClipboard,

@@ -1,5 +1,5 @@
 import { Col, Row } from "antd";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import "./LogsLabel.css";
 

@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import loginRightBanner from "../../assets/login-right-panel.svg";
 
 const defaultUnstractContent = {

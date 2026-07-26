@@ -3,7 +3,7 @@ import { ArrowLeft, CircleCheck, Copy, Mail, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 import "./Profile.css";
 
 import { OrganizationIcon } from "../../assets";

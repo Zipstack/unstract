@@ -1,5 +1,5 @@
 import { Input, Space } from "antd";
-import { Typography } from "@/components/ui/typography";
+import { Typography } from "@/components/ui/antd-typography";
 
 import "./EditToolInfo.css";
 

@@ -1,7 +1,12 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Paragraph, Text, Title, Typography } from "@/components/ui/typography";
+import {
+  Paragraph,
+  Text,
+  Title,
+  Typography,
+} from "@/components/ui/antd-typography";
 
 describe("Typography shim (P1-03)", () => {
   it("renders Text as a span with the content", () => {
