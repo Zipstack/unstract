@@ -1,7 +1,8 @@
-import { Col, Row, Typography } from "antd";
+import { Col, Row } from "antd";
 import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import "./GenerateIndex.css";
 

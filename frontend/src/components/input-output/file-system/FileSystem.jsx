@@ -1,7 +1,8 @@
-import { Tree, Typography } from "antd";
+import { Tree } from "antd";
 import { ChevronDown } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Text } from "@/components/ui/typography";
 
 import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";
@@ -12,8 +13,6 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./FileSystem.css";
 
 const { DirectoryTree } = Tree;
-const { Text } = Typography;
-
 function FileExplorer({
   selectedConnector = "",
   data = [],

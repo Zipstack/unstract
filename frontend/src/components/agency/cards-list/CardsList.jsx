@@ -1,8 +1,9 @@
-import { Card, Col, Progress, Row, Typography } from "antd";
+import { Card, Col, Progress, Row } from "antd";
 import { X } from "lucide-react";
 import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";

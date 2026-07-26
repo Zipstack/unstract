@@ -1,6 +1,7 @@
-import { Button, Radio, Table, Tooltip, Typography } from "antd";
+import { Button, Radio, Table, Tooltip } from "antd";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

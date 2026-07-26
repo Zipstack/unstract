@@ -1,6 +1,7 @@
-import { Button, Switch, Tooltip, Typography } from "antd";
+import { Button, Switch, Tooltip } from "antd";
 import { RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 import "./LogsRefreshControls.css";
 
 function LogsRefreshControls({

@@ -1,16 +1,8 @@
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Progress,
-  Row,
-  Select,
-  Typography,
-} from "antd";
+import { Alert, Button, Col, Dropdown, Progress, Row, Select } from "antd";
 import { Bug, CirclePlay, History, LoaderCircle, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import "./Agency.css";
 import { sourceTypes, wfExecutionTypes } from "../../../helpers/GetStaticData";

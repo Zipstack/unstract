@@ -8,11 +8,11 @@ import {
   Table,
   Tag,
   Tooltip,
-  Typography,
 } from "antd";
 import { ArrowLeft, Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";

@@ -1,7 +1,8 @@
-import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
+import { Button, Dropdown, Modal, Space, Table } from "antd";
 import { Ellipsis, Pencil, Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 import "./Users.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

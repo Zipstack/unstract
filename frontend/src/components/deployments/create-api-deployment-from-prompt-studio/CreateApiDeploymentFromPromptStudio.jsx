@@ -1,17 +1,8 @@
-import {
-  Button,
-  Divider,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Spin,
-  Steps,
-  Typography,
-} from "antd";
+import { Button, Divider, Form, Input, Modal, Space, Spin, Steps } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Text, Title } from "@/components/ui/typography";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -25,8 +16,6 @@ import { apiDeploymentsService } from "../api-deployment/api-deployments-service
 import "./CreateApiDeploymentFromPromptStudio.css";
 
 const { Step } = Steps;
-const { Title, Text } = Typography;
-
 const CreateApiDeploymentFromPromptStudio = ({
   open,
   setOpen,

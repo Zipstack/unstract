@@ -1,7 +1,8 @@
-import { Button, Select, Typography } from "antd";
+import { Button, Select } from "antd";
 import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";

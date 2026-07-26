@@ -1,17 +1,8 @@
-import {
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-} from "antd";
+import { Button, Card, Collapse, Divider, Row, Select, Space, Tag } from "antd";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";

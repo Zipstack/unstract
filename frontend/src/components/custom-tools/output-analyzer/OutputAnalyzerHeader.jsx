@@ -1,4 +1,4 @@
-import { Button, Drawer, Menu, Space, Typography } from "antd";
+import { Button, Drawer, Menu, Space } from "antd";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -9,6 +9,7 @@ import {
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 

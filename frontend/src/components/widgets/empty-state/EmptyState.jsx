@@ -1,6 +1,7 @@
-import { Button, Space, Typography } from "antd";
+import { Button, Space } from "antd";
 import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 
 import { EmptyPlaceholder } from "../../../assets";
 

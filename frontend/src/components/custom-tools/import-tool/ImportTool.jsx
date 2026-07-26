@@ -1,14 +1,13 @@
-import { Modal, message, Typography, Upload } from "antd";
+import { Modal, message, Upload } from "antd";
 import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Text } from "@/components/ui/typography";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";
 import "./ImportTool.css";
 
 const { Dragger } = Upload;
-const { Text } = Typography;
-
 function ImportTool({ open, setOpen, onImport, loading }) {
   const [fileList, setFileList] = useState([]);
   const [projectData, setProjectData] = useState(null);

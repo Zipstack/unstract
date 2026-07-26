@@ -7,13 +7,13 @@ import {
   Table,
   Tag,
   Tooltip,
-  Typography,
   Upload,
 } from "antd";
 import { CircleCheck, CircleX, RotateCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

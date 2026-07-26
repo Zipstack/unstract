@@ -7,7 +7,6 @@ import {
   Input,
   Table,
   Tooltip,
-  Typography,
 } from "antd";
 import {
   Calendar,
@@ -24,6 +23,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

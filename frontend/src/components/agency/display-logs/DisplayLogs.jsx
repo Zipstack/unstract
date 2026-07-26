@@ -1,5 +1,6 @@
-import { Col, Row, Typography } from "antd";
+import { Col, Row } from "antd";
 import { useEffect, useRef } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import "./DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";

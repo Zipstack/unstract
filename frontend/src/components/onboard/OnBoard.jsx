@@ -1,7 +1,8 @@
-import { Button, Card, Col, Layout, Row, Space, Typography } from "antd";
+import { Button, Card, Col, Layout, Row, Space } from "antd";
 import { CircleCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";

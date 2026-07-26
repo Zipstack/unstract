@@ -1,10 +1,11 @@
 // Aliased: this file defines its own `User` component below.
 
-import { Pagination, Typography } from "antd";
+import { Pagination } from "antd";
 import { Plus, User as UserIcon } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Text } from "@/components/ui/typography";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -31,8 +32,6 @@ import { SharePermission } from "../../widgets/share-permission/SharePermission.
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
 import "./Workflows.css";
-
-const { Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 10;
 

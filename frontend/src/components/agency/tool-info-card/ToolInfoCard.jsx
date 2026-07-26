@@ -1,6 +1,7 @@
-import { Card, Col, Row, Typography } from "antd";
+import { Card, Col, Row } from "antd";
 import PropTypes from "prop-types";
 import { useDrag } from "react-dnd";
+import { Typography } from "@/components/ui/typography";
 
 import "./ToolInfoCard.css";
 import { ToolIcon } from "../tool-icon/ToolIcon";

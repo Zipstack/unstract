@@ -1,5 +1,6 @@
-import { Checkbox, Space, Typography } from "antd";
+import { Checkbox, Space } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 
 import "./CheckboxWidget.css";
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";

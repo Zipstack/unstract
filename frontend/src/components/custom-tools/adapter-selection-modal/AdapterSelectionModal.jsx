@@ -1,6 +1,7 @@
-import { Divider, Form, Modal, Select, Space, Typography } from "antd";
+import { Divider, Form, Modal, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Text, Title } from "@/components/ui/typography";
 
 import "./AdapterSelectionModal.css";
 
@@ -9,7 +10,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 
-const { Text, Title } = Typography;
 const { Option } = Select;
 
 function AdapterSelectionModal({

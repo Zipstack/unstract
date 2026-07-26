@@ -1,8 +1,9 @@
-import { Button, Form, Input, Modal, Select, Space, Typography } from "antd";
+import { Button, Form, Input, Modal, Select, Space } from "antd";
 import cronstrue from "cronstrue";
 import { CalendarClock, Clock } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";

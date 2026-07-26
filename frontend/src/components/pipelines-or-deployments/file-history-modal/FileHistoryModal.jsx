@@ -12,7 +12,6 @@ import {
   Table,
   Tag,
   Tooltip,
-  Typography,
 } from "antd";
 import {
   CircleAlert,
@@ -24,13 +23,12 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Text, Typography } from "@/components/ui/typography";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./FileHistoryModal.css";
-
-const { Text } = Typography;
 
 const MAX_BULK_DELETE = 100;
 

@@ -1,8 +1,9 @@
-import { Col, Input, Row, Spin, Tabs, Typography } from "antd";
+import { Col, Input, Row, Spin, Tabs } from "antd";
 import debounce from "lodash/debounce";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import { ConnectorCard } from "../connector-card/ConnectorCard";
 import "./ConnectorListModal.css";

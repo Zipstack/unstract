@@ -1,13 +1,4 @@
-import {
-  Alert,
-  Button,
-  Col,
-  DatePicker,
-  Row,
-  Space,
-  Tabs,
-  Typography,
-} from "antd";
+import { Alert, Button, Col, DatePicker, Row, Space, Tabs } from "antd";
 import dayjs from "dayjs";
 import {
   CreditCard,
@@ -20,6 +11,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { EmptyPlaceholder } from "../../assets";
 import { evictExpiredCache } from "../../helpers/metricsCache";

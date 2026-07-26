@@ -1,7 +1,8 @@
-import { Button, Card, Flex, Space, Tooltip, Typography } from "antd";
+import { Button, Card, Flex, Space, Tooltip } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 /**
  * Individual card item renderer for CardGridView

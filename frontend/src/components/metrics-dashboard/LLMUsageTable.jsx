@@ -1,24 +1,13 @@
-import {
-  Alert,
-  Card,
-  Empty,
-  Spin,
-  Table,
-  Tabs,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Alert, Card, Empty, Spin, Table, Tabs, Tag, Tooltip } from "antd";
 import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Text } from "@/components/ui/typography";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";
 
 import "./MetricsDashboard.css";
-
-const { Text } = Typography;
 
 /**
  * Format large numbers with K/M/B suffixes.

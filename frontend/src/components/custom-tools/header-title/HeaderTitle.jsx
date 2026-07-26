@@ -1,6 +1,7 @@
-import { Button, Typography } from "antd";
+import { Button } from "antd";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";

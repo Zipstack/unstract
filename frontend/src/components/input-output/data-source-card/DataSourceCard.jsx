@@ -1,5 +1,6 @@
-import { Card, Image, Typography } from "antd";
+import { Card, Image } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 
 import "./DataSourceCard.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";

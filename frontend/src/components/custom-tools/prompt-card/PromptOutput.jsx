@@ -1,17 +1,9 @@
-import {
-  Button,
-  Col,
-  Divider,
-  Image,
-  Radio,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Col, Divider, Image, Radio, Space, Tooltip } from "antd";
 import { AnimatePresence, motion } from "framer-motion";
 import { CirclePlay, Database, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Typography } from "@/components/ui/typography";
 
 import {
   displayPromptResult,

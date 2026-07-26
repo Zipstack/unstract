@@ -1,4 +1,4 @@
-import { Card, Empty, List, Spin, Tag, Tooltip, Typography } from "antd";
+import { Card, Empty, List, Spin, Tag, Tooltip } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import {
@@ -13,13 +13,12 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Text } from "@/components/ui/typography";
 import { useSessionStore } from "../../store/session-store";
 
 import "./MetricsDashboard.css";
 
 dayjs.extend(relativeTime);
-
-const { Text } = Typography;
 
 // Status configuration with colors and icons
 const STATUS_CONFIG = {

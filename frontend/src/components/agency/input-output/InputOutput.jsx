@@ -1,5 +1,6 @@
-import { Col, Row, Typography } from "antd";
+import { Col, Row } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 
 import { InputPlaceholder, OutputPlaceholder } from "../../../assets";
 import "./InputOutput.css";

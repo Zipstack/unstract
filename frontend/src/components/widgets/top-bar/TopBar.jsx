@@ -1,7 +1,8 @@
-import { Col, Input, Row, Typography } from "antd";
+import { Col, Input, Row } from "antd";
 import debounce from "lodash/debounce";
 import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 import "./TopBar.css";
 import { useNavigate } from "react-router-dom";
 

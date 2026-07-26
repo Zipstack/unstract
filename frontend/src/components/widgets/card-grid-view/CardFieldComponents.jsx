@@ -7,7 +7,6 @@ import {
   Popconfirm,
   Space,
   Tooltip,
-  Typography,
 } from "antd";
 import {
   Clock,
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {
   copyToClipboard,

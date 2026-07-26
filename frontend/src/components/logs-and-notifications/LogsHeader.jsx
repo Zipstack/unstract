@@ -1,7 +1,8 @@
-import { Button, Space, Tag, Typography } from "antd";
+import { Button, Space, Tag } from "antd";
 import { ChevronDown, ChevronUp, X } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo } from "react";
+import { Typography } from "@/components/ui/typography";
 
 export const LogsHeader = memo(function LogsHeader({
   isMinimized,

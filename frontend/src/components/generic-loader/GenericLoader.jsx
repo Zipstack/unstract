@@ -1,5 +1,4 @@
-import { Typography } from "antd";
-
+import { Typography } from "@/components/ui/typography";
 import { Logo64 } from "../../assets";
 import "./GenericLoader.css";
 

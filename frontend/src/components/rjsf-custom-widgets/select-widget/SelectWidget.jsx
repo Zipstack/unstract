@@ -1,5 +1,6 @@
-import { Form, Select, Space, Typography } from "antd";
+import { Form, Select, Space } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/typography";
 
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 

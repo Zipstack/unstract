@@ -1,18 +1,10 @@
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Image,
-  Row,
-  Space,
-  Typography,
-} from "antd";
+import { Alert, Button, Col, Dropdown, Image, Row, Space } from "antd";
 import axios from "axios";
 import { LogIn, LogOut, Settings, User, UserRoundCog } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {

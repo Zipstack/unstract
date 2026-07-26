@@ -7,12 +7,12 @@ import {
   Space,
   Tag,
   Tooltip,
-  Typography,
 } from "antd";
 import { ChevronsRight, FileCheck, GitBranch } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Typography } from "@/components/ui/typography";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
