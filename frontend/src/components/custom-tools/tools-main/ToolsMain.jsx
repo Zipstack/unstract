@@ -1,6 +1,7 @@
-import { Tabs, Tooltip } from "antd";
+import { Tabs } from "antd";
 import { List, Table } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Tooltip } from "@/components/ui/antd-overlays";
 
 import { getSequenceNumber, promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

@@ -1,10 +1,9 @@
-import { ConfigProvider, notification, theme } from "antd";
+import { ConfigProvider, theme } from "antd";
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
 import { Toaster } from "@/components/ui/sonner";
 import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
@@ -18,15 +17,6 @@ import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
-
-/**
- * Which notification surface renders `useAlertStore` alerts.
- *
- * P0 keeps antd so behaviour is unchanged; P2-06 switches this to "sonner"
- * and removes the antd branch entirely (§7 coexistence).
- * @type {"antd" | "sonner"}
- */
-const ALERT_SURFACE = "antd";
 
 const GLOBAL_INTERCEPTOR_FLAG = Symbol.for("unstract.requestIdInterceptor");
 if (!axios[GLOBAL_INTERCEPTOR_FLAG]) {
@@ -45,30 +35,10 @@ try {
 }
 
 function App() {
-  const [notificationAPI, contextHolder] = notification.useNotification();
   const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails, isLogoutLoading } = useSessionStore();
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
-
-  const btn = (
-    <>
-      <Button
-        type="link"
-        size="small"
-        onClick={() => notificationAPI.destroy(alertDetails?.key)}
-      >
-        Close
-      </Button>
-      <Button
-        type="link"
-        size="small"
-        onClick={() => notificationAPI.destroy()}
-      >
-        Close All
-      </Button>
-    </>
-  );
 
   useEffect(() => {
     if (!alertDetails?.content) {
@@ -97,23 +67,11 @@ function App() {
       </>
     );
 
-    // P0-16 / §7 coexistence: exactly one notification surface is active at a
-    // time. antd owns it until P2-06 migrates the imperative call-sites, at
-    // which point ALERT_SURFACE flips to "sonner" and the antd branch (and its
-    // `btn`/`contextHolder` scaffolding) is deleted. Emitting on both would
-    // double every alert.
-    if (ALERT_SURFACE === "sonner") {
-      showAppToast(alertDetails);
-    } else {
-      notificationAPI.open({
-        message: alertDetails?.title,
-        description,
-        type: alertDetails?.type,
-        duration: alertDetails?.duration,
-        btn,
-        key: alertDetails?.key,
-      });
-    }
+    // P2-06: sonner is now the single notification surface. The antd
+    // `notification` branch (and its btn/contextHolder scaffolding) is gone.
+    // `description` carries the rendered markdown + ID lines that antd used to
+    // display, so the alert body is unchanged.
+    showAppToast(alertDetails, description);
 
     const logSuffix = [
       showExecutionId && `Execution ID: \`${alertDetails.executionId}\``,
@@ -159,8 +117,9 @@ function App() {
           <PostHogPageviewTracker />
           <PageTitle title={"Unstract"} />
           {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
-          {contextHolder}
-          <Toaster />
+          {/* top-right matches where antd's notification stack used to
+              appear; sonner defaults to bottom-right (C4). */}
+          <Toaster position="top-right" closeButton richColors />
           <Router />
         </BrowserRouter>
       </HelmetProvider>

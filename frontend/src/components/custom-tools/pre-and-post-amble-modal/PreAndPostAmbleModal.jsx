@@ -1,9 +1,10 @@
-import { Input, Modal } from "antd";
+import { Input } from "antd";
 import { Expand } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Modal } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 import "./PreAndPostAmbleModal.css";
 

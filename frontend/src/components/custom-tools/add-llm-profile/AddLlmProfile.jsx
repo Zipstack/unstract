@@ -1,9 +1,10 @@
-import { Collapse, Form, Input, Select, theme } from "antd";
+import { Form, Input, Select, theme } from "antd";
 import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
+import { Collapse } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";

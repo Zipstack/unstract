@@ -1,10 +1,11 @@
-import { Dropdown, Select } from "antd";
+import { Select } from "antd";
 import { Bug, CirclePlay, History, LoaderCircle, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Col, Row } from "@/components/ui/antd-layout";
 import { Alert, Progress } from "@/components/ui/antd-leaves";
+import { Dropdown } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 
 import "./Agency.css";

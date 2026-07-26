@@ -1,8 +1,9 @@
-import { Modal, Select, Tabs, Tooltip } from "antd";
+import { Select, Tabs } from "antd";
 import Handlebars from "handlebars";
 import { CircleCheck, Copy } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Modal, Tooltip } from "@/components/ui/antd-overlays";
 
 import CodeSnippet from "./CodeSnippet.jsx";
 import "./DisplayCode.css";

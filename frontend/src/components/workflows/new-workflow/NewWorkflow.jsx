@@ -1,6 +1,7 @@
-import { Form, Input, Modal } from "antd";
+import { Form, Input } from "antd";
 import PropTypes from "prop-types";
 import { useRef, useState } from "react";
+import { Modal } from "@/components/ui/antd-overlays";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 
 const { TextArea } = Input;

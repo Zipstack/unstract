@@ -1,6 +1,7 @@
-import { Form, Input, Modal } from "antd";
+import { Form, Input } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/antd-overlays";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";

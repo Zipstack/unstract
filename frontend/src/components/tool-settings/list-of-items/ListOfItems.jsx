@@ -1,7 +1,8 @@
-import { Card, Dropdown } from "antd";
+import { Card } from "antd";
 import { EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { Image } from "@/components/ui/antd-leaves";
+import { Dropdown } from "@/components/ui/antd-overlays";
 
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";

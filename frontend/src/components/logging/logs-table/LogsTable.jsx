@@ -1,5 +1,6 @@
-import { Input, Table, Tooltip } from "antd";
+import { Input, Table } from "antd";
 import { CircleX, Hourglass, Info, Search } from "lucide-react";
+import { Tooltip } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 import "./LogsTable.css";
 import PropTypes from "prop-types";

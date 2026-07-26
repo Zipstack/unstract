@@ -1,8 +1,9 @@
-import { Tabs, Tooltip } from "antd";
+import { Tabs } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Tooltip } from "@/components/ui/antd-overlays";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";

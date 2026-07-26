@@ -1,4 +1,4 @@
-import { Radio, Tooltip } from "antd";
+import { Radio } from "antd";
 import { AnimatePresence, motion } from "framer-motion";
 import { CirclePlay, Database, Info } from "lucide-react";
 import PropTypes from "prop-types";
@@ -6,6 +6,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Col, Space } from "@/components/ui/antd-layout";
 import { Divider, Image } from "@/components/ui/antd-leaves";
+import { Tooltip } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 
 import {

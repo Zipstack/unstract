@@ -1,4 +1,4 @@
-import { Card, Dropdown, Popconfirm, Tooltip } from "antd";
+import { Card } from "antd";
 import {
   Clock,
   Copy,
@@ -15,6 +15,7 @@ import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Flex, Space } from "@/components/ui/antd-layout";
 import { Avatar } from "@/components/ui/antd-leaves";
+import { Dropdown, Popconfirm, Tooltip } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {

@@ -1,9 +1,9 @@
-import { Tooltip } from "antd";
 import { ChartColumn, List } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Tooltip } from "@/components/ui/antd-overlays";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";

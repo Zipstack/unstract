@@ -1,8 +1,10 @@
-import { Modal, message, Upload } from "antd";
+import { Upload } from "antd";
 import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Modal } from "@/components/ui/antd-overlays";
 import { Text } from "@/components/ui/antd-typography";
+import { message } from "@/hooks/useAppToast";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";
 import "./ImportTool.css";

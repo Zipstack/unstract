@@ -33,7 +33,7 @@ const TOAST_BY_TYPE = {
  * @param {string} [details.executionId]
  * @returns {string|number|undefined} the sonner toast id
  */
-export function showAppToast(details) {
+export function showAppToast(details, description) {
   if (!details?.content && !details?.title) {
     return undefined;
   }
@@ -55,9 +55,12 @@ export function showAppToast(details) {
     .join("\n");
 
   return show(details.title || details.content, {
-    description: idLine
-      ? `${details.content ?? ""}\n${idLine}`.trim()
-      : details.content,
+    // A React node (rendered markdown + ID lines) wins over the plain string
+    // when the caller supplies one — that is how App.jsx keeps the formatted
+    // alert body it previously handed to antd's notification.
+    description:
+      description ??
+      (idLine ? `${details.content ?? ""}\n${idLine}`.trim() : details.content),
     duration,
     id: details.key,
   });
@@ -71,4 +74,34 @@ export function dismissAppToast(id) {
 /** Hook form, for call-sites that prefer a hook over the bare functions. */
 export function useAppToast() {
   return { showAppToast, dismissAppToast, toast };
+}
+
+/**
+ * Drop-in replacement for antd's imperative `message.*` API (P2-06).
+ *
+ * antd's `message.error("…")` is a bare function call with no React context,
+ * which is exactly what `sonner` provides too — so these call-sites convert by
+ * import alone. Kept API-compatible (including the seconds→ms duration
+ * convention) so the ~12 sites did not each need rewriting.
+ */
+export const message = {
+  success: (content, duration) =>
+    toast.success(content, { duration: toMs(duration) }),
+  error: (content, duration) =>
+    toast.error(content, { duration: toMs(duration) }),
+  warning: (content, duration) =>
+    toast.warning(content, { duration: toMs(duration) }),
+  info: (content, duration) =>
+    toast.info(content, { duration: toMs(duration) }),
+  loading: (content) => toast.loading(content),
+  open: (content, duration) => toast(content, { duration: toMs(duration) }),
+  destroy: (id) => toast.dismiss(id),
+};
+
+/** antd counts duration in seconds (0 = sticky); sonner uses milliseconds. */
+function toMs(duration) {
+  if (duration === 0) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return duration == null ? undefined : duration * 1000;
 }

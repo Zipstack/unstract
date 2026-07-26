@@ -1,10 +1,11 @@
-import { Form, Input, Modal } from "antd";
+import { Form, Input } from "antd";
 import { CircleHelp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Modal } from "@/components/ui/antd-overlays";
 
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
 import { workflowService } from "../../components/workflows/workflow/workflow-service";

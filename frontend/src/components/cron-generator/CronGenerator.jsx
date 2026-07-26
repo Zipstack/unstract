@@ -1,6 +1,6 @@
-import { Modal } from "antd";
 import { useState } from "react";
 import { Cron } from "react-js-cron";
+import { Modal } from "@/components/ui/antd-overlays";
 import "react-js-cron/dist/styles.css";
 import PropTypes from "prop-types";
 

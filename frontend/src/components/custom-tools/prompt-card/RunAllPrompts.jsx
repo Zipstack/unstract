@@ -1,7 +1,7 @@
-import { Tooltip } from "antd";
 import { CirclePlay } from "lucide-react";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Tooltip } from "@/components/ui/antd-overlays";
 import { PROMPT_RUN_TYPES } from "../../../helpers/GetStaticData";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";

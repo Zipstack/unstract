@@ -1,9 +1,10 @@
-import { Dropdown, Modal, Table } from "antd";
+import { Table } from "antd";
 import { Ellipsis, Pencil, Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Dropdown, Modal } from "@/components/ui/antd-overlays";
 import { Typography } from "@/components/ui/antd-typography";
 import "./Users.css";
 
