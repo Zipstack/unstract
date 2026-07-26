@@ -1,8 +1,9 @@
-import { Divider, Form, Input, Modal, Space, Spin, Steps } from "antd";
+import { Divider, Form, Input, Modal, Spin, Steps } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Space } from "@/components/ui/antd-layout";
 import { Text, Title } from "@/components/ui/antd-typography";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

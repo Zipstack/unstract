@@ -1,4 +1,4 @@
-import { Col, Empty, Row, Spin } from "antd";
+import { Empty, Spin } from "antd";
 import {
   CircleCheck,
   DollarSign,
@@ -10,6 +10,7 @@ import {
   Zap,
 } from "lucide-react";
 import PropTypes from "prop-types";
+import { Col, Row } from "@/components/ui/antd-layout";
 
 import "./MetricsDashboard.css";
 

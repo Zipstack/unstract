@@ -1,4 +1,4 @@
-import { Avatar, Flex, Space, Switch, Tag, Tooltip } from "antd";
+import { Avatar, Switch, Tag, Tooltip } from "antd";
 import cronstrue from "cronstrue";
 import {
   Bell,
@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Flex, Space } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";

@@ -1,4 +1,4 @@
-import { Col, Menu, Modal, Row } from "antd";
+import { Menu, Modal } from "antd";
 import {
   Code,
   Database,
@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Col, Row } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 import { getMenuItem } from "../../../helpers/GetStaticData";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";

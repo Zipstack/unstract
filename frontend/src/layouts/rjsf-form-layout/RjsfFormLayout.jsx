@@ -1,8 +1,9 @@
 import Form from "@rjsf/antd";
 import validator from "@rjsf/validator-ajv8";
-import { Alert, Space } from "antd";
+import { Alert } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useMemo } from "react";
+import { Space } from "@/components/ui/antd-layout";
 
 import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { AltDateTimeWidget } from "../../components/rjsf-custom-widgets/alt-date-time-widget/AltDateTimeWidget.jsx";

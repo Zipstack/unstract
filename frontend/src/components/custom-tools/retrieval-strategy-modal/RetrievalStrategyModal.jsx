@@ -1,4 +1,4 @@
-import { Alert, Divider, Modal, Radio, Space, Spin } from "antd";
+import { Alert, Divider, Modal, Radio, Spin } from "antd";
 import {
   CircleHelp,
   GitFork,
@@ -12,6 +12,7 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Space } from "@/components/ui/antd-layout";
 import { Paragraph, Text, Title } from "@/components/ui/antd-typography";
 
 import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";

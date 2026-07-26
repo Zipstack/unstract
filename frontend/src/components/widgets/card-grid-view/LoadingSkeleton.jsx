@@ -1,6 +1,7 @@
-import { Card, Col, Row, Skeleton } from "antd";
+import { Card, Skeleton } from "antd";
 import PropTypes from "prop-types";
 import { useMemo } from "react";
+import { Col, Row } from "@/components/ui/antd-layout";
 
 /**
  * Loading skeleton that matches the card grid layout

@@ -1,7 +1,8 @@
-import { Input, Select, Space, Table } from "antd";
+import { Input, Select, Table } from "antd";
 import { Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Space } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

@@ -1,5 +1,5 @@
-import { Col, Row } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Col, Row } from "@/components/ui/antd-layout";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

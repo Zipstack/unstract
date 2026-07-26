@@ -1,4 +1,4 @@
-import { Flex, Space, Switch, Tooltip } from "antd";
+import { Switch, Tooltip } from "antd";
 import {
   Bell,
   CloudDownload,
@@ -8,6 +8,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import PropTypes from "prop-types";
+import { Flex, Space } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";

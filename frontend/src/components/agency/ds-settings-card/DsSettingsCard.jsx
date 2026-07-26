@@ -1,7 +1,8 @@
-import { Col, Image, Row, Select, Space, Tooltip } from "antd";
+import { Image, Select, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

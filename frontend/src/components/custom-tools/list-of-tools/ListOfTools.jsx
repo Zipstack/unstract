@@ -1,7 +1,7 @@
-import { Space } from "antd";
 import { ArrowDown, Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
+import { Space } from "@/components/ui/antd-layout";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";

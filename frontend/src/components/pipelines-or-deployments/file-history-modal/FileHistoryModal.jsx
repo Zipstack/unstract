@@ -1,13 +1,10 @@
 import {
-  Col,
   Input,
   InputNumber,
   Modal,
   message,
   Popconfirm,
-  Row,
   Select,
-  Space,
   Table,
   Tag,
   Tooltip,
@@ -23,6 +20,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
+import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Text, Typography } from "@/components/ui/antd-typography";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";

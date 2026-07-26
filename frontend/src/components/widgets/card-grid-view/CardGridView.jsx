@@ -1,5 +1,6 @@
-import { Col, Empty, Flex, Pagination, Row } from "antd";
+import { Empty, Pagination } from "antd";
 import PropTypes from "prop-types";
+import { Col, Flex, Row } from "@/components/ui/antd-layout";
 
 import { CardItem } from "./CardItem.jsx";
 import { LoadingSkeleton } from "./LoadingSkeleton.jsx";

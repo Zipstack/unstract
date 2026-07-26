@@ -1,6 +1,7 @@
-import { Avatar, Flex, Image, List, Popconfirm, Tooltip } from "antd";
+import { Avatar, Image, List, Popconfirm, Tooltip } from "antd";
 import { CircleHelp, Info, Pencil, Share2, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
+import { Flex } from "@/components/ui/antd-layout";
 import { Typography } from "@/components/ui/antd-typography";
 import "./ListView.css";
 import { useNavigate } from "react-router-dom";
