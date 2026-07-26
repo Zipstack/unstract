@@ -1,4 +1,4 @@
-import { Card, Dropdown, Empty, Spin } from "antd";
+import { Card, Dropdown } from "antd";
 import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import { Button } from "@/components/ui/antd-button";
+import { Empty, Spin } from "@/components/ui/antd-leaves";
 
 import "./MetricsDashboard.css";
 

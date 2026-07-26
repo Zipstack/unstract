@@ -1,8 +1,8 @@
-import { Spin } from "antd";
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Space } from "@/components/ui/antd-layout";
+import { Spin } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import {

@@ -6,7 +6,6 @@ import {
   Popconfirm,
   Select,
   Table,
-  Tag,
   Tooltip,
 } from "antd";
 import {
@@ -21,6 +20,7 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
+import { Tag } from "@/components/ui/antd-leaves";
 import { Text, Typography } from "@/components/ui/antd-typography";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";

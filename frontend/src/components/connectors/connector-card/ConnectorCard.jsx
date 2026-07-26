@@ -1,5 +1,6 @@
-import { Card, Image } from "antd";
+import { Card } from "antd";
 import PropTypes from "prop-types";
+import { Image } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import "../../input-output/data-source-card/DataSourceCard.css";

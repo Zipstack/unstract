@@ -1,5 +1,6 @@
-import { Avatar, Checkbox, List, Modal, Popconfirm, Select } from "antd";
+import { Checkbox, List, Modal, Popconfirm, Select } from "antd";
 import { CircleHelp, Trash2, User, Users } from "lucide-react";
+import { Avatar } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 import "./SharePermission.css";
 import PropTypes from "prop-types";

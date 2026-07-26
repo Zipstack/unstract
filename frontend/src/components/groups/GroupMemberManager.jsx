@@ -1,7 +1,8 @@
-import { Avatar, List, Modal, Popconfirm, Select } from "antd";
+import { List, Modal, Popconfirm, Select } from "antd";
 import { CircleHelp, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Avatar } from "@/components/ui/antd-leaves";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";

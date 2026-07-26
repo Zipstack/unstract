@@ -1,7 +1,8 @@
-import { Divider, Form, Modal, Select } from "antd";
+import { Form, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Space } from "@/components/ui/antd-layout";
+import { Divider } from "@/components/ui/antd-leaves";
 import { Text, Title } from "@/components/ui/antd-typography";
 
 import "./AdapterSelectionModal.css";

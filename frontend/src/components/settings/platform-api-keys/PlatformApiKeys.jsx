@@ -1,8 +1,9 @@
-import { Form, Input, Modal, Select, Switch, Table, Tag, Tooltip } from "antd";
+import { Form, Input, Modal, Select, Switch, Table, Tooltip } from "antd";
 import { ArrowLeft, Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Tag } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

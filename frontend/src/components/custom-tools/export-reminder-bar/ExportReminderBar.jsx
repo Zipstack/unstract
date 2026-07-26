@@ -1,8 +1,8 @@
-import { Alert } from "antd";
 import { CircleAlert } from "lucide-react";
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Alert } from "@/components/ui/antd-leaves";
 import "./ExportReminderBar.css";
 
 function ExportReminderBar({ message, onExport, isExporting }) {

@@ -1,9 +1,10 @@
-import { Card, Progress } from "antd";
+import { Card } from "antd";
 import { X } from "lucide-react";
 import PropTypes from "prop-types";
 import { useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import { Col, Row } from "@/components/ui/antd-layout";
+import { Progress } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

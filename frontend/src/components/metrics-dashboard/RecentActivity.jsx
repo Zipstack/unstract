@@ -1,4 +1,4 @@
-import { Card, Empty, List, Spin, Tag, Tooltip } from "antd";
+import { Card, List, Tooltip } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import {
@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Empty, Spin, Tag } from "@/components/ui/antd-leaves";
 import { Text } from "@/components/ui/antd-typography";
 import { useSessionStore } from "../../store/session-store";
 

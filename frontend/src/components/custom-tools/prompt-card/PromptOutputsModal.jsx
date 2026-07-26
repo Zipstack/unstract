@@ -1,6 +1,7 @@
-import { Image, Modal } from "antd";
+import { Modal } from "antd";
 import PropTypes from "prop-types";
 import { Col, Row } from "@/components/ui/antd-layout";
+import { Image } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useCustomToolStore } from "../../../store/custom-tool-store";

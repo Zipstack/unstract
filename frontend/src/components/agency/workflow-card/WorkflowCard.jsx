@@ -1,7 +1,7 @@
-import { Image } from "antd";
 import { Check } from "lucide-react";
 import PropTypes from "prop-types";
 import { Flex } from "@/components/ui/antd-layout";
+import { Image } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard";

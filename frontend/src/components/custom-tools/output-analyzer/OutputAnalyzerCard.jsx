@@ -1,8 +1,8 @@
-import { Divider } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Col, Flex, Row, Space } from "@/components/ui/antd-layout";
+import { Divider } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";

@@ -1,10 +1,11 @@
-import { Divider, Modal, Radio, Table, Tag, Tooltip, Upload } from "antd";
+import { Modal, Radio, Table, Tooltip, Upload } from "antd";
 import { CircleCheck, CircleX, RotateCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Divider, Tag } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

@@ -1,8 +1,9 @@
-import { Card, Collapse, Tag, Tooltip } from "antd";
+import { Card, Collapse, Tooltip } from "antd";
 import { CircleCheck, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/antd-button";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
+import { Tag } from "@/components/ui/antd-leaves";
 import "./NotesCard.css";
 import { useEffect, useState } from "react";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";

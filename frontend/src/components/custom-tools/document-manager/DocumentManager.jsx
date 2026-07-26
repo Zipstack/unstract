@@ -1,11 +1,12 @@
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
 import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
+import { Tag } from "@/components/ui/antd-leaves";
 import { Typography } from "@/components/ui/antd-typography";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { Tabs, Tag, Tooltip } from "antd";
+import { Tabs, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
