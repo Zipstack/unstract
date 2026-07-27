@@ -335,10 +335,33 @@ const Collapse = React.forwardRef(function Collapse(
   { items, defaultActiveKey, className, children, ...props },
   ref,
 ) {
+  // Legacy children form: <Collapse><Collapse.Panel header=…>…</Collapse.Panel></Collapse>
   if (!items) {
+    const panels = React.Children.toArray(children).filter(Boolean);
     return (
       <div ref={ref} className={className} {...props}>
-        {children}
+        {panels.map((panel, i) => {
+          const { header, children: body, showArrow } = panel.props ?? {};
+          return (
+            <Collapsible
+              key={panel.key ?? i}
+              defaultOpen={
+                Array.isArray(defaultActiveKey)
+                  ? defaultActiveKey.includes(panel.key)
+                  : defaultActiveKey === panel.key
+              }
+            >
+              {header || showArrow !== false ? (
+                <CollapsibleTrigger className="ant-collapse-header flex w-full items-center justify-between py-2 text-left font-medium">
+                  {header}
+                </CollapsibleTrigger>
+              ) : null}
+              <CollapsibleContent className="ant-collapse-content-box">
+                {body}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
       </div>
     );
   }
@@ -364,6 +387,16 @@ const Collapse = React.forwardRef(function Collapse(
     </div>
   );
 });
+
+/**
+ * antd `<Collapse.Panel>` — a data holder consumed by Collapse above.
+ * It MUST exist: rendering `<Collapse.Panel>` when it is undefined throws
+ * React error #130, which takes down the entire route rather than just this
+ * component. That is what crashed Prompt Studio.
+ */
+Collapse.Panel = function CollapsePanel({ children }) {
+  return children ?? null;
+};
 
 export {
   AntPopover as Popover,

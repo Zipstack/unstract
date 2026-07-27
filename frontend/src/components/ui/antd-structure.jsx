@@ -87,6 +87,25 @@ const Card = React.forwardRef(function Card(
   );
 });
 
+/** antd `<Card.Meta avatar title description />`. */
+Card.Meta = function CardMeta({ avatar, title, description, className }) {
+  return (
+    <div className={cn("ant-card-meta flex items-start gap-3", className)}>
+      {avatar}
+      <div className="min-w-0">
+        {title ? (
+          <div className="ant-card-meta-title font-medium">{title}</div>
+        ) : null}
+        {description ? (
+          <div className="ant-card-meta-description text-sm text-muted-foreground">
+            {description}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+};
+
 /**
  * antd `<Tabs items activeKey onChange>`. Also supports the legacy
  * `<Tabs.TabPane>` children form.
