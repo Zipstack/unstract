@@ -211,55 +211,74 @@ def pg_client(pg_conn):
 # next test with no rollback.
 
 
+def _base_pg_schema() -> str:
+    """Schema the pg_queue tables actually live in for this run.
+
+    CI injects ``TEST_DB_SCHEMA``/``DB_SCHEMA=public`` and migrates there; a
+    developer running ``pytest -m integration`` against their compose DB has
+    neither set, where ``backend migrate`` puts the tables in ``unstract``.
+    """
+    return os.getenv("TEST_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "unstract"
+
+
 def _worker_pg_schema() -> str:
     worker = os.getenv("PYTEST_XDIST_WORKER", "")
-    return f"test_{worker}" if worker else "public"
+    return f"test_{worker}" if worker else _base_pg_schema()
 
 
 @pytest.fixture(scope="session", autouse=True)
 def _pg_worker_schema():
     """Clone the pg_queue tables into a per-worker schema, once per worker.
 
-    Cloned from ``public`` (which the rig migrates before any group runs) via
+    Cloned from the base schema (where the migration ran) via
     ``LIKE ... INCLUDING ALL`` — the tables have no cross-table foreign keys, so
-    the clone carries every check/not-null/default/index. No-op when running
-    serially (``public``) or when Postgres is unreachable/unmigrated (the tests
-    skip anyway).
+    the clone carries every check/not-null/default/index. Yields the schema when
+    Postgres is reachable and migrated, else ``None`` so per-test fixtures can
+    short-circuit instead of retrying a dead connection on every test.
     """
     from queue_backend.pg_queue.schema import QUEUE_TABLES
 
+    base = _base_pg_schema()
     schema = _worker_pg_schema()
-    if schema != "public":
-        with contextlib.suppress(psycopg2.OperationalError):
-            conn = integration_pg_conn()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT to_regclass('public.pg_barrier_state')")
-                    if cur.fetchone()[0] is not None:
+    reachable = False
+    with contextlib.suppress(psycopg2.OperationalError):
+        conn = integration_pg_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(f"SELECT to_regclass('{base}.pg_barrier_state')")
+                if cur.fetchone()[0] is not None:
+                    reachable = True
+                    if schema != base:
                         cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
                         for table in QUEUE_TABLES:
                             cur.execute(
                                 f'CREATE TABLE IF NOT EXISTS "{schema}".{table} '
-                                f"(LIKE public.{table} INCLUDING ALL)"
+                                f"(LIKE {base}.{table} INCLUDING ALL)"
                             )
-                conn.commit()
-            finally:
-                conn.close()
-    yield schema
+            conn.commit()
+        finally:
+            conn.close()
+    yield schema if reachable else None
 
 
 @pytest.fixture(autouse=True)
-def _pg_worker_schema_env(_restore_os_environ, _pg_worker_schema):
+def _pg_worker_schema_env(request, _restore_os_environ, _pg_worker_schema):
     """Point the queue's schema at this worker's, and clear it before each test.
 
-    Depends on ``_restore_os_environ`` so the schema survives that fixture's
-    per-test reset. Both prefixes are set: ``DB_SCHEMA`` for the code under test
-    (``qualified()`` / the production connection) and ``TEST_DB_SCHEMA`` for the
-    fixtures' own connections.
+    Only real-Postgres tests (auto-marked ``integration``) reach the connection;
+    the DB-free unit lane and any run where Postgres is unreachable skip the body
+    entirely, so unit tests neither open a connection nor have their schema env
+    mutated. Depends on ``_restore_os_environ`` so the schema survives that
+    fixture's per-test reset. Both prefixes are set: ``DB_SCHEMA`` for the code
+    under test and ``TEST_DB_SCHEMA`` for the fixtures' own connections.
     """
     from queue_backend.pg_queue.schema import QUEUE_TABLES
 
     schema = _pg_worker_schema
+    if schema is None or request.node.get_closest_marker("integration") is None:
+        yield
+        return
+
     os.environ["DB_SCHEMA"] = schema
     os.environ["TEST_DB_SCHEMA"] = schema
     with contextlib.suppress(psycopg2.Error):

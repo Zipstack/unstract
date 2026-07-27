@@ -913,3 +913,45 @@ def test_config_isolation_rejects_sibling_project_config(
     assert error is not None
     assert "unit-nested" in error
     assert str(parent / "pyproject.toml") in error
+
+
+def test_config_isolation_catches_intermediate_nested_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Paths reaching into a nested project pick up that project's config, even
+    when the workdir has its own — pytest starts discovery at the paths' common
+    ancestor, so resolving from the workdir alone would miss it.
+    """
+    from tests.rig import cli
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "workers"
+    nested = workdir / "plugins" / "agentic_table"
+    (nested / "tests").mkdir(parents=True)
+    _pytest_section(workdir / "pyproject.toml")  # workdir's own config
+    _pytest_section(nested / "pyproject.toml")  # the nested project shadows it
+
+    group = GroupDefinition(
+        name="unit-agentic",
+        tier="unit",
+        workdir="workers",
+        paths=["plugins/agentic_table/tests"],
+    )
+    error = cli._config_isolation_error(group, workdir)
+
+    assert error is not None
+    assert str(nested / "pyproject.toml") in error
+
+
+def test_resolve_configfile_ignores_commented_section(tmp_path: Path) -> None:
+    """A commented-out section header is not a real pytest config."""
+    from tests.rig import cli
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "root"\n# [tool.pytest.ini_options] disabled\n'
+    )
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) is None

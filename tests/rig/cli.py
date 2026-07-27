@@ -301,6 +301,17 @@ def cmd_validate(_args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     errors = cp.validate_registry_against_manifest(registry, manifest)
+    # Config-isolation is filesystem-dependent, so it lives here rather than in
+    # the pure loader — but running it at validate time catches a misconfigured
+    # group in review instead of mid-run, after infra/dep bring-up.
+    for name in manifest.names():
+        group = manifest.get(name)
+        # Optional groups may be placeholders whose paths don't exist yet.
+        if group.optional:
+            continue
+        isolation_error = _config_isolation_error(group, group.absolute_workdir())
+        if isolation_error is not None:
+            errors.append(isolation_error)
     for err in errors:
         print(f"ERROR: {err}", file=sys.stderr)
     if errors:
@@ -764,8 +775,10 @@ def _inject_infra_env(
         db_env["DB_SCHEMA"] = env["DB_SCHEMA"]
         # Fixtures read TEST_DB_* so a developer run keeps pointing at their own
         # compose DB. Mirror onto that prefix or those tests connect to the
-        # dev-compose defaults instead of the provisioned container.
-        env.update({f"TEST_{key}": value for key, value in db_env.items()})
+        # dev-compose defaults instead of the provisioned container. setdefault so
+        # a group can still override with its own TEST_DB_* escape hatch.
+        for key, value in db_env.items():
+            env.setdefault(f"TEST_{key}", value)
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.
         env.setdefault(
@@ -960,10 +973,15 @@ def _run_migrations(spec: MigrateSpec, *, postgres_url: str) -> int:
     """
     env = {
         **os.environ,
-        **_db_env_from_postgres_url(postgres_url),
-        # A rig-provisioned Postgres is bare; `public` is the only schema it has.
-        "DB_SCHEMA": "public",
+        # spec.env carries Django settings (e.g. schema); the provisioned
+        # connection is layered on top so a stray DB_HOST/DB_NAME in spec.env
+        # can't silently redirect migrations away from the container the groups
+        # then test against.
         **spec.env,
+        **_db_env_from_postgres_url(postgres_url),
+        # A rig-provisioned Postgres is bare; `public` is the only schema it has,
+        # unless the spec deliberately migrates into another.
+        "DB_SCHEMA": spec.env.get("DB_SCHEMA", "public"),
     }
     workdir = spec.absolute_workdir()
     base = ["uv", "run", "python"] if shutil.which("uv") else [sys.executable]
@@ -1027,10 +1045,13 @@ def _resolve_pytest_configfile(workdir: Path) -> Path | None:
             if required_section is None:
                 return candidate
             try:
-                if required_section in candidate.read_text(encoding="utf-8"):
-                    return candidate
+                lines = candidate.read_text(encoding="utf-8").splitlines()
             except OSError:
                 continue
+            # Match the section header on its own line, as the TOML/INI parsers
+            # do — a commented-out or docstring mention is not a real config.
+            if any(line.strip() == required_section for line in lines):
+                return candidate
         if directory == REPO_ROOT:
             break
     return None
@@ -1039,23 +1060,34 @@ def _resolve_pytest_configfile(workdir: Path) -> Path | None:
 def _config_isolation_error(group: GroupDefinition, workdir: Path) -> str | None:
     """Reject a group that would silently inherit an unrelated project's config.
 
-    `cd workdir && pytest` does not pin config to workdir — pytest walks up. A
-    nested project without its own config therefore adopts its parent's
-    `addopts` (coverage targets, --strict-config), which fails in ways that
-    have nothing to do with the group's tests. Inheriting the repo-root config
-    is the normal monorepo case and stays allowed; inheriting some *other*
-    project's config never is.
+    `cd workdir && pytest <paths>` does not pin config to workdir — pytest walks
+    up from the common ancestor of its path args. A nested project without its
+    own config therefore adopts its parent's `addopts` (coverage targets,
+    --strict-config), which fails in ways that have nothing to do with the
+    group's tests. Inheriting the repo-root config is the normal monorepo case
+    and stays allowed; inheriting some *other* project's config never is.
     """
-    configfile = _resolve_pytest_configfile(workdir)
+    # Match pytest: ini discovery starts at the common ancestor of the path args
+    # (the rig always passes paths), not the workdir — they differ whenever paths
+    # reach into a subdirectory that is itself a nested project.
+    paths = [str(workdir / p) for p in group.paths]
+    start = Path(os.path.commonpath(paths)) if paths else workdir
+    configfile = _resolve_pytest_configfile(start)
     if configfile is None or configfile.parent in (workdir, REPO_ROOT):
         return None
+    # An empty pytest.ini is the lightest fix for a workdir with no pyproject.
+    fix_target = (
+        workdir / "pyproject.toml"
+        if (workdir / "pyproject.toml").is_file()
+        else workdir / "pytest.ini"
+    )
     return (
         f"[rig] group '{group.name}' would run under {configfile}, which belongs "
         f"to neither its workdir ({workdir}) nor the repo root.\n"
-        f"[rig] pytest resolves config by walking up from the workdir, so this "
-        f"group inherits that project's addopts.\n"
-        f"[rig] fix: add a [tool.pytest.ini_options] section to "
-        f"{workdir / 'pyproject.toml'}."
+        f"[rig] pytest resolves config by walking up from the tests' common "
+        f"ancestor, so this group inherits that project's addopts.\n"
+        f"[rig] fix: give the group its own pytest config, e.g. add a "
+        f"[tool.pytest.ini_options] section to or create {fix_target}."
     )
 
 
@@ -1134,7 +1166,7 @@ def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:
 
 def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
     """Synthesise a JUnit XML for a group pytest never wrote one for (hurl runs,
-    or a group whose pre-run migration failed).
+    or a group rejected by the config-isolation guardrail).
 
     Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
     hurl group would show ⚪ via :class:`GroupResult` while also being counted
