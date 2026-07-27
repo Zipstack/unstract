@@ -1,4 +1,4 @@
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import moment from "moment";
 import { describe, expect, it, vi } from "vitest";
 
@@ -120,5 +120,149 @@ describe("antd-compatible date/time shims (P3-04, D7)", () => {
   it("passes disabled through", () => {
     const { container } = render(<DatePicker disabled />);
     expect(container.querySelector("input")).toBeDisabled();
+  });
+
+  /**
+   * These props were accepted-and-ignored by the first version of the shim.
+   * Ignoring them is invisible in a screenshot but changes what the control
+   * DOES, so each one gets a test that fails if it silently stops working.
+   */
+  describe("RangePicker props the call-sites depend on", () => {
+    it("renders preset buttons and applies the range when one is clicked", () => {
+      const onChange = vi.fn();
+      const preset = [moment("2026-03-01"), moment("2026-03-08")];
+      render(
+        <RangePicker
+          value={[null, null]}
+          onChange={onChange}
+          presets={[{ label: "Last 7 Days", value: preset }]}
+        />,
+      );
+
+      const button = screen.getByRole("button", { name: "Last 7 Days" });
+      fireEvent.click(button);
+
+      const [pair] = onChange.mock.calls[0];
+      expect(pair[0].toISOString()).toBe(preset[0].toISOString());
+      expect(pair[1].toISOString()).toBe(preset[1].toISOString());
+    });
+
+    it("renders no preset row when presets are not supplied", () => {
+      render(<RangePicker value={[null, null]} />);
+      expect(screen.queryByRole("button")).not.toBeInTheDocument();
+    });
+
+    // MetricsDashboard blocks future dates. A native input enforces that via
+    // `max`, so the predicate has to be translated into a bound.
+    it("turns a no-future-dates disabledDate into a max bound", () => {
+      const { container } = render(
+        <RangePicker
+          value={[null, null]}
+          disabledDate={(current) => current && current > moment()}
+        />,
+      );
+      const [from, to] = container.querySelectorAll("input");
+      expect(from.getAttribute("max")).toBe(moment().format("YYYY-MM-DD"));
+      expect(to.getAttribute("max")).toBe(moment().format("YYYY-MM-DD"));
+    });
+
+    it("leaves the inputs unbounded when no disabledDate is given", () => {
+      const { container } = render(<RangePicker value={[null, null]} />);
+      const input = container.querySelector("input");
+      expect(input.getAttribute("max")).toBeNull();
+      expect(input.getAttribute("min")).toBeNull();
+    });
+
+    // antd reports a fully-cleared range as null. MetricsDashboard's handler
+    // ignores anything that is not a complete pair, so emitting null with
+    // allowClear={false} would strand the dashboard on a stale range.
+    it("suppresses the cleared-range emit when allowClear is false", () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <RangePicker
+          allowClear={false}
+          value={[moment("2026-03-01"), null]}
+          onChange={onChange}
+        />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[0], {
+        target: { value: "" },
+      });
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("still emits null for a cleared range when allowClear is default", () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <RangePicker
+          value={[moment("2026-03-01"), null]}
+          onChange={onChange}
+        />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[0], {
+        target: { value: "" },
+      });
+      expect(onChange).toHaveBeenCalledWith(null, ["", ""]);
+    });
+
+    it("fires onOk once the range becomes complete", () => {
+      const onOk = vi.fn();
+      const { container } = render(
+        <RangePicker value={[moment("2026-03-01"), null]} onOk={onOk} />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[1], {
+        target: { value: "2026-03-31" },
+      });
+      expect(onOk).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire onOk while the range is still half-filled", () => {
+      const onOk = vi.fn();
+      const { container } = render(
+        <RangePicker value={[null, null]} onOk={onOk} />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[0], {
+        target: { value: "2026-03-01" },
+      });
+      expect(onOk).not.toHaveBeenCalled();
+    });
+
+    // MetricsDashboard holds dayjs; ExecutionLogs holds moment. Handing back
+    // the wrong one is a type the call-site never opted into.
+    it("echoes back the caller's date library rather than forcing moment", () => {
+      const onChange = vi.fn();
+      // A minimal dayjs-shaped stand-in: the shim must clone THIS, not moment.
+      class FakeDay {
+        constructor(input) {
+          this.m = moment(input);
+        }
+        clone() {
+          return new FakeDay(this.m);
+        }
+        isValid() {
+          return this.m.isValid();
+        }
+        toISOString() {
+          return this.m.toISOString();
+        }
+        format(f) {
+          return this.m.format(f);
+        }
+      }
+
+      const { container } = render(
+        <RangePicker
+          value={[new FakeDay("2026-03-01"), null]}
+          onChange={onChange}
+        />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[1], {
+        target: { value: "2026-03-31" },
+      });
+
+      const [pair] = onChange.mock.calls[0];
+      expect(pair[1]).toBeInstanceOf(FakeDay);
+      expect(moment.isMoment(pair[1])).toBe(false);
+    });
   });
 });
