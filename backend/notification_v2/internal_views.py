@@ -30,6 +30,7 @@ from notification_v2.internal_serializers import (
     WebhookTestSerializer,
 )
 from notification_v2.models import Notification
+from unstract.core.network.ssrf import is_safe_webhook_url
 
 logger = logging.getLogger(__name__)
 
@@ -337,6 +338,15 @@ class WebhookTestAPIView(APIView):
             validated_data = serializer.validated_data
             headers = self._build_headers(validated_data)
 
+            # Same guard as the delivery sinks. This endpoint is behind
+            # INTERNAL_SERVICE_API_KEY and not tenant-reachable, but it takes
+            # an arbitrary URL and so gets the same treatment.
+            if not is_safe_webhook_url(validated_data["url"]):
+                return Response(
+                    {"error": "URL must resolve to a public address."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             import requests
 
             try:
@@ -345,13 +355,14 @@ class WebhookTestAPIView(APIView):
                     json=validated_data["payload"],
                     headers=headers,
                     timeout=validated_data["timeout"],
+                    allow_redirects=False,
                 )
 
+                # Status only: the body and headers of whatever was reached
+                # are not the caller's to read.
                 test_result = {
                     "success": response.status_code < 400,
                     "status_code": response.status_code,
-                    "response_headers": dict(response.headers),
-                    "response_body": response.text[:1000],
                     "url": validated_data["url"],
                     "request_headers": headers,
                     "request_payload": validated_data["payload"],

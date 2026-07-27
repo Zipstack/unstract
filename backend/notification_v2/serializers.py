@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
+from unstract.core.network.ssrf import is_safe_webhook_url
+
 from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
 
@@ -34,7 +36,21 @@ class NotificationSerializer(serializers.ModelSerializer):
         # General validation for the relationship between api and pipeline
         self._validate_api_or_pipeline(data)
         self._validate_authorization(data)
+        self._validate_url(data)
         return data
+
+    def _validate_url(self, data):
+        """Reject internal webhook targets at creation time.
+
+        URLField only checks the shape, so an internal address would be stored
+        and only refused later at the sink, silently and out of the user's
+        sight. Fail here instead; the sink guard stays as the real control.
+        """
+        url = data.get("url", getattr(self.instance, "url", None))
+        if url and not is_safe_webhook_url(url):
+            raise serializers.ValidationError(
+                {"url": "URL must resolve to a public address."}
+            )
 
     def _validate_api_or_pipeline(self, data):
         """Ensure either 'api' or 'pipeline' is provided, but not both."""
