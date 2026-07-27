@@ -65,9 +65,8 @@ _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 # saxutils.escape leaves quotes alone, which is wrong inside an attribute.
 _XML_ATTR_ESCAPES = {'"': "&quot;"}
 
-# Cap the pre-group `manage.py migrate`. It runs outside the group's own
-# timeout budget, so without this a wedged connection hangs the job to the CI
-# ceiling.
+# Runs outside any group's timeout budget, so a wedged connection would
+# otherwise hang the job to the CI ceiling.
 _MIGRATE_TIMEOUT_SECONDS = 300
 
 
@@ -461,19 +460,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             # in the finally, cleaning up any partial stack.
             endpoints = runtime.up()
         elif needs_services and not args.dry_run:
-            # Infra-only: testcontainers Postgres/Redis/etc., no platform
-            # services. up() starts the full infra set even if a run only needs
-            # Postgres; trim to the requested services if startup cost matters.
+            # Infra-only: testcontainers Postgres/Redis/etc., no platform.
             runtime = TestcontainersRuntime()
             print(
                 f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
             )
             endpoints = runtime.up()
 
-        # Schema for the database the rig just provisioned. Guarded on
-        # `postgres_url` so it only fires for a rig-owned container: under the
-        # compose runtime the platform's own backend migrates on startup, and
-        # migrating its database from here would be both redundant and wrong.
+        # Guarded on `postgres_url` so it only fires for a rig-owned container:
+        # under compose the platform migrates its own database on startup.
         if endpoints is not None and manifest.postgres_migrate is not None:
             postgres_url = endpoints.infra.postgres_url
             if postgres_url:
@@ -755,14 +750,12 @@ def _inject_infra_env(
     if "postgres" in group.requires_services and infra.postgres_url:
         db_env = _db_env_from_postgres_url(infra.postgres_url)
         env.update(db_env)
-        # A rig-provisioned Postgres is bare — `public` is the only schema it
-        # has. Groups needing another one declare DB_SCHEMA themselves.
+        # A bare Postgres only has `public`; groups needing another declare it.
         env.setdefault("DB_SCHEMA", "public")
         db_env["DB_SCHEMA"] = env["DB_SCHEMA"]
-        # The workers' real-Postgres fixtures read TEST_DB_* so that a developer
-        # run keeps pointing at their own compose database. Mirror the
-        # provisioned values onto that prefix, or those tests silently connect
-        # to the dev-compose defaults instead of the container the rig started.
+        # Fixtures read TEST_DB_* so a developer run keeps pointing at their own
+        # compose DB. Mirror onto that prefix or those tests connect to the
+        # dev-compose defaults instead of the provisioned container.
         env.update({f"TEST_{key}": value for key, value in db_env.items()})
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.

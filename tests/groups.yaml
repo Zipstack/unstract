@@ -14,15 +14,14 @@ defaults:
   parallel: true
   runner: pytest
 
-  # Django settings shared by both backend test groups and by the schema step
-  # below, so migrations apply under the same configuration the tests read.
+  # Shared so migrations run under the same settings the tests read.
   backend_test_env: &backend_test_env
     DJANGO_SETTINGS_MODULE: backend.settings.test
-    # Tenancy is row-level, not schema-per-tenant; tests run in public.
+    # Tenancy is row-level, not schema-per-tenant.
     DB_SCHEMA: public
-    # Resolved at import with no default; supply test-safe values.
+    # Resolved at import with no default.
     DJANGO_SECRET_KEY: test-secret-key-not-for-production
-    # All-zero Fernet key: valid format, obviously a placeholder.
+    # All-zero Fernet key: valid format, obvious placeholder.
     ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
     CELERY_BROKER_BASE_URL: redis://localhost:6379
     CELERY_BROKER_USER: guest
@@ -35,13 +34,11 @@ defaults:
     SYSTEM_ADMIN_USERNAME: admin
     SYSTEM_ADMIN_PASSWORD: admin
     SYSTEM_ADMIN_EMAIL: admin@example.com
-    # Only used to build paths at init; never written in these tests.
+    # Only used to build paths at init.
     WORKFLOW_EXECUTION_DIR_PREFIX: /tmp/unstract-workflow-exec
 
-  # The pg_queue tables the workers' integration tests read are Django-managed
-  # models owned by the backend, so the provisioned database gets its schema
-  # from the real migration rather than DDL duplicated in a fixture. Applied
-  # once when the rig provisions Postgres, before any group runs.
+  # Provisioned DB gets its schema from the real migration, not fixture DDL,
+  # since the tables are Django-managed models owned by the backend.
   postgres_migrate:
     workdir: backend
     apps: [pg_queue]
@@ -132,17 +129,14 @@ groups:
     tier: integration
     workdir: workers
     paths: [tests, shared/tests]
-    # Real-Postgres tests: barrier-decrement races, reaper, batch dedup, leader
-    # election, result backend. `conftest.py` marks these `integration` (any
-    # test using a real-connection fixture) and connects over TEST_DB_*, which
-    # the rig points at the provisioned container.
+    # Real-Postgres tests, auto-marked `integration` by conftest and connecting
+    # over TEST_DB_*, which the rig points at the provisioned container.
     markers: "integration"
     uv_sync_group: test
     coverage_source: shared
     requires_services: [postgres]
-    # Optional until REQUIRE_PG_TESTS=1 flips the fixtures' graceful skips into
-    # hard failures (see conftest `_skip_or_fail_no_pg`) so the lane can't pass
-    # having run nothing.
+    # Optional until REQUIRE_PG_TESTS=1 turns the fixtures' graceful skips into
+    # hard failures, so the lane can't pass having run nothing.
     optional: true
 
   integration-connectors:
