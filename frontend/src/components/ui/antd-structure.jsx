@@ -204,42 +204,52 @@ List.Item.Meta = function ListItemMeta({ avatar, title, description }) {
 /**
  * antd `<Layout>` and its slots.
  *
- * `flex-auto` matters: antd's Layout is `flex: auto`, so a nested Layout grows
- * to fill its parent. Without it the element computes `flex: 0 1 auto`, gets
- * height 0, and every descendant using `flex: 1` (the dashboard, prompt
- * studio, workflow panes) collapses to nothing while still being "in the DOM".
+ * Two behaviours here are load-bearing, and both caused real breakage when
+ * they were missing:
  *
- * `hasSider` switches to a row so Sider + content sit side by side, matching
- * antd. It is inferred when a Layout.Sider child is present, because most
- * call-sites here rely on antd's auto-detection rather than passing the prop.
+ * 1. `flex-auto` — antd's Layout is `flex: auto`, so a nested Layout grows to
+ *    fill its parent. Without it the element computes `flex: 0 1 auto`, gets
+ *    height 0, and every descendant using `flex: 1` collapses while still
+ *    being present in the DOM.
+ *
+ * 2. `hasSider` — a Layout containing a Sider lays out as a ROW. antd detects
+ *    this at RUNTIME via context, not by inspecting children, and that
+ *    distinction matters: here the sider is rendered inside `<SideNavBar>`,
+ *    so no amount of `React.Children` inspection can see it. A Sider therefore
+ *    registers itself with the nearest Layout through context on mount.
  */
+const SiderRegistryContext = React.createContext(null);
+
 const Layout = React.forwardRef(function Layout(
   { className, hasSider, children, ...props },
   ref,
 ) {
-  const containsSider =
-    hasSider ??
-    React.Children.toArray(children).some(
-      // Identity comparison against Layout.Sider is fragile here (it is
-      // assigned after Layout, and survives neither HMR nor wrapping), so the
-      // component carries an explicit marker instead.
-      (c) => c?.type?.__isSider === true,
-    );
+  // A descendant Sider flips this on mount, however deeply it is nested.
+  const [siderDetected, setSiderDetected] = React.useState(false);
+  const register = React.useCallback(() => {
+    setSiderDetected(true);
+    return () => setSiderDetected(false);
+  }, []);
+
+  const isRow = hasSider ?? siderDetected;
 
   return (
-    <div
-      ref={ref}
-      className={cn(
-        "flex min-h-0 flex-auto",
-        containsSider ? "flex-row" : "flex-col",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </div>
+    <SiderRegistryContext.Provider value={register}>
+      <div
+        ref={ref}
+        className={cn(
+          "flex min-h-0 flex-auto",
+          isRow ? "flex-row" : "flex-col",
+          className,
+        )}
+        {...props}
+      >
+        {children}
+      </div>
+    </SiderRegistryContext.Provider>
   );
 });
+
 Layout.Header = function Header({ className, ...p }) {
   return <header className={cn("flex items-center", className)} {...p} />;
 };
@@ -268,6 +278,10 @@ Layout.Sider = function Sider({
   style,
   ...p
 }) {
+  // Tell the nearest ancestor Layout to lay out as a row (antd's hasSider).
+  const register = React.useContext(SiderRegistryContext);
+  React.useEffect(() => register?.(), [register]);
+
   return (
     <aside
       className={cn("shrink-0 transition-[width] duration-200", className)}
@@ -277,8 +291,6 @@ Layout.Sider = function Sider({
     />
   );
 };
-Layout.Sider.__isSider = true;
-
 Layout.Footer = function Footer({ className, ...p }) {
   return <footer className={className} {...p} />;
 };

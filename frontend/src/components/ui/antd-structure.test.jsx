@@ -260,6 +260,22 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(container.firstChild.className).toContain("flex-row");
   });
 
+  // The real app renders its Sider inside <SideNavBar>, so child inspection
+  // cannot see it — detection has to work at runtime, however deep it is.
+  it("Layout detects a Sider nested inside another component", () => {
+    function NestedNav() {
+      return <Layout.Sider width={240}>nav</Layout.Sider>;
+    }
+    const { container } = render(
+      <Layout>
+        <NestedNav />
+        <Layout.Content>body</Layout.Content>
+      </Layout>,
+    );
+    expect(container.firstChild.className).toContain("flex-row");
+    expect(container.firstChild.className).not.toContain("flex-col");
+  });
+
   it("Layout stacks in a column with no Sider", () => {
     const { container } = render(
       <Layout>
