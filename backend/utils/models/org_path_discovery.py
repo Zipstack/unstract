@@ -19,6 +19,34 @@ _org_path_cache: dict[type, str | None] = {}
 
 _FK_TYPES = (models.ForeignKey, models.OneToOneField)
 
+# Org paths pinned explicitly, checked before BFS. Keyed by model label
+# ("app_label.ModelName") so this module stays import-free of the models.
+#
+# BFS returns the *shortest* path and breaks ties by field declaration order.
+# Reordering two fields can therefore swap in a different path of the same
+# length, and if that path runs through a nullable FK the resulting INNER JOIN
+# silently drops every row with a NULL — data loss that reads as "missing
+# records", not as an error. Pinning freezes the path for both consumers
+# (OrgAwareManager and OrganizationFilterBackend); test_org_path_discovery
+# asserts each pin still matches BFS and traverses only non-nullable FKs.
+ORG_PATH_OVERRIDES: dict[str, str] = {
+    "prompt_studio_document_manager_v2.DocumentManager": "tool__organization",
+    "prompt_studio_index_manager_v2.IndexManager": (
+        "document_manager__tool__organization"
+    ),
+    "prompt_studio_output_manager_v2.PromptStudioOutputManager": (
+        "tool_id__organization"
+    ),
+    # ToolStudioPrompt.tool_id is nullable — prompts orphaned from their tool
+    # are excluded. This is the path already in force, pinned as-is rather
+    # than changed under a security fix.
+    "prompt_studio_v2.ToolStudioPrompt": "tool_id__organization",
+    # Deliberately not prompt_studio_tool__organization: that FK is nullable,
+    # so it would drop tool-less profiles. vector_store is non-null and
+    # AdapterInstance is org-owned, so it scopes to the same organization.
+    "prompt_profile_manager_v2.ProfileManager": "vector_store__organization",
+}
+
 
 def get_org_path(model: type) -> str | None:
     """Get the cached FK path from a model to Organization.
@@ -26,6 +54,10 @@ def get_org_path(model: type) -> str | None:
     Returns the ORM lookup path (e.g., "wf_execution__workflow__organization")
     or None if no path exists.
     """
+    pinned = ORG_PATH_OVERRIDES.get(model._meta.label)
+    if pinned:
+        return pinned
+
     if model in _org_path_cache:
         return _org_path_cache[model]
 
