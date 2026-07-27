@@ -57,8 +57,9 @@ class TestTextModeRegression:
             raise ExtractorError("service error", status_code=500)
 
         monkeypatch.setattr(LLMWhispererHelper, "send_whisper_request", _boom)
+        adapter = _adapter()
         with pytest.raises(ExtractorError, match="service error"):
-            _adapter().process("in.pdf")
+            adapter.process("in.pdf")
 
 
 class TestImageModeBranch:
@@ -118,8 +119,9 @@ class TestPdfOnlyValidation:
             "get_page_images",
             lambda **_: image_called.__setitem__("hit", True) or [],
         )
+        adapter = _adapter(output_mode="image")
         with pytest.raises(ExtractorError, match="PDF input only"):
-            _adapter(output_mode="image").process("in.png")
+            adapter.process("in.png")
         assert image_called["hit"] is False
 
     def test_validate_pdf_only_accepts_pdf(self) -> None:

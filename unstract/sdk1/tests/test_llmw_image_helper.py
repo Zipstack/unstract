@@ -52,8 +52,9 @@ class TestZipExtraction:
         assert [p for p, _ in pages] == [1]
 
     def test_corrupt_zip_raises_extractor_error(self) -> None:
+        corrupt = io.BytesIO(CORRUPT_ZIP)
         with pytest.raises(ExtractorError, match="Corrupt or invalid ZIP"):
-            H.extract_page_images_from_zip(io.BytesIO(CORRUPT_ZIP))
+            H.extract_page_images_from_zip(corrupt)
 
 
 class TestPageCountVerification:
@@ -85,9 +86,9 @@ class TestFolderKeyAndNaming:
         assert dir_a.endswith("pages")
 
     def test_folder_key_deterministic_for_same_run(self) -> None:
-        assert H.build_page_store_dir(
-            "/data/out.txt", "/data/in.pdf", "run-A"
-        ) == H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
+        first = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
+        second = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
+        assert first == second
 
     def test_folder_falls_back_to_input_dir(self) -> None:
         result = H.build_page_store_dir(None, "/docs/in.pdf", "job1")

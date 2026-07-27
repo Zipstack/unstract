@@ -444,8 +444,10 @@ class LLMWhispererHelper:
     # and is the single place to reconcile once the real API is known.    #
     # ------------------------------------------------------------------ #
 
-    # Matches service page files like `page_001.png` / `page-1.png`.
-    _PAGE_IMAGE_RE = re.compile(r"page[_-]?0*(\d+)\.png$", re.IGNORECASE)
+    # Matches service page files like `page_001.png` / `page-1.png`. The
+    # captured digits are passed through int() (leading zeros stripped there),
+    # so no separate `0*` prefix is needed — keeping the pattern linear.
+    _PAGE_IMAGE_RE = re.compile(r"page[_-]?(\d+)\.png$", re.IGNORECASE)
 
     @staticmethod
     def _safe_json(response: Response) -> dict[str, Any]:
