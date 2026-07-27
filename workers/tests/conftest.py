@@ -14,6 +14,7 @@ from pathlib import Path
 import psycopg2
 import pytest
 from dotenv import load_dotenv
+from psycopg2 import sql
 
 _env_test = Path(__file__).resolve().parent.parent / ".env.test"
 load_dotenv(_env_test)
@@ -198,6 +199,122 @@ def pg_client(pg_conn):
     from queue_backend.pg_queue import PgQueueClient
 
     return PgQueueClient(conn=pg_conn)
+
+
+# --- Per-worker Postgres isolation (real-DB integration lane) ---
+#
+# This is the only suite that opens a *raw* psycopg2 connection, so it bypasses
+# pytest-django's per-worker test database. Under xdist every worker would share
+# one physical table, and the reaper/sweeper paths scan *all* rows — so a whole-
+# table assertion in one worker sees another worker's rows. Give each worker its
+# own schema (the raw-connection equivalent of Django's per-worker database) and
+# truncate between tests, since a raw connection carries committed rows to the
+# next test with no rollback.
+
+
+def _base_pg_schema() -> str:
+    """Schema the pg_queue tables actually live in for this run.
+
+    CI injects ``TEST_DB_SCHEMA``/``DB_SCHEMA=public`` and migrates there; a
+    developer running ``pytest -m integration`` against their compose DB has
+    neither set, where ``backend migrate`` puts the tables in ``unstract``.
+    """
+    return os.getenv("TEST_DB_SCHEMA") or os.getenv("DB_SCHEMA") or "unstract"
+
+
+def _worker_pg_schema() -> str:
+    worker = os.getenv("PYTEST_XDIST_WORKER", "")
+    return f"test_{worker}" if worker else _base_pg_schema()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _pg_worker_schema():
+    """Clone the pg_queue tables into a per-worker schema, once per worker.
+
+    Cloned from the base schema (where the migration ran) via
+    ``LIKE ... INCLUDING ALL`` — the tables have no cross-table foreign keys, so
+    the clone carries every check/not-null/default/index. Yields the schema when
+    Postgres is reachable and migrated, else ``None`` so per-test fixtures can
+    short-circuit instead of retrying a dead connection on every test.
+    """
+    from queue_backend.pg_queue.schema import QUEUE_TABLES
+
+    base = _base_pg_schema()
+    schema = _worker_pg_schema()
+    reachable = False
+    with contextlib.suppress(psycopg2.OperationalError):
+        conn = integration_pg_conn()
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("SELECT to_regclass({})").format(
+                        sql.Literal(f"{base}.pg_barrier_state")
+                    )
+                )
+                if cur.fetchone()[0] is not None:
+                    reachable = True
+                    if schema != base:
+                        # Drop first: IF NOT EXISTS would keep a stale clone from
+                        # a prior run whose table definitions have since changed.
+                        cur.execute(
+                            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                                sql.Identifier(schema)
+                            )
+                        )
+                        cur.execute(
+                            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema))
+                        )
+                        for table in QUEUE_TABLES:
+                            cur.execute(
+                                sql.SQL(
+                                    "CREATE TABLE {}.{} (LIKE {}.{} INCLUDING ALL)"
+                                ).format(
+                                    sql.Identifier(schema),
+                                    sql.Identifier(table),
+                                    sql.Identifier(base),
+                                    sql.Identifier(table),
+                                )
+                            )
+            conn.commit()
+        finally:
+            conn.close()
+    yield schema if reachable else None
+
+
+@pytest.fixture(autouse=True)
+def _pg_worker_schema_env(request, _restore_os_environ, _pg_worker_schema):
+    """Point the queue's schema at this worker's, and clear it before each test.
+
+    Only real-Postgres tests (auto-marked ``integration``) reach the connection;
+    the DB-free unit lane and any run where Postgres is unreachable skip the body
+    entirely, so unit tests neither open a connection nor have their schema env
+    mutated. Depends on ``_restore_os_environ`` so the schema survives that
+    fixture's per-test reset. Both prefixes are set: ``DB_SCHEMA`` for the code
+    under test and ``TEST_DB_SCHEMA`` for the fixtures' own connections.
+    """
+    from queue_backend.pg_queue.schema import QUEUE_TABLES
+
+    schema = _pg_worker_schema
+    if schema is None or request.node.get_closest_marker("integration") is None:
+        yield
+        return
+
+    os.environ["DB_SCHEMA"] = schema
+    os.environ["TEST_DB_SCHEMA"] = schema
+    with contextlib.suppress(psycopg2.Error):
+        conn = integration_pg_conn()
+        try:
+            with conn.cursor() as cur:
+                for table in QUEUE_TABLES:
+                    cur.execute(
+                        sql.SQL("TRUNCATE {}.{}").format(
+                            sql.Identifier(schema), sql.Identifier(table)
+                        )
+                    )
+            conn.commit()
+        finally:
+            conn.close()
+    yield
 
 
 # --- Test-isolation fixtures (deterministic single-process runs) ---
