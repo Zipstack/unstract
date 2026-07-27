@@ -467,9 +467,18 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             endpoints = runtime.up()
 
-        # Guarded on `postgres_url` so it only fires for a rig-owned container:
-        # under compose the platform migrates its own database on startup.
-        if endpoints is not None and manifest.postgres_migrate is not None:
+        # Guarded on `postgres_url` so it only fires for a rig-owned container
+        # (under compose the platform migrates its own database on startup), and
+        # on a runnable group actually needing Postgres, since `up()` provisions
+        # the full infra set even for a run that only wants another service.
+        needs_postgres = any(
+            "postgres" in manifest.get(n).requires_services for n in runnable
+        )
+        if (
+            endpoints is not None
+            and manifest.postgres_migrate is not None
+            and needs_postgres
+        ):
             postgres_url = endpoints.infra.postgres_url
             if postgres_url:
                 migrate_exit = _run_migrations(
