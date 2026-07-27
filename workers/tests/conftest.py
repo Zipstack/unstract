@@ -249,10 +249,10 @@ def _pg_worker_schema():
 
 
 @pytest.fixture(autouse=True)
-def _pg_worker_schema_env(_pg_worker_schema):
+def _pg_worker_schema_env(_restore_os_environ, _pg_worker_schema):
     """Point the queue's schema at this worker's, and clear it before each test.
 
-    Defined after ``_restore_os_environ`` so the schema survives that fixture's
+    Depends on ``_restore_os_environ`` so the schema survives that fixture's
     per-test reset. Both prefixes are set: ``DB_SCHEMA`` for the code under test
     (``qualified()`` / the production connection) and ``TEST_DB_SCHEMA`` for the
     fixtures' own connections.
