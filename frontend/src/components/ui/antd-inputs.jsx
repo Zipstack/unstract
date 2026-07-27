@@ -45,6 +45,7 @@ const Input = React.forwardRef(function Input(
     <ShadcnInput
       ref={ref}
       className={cn(
+        "ant-input",
         size === "small" && "h-8 text-sm",
         size === "large" && "h-11",
         status === "error" && "border-destructive",
@@ -209,7 +210,11 @@ const Select = React.forwardRef(function Select(
     >
       <SelectTrigger
         ref={ref}
-        className={cn(size === "small" && "h-8 text-sm", className)}
+        className={cn(
+          "ant-select-selector",
+          size === "small" && "h-8 text-sm",
+          className,
+        )}
       >
         <SelectValue placeholder={placeholder} />
       </SelectTrigger>
@@ -300,7 +305,12 @@ const Radio = React.forwardRef(function Radio(
   ref,
 ) {
   return (
-    <Label className={cn("flex items-center gap-2 font-normal", className)}>
+    <Label
+      className={cn(
+        "ant-radio-wrapper flex items-center gap-2 font-normal",
+        className,
+      )}
+    >
       <RadioGroupItem
         ref={ref}
         value={String(value)}
@@ -333,7 +343,7 @@ Radio.Group = React.forwardRef(function RadioGroup(
       defaultValue={defaultValue != null ? String(defaultValue) : undefined}
       disabled={disabled}
       onValueChange={(v) => onChange?.({ target: { value: v } })}
-      className={cn("flex flex-col gap-2", className)}
+      className={cn("ant-radio-group flex flex-col gap-2", className)}
       {...props}
     >
       {options

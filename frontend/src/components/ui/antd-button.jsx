@@ -87,6 +87,9 @@ const Button = React.forwardRef(function Button(
       disabled={disabled || Boolean(loading)}
       type={htmlType || "button"}
       className={cn(
+        // .ant-btn is targeted by ~9 existing CSS rules (sizing, padding).
+        "ant-btn",
+        type === "text" && "ant-btn-text",
         block && "w-full",
         shape === "circle" && "rounded-full",
         shape === "round" && "rounded-full",

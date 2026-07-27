@@ -114,6 +114,8 @@ const Modal = React.forwardRef(function Modal(
       <DialogContent
         ref={ref}
         className={cn(
+          // .ant-modal-content is targeted by existing CSS (padding, height).
+          "ant-modal-content",
           // NOTE: no `centered` handling here. shadcn's DialogContent is
           // ALREADY centred (`top-[50%] translate-y-[-50%]`), and adding an
           // equivalent-but-differently-spelled utility makes tailwind-merge
@@ -140,7 +142,7 @@ const Modal = React.forwardRef(function Modal(
         {...props}
       >
         {title ? (
-          <DialogHeader>
+          <DialogHeader className="ant-modal-header">
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
         ) : null}
@@ -219,7 +221,11 @@ const Dropdown = React.forwardRef(function Dropdown(
 
   return (
     <DropdownMenu {...props}>
-      <DropdownMenuTrigger asChild disabled={disabled}>
+      <DropdownMenuTrigger
+        asChild
+        disabled={disabled}
+        className="ant-dropdown-trigger"
+      >
         {children}
       </DropdownMenuTrigger>
       <DropdownMenuContent ref={ref} align="end">
@@ -229,6 +235,7 @@ const Dropdown = React.forwardRef(function Dropdown(
               <DropdownMenuSeparator key={`div-${i}`} />
             ) : (
               <DropdownMenuItem
+                className="ant-dropdown-menu-item"
                 key={item?.key ?? i}
                 disabled={item?.disabled}
                 onClick={(e) => {
@@ -237,7 +244,9 @@ const Dropdown = React.forwardRef(function Dropdown(
                 }}
               >
                 {item?.icon}
-                {item?.label}
+                <span className="ant-dropdown-menu-title-content">
+                  {item?.label}
+                </span>
               </DropdownMenuItem>
             ),
           )}
@@ -312,7 +321,7 @@ const AntPopover = React.forwardRef(function AntPopover(
       <PopoverContent
         ref={ref}
         side={placement.replace(/(Top|Bottom|Left|Right)$/, "")}
-        className={cn(className)}
+        className={cn("ant-popover-inner", className)}
       >
         {title ? <div className="mb-1 font-semibold">{title}</div> : null}
         {content}
@@ -344,10 +353,12 @@ const Collapse = React.forwardRef(function Collapse(
               : defaultActiveKey === item.key
           }
         >
-          <CollapsibleTrigger className="flex w-full items-center justify-between py-2 text-left font-medium">
+          <CollapsibleTrigger className="ant-collapse-header flex w-full items-center justify-between py-2 text-left font-medium">
             {item.label}
           </CollapsibleTrigger>
-          <CollapsibleContent>{item.children}</CollapsibleContent>
+          <CollapsibleContent className="ant-collapse-content-box">
+            {item.children}
+          </CollapsibleContent>
         </Collapsible>
       ))}
     </div>

@@ -74,7 +74,7 @@ const Tag = React.forwardRef(function Tag(
     <Badge
       ref={ref}
       variant={variant ?? "secondary"}
-      className={cn("gap-1", className)}
+      className={cn("ant-tag gap-1", className)}
       style={
         custom
           ? {
@@ -112,7 +112,10 @@ const Spin = React.forwardRef(function Spin(
   return (
     <span
       ref={ref}
-      className={cn("inline-flex items-center gap-2", className)}
+      className={cn(
+        "ant-spin-container inline-flex items-center gap-2",
+        className,
+      )}
       {...props}
     >
       <Spinner size={mapped} />
@@ -232,6 +235,7 @@ const Divider = React.forwardRef(function Divider(
       ref={ref}
       orientation={type === "vertical" ? "vertical" : "horizontal"}
       className={cn(
+        "ant-divider",
         type === "vertical" ? "mx-2 h-auto self-stretch" : "my-2",
         className,
       )}

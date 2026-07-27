@@ -88,6 +88,9 @@ const Ellipsis = React.forwardRef(function Ellipsis(
 /** Shared prop → class handling for Text / Paragraph / Link. */
 function useTypographyClass({ type, strong, italic, underline, del, code }) {
   return cn(
+    // ~8 CSS rules target .ant-typography (margins, line-height).
+    "ant-typography",
+    strong && "ant-typography-strong",
     type && TYPE_CLASS[type],
     strong && "font-semibold",
     italic && "italic",

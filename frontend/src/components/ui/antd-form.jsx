@@ -217,14 +217,16 @@ function FormItem({
         };
 
         return (
-          <div className={cn("space-y-2", className)} {...props}>
+          <div className={cn("ant-form-item space-y-2", className)} {...props}>
             {label ? (
               <Label htmlFor={name}>
                 {required ? <span className="text-destructive">* </span> : null}
                 {label}
               </Label>
             ) : null}
-            {React.cloneElement(child, injected)}
+            <div className="ant-form-item-control-input">
+              {React.cloneElement(child, injected)}
+            </div>
             {fieldState.error ? (
               <p className="text-sm text-destructive">
                 {fieldState.error.message}

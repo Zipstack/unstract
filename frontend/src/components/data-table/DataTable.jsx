@@ -134,90 +134,98 @@ function DataTable({
     typeof loading === "object" ? Boolean(loading?.spinning) : Boolean(loading);
 
   return (
-    <div className={cn("w-full", className)} {...props}>
-      <Table className={cn(size === "small" && "text-sm")}>
-        <TableHeader>
-          {table.getHeaderGroups().map((hg) => (
-            <TableRow key={hg.id}>
-              {hg.headers.map((header) => {
-                const sorted = header.column.getIsSorted();
-                return (
-                  <TableHead
-                    key={header.id}
-                    style={{ width: header.column.columnDef.meta?.width }}
-                    className={cn(
-                      header.column.columnDef.meta?.align === "center" &&
-                        "text-center",
-                      header.column.columnDef.meta?.align === "right" &&
-                        "text-right",
-                      header.column.getCanSort() &&
-                        "cursor-pointer select-none",
-                    )}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    <span className="inline-flex items-center gap-1">
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext(),
+    // ant-table-* class names are emitted deliberately: the app has ~12 CSS
+    // rules targeting these (heights, sticky headers, overflow) that would
+    // otherwise match nothing.
+    <div className={cn("ant-table-wrapper w-full", className)} {...props}>
+      <div className="ant-table ant-table-container">
+        <Table className={cn(size === "small" && "text-sm")}>
+          <TableHeader className="ant-table-thead">
+            {table.getHeaderGroups().map((hg) => (
+              <TableRow key={hg.id}>
+                {hg.headers.map((header) => {
+                  const sorted = header.column.getIsSorted();
+                  return (
+                    <TableHead
+                      key={header.id}
+                      style={{ width: header.column.columnDef.meta?.width }}
+                      className={cn(
+                        header.column.columnDef.meta?.align === "center" &&
+                          "text-center",
+                        header.column.columnDef.meta?.align === "right" &&
+                          "text-right",
+                        header.column.getCanSort() &&
+                          "cursor-pointer select-none",
                       )}
-                      {sorted === "asc" ? (
-                        <ChevronUp className="size-3" />
-                      ) : null}
-                      {sorted === "desc" ? (
-                        <ChevronDown className="size-3" />
-                      ) : null}
-                    </span>
-                  </TableHead>
-                );
-              })}
-            </TableRow>
-          ))}
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <TableRow>
-              <TableCell colSpan={cols.length} className="h-24 text-center">
-                <Spinner />
-              </TableCell>
-            </TableRow>
-          ) : table.getRowModel().rows.length ? (
-            table.getRowModel().rows.map((row) => (
-              <TableRow
-                key={row.id}
-                data-state={row.getIsSelected() ? "selected" : undefined}
-                className={
-                  typeof rowClassName === "function"
-                    ? rowClassName(row.original, row.index)
-                    : rowClassName
-                }
-              >
-                {row.getVisibleCells().map((cell) => (
-                  <TableCell
-                    key={cell.id}
-                    className={cn(
-                      cell.column.columnDef.meta?.align === "center" &&
-                        "text-center",
-                      cell.column.columnDef.meta?.align === "right" &&
-                        "text-right",
-                    )}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </TableCell>
-                ))}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      <span className="inline-flex items-center gap-1">
+                        {flexRender(
+                          header.column.columnDef.header,
+                          header.getContext(),
+                        )}
+                        {sorted === "asc" ? (
+                          <ChevronUp className="size-3" />
+                        ) : null}
+                        {sorted === "desc" ? (
+                          <ChevronDown className="size-3" />
+                        ) : null}
+                      </span>
+                    </TableHead>
+                  );
+                })}
               </TableRow>
-            ))
-          ) : (
-            <TableRow>
-              <TableCell
-                colSpan={cols.length}
-                className="h-24 text-center text-muted-foreground"
-              >
-                {emptyText}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
+            ))}
+          </TableHeader>
+          <TableBody className="ant-table-tbody ant-table-body">
+            {isLoading ? (
+              <TableRow>
+                <TableCell colSpan={cols.length} className="h-24 text-center">
+                  <Spinner />
+                </TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows.length ? (
+              table.getRowModel().rows.map((row) => (
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() ? "selected" : undefined}
+                  className={
+                    typeof rowClassName === "function"
+                      ? rowClassName(row.original, row.index)
+                      : rowClassName
+                  }
+                >
+                  {row.getVisibleCells().map((cell) => (
+                    <TableCell
+                      key={cell.id}
+                      className={cn(
+                        cell.column.columnDef.meta?.align === "center" &&
+                          "text-center",
+                        cell.column.columnDef.meta?.align === "right" &&
+                          "text-right",
+                      )}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell
+                  colSpan={cols.length}
+                  className="h-24 text-center text-muted-foreground"
+                >
+                  {emptyText}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       {paginated && table.getPageCount() > 1 ? (
         <div className="flex items-center justify-end gap-2 py-3 text-sm">

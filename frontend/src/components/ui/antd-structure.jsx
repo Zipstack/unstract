@@ -53,27 +53,34 @@ const Card = React.forwardRef(function Card(
   ref,
 ) {
   return (
+    // The ant-* class names are emitted deliberately: this app has ~16 CSS
+    // rules targeting `.ant-card-body` alone (heights, padding, overflow) and
+    // more on head/extra. Without them those rules silently stop applying.
     <ShadcnCard
       ref={ref}
-      className={cn(!bordered && "border-0 shadow-none", className)}
+      className={cn("ant-card", !bordered && "border-0 shadow-none", className)}
       {...props}
     >
       {title || extra ? (
         <CardHeader
           className={cn(
-            "flex-row items-center justify-between",
+            "ant-card-head flex-row items-center justify-between",
             size === "small" && "p-3",
           )}
         >
           {title ? (
-            <CardTitle className="text-base">{title}</CardTitle>
+            <CardTitle className="ant-card-head-title text-base">
+              {title}
+            </CardTitle>
           ) : (
             <span />
           )}
-          {extra}
+          {extra ? <div className="ant-card-extra">{extra}</div> : null}
         </CardHeader>
       ) : null}
-      <CardContent className={cn(size === "small" && "p-3 pt-0")}>
+      <CardContent
+        className={cn("ant-card-body", size === "small" && "p-3 pt-0")}
+      >
         {children}
       </CardContent>
     </ShadcnCard>
@@ -120,11 +127,11 @@ const Tabs = React.forwardRef(function Tabs(
         ? { value: String(activeKey) }
         : { defaultValue: String(defaultActiveKey ?? first ?? "") })}
       onValueChange={(v) => onChange?.(v)}
-      className={className}
+      className={cn("ant-tabs", className)}
       {...props}
     >
-      <div className="flex items-center justify-between">
-        <TabsList>
+      <div className="ant-tabs-nav flex items-center justify-between">
+        <TabsList className="ant-tabs-nav-list">
           {panes.map((p) => (
             <TabsTrigger
               key={String(p.key)}
@@ -138,7 +145,11 @@ const Tabs = React.forwardRef(function Tabs(
         {tabBarExtraContent}
       </div>
       {panes.map((p) => (
-        <TabsContent key={String(p.key)} value={String(p.key)}>
+        <TabsContent
+          key={String(p.key)}
+          value={String(p.key)}
+          className="ant-tabs-content ant-tabs-tabpane"
+        >
           {p.children}
         </TabsContent>
       ))}
@@ -202,7 +213,7 @@ const List = React.forwardRef(function List(
           </div>
         ))
       ) : (
-        <div className="py-6 text-center text-muted-foreground">
+        <div className="ant-list-empty-text py-6 text-center text-muted-foreground">
           {locale?.emptyText ?? "No data"}
         </div>
       )}
@@ -321,9 +332,15 @@ Layout.Sider = function Sider({
 
   return (
     <aside
-      className={cn("shrink-0 transition-[width] duration-200", className)}
+      className={cn(
+        "ant-layout-sider shrink-0 transition-[width] duration-200",
+        collapsed && "ant-layout-sider-collapsed",
+        className,
+      )}
       style={{ width: collapsed ? collapsedWidth : width, ...style }}
       data-collapsed={collapsed ? "true" : undefined}
+      // .ant-layout-sider-collapsed is styled by the app's CSS.
+      data-sider=""
       {...p}
     />
   );
@@ -441,9 +458,13 @@ const Result = React.forwardRef(function Result(
           )}
         />
       )}
-      {title ? <div className="text-lg font-semibold">{title}</div> : null}
+      {title ? (
+        <div className="ant-result-title text-lg font-semibold">{title}</div>
+      ) : null}
       {subTitle ? (
-        <div className="text-sm text-muted-foreground">{subTitle}</div>
+        <div className="ant-result-subtitle text-sm text-muted-foreground">
+          {subTitle}
+        </div>
       ) : null}
       {extra}
       {children}
@@ -494,6 +515,7 @@ const Segmented = React.forwardRef(function Segmented(
     <div
       ref={ref}
       className={cn("inline-flex gap-1 rounded-md bg-muted p-1", className)}
+      data-segmented=""
       {...props}
     >
       {options.map((o) => {
@@ -505,7 +527,7 @@ const Segmented = React.forwardRef(function Segmented(
             type="button"
             onClick={() => onChange?.(val)}
             className={cn(
-              "rounded px-3 py-1 text-sm",
+              "ant-segmented-item rounded px-3 py-1 text-sm",
               String(value) === String(val)
                 ? "bg-background shadow-sm"
                 : "text-muted-foreground",
