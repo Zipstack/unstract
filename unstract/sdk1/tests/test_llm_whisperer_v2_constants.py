@@ -8,7 +8,6 @@ Covers:
 import importlib
 
 from _pytest.monkeypatch import MonkeyPatch
-
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import constants as c
 
 _ENV_VAR = "ADAPTER_LLMW_PAGE_STORE_MAX_RETRIES"
