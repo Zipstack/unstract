@@ -1,7 +1,12 @@
 /* Modal styles */
 .prompt-studio-modal {
   padding: 10px;
-  top: 20px;
+  /* `top: 20px` removed. It was written for antd, whose modal wrapper is
+   * statically positioned so the value read as "offset from the top of the
+   * viewport". The shadcn Dialog is `position: fixed` and centred with
+   * `top: 50%; translate-y(-50%)`, so the same rule overrode the centring and
+   * the transform then pulled the dialog 127px ABOVE the viewport — header
+   * clipped off-screen. Centring is the component's job now. */
 }
 
 .prompt-studio-modal .ant-modal-content {
