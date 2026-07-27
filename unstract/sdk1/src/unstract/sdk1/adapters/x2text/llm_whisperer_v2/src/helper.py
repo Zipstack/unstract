@@ -3,6 +3,7 @@ import logging
 import re
 import time
 import zipfile
+import zlib
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -61,7 +62,7 @@ class LLMWhispererHelper:
         params: dict[str, Any] | None = None,
         data: BytesIO | None = None,
         headers: dict[str, Any] | None = None,
-        timeout: float | None = None,
+        timeout: float = WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
         stream: bool = False,
     ) -> Response:
         """Single outbound raw-``requests`` code path for the adapter (UNS-743).
@@ -563,9 +564,23 @@ class LLMWhispererHelper:
             stream=True,
         )
         buffer = BytesIO()
-        for chunk in response.iter_content(chunk_size=1024 * 1024):
-            if chunk:
-                buffer.write(chunk)
+        # Consume the stream inside try/finally: map read-time transport errors
+        # (ChunkedEncodingError / ConnectionError / read Timeout) to
+        # ExtractorError like the rest of the adapter, and always release the
+        # connection even if a chunk read fails mid-stream.
+        try:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    buffer.write(chunk)
+        except requests.RequestException as e:
+            logger.error(f"Error streaming pdf-to-images archive: {e}")
+            raise ExtractorError(
+                "Failed to download the pdf-to-images archive from LLMWhisperer",
+                status_code=502,
+                actual_err=e,
+            ) from e
+        finally:
+            response.close()
         buffer.seek(0)
         return buffer
 
@@ -587,12 +602,22 @@ class LLMWhispererHelper:
                         continue
                     page_number = int(match.group(1))
                     pages.append((page_number, archive.read(name)))
-        except zipfile.BadZipFile as e:
+        except (zipfile.BadZipFile, RuntimeError, zlib.error) as e:
+            # BadZipFile: not a ZIP. RuntimeError: encrypted member.
+            # zlib.error: corrupt compressed member surfaced by read().
             raise ExtractorError(
                 f"Corrupt or invalid ZIP received from pdf-to-images: {e}",
                 status_code=502,
                 actual_err=e,
             ) from e
+        if not pages:
+            # A well-formed archive with no recognizable page images is a
+            # failed extraction, not an empty success — fail closed, matching
+            # the rest of this flow.
+            raise ExtractorError(
+                "pdf-to-images returned an archive with no page images",
+                status_code=502,
+            )
         pages.sort(key=lambda item: item[0])
         return pages
 

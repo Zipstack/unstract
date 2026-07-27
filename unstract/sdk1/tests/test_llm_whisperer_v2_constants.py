@@ -27,19 +27,19 @@ class TestPageStoreMaxRetries:
         assert c.WhispererEnv.PAGE_STORE_MAX_RETRIES == _ENV_VAR
 
     def test_default_is_three(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.delenv(_ENV_VAR, raising=False)
-        reloaded = importlib.reload(c)
-        try:
+        # Reload under the scoped patch, then reload again after the env is
+        # restored so the module cache reflects the real environment and does
+        # not leak the patched value into later tests.
+        with monkeypatch.context() as patch:
+            patch.delenv(_ENV_VAR, raising=False)
+            reloaded = importlib.reload(c)
             assert reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES == 3
             assert isinstance(reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES, int)
-        finally:
-            importlib.reload(c)
+        importlib.reload(c)
 
     def test_reads_from_env(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setenv(_ENV_VAR, "5")
-        reloaded = importlib.reload(c)
-        try:
+        with monkeypatch.context() as patch:
+            patch.setenv(_ENV_VAR, "5")
+            reloaded = importlib.reload(c)
             assert reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES == 5
-        finally:
-            monkeypatch.delenv(_ENV_VAR, raising=False)
-            importlib.reload(c)
+        importlib.reload(c)

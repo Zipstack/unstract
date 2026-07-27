@@ -56,6 +56,18 @@ class TestZipExtraction:
         with pytest.raises(ExtractorError, match="Corrupt or invalid ZIP"):
             H.extract_page_images_from_zip(corrupt)
 
+    def test_archive_with_no_page_entries_raises(self) -> None:
+        # A well-formed ZIP with no page_*.png entries is a failed extraction,
+        # not an empty success — must fail closed.
+        import zipfile
+
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w") as archive:
+            archive.writestr("readme.txt", b"not a page")
+        buffer.seek(0)
+        with pytest.raises(ExtractorError, match="no page images"):
+            H.extract_page_images_from_zip(buffer)
+
 
 class TestPageCountVerification:
     def test_matching_count_passes(self) -> None:
@@ -192,3 +204,15 @@ class TestSubmitParams:
         captured = self._patch(monkeypatch)
         H.submit_pdf_to_images(self._CONFIG, io.BytesIO(b"pdf"), tag=["first", "second"])
         assert captured["params"]["tag"] == "first"
+
+
+class TestRequestDefaults:
+    """The shared raw-request path must never wait forever (UNS-758)."""
+
+    def test_send_raw_request_has_finite_default_timeout(self) -> None:
+        import inspect
+
+        default = inspect.signature(H._send_raw_request).parameters["timeout"].default
+        # A None default maps to requests' "wait forever"; test_connection relies
+        # on this default, so it must be a positive, finite number.
+        assert isinstance(default, int | float) and default > 0
