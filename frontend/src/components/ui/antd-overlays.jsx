@@ -144,7 +144,18 @@ const Modal = React.forwardRef(function Modal(
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
         ) : null}
-        {children}
+        {/*
+          antd wraps modal content in `.ant-modal-body`, and this app's CSS
+          caps that element's height (`max-height: 70vh; overflow-y: auto` and
+          similar) so tall modals scroll internally. Without the element those
+          rules match nothing: the adapter settings form grew to 1109px in an
+          800px viewport, overflowing to y=-194 and putting Submit off-screen.
+          The class name is kept so the existing per-modal CSS keeps working;
+          the max-height here is the fallback for modals that have none.
+        */}
+        <div className="ant-modal-body max-h-[70vh] overflow-y-auto">
+          {children}
+        </div>
         {footer === null ? null : footer !== undefined ? (
           <DialogFooter>{footer}</DialogFooter>
         ) : (

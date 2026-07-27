@@ -152,4 +152,21 @@ describe("antd-compatible overlay shims (P2)", () => {
     const dlg = document.querySelector("[role='dialog']");
     expect(dlg.getAttribute("centered")).toBeNull();
   });
+
+  // Regression: the adapter settings form rendered 1109px tall in an 800px
+  // viewport, pushing the dialog to y=-194 with Submit unreachable. antd caps
+  // .ant-modal-body; without that element the app's existing CSS matched
+  // nothing.
+  it("wraps content in a scrollable .ant-modal-body", () => {
+    render(
+      <Modal open title="Tall">
+        <div>form fields</div>
+      </Modal>,
+    );
+    const body = document.querySelector(".ant-modal-body");
+    expect(body).toBeTruthy();
+    expect(body.className).toContain("overflow-y-auto");
+    expect(body.className).toContain("max-h-[70vh]");
+    expect(body.textContent).toContain("form fields");
+  });
 });
