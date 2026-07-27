@@ -5,14 +5,15 @@ from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import Q
 from tenant_account_v2.organization_member_service import OrganizationMemberService
-from utils.models.base_model import BaseModel, BaseModelManager
+from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 
 
-class ProfileManagerModelManager(BaseModelManager):
+class ProfileManagerModelManager(OrgAwareManager):
     def for_user(self, user):
         """Read visibility: profile's own share fields OR parent CustomTool sharing.
 

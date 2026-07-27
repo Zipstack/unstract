@@ -124,9 +124,12 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             raise ValidationError(detail=tool_validation_message)
 
         try:
-            # Fetch ToolStudioPrompt records based on tool_id
+            # Fetch ToolStudioPrompt records based on tool_id.
+            # Custom actions skip filter_queryset(), so OrganizationFilterBackend
+            # never runs — scope explicitly to prevent cross-tenant reads.
             tool_studio_prompts = ToolStudioPrompt.objects.filter(
-                tool_id=tool_id
+                tool_id=tool_id,
+                tool_id__organization=UserContext.get_organization(),
             ).order_by("sequence_number")
         except ObjectDoesNotExist:
             raise ValidationError(detail=tool_not_found)

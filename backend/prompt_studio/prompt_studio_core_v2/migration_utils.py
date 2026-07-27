@@ -60,9 +60,11 @@ class SummarizeMigrationUtils:
 
                 # Re-fetch the summarize profile with lock within transaction
                 try:
-                    summarize_profile = ProfileManager.objects.select_for_update().get(
-                        prompt_studio_tool=tool_instance, is_summarize_llm=True
-                    )
+                    # of=("self",): the org-scoped manager joins through
+                    # AdapterInstance, which would otherwise be locked too.
+                    summarize_profile = ProfileManager.objects.select_for_update(
+                        of=("self",)
+                    ).get(prompt_studio_tool=tool_instance, is_summarize_llm=True)
                 except ObjectDoesNotExist:
                     logger.info(
                         f"No summarize profile found for tool {tool_instance.tool_id}, skipping migration"

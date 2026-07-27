@@ -34,16 +34,10 @@ prompt_studio_file_list = FileManagementViewSet.as_view(
         "get": "list_ide",
     }
 )
-file_delete = FileManagementViewSet.as_view(
-    {
-        "get": "delete",
-    }
-)
 urlpatterns = format_suffix_patterns(
     [
         path("file", file_list, name="file-list"),
         path("file/download", file_downlaod, name="download"),
         path("file/upload", file_upload, name="upload"),
-        path("file/delete", file_delete, name="delete"),
     ]
 )
