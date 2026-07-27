@@ -349,4 +349,4 @@ Radio.Group = React.forwardRef(function RadioGroup(
 
 Radio.Button = Radio;
 
-export { Input, InputNumber, Select, Checkbox, Switch, Radio };
+export { Checkbox, Input, InputNumber, Radio, Select, Switch };

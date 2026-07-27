@@ -1,4 +1,3 @@
-import { theme } from "antd";
 import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -47,7 +46,8 @@ function AddLlmProfile({
   const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const { token } = theme.useToken();
+  // P4: antd's theme token replaced by the Midnight Bloom CSS variable.
+  const token = { colorBgContainer: "var(--card)" };
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { getStrategies } = useRetrievalStrategies();

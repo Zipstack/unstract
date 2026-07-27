@@ -1,8 +1,8 @@
-import { Card } from "antd";
 import { CircleHelp, EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { Dropdown, Popconfirm } from "@/components/ui/antd-overlays";
+import { Card } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 import "./GridView.css";
 

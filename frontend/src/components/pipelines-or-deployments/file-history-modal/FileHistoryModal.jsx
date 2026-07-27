@@ -1,4 +1,3 @@
-import { Table } from "antd";
 import {
   CircleAlert,
   Copy,
@@ -14,6 +13,7 @@ import { Input, InputNumber, Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Tag } from "@/components/ui/antd-leaves";
 import { Modal, Popconfirm, Tooltip } from "@/components/ui/antd-overlays";
+import { Table } from "@/components/ui/antd-structure";
 import { Text, Typography } from "@/components/ui/antd-typography";
 import { message } from "@/hooks/useAppToast";
 import { copyToClipboard } from "../../../helpers/GetStaticData";

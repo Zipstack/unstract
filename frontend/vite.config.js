@@ -164,7 +164,6 @@ export default defineConfig(({ mode }) => {
           // Manual chunk splitting for better caching
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
-            "antd-vendor": ["antd", "@ant-design/icons"],
             "pdf-vendor": [
               "@react-pdf-viewer/core",
               "@react-pdf-viewer/default-layout",
@@ -173,15 +172,6 @@ export default defineConfig(({ mode }) => {
               "pdfjs-dist",
             ],
           },
-        },
-      },
-    },
-
-    // CSS configuration
-    css: {
-      preprocessorOptions: {
-        less: {
-          javascriptEnabled: true,
         },
       },
     },
@@ -197,8 +187,6 @@ export default defineConfig(({ mode }) => {
         "react",
         "react-dom",
         "react-router-dom",
-        "antd",
-        "@ant-design/icons",
       ],
       exclude: [],
       esbuildOptions: {

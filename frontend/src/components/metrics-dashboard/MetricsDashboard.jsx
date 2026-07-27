@@ -1,4 +1,3 @@
-import { DatePicker, Tabs } from "antd";
 import dayjs from "dayjs";
 import {
   CreditCard,
@@ -12,8 +11,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { DatePicker } from "@/components/ui/antd-datetime";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Alert } from "@/components/ui/antd-leaves";
+import { Tabs } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { EmptyPlaceholder } from "../../assets";

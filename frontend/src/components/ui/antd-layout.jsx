@@ -193,4 +193,4 @@ const Flex = React.forwardRef(function Flex(
   );
 });
 
-export { Space, Row, Col, Flex };
+export { Col, Flex, Row, Space };

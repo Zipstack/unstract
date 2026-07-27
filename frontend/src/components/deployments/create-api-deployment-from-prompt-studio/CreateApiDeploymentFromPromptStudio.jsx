@@ -1,4 +1,3 @@
-import { Steps } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -8,6 +7,7 @@ import { Input } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Divider, Spin } from "@/components/ui/antd-leaves";
 import { Modal } from "@/components/ui/antd-overlays";
+import { Steps } from "@/components/ui/antd-structure";
 import { Text, Title } from "@/components/ui/antd-typography";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

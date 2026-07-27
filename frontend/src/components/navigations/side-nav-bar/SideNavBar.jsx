@@ -1,4 +1,3 @@
-import { Layout } from "antd";
 import { ChevronsRight, FileCheck, GitBranch } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +6,7 @@ import { Button } from "@/components/ui/antd-button";
 import { Space } from "@/components/ui/antd-layout";
 import { Divider, Image, Tag } from "@/components/ui/antd-leaves";
 import { Popover, Tooltip } from "@/components/ui/antd-overlays";
+import { Layout } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";

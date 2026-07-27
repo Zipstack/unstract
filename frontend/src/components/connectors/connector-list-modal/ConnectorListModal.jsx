@@ -1,4 +1,3 @@
-import { Tabs } from "antd";
 import debounce from "lodash/debounce";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
@@ -6,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Input } from "@/components/ui/antd-inputs";
 import { Col, Row } from "@/components/ui/antd-layout";
 import { Spin } from "@/components/ui/antd-leaves";
+import { Tabs } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { ConnectorCard } from "../connector-card/ConnectorCard";

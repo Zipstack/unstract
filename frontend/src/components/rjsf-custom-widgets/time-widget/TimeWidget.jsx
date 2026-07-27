@@ -1,6 +1,6 @@
-import { TimePicker } from "antd";
 import moment from "moment";
 import PropTypes from "prop-types";
+import { TimePicker } from "@/components/ui/antd-datetime";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 

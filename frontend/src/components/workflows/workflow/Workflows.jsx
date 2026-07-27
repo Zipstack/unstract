@@ -1,10 +1,10 @@
 // Aliased: this file defines its own `User` component below.
 
-import { Pagination } from "antd";
 import { Plus, User as UserIcon } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Pagination } from "@/components/ui/antd-structure";
 import { Text } from "@/components/ui/antd-typography";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";

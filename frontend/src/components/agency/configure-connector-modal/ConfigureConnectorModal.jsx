@@ -1,4 +1,3 @@
-import { Tabs } from "antd";
 import { cloneDeep, isEqual } from "lodash";
 import { CloudDownload, CloudUpload } from "lucide-react";
 import PropTypes from "prop-types";
@@ -8,6 +7,7 @@ import { Select } from "@/components/ui/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/antd-layout";
 import { Image } from "@/components/ui/antd-leaves";
 import { Modal } from "@/components/ui/antd-overlays";
+import { Tabs } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

@@ -1,10 +1,10 @@
-import { Table } from "antd";
 import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Input, Switch } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 import { Modal, Tooltip } from "@/components/ui/antd-overlays";
+import { Table } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

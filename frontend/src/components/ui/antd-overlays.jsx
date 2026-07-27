@@ -338,10 +338,10 @@ const Collapse = React.forwardRef(function Collapse(
 });
 
 export {
-  Modal,
-  Tooltip,
-  Dropdown,
-  Popconfirm,
   AntPopover as Popover,
   Collapse,
+  Dropdown,
+  Modal,
+  Popconfirm,
+  Tooltip,
 };

@@ -1,8 +1,8 @@
-import { List } from "antd";
 import { CircleHelp, Trash2, User, Users } from "lucide-react";
 import { Checkbox, Select } from "@/components/ui/antd-inputs";
 import { Avatar } from "@/components/ui/antd-leaves";
 import { Modal, Popconfirm } from "@/components/ui/antd-overlays";
+import { List } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 import "./SharePermission.css";
 import PropTypes from "prop-types";

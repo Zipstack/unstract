@@ -1,4 +1,3 @@
-import { Table } from "antd";
 import { ArrowLeft, Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -7,6 +6,7 @@ import { Form } from "@/components/ui/antd-form";
 import { Input, Select, Switch } from "@/components/ui/antd-inputs";
 import { Tag } from "@/components/ui/antd-leaves";
 import { Modal, Tooltip } from "@/components/ui/antd-overlays";
+import { Table } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

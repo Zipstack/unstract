@@ -1,4 +1,3 @@
-import { Card } from "antd";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
@@ -7,6 +6,7 @@ import { Select } from "@/components/ui/antd-inputs";
 import { Row, Space } from "@/components/ui/antd-layout";
 import { Divider, Tag } from "@/components/ui/antd-leaves";
 import { Collapse } from "@/components/ui/antd-overlays";
+import { Card } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";

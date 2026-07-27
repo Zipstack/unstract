@@ -1,10 +1,10 @@
-import { Card, List } from "antd";
 import { FileText, Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Input } from "@/components/ui/antd-inputs";
 import { Tag } from "@/components/ui/antd-leaves";
+import { Card, List } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import "./ToolSelectionSidebar.css";

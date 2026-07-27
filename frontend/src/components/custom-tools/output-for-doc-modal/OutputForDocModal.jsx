@@ -1,11 +1,10 @@
-import { Table, Tabs } from "antd";
-import TabPane from "antd/es/tabs/TabPane";
 import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
 import { Modal, Tooltip } from "@/components/ui/antd-overlays";
+import { Table, Tabs } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -336,9 +335,9 @@ function OutputForDocModal({
         <div className="output-doc-gap" />
         <div className="lmm-profile-outputs">
           <Tabs defaultActiveKey="0" onChange={handleTabChange}>
-            <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
+            <Tabs.TabPane tab={<span>Default</span>} key={"0"}></Tabs.TabPane>
             {adapterData?.map((adapter, index) => (
-              <TabPane
+              <Tabs.TabPane
                 tab={
                   <Tooltip title={adapter?.llm_model || adapter?.profile_name}>
                     <span>
@@ -349,7 +348,7 @@ function OutputForDocModal({
                   </Tooltip>
                 }
                 key={(index + 1)?.toString()}
-              ></TabPane>
+              ></Tabs.TabPane>
             ))}
           </Tabs>{" "}
           <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />

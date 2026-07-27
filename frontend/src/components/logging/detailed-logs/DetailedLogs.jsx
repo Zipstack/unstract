@@ -1,4 +1,3 @@
-import { Card, Table } from "antd";
 import {
   Calendar,
   CircleX,
@@ -18,6 +17,7 @@ import { Button } from "@/components/ui/antd-button";
 import { Checkbox, Input } from "@/components/ui/antd-inputs";
 import { Flex } from "@/components/ui/antd-layout";
 import { Dropdown, Tooltip } from "@/components/ui/antd-overlays";
+import { Card, Table } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

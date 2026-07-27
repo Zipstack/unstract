@@ -1,4 +1,3 @@
-import { ConfigProvider, theme } from "antd";
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
@@ -35,7 +34,6 @@ try {
 }
 
 function App() {
-  const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails, isLogoutLoading } = useSessionStore();
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
@@ -94,18 +92,7 @@ function App() {
   }, [alertDetails]);
 
   return (
-    <ConfigProvider
-      direction={window.direction || "ltr"}
-      theme={{
-        algorithm:
-          sessionDetails.currentTheme === THEME.DARK
-            ? darkAlgorithm
-            : defaultAlgorithm,
-        // The Button override that used to live here (colorPrimary #092C4C)
-        // is gone: no antd Buttons remain after P1-04, so it styled nothing.
-        // Primary buttons now take --primary from the Midnight Bloom palette.
-      }}
-    >
+    <>
       <HelmetProvider>
         <SyncShadcnTheme currentTheme={sessionDetails.currentTheme} />
         {isLogoutLoading && (
@@ -123,7 +110,7 @@ function App() {
           <Router />
         </BrowserRouter>
       </HelmetProvider>
-    </ConfigProvider>
+    </>
   );
 }
 

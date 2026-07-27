@@ -1,10 +1,10 @@
-import { Card } from "antd";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/antd-button";
 import { Flex, Space } from "@/components/ui/antd-layout";
 import { Tooltip } from "@/components/ui/antd-overlays";
+import { Card } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 /**

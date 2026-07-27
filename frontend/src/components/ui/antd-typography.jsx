@@ -254,4 +254,4 @@ const Typography = Object.assign(
   { Text, Title, Paragraph, Link },
 );
 
-export { Typography, Text, Title, Paragraph, Link };
+export { Link, Paragraph, Text, Title, Typography };

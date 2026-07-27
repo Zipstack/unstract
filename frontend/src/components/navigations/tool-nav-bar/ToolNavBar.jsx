@@ -1,10 +1,10 @@
-import { Segmented } from "antd";
-import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
 import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/antd-button";
+import { Input } from "@/components/ui/antd-inputs";
+import { Segmented } from "@/components/ui/antd-structure";
 import { Typography } from "@/components/ui/antd-typography";
 
 import "./ToolNavBar.css";
@@ -92,7 +92,7 @@ function ToolNavBar({
       </div>
       <div className="tool-nav-bar__right">
         {enableSearch && (
-          <Search
+          <Input.Search
             key={searchKey}
             className="tool-nav-bar__search"
             placeholder="Search by name"

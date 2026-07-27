@@ -323,4 +323,4 @@ const Progress = React.forwardRef(function Progress(
   );
 });
 
-export { Tag, Spin, Alert, Image, Divider, Empty, Avatar, Progress };
+export { Alert, Avatar, Divider, Empty, Image, Progress, Spin, Tag };
