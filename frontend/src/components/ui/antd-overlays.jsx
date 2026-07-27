@@ -1,3 +1,4 @@
+import { ChevronDown } from "lucide-react";
 import * as React from "react";
 import ReactDOM from "react-dom/client";
 
@@ -255,6 +256,61 @@ const Dropdown = React.forwardRef(function Dropdown(
     </DropdownMenu>
   );
 });
+
+/**
+ * antd `<Dropdown.Button>` — a split button: `children` is a normal action
+ * button that fires `onClick`, and a separate chevron half opens the menu.
+ *
+ * Distinct from `<Dropdown>`, where the child IS the trigger. Rendering the
+ * menu items as one grouped control keeps the two halves' hit targets apart,
+ * which is the whole point of the component: clicking "Download File" must
+ * download, not open a menu.
+ */
+const DropdownButton = React.forwardRef(function DropdownButton(
+  {
+    menu,
+    overlay,
+    trigger,
+    placement,
+    disabled,
+    onClick,
+    icon,
+    className,
+    children,
+    ...props
+  },
+  ref,
+) {
+  return (
+    <div className={cn("inline-flex items-center", className)}>
+      <Button
+        disabled={disabled}
+        onClick={onClick}
+        className="rounded-r-none border-r-0"
+      >
+        {children}
+      </Button>
+      <Dropdown
+        ref={ref}
+        menu={menu}
+        overlay={overlay}
+        trigger={trigger}
+        placement={placement}
+        disabled={disabled}
+        {...props}
+      >
+        <Button
+          disabled={disabled}
+          aria-label="More actions"
+          className="rounded-l-none px-2"
+          icon={icon ?? <ChevronDown className="size-4" aria-hidden="true" />}
+        />
+      </Dropdown>
+    </div>
+  );
+});
+
+Dropdown.Button = DropdownButton;
 
 /* ------------------------------------------------------------- Popconfirm */
 

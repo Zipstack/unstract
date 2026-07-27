@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { Modal, Tooltip } from "@/components/ui/antd-overlays";
+import { Dropdown, Modal, Tooltip } from "@/components/ui/antd-overlays";
 
 describe("antd-compatible overlay shims (P2)", () => {
   it("renders nothing when closed", () => {
@@ -216,5 +216,63 @@ describe("antd-compatible overlay shims (P2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "open" }));
     fireEvent.click(screen.getByRole("button", { name: "Yes" }));
     expect(onOk).toHaveBeenCalled();
+  });
+
+  // Dropdown.Button is a SPLIT button. ReviewHeader renders
+  // <Dropdown.Button>Download File</Dropdown.Button>, and clicking the label
+  // must download rather than open the menu — that separation is the entire
+  // reason antd ships a distinct component from <Dropdown>.
+  describe("Dropdown.Button (split button)", () => {
+    it("fires onClick from the main half without opening the menu", () => {
+      const onClick = vi.fn();
+      const onMenuClick = vi.fn();
+      render(
+        <Dropdown.Button
+          onClick={onClick}
+          menu={{
+            items: [{ key: "csv", label: "As CSV" }],
+            onClick: onMenuClick,
+          }}
+        >
+          Download File
+        </Dropdown.Button>,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "Download File" }));
+      expect(onClick).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("As CSV")).not.toBeInTheDocument();
+      expect(onMenuClick).not.toHaveBeenCalled();
+    });
+
+    it("opens the menu from the chevron half", async () => {
+      render(
+        <Dropdown.Button menu={{ items: [{ key: "csv", label: "As CSV" }] }}>
+          Download File
+        </Dropdown.Button>,
+      );
+
+      const chevron = screen.getByRole("button", { name: "More actions" });
+      expect(chevron).toHaveAttribute("aria-haspopup", "menu");
+      // Radix opens menus on pointerdown, not click.
+      fireEvent.pointerDown(
+        chevron,
+        new PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+      );
+      expect(await screen.findByText("As CSV")).toBeInTheDocument();
+    });
+
+    it("disables both halves together", () => {
+      render(
+        <Dropdown.Button disabled menu={{ items: [] }}>
+          Download File
+        </Dropdown.Button>,
+      );
+      expect(
+        screen.getByRole("button", { name: "Download File" }),
+      ).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "More actions" }),
+      ).toBeDisabled();
+    });
   });
 });
