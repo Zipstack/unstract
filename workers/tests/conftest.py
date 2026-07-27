@@ -14,6 +14,7 @@ from pathlib import Path
 import psycopg2
 import pytest
 from dotenv import load_dotenv
+from psycopg2 import sql
 
 _env_test = Path(__file__).resolve().parent.parent / ".env.test"
 load_dotenv(_env_test)
@@ -245,15 +246,34 @@ def _pg_worker_schema():
         conn = integration_pg_conn()
         try:
             with conn.cursor() as cur:
-                cur.execute(f"SELECT to_regclass('{base}.pg_barrier_state')")
+                cur.execute(
+                    sql.SQL("SELECT to_regclass({})").format(
+                        sql.Literal(f"{base}.pg_barrier_state")
+                    )
+                )
                 if cur.fetchone()[0] is not None:
                     reachable = True
                     if schema != base:
-                        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+                        # Drop first: IF NOT EXISTS would keep a stale clone from
+                        # a prior run whose table definitions have since changed.
+                        cur.execute(
+                            sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(
+                                sql.Identifier(schema)
+                            )
+                        )
+                        cur.execute(
+                            sql.SQL("CREATE SCHEMA {}").format(sql.Identifier(schema))
+                        )
                         for table in QUEUE_TABLES:
                             cur.execute(
-                                f'CREATE TABLE IF NOT EXISTS "{schema}".{table} '
-                                f"(LIKE {base}.{table} INCLUDING ALL)"
+                                sql.SQL(
+                                    "CREATE TABLE {}.{} (LIKE {}.{} INCLUDING ALL)"
+                                ).format(
+                                    sql.Identifier(schema),
+                                    sql.Identifier(table),
+                                    sql.Identifier(base),
+                                    sql.Identifier(table),
+                                )
                             )
             conn.commit()
         finally:
@@ -286,7 +306,11 @@ def _pg_worker_schema_env(request, _restore_os_environ, _pg_worker_schema):
         try:
             with conn.cursor() as cur:
                 for table in QUEUE_TABLES:
-                    cur.execute(f'TRUNCATE "{schema}".{table}')
+                    cur.execute(
+                        sql.SQL("TRUNCATE {}.{}").format(
+                            sql.Identifier(schema), sql.Identifier(table)
+                        )
+                    )
             conn.commit()
         finally:
             conn.close()
