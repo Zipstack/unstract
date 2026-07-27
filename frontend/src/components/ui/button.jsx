@@ -38,17 +38,27 @@ const buttonVariants = cva(
   },
 );
 
-function Button({
-  className,
-  variant = "default",
-  size = "default",
-  asChild = false,
-  ...props
-}) {
+/**
+ * forwardRef matters here: this Button is rendered as the child of Radix
+ * triggers (Dropdown, Popover, Tooltip) via `asChild`, which attaches its
+ * handlers through a ref. Without it those triggers are silently inert —
+ * the Prompt Studio Export menu never opened and fired no request at all.
+ */
+const Button = React.forwardRef(function Button(
+  {
+    className,
+    variant = "default",
+    size = "default",
+    asChild = false,
+    ...props
+  },
+  ref,
+) {
   const Comp = asChild ? Slot.Root : "button";
 
   return (
     <Comp
+      ref={ref}
       data-slot="button"
       data-variant={variant}
       data-size={size}
@@ -56,6 +66,6 @@ function Button({
       {...props}
     />
   );
-}
+});
 
 export { Button, buttonVariants };
