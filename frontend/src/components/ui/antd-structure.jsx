@@ -558,9 +558,236 @@ const Tree = React.forwardRef(function Tree(
   );
 });
 
+/**
+ * antd `<Descriptions>` — a label/value grid. Only cloud plugins use it, but it
+ * lives here per D9 so both repos share one implementation.
+ */
+const Descriptions = React.forwardRef(function Descriptions(
+  { title, items, column = 3, bordered, className, children, ...props },
+  ref,
+) {
+  return (
+    <div ref={ref} className={cn("w-full", className)} {...props}>
+      {title ? <div className="mb-2 font-medium">{title}</div> : null}
+      <dl
+        className={cn(
+          "grid gap-x-4 gap-y-2",
+          bordered && "rounded-md border p-3",
+        )}
+        style={{ gridTemplateColumns: `repeat(${column}, minmax(0, 1fr))` }}
+      >
+        {items
+          ? items.map((item) => (
+              <div key={String(item.key ?? item.label)}>
+                <dt className="text-sm text-muted-foreground">{item.label}</dt>
+                <dd className="text-sm">{item.children}</dd>
+              </div>
+            ))
+          : children}
+      </dl>
+    </div>
+  );
+});
+
+Descriptions.Item = function DescriptionsItem({ label, children }) {
+  return (
+    <div>
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{children}</dd>
+    </div>
+  );
+};
+
+/** antd `<Statistic title value prefix suffix precision />`. */
+const Statistic = React.forwardRef(function Statistic(
+  { title, value, precision, prefix, suffix, valueStyle, className, ...props },
+  ref,
+) {
+  const shown =
+    typeof value === "number" && precision != null
+      ? value.toFixed(precision)
+      : value;
+  return (
+    <div ref={ref} className={cn("space-y-1", className)} {...props}>
+      {title ? (
+        <div className="text-sm text-muted-foreground">{title}</div>
+      ) : null}
+      <div
+        className="flex items-baseline gap-1 text-2xl font-semibold"
+        style={valueStyle}
+      >
+        {prefix}
+        <span>{shown}</span>
+        {suffix ? <span className="text-base">{suffix}</span> : null}
+      </div>
+    </div>
+  );
+});
+
+/** antd `<FloatButton icon onClick tooltip />`. */
+const FloatButton = React.forwardRef(function FloatButton(
+  { icon, onClick, tooltip, type, className, children, ...props },
+  ref,
+) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      title={tooltip}
+      onClick={onClick}
+      className={cn(
+        "fixed bottom-6 right-6 z-50 flex size-11 items-center justify-center rounded-full shadow-lg",
+        type === "primary"
+          ? "bg-primary text-primary-foreground"
+          : "border bg-background text-foreground",
+        className,
+      )}
+      {...props}
+    >
+      {icon ?? children}
+    </button>
+  );
+});
+FloatButton.Group = function FloatButtonGroup({ children }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
+      {children}
+    </div>
+  );
+};
+
+/**
+ * antd `<Transfer>` — dual list with move-between controls. Kept minimal: the
+ * cloud call-sites use dataSource/targetKeys/onChange only.
+ */
+const Transfer = React.forwardRef(function Transfer(
+  {
+    dataSource = [],
+    targetKeys = [],
+    onChange,
+    render,
+    titles = ["Source", "Target"],
+    className,
+    ...props
+  },
+  ref,
+) {
+  const inTarget = new Set(targetKeys);
+  const move = (key, toTarget) => {
+    const next = toTarget
+      ? [...targetKeys, key]
+      : targetKeys.filter((k) => k !== key);
+    onChange?.(next, toTarget ? "right" : "left", [key]);
+  };
+
+  const column = (title, entries, toTarget) => (
+    <div className="flex-1 rounded-md border">
+      <div className="border-b px-3 py-2 text-sm font-medium">{title}</div>
+      <div className="max-h-64 divide-y overflow-auto">
+        {entries.map((item) => (
+          <button
+            key={String(item.key)}
+            type="button"
+            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+            onClick={() => move(item.key, toTarget)}
+          >
+            {render ? render(item) : item.title}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      ref={ref}
+      className={cn("flex items-start gap-3", className)}
+      {...props}
+    >
+      {column(
+        titles[0],
+        dataSource.filter((d) => !inTarget.has(d.key)),
+        true,
+      )}
+      {column(
+        titles[1],
+        dataSource.filter((d) => inTarget.has(d.key)),
+        false,
+      )}
+    </div>
+  );
+});
+
+/**
+ * antd `<Badge count dot status>` — a small counter/dot overlaid on its child.
+ * Distinct from shadcn's `Badge` (a pill label), which is what antd calls Tag.
+ */
+const Badge = React.forwardRef(function Badge(
+  {
+    count,
+    dot,
+    status,
+    color,
+    overflowCount = 99,
+    showZero,
+    offset,
+    className,
+    children,
+    ...props
+  },
+  ref,
+) {
+  const shown =
+    typeof count === "number" && count > overflowCount
+      ? `${overflowCount}+`
+      : count;
+  const visible = dot || (count != null && (count !== 0 || showZero));
+
+  if (!children) {
+    return visible ? (
+      <span
+        ref={ref}
+        className={cn(
+          "inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
+          dot && "size-2 p-0",
+          className,
+        )}
+        style={color ? { backgroundColor: color } : undefined}
+        {...props}
+      >
+        {dot ? null : shown}
+      </span>
+    ) : null;
+  }
+
+  return (
+    <span
+      ref={ref}
+      className={cn("relative inline-flex", className)}
+      {...props}
+    >
+      {children}
+      {visible ? (
+        <span
+          className={cn(
+            "absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
+            dot && "size-2 p-0",
+          )}
+          style={color ? { backgroundColor: color } : undefined}
+        >
+          {dot ? null : shown}
+        </span>
+      ) : null}
+    </span>
+  );
+});
+
 export {
+  Badge,
   Card,
+  Descriptions,
   Drawer,
+  FloatButton,
   Layout,
   List,
   Menu,
@@ -568,9 +795,11 @@ export {
   Result,
   Segmented,
   Skeleton,
+  Statistic,
   Steps,
   Table,
   Tabs,
+  Transfer,
   Tree,
   Upload,
 };

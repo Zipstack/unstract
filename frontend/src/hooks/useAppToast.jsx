@@ -105,3 +105,45 @@ function toMs(duration) {
   }
   return duration == null ? undefined : duration * 1000;
 }
+
+/**
+ * Drop-in replacement for antd's imperative `notification.*` API (P2-06 /
+ * Phase C). antd's notification takes `{ message, description }`; sonner takes
+ * a title plus `{ description }`, so the shape is remapped here rather than at
+ * each call-site.
+ */
+export const notification = {
+  success: (cfg = {}) =>
+    showAppToast({
+      ...cfg,
+      type: "success",
+      title: cfg.message,
+      content: cfg.description,
+    }),
+  error: (cfg = {}) =>
+    showAppToast({
+      ...cfg,
+      type: "error",
+      title: cfg.message,
+      content: cfg.description,
+    }),
+  warning: (cfg = {}) =>
+    showAppToast({
+      ...cfg,
+      type: "warning",
+      title: cfg.message,
+      content: cfg.description,
+    }),
+  info: (cfg = {}) =>
+    showAppToast({
+      ...cfg,
+      type: "info",
+      title: cfg.message,
+      content: cfg.description,
+    }),
+  open: (cfg = {}) =>
+    showAppToast({ ...cfg, title: cfg.message, content: cfg.description }),
+  destroy: (key) => dismissAppToast(key),
+  /** antd exposes a hook form returning [api, contextHolder]. */
+  useNotification: () => [notification, null],
+};
