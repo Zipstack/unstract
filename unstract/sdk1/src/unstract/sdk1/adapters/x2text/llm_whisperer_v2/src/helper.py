@@ -809,15 +809,15 @@ class LLMWhispererHelper:
         the extraction yields. Returning a short summary (rather than an empty
         string) keeps a re-run from re-submitting the remote conversion and
         keeps the indexed document meaningful instead of blank. The per-page
-        references travel separately in ``extraction_metadata.page_images`` and
-        the JSON manifest — never inside this string.
+        references travel separately in ``extraction_metadata.page_images`` —
+        never inside this string.
         """
         count = len(page_images)
         noun = "page image" if count == 1 else "page images"
         return (
             f"[LLMWhisperer image output mode] {count} {noun} extracted from the "
             "PDF and stored in FileStorage. Per-page references are available in "
-            "the page_images extraction metadata and the accompanying manifest."
+            "the page_images extraction metadata."
         )
 
     @staticmethod
@@ -825,15 +825,17 @@ class LLMWhispererHelper:
         fs: FileStorage,
         output_file_path: str,
         summary: str,
-        page_images: list[PageImageReference],
     ) -> None:
-        """Persist the image-mode extract file + a page-image manifest sidecar.
+        """Persist the image-mode summary to the extract file.
 
-        ``output_file_path`` (the extract file) receives the summary text so the
-        extraction-cache gate treats the conversion as complete (no re-submit)
-        and the indexer has meaningful text. ``<output_file_path>.page_images.
-        json`` receives the ordered per-page references as a durable, retrievable
-        manifest.
+        Image mode has no OCR text; writing a short summary to
+        ``output_file_path`` gives the Prompt Studio extraction cache a
+        non-empty extract, so a re-run is a cache hit instead of a re-submit of
+        the remote pdf-to-images conversion, and the indexed document stays
+        meaningful. The per-page references remain on the returned
+        ``extraction_metadata.page_images`` and the images themselves are
+        persisted to FileStorage; a Prompt Studio consumer of those references
+        is tracked as follow-up work.
         """
         try:
             fs.write(
@@ -842,17 +844,6 @@ class LLMWhispererHelper:
                 data=summary,
                 encoding="utf-8",
             )
-            manifest = json.dumps(
-                [ref.to_dict() for ref in page_images],
-                ensure_ascii=False,
-                indent=2,
-            )
-            fs.write(
-                path=f"{output_file_path}.page_images.json",
-                mode="w",
-                data=manifest,
-                encoding="utf-8",
-            )
         except Exception as e:
-            logger.error(f"Error writing image output for {output_file_path}: {e}")
+            logger.error(f"Error writing image extract file {output_file_path}: {e}")
             raise ExtractorError(str(e)) from e

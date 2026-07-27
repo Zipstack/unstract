@@ -98,9 +98,8 @@ class TestImageModeBranch:
         assert result.extraction_metadata.page_images == refs
         assert captured["input_file_path"] == "in.pdf"
         assert captured["output_file_path"] == "out.txt"
-        # summary + manifest persisted via the helper, keyed to the output path
+        # summary persisted to the extract file via the helper
         assert write_calls["output_file_path"] == "out.txt"
-        assert write_calls["page_images"] == refs
         assert write_calls["summary"] == expected_summary
 
     def test_empty_page_list_is_safe(self, monkeypatch: MonkeyPatch) -> None:

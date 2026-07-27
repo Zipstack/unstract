@@ -219,32 +219,23 @@ class TestRequestDefaults:
 
 
 class TestImageOutputWrite:
-    """write_image_output persists the summary extract file + manifest sidecar."""
+    """write_image_output persists the summary to the extract file."""
 
-    def test_writes_summary_and_manifest(self, tmp_path) -> None:  # noqa: ANN001
-        import json as _json
-
+    def test_writes_summary_to_extract_file(self, tmp_path) -> None:  # noqa: ANN001
         fs = FileStorage(provider=FileStorageProvider.LOCAL)
         refs = [
             PageImageReference(
                 page_number=1, path="doc/pages/page_001.png", filename="page_001.png"
             ),
-            PageImageReference(
-                page_number=2, path="doc/pages/page_002.png", filename="page_002.png"
-            ),
         ]
         out = str(tmp_path / "doc.txt")
         summary = H.build_image_output_summary(refs)
 
-        H.write_image_output(
-            fs=fs, output_file_path=out, summary=summary, page_images=refs
-        )
+        H.write_image_output(fs=fs, output_file_path=out, summary=summary)
 
-        # Extract file holds the human summary (what image mode indexes).
+        # Extract file holds the human summary (what image mode indexes); a
+        # non-empty extract is what keeps a re-run from re-submitting.
         assert fs.read(path=out, mode="r") == summary
-        # Sidecar manifest round-trips the ordered references.
-        manifest = _json.loads(fs.read(path=out + ".page_images.json", mode="r"))
-        assert manifest == [r.to_dict() for r in refs]
 
     def test_summary_is_human_readable_not_json(self) -> None:
         refs = [PageImageReference(page_number=1, path="p/page_001.png")]

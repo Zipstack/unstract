@@ -305,17 +305,6 @@ class LegacyExecutor(BaseExecutor):
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
-            # Include image output page references when present (image output
-            # mode) so they survive the transport to the indexer / downstream
-            # consumers instead of being dropped with the summary text.
-            if (
-                process_response.extraction_metadata
-                and process_response.extraction_metadata.page_images
-            ):
-                result_data[IKeys.PAGE_IMAGES] = [
-                    ref.to_dict()
-                    for ref in process_response.extraction_metadata.page_images
-                ]
             return ExecutionResult(
                 success=True,
                 data=result_data,

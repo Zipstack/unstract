@@ -95,9 +95,8 @@ class LLMWhispererV2(X2TextAdapter):
         no OCR text, but a non-empty extract keeps the Prompt Studio extraction
         cache from re-submitting the remote conversion on a re-run and keeps the
         indexed document meaningful. The per-page references live in
-        ``extraction_metadata.page_images`` (forwarded by the executor) and a
-        JSON manifest sidecar — never inside ``extracted_text``. ``tag`` is
-        forwarded for service-side usage reporting.
+        ``extraction_metadata.page_images`` — never inside ``extracted_text``.
+        ``tag`` is forwarded for service-side usage reporting.
         """
         logger.info("Image mode: processing %s in image output mode", input_file_path)
         self._validate_pdf_only(input_file_path)
@@ -109,15 +108,14 @@ class LLMWhispererV2(X2TextAdapter):
             tag=tag,
         )
         summary = LLMWhispererHelper.build_image_output_summary(page_images)
-        # Persist the extract file (summary) + manifest so the extraction is
-        # cache-consistent (no re-submit on re-run) and the references are
-        # durably retrievable. Skipped when no output path was requested.
+        # Persist the summary to the extract file so the extraction is
+        # cache-consistent (no re-submit on re-run). Skipped when no output
+        # path was requested.
         if output_file_path:
             LLMWhispererHelper.write_image_output(
                 fs=fs,
                 output_file_path=output_file_path,
                 summary=summary,
-                page_images=page_images,
             )
         logger.info(
             "Image mode: returning %d page image reference(s) for %s",
