@@ -206,8 +206,6 @@ jobs:
             tool-sidecar.cache-to=type=gha,mode=max,scope=tool-sidecar
             platform-service.cache-from=type=gha,scope=platform-service
             platform-service.cache-to=type=gha,mode=max,scope=platform-service
-            x2text-service.cache-from=type=gha,scope=x2text-service
-            x2text-service.cache-to=type=gha,mode=max,scope=x2text-service
             tool-classifier.cache-from=type=gha,scope=tool-classifier
             tool-classifier.cache-to=type=gha,mode=max,scope=tool-classifier
             tool-text_extractor.cache-from=type=gha,scope=tool-text_extractor

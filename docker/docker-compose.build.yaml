@@ -25,11 +25,6 @@ services:
     build:
       dockerfile: docker/dockerfiles/platform.Dockerfile
       context: ..
-  x2text-service:
-    image: unstract/x2text-service:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/x2text.Dockerfile
-      context: ..
   tool-classifier:
     image: unstract/tool-classifier:${VERSION}
     build:

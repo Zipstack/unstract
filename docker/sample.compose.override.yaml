@@ -139,16 +139,6 @@ services:
           path: ../platform-service/uv.lock
 
   #########################################################################################################
-  # X2Text Service
-  x2text-service:
-    image: unstract/x2text-service:${VERSION}
-    profiles:
-      - optional
-    build:
-      dockerfile: docker/dockerfiles/x2text.Dockerfile
-      context: ..
-
-  #########################################################################################################
   # Tool Sidecar
   tool-sidecar:
     image: unstract/tool-sidecar:${VERSION}

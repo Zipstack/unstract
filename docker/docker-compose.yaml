@@ -33,7 +33,6 @@ services:
       - minio
       - minio-bootstrap
       - platform-service
-      - x2text-service
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
@@ -157,19 +156,6 @@ services:
       - ../platform-service/.env
     depends_on:
       - redis
-      - db
-    labels:
-      - traefik.enable=false
-
-  x2text-service:
-    image: unstract/x2text-service:${VERSION}
-    container_name: unstract-x2text-service
-    restart: unless-stopped
-    ports:
-      - "3004:3004"
-    env_file:
-      - ../x2text-service/.env
-    depends_on:
       - db
     labels:
       - traefik.enable=false

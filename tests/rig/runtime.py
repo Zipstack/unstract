@@ -298,7 +298,6 @@ def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
     return [
         ("backend", endpoints.backend_url.rstrip("/") + "/health"),
         ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
-        ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
     ]
 
 
