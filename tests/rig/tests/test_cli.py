@@ -849,11 +849,12 @@ def _pytest_section(path: Path) -> None:
 
 
 def test_resolve_configfile_skips_pyproject_without_pytest_section(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A pyproject without the pytest table is not a config file to pytest."""
     from tests.rig import cli
 
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
     (tmp_path / "pyproject.toml").write_text('[project]\nname = "root"\n')
     child = tmp_path / "child"
     child.mkdir()

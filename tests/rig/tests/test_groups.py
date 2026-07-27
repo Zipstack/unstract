@@ -444,7 +444,7 @@ def test_postgres_migrate_workdir_must_hold_manage_py(tmp_path: Path) -> None:
             requires_services: [postgres]
         """,
     )
-    with pytest.raises(ValueError, match="manage.py"):
+    with pytest.raises(ValueError, match=r"manage\.py"):
         load_groups(manifest)
 
 
