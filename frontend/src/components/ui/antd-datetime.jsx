@@ -33,7 +33,16 @@ function toInputValue(value, type) {
   if (!value) {
     return "";
   }
-  const m = moment.isMoment(value) ? value : moment(value);
+  // `moment(dayjsInstance)` does NOT understand dayjs: it returns a moment for
+  // TODAY and reports isValid() === true, so the wrong date renders with no
+  // error anywhere. MetricsDashboard holds dayjs, which is why its start field
+  // showed today instead of 30 days ago. Anything exposing valueOf() (dayjs,
+  // moment, Date) is normalised through the epoch instant first.
+  const normalised =
+    !moment.isMoment(value) && typeof value?.valueOf === "function"
+      ? value.valueOf()
+      : value;
+  const m = moment.isMoment(value) ? value : moment(normalised);
   if (!m.isValid()) {
     return "";
   }

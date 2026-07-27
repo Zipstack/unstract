@@ -38,6 +38,36 @@ describe("antd-compatible date/time shims (P3-04, D7)", () => {
     expect(container.querySelector("input").value).toBe("2026-03-14");
   });
 
+  /**
+   * `moment(dayjsInstance)` does not understand dayjs. It does not throw and
+   * does not report invalid — it quietly returns a moment for TODAY. So every
+   * dayjs-valued field rendered today's date, with nothing anywhere to
+   * indicate it. MetricsDashboard holds dayjs, and its "from" field showed
+   * today instead of 30 days ago.
+   *
+   * Uses a fixed past date so a regression cannot coincidentally look right.
+   */
+  it("displays a dayjs value as its own date, not today", () => {
+    const { container } = render(<DatePicker value={dayjs("2026-03-14")} />);
+    expect(container.querySelector("input").value).toBe("2026-03-14");
+  });
+
+  it("displays a dayjs RangePicker tuple as its own dates", () => {
+    const { container } = render(
+      <RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />,
+    );
+    const inputs = container.querySelectorAll("input");
+    expect(inputs[0].value).toBe("2026-03-01");
+    expect(inputs[1].value).toBe("2026-03-31");
+  });
+
+  it("displays a plain Date value correctly too", () => {
+    const { container } = render(
+      <DatePicker value={new Date(2026, 2, 14)} />, // month is 0-based
+    );
+    expect(container.querySelector("input").value).toBe("2026-03-14");
+  });
+
   it("accepts an ISO string value too", () => {
     const { container } = render(<DatePicker value="2026-03-14T00:00:00Z" />);
     expect(container.querySelector("input").value).toBeTruthy();
