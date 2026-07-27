@@ -1,4 +1,3 @@
-import { Flex, Pagination } from "antd";
 import PropTypes from "prop-types";
 
 import { ListView } from "../../widgets/list-view/ListView";
@@ -24,7 +23,6 @@ function ViewTools({
   showOwner,
   showModified,
   type,
-  pagination,
 }) {
   if (isLoading) {
     return <SpinnerLoader />;
@@ -50,44 +48,23 @@ function ViewTools({
     return <EmptyState text="No results found for this search" />;
   }
 
-  const showPagination = pagination && pagination.total > pagination.pageSize;
-
   return (
-    <>
-      <ListView
-        listOfTools={listOfTools}
-        handleEdit={handleEdit}
-        handleDelete={handleDelete}
-        descriptionProp={descriptionProp}
-        iconProp={iconProp}
-        titleProp={titleProp}
-        idProp={idProp}
-        centered={centered}
-        isClickable={isClickable}
-        handleShare={handleShare}
-        handleCoOwner={handleCoOwner}
-        showOwner={showOwner}
-        showModified={showModified}
-        type={type}
-      />
-      {showPagination && (
-        <Flex justify="flex-end" className="view-tools-pagination">
-          <Pagination
-            current={pagination.current}
-            pageSize={pagination.pageSize}
-            total={pagination.total}
-            onChange={pagination.onChange}
-            showSizeChanger
-            pageSizeOptions={["10", "20", "50"]}
-            showTotal={(total, range) =>
-              `${range[0]}-${range[1]} of ${total} ${
-                pagination.itemLabel || "items"
-              }`
-            }
-          />
-        </Flex>
-      )}
-    </>
+    <ListView
+      listOfTools={listOfTools}
+      handleEdit={handleEdit}
+      handleDelete={handleDelete}
+      descriptionProp={descriptionProp}
+      iconProp={iconProp}
+      titleProp={titleProp}
+      idProp={idProp}
+      centered={centered}
+      isClickable={isClickable}
+      handleShare={handleShare}
+      handleCoOwner={handleCoOwner}
+      showOwner={showOwner}
+      showModified={showModified}
+      type={type}
+    />
   );
 }
 
@@ -109,13 +86,6 @@ ViewTools.propTypes = {
   showOwner: PropTypes.bool,
   showModified: PropTypes.bool,
   type: PropTypes.string,
-  pagination: PropTypes.shape({
-    current: PropTypes.number,
-    pageSize: PropTypes.number,
-    total: PropTypes.number,
-    onChange: PropTypes.func,
-    itemLabel: PropTypes.string,
-  }),
 };
 
 export { ViewTools };

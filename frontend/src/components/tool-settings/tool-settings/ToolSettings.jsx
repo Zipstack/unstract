@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { usePaginatedResource } from "../../../hooks/usePaginatedResource";
+import { useListSearch } from "../../../hooks/useListSearch";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
@@ -36,9 +36,8 @@ const btnText = {
   ocr: "New OCR",
 };
 
-const DEFAULT_PAGE_SIZE = 10;
-
 function ToolSettings({ type }) {
+  const [isLoading, setIsLoading] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
@@ -88,29 +87,6 @@ function ToolSettings({ type }) {
   );
 
   const {
-    items: adapterList,
-    setItems: setAdapterList,
-    isLoading,
-    setIsLoading,
-    searchTerm,
-    setSearchTerm,
-    pagination,
-    fetchPage,
-    refresh: handleListRefresh,
-    handlePaginationChange,
-    handleSearch,
-  } = usePaginatedResource({
-    request: (params) =>
-      axiosPrivate({
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-        params: { ...params, adapter_type: type?.toUpperCase() },
-      }),
-    onError: (err) => setAlertDetails(handleException(err)),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
-
-  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -123,23 +99,68 @@ function ToolSettings({ type }) {
   } = useCoOwnerManagement({
     service: adapterCoOwnerService,
     setAlertDetails,
-    onListRefresh: handleListRefresh,
+    onListRefresh: () => getAdapters(),
   });
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
+  const {
+    listRef,
+    displayList,
+    setDisplayList,
+    setMasterList,
+    updateMasterList,
+    onSearch,
+    clearSearch,
+  } = useListSearch("adapter_name");
 
-  // Adapter type is a separate listing; reset paging and search when it changes.
   useEffect(() => {
-    setSearchTerm("");
-    setAdapterList([]);
+    clearSearch();
+    setMasterList([]);
     if (!type) {
       return;
     }
-    fetchPage(1, DEFAULT_PAGE_SIZE, "");
+    getAdapters();
   }, [type]);
 
-  const addNewItem = () => handleListRefresh();
+  const getAdapters = () => {
+    const requestOptions = {
+      method: "GET",
+      url: `/api/v1/unstract/${
+        sessionDetails?.orgId
+      }/adapter?adapter_type=${type.toUpperCase()}`,
+    };
+    setIsLoading(true);
+    axiosPrivate(requestOptions)
+      .then((res) => {
+        setMasterList(res?.data || []);
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err));
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  };
 
-  const handleDeleteSuccess = () => handleListRefresh();
+  const addNewItem = (row, isEdit) => {
+    if (isEdit) {
+      updateMasterList((currentList) =>
+        currentList.map((tableRow) => {
+          if (tableRow?.id !== row?.id) {
+            return tableRow;
+          }
+          return { ...tableRow, adapter_name: row?.adapter_name };
+        }),
+      );
+    } else {
+      updateMasterList((currentList) => [...currentList, row]);
+    }
+  };
+
+  const handleDeleteSuccess = (adapterId) => {
+    updateMasterList((currentList) =>
+      currentList.filter((row) => row?.id !== adapterId),
+    );
+  };
 
   const handleDelete = (_event, adapter) => {
     const requestOptions = {
@@ -152,7 +173,7 @@ function ToolSettings({ type }) {
 
     setIsLoading(true);
     axiosPrivate(requestOptions)
-      .then(() => handleDeleteSuccess())
+      .then(() => handleDeleteSuccess(adapter?.id))
       .catch((err) => setAlertDetails(handleException(err)))
       .finally(() => setIsLoading(false));
   };
@@ -276,7 +297,8 @@ function ToolSettings({ type }) {
         title={titles[type]}
         enableSearch
         searchKey={type}
-        onSearch={(value) => handleSearch(value)}
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
         customButtons={
           <CustomButton
             type="primary"
@@ -291,7 +313,7 @@ function ToolSettings({ type }) {
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
             <ViewTools
-              listOfTools={adapterList}
+              listOfTools={displayList}
               isLoading={isLoading}
               handleDelete={handleDelete}
               setOpenAddTool={setOpenAddSourcesModal}
@@ -311,7 +333,7 @@ function ToolSettings({ type }) {
               titleProp="adapter_name"
               descriptionProp="description"
               iconProp="icon"
-              isEmpty={!adapterList.length && !searchTerm}
+              isEmpty={!listRef.current.length}
               centered
               isClickable={false}
               handleShare={handleShare}
@@ -319,11 +341,6 @@ function ToolSettings({ type }) {
               showOwner={true}
               showModified
               type="Adapter"
-              pagination={{
-                ...pagination,
-                onChange: handlePaginationChange,
-                itemLabel: "adapters",
-              }}
             />
           </div>
         </div>

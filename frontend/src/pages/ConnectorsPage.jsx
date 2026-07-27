@@ -11,15 +11,14 @@ import { SharePermission } from "../components/widgets/share-permission/SharePer
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
-import { usePaginatedResource } from "../hooks/usePaginatedResource";
+import { useListSearch } from "../hooks/useListSearch";
 import useRequestUrl from "../hooks/useRequestUrl";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
 
-const DEFAULT_PAGE_SIZE = 10;
-
 function ConnectorsPage() {
+  const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConnector, setEditingConnector] = useState(null);
   const [shareModalVisible, setShareModalVisible] = useState(false);
@@ -63,22 +62,6 @@ function ConnectorsPage() {
   );
 
   const {
-    items: connectorList,
-    isLoading: loading,
-    pagination,
-    searchTerm,
-    fetchPage,
-    refresh: handleListRefresh,
-    handlePaginationChange,
-    handleSearch,
-  } = usePaginatedResource({
-    request: (params) => axiosPrivate.get(getUrl("connector/"), { params }),
-    onError: (error) =>
-      setAlertDetails(handleException(error, "Failed to load connectors")),
-    defaultPageSize: DEFAULT_PAGE_SIZE,
-  });
-
-  const {
     coOwnerOpen,
     setCoOwnerOpen,
     coOwnerData,
@@ -91,13 +74,27 @@ function ConnectorsPage() {
   } = useCoOwnerManagement({
     service: connectorCoOwnerService,
     setAlertDetails,
-    onListRefresh: handleListRefresh,
+    onListRefresh: () => fetchConnectors(),
   });
+  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
+    useListSearch("connector_name");
 
   useEffect(() => {
-    fetchPage();
+    fetchConnectors();
     fetchUsers();
   }, []);
+
+  const fetchConnectors = async () => {
+    setLoading(true);
+    try {
+      const response = await axiosPrivate.get(getUrl("connector/"));
+      setMasterList(response.data || []);
+    } catch (error) {
+      setAlertDetails(handleException(error, "Failed to load connectors"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const fetchUsers = async () => {
     try {
@@ -137,7 +134,7 @@ function ConnectorsPage() {
         type: "success",
         content: "Connector deleted successfully",
       });
-      handleListRefresh();
+      fetchConnectors();
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to delete connector"));
     }
@@ -214,7 +211,7 @@ function ConnectorsPage() {
   const handleConnectorSaved = () => {
     setModalVisible(false);
     setEditingConnector(null);
-    handleListRefresh();
+    fetchConnectors();
     setAlertDetails({
       type: "success",
       content: editingConnector
@@ -238,13 +235,14 @@ function ConnectorsPage() {
       <ToolNavBar
         title="Connectors"
         enableSearch
-        onSearch={(value) => handleSearch(value)}
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
         customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
           <ViewTools
-            listOfTools={connectorList}
+            listOfTools={displayList}
             isLoading={loading}
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
@@ -257,14 +255,9 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!connectorList.length && !searchTerm}
+            isEmpty={!listRef.current.length}
             centered
             isClickable={false}
-            pagination={{
-              ...pagination,
-              onChange: handlePaginationChange,
-              itemLabel: "connectors",
-            }}
           />
         </div>
       </div>
