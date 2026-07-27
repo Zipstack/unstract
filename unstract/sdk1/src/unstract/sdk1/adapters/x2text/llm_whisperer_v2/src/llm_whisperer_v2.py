@@ -90,9 +90,14 @@ class LLMWhispererV2(X2TextAdapter):
 
         Validates PDF-only input, delegates the submit/download/persist flow to
         the helper, and returns a ``TextExtractionResult`` whose ``page_images``
-        metadata carries the per-page references. ``extracted_text`` is an empty
-        plain string (never JSON / never image data) so text-mode consumers
-        remain unaffected. ``tag`` is forwarded for service-side usage reporting.
+        metadata carries the per-page references. ``extracted_text`` is a short
+        human-readable summary (never JSON / never image data): image mode has
+        no OCR text, but a non-empty extract keeps the Prompt Studio extraction
+        cache from re-submitting the remote conversion on a re-run and keeps the
+        indexed document meaningful. The per-page references live in
+        ``extraction_metadata.page_images`` (forwarded by the executor) and a
+        JSON manifest sidecar — never inside ``extracted_text``. ``tag`` is
+        forwarded for service-side usage reporting.
         """
         logger.info("Image mode: processing %s in image output mode", input_file_path)
         self._validate_pdf_only(input_file_path)
@@ -103,13 +108,24 @@ class LLMWhispererV2(X2TextAdapter):
             fs=fs,
             tag=tag,
         )
+        summary = LLMWhispererHelper.build_image_output_summary(page_images)
+        # Persist the extract file (summary) + manifest so the extraction is
+        # cache-consistent (no re-submit on re-run) and the references are
+        # durably retrievable. Skipped when no output path was requested.
+        if output_file_path:
+            LLMWhispererHelper.write_image_output(
+                fs=fs,
+                output_file_path=output_file_path,
+                summary=summary,
+                page_images=page_images,
+            )
         logger.info(
             "Image mode: returning %d page image reference(s) for %s",
             len(page_images),
             input_file_path,
         )
         return TextExtractionResult(
-            extracted_text="",
+            extracted_text=summary,
             extraction_metadata=TextExtractionMetadata(
                 whisper_hash="",
                 page_images=page_images,

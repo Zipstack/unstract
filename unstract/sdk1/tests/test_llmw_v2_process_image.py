@@ -79,19 +79,36 @@ class TestImageModeBranch:
             "send_whisper_request",
             lambda **_: pytest.fail("text path must not run in image mode"),
         )
+        # Delegate the extract-file / manifest write; assert it is invoked
+        # rather than doing real file IO here.
+        write_calls: dict[str, object] = {}
+        monkeypatch.setattr(
+            LLMWhispererHelper,
+            "write_image_output",
+            lambda **kw: write_calls.update(kw),
+        )
 
         result = _adapter(output_mode="image").process("in.pdf", "out.txt")
 
-        assert result.extracted_text == ""  # plain string, never JSON
+        # extracted_text is a non-empty human summary — never JSON, never
+        # image data (the references live only in metadata / the manifest).
+        expected_summary = LLMWhispererHelper.build_image_output_summary(refs)
+        assert result.extracted_text == expected_summary
+        assert "page_001.png" not in result.extracted_text
         assert result.extraction_metadata.page_images == refs
         assert captured["input_file_path"] == "in.pdf"
         assert captured["output_file_path"] == "out.txt"
+        # summary + manifest persisted via the helper, keyed to the output path
+        assert write_calls["output_file_path"] == "out.txt"
+        assert write_calls["page_images"] == refs
+        assert write_calls["summary"] == expected_summary
 
     def test_empty_page_list_is_safe(self, monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setattr(LLMWhispererHelper, "get_page_images", lambda **_: [])
+        # No output_file_path -> no extract-file write path is taken.
         result = _adapter(output_mode="image").process("in.pdf")
         assert result.extraction_metadata.page_images == []
-        assert result.extracted_text == ""
+        assert result.extracted_text == LLMWhispererHelper.build_image_output_summary([])
 
     def test_tag_forwarded_to_helper(self, monkeypatch: MonkeyPatch) -> None:
         captured: dict[str, object] = {}

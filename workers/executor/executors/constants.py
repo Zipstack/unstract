@@ -195,6 +195,7 @@ class IndexingConstants:
     USAGE_KWARGS = "usage_kwargs"
     PROCESS_TEXT = "process_text"
     EXTRACTED_TEXT = "extracted_text"
+    PAGE_IMAGES = "page_images"
     TAGS = "tags"
     EXECUTION_SOURCE = "execution_source"
     DOC_ID = "doc_id"

@@ -216,3 +216,38 @@ class TestRequestDefaults:
         # A None default maps to requests' "wait forever"; test_connection relies
         # on this default, so it must be a positive, finite number.
         assert isinstance(default, int | float) and default > 0
+
+
+class TestImageOutputWrite:
+    """write_image_output persists the summary extract file + manifest sidecar."""
+
+    def test_writes_summary_and_manifest(self, tmp_path) -> None:  # noqa: ANN001
+        import json as _json
+
+        fs = FileStorage(provider=FileStorageProvider.LOCAL)
+        refs = [
+            PageImageReference(
+                page_number=1, path="doc/pages/page_001.png", filename="page_001.png"
+            ),
+            PageImageReference(
+                page_number=2, path="doc/pages/page_002.png", filename="page_002.png"
+            ),
+        ]
+        out = str(tmp_path / "doc.txt")
+        summary = H.build_image_output_summary(refs)
+
+        H.write_image_output(
+            fs=fs, output_file_path=out, summary=summary, page_images=refs
+        )
+
+        # Extract file holds the human summary (what image mode indexes).
+        assert fs.read(path=out, mode="r") == summary
+        # Sidecar manifest round-trips the ordered references.
+        manifest = _json.loads(fs.read(path=out + ".page_images.json", mode="r"))
+        assert manifest == [r.to_dict() for r in refs]
+
+    def test_summary_is_human_readable_not_json(self) -> None:
+        refs = [PageImageReference(page_number=1, path="p/page_001.png")]
+        summary = H.build_image_output_summary(refs)
+        assert "1 page image" in summary
+        assert "page_001.png" not in summary  # references never inlined
