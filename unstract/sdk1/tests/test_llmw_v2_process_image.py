@@ -69,9 +69,11 @@ class TestImageModeBranch:
         ]
         captured: dict[str, object] = {}
 
-        def _fake_get_page_images(**kwargs: object) -> list[PageImageReference]:
+        def _fake_get_page_images(
+            **kwargs: object,
+        ) -> tuple[str, list[PageImageReference]]:
             captured.update(kwargs)
-            return refs
+            return "run-1|doc-hash", refs
 
         monkeypatch.setattr(LLMWhispererHelper, "get_page_images", _fake_get_page_images)
         monkeypatch.setattr(
@@ -96,6 +98,9 @@ class TestImageModeBranch:
         assert result.extracted_text == expected_summary
         assert "page_001.png" not in result.extracted_text
         assert result.extraction_metadata.page_images == refs
+        # The real job id is recorded, not an empty string (HITL/QueueResult
+        # consumers read this).
+        assert result.extraction_metadata.whisper_hash == "run-1|doc-hash"
         assert captured["input_file_path"] == "in.pdf"
         assert captured["output_file_path"] == "out.txt"
         # summary persisted to the extract file via the helper
@@ -103,7 +108,7 @@ class TestImageModeBranch:
         assert write_calls["summary"] == expected_summary
 
     def test_empty_page_list_is_safe(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", lambda **_: [])
+        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", lambda **_: ("wh", []))
         # No output_file_path -> no extract-file write path is taken.
         result = _adapter(output_mode="image").process("in.pdf")
         assert result.extraction_metadata.page_images == []
@@ -112,18 +117,33 @@ class TestImageModeBranch:
     def test_tag_forwarded_to_helper(self, monkeypatch: MonkeyPatch) -> None:
         captured: dict[str, object] = {}
 
-        def _capture(**kwargs: object) -> list:
+        def _capture(**kwargs: object) -> tuple[str, list]:
             captured.update(kwargs)
-            return []
+            return "wh", []
 
         monkeypatch.setattr(LLMWhispererHelper, "get_page_images", _capture)
         _adapter(output_mode="image").process("in.pdf", tags=["cust-42"])
         assert captured["tag"] == ["cust-42"]
 
     def test_pdf_extension_is_case_insensitive(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", lambda **_: [])
+        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", lambda **_: ("wh", []))
         # Should not raise for an uppercase .PDF extension.
         _adapter(output_mode="image").process("SCAN.PDF")
+
+    def test_image_mode_with_highlight_is_rejected(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Highlighting has no meaning without text; the combination must be
+        # rejected explicitly rather than silently returning empty highlights.
+        called = {"hit": False}
+        monkeypatch.setattr(
+            LLMWhispererHelper,
+            "get_page_images",
+            lambda **_: called.__setitem__("hit", True) or ("wh", []),
+        )
+        with pytest.raises(ExtractorError, match="not supported in image output mode"):
+            _adapter(output_mode="image").process("in.pdf", enable_highlight=True)
+        assert called["hit"] is False  # rejected before any conversion
 
 
 class TestPdfOnlyValidation:
@@ -132,7 +152,7 @@ class TestPdfOnlyValidation:
         monkeypatch.setattr(
             LLMWhispererHelper,
             "get_page_images",
-            lambda **_: image_called.__setitem__("hit", True) or [],
+            lambda **_: image_called.__setitem__("hit", True) or ("wh", []),
         )
         adapter = _adapter(output_mode="image")
         with pytest.raises(ExtractorError, match="PDF input only"):

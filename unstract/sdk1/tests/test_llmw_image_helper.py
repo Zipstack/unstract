@@ -8,12 +8,14 @@ All tests are pure in-memory / temp-dir units: no network, no live service.
 """
 
 import io
+from unittest.mock import MagicMock
 
 import pytest
+import requests
 from _pytest.monkeypatch import MonkeyPatch
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.x2text.dto import PageImageReference
-from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import constants as c
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import helper as helper_mod
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
     LLMWhispererHelper,
 )
@@ -72,40 +74,40 @@ class TestZipExtraction:
 class TestPageCountVerification:
     def test_matching_count_passes(self) -> None:
         pages = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(2)))
-        H.verify_page_count(pages, processed_page_count=2)  # no raise
+        H.verify_page_count(pages, expected_page_count=2)  # no raise
 
     def test_fewer_pages_raises(self) -> None:
         pages = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(2)))
         with pytest.raises(ExtractorError, match="Page count mismatch"):
-            H.verify_page_count(pages, processed_page_count=3)
+            H.verify_page_count(pages, expected_page_count=3)
 
     def test_more_pages_raises(self) -> None:
         pages = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(3)))
         with pytest.raises(ExtractorError, match="Page count mismatch"):
-            H.verify_page_count(pages, processed_page_count=2)
+            H.verify_page_count(pages, expected_page_count=2)
 
     def test_none_count_skips_check(self) -> None:
         pages = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(2)))
-        H.verify_page_count(pages, processed_page_count=None)  # no raise
+        H.verify_page_count(pages, expected_page_count=None)  # no raise
 
 
 class TestFolderKeyAndNaming:
-    def test_folder_key_isolates_runs(self) -> None:
-        dir_a = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
-        dir_b = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-B")
+    def test_folder_isolates_distinct_documents(self) -> None:
+        dir_a = H.build_page_store_dir("/data/extract/doc-a.txt", "/data/doc-a.pdf")
+        dir_b = H.build_page_store_dir("/data/extract/doc-b.txt", "/data/doc-b.pdf")
         assert dir_a != dir_b
-        assert "run-A" in dir_a and "run-B" in dir_b
+        assert "doc-a" in dir_a and "doc-b" in dir_b
         assert dir_a.endswith("pages")
 
-    def test_folder_key_deterministic_for_same_run(self) -> None:
-        first = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
-        second = H.build_page_store_dir("/data/out.txt", "/data/in.pdf", "run-A")
-        assert first == second
+    def test_folder_stable_across_runs_for_same_document(self) -> None:
+        # Keyed on the document stem, not the per-run hash: a re-extraction
+        # overwrites its own pages instead of orphaning a fresh tree.
+        first = H.build_page_store_dir("/data/extract/doc.txt", "/data/doc.pdf")
+        second = H.build_page_store_dir("/data/extract/doc.txt", "/data/doc.pdf")
+        assert first == second == "/data/extract/doc/pages"
 
-    def test_folder_falls_back_to_input_dir(self) -> None:
-        result = H.build_page_store_dir(None, "/docs/in.pdf", "job1")
-        assert result.startswith("/docs/")
-        assert "job1" in result
+    def test_folder_falls_back_to_input_when_no_output(self) -> None:
+        assert H.build_page_store_dir(None, "/docs/in.pdf") == "/docs/in/pages"
 
     @pytest.mark.parametrize(
         ("page", "expected"),
@@ -136,28 +138,53 @@ class TestPersistence:
         assert len(fs.stored_paths) == 3
 
     def test_retry_then_success(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(c.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
-        monkeypatch.setattr(c.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 3)
+        # Patch the class the helper actually holds (helper_mod.WhispererDefaults),
+        # so the budget is genuinely pinned regardless of any module reload
+        # elsewhere in the suite.
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 3)
         fs = FlakyFileStorage(fail_times=2)  # succeeds on 3rd attempt
         refs = H.persist_page_images(fs, "doc/pages", [(1, b"data")])
         assert len(refs) == 1
         assert fs.attempts_for("doc/pages/page_001.png") == 3
 
+    def test_budget_is_pinned_to_two_retries(self, monkeypatch: MonkeyPatch) -> None:
+        # Budget 2 == 3 total attempts. A page whose first 3 attempts fail must
+        # error — proving the patched budget actually takes effect (with the
+        # default budget 3 == 4 attempts, the 4th would have succeeded).
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 2)
+        fs = FlakyFileStorage(fail_times=3)  # would succeed only on the 4th attempt
+        with pytest.raises(ExtractorError, match="Failed to persist page image"):
+            H.persist_page_images(fs, "doc/pages", [(1, b"data")])
+
     def test_fail_closed_when_retries_exhausted(self, monkeypatch: MonkeyPatch) -> None:
-        monkeypatch.setattr(c.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
-        monkeypatch.setattr(c.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 2)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 2)
         fs = FlakyFileStorage(fail_always=True)
         with pytest.raises(ExtractorError, match="Failed to persist page image"):
             H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")])
         # Fail-closed: the second page is never attempted after the first fails.
         assert fs.stored_paths == []
 
+    def test_mid_list_failure_cleans_up_written_pages(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Page 1 succeeds, page 2 always fails -> the partial set must be removed
+        # so a failed extraction leaves no orphan pages behind.
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 1)
+        fs = FlakyFileStorage(fail_times=0, fail_substrings=("page_002",))
+        with pytest.raises(ExtractorError, match="Failed to persist page image"):
+            H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")])
+        assert "doc/pages" in fs.rm_calls  # cleanup invoked
+        assert fs.stored_paths == []  # page 1 removed by the cleanup
+
     def test_local_write_read_round_trip(self, tmp_path) -> None:  # noqa: ANN001
         fs = FileStorage(provider=FileStorageProvider.LOCAL)
         page_dir = H.build_page_store_dir(
             output_file_path=str(tmp_path / "out.txt"),
             input_file_path=str(tmp_path / "in.pdf"),
-            run_key="job-xyz",
         )
         original = [(1, minimal_png()), (2, b"second-page-bytes")]
         refs = H.persist_page_images(fs, page_dir, original)
@@ -206,16 +233,93 @@ class TestSubmitParams:
         assert captured["params"]["tag"] == "first"
 
 
+_NET_CONFIG = {"url": "https://svc.example", "unstract_key": "k"}
+
+
+def _json_response(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = payload
+    return resp
+
+
 class TestRequestDefaults:
-    """The shared raw-request path must never wait forever (UNS-758)."""
+    """The shared raw-request path must apply a finite timeout in practice."""
 
-    def test_send_raw_request_has_finite_default_timeout(self) -> None:
-        import inspect
+    def test_default_timeout_is_passed_to_requests(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Behaviour, not signature: patch requests.request and assert the
+        # timeout actually handed to it is finite when a caller omits it.
+        captured: dict = {}
+        resp = MagicMock()
+        resp.raise_for_status.return_value = None
+        monkeypatch.setattr(requests, "request", lambda **kw: captured.update(kw) or resp)
+        H._send_raw_request(config=_NET_CONFIG, method="GET", endpoint="ping")
+        assert isinstance(captured["timeout"], int | float)
+        assert captured["timeout"] > 0
 
-        default = inspect.signature(H._send_raw_request).parameters["timeout"].default
-        # A None default maps to requests' "wait forever"; test_connection relies
-        # on this default, so it must be a positive, finite number.
-        assert isinstance(default, int | float) and default > 0
+
+class TestPollBehavior:
+    def test_processed_returns_payload(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            H, "_send_raw_request", lambda **kw: _json_response({"status": "processed"})
+        )
+        assert H.poll_pdf_to_images_status(_NET_CONFIG, "wh")["status"] == "processed"
+
+    def test_failure_status_raises_immediately(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            H,
+            "_send_raw_request",
+            lambda **kw: _json_response({"status": "failed", "message": "boom"}),
+        )
+        with pytest.raises(ExtractorError, match="unexpected status 'failed'"):
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+
+    def test_non_json_body_fails_fast(self, monkeypatch: MonkeyPatch) -> None:
+        # A non-JSON/HTML error body -> _safe_json {} -> status "" -> not an
+        # intermediate state -> raise on the first poll (no budget-long hang).
+        bad = MagicMock()
+        bad.json.side_effect = ValueError("no json")
+        bad.text = "<html>bad gateway</html>"
+        bad.status_code = 502
+        monkeypatch.setattr(H, "_send_raw_request", lambda **kw: bad)
+        with pytest.raises(ExtractorError, match="unexpected status"):
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+
+    def test_budget_exhaustion_raises_after_max_attempts(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "IMAGE_POLL_INTERVAL", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "IMAGE_POLL_MAX_ATTEMPTS", 3)
+        calls = {"n": 0}
+
+        def _sr(**_: object) -> MagicMock:
+            calls["n"] += 1
+            return _json_response({"status": "processing"})
+
+        monkeypatch.setattr(H, "_send_raw_request", _sr)
+        with pytest.raises(ExtractorError, match="did not reach a terminal state"):
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+        assert calls["n"] == 3
+
+
+class TestDownloadAndSubmitBehavior:
+    def test_mid_stream_error_maps_to_extractor_error_and_closes(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        resp = MagicMock()
+        resp.iter_content.side_effect = requests.exceptions.ChunkedEncodingError("x")
+        monkeypatch.setattr(H, "_send_raw_request", lambda **kw: resp)
+        with pytest.raises(ExtractorError, match="Failed to download"):
+            H.download_pdf_to_images_zip(_NET_CONFIG, "wh")
+        resp.close.assert_called_once()  # connection released on failure
+
+    def test_submit_without_whisper_hash_raises(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            H, "_send_raw_request", lambda **kw: _json_response({"message": "ok"})
+        )
+        with pytest.raises(ExtractorError, match="did not return a job id"):
+            H.submit_pdf_to_images(_NET_CONFIG, io.BytesIO(b"pdf"))
 
 
 class TestImageOutputWrite:

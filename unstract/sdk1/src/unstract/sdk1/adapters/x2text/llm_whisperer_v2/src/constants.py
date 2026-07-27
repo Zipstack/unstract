@@ -1,6 +1,8 @@
 import os
 from enum import Enum
 
+from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+
 
 class Modes(Enum):
     NATIVE_TEXT = "native_text"
@@ -12,7 +14,7 @@ class Modes(Enum):
 class OutputModes(Enum):
     LAYOUT_PRESERVING = "layout_preserving"
     TEXT = "text"
-    IMAGE = "image"
+    IMAGE = ImageOutputConstants.IMAGE_MODE
 
 
 class HTTPMethod(Enum):
@@ -72,7 +74,7 @@ class WhispererConfig:
 
     URL = "url"
     MODE = "mode"
-    OUTPUT_MODE = "output_mode"
+    OUTPUT_MODE = ImageOutputConstants.OUTPUT_MODE
     UNSTRACT_KEY = "unstract_key"
     MEDIAN_FILTER_SIZE = "median_filter_size"
     GAUSSIAN_BLUR_RADIUS = "gaussian_blur_radius"
@@ -141,13 +143,11 @@ class WhispererDefaults:
 class ImageOutputConfig:
     """Config and service contract for LLMWhisperer image output mode.
 
-    CONTRACT SOURCE: verified against LLMWhisperer Service **PR #536** (branch
-    ``image-output``; PR #647 is a sub-fix). The endpoints are NOT exposed by
-    the installed ``llmwhisperer-client``, so the adapter calls them via raw
-    ``requests`` (decision 2A). Everything the adapter relies on is centralised
-    here.
+    The pdf-to-images endpoints are not exposed by the installed
+    ``llmwhisperer-client``, so the adapter calls them directly via raw
+    ``requests``. The wire shape the adapter depends on is centralised here.
 
-    Flow (raw ``requests``, base = ``{url}/api/v2``):
+    Flow (base = ``{url}/api/v2``):
 
     - Submit:   ``POST {base}/pdf-to-images?format=png`` with the PDF bytes
                 -> JSON ``{"message": "...", "status": "processing",
@@ -166,14 +166,14 @@ class ImageOutputConfig:
 
     # --- Response field names ---
     STATUS = "status"
-    # Not currently returned by pdf-to-images-status (billing-internal). Kept as
-    # a forward-compatible hook for verify_page_count().
-    PROCESSED_PAGE_COUNT = "processed_page_count"
     MESSAGE = "message"
 
-    # Terminal service states. Ready-to-retrieve == PROCESSED (WhisperStatus).
+    # Poll control. Success == ready-to-retrieve; only these intermediate states
+    # keep the poll loop going. Any other value — a failure state, an unknown
+    # status, or an empty/non-JSON body — is treated as terminal and raises, so
+    # the loop fails fast instead of polling to the budget on a stuck job.
     STATUS_SUCCESS = frozenset({"processed"})
-    STATUS_FAILURE = frozenset({"error", "failed", "unknown"})
+    STATUS_INTERMEDIATE = frozenset({"accepted", "processing", "queued"})
 
     # --- Submit query params ---
     IMAGE_FORMAT_PARAM = "format"
@@ -186,13 +186,7 @@ class ImageOutputConfig:
     PAGE_NUMBER_PADDING = 3
     PAGES_SUBFOLDER = "pages"
 
-    # --- UI / validation (single source of truth) ---
-    # Display label for the image output mode option (UNS-754).
-    IMAGE_MODE_LABEL = "Image (PDF only)"
-    PDF_EXTENSION = ".pdf"
-    # Shared by runtime (process) and UI validation so the message is identical
-    # regardless of where the PDF-only check fires (UNS-757).
-    PDF_ONLY_ERROR = (
-        "Image output mode supports PDF input only. "
-        "Please provide a PDF file or select a text output mode."
-    )
+    # --- PDF-only validation (shared with the backend index-time guard) ---
+    PDF_EXTENSION = ImageOutputConstants.PDF_EXTENSION
+    PDF_ONLY_ERROR = ImageOutputConstants.PDF_ONLY_ERROR
+    is_pdf = staticmethod(ImageOutputConstants.is_pdf)

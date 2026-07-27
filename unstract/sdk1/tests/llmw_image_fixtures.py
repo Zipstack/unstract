@@ -84,6 +84,14 @@ class InMemoryFileStorage:
         self._files: dict[str, bytes] = {}
         self._dirs: set[str] = set()
         self.write_calls = 0
+        self.rm_calls: list[str] = []
+
+    def rm(self, path: str, recursive: bool = True) -> None:
+        self.rm_calls.append(str(path))
+        prefix = str(path).rstrip("/") + "/"
+        for key in list(self._files):
+            if key == str(path) or key.startswith(prefix):
+                del self._files[key]
 
     def mkdir(self, path: str, create_parents: bool = True) -> None:
         self._dirs.add(str(path))
@@ -123,12 +131,21 @@ class FlakyFileStorage(InMemoryFileStorage):
     """
 
     def __init__(
-        self, fail_times: int = 1, fail_always: bool = False, **kwargs: object
+        self,
+        fail_times: int = 1,
+        fail_always: bool = False,
+        fail_substrings: tuple[str, ...] = (),
+        **kwargs: object,
     ) -> None:
-        """Configure how many writes per path fail before succeeding."""
+        """Configure how many writes per path fail before succeeding.
+
+        ``fail_substrings`` always-fails any write whose path contains one of
+        the substrings — used to fail a specific page (mid-list failure).
+        """
         super().__init__(**kwargs)
         self.fail_times = fail_times
         self.fail_always = fail_always
+        self.fail_substrings = tuple(fail_substrings)
         self._attempts: dict[str, int] = {}
 
     def write(
@@ -141,7 +158,8 @@ class FlakyFileStorage(InMemoryFileStorage):
     ) -> int:
         key = str(path)
         self._attempts[key] = self._attempts.get(key, 0) + 1
-        if self.fail_always or self._attempts[key] <= self.fail_times:
+        always_fail = self.fail_always or any(s in key for s in self.fail_substrings)
+        if always_fail or self._attempts[key] <= self.fail_times:
             raise FileOperationError(f"simulated write failure for {key}")
         return super().write(path, mode, encoding, data, **kwargs)
 

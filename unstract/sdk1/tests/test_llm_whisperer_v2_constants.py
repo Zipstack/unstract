@@ -1,13 +1,9 @@
-"""Unit tests for LLMWhisperer v2 adapter constants (MUNS-193).
+"""Unit tests for LLMWhisperer v2 adapter constants.
 
-Covers:
-- UNS-732: OutputModes.IMAGE enum value.
-- UNS-733: ADAPTER_LLMW_PAGE_STORE_MAX_RETRIES env-var-backed constant.
+Covers the image OutputModes value and the env-var-backed page-store retry
+budget.
 """
 
-import importlib
-
-from _pytest.monkeypatch import MonkeyPatch
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import constants as c
 
 _ENV_VAR = "ADAPTER_LLMW_PAGE_STORE_MAX_RETRIES"
@@ -26,20 +22,13 @@ class TestPageStoreMaxRetries:
     def test_env_var_name(self) -> None:
         assert c.WhispererEnv.PAGE_STORE_MAX_RETRIES == _ENV_VAR
 
-    def test_default_is_three(self, monkeypatch: MonkeyPatch) -> None:
-        # Reload under the scoped patch, then reload again after the env is
-        # restored so the module cache reflects the real environment and does
-        # not leak the patched value into later tests.
-        with monkeypatch.context() as patch:
-            patch.delenv(_ENV_VAR, raising=False)
-            reloaded = importlib.reload(c)
-            assert reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES == 3
-            assert isinstance(reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES, int)
-        importlib.reload(c)
-
-    def test_reads_from_env(self, monkeypatch: MonkeyPatch) -> None:
-        with monkeypatch.context() as patch:
-            patch.setenv(_ENV_VAR, "5")
-            reloaded = importlib.reload(c)
-            assert reloaded.WhispererDefaults.PAGE_STORE_MAX_RETRIES == 5
-        importlib.reload(c)
+    def test_default_is_three(self) -> None:
+        # Deliberately no importlib.reload: reloading the constants module
+        # rebinds the WhispererDefaults *class object* while helper.py keeps a
+        # direct name binding to the original — which silently turns other
+        # suites' ``monkeypatch.setattr(WhispererDefaults, ...)`` into no-ops
+        # (and, being order-dependent, is invisible until the split changes).
+        # The value is read from the env at import; with the var unset (the
+        # test environment) it is the default 3.
+        assert c.WhispererDefaults.PAGE_STORE_MAX_RETRIES == 3
+        assert isinstance(c.WhispererDefaults.PAGE_STORE_MAX_RETRIES, int)

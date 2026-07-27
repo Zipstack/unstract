@@ -451,12 +451,28 @@ class LLMWhispererHelper:
 
     @staticmethod
     def _safe_json(response: Response) -> dict[str, Any]:
-        """Parse a JSON object body, tolerating non-JSON / non-object bodies."""
+        """Parse a JSON object body, tolerating non-JSON / non-object bodies.
+
+        A non-JSON or non-object body is logged (with a truncated preview)
+        before returning ``{}`` so a caller that treats the empty result as an
+        unexpected status has a diagnostic instead of a silent fall-through.
+        """
         try:
             parsed = response.json()
         except ValueError:
+            logger.warning(
+                "LLMWhisperer returned a non-JSON body (HTTP %s): %s",
+                getattr(response, "status_code", "?"),
+                (response.text or "")[:200],
+            )
             return {}
-        return parsed if isinstance(parsed, dict) else {}
+        if not isinstance(parsed, dict):
+            logger.warning(
+                "LLMWhisperer returned a non-object JSON body: %s",
+                str(parsed)[:200],
+            )
+            return {}
+        return parsed
 
     @staticmethod
     def submit_pdf_to_images(
@@ -481,12 +497,17 @@ class LLMWhispererHelper:
         }
         if file_name:
             params[ImageOutputConfig.FILE_NAME_PARAM] = file_name
+        headers = {
+            **LLMWhispererHelper.get_request_headers(config),
+            "Content-Type": "application/octet-stream",
+        }
         response = LLMWhispererHelper._send_raw_request(
             config=config,
             method="POST",
             endpoint=WhispererEndpoint.PDF_TO_IMAGES,
             params=params,
             data=file_data,
+            headers=headers,
             timeout=WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
         )
         body = LLMWhispererHelper._safe_json(response)
@@ -533,13 +554,17 @@ class LLMWhispererHelper:
             )
             if status in ImageOutputConfig.STATUS_SUCCESS:
                 return body
-            if status in ImageOutputConfig.STATUS_FAILURE:
+            if status not in ImageOutputConfig.STATUS_INTERMEDIATE:
+                # Fail closed: only explicit intermediate states keep polling.
+                # A failure state, an unknown status, or an empty body (non-JSON)
+                # raises immediately with the observed status echoed, instead of
+                # hanging until the poll budget is exhausted.
                 msg = body.get(ImageOutputConfig.MESSAGE, "unknown error")
                 raise ExtractorError(
-                    f"LLMWhisperer pdf-to-images job {whisper_hash} failed: {msg}",
-                    status_code=500,
+                    f"LLMWhisperer pdf-to-images job {whisper_hash} returned an "
+                    f"unexpected status '{status or '<none>'}': {msg}",
+                    status_code=502,
                 )
-            # Intermediate states (processing / queued / empty) -> keep polling.
             time.sleep(WhispererDefaults.IMAGE_POLL_INTERVAL)
         raise ExtractorError(
             f"LLMWhisperer pdf-to-images job {whisper_hash} did not reach a "
@@ -555,11 +580,18 @@ class LLMWhispererHelper:
         Uses a distinct, longer download timeout (large multi-page PDFs) and
         avoids a single ``response.content`` load.
         """
+        # This endpoint streams application/zip; advertise it so a strict
+        # gateway does not 406 the default ``accept: application/json``.
+        headers = {
+            **LLMWhispererHelper.get_request_headers(config),
+            "accept": "application/zip",
+        }
         response = LLMWhispererHelper._send_raw_request(
             config=config,
             method="GET",
             endpoint=WhispererEndpoint.PDF_TO_IMAGES_RETRIEVE,
             params={WhisperStatus.WHISPER_HASH: whisper_hash},
+            headers=headers,
             timeout=WhispererDefaults.IMAGE_DOWNLOAD_TIMEOUT,
             stream=True,
         )
@@ -594,11 +626,15 @@ class LLMWhispererHelper:
         on a corrupt/invalid archive.
         """
         pages: list[tuple[int, bytes]] = []
+        skipped: list[str] = []
         try:
             with zipfile.ZipFile(zip_buffer) as archive:
                 for name in archive.namelist():
+                    if name.endswith("/"):
+                        continue  # directory entry, not a member
                     match = LLMWhispererHelper._PAGE_IMAGE_RE.search(name)
                     if not match:
+                        skipped.append(name)
                         continue
                     page_number = int(match.group(1))
                     pages.append((page_number, archive.read(name)))
@@ -610,56 +646,99 @@ class LLMWhispererHelper:
                 status_code=502,
                 actual_err=e,
             ) from e
+        if skipped:
+            # Visible, not silent: a naming-convention change mid-archive would
+            # otherwise truncate the page set and still report success.
+            logger.warning(
+                "Image mode: ignored %d non-page entr%s in the pdf-to-images "
+                "archive: %s",
+                len(skipped),
+                "y" if len(skipped) == 1 else "ies",
+                ", ".join(skipped[:10]),
+            )
         if not pages:
             # A well-formed archive with no recognizable page images is a
-            # failed extraction, not an empty success — fail closed, matching
-            # the rest of this flow.
+            # failed extraction, not an empty success — fail closed.
             raise ExtractorError(
                 "pdf-to-images returned an archive with no page images",
                 status_code=502,
             )
         pages.sort(key=lambda item: item[0])
+        # The page set must be exactly 1..N with no gaps or duplicates. A gap
+        # means a truncated archive; a duplicate means two members mapped to the
+        # same page number (``page_001.png`` under two folders) — which
+        # ``persist_page_images`` would silently overwrite. Fail closed on both.
+        page_numbers = [page for page, _ in pages]
+        if page_numbers != list(range(1, len(page_numbers) + 1)):
+            raise ExtractorError(
+                "pdf-to-images archive page numbers are not a contiguous 1..N "
+                f"sequence (got {page_numbers}); the archive is truncated or has "
+                "duplicate/misnamed page members",
+                status_code=502,
+            )
         return pages
 
     @staticmethod
-    def verify_page_count(
-        pages: list[tuple[int, bytes]], processed_page_count: int | None
-    ) -> None:
-        """Enforce a matching page count against the service's authority.
+    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
+        """Page count of the input PDF, or None if it cannot be read.
 
-        The service-reported ``processed_page_count`` is authoritative
-        (UNS-746); any mismatch with the extracted count raises.
+        Best-effort: the extraction must not fail just because the count could
+        not be derived locally, so any error returns None (and the caller
+        degrades to the archive contiguity check).
         """
-        if processed_page_count is None:
-            # Expected today: the pdf-to-images-status response does not expose a
-            # page count (verified vs PR #536). Kept as a forward-compatible hook.
-            logger.debug(
-                "Image mode: no processed_page_count in status response; "
-                "skipping page-count verification"
+        try:
+            import pdfplumber  # noqa: PLC0415 - lazy: only image mode needs it
+
+            with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+                return len(pdf.pages)
+        except Exception as e:
+            logger.warning("Image mode: unable to read input PDF page count: %s", e)
+            return None
+
+    @staticmethod
+    def verify_page_count(
+        pages: list[tuple[int, bytes]], expected_page_count: int | None
+    ) -> None:
+        """Verify the extracted page count against the input PDF's page count.
+
+        ``expected_page_count`` is derived locally from the input PDF (the
+        pdf-to-images-status response exposes no count). A mismatch means the
+        service returned more or fewer images than the document has pages — a
+        truncated or over-produced archive — and raises. When the count could
+        not be determined the check is skipped with a warning, leaving the
+        1..N contiguity check in ``extract_page_images_from_zip`` as the last
+        line of defence.
+        """
+        if expected_page_count is None:
+            logger.warning(
+                "Image mode: input PDF page count unavailable; skipping "
+                "page-count verification (relying on the 1..N contiguity check)"
             )
             return
         actual = len(pages)
-        if actual != processed_page_count:
+        if actual != expected_page_count:
             raise ExtractorError(
-                "Page count mismatch in image output mode: service reported "
-                f"processed_page_count={processed_page_count} but the extracted "
-                f"ZIP contained {actual} page image(s)",
+                "Page count mismatch in image output mode: the input PDF has "
+                f"{expected_page_count} page(s) but the service returned {actual} "
+                "page image(s)",
                 status_code=502,
             )
 
     @staticmethod
-    def build_page_store_dir(
-        output_file_path: str | None, input_file_path: str, run_key: str
-    ) -> str:
-        """Collision-safe per-document folder for page images (UNS-747).
+    def build_page_store_dir(output_file_path: str | None, input_file_path: str) -> str:
+        """Per-document folder for page images: ``{extract_dir}/{stem}/pages``.
 
-        ``run_key`` (the unique per-run whisper_hash) isolates every extraction,
-        so concurrent documents never share a prefix. Layout:
-        ``{base_dir}/{run_key}/pages``.
+        Keyed on the document ``stem`` (the same discriminator the extract
+        ``.txt`` files alongside use), not the per-run whisper_hash. This is
+        collision-safe against concurrent documents in the same project, is
+        reconstructible from ``output_file_path`` alone, and — being stable
+        across runs — makes a re-extraction overwrite its own pages instead of
+        orphaning a fresh tree in FileStorage on every run.
         """
         reference = output_file_path or input_file_path
         base_dir = str(Path(reference).parent) if reference else "."
-        return str(Path(base_dir) / run_key / ImageOutputConfig.PAGES_SUBFOLDER)
+        stem = Path(reference).stem if reference else "document"
+        return str(Path(base_dir) / stem / ImageOutputConfig.PAGES_SUBFOLDER)
 
     @staticmethod
     def _page_image_filename(page_number: int) -> str:
@@ -674,6 +753,23 @@ class LLMWhispererHelper:
         fs.write(path=path, mode="wb", data=data, encoding="utf-8")
 
     @staticmethod
+    def _cleanup_partial_pages(fs: FileStorage, page_store_dir: str) -> None:
+        """Best-effort removal of a partially-written page directory.
+
+        Invoked when a persist fails mid-set so a failed extraction leaves no
+        orphan pages behind. A cleanup error is only logged — the original
+        extraction error is what the caller must see.
+        """
+        try:
+            fs.rm(page_store_dir, recursive=True)
+        except Exception as e:
+            logger.warning(
+                "Image mode: could not clean up partial page dir %s: %s",
+                page_store_dir,
+                e,
+            )
+
+    @staticmethod
     def persist_page_images(
         fs: FileStorage,
         page_store_dir: str,
@@ -681,11 +777,10 @@ class LLMWhispererHelper:
     ) -> list[PageImageReference]:
         """Write every page image to FileStorage with per-page retry.
 
-        All-or-nothing (fail-closed): the full ``PageImageReference`` list is
-        only returned once EVERY page is written. If any page exhausts its
-        retries, a hard ``ExtractorError`` propagates and no partial set is
-        returned (UNS-738 / UNS-739 / UNS-745). Works transparently for LOCAL
-        and S3 via the passed ``fs``.
+        Fail-closed on disk as well as in the return value: if any page exhausts
+        its retries, the pages already written are removed (best-effort) before
+        a hard ``ExtractorError`` propagates, so a failed extraction never leaves
+        a partial set behind. Works transparently for LOCAL and S3 via ``fs``.
         """
         fs.mkdir(create_parents=True, path=page_store_dir)
 
@@ -706,6 +801,7 @@ class LLMWhispererHelper:
             try:
                 write_with_retry(fs=fs, path=path, data=data)
             except Exception as e:
+                LLMWhispererHelper._cleanup_partial_pages(fs, page_store_dir)
                 raise ExtractorError(
                     "Failed to persist page image after retries: "
                     f"page={page_number}, provider={fs.provider.value}, "
@@ -745,60 +841,52 @@ class LLMWhispererHelper:
         output_file_path: str | None,
         fs: FileStorage | None = None,
         tag: str | list[str] | None = None,
-    ) -> list[PageImageReference]:
+    ) -> tuple[str, list[PageImageReference]]:
         """End-to-end image output flow (orchestrator).
 
         submit -> poll -> download+extract (ONCE) -> verify page count ->
-        persist per-page (retried). Returns the ordered ``PageImageReference``
-        list, or raises (fail-closed — never partial).
+        persist per-page (retried). Returns ``(whisper_hash, references)`` with
+        the ordered ``PageImageReference`` list, or raises (fail-closed — never
+        partial). The ``whisper_hash`` is returned so callers can record the
+        real job id in extraction metadata instead of an empty string.
 
-        Retrieval is intentionally NOT retried. Verified against Service
-        PR #536: ``pdf-to-images-retrieve`` flips the job to ``RETRIEVED``
-        *before* streaming and, with the service default
-        ``RESULT_PERSISTENCE=false``, a second retrieve returns
-        400 "Result already retrieved". Re-downloading is therefore impossible
-        (and re-submitting would double-bill), so a mid-download failure is a
-        hard error — the job must be resubmitted by the caller. Per-page
-        FileStorage writes (Unstract-side) are still retried.
+        Retrieval is intentionally NOT retried: the service marks the job
+        RETRIEVED before streaming and (with the default persistence off) a
+        second retrieve is rejected, while a re-submit would double-bill — so a
+        mid-download failure is a hard error the caller must resubmit. Per-page
+        FileStorage writes are still retried.
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
 
-        input_data = BytesIO(fs.read(path=input_file_path, mode="rb"))
+        input_bytes = fs.read(path=input_file_path, mode="rb")
         whisper_hash = LLMWhispererHelper.submit_pdf_to_images(
             config,
-            input_data,
+            BytesIO(input_bytes),
             tag=tag,
             file_name=Path(input_file_path).name,
         )
-        status_payload = LLMWhispererHelper.poll_pdf_to_images_status(
-            config, whisper_hash
-        )
-        # NOTE (verified vs PR #536): the status response does NOT expose a page
-        # count today — it is billing-internal (pdfToImagesPageCount column).
-        # verify_page_count() therefore no-ops unless/until the service adds it.
-        processed_page_count = status_payload.get(ImageOutputConfig.PROCESSED_PAGE_COUNT)
+        LLMWhispererHelper.poll_pdf_to_images_status(config, whisper_hash)
 
         pages = LLMWhispererHelper._download_and_extract(
             config=config, whisper_hash=whisper_hash
         )
 
-        # Verify BEFORE persisting so nothing is written on a count mismatch.
-        LLMWhispererHelper.verify_page_count(pages, processed_page_count)
+        # Verify the returned image count against the input PDF's own page count
+        # (derived locally) BEFORE persisting, so nothing is written on a
+        # truncated/over-produced archive.
+        expected_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        LLMWhispererHelper.verify_page_count(pages, expected_page_count)
 
         page_store_dir = LLMWhispererHelper.build_page_store_dir(
             output_file_path=output_file_path,
             input_file_path=input_file_path,
-            run_key=whisper_hash,
         )
         references = LLMWhispererHelper.persist_page_images(fs, page_store_dir, pages)
         logger.info(
-            "Image mode: completed job=%s pages=%d processed_page_count=%s",
-            whisper_hash,
-            len(references),
-            processed_page_count,
+            "Image mode: completed job=%s pages=%d", whisper_hash, len(references)
         )
-        return references
+        return whisper_hash, references
 
     @staticmethod
     def build_image_output_summary(page_images: list[PageImageReference]) -> str:

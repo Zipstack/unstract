@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import os
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from unstract.sdk1.adapters.exceptions import ExtractorError
@@ -73,7 +72,7 @@ class LLMWhispererV2(X2TextAdapter):
         The message is sourced from ``ImageOutputConfig`` so it stays identical
         to the UI-layer validation surfaced in ``adapter_processor_v2``.
         """
-        if Path(input_file_path).suffix.lower() != ImageOutputConfig.PDF_EXTENSION:
+        if not ImageOutputConfig.is_pdf(input_file_path):
             raise ExtractorError(
                 ImageOutputConfig.PDF_ONLY_ERROR,
                 status_code=400,
@@ -100,7 +99,7 @@ class LLMWhispererV2(X2TextAdapter):
         """
         logger.info("Image mode: processing %s in image output mode", input_file_path)
         self._validate_pdf_only(input_file_path)
-        page_images = LLMWhispererHelper.get_page_images(
+        whisper_hash, page_images = LLMWhispererHelper.get_page_images(
             config=self.config,
             input_file_path=input_file_path,
             output_file_path=output_file_path,
@@ -125,7 +124,7 @@ class LLMWhispererV2(X2TextAdapter):
         return TextExtractionResult(
             extracted_text=summary,
             extraction_metadata=TextExtractionMetadata(
-                whisper_hash="",
+                whisper_hash=whisper_hash,
                 page_images=page_images,
             ),
         )
@@ -156,7 +155,17 @@ class LLMWhispererV2(X2TextAdapter):
         output_mode = self.config.get(
             WhispererConfig.OUTPUT_MODE, OutputModes.LAYOUT_PRESERVING.value
         )
+        enable_highlight = kwargs.get(X2TextConstants.ENABLE_HIGHLIGHT, False)
         if output_mode == OutputModes.IMAGE.value:
+            # Highlighting produces line-level source references over extracted
+            # text; image mode yields no text, so the combination is rejected
+            # explicitly rather than silently returning empty highlight data.
+            if enable_highlight:
+                raise ExtractorError(
+                    "Highlighting is not supported in image output mode; disable "
+                    "highlight or select a text output mode.",
+                    status_code=400,
+                )
             return self._process_image_mode(
                 input_file_path,
                 output_file_path,
@@ -164,7 +173,6 @@ class LLMWhispererV2(X2TextAdapter):
                 tag=kwargs.get(X2TextConstants.TAGS),
             )
 
-        enable_highlight = kwargs.get(X2TextConstants.ENABLE_HIGHLIGHT, False)
         logger.info(
             "HIGHLIGHT_DEBUG LLMWhispererV2.process: enable_highlight=%s",
             enable_highlight,
