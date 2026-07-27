@@ -6,6 +6,7 @@ import {
   Card,
   Descriptions,
   Drawer,
+  Layout,
   List,
   Pagination,
   Result,
@@ -232,5 +233,68 @@ describe("antd-compatible structural shims (P4)", () => {
     );
     fireEvent.click(screen.getByText("Movable"));
     expect(onChange).toHaveBeenCalledWith(["1"], "right", ["1"]);
+  });
+
+  // Regression: these two bugs shipped to a dev deployment and produced an
+  // icons-only sidebar sitting in a 240px gutter, plus an empty dashboard.
+
+  it("Layout grows with flex-auto so nested flex:1 children get height", () => {
+    const { container } = render(<Layout>content</Layout>);
+    // flex-auto, NOT the default flex:0 1 auto — otherwise the element
+    // computes to height 0 and every flex:1 descendant collapses.
+    expect(container.firstChild.className).toContain("flex-auto");
+  });
+
+  it("Layout.Content also grows rather than staying flex-1", () => {
+    const { container } = render(<Layout.Content>body</Layout.Content>);
+    expect(container.firstChild.className).toContain("flex-auto");
+  });
+
+  it("Layout switches to a row when it contains a Sider", () => {
+    const { container } = render(
+      <Layout>
+        <Layout.Sider>nav</Layout.Sider>
+        <Layout.Content>body</Layout.Content>
+      </Layout>,
+    );
+    expect(container.firstChild.className).toContain("flex-row");
+  });
+
+  it("Layout stacks in a column with no Sider", () => {
+    const { container } = render(
+      <Layout>
+        <Layout.Content>body</Layout.Content>
+      </Layout>,
+    );
+    expect(container.firstChild.className).toContain("flex-col");
+  });
+
+  it("Sider renders at collapsedWidth when collapsed", () => {
+    const { container } = render(
+      <Layout.Sider width={240} collapsedWidth={65} collapsed>
+        nav
+      </Layout.Sider>,
+    );
+    expect(container.firstChild.style.width).toBe("65px");
+  });
+
+  it("Sider renders at full width when not collapsed", () => {
+    const { container } = render(
+      <Layout.Sider width={240} collapsedWidth={65} collapsed={false}>
+        nav
+      </Layout.Sider>,
+    );
+    expect(container.firstChild.style.width).toBe("240px");
+  });
+
+  it("Sider does not leak antd-only props onto the DOM", () => {
+    const { container } = render(
+      <Layout.Sider width={240} collapsedWidth={65} collapsible trigger={null}>
+        nav
+      </Layout.Sider>,
+    );
+    const el = container.firstChild;
+    expect(el.getAttribute("collapsedwidth")).toBeNull();
+    expect(el.getAttribute("collapsible")).toBeNull();
   });
 });

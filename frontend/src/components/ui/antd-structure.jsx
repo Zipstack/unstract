@@ -201,15 +201,39 @@ List.Item.Meta = function ListItemMeta({ avatar, title, description }) {
   );
 };
 
-/** antd `<Layout>` and its slots — plain flex containers. */
+/**
+ * antd `<Layout>` and its slots.
+ *
+ * `flex-auto` matters: antd's Layout is `flex: auto`, so a nested Layout grows
+ * to fill its parent. Without it the element computes `flex: 0 1 auto`, gets
+ * height 0, and every descendant using `flex: 1` (the dashboard, prompt
+ * studio, workflow panes) collapses to nothing while still being "in the DOM".
+ *
+ * `hasSider` switches to a row so Sider + content sit side by side, matching
+ * antd. It is inferred when a Layout.Sider child is present, because most
+ * call-sites here rely on antd's auto-detection rather than passing the prop.
+ */
 const Layout = React.forwardRef(function Layout(
-  { className, children, ...props },
+  { className, hasSider, children, ...props },
   ref,
 ) {
+  const containsSider =
+    hasSider ??
+    React.Children.toArray(children).some(
+      // Identity comparison against Layout.Sider is fragile here (it is
+      // assigned after Layout, and survives neither HMR nor wrapping), so the
+      // component carries an explicit marker instead.
+      (c) => c?.type?.__isSider === true,
+    );
+
   return (
     <div
       ref={ref}
-      className={cn("flex min-h-0 flex-col", className)}
+      className={cn(
+        "flex min-h-0 flex-auto",
+        containsSider ? "flex-row" : "flex-col",
+        className,
+      )}
       {...props}
     >
       {children}
@@ -220,13 +244,41 @@ Layout.Header = function Header({ className, ...p }) {
   return <header className={cn("flex items-center", className)} {...p} />;
 };
 Layout.Content = function Content({ className, ...p }) {
-  return <main className={cn("min-h-0 flex-1", className)} {...p} />;
+  return <main className={cn("min-h-0 flex-auto", className)} {...p} />;
 };
-Layout.Sider = function Sider({ className, width, ...p }) {
+/**
+ * antd `<Layout.Sider collapsible collapsed collapsedWidth width>`.
+ *
+ * The collapse props are behaviour, not decoration: when `collapsed` is set,
+ * antd renders the sider at `collapsedWidth` instead of `width`. Dropping them
+ * (as a plain `<aside {...props}>` does) leaves the rail at full width while
+ * its call-site hides every label behind `!collapsed` — an icons-only sidebar
+ * in a 240px gutter. They are also consumed here so `collapsible` /
+ * `collapsedWidth` never reach the DOM as invalid attributes.
+ */
+Layout.Sider = function Sider({
+  className,
+  width = 200,
+  collapsed,
+  collapsedWidth = 80,
+  collapsible,
+  trigger,
+  breakpoint,
+  onCollapse,
+  style,
+  ...p
+}) {
   return (
-    <aside className={cn("shrink-0", className)} style={{ width }} {...p} />
+    <aside
+      className={cn("shrink-0 transition-[width] duration-200", className)}
+      style={{ width: collapsed ? collapsedWidth : width, ...style }}
+      data-collapsed={collapsed ? "true" : undefined}
+      {...p}
+    />
   );
 };
+Layout.Sider.__isSider = true;
+
 Layout.Footer = function Footer({ className, ...p }) {
   return <footer className={className} {...p} />;
 };
