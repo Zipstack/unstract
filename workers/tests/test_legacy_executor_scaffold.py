@@ -22,10 +22,21 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 @pytest.fixture(autouse=True)
 def _clean_registry():
-    """Ensure a clean executor registry for every test."""
+    """Give each test a clean executor registry, then restore the prior state.
+
+    ``ExecutorRegistry`` is a process-global singleton that worker modules
+    populate at import (e.g. ``executor.worker`` registers ``legacy``). A bare
+    ``clear()`` on teardown would wipe those registrations for every later test
+    in the suite — breaking structure-tool/dispatch tests that rely on a
+    populated registry, and causing "already registered" collisions. Snapshot
+    the registry, clear it for this test, then restore the snapshot so the global
+    state is left exactly as we found it.
+    """
+    saved = dict(ExecutorRegistry._registry)
     ExecutorRegistry.clear()
     yield
-    ExecutorRegistry.clear()
+    ExecutorRegistry._registry.clear()
+    ExecutorRegistry._registry.update(saved)
 
 
 def _register_legacy():

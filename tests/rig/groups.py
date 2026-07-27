@@ -173,7 +173,7 @@ def _load_manifest_dict(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.is_file():
         raise ValueError(f"{manifest_path}: manifest file not found")
     raw = yaml.safe_load(manifest_path.read_text())
-    if not isinstance(raw, dict) or "groups" not in raw:
+    if not isinstance(raw, dict) or not isinstance(raw.get("groups"), dict):
         raise ValueError(f"{manifest_path}: expected top-level `groups:` mapping")
     return raw
 

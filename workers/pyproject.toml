@@ -34,6 +34,10 @@ dependencies = [
     "unstract-filesystem",
     # Caching
     "redis>=4.5.0,<6.0.0", # Redis client for worker cache access
+    # PG Queue — direct Postgres access for the bespoke SKIP LOCKED queue
+    # (reuses the backend's DB_* connection: PgBouncer in cloud, direct in OSS)
+    "psycopg2-binary==2.9.9", # matches backend; first direct-DB worker capability
+    "croniter>=3.0.3", # cron next-run computation for the PG scheduler tick (matches backend)
     # Streaming utilities for bulk downloads (pluggable worker)
     "zipstream-ng>=1.7.0", # Streaming zip creation for memory-efficient bulk downloads
     # Note: Using dataclasses instead of pydantic for lightweight typing
@@ -59,6 +63,7 @@ test = [
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
+    "pytest-timeout>=2.3.1",
     "factory-boy>=3.3.0",
     "responses>=0.23.0"
 ]
@@ -154,6 +159,11 @@ addopts = [
     "--strict-markers",
     "--strict-config",
     "--verbose",
+    # Hang safety net: no single test should run for minutes. Catches a wedged
+    # poll loop / deadlock in CI instead of hanging the job until it times out.
+    # Generous enough (120s) that only a genuine hang trips it, not a slow test.
+    "--timeout=120",
+    "--timeout-method=thread",
     "--cov=shared",
     "--cov=api_deployment",
     "--cov=general",
