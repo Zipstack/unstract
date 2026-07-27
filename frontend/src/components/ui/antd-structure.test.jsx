@@ -313,4 +313,29 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(el.getAttribute("collapsedwidth")).toBeNull();
     expect(el.getAttribute("collapsible")).toBeNull();
   });
+
+  // Regression: the adapter pickers pass grid={{ column: 4 }}; ignoring it
+  // rendered one card per row in a tall scroller instead of a 4-up grid.
+  it("List renders a grid when antd's grid prop is supplied", () => {
+    const { container } = render(
+      <List
+        grid={{ gutter: 16, column: 4 }}
+        dataSource={[{ id: 1 }, { id: 2 }]}
+        renderItem={(i) => <span>item {i.id}</span>}
+      />,
+    );
+    const root = container.firstChild;
+    expect(root.className).toContain("grid");
+    expect(root.className).toContain("grid-cols-4");
+    expect(root.className).not.toContain("divide-y");
+    expect(root.style.gap).toBe("16px");
+  });
+
+  it("List still stacks when no grid prop is given", () => {
+    const { container } = render(
+      <List dataSource={[{ id: 1 }]} renderItem={(i) => <span>{i.id}</span>} />,
+    );
+    expect(container.firstChild.className).toContain("divide-y");
+    expect(container.firstChild.className).not.toContain("grid-cols");
+  });
 });

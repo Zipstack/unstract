@@ -150,17 +150,54 @@ Tabs.TabPane = function TabPane({ children }) {
   return children ?? null;
 };
 
-/** antd `<List dataSource renderItem>`. */
+// Written out so Tailwind sees the class names statically.
+const LIST_GRID_COLS = {
+  1: "grid-cols-1",
+  2: "grid-cols-2",
+  3: "grid-cols-3",
+  4: "grid-cols-4",
+  6: "grid-cols-6",
+};
+
+/**
+ * antd `<List dataSource renderItem grid>`.
+ *
+ * `grid={{ column: n, gutter: g }}` switches antd from a stacked list to an
+ * n-column grid. Ignoring it (and rendering a divided vertical list) makes
+ * every adapter picker show one card per row in a tall scroller instead of a
+ * 4-up grid — which is what happened on the Add LLM / Add Connector modals.
+ */
 const List = React.forwardRef(function List(
-  { dataSource = [], renderItem, header, footer, className, locale, ...props },
+  {
+    dataSource = [],
+    renderItem,
+    header,
+    footer,
+    grid,
+    className,
+    locale,
+    ...props
+  },
   ref,
 ) {
+  const cols = grid?.column;
+  const isGrid = Boolean(cols);
+
   return (
-    <div ref={ref} className={cn("divide-y", className)} {...props}>
+    <div
+      ref={ref}
+      className={cn(
+        isGrid ? "grid" : "divide-y",
+        isGrid && LIST_GRID_COLS[cols],
+        className,
+      )}
+      style={isGrid && grid?.gutter ? { gap: grid.gutter } : undefined}
+      {...props}
+    >
       {header ? <div className="py-2 font-medium">{header}</div> : null}
       {dataSource.length ? (
         dataSource.map((item, i) => (
-          <div key={i} className="py-2">
+          <div key={i} className={isGrid ? undefined : "py-2"}>
             {renderItem?.(item, i)}
           </div>
         ))
