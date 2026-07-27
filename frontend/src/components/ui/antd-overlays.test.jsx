@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { Modal, Tooltip } from "@/components/ui/antd-overlays";
@@ -168,5 +168,53 @@ describe("antd-compatible overlay shims (P2)", () => {
     expect(body.className).toContain("overflow-y-auto");
     expect(body.className).toContain("max-h-[70vh]");
     expect(body.textContent).toContain("form fields");
+  });
+
+  // Regression: ConfirmModal (12 consumers — delete buttons across prompt
+  // studio, workflows, top nav) calls Modal.useModal() on every click. It was
+  // undefined, so each of those screens threw a TypeError when clicked.
+  it("Modal.useModal returns [api, contextHolder] like antd", () => {
+    function Harness() {
+      const [api, holder] = Modal.useModal();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() =>
+              api.confirm({ title: "Delete this?", onOk: () => undefined })
+            }
+          >
+            open
+          </button>
+          {holder}
+        </>
+      );
+    }
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: "open" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    expect(screen.getByText("Delete this?")).toBeInTheDocument();
+  });
+
+  it("Modal.useModal fires onOk when confirmed", () => {
+    const onOk = vi.fn();
+    function Harness() {
+      const [api, holder] = Modal.useModal();
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => api.confirm({ title: "Sure?", okText: "Yes", onOk })}
+          >
+            open
+          </button>
+          {holder}
+        </>
+      );
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: "open" }));
+    fireEvent.click(screen.getByRole("button", { name: "Yes" }));
+    expect(onOk).toHaveBeenCalled();
   });
 });

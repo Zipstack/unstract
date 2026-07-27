@@ -1,4 +1,5 @@
 import * as React from "react";
+import ReactDOM from "react-dom/client";
 
 import {
   AlertDialog,
@@ -387,6 +388,129 @@ const Collapse = React.forwardRef(function Collapse(
     </div>
   );
 });
+
+/**
+ * antd's imperative modal API: `Modal.useModal()` returns `[api, contextHolder]`
+ * and `api.confirm({ title, content, onOk })` opens a confirm dialog.
+ *
+ * ConfirmModal (used by 12 components — delete buttons across prompt studio,
+ * workflows, the top nav) calls this on every click. Leaving it undefined
+ * throws a TypeError and takes down whichever screen the user clicked on.
+ *
+ * Implemented on AlertDialog so it behaves the same as useConfirm() rather
+ * than becoming a second, divergent confirm pattern.
+ */
+function useModal() {
+  const [state, setState] = React.useState(null);
+
+  const api = React.useMemo(
+    () => ({
+      confirm: (cfg = {}) => setState({ ...cfg, kind: "confirm" }),
+      info: (cfg = {}) => setState({ ...cfg, kind: "info" }),
+      success: (cfg = {}) => setState({ ...cfg, kind: "success" }),
+      error: (cfg = {}) => setState({ ...cfg, kind: "error" }),
+      warning: (cfg = {}) => setState({ ...cfg, kind: "warning" }),
+      destroyAll: () => setState(null),
+    }),
+    [],
+  );
+
+  const close = React.useCallback(() => setState(null), []);
+
+  const contextHolder = state ? (
+    <AlertDialog
+      open
+      onOpenChange={(open) => {
+        // Escape / outside click must behave like Cancel.
+        if (!open) {
+          state.onCancel?.();
+          close();
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{state.title ?? "Are you sure?"}</AlertDialogTitle>
+          {state.content ? (
+            <AlertDialogDescription>{state.content}</AlertDialogDescription>
+          ) : null}
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          {state.kind === "confirm" ? (
+            <AlertDialogCancel
+              onClick={() => {
+                state.onCancel?.();
+                close();
+              }}
+            >
+              {state.cancelText ?? "Cancel"}
+            </AlertDialogCancel>
+          ) : null}
+          <AlertDialogAction
+            onClick={() => {
+              state.onOk?.();
+              close();
+            }}
+            className={
+              state.okType === "danger" || state.kind === "error"
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : undefined
+            }
+          >
+            {state.okText ?? "OK"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  ) : null;
+
+  return [api, contextHolder];
+}
+
+Modal.useModal = useModal;
+
+/**
+ * antd's fully-imperative `Modal.confirm({ title, onOk })`, callable outside
+ * React. The cloud plugins have three of these. It mounts its own root because
+ * there is no component tree to render into.
+ */
+Modal.confirm = function confirmStatic(cfg = {}) {
+  if (typeof document === "undefined") {
+    return { destroy: () => undefined };
+  }
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = ReactDOM.createRoot(host);
+
+  const cleanup = () => {
+    // Defer: unmounting during React's own commit phase warns.
+    setTimeout(() => {
+      root.unmount();
+      host.remove();
+    }, 0);
+  };
+
+  function StaticConfirm() {
+    const [api, holder] = useModal();
+    React.useEffect(() => {
+      api.confirm({
+        ...cfg,
+        onOk: () => {
+          cfg.onOk?.();
+          cleanup();
+        },
+        onCancel: () => {
+          cfg.onCancel?.();
+          cleanup();
+        },
+      });
+    }, [api]);
+    return holder;
+  }
+
+  root.render(<StaticConfirm />);
+  return { destroy: cleanup };
+};
 
 /**
  * antd `<Collapse.Panel>` — a data holder consumed by Collapse above.

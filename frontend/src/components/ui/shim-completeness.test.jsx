@@ -62,8 +62,20 @@ function collectSubComponentUsages() {
       if (full.includes(`${path.sep}ui${path.sep}antd-`)) {
         continue;
       }
-      const src = fs.readFileSync(full, "utf8");
+      // Strip comments first: a doc comment mentioning `Modal.confirm` is not
+      // a call-site, and flagging it would train people to ignore this test.
+      const src = fs
+        .readFileSync(full, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+      // <Foo.Bar> in JSX
       for (const m of src.matchAll(/<([A-Z]\w+)\.(\w+)[\s/>]/g)) {
+        found.add(`${m[1]}.${m[2]}`);
+      }
+      // Foo.bar(...) statics — antd exposed imperative APIs this way
+      // (Modal.useModal, Modal.confirm). Undefined ones throw a TypeError
+      // on click rather than at render, so they are just as fatal.
+      for (const m of src.matchAll(/\b([A-Z]\w+)\.(\w+)\s*\(/g)) {
         found.add(`${m[1]}.${m[2]}`);
       }
     }
