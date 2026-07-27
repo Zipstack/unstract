@@ -23,16 +23,17 @@ import { useNavigate } from "react-router-dom";
 
 import "./ResourceTable.css";
 
-// Stable, distinct avatar swatch per owner (seeded on email/name) like the design.
+// Stable, distinct avatar swatch per owner (seeded on email/name) like the
+// design: a light pastel fill paired with a matching darker initial.
 const AVATAR_COLORS = [
-  "#f56a00",
-  "#7265e6",
-  "#00a2ae",
-  "#d48806",
-  "#1677ff",
-  "#eb2f96",
-  "#52c41a",
-  "#722ed1",
+  { bg: "#ffccc7", fg: "#cf1322" },
+  { bg: "#ffe7ba", fg: "#d46b08" },
+  { bg: "#fff1b8", fg: "#d48806" },
+  { bg: "#d9f7be", fg: "#389e0d" },
+  { bg: "#b5f5ec", fg: "#08979c" },
+  { bg: "#bae0ff", fg: "#0958d9" },
+  { bg: "#efdbff", fg: "#531dab" },
+  { bg: "#ffd6e7", fg: "#c41d7f" },
 ];
 const colorForSeed = (seed = "") => {
   let hash = 0;
@@ -192,13 +193,14 @@ function ResourceTable({
     const extra =
       item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
     const initials = (isMe ? email || "Me" : name).slice(0, 2).toUpperCase();
+    const swatch = colorForSeed(email || name);
 
     const cell = (
       <Space size={10} className="resource-table-owner">
         <Avatar
           size={30}
           className="resource-table-owner-avatar"
-          style={{ backgroundColor: colorForSeed(email || name) }}
+          style={{ backgroundColor: swatch.bg, color: swatch.fg }}
         >
           {initials}
         </Avatar>

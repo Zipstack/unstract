@@ -117,6 +117,7 @@
 
 .resource-table-owner-avatar {
   font-size: 12px;
+  font-weight: 600;
   flex-shrink: 0;
 }
 
