@@ -26,14 +26,14 @@ import "./ResourceTable.css";
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
 // design: a light pastel fill paired with a matching darker initial.
 const AVATAR_COLORS = [
-  { bg: "#ffccc7", fg: "#cf1322" },
-  { bg: "#ffe7ba", fg: "#d46b08" },
-  { bg: "#fff1b8", fg: "#d48806" },
-  { bg: "#d9f7be", fg: "#389e0d" },
-  { bg: "#b5f5ec", fg: "#08979c" },
-  { bg: "#bae0ff", fg: "#0958d9" },
-  { bg: "#efdbff", fg: "#531dab" },
-  { bg: "#ffd6e7", fg: "#c41d7f" },
+  { bg: "#ffccc7", fg: "#f5222d" },
+  { bg: "#ffe7ba", fg: "#fa8c16" },
+  { bg: "#fff1b8", fg: "#faad14" },
+  { bg: "#d9f7be", fg: "#52c41a" },
+  { bg: "#b5f5ec", fg: "#13c2c2" },
+  { bg: "#bae0ff", fg: "#1677ff" },
+  { bg: "#efdbff", fg: "#722ed1" },
+  { bg: "#ffd6e7", fg: "#eb2f96" },
 ];
 const colorForSeed = (seed = "") => {
   let hash = 0;
