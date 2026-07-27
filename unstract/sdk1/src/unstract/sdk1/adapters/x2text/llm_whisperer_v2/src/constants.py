@@ -34,9 +34,9 @@ class WhispererEndpoint:
     STATUS = "whisper-status"
     RETRIEVE = "whisper-retrieve"
     HIGHLIGHTS = "highlights"
-    # Image output mode (pdf-to-images) endpoints. These are NOT exposed by the
-    # llmwhisperer-client package, so the adapter calls them via raw requests
-    # (decision 2A). See ImageOutputConfig for the assumed service contract.
+    # Image output mode (pdf-to-images) endpoints. Not exposed by the
+    # llmwhisperer-client package, so the adapter calls them via raw requests;
+    # see ImageOutputConfig for the wire contract.
     PDF_TO_IMAGES = "pdf-to-images"
     PDF_TO_IMAGES_STATUS = "pdf-to-images-status"
     PDF_TO_IMAGES_RETRIEVE = "pdf-to-images-retrieve"

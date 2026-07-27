@@ -65,7 +65,7 @@ class LLMWhispererHelper:
         timeout: float = WhispererDefaults.IMAGE_REQUEST_TIMEOUT,
         stream: bool = False,
     ) -> Response:
-        """Single outbound raw-``requests`` code path for the adapter (UNS-743).
+        """Single outbound raw-``requests`` code path for the adapter.
 
         Resolves the service base URL and auth headers from ``config`` so that
         no caller constructs URLs or headers itself, issues the request with an
@@ -434,15 +434,9 @@ class LLMWhispererHelper:
         except Exception as e:
             logger.warn(f"Error while writing metadata to {metadata_file_path}: {e}")
 
-    # ------------------------------------------------------------------ #
-    # Image output mode (pdf-to-images).                                  #
-    #                                                                     #
-    # These call the LLMWhisperer `pdf-to-images` endpoints via raw       #
-    # `requests` (decision 2A). The exact endpoint/response contract is   #
-    # centralised in ImageOutputConfig — see its docstring; it is an      #
-    # ASSUMED contract (Service PR #647 is not available in this repo)    #
-    # and is the single place to reconcile once the real API is known.    #
-    # ------------------------------------------------------------------ #
+    # Image output mode (pdf-to-images): these endpoints are not exposed by the
+    # llmwhisperer-client, so the adapter calls them via raw `requests`. The
+    # wire contract the adapter relies on is centralised in ImageOutputConfig.
 
     # Matches service page files like `page_001.png` / `page-1.png`. The
     # captured digits are passed through int() (leading zeros stripped there),
@@ -485,8 +479,8 @@ class LLMWhispererHelper:
 
         The image ``format``, ``tag`` (usage-report label) and ``file_name`` are
         sent as query params — consistent with the ``/whisper`` endpoint so the
-        service attributes usage correctly (verified against Service PR #536).
-        ``tag`` falls back to the adapter config, then the default.
+        service attributes usage correctly. ``tag`` falls back to the adapter
+        config, then the default.
         """
         resolved_tag = WhispererRequestParams(tag=tag).tag or config.get(
             WhispererConfig.TAG, WhispererDefaults.TAG
