@@ -559,7 +559,6 @@ class PromptStudioHelper:
             default_profile, request_user=request_user
         )
 
-
         # Common path decomposition used by extract, summarize, and index
         directory, filename = os.path.split(file_path)
         stem = os.path.splitext(filename)[0]
@@ -1397,7 +1396,10 @@ class PromptStudioHelper:
         if not adapter_id.startswith("llmwhisperer|"):
             return
         metadata = x2text.metadata or {}
-        if metadata.get(ImageOutputConstants.OUTPUT_MODE) != ImageOutputConstants.IMAGE_MODE:
+        if (
+            metadata.get(ImageOutputConstants.OUTPUT_MODE)
+            != ImageOutputConstants.IMAGE_MODE
+        ):
             return
         if not ImageOutputConstants.is_pdf(file_name):
             raise IndexingAPIError(
@@ -1480,7 +1482,6 @@ class PromptStudioHelper:
             PromptStudioHelper.validate_profile_manager_owner_access(
                 summary_profile, request_user=request_user
             )
-
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
