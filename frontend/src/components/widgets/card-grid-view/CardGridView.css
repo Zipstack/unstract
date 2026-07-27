@@ -367,9 +367,9 @@
 }
 
 .card-list-name {
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   font-size: 16px;
-  font-weight: var(--legacy-font-weight-600);
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -391,7 +391,7 @@
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   cursor: default;
@@ -483,7 +483,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
 }
 
 /* Status row - full width below 2-column layout */
@@ -575,7 +575,7 @@
 
 /* Connector instance name - user-set name, prominent */
 .connector-flow-instance-name {
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
@@ -591,7 +591,7 @@
 
 /* Legacy connector name style (fallback) */
 .connector-flow-name {
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
@@ -764,14 +764,14 @@
 }
 
 .card-list-expanded-label {
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   font-size: 11px;
   color: rgba(0, 0, 0, 0.55);
   letter-spacing: 0.3px;
 }
 
 .card-list-expanded-value {
-  font-family: var(--legacy-font-family);
+  font-family: var(--font-sans);
   font-size: 14px;
   color: rgba(0, 0, 0, 0.85);
 }

@@ -6,10 +6,6 @@
 @plugin "tailwindcss-animate";
 @plugin "@tailwindcss/typography";
 
-/* Legacy Unstract vars, prefixed --legacy-* so they cannot collide with the
- * shadcn semantic tokens below (D6). Removed entirely in P4. */
-@import "./variables.css";
-
 @custom-variant dark (&:is(.dark *));
 
 /* ------------------------------------------------------------------
@@ -239,15 +235,20 @@ body {
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   height: 100%;
-  background-color: var(--legacy-page-bg-2);
-  /* NOTE (P0-12): `overflow: hidden` interacts with Radix's scroll-lock on
-   * dialogs. Left as-is for P0; re-test at the first P2 dialog conversion. */
+  background-color: var(--background);
+  /* P0-12 / P2-02 — RESOLVED. The concern was that Radix's dialog scroll-lock
+   * (which also sets body overflow, then restores the prior value on close)
+   * could restore the wrong value here and leave the fixed app shell
+   * scrollable. Verified in antd-overlays.scrolllock.test.jsx: body overflow
+   * stays `hidden` before, during and after a dialog's lifecycle, survives
+   * repeated open/close cycles, and is NOT left hidden on pages that never
+   * pinned it. Safe to keep. */
   min-width: 1024px;
   overflow: hidden;
 }
 
 .page-bg-2 {
-  background-color: var(--legacy-page-bg-2);
+  background-color: var(--background);
 }
 
 .center {

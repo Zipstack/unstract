@@ -113,8 +113,12 @@ const Tabs = React.forwardRef(function Tabs(
   return (
     <ShadcnTabs
       ref={ref}
-      value={activeKey != null ? String(activeKey) : undefined}
-      defaultValue={String(defaultActiveKey ?? first ?? "")}
+      // Radix treats a present-but-undefined `value` as controlled, which
+      // freezes the tabs. Pass EITHER value (antd's controlled activeKey) OR
+      // defaultValue (uncontrolled), never both.
+      {...(activeKey != null
+        ? { value: String(activeKey) }
+        : { defaultValue: String(defaultActiveKey ?? first ?? "") })}
       onValueChange={(v) => onChange?.(v)}
       className={className}
       {...props}

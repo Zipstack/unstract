@@ -26,7 +26,7 @@
 }
 
 .conn-modal-col-left {
-  background-color: var(--legacy-page-bg-3);
+  background-color: var(--muted);
 }
 
 .conn-modal-col .ant-tabs-nav {

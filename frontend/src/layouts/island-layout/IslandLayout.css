@@ -6,7 +6,7 @@
 }
 
 .island-layout > div {
-  background-color: var(--legacy-white);
+  background-color: var(--card);
   height: 100%;
   overflow-y: auto;
 }

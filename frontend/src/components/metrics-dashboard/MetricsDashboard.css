@@ -2,7 +2,7 @@
 
 .metrics-dashboard {
   padding: 12px;
-  background-color: var(--legacy-page-bg-2);
+  background-color: var(--background);
   flex: 1;
   overflow: hidden;
   display: flex;
@@ -10,7 +10,7 @@
 }
 
 .metrics-dashboard-container {
-  background-color: var(--legacy-page-bg-1);
+  background-color: var(--card);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
