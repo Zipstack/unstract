@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import dayjs from "dayjs";
 import moment from "moment";
 import { describe, expect, it, vi } from "vitest";
 
@@ -229,30 +230,34 @@ describe("antd-compatible date/time shims (P3-04, D7)", () => {
 
     // MetricsDashboard holds dayjs; ExecutionLogs holds moment. Handing back
     // the wrong one is a type the call-site never opted into.
+    //
+    // Tested against the REAL dayjs, not a stand-in. An earlier version of
+    // this test used a hand-written stub whose constructor accepted a date
+    // string — so it passed while the shim was doing
+    // `new sample.constructor(iso)`, which dayjs silently ignores (returning
+    // TODAY) and moment turns into an object that throws on .format().
+    // The stub tested itself; only the real library catches that.
     it("echoes back the caller's date library rather than forcing moment", () => {
       const onChange = vi.fn();
-      // A minimal dayjs-shaped stand-in: the shim must clone THIS, not moment.
-      class FakeDay {
-        constructor(input) {
-          this.m = moment(input);
-        }
-        clone() {
-          return new FakeDay(this.m);
-        }
-        isValid() {
-          return this.m.isValid();
-        }
-        toISOString() {
-          return this.m.toISOString();
-        }
-        format(f) {
-          return this.m.format(f);
-        }
-      }
+      const { container } = render(
+        <RangePicker value={[dayjs("2026-03-01"), null]} onChange={onChange} />,
+      );
+      fireEvent.change(container.querySelectorAll("input")[1], {
+        target: { value: "2026-03-31" },
+      });
 
+      const [pair] = onChange.mock.calls[0];
+      expect(dayjs.isDayjs(pair[1])).toBe(true);
+      expect(moment.isMoment(pair[1])).toBe(false);
+      // And it must be the date asked for, not today.
+      expect(pair[1].format("YYYY-MM-DD")).toBe("2026-03-31");
+    });
+
+    it("preserves moment for callers that hold moment", () => {
+      const onChange = vi.fn();
       const { container } = render(
         <RangePicker
-          value={[new FakeDay("2026-03-01"), null]}
+          value={[moment("2026-03-01"), null]}
           onChange={onChange}
         />,
       );
@@ -261,8 +266,21 @@ describe("antd-compatible date/time shims (P3-04, D7)", () => {
       });
 
       const [pair] = onChange.mock.calls[0];
-      expect(pair[1]).toBeInstanceOf(FakeDay);
-      expect(moment.isMoment(pair[1])).toBe(false);
+      expect(moment.isMoment(pair[1])).toBe(true);
+      expect(pair[1].format("YYYY-MM-DD")).toBe("2026-03-31");
+    });
+
+    // The exact predicate MetricsDashboard passes, with the real dayjs.
+    it("bounds a dayjs-based disabledDate to today", () => {
+      const { container } = render(
+        <RangePicker
+          value={[dayjs().subtract(7, "day"), dayjs()]}
+          disabledDate={(current) => current && current > dayjs()}
+        />,
+      );
+      expect(container.querySelector("input").getAttribute("max")).toBe(
+        moment().format("YYYY-MM-DD"),
+      );
     });
   });
 });

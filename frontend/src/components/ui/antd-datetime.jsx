@@ -121,20 +121,56 @@ function likeSample(sample, isoish) {
   if (!isoish) {
     return null;
   }
-  // dayjs and moment both take a parseable string in their factory, reachable
-  // from any existing instance via its constructor.
-  const ctor = sample?.constructor;
-  if (typeof ctor === "function" && sample?.clone) {
+  const millis = moment(isoish).valueOf();
+  if (Number.isNaN(millis)) {
+    return null;
+  }
+
+  // NOT `new sample.constructor(isoish)`. That looks right and is wrong for
+  // both libraries actually in use: dayjs's internal constructor takes a
+  // config OBJECT, so handed a string it ignores it and silently returns
+  // today; moment's returns an object that throws on .format(). Either way
+  // the caller gets a confidently-wrong date.
+  //
+  // `.clone()` then re-point the instant. Both libraries expose clone(), and
+  // dayjs's immutable setters return a new instance while moment's mutate in
+  // place and return this — assigning the result covers both.
+  if (typeof sample?.clone === "function") {
     try {
-      const rebuilt = new ctor(isoish);
-      if (rebuilt?.isValid?.()) {
-        return rebuilt;
+      const moved = applyInstant(sample.clone(), millis);
+      if (moved?.isValid?.() && moved.valueOf() === millis) {
+        return moved;
       }
     } catch {
-      // Fall through to moment: some builds seal the constructor.
+      // Fall through to moment below.
     }
   }
   return moment(isoish);
+}
+
+/**
+ * Re-point a cloned date instance at `millis`, tolerating both the mutable
+ * (moment) and immutable (dayjs) setter conventions.
+ */
+function applyInstant(clone, millis) {
+  const base = moment(millis);
+  const parts = [
+    ["year", base.year()],
+    ["month", base.month()],
+    ["date", base.date()],
+    ["hour", base.hour()],
+    ["minute", base.minute()],
+    ["second", base.second()],
+    ["millisecond", base.millisecond()],
+  ];
+  let current = clone;
+  for (const [unit, value] of parts) {
+    if (typeof current?.[unit] !== "function") {
+      return null;
+    }
+    current = current[unit](value) ?? current;
+  }
+  return current;
 }
 
 /**
