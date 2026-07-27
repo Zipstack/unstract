@@ -82,6 +82,7 @@ const Modal = React.forwardRef(function Modal(
     cancelButtonProps,
     confirmLoading,
     width,
+    // consumed so it cannot land on the DOM; see the note below
     centered,
     maskClosable = true,
     closable = true,
@@ -113,7 +114,12 @@ const Modal = React.forwardRef(function Modal(
       <DialogContent
         ref={ref}
         className={cn(
-          centered && "top-1/2 -translate-y-1/2",
+          // NOTE: no `centered` handling here. shadcn's DialogContent is
+          // ALREADY centred (`top-[50%] translate-y-[-50%]`), and adding an
+          // equivalent-but-differently-spelled utility makes tailwind-merge
+          // treat the two as conflicting — it drops one, leaving the dialog
+          // with `transform: none` pinned to the top of the viewport with its
+          // header clipped. antd's `centered` is therefore a no-op for us.
           // This shadcn DialogContent always renders its close button, so
           // antd's `closable={false}` is honoured by hiding it rather than by
           // a prop.

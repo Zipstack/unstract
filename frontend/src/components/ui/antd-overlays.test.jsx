@@ -123,4 +123,33 @@ describe("antd-compatible overlay shims (P2)", () => {
       screen.getByRole("button", { name: "hoverable" }),
     ).toBeInTheDocument();
   });
+
+  // Regression: `centered` used to add a duplicate centring utility, which
+  // tailwind-merge resolved by dropping the base translate — leaving the
+  // dialog at transform:none, pinned to the top with its header clipped.
+  it("keeps the base centring transform when centered is passed", () => {
+    render(
+      <Modal open centered title="Centred">
+        body
+      </Modal>,
+    );
+    const dlg = document.querySelector("[role='dialog']");
+    expect(dlg).toBeTruthy();
+    const cls = dlg.className;
+    // The base transform must survive.
+    expect(cls).toContain("translate-y-[-50%]");
+    expect(cls).toContain("translate-x-[-50%]");
+    // And the conflicting spelling must not be present.
+    expect(cls).not.toContain("-translate-y-1/2");
+  });
+
+  it("does not leak `centered` onto the DOM", () => {
+    render(
+      <Modal open centered>
+        body
+      </Modal>,
+    );
+    const dlg = document.querySelector("[role='dialog']");
+    expect(dlg.getAttribute("centered")).toBeNull();
+  });
 });
