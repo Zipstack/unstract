@@ -29,6 +29,7 @@ from permissions.tests.base import (
     _build_connector,
     _build_custom_tool,
     _build_workflow,
+    make_user,
 )
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from rest_framework import status
@@ -234,3 +235,70 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
                 names = self._names(endpoint, response.data["results"])
                 assert response.data["count"] == 3
                 assert all("alpha" in name for name in names)
+
+    def test_search_matches_name_not_owner_email(self) -> None:
+        """``?search=`` matches the resource name only, not the owner's email.
+
+        UN-3769 narrowed search from owner-inclusive (``created_by__email``) to
+        name-only so the search box and the Owned By column agree; the owner's
+        email substring must no longer return their rows.
+        """
+        for endpoint in LIST_ENDPOINTS:
+            with self.subTest(kind=endpoint.kind):
+                self._create(endpoint, f"{endpoint.kind}-searchable", owner=self.owner)
+
+                by_email = self._list(
+                    endpoint, self.owner, page=1, page_size=10, search="owner"
+                )
+                by_name = self._list(
+                    endpoint, self.owner, page=1, page_size=10, search="searchable"
+                )
+
+                assert by_email.data["count"] == 0
+                assert by_name.data["count"] == 1
+
+    def test_dropped_owner_ordering_field_is_ignored(self) -> None:
+        """``?ordering=created_by__email`` is a dropped field, so it's ignored.
+
+        UN-3769 removed ``created_by__email`` from ``ordering_fields``. DRF drops
+        an unknown ordering key and falls back to the view default
+        (``-modified_at, pk``) rather than 400ing, so the rows stay newest-first.
+        Every row shares one creator, so had the field survived the response
+        would be pk-ordered, not the newest-first sequence asserted here.
+        """
+        for endpoint in LIST_ENDPOINTS:
+            with self.subTest(kind=endpoint.kind):
+                for i in range(5):
+                    obj = self._create(endpoint, f"{endpoint.kind}-ord-{i}")
+                    self._stamp(obj, BASE_TIME + timedelta(minutes=i))
+                expected = [f"{endpoint.kind}-ord-{i}" for i in reversed(range(5))]
+
+                response = self._list(
+                    endpoint,
+                    self.owner,
+                    page=1,
+                    page_size=10,
+                    ordering="created_by__email",
+                )
+
+                assert self._names(endpoint, response.data["results"]) == expected
+
+    def test_owner_email_is_earliest_live_owner(self) -> None:
+        """``owner_email()`` (the Owned By label) names the earliest live OWNER,
+        skips service accounts, and is ``None`` with no owner. Shared-mixin
+        behaviour, so one endpoint pins it for all four.
+        """
+        svc = make_user("svc@example.com", is_service_account=True)
+        wf = _build_workflow(self.org, self.owner)
+        # Service account owns earliest (must be skipped); coowner then owns
+        # before owner, so coowner is the earliest live owner.
+        for user, minute in ((svc, 0), (self.coowner, 1), (self.owner, 2)):
+            membership = wf.memberships.create(user=user, role=ResourceRole.OWNER)
+            type(membership).objects.filter(pk=membership.pk).update(
+                created_at=BASE_TIME + timedelta(minutes=minute)
+            )
+
+        assert type(wf).objects.get(pk=wf.pk).owner_email() == self.coowner.email
+
+        wf.memberships.all().delete()
+        assert type(wf).objects.get(pk=wf.pk).owner_email() is None
