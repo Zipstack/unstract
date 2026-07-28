@@ -43,6 +43,19 @@ class HasMembersMixin:
             for m in self.memberships.all()  # type: ignore[attr-defined]
         )
 
+    def owner_email(self) -> str | None:
+        # "Owned By" email: earliest live OWNER. ``created_by`` is audit-only
+        # (UN-2202) and may differ from the owner. Reads prefetched
+        # ``memberships`` to stay query-free.
+        owners = [
+            m
+            for m in self.memberships.all()  # type: ignore[attr-defined]
+            if m.role == ResourceRole.OWNER and not m.user.is_service_account
+        ]
+        if not owners:
+            return None
+        return min(owners, key=lambda m: m.created_at).user.email
+
     def is_owner(self, user: Any) -> bool:
         if user is None:
             return False

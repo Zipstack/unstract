@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
@@ -71,26 +71,23 @@ function ApiDeployment() {
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
-  // Ref to forward the fetch function to hooks (avoids declaration ordering)
-  const fetchListRef = useRef(null);
-
   const {
     pagination,
     setPagination,
     searchTerm,
     setSearchTerm,
+    // The hook owns the fetch ref; assigned below (avoids declaration ordering).
+    fetchRef,
     handlePaginationChange,
     handleSearch,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-  });
+  } = usePaginatedList();
 
   const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
     useScrollRestoration({
       location,
       setSearchTerm,
       setPagination,
-      fetchData: (...args) => fetchListRef.current?.(...args),
+      fetchData: (...args) => fetchRef.current?.(...args),
     });
 
   const {
@@ -182,7 +179,7 @@ function ApiDeployment() {
       });
   };
 
-  fetchListRef.current = getApiDeploymentList;
+  fetchRef.current = getApiDeploymentList;
 
   const deleteApiDeployment = (item) => {
     const id = item?.id || selectedRow.id;

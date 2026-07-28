@@ -108,10 +108,6 @@ class ConnectorInstanceViewSet(
         if filter_args:
             queryset = queryset.filter(**filter_args)
 
-        search = self.request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(connector_name__icontains=search)
-
         # Filter by connector_mode
         connector_mode_param = self.request.query_params.get("connector_mode")
         if connector_mode_param:
@@ -129,6 +125,11 @@ class ConnectorInstanceViewSet(
                     f"Invalid connector_mode parameter: {connector_mode_param}"
                 )
                 queryset = queryset.none()
+
+        # Name search.
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(connector_name__icontains=search)
 
         return queryset
 

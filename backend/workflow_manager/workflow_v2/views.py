@@ -107,17 +107,16 @@ class WorkflowViewSet(
             WorkflowKey.WF_IS_ACTIVE,
             WorkflowKey.WF_NAME,
         )
-        # Use for_user method to include shared workflows
-        queryset = (
-            Workflow.objects.for_user(self.request.user).filter(**filter_args)
-            if filter_args
-            else Workflow.objects.for_user(self.request.user)
-        )
-        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        # Use for_user to include shared workflows; prefetch owner/co-owner
+        # joins to avoid per-row queries in the Owned By column.
+        queryset = Workflow.objects.for_user(self.request.user)
+        if filter_args:
+            queryset = queryset.filter(**filter_args)
         queryset = queryset.select_related("created_by").prefetch_related(
             "memberships__user"
         )
 
+        # Name search.
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(workflow_name__icontains=search)

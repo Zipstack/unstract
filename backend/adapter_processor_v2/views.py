@@ -193,6 +193,7 @@ class AdapterInstanceViewSet(
         ):
             queryset = queryset.filter(**filter_args)
 
+        # Name search.
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(adapter_name__icontains=search)
