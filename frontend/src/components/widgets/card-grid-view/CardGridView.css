@@ -646,7 +646,7 @@
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  color: #092c4c;
+  color: var(--foreground);
   cursor: pointer;
   transition:
     color 0.2s ease,
@@ -661,7 +661,7 @@
 .action-icon-btn:hover,
 .action-icon-btn.ant-btn:hover {
   transform: scale(1.1);
-  color: #092c4c;
+  color: var(--primary);
 }
 
 .action-icon-btn:focus-visible,

@@ -37,10 +37,67 @@ import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ Input */
 
+/**
+ * antd's `showCount`: a live "N / max" readout under the control.
+ *
+ * Used on 3 modals (Prompt Studio project description, and both API
+ * deployment name fields). Without this it fell into `...props` and vanished,
+ * so those fields showed no counter at all while `maxLength` still silently
+ * truncated typing — the user hit a limit with nothing telling them why.
+ *
+ * antd renders the count for both controlled and uncontrolled inputs, so the
+ * length is read from `value`/`defaultValue` and kept in sync on change
+ * rather than assuming a controlled parent.
+ */
+function useCountLabel({ showCount, maxLength, value, defaultValue, onChange }) {
+  const [len, setLen] = React.useState(
+    String(value ?? defaultValue ?? "").length,
+  );
+
+  // A controlled parent can change `value` without an onChange we saw.
+  React.useEffect(() => {
+    if (value !== undefined) {
+      setLen(String(value ?? "").length);
+    }
+  }, [value]);
+
+  const handleChange = React.useCallback(
+    (e) => {
+      setLen(e.target.value.length);
+      onChange?.(e);
+    },
+    [onChange],
+  );
+
+  if (!showCount) {
+    return { onChange, label: null };
+  }
+  return {
+    onChange: handleChange,
+    label: (
+      <div className="ant-input-show-count-suffix mt-1 text-right text-xs text-muted-foreground">
+        {maxLength != null ? `${len} / ${maxLength}` : len}
+      </div>
+    ),
+  };
+}
+
 const Input = React.forwardRef(function Input(
-  { allowClear, prefix, suffix, size, status, bordered, className, ...props },
+  {
+    allowClear,
+    prefix,
+    suffix,
+    size,
+    status,
+    bordered,
+    showCount,
+    className,
+    ...props
+  },
   ref,
 ) {
+  const count = useCountLabel({ showCount, ...props });
+
   const control = (
     <ShadcnInput
       ref={ref}
@@ -53,37 +110,63 @@ const Input = React.forwardRef(function Input(
         className,
       )}
       {...props}
+      onChange={count.onChange}
     />
   );
 
-  if (!prefix && !suffix) {
-    return control;
+  const affixed =
+    !prefix && !suffix ? (
+      control
+    ) : (
+      <div className="relative flex items-center">
+        {prefix ? (
+          <span className="absolute left-2 text-muted-foreground">{prefix}</span>
+        ) : null}
+        {control}
+        {suffix ? (
+          <span className="absolute right-2 text-muted-foreground">
+            {suffix}
+          </span>
+        ) : null}
+      </div>
+    );
+
+  if (!count.label) {
+    return affixed;
   }
   return (
-    <div className="relative flex items-center">
-      {prefix ? (
-        <span className="absolute left-2 text-muted-foreground">{prefix}</span>
-      ) : null}
-      {control}
-      {suffix ? (
-        <span className="absolute right-2 text-muted-foreground">{suffix}</span>
-      ) : null}
+    <div>
+      {affixed}
+      {count.label}
     </div>
   );
 });
 
-/** antd `<Input.TextArea rows autoSize />`. */
+/** antd `<Input.TextArea rows autoSize showCount />`. */
 const TextArea = React.forwardRef(function TextArea(
-  { rows = 3, autoSize, className, ...props },
+  { rows = 3, autoSize, showCount, className, ...props },
   ref,
 ) {
-  return (
+  const count = useCountLabel({ showCount, ...props });
+
+  const control = (
     <Textarea
       ref={ref}
       rows={typeof autoSize === "object" ? (autoSize.minRows ?? rows) : rows}
       className={className}
       {...props}
+      onChange={count.onChange}
     />
+  );
+
+  if (!count.label) {
+    return control;
+  }
+  return (
+    <div>
+      {control}
+      {count.label}
+    </div>
   );
 });
 

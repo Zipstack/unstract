@@ -136,4 +136,45 @@ describe("antd-compatible input shims (P3-03)", () => {
     render(<Input disabled />);
     expect(screen.getByRole("textbox")).toBeDisabled();
   });
+
+  /**
+   * `showCount` was silently dropped: it fell into `...props`, so the three
+   * modals using it (Prompt Studio description, both API-deployment name
+   * fields) rendered no counter while `maxLength` still truncated typing.
+   */
+  describe("showCount (antd parity)", () => {
+    it("renders the antd 'N / max' readout and tracks typing", () => {
+      render(<Input.TextArea showCount maxLength={200} />);
+
+      expect(screen.getByText("0 / 200")).toBeInTheDocument();
+      userEvent.type(screen.getByRole("textbox"), "hello");
+      expect(screen.getByText("5 / 200")).toBeInTheDocument();
+    });
+
+    it("still forwards the caller's onChange while counting", () => {
+      const onChange = vi.fn();
+      render(<Input showCount maxLength={30} onChange={onChange} />);
+
+      userEvent.type(screen.getByRole("textbox"), "ab");
+      expect(onChange).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("2 / 30")).toBeInTheDocument();
+    });
+
+    it("seeds the count from a controlled value and follows it", () => {
+      const { rerender } = render(
+        <Input showCount maxLength={30} value="abc" onChange={vi.fn()} />,
+      );
+      expect(screen.getByText("3 / 30")).toBeInTheDocument();
+
+      rerender(
+        <Input showCount maxLength={30} value="abcdef" onChange={vi.fn()} />,
+      );
+      expect(screen.getByText("6 / 30")).toBeInTheDocument();
+    });
+
+    it("renders no counter when showCount is absent", () => {
+      render(<Input.TextArea maxLength={200} />);
+      expect(screen.queryByText(/\/ 200/)).not.toBeInTheDocument();
+    });
+  });
 });

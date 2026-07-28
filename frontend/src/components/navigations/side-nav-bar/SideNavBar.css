@@ -1,5 +1,18 @@
+/*
+ * The sidebar shares the top nav's surface.
+ *
+ * PageLayout.css paints `.topNav` with `var(--primary)`; this file used to
+ * hardcode #0d3a63, so the two bars that meet at the top-left corner were
+ * different colours.
+ *
+ * Deliberately NOT `var(--sidebar)`: that token is `--neutral-0` (white) in
+ * light mode, and every rule below this one is written for a dark surface —
+ * white headings, #b4c2cf item text, rgba(255,255,255,…) dividers, and
+ * `filter: brightness(0) invert(1)` on the icons. On white they would all
+ * disappear. `--primary` keeps the light-on-dark family valid.
+ */
 .side-bar {
-  background-color: #0d3a63 !important;
+  background-color: var(--primary);
   overflow: hidden;
   height: 100%;
 }
@@ -110,9 +123,15 @@
   width: 100%;
 }
 
+/*
+ * Was #005b82 — a navy-family highlight chosen for the old navy sidebar,
+ * which reads as a muddy blue patch on violet. A white overlay tints
+ * whatever the surface happens to be, so it tracks `--primary` in both
+ * light and dark mode instead of naming a second colour.
+ */
 .space-styles-active,
 .space-styles:hover {
-  background: #005b82;
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .space-styles-disable {
@@ -125,8 +144,18 @@
   font-size: 15px;
 }
 
+/*
+ * #b4c2cf was a muted slate picked to sit on the old navy sidebar, where it
+ * measured 6.41:1. On `--primary` violet it falls to 2.6:1 — under even the
+ * 3:1 large-text floor, so it cannot carry over.
+ *
+ * White is 4.72:1 on violet and clears AA for normal text; the tints between
+ * (#e8e5fb, #dcd8f9) top out at 3.82:1 and do not. Muting is done with
+ * opacity instead, which keeps the ratio close to white's while still
+ * separating inactive items from the active one (which is full-strength).
+ */
 .sidebar-item-text {
-  color: #b4c2cf;
+  color: rgba(255, 255, 255, 0.85);
   text-align: left;
 }
 
@@ -170,9 +199,10 @@
   margin: 10px 0;
 }
 
+/* Same rebase as .sidebar-item-text — #b4c2cf is 2.6:1 on violet. */
 .sidebar-antd-icon {
   font-size: 22px;
-  color: #b4c2cf;
+  color: rgba(255, 255, 255, 0.85);
   width: 25px;
   display: flex;
   align-items: center;

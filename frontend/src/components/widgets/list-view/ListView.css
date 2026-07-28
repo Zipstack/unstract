@@ -32,7 +32,7 @@
 .action-icon-buttons {
   font-size: 18px;
   z-index: 20;
-  color: #092c4c;
+  color: var(--foreground);
   cursor: pointer;
   transition: color 0.2s ease;
 }
