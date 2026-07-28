@@ -366,12 +366,14 @@ const RangePicker = React.forwardRef(function RangePicker(
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="end">
-          <div className="flex flex-col sm:flex-row">
+          <div className="flex flex-row">
             {presets?.length ? (
               <div
                 className={cn(
-                  "flex shrink-0 gap-1 border-border p-2",
-                  "flex-row overflow-x-auto sm:w-40 sm:flex-col sm:border-r sm:overflow-visible",
+                  // Not `sm:` variants: those track the viewport, but this
+                  // sits inside a popover and stacked into a tall narrow
+                  // column that overflowed the window.
+                  "flex w-40 shrink-0 flex-col gap-1 border-r border-border p-2",
                 )}
               >
                 {presets.map((preset) => (

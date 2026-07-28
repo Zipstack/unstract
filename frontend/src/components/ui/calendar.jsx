@@ -22,7 +22,11 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }) {
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
-        months: "flex flex-col gap-4 sm:flex-row",
+        // Row, not `sm:flex-row`. Tailwind breakpoints measure the VIEWPORT,
+        // and this renders inside a popover whose own width is what matters —
+        // on a wide screen the months still stacked, making the popover 250px
+        // wide and ~700px tall, which ran off the bottom of the window.
+        months: "flex flex-row gap-4",
         // `relative` anchors the absolutely-positioned prev/next buttons to
         // each month rather than to the page.
         month: "relative flex flex-col gap-4",
