@@ -4,7 +4,6 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -80,7 +79,7 @@ class WorkflowViewSet(
     pagination_class = OptionalPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
-    ordering_fields = ["workflow_name", "created_by__email", "created_at", "modified_at"]
+    ordering_fields = ["workflow_name", "created_at", "modified_at"]
     notification_resource_name_field = "workflow_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -117,13 +116,10 @@ class WorkflowViewSet(
             "memberships__user"
         )
 
-        # Owner-inclusive search: match the workflow name or the owner's email.
+        # Name search.
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(
-                Q(workflow_name__icontains=search)
-                | Q(created_by__email__icontains=search)
-            )
+            queryset = queryset.filter(workflow_name__icontains=search)
 
         return queryset
 

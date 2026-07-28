@@ -44,11 +44,9 @@ class HasMembersMixin:
         )
 
     def owner_email(self) -> str | None:
-        # Email for the "Owned By" label. ``created_by`` is audit-only (UN-2202)
-        # and the creator can be removed as owner, so it must not name the owner.
-        # Reads the prefetched ``memberships`` (list views set ``memberships__user``)
-        # to stay query-free; earliest live OWNER wins so the label names the same
-        # roster as ``co_owners_count()`` and is stable across page loads.
+        # "Owned By" email: earliest live OWNER. ``created_by`` is audit-only
+        # (UN-2202) and may differ from the owner. Reads prefetched
+        # ``memberships`` to stay query-free.
         owners = [
             m
             for m in self.memberships.all()  # type: ignore[attr-defined]

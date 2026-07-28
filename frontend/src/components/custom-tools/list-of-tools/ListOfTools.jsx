@@ -217,7 +217,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   useEffect(() => {
     setSearchTerm("");
     setDisplayList(undefined);
-    getListOfTools(1, DEFAULT_PAGE_SIZE, "", "", "asc");
+    requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

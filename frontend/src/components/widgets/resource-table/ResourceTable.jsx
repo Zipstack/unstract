@@ -189,7 +189,7 @@ function ResourceTable({
     const name = isMe ? "Me" : email?.split("@")[0] || "Unknown";
     const extra =
       item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
-    const initials = (isMe ? email || "Me" : name).slice(0, 2).toUpperCase();
+    const initials = (email || name).slice(0, 2).toUpperCase();
     const swatch = colorForSeed(email || name);
 
     const cell = (

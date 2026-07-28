@@ -7,7 +7,7 @@ from connector_auth_v2.exceptions import CacheMissException, MissingParamExcepti
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
-from django.db.models import ProtectedError, Q, QuerySet
+from django.db.models import ProtectedError, QuerySet
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
@@ -49,12 +49,7 @@ class ConnectorInstanceViewSet(
     pagination_class = OptionalPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
-    ordering_fields = [
-        "connector_name",
-        "created_by__email",
-        "created_at",
-        "modified_at",
-    ]
+    ordering_fields = ["connector_name", "created_at", "modified_at"]
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -131,13 +126,10 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Owner-inclusive search: match the resource name or the owner's email.
+        # Name search.
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(
-                Q(connector_name__icontains=search)
-                | Q(created_by__email__icontains=search)
-            )
+            queryset = queryset.filter(connector_name__icontains=search)
 
         return queryset
 

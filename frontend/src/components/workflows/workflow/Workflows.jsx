@@ -102,7 +102,7 @@ function Workflows() {
 
   useEffect(() => {
     if (location.pathname === `/${orgName}/workflows`) {
-      getProjectList();
+      requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
     }
   }, [location.pathname]);
 

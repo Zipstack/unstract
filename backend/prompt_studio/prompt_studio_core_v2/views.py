@@ -12,7 +12,7 @@ from api_v2.models import APIDeployment
 from celery import signature
 from celery.result import AsyncResult
 from django.db import IntegrityError
-from django.db.models import Count, OuterRef, Q, QuerySet, Subquery
+from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
@@ -135,7 +135,7 @@ class PromptStudioCoreView(
     pagination_class = OptionalPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
-    ordering_fields = ["tool_name", "created_by__email", "created_at", "modified_at"]
+    ordering_fields = ["tool_name", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -173,21 +173,14 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # modified_at needs no annotation: prompt writes bump the parent
-            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
-            # keeping the plain field orderable. Only prompt writes bump —
-            # profile/document edits and queryset-level prompt writes do not;
-            # any new write path must bump CustomTool itself
+            # modified_at stays a plain orderable field: prompt writes bump the
+            # parent row, so no annotation is needed.
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
-            # Owner-inclusive search: match the tool name or the owner's email.
             search = self.request.query_params.get("search")
             if search:
-                qs = qs.filter(
-                    Q(tool_name__icontains=search)
-                    | Q(created_by__email__icontains=search)
-                )
+                qs = qs.filter(tool_name__icontains=search)
         return qs
 
     def get_object(self):

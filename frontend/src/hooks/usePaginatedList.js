@@ -103,11 +103,8 @@ function usePaginatedList({
   // Page assigns its fetch fn here; handlers call the latest one via the ref.
   const fetchRef = useRef(null);
 
-  // page/pageSize mirror the on-screen view (setPagination only runs when a
-  // response applies); search/sortBy/order are the LAST-REQUESTED values, since
-  // handleSearch/handleSortChange commit them before firing and don't roll back
-  // on failure. syncRequested copies this into requestedRef so a later refresh
-  // targets the displayed page rather than a mid-flight one.
+  // page/pageSize mirror the applied view; search/sort are last-REQUESTED
+  // (handlers commit before firing). syncRequested snapshots this for refresh.
   const appliedRef = useRef(null);
   appliedRef.current = {
     page: pagination.current,
@@ -117,10 +114,8 @@ function usePaginatedList({
     order: sort.order,
   };
 
-  // Params of the LAST request, recorded at fetch time (not read from state,
-  // which lags — pagination only updates when a response applies). handleList-
-  // Refresh replays these, so a refresh captured during an in-flight navigation
-  // still targets the view the user asked for rather than snapping back.
+  // Params of the last request, recorded at fetch time (state lags applies).
+  // handleListRefresh replays these so a refresh targets the asked-for view.
   const requestedRef = useRef({
     page: 1,
     pageSize: defaultPageSize,
@@ -129,13 +124,11 @@ function usePaginatedList({
     order: defaultOrder,
   });
 
-  // Single fetch entry: records the requested view before firing, so every
-  // path (navigation, stepback, reset) keeps requestedRef in sync with what
-  // ends up on screen. Pages route their stepback (refetchPrevPage) through it.
+  // Single fetch entry: records the requested view before firing so every path
+  // (navigation, stepback, reset) keeps requestedRef in sync. Returns the fetch
+  // promise so a stepback propagates up through applyPagedResponse.
   const requestList = (page, pageSize, search, sortBy, order) => {
     requestedRef.current = { page, pageSize, search, sortBy, order };
-    // Return the fetch promise so a stepback (refetchPrevPage) propagates up
-    // through applyPagedResponse, as its JSDoc documents.
     return fetchRef.current?.(page, pageSize, search, sortBy, order);
   };
 
@@ -153,7 +146,11 @@ function usePaginatedList({
   // Table header sort click: reset to page 1 (the page a row sits on changes)
   // and refetch with the new ordering.
   const handleSortChange = (sortBy, order) => {
-    const nextSort = { sortBy: sortBy || "", order: order || "asc" };
+    // "Clear Sort" (empty sortBy) restores the default view, not an empty
+    // ordering: the viewset always applies one, so header and rows stay in sync.
+    const nextSort = sortBy
+      ? { sortBy, order: order || "asc" }
+      : { sortBy: defaultSortBy, order: defaultOrder };
     setSort(nextSort);
     requestList(
       1,

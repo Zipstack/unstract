@@ -155,7 +155,7 @@ function ConnectorsPage() {
   fetchRef.current = getConnectors;
 
   useEffect(() => {
-    getConnectors(1, DEFAULT_PAGE_SIZE, "", "", "asc");
+    requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
     fetchUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

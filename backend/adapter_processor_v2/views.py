@@ -4,7 +4,7 @@ from typing import Any
 
 from account_v2.models import User
 from django.db import IntegrityError
-from django.db.models import ProtectedError, Q, QuerySet
+from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
@@ -150,7 +150,7 @@ class AdapterInstanceViewSet(
     pagination_class = OptionalPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
-    ordering_fields = ["adapter_name", "created_by__email", "created_at", "modified_at"]
+    ordering_fields = ["adapter_name", "created_at", "modified_at"]
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -193,12 +193,10 @@ class AdapterInstanceViewSet(
         ):
             queryset = queryset.filter(**filter_args)
 
-        # Owner-inclusive search: match the resource name or the owner's email.
+        # Name search.
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(
-                Q(adapter_name__icontains=search) | Q(created_by__email__icontains=search)
-            )
+            queryset = queryset.filter(adapter_name__icontains=search)
 
         return queryset
 
