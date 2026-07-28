@@ -267,7 +267,7 @@ const DetailedLogs = () => {
         </div>
       ),
       filterIcon: () => (
-        <Search style={{ color: searchText ? "#1890ff" : undefined }} />
+        <Search style={{ color: searchText ? "var(--primary)" : undefined }} />
       ),
     },
     {

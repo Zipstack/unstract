@@ -223,7 +223,7 @@
 .ant-tag-checkable.checked {
   background-color: #f6ffed !important;
   border-color: #b7eb8f !important;
-  color: #52c41a !important;
+  color: var(--success) !important;
 }
 
 .ant-tag-checkable.unchecked {

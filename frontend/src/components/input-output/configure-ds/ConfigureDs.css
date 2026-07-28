@@ -28,6 +28,6 @@
 
 .config-doc-icon {
   font-size: 16px;
-  color: #1890ff;
+  color: var(--primary);
   cursor: pointer;
 }

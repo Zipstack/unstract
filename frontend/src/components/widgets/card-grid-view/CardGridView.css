@@ -426,7 +426,7 @@
 
 .status-badge.status-badge-clickable:focus-visible,
 .status-badge.ant-tag.status-badge-clickable:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -448,7 +448,7 @@
 }
 
 .status-tooltip-count.success {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .status-tooltip-count.error {
@@ -471,7 +471,7 @@
 
 /* Preserve icon colors inside dark tooltip background */
 .status-tooltip-count.success .anticon {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .status-tooltip-count.error .anticon {
@@ -666,7 +666,7 @@
 
 .action-icon-btn:focus-visible,
 .action-icon-btn.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -739,7 +739,7 @@
 
 .card-expand-chevron:focus-visible,
 .card-expand-chevron.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -1108,7 +1108,7 @@
 
 .card-kebab-menu:focus-visible,
 .card-kebab-menu.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 

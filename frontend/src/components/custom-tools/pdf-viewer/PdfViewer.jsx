@@ -166,7 +166,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
     return (
       <div ref={parentRef} className="doc-manager-body pdf-viewer-error">
         <Result
-          icon={<FileWarning style={{ color: "#faad14" }} />}
+          icon={<FileWarning style={{ color: "var(--warning)" }} />}
           title="No PDF Available"
           subTitle="The PDF document URL is not available. Please ensure the document has been processed correctly."
         />

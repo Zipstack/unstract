@@ -376,8 +376,8 @@
 .subscription-upgrade-btn {
   align-self: flex-start;
   margin-top: 4px;
-  color: #52c41a;
-  border-color: #52c41a;
+  color: var(--success);
+  border-color: var(--success);
 }
 
 .subscription-upgrade-btn:hover {
@@ -395,7 +395,7 @@
 
 .subscription-stat-icon {
   font-size: 16px;
-  color: #1890ff;
+  color: var(--primary);
   margin-bottom: 6px;
 }
 
@@ -470,7 +470,7 @@
 }
 
 .execution-success {
-  color: #52c41a;
+  color: var(--success);
   font-size: 12px;
 }
 

@@ -5,11 +5,11 @@
 }
 
 .gen-index-progress {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .gen-index-success {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .gen-index-fail {

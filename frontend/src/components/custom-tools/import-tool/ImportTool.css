@@ -9,12 +9,12 @@
 }
 
 .import-tool-uploader:hover {
-  border-color: #1890ff;
+  border-color: var(--primary);
 }
 
 .import-tool-uploader .ant-upload-drag-icon {
   font-size: 48px;
-  color: #1890ff;
+  color: var(--primary);
   margin-bottom: 16px;
 }
 

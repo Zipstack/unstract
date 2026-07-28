@@ -117,7 +117,7 @@
 }
 
 .configured-icon {
-  color: #52c41a;
+  color: var(--success);
   font-size: 24px;
   vertical-align: middle;
 }

@@ -51,7 +51,7 @@
 }
 
 .layout-body .table .workflowName {
-  color: #1890ff;
+  color: var(--primary);
   cursor: pointer;
 }
 

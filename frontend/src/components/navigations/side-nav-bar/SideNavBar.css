@@ -77,8 +77,14 @@
   transition: color 0.2s;
 }
 
+/*
+ * Was #1890ff (antd's default blue) — an off-palette accent that now sits on
+ * a violet sidebar. The pinned state just needs to read as "on" against the
+ * unpinned rgba(255,255,255,0.6) above, so full white carries it without
+ * introducing a third brand colour.
+ */
 .sidebar-toggle-icon.pinned {
-  color: #1890ff;
+  color: #ffffff;
 }
 
 .secondary-list-wrapper {
@@ -96,15 +102,30 @@
   width: 100%;
 }
 
+/*
+ * The menu icons are inline SVG assets with `fill="#90A4B7"` baked in — a
+ * slate grey picked for the old navy sidebar, where it measured 4.54:1. On
+ * `--primary` violet it collapses to 1.84:1 and the icons all but vanish.
+ *
+ * The assets are data-URI <img> sources, so `color` cannot reach them and
+ * recolouring would mean re-authoring every SVG. Instead the same filter the
+ * rule below already uses for hover/active is applied at rest, then dimmed
+ * with opacity to match `.sidebar-item-text`'s 0.85 — so an idle icon is
+ * white-at-85% and the active one goes to full white, preserving the
+ * inactive/active distinction the hover rule was drawing.
+ */
 .side-bar .menu-item-icon {
   margin-top: 1;
   height: auto;
   width: 25px;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
 }
 
 .space-styles-active .menu-item-icon,
 .space-styles:hover .menu-item-icon {
   filter: brightness(0) invert(1);
+  opacity: 1;
 }
 
 .sidebar-footer-icons {

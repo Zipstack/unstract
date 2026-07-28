@@ -153,7 +153,7 @@ function SharePermission({
                   }'?`}
                   okText="Yes"
                   cancelText="No"
-                  icon={<CircleHelp style={{ color: "#faad14" }} />}
+                  icon={<CircleHelp style={{ color: "var(--warning)" }} />}
                   onConfirm={() => {
                     if (item.kind === "user") {
                       handleDeleteUser(item.id);

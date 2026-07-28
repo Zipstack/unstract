@@ -148,7 +148,7 @@
 }
 
 .edit-icon:hover {
-  color: #1890ff;
+  color: var(--primary);
 }
 
 .delete-icon:hover {
@@ -156,7 +156,7 @@
 }
 
 .share-icon:hover {
-  color: #1890ff;
+  color: var(--primary);
 }
 
 .owner-badge-btn {
@@ -172,9 +172,9 @@
 }
 
 .owner-clickable:hover .adapters-list-user-avatar {
-  background-color: #1890ff;
+  background-color: var(--primary);
 }
 
 .owner-clickable:hover .shared-username {
-  color: #1890ff;
+  color: var(--primary);
 }

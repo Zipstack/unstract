@@ -228,8 +228,8 @@
 }
 
 .copy-button:hover {
-  color: var(--primary-color, #1890ff);
-  border-color: var(--primary-color, #1890ff);
+  color: var(--primary-color, var(--primary));
+  border-color: var(--primary-color, var(--primary));
 }
 
 /* Role badge */
