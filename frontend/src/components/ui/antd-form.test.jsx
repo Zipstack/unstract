@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -118,5 +118,46 @@ describe("antd-compatible Form shim (P3)", () => {
     );
     expect(screen.getByText("content")).toBeInTheDocument();
     expect(screen.getByText("Static")).toBeInTheDocument();
+  });
+});
+
+/**
+ * antd's NamePath allows arrays. react-hook-form's Controller calls
+ * `.split(".")` on the name, so an array crashed with
+ * "TypeError: s.split is not a function" — taking down the whole route, not
+ * just the field. InviteEditUser uses `name={["email"]}`; the cloud
+ * StripeProductForm uses nested `name={["tier1", "up_to"]}`.
+ */
+describe("Form.Item accepts antd's array NamePath", () => {
+  it("renders a single-element array name without crashing", () => {
+    render(
+      <Form>
+        <Form.Item name={["email"]} label="Email">
+          <input />
+        </Form.Item>
+      </Form>,
+    );
+    expect(screen.getByLabelText("Email")).toBeInTheDocument();
+  });
+
+  it("treats a nested array name as a dotted path", async () => {
+    const onFinish = vi.fn();
+    render(
+      <Form onFinish={onFinish}>
+        <Form.Item name={["tier1", "up_to"]} label="Up to">
+          <input />
+        </Form.Item>
+        <button type="submit">Save</button>
+      </Form>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Up to"), {
+      target: { value: "42" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(onFinish).toHaveBeenCalled());
+    // The nested shape antd would have produced.
+    expect(onFinish.mock.calls[0][0]).toMatchObject({ tier1: { up_to: "42" } });
   });
 });

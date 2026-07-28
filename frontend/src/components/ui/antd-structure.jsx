@@ -217,7 +217,11 @@ const List = React.forwardRef(function List(
     <div
       ref={ref}
       className={cn(
-        isGrid ? "grid" : "divide-y",
+        // `divide-y` sets the border WIDTH but not its colour, and Tailwind's
+        // default border colour is black. antd's list separator is a
+        // near-invisible rgba(5,5,5,.06) hairline, so without `divide-border`
+        // every row gained a solid black rule between it and the next.
+        isGrid ? "grid" : "divide-y divide-border",
         isGrid && LIST_GRID_COLS[cols],
         className,
       )}
@@ -829,7 +833,7 @@ const Transfer = React.forwardRef(function Transfer(
   const column = (title, entries, toTarget) => (
     <div className="flex-1 rounded-md border">
       <div className="border-b px-3 py-2 text-sm font-medium">{title}</div>
-      <div className="max-h-64 divide-y overflow-auto">
+      <div className="max-h-64 divide-y divide-border overflow-auto">
         {entries.map((item) => (
           <button
             key={String(item.key)}
@@ -867,6 +871,12 @@ const Transfer = React.forwardRef(function Transfer(
 /**
  * antd `<Badge count dot status>` — a small counter/dot overlaid on its child.
  * Distinct from shadcn's `Badge` (a pill label), which is what antd calls Tag.
+ *
+ * `style` targets the COUNT, not the wrapper. antd documents it that way, and
+ * call-sites rely on it: PromptChangeIndicator passes
+ * `style={{ backgroundColor: color }}` to tint its counter. Letting `style`
+ * fall through `{...props}` onto the wrapper span painted a solid grey block
+ * behind the icon button on every prompt card in Prompt Studio.
  */
 const Badge = React.forwardRef(function Badge(
   {
@@ -878,6 +888,7 @@ const Badge = React.forwardRef(function Badge(
     showZero,
     offset,
     className,
+    style,
     children,
     ...props
   },
@@ -898,7 +909,7 @@ const Badge = React.forwardRef(function Badge(
           dot && "size-2 p-0",
           className,
         )}
-        style={color ? { backgroundColor: color } : undefined}
+        style={{ ...(color ? { backgroundColor: color } : null), ...style }}
         {...props}
       >
         {dot ? null : shown}
@@ -919,7 +930,14 @@ const Badge = React.forwardRef(function Badge(
             "absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
             dot && "size-2 p-0",
           )}
-          style={color ? { backgroundColor: color } : undefined}
+          style={{
+            ...(color ? { backgroundColor: color } : null),
+            // antd's `offset` is [x, y] in px, applied to the count.
+            ...(Array.isArray(offset)
+              ? { transform: `translate(${offset[0]}px, ${offset[1]}px)` }
+              : null),
+            ...style,
+          }}
         >
           {dot ? null : shown}
         </span>

@@ -192,6 +192,32 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("99+")).toBeInTheDocument();
   });
 
+  /**
+   * antd applies `style` to the COUNT, not to the wrapper. PromptChangeIndicator
+   * passes `style={{ backgroundColor: color }}` to tint its counter; letting it
+   * fall through onto the wrapper painted a solid grey block behind the icon
+   * button on every prompt card in Prompt Studio (7 of them on one screen).
+   */
+  it("Badge applies `style` to the count, not the wrapper", () => {
+    const { container } = render(
+      <Badge count={3} style={{ backgroundColor: "#bfbfbf" }}>
+        <button type="button">act</button>
+      </Badge>,
+    );
+    const wrapper = container.firstChild;
+    expect(wrapper.style.backgroundColor).toBe("");
+    expect(screen.getByText("3").style.backgroundColor).toBe("#bfbfbf");
+  });
+
+  it("Badge offsets the count when antd's `offset` is given", () => {
+    render(
+      <Badge count={2} offset={[-2, 12]}>
+        <button type="button">act</button>
+      </Badge>,
+    );
+    expect(screen.getByText("2").style.transform).toBe("translate(-2px, 12px)");
+  });
+
   it("Badge hides a zero count unless showZero", () => {
     const { rerender } = render(<Badge count={0} />);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
@@ -329,6 +355,21 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(root.className).toContain("grid-cols-4");
     expect(root.className).not.toContain("divide-y");
     expect(root.style.gap).toBe("16px");
+  });
+
+  /**
+   * `divide-y` sets the border WIDTH only; Tailwind's default border colour is
+   * black. Without `divide-border` every list row gained a solid black rule
+   * where antd drew a near-invisible hairline.
+   */
+  it("List colours its row dividers with the border token", () => {
+    const { container } = render(
+      <List
+        dataSource={[{ id: 1 }, { id: 2 }]}
+        renderItem={(i) => <span>{i.id}</span>}
+      />,
+    );
+    expect(container.firstChild.className).toContain("divide-border");
   });
 
   it("List still stacks when no grid prop is given", () => {

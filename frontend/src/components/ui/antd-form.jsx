@@ -88,11 +88,13 @@ function useAntdForm() {
           methods.setValue(k, v, { shouldDirty: false, shouldValidate: false });
         }
       },
+      // These take a NamePath too, so they get the same normalisation the
+      // Form.Item name does.
       setFieldValue: (name, value) =>
-        methods.setValue(name, value, { shouldDirty: true }),
+        methods.setValue(toFieldName(name), value, { shouldDirty: true }),
 
       getFieldsValue: () => methods.getValues(),
-      getFieldValue: (name) => methods.getValues(name),
+      getFieldValue: (name) => methods.getValues(toFieldName(name)),
 
       /**
        * antd resolves with the values and REJECTS when invalid — call-sites do
@@ -162,11 +164,24 @@ const Form = React.forwardRef(function Form(
 });
 
 /**
+ * antd accepts a NamePath: a string, or an array for nested fields —
+ * `name={["email"]}`, `name={["tier1", "up_to"]}`. react-hook-form only takes
+ * a string and calls `.split(".")` on it, so an array threw
+ * `TypeError: s.split is not a function` from inside Controller and took the
+ * whole route down with it (Invite Users was a blank error page).
+ *
+ * The array form is antd's dotted path, so joining reproduces it exactly.
+ */
+function toFieldName(name) {
+  return Array.isArray(name) ? name.join(".") : name;
+}
+
+/**
  * antd `<Form.Item name label rules>`. Clones its single child and injects the
  * controlled `value`/`onChange`, which is how antd wires inputs too.
  */
 function FormItem({
-  name,
+  name: rawName,
   label,
   rules,
   required,
@@ -176,6 +191,7 @@ function FormItem({
   ...props
 }) {
   const methods = useFormContext();
+  const name = toFieldName(rawName);
 
   // Layout-only Form.Items (no `name`) just render their children.
   if (!name || !methods) {
@@ -195,6 +211,12 @@ function FormItem({
       render={({ field, fieldState }) => {
         const child = React.Children.only(children);
         const injected = {
+          // `<Label htmlFor={name}>` needs a matching id on the control, or
+          // the label points at nothing — clicking it does not focus the
+          // field and screen readers announce it unlabelled. antd wired this
+          // for us; on the shim it has to be explicit. A child that sets its
+          // own id keeps it.
+          id: child.props.id ?? name,
           [valuePropName]:
             valuePropName === "checked"
               ? Boolean(field.value)

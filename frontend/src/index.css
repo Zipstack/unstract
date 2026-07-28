@@ -218,6 +218,27 @@
 }
 
 /* ------------------------------------------------------------------
+ * Default border colour.
+ *
+ * Tailwind's border utilities set WIDTH only; the colour falls back to
+ * `currentColor`, which on this app resolves to black. So every `border`,
+ * `border-b` or `divide-y` written without an explicit colour drew a solid
+ * black line — most visibly as a black rule between every list row, where
+ * antd had a near-invisible rgba(5,5,5,.06) hairline.
+ *
+ * shadcn's own setup ships this rule; ours was missing it. Setting the
+ * default here fixes every uncoloured border at once and stops the next one
+ * from being written wrong, rather than patching call-sites one at a time.
+ * ------------------------------------------------------------------ */
+*,
+::after,
+::before,
+::backdrop,
+::file-selector-button {
+  border-color: var(--border);
+}
+
+/* ------------------------------------------------------------------
  * Existing Unstract rules — unchanged below this line, except the
  * body font-family fix noted in P0-12.
  * ------------------------------------------------------------------ */
