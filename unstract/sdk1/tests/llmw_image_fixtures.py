@@ -117,7 +117,22 @@ class InMemoryFileStorage:
 
     def exists(self, path: str) -> bool:
         key = str(path)
-        return key in self._files or key in self._dirs
+        if key in self._files or key in self._dirs:
+            return True
+        # S3-like: a "directory" exists when any object lives under it.
+        prefix = key.rstrip("/") + "/"
+        return any(stored.startswith(prefix) for stored in self._files)
+
+    def ls(self, path: str) -> list[str]:
+        """Direct children of ``path`` (full paths), fsspec-style."""
+        from pathlib import PurePosixPath
+
+        parent = str(path).rstrip("/")
+        return sorted(
+            stored
+            for stored in self._files
+            if str(PurePosixPath(stored).parent) == parent
+        )
 
     @property
     def stored_paths(self) -> list[str]:
