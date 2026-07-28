@@ -449,9 +449,17 @@ body {
   flex: 1;
 }
 
-.border {
-  border-style: solid;
-}
+/*
+ * `.border { border-style: solid }` was a legacy app utility from the antd
+ * era. Its name now collides with Tailwind's `border` utility, and because it
+ * is declared later it overrode `--tw-border-style` — so `border border-dashed`
+ * rendered solid, which is why the Import Project drop zone had a solid edge
+ * instead of antd's dashed one.
+ *
+ * Removed rather than renamed: every remaining `className="… border …"` in the
+ * app is Tailwind's utility, which already sets `solid` by default, so nothing
+ * relied on this rule for its own sake.
+ */
 
 .overflow-hidden {
   overflow: hidden;
