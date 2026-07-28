@@ -118,7 +118,7 @@ SortHeader.propTypes = {
 };
 
 /**
- * Sortable resource list table (Name / Owned By / Created Date / Actions).
+ * Sortable resource list table (Name / Owned By / Created / Modified / Actions).
  * Sorting, search and pagination are server-driven — the parent owns the fetch.
  * @return {JSX.Element} Rendered table
  */
@@ -134,7 +134,10 @@ function ResourceTable({
   iconProp,
   idProp,
   dateProp = "created_at",
+  modifiedProp = "modified_at",
   ownerEmailProp = "created_by_email",
+  countProp,
+  countLabel,
   handleEdit,
   handleShare,
   handleDelete,
@@ -176,6 +179,14 @@ function ResourceTable({
               className="resource-table-name-desc"
             >
               {item[descriptionProp]}
+            </Typography.Text>
+          )}
+          {countProp && item?.[countProp] != null && (
+            <Typography.Text
+              type="secondary"
+              className="resource-table-name-meta"
+            >
+              {countLabel}: {item[countProp]}
             </Typography.Text>
           )}
         </div>
@@ -298,7 +309,7 @@ function ResourceTable({
         />
       ),
       key: "name",
-      width: "40%",
+      width: "34%",
       render: (_, item) => renderName(item),
     },
     showOwner && {
@@ -312,13 +323,13 @@ function ResourceTable({
         />
       ),
       key: "owner",
-      width: "26%",
+      width: "22%",
       render: (_, item) => renderOwner(item),
     },
     {
       title: (
         <SortHeader
-          label="Created Date"
+          label="Created"
           sortKey={dateProp}
           sortType="date"
           sort={sort}
@@ -326,13 +337,27 @@ function ResourceTable({
         />
       ),
       key: "created",
-      width: "19%",
+      width: "15%",
       render: (_, item) => formatDate(item?.[dateProp]),
+    },
+    {
+      title: (
+        <SortHeader
+          label="Modified"
+          sortKey={modifiedProp}
+          sortType="date"
+          sort={sort}
+          onSortChange={onSortChange}
+        />
+      ),
+      key: "modified",
+      width: "15%",
+      render: (_, item) => formatDate(item?.[modifiedProp]),
     },
     {
       title: <span className="resource-table-th static right">Actions</span>,
       key: "actions",
-      width: "15%",
+      width: "14%",
       align: "right",
       render: (_, item) => renderActions(item),
     },
@@ -384,7 +409,10 @@ ResourceTable.propTypes = {
   iconProp: PropTypes.string,
   idProp: PropTypes.string.isRequired,
   dateProp: PropTypes.string,
+  modifiedProp: PropTypes.string,
   ownerEmailProp: PropTypes.string,
+  countProp: PropTypes.string,
+  countLabel: PropTypes.string,
   handleEdit: PropTypes.func,
   handleShare: PropTypes.func,
   handleDelete: PropTypes.func,

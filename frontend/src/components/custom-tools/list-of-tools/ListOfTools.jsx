@@ -134,7 +134,11 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     handleSearch,
     handleSortChange,
     handleListRefresh,
-  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
+  } = usePaginatedList({
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+    defaultSortBy: "modified_at",
+    defaultOrder: "desc",
+  });
 
   const coOwner = useCoOwnerManagement({
     service: promptStudioCoOwnerService,
@@ -492,7 +496,10 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
                 iconProp="icon"
                 idProp="tool_id"
                 dateProp="created_at"
+                modifiedProp="modified_at"
                 ownerEmailProp="owner_email"
+                countProp="prompt_count"
+                countLabel="Prompts"
                 handleEdit={handleEdit}
                 handleShare={handleShare}
                 handleDelete={handleDelete}

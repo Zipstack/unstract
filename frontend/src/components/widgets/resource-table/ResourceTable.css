@@ -1,4 +1,5 @@
-/* Styles for the sortable resource list table (Name / Owned By / Created / Actions) */
+/* Styles for the sortable resource list table
+   (Name / Owned By / Created / Modified / Actions) */
 
 .resource-table {
   /* Fill the content width like the design; proportional column widths (set on
@@ -107,6 +108,11 @@
 }
 
 .resource-table-name-desc {
+  font-size: 12px;
+}
+
+/* PS-only "Prompts: N" meta line under the project name */
+.resource-table-name-meta {
   font-size: 12px;
 }
 

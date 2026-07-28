@@ -113,7 +113,11 @@ function ToolSettings({ type }) {
     handleSearch,
     handleSortChange,
     handleListRefresh,
-  } = usePaginatedList({ defaultPageSize: DEFAULT_PAGE_SIZE });
+  } = usePaginatedList({
+    defaultPageSize: DEFAULT_PAGE_SIZE,
+    defaultSortBy: "modified_at",
+    defaultOrder: "desc",
+  });
 
   const coOwner = useCoOwnerManagement({
     service: adapterCoOwnerService,
