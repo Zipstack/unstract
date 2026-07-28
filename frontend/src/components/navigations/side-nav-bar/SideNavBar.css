@@ -25,9 +25,18 @@
   display: none;
 }
 
-/* Hide scrollbar when sidebar is collapsed */
+/*
+ * The collapsed rail scrolls too.
+ *
+ * This rule used to set `overflow-y: hidden`, and its comment said "hide
+ * scrollbar" — but the scrollbar is already hidden by `scrollbar-width: none`
+ * and the ::-webkit-scrollbar rule above. Setting `hidden` did not hide a
+ * scrollbar, it disabled SCROLLING: the collapsed rail needs 929px for its
+ * icons in a 668px viewport, so the bottom entries were unreachable on any
+ * window shorter than ~1000px.
+ */
 .side-bar.ant-layout-sider-collapsed .sidebar-content-wrapper {
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 /* Toggle container - fixed at bottom */

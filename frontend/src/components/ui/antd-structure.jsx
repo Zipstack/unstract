@@ -347,6 +347,7 @@ Layout.Sider = function Sider({
   breakpoint,
   onCollapse,
   style,
+  children,
   ...p
 }) {
   // Tell the nearest ancestor Layout to lay out as a row (antd's hasSider).
@@ -365,7 +366,19 @@ Layout.Sider = function Sider({
       // .ant-layout-sider-collapsed is styled by the app's CSS.
       data-sider=""
       {...p}
-    />
+    >
+      {/*
+       * antd wraps a Sider's children in `.ant-layout-sider-children`, and
+       * SideNavBar.css depends on it: that wrapper is the flex column which
+       * clamps `.sidebar-content-wrapper` so its `overflow-y: auto` has
+       * something to scroll against.
+       *
+       * Rendering children bare skipped the clamp, so the scroll wrapper grew
+       * to its full content height (929px inside a 668px rail), `auto` never
+       * engaged, and the bottom menu items were simply unreachable.
+       */}
+      <div className="ant-layout-sider-children">{children}</div>
+    </aside>
   );
 };
 Layout.Footer = function Footer({ className, ...p }) {

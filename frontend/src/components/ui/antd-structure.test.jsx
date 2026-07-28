@@ -329,6 +329,27 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(container.firstChild.style.width).toBe("240px");
   });
 
+  /**
+   * antd wraps a Sider's children in `.ant-layout-sider-children`, and
+   * SideNavBar.css depends on it: that wrapper is the flex column which clamps
+   * `.sidebar-content-wrapper` so its `overflow-y: auto` has something to
+   * scroll against. Rendering children bare skipped the clamp, the scroll
+   * wrapper grew to its full content height (929px in a 668px rail), and the
+   * bottom menu items became unreachable.
+   */
+  it("Sider wraps children in .ant-layout-sider-children like antd", () => {
+    const { container } = render(
+      <Layout.Sider width={240}>
+        <span>nav content</span>
+      </Layout.Sider>,
+    );
+    const wrapper = container.querySelector(".ant-layout-sider-children");
+    expect(wrapper).toBeTruthy();
+    expect(wrapper.textContent).toContain("nav content");
+    // The child must be INSIDE the wrapper, not a sibling of it.
+    expect(container.firstChild.children).toHaveLength(1);
+  });
+
   it("Sider does not leak antd-only props onto the DOM", () => {
     const { container } = render(
       <Layout.Sider width={240} collapsedWidth={65} collapsible trigger={null}>
