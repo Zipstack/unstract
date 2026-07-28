@@ -21,6 +21,7 @@ import {
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
+import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
 import "./ResourceTable.css";
 
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
@@ -53,21 +54,6 @@ const SORT_OPTIONS = {
     { key: "asc", label: "Oldest First", icon: <SortAscendingOutlined /> },
     { key: "desc", label: "Newest First", icon: <SortDescendingOutlined /> },
   ],
-};
-
-const formatDate = (value) => {
-  if (!value) {
-    return "-";
-  }
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "-";
-  }
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  });
 };
 
 /**
@@ -313,15 +299,7 @@ function ResourceTable({
       render: (_, item) => renderName(item),
     },
     showOwner && {
-      title: (
-        <SortHeader
-          label="Owned By"
-          sortKey="created_by__email"
-          sortType="text"
-          sort={sort}
-          onSortChange={onSortChange}
-        />
-      ),
+      title: <span className="resource-table-th static">Owned By</span>,
       key: "owner",
       width: "22%",
       render: (_, item) => renderOwner(item),
@@ -338,7 +316,7 @@ function ResourceTable({
       ),
       key: "created",
       width: "15%",
-      render: (_, item) => formatDate(item?.[dateProp]),
+      render: (_, item) => formattedDateTime(item?.[dateProp]) || "-",
     },
     {
       title: (
@@ -352,7 +330,15 @@ function ResourceTable({
       ),
       key: "modified",
       width: "15%",
-      render: (_, item) => formatDate(item?.[modifiedProp]),
+      render: (_, item) => {
+        const iso = item?.[modifiedProp];
+        const rel = timeAgo(iso);
+        return rel ? (
+          <Tooltip title={formattedDateTime(iso)}>{rel}</Tooltip>
+        ) : (
+          "-"
+        );
+      },
     },
     {
       title: <span className="resource-table-th static right">Actions</span>,
