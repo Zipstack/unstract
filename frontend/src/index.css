@@ -51,6 +51,23 @@
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
 
+  /*
+   * Body text at 13px.
+   *
+   * `text-sm` is the app's dominant size — nearly every label, table cell,
+   * menu item and control renders through it — so this is the lever that
+   * actually moves perceived text size.
+   *
+   * Deliberately NOT `html { font-size: 13px }`: Tailwind v4 spacing, gaps and
+   * control heights are all rem-based, so changing the root would shrink the
+   * entire UI (padding, button heights, icon boxes) rather than just the type.
+   *
+   * The line-height is restated because Tailwind derives `--text-sm--line-height`
+   * from the stock 0.875rem; left alone, 13px text would keep 14px's leading.
+   */
+  --text-sm: 0.8125rem; /* 13px */
+  --text-sm--line-height: calc(1.125 / 0.8125); /* 18px */
+
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

@@ -60,7 +60,7 @@
 /* Description styles */
 .prompt-studio-description {
   margin-bottom: 24px;
-  font-size: 14px;
+  font-size: 13px;
   color: var(--muted-foreground);
   line-height: 22px;
 }
@@ -78,7 +78,7 @@
   background-color: var(--primary) !important;
   border-color: var(--primary) !important;
   height: 32px !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -107,7 +107,7 @@
   transition: all 0.2s ease-in-out !important;
   margin-top: 8px !important;
   height: 32px !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   padding: 4px 0 !important;
   margin: 0 !important;
   font-weight: normal !important;
@@ -125,7 +125,7 @@
   transition: all 0.2s ease-in-out !important;
   margin-top: 8px !important;
   height: 32px !important;
-  font-size: 14px !important;
+  font-size: 13px !important;
   padding: 4px 0 !important;
   margin: 0 !important;
   color: var(--muted-foreground) !important;

@@ -31,7 +31,7 @@
 
 .card-grid-item .ant-card-head-title {
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -57,7 +57,7 @@
 }
 
 .card-item-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   margin: 0;
   white-space: nowrap;
@@ -345,7 +345,7 @@
 
 /* Workflow link - styled with icon */
 .card-list-workflow-link {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   text-decoration: none;
   display: inline-flex;
@@ -511,7 +511,7 @@
 }
 
 .card-list-meta-label .anticon {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .card-list-meta-icon {
@@ -522,7 +522,7 @@
 
 /* Meta item values - dark color */
 .card-list-meta-value {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   font-weight: 400;
 }
@@ -576,7 +576,7 @@
 /* Connector instance name - user-set name, prominent */
 .connector-flow-instance-name {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
   white-space: nowrap;
@@ -592,7 +592,7 @@
 /* Legacy connector name style (fallback) */
 .connector-flow-name {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
   white-space: nowrap;
@@ -772,7 +772,7 @@
 
 .card-list-expanded-value {
   font-family: var(--font-sans);
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
 }
 
@@ -977,7 +977,7 @@
 
 /* Value column with icon */
 .card-list-field-value {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
 }
 
@@ -1000,7 +1000,7 @@
 }
 
 .card-list-field-instance-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
 }
@@ -1013,7 +1013,7 @@
 /* Footer row - inline items */
 .card-list-footer-row {
   padding: 14px 16px 0px 16px;
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   border-top: 1px solid #f0f0f0;
   background: #fafafa;
@@ -1114,7 +1114,7 @@
 
 /* Workflow link in row layout */
 .card-list-workflow-link-row {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   text-decoration: none;
   display: inline-flex;

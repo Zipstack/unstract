@@ -73,7 +73,7 @@
 
 .sidebar-toggle-icon {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: 13px;
   transition: color 0.2s;
 }
 
@@ -200,8 +200,9 @@
   width: 240px;
 }
 
+/* Name kept (used by SideNavBar.jsx); the value follows the 13px body size. */
 .fs-14 {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .fs-11 {

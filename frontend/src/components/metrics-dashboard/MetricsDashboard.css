@@ -79,7 +79,7 @@
 }
 
 .summary-card-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #666;
   margin-bottom: 4px;
   white-space: nowrap;
@@ -119,7 +119,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .metric-icon {
@@ -168,7 +168,7 @@
 }
 
 .metrics-empty-state-text {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 22px;
   max-width: 360px;
   margin-bottom: 24px;
@@ -315,7 +315,7 @@
 }
 
 .subscription-plan-pages {
-  font-size: 14px;
+  font-size: 13px;
   color: #595959;
 }
 
@@ -361,7 +361,7 @@
 }
 
 .subscription-plan-total-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #8c8c8c;
 }
 
@@ -420,7 +420,7 @@
 
 .subscription-chart-card .ant-card-head-title,
 .subscription-table-card .ant-card-head-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -516,7 +516,7 @@
 
 .llm-usage-table .ant-table-tbody > tr > td {
   color: #434343;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .llm-usage-table .ant-table-tbody > tr:hover > td {

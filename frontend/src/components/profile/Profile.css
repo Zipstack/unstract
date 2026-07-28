@@ -157,7 +157,7 @@
 }
 
 .profile-card .field-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #6a7282;
   font-weight: 500;
   line-height: 14px;
@@ -178,7 +178,7 @@
 
 .profile-card .field-value {
   /* Our desired styles */
-  font-size: 14px;
+  font-size: 13px;
   color: #101828;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -200,7 +200,7 @@
 
 .profile-card .field-icon {
   color: #9ca3af;
-  font-size: 14px;
+  font-size: 13px;
   flex-shrink: 0;
 }
 
