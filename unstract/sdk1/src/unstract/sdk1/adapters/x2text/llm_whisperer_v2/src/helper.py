@@ -17,7 +17,12 @@ from unstract.llmwhisperer.client_v2 import (
 )
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
-from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.constants import (
+    X2TextConstants,
+)
+from unstract.sdk1.adapters.x2text.constants import (
+    build_page_store_dir as _shared_build_page_store_dir,
+)
 from unstract.sdk1.adapters.x2text.dto import PageImageReference
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
     ImageOutputConfig,
@@ -441,7 +446,7 @@ class LLMWhispererHelper:
     # Matches service page files like `page_001.png` / `page-1.png`. The
     # captured digits are passed through int() (leading zeros stripped there),
     # so no separate `0*` prefix is needed — keeping the pattern linear.
-    _PAGE_IMAGE_RE = re.compile(r"page[_-]?(\d+)\.png$", re.IGNORECASE)
+    _PAGE_IMAGE_RE = re.compile(ImageOutputConfig.ZIP_PAGE_MEMBER_REGEX, re.IGNORECASE)
 
     @staticmethod
     def _safe_json(response: Response) -> dict[str, Any]:
@@ -718,21 +723,9 @@ class LLMWhispererHelper:
                 status_code=502,
             )
 
-    @staticmethod
-    def build_page_store_dir(output_file_path: str | None, input_file_path: str) -> str:
-        """Per-document folder for page images: ``{extract_dir}/{stem}/pages``.
-
-        Keyed on the document ``stem`` (the same discriminator the extract
-        ``.txt`` files alongside use), not the per-run whisper_hash. This is
-        collision-safe against concurrent documents in the same project, is
-        reconstructible from ``output_file_path`` alone, and — being stable
-        across runs — makes a re-extraction overwrite its own pages instead of
-        orphaning a fresh tree in FileStorage on every run.
-        """
-        reference = output_file_path or input_file_path
-        base_dir = str(Path(reference).parent) if reference else "."
-        stem = Path(reference).stem if reference else "document"
-        return str(Path(base_dir) / stem / ImageOutputConfig.PAGES_SUBFOLDER)
+    # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
+    # by writer and reader alike (see unstract.sdk1.adapters.x2text.constants).
+    build_page_store_dir = staticmethod(_shared_build_page_store_dir)
 
     @staticmethod
     def _page_image_filename(page_number: int) -> str:
