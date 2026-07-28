@@ -360,6 +360,16 @@ function AddLlmProfile({
           type: "success",
           content: "Saved successfully",
         });
+        // Backend-computed advisory (e.g. image output mode selected with
+        // an LLM that may not support vision). Absent in OSS responses.
+        if (data?.vision_warning) {
+          setAlertDetails({
+            type: "warning",
+            title: "Check LLM compatibility",
+            content: data.vision_warning,
+            duration: 10,
+          });
+        }
 
         if (newLlmProfiles?.length === 1) {
           // Set the first LLM profile as default
