@@ -1,7 +1,14 @@
+import { Calendar as CalendarIcon } from "lucide-react";
 import moment from "moment";
 import * as React from "react";
 
+import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
 /**
@@ -216,6 +223,7 @@ const RangePicker = React.forwardRef(function RangePicker(
     disabledDate,
     allowClear = true,
     className,
+    defaultMonth,
     format: _format,
     size: _size,
     ...props
@@ -244,37 +252,26 @@ const RangePicker = React.forwardRef(function RangePicker(
   };
 
   /**
-   * antd's `disabledDate(current)` answers per-date. A native input only takes
-   * min/max, so probe outward from today to find the first blocked day in each
-   * direction and use that as the bound. This covers the shapes actually used
-   * (a one-sided "no future dates" / "no dates before X") and degrades to
-   * unbounded for anything more exotic rather than guessing wrong.
+   * antd's `disabledDate(current)` answers per-date, and so does the
+   * calendar's `disabled` — so the predicate maps straight across. The earlier
+   * native-input version had to probe outward for a min/max bound because an
+   * `<input type=date>` only understands those two attributes; a calendar can
+   * grey out individual days, which is what the prop actually means.
    */
-  const bounds = React.useMemo(() => {
+  const isDayDisabled = React.useMemo(() => {
     if (typeof disabledDate !== "function") {
-      return {};
+      return undefined;
     }
-    const probe = (direction) => {
-      const cursor = moment().startOf("day");
-      let previous = null;
-      // A two-year window: far enough for the dashboard ranges, bounded so a
-      // predicate that disables nothing cannot spin.
-      for (let i = 0; i <= 730; i++) {
-        const day = cursor.clone().add(direction * i, "day");
-        if (disabledDate(likeSample(sample, day.toISOString()))) {
-          return previous;
-        }
-        previous = day;
+    return (day) => {
+      try {
+        return Boolean(disabledDate(likeSample(sample, day.toISOString())));
+      } catch {
+        // A predicate that cannot cope with the probe must not take the
+        // calendar down with it; treat the day as selectable.
+        return false;
       }
-      return null;
     };
-    const max = probe(1);
-    const min = probe(-1);
-    return {
-      ...(max ? { max: toInputValue(max, type) } : {}),
-      ...(min ? { min: toInputValue(min, type) } : {}),
-    };
-  }, [disabledDate, sample, type]);
+  }, [disabledDate, sample]);
 
   const applyPreset = (preset) => {
     const [presetStart, presetEnd] = preset.value ?? [null, null];
@@ -287,50 +284,126 @@ const RangePicker = React.forwardRef(function RangePicker(
     }
   };
 
+  const [open, setOpen] = React.useState(false);
+
+  /** The calendar speaks native Date; the call-sites speak moment/dayjs. */
+  const selectedRange = React.useMemo(() => {
+    const from = start
+      ? new Date(moment(start.valueOf()).valueOf())
+      : undefined;
+    const to = end ? new Date(moment(end.valueOf()).valueOf()) : undefined;
+    return from || to ? { from, to } : undefined;
+  }, [start, end]);
+
+  /**
+   * Tracks which end the next click fills.
+   *
+   * react-day-picker reports `{from, to}` with BOTH set to the clicked day on
+   * every click — it does not distinguish "started a range" from "finished
+   * one". Taken at face value that makes each click look like a complete
+   * range, so `onOk` would fire on the first click and the second click would
+   * start over instead of closing the range. antd treats the first click as
+   * the start and the second as the end, so the anchor is tracked here.
+   */
+  const [anchor, setAnchor] = React.useState(null);
+
+  const handleSelect = (range, clickedDay) => {
+    const day = clickedDay ?? range?.to ?? range?.from;
+    if (!day) {
+      // Deselect: react-day-picker clears the range.
+      setAnchor(null);
+      emit(null, null);
+      return;
+    }
+
+    const picked = likeSample(sample, day.toISOString());
+
+    if (!anchor) {
+      // First click: open a new range. Report the half-filled pair the way
+      // antd does, so a call-site watching onChange sees the start land.
+      setAnchor(picked);
+      emit(picked, null);
+      return;
+    }
+
+    // Second click: close the range, ordering the ends so a backwards
+    // selection still yields start <= end.
+    const [from, to] =
+      picked.valueOf() < anchor.valueOf() ? [picked, anchor] : [anchor, picked];
+    setAnchor(null);
+    emit(from, to);
+    setOpen(false);
+  };
+
+  const label =
+    start || end
+      ? `${toInputValue(start, type) || "…"}  →  ${toInputValue(end, type) || "…"}`
+      : "Select date range";
+
   return (
     <span
       ref={ref}
-      className={cn("inline-flex flex-wrap items-center gap-1", className)}
+      className={cn("inline-flex items-center", className)}
       {...props}
     >
-      <Input
-        type={type}
-        disabled={disabled}
-        value={toInputValue(start, type)}
-        className="w-auto"
-        {...bounds}
-        onChange={(e) => emit(likeSample(sample, e.target.value) ?? null, end)}
-      />
-      <span className="text-muted-foreground">→</span>
-      <Input
-        type={type}
-        disabled={disabled}
-        value={toInputValue(end, type)}
-        className="w-auto"
-        {...bounds}
-        onChange={(e) =>
-          emit(start, likeSample(sample, e.target.value) ?? null)
-        }
-      />
-      {presets?.length ? (
-        <span className="ml-1 inline-flex items-center gap-1">
-          {presets.map((preset) => (
-            <button
-              key={preset.label}
-              type="button"
-              disabled={disabled}
-              onClick={() => applyPreset(preset)}
-              className={cn(
-                "rounded-md border border-border px-2 py-1 text-xs font-medium",
-                "hover:bg-accent hover:text-accent-foreground",
-                "disabled:cursor-not-allowed disabled:opacity-50",
-              )}
-            >
-              {preset.label}
-            </button>
-          ))}
-        </span>
-      ) : null}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            disabled={disabled}
+            className={cn(
+              "ant-picker ant-picker-range inline-flex h-9 items-center gap-2",
+              "rounded-md border border-input bg-transparent px-3 py-1",
+              "text-sm shadow-sm transition-colors",
+              "hover:bg-accent hover:text-accent-foreground",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+              "disabled:cursor-not-allowed disabled:opacity-50",
+              !start && !end && "text-muted-foreground",
+            )}
+          >
+            <CalendarIcon className="size-4 shrink-0" aria-hidden="true" />
+            <span className="whitespace-nowrap">{label}</span>
+          </button>
+        </PopoverTrigger>
+        <PopoverContent className="w-auto p-0" align="end">
+          <div className="flex flex-col sm:flex-row">
+            {presets?.length ? (
+              <div
+                className={cn(
+                  "flex shrink-0 gap-1 border-border p-2",
+                  "flex-row overflow-x-auto sm:w-40 sm:flex-col sm:border-r sm:overflow-visible",
+                )}
+              >
+                {presets.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => {
+                      applyPreset(preset);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "whitespace-nowrap rounded-md px-2 py-1.5 text-left text-sm",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+                    )}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <Calendar
+              mode="range"
+              numberOfMonths={2}
+              defaultMonth={defaultMonth ?? selectedRange?.from}
+              selected={selectedRange}
+              onSelect={handleSelect}
+              disabled={isDayDisabled}
+            />
+          </div>
+        </PopoverContent>
+      </Popover>
     </span>
   );
 });
