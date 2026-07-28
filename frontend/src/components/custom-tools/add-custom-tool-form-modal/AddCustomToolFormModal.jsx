@@ -165,6 +165,9 @@ function AddCustomToolFormModal({
         <Form.Item label="Icon" name="icon">
           <Popover
             open={showEmojiPicker}
+            // Without this the picker is a controlled popover with no way to
+            // report a close, so Esc and clicking outside did nothing.
+            onOpenChange={setShowEmojiPicker}
             placement="rightTop"
             arrow={false}
             trigger={"click"}

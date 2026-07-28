@@ -15,6 +15,7 @@ import {
   Table,
   Tabs,
   Transfer,
+  Upload,
 } from "@/components/ui/antd-structure";
 
 describe("antd-compatible structural shims (P4)", () => {
@@ -399,5 +400,56 @@ describe("antd-compatible structural shims (P4)", () => {
     );
     expect(container.firstChild.className).toContain("divide-y");
     expect(container.firstChild.className).not.toContain("grid-cols");
+  });
+  /**
+   * `Upload.Dragger = Upload` aliased the dragger to the plain inline Upload,
+   * so the Import Project modal rendered its icon and help text with no drop
+   * zone around them, and dropping a file did nothing.
+   */
+  describe("Upload.Dragger (antd parity)", () => {
+    it("renders a dashed drop zone, not the inline Upload span", () => {
+      const { container } = render(
+        <Upload.Dragger>
+          <p>Click or drag file to this area</p>
+        </Upload.Dragger>,
+      );
+      expect(container.querySelector(".ant-upload-drag")).toBeTruthy();
+      const zone = container.querySelector("[class*='border-dashed']");
+      expect(zone).toBeTruthy();
+      expect(screen.getByText(/Click or drag file/)).toBeInTheDocument();
+    });
+
+    it("accepts a dropped file and routes it through beforeUpload", async () => {
+      const beforeUpload = vi.fn().mockReturnValue(false);
+      const { container } = render(
+        <Upload.Dragger beforeUpload={beforeUpload}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      const file = new File(["{}"], "project.json", {
+        type: "application/json",
+      });
+      fireEvent.drop(container.querySelector(".ant-upload-drag"), {
+        dataTransfer: { files: [file] },
+      });
+      await vi.waitFor(() =>
+        expect(beforeUpload).toHaveBeenCalledWith(file, [file]),
+      );
+    });
+
+    it("does not accept drops while disabled", () => {
+      const beforeUpload = vi.fn();
+      const { container } = render(
+        <Upload.Dragger disabled beforeUpload={beforeUpload}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      fireEvent.drop(container.querySelector(".ant-upload-drag"), {
+        dataTransfer: {
+          files: [new File(["{}"], "x.json", { type: "application/json" })],
+        },
+      });
+      expect(beforeUpload).not.toHaveBeenCalled();
+    });
   });
 });

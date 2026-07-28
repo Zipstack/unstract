@@ -130,7 +130,20 @@ const Modal = React.forwardRef(function Modal(
           !closable && "[&>button[type='button']:last-of-type]:hidden",
           className,
         )}
-        style={{ maxWidth: width ?? undefined, ...style }}
+        /*
+         * antd's `width` is an exact width, not a ceiling. Setting only
+         * `maxWidth` left shadcn's `w-full max-w-lg` in charge: the dialog
+         * stretched to whatever space it had (570px for a `width={600}`
+         * modal) and drifted off-centre, because the centring transform is
+         * computed against a width the modal never actually took. Pinning
+         * both makes the rendered box match the number the call-site asked
+         * for, and the translate then centres it exactly.
+         */
+        style={
+          width != null
+            ? { width, maxWidth: `min(${typeof width === "number" ? `${width}px` : width}, calc(100vw - 2rem))`, ...style }
+            : style
+        }
         onPointerDownOutside={(e) => {
           if (!maskClosable) {
             e.preventDefault();
@@ -367,18 +380,68 @@ const Popconfirm = React.forwardRef(function Popconfirm(
 
 /* ------------------------------------------------- Popover / Collapse */
 
-/** antd `<Popover content title trigger>`. */
+/**
+ * antd `<Popover content title trigger open onOpenChange>`.
+ *
+ * Three antd/Radix mismatches are reconciled here, all of which the emoji
+ * picker in AddCustomToolFormModal hit at once:
+ *
+ *   - antd call-sites pass `open` and drive it themselves from the trigger's
+ *     onClick, with no `onOpenChange`. Radix reads a bare `open` as FULLY
+ *     controlled, so Esc and outside-click had nowhere to report a close and
+ *     the picker could only be dismissed by clicking the button again.
+ *     `onOpenChange` is therefore always supplied, falling back to antd's
+ *     `onOpenChange`/`onVisibleChange` when the call-site has one.
+ *   - `trigger` ("click"/"hover") is antd's API and is not a Radix prop; it
+ *     was landing on the DOM as an unknown attribute.
+ *   - antd sizes the bubble to its content. Radix's PopoverContent is a fixed
+ *     `w-72`, which clipped the emoji picker; `w-auto` plus collision padding
+ *     lets it size naturally and flip when it would run off-screen.
+ */
 const AntPopover = React.forwardRef(function AntPopover(
-  { content, title, placement = "top", children, className, ...props },
+  {
+    content,
+    title,
+    placement = "top",
+    trigger: antdTrigger,
+    open,
+    visible,
+    onOpenChange,
+    onVisibleChange,
+    arrow,
+    overlayClassName,
+    overlayStyle,
+    getPopupContainer,
+    destroyTooltipOnHide,
+    children,
+    className,
+    ...props
+  },
   ref,
 ) {
+  const isOpen = open ?? visible;
+  const handleOpenChange = onOpenChange ?? onVisibleChange;
+
   return (
-    <Popover {...props}>
+    <Popover
+      open={isOpen}
+      // Always present, even when the call-site tracks state itself — without
+      // it Radix cannot dismiss a controlled popover at all.
+      onOpenChange={(next) => handleOpenChange?.(next)}
+      {...props}
+    >
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent
         ref={ref}
         side={placement.replace(/(Top|Bottom|Left|Right)$/, "")}
-        className={cn("ant-popover-inner", className)}
+        align={/Top$/.test(placement) ? "start" : /Bottom$/.test(placement) ? "end" : "center"}
+        collisionPadding={8}
+        className={cn(
+          "ant-popover-inner w-auto max-w-[min(92vw,26rem)]",
+          overlayClassName,
+          className,
+        )}
+        style={overlayStyle}
       >
         {title ? <div className="mb-1 font-semibold">{title}</div> : null}
         {content}

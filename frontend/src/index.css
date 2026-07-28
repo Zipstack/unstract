@@ -226,16 +226,27 @@
  * black line — most visibly as a black rule between every list row, where
  * antd had a near-invisible rgba(5,5,5,.06) hairline.
  *
- * shadcn's own setup ships this rule; ours was missing it. Setting the
- * default here fixes every uncoloured border at once and stops the next one
- * from being written wrong, rather than patching call-sites one at a time.
+ * `@layer base` is load-bearing, not tidiness. Unlayered rules beat layered
+ * ones in the cascade no matter their specificity, so as a bare selector this
+ * outranked Tailwind's `utilities` layer and repainted every explicitly
+ * coloured border too. `border-input` was the visible casualty: form controls
+ * resolved to `--border` (#e5e5e5) instead of `--input` (#d3d3d3), leaving
+ * every input a full shade lighter than the antd reference (1.21 vs 1.41
+ * contrast against the page). That reads as "the side borders aren't there",
+ * because the thin left/right edges are the first to wash out at fractional
+ * device-pixel widths.
+ *
+ * In `base` it still supplies the default for uncoloured borders, but any
+ * `border-*` utility now wins, which is what shadcn intends.
  * ------------------------------------------------------------------ */
-*,
-::after,
-::before,
-::backdrop,
-::file-selector-button {
-  border-color: var(--border);
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
 }
 
 /* ------------------------------------------------------------------

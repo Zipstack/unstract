@@ -432,7 +432,26 @@ const Upload = React.forwardRef(function Upload(
   };
 
   return (
-    <span ref={ref} className={cn("inline-block", className)} {...props}>
+    <span
+      ref={ref}
+      className={cn("inline-block", className)}
+      {...props}
+      // antd's Upload accepts dropped files, and Upload.Dragger's whole
+      // purpose is to be a drop target — without this the dashed zone looked
+      // droppable but silently ignored the file, and the browser navigated
+      // away to render it instead.
+      onDragOver={(e) => {
+        e.preventDefault();
+        props.onDragOver?.(e);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        if (!disabled) {
+          handleFiles(Array.from(e.dataTransfer?.files ?? []));
+        }
+        props.onDrop?.(e);
+      }}
+    >
       <input
         ref={inputRef}
         type="file"
@@ -460,7 +479,52 @@ const Upload = React.forwardRef(function Upload(
   );
 });
 
-Upload.Dragger = Upload;
+/**
+ * antd `<Upload.Dragger>` — the large dashed drop zone.
+ *
+ * This was `Upload.Dragger = Upload`, which is not the same component: the
+ * plain Upload renders an inline button-sized span, so the Import Project
+ * modal showed its icon and help text floating with no drop target around
+ * them, and dragging a file onto it did nothing because no drag handlers
+ * existed at all.
+ *
+ * Reproduces antd's visuals (dashed border, tinted fill, hover/drag accent)
+ * on Midnight Bloom tokens, and wires the drop events the name implies.
+ */
+Upload.Dragger = React.forwardRef(function Dragger(
+  { className, disabled, children, ...props },
+  ref,
+) {
+  const [dragging, setDragging] = React.useState(false);
+
+  return (
+    <Upload
+      ref={ref}
+      disabled={disabled}
+      className={cn("ant-upload-drag block w-full", className)}
+      {...props}
+      onDragOver={(e) => {
+        e.preventDefault();
+        if (!disabled) {
+          setDragging(true);
+        }
+      }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={() => setDragging(false)}
+    >
+      <div
+        className={cn(
+          "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input bg-muted/40 px-4 py-10 text-center transition-colors",
+          !disabled && "hover:border-primary",
+          dragging && "border-primary bg-primary/5",
+          disabled && "cursor-not-allowed opacity-50",
+        )}
+      >
+        {children}
+      </div>
+    </Upload>
+  );
+});
 
 /** antd `<Result status title subTitle extra>`. */
 const Result = React.forwardRef(function Result(
