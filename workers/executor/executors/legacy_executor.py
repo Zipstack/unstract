@@ -26,6 +26,7 @@ from executor.executors.lookup_enrichment import (
     run_lookup_enrichment,
     run_webhook_postprocessing,
 )
+from executor.executors.vlm_image_answer import run_vlm_image_answer
 
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -1769,9 +1770,27 @@ class LegacyExecutor(BaseExecutor):
         records: list[dict[str, Any]] = []
         try:
             answer = "NA"
+            # Image output mode: the document has page images, not text —
+            # the answer comes from a vision LLM (cloud plugin) and RAG
+            # retrieval is skipped entirely. Returns None when the
+            # prompt's x2text adapter is not in image mode; raises rather
+            # than falling through when it is but cannot be served.
+            vlm_answer = run_vlm_image_answer(
+                output=output,
+                shim=shim,
+                llm=llm,
+                file_path=file_path,
+                execution_source=execution_source,
+                metadata=metadata,
+                metrics=metrics,
+                usage_kwargs=usage_kwargs,
+            )
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
-            if retrieval_strategy in valid_strategies:
+            if vlm_answer is not None:
+                answer = vlm_answer
+                metadata[PSKeys.CONTEXT][prompt_name] = []
+            elif retrieval_strategy in valid_strategies:
                 if chunk_size > 0:
                     shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
@@ -2292,6 +2311,30 @@ class LegacyExecutor(BaseExecutor):
 
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.vlm_image_answer import raise_if_image_mode_unsupported
+
+        # Image output mode cannot run single-pass: one combined prompt over
+        # the "full text" would silently answer from the one-line extraction
+        # summary. (The answer_prompt fallback below re-checks per prompt;
+        # this covers the cloud single-pass plugin delegation too.)
+        params = context.executor_params
+        tool_settings = params.get(PSKeys.TOOL_SETTINGS) or {}
+        outputs = params.get(PSKeys.OUTPUTS) or [{}]
+        x2text_instance_id = tool_settings.get(PSKeys.X2TEXT_ADAPTER) or outputs[0].get(
+            PSKeys.X2TEXT_ADAPTER
+        )
+        if x2text_instance_id:
+            raise_if_image_mode_unsupported(
+                operation="Single-pass extraction",
+                adapter_instance_id=str(x2text_instance_id),
+                shim=self._build_shim(
+                    platform_api_key=params.get(PSKeys.PLATFORM_SERVICE_API_KEY, ""),
+                    component=self._log_component,
+                ),
+                execution_id=str(params.get(PSKeys.EXECUTION_ID, "")),
+            )
+
         try:
             from unstract.sdk1.execution.registry import ExecutorRegistry
 

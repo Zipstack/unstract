@@ -76,6 +76,7 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.constants import LogLevel
@@ -2575,6 +2576,15 @@ class PromptStudioHelper:
                 f"Failed to mark extraction success for document {document_id}. "
                 f"Extraction completed but status not saved."
             )
+
+        # A fresh (non-cache-hit) extraction rewrote any persisted page
+        # images — stored VLM answers for this document are stale.
+        # No-op in OSS (cloud-only hook).
+        invalidate_vlm_answers_on_reextraction(
+            document_id=str(document_id),
+            profile_manager=profile_manager,
+            extract_file_path=extract_file_path,
+        )
 
         return extracted_text
 
