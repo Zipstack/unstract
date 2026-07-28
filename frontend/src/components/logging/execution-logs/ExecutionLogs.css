@@ -19,7 +19,7 @@
 
 .active.log-tab-icon > g > path,
 .active.log-tab-icon > path {
-  fill: #1677ff;
+  fill: var(--primary);
 }
 
 .invite-user-search .ant-tabs-nav {

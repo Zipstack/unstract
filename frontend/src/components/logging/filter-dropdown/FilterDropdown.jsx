@@ -5,7 +5,7 @@ import { Radio } from "@/components/ui/antd-inputs";
 import { Space } from "@/components/ui/antd-layout";
 
 const FilterIcon = ({ filtered }) => (
-  <Filter style={{ color: filtered ? "#1677ff" : undefined }} />
+  <Filter style={{ color: filtered ? "var(--primary)" : undefined }} />
 );
 
 const FilterDropdown = ({

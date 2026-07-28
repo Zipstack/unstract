@@ -293,7 +293,7 @@
 .highlighted-prompt {
   border-width: 1.2px;
   border-style: solid;
-  border-color: #4096ff;
+  border-color: var(--primary);
   box-shadow: 4px 4px 12.5px 0px rgba(0, 0, 0, 0.08);
 }
 

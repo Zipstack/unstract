@@ -82,5 +82,5 @@
 }
 
 .tool-nav-bar__edit-icon.ant-btn:hover {
-  color: var(--ant-color-primary, #1677ff);
+  color: var(--ant-color-primary, var(--primary));
 }

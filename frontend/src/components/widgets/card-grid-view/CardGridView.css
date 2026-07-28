@@ -892,8 +892,8 @@
 }
 
 .copy-btn-outlined:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* Clickable owner field - mirrors ListView owner badge behavior */
@@ -912,7 +912,7 @@
 }
 
 .card-owner-clickable:hover .ant-typography {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 /* Responsive override for card-grid-view on smaller screens */
@@ -1124,7 +1124,7 @@
 }
 
 .card-list-workflow-link-row:hover {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 .card-list-workflow-link-row .anticon {

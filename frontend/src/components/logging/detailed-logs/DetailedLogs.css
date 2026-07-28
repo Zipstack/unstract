@@ -109,7 +109,7 @@
 }
 
 .column-settings-trigger:hover .column-settings-icon {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 /* Thin scrollbar */
@@ -166,6 +166,6 @@
 }
 
 .copy-btn-outlined:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
