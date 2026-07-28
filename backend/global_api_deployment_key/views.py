@@ -22,9 +22,16 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
 
     def get_queryset(self):
-        return GlobalApiDeploymentKey.objects.filter(
-            organization=UserContext.get_organization(),
-        ).prefetch_related("api_deployments")
+        # ``created_by`` is select_related because the list serializer reads
+        # ``created_by.email`` per row; without it the unpaginated list costs
+        # one extra query per key.
+        return (
+            GlobalApiDeploymentKey.objects.filter(
+                organization=UserContext.get_organization(),
+            )
+            .select_related("created_by")
+            .prefetch_related("api_deployments")
+        )
 
     def get_serializer_class(self):
         # create/retrieve/partial_update/rotate are overridden and instantiate

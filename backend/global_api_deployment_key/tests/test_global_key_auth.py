@@ -24,21 +24,21 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
-import pytest  # noqa: E402
-from django.core.exceptions import ValidationError  # noqa: E402
-from rest_framework.serializers import (  # noqa: E402
-    ValidationError as DRFValidationError,
-)
-
 import api_v2.deployment_helper as dh  # noqa: E402
+import pytest  # noqa: E402
 from api_v2.exceptions import APINotFound, InactiveAPI, UnauthorizedKey  # noqa: E402
 from api_v2.key_helper import KeyHelper  # noqa: E402
 from api_v2.models import APIDeployment  # noqa: E402
 from api_v2.serializers import ExecutionRequestSerializer  # noqa: E402
+from django.core.exceptions import ValidationError  # noqa: E402
 from prompt_studio.prompt_profile_manager_v2.models import (  # noqa: E402
     ProfileManager,
 )
+from rest_framework.serializers import (  # noqa: E402
+    ValidationError as DRFValidationError,
+)
 from utils.user_context import UserContext  # noqa: E402
+
 from global_api_deployment_key.models import GlobalApiDeploymentKey  # noqa: E402
 from global_api_deployment_key.serializers import (  # noqa: E402
     GlobalApiDeploymentKeyUpdateSerializer,
@@ -142,30 +142,33 @@ class TestValidateGlobalApiDeploymentKey:
     """The lookup wrapper: what reaches the caller for each failure mode."""
 
     def test_unknown_key_raises_unauthorized(self) -> None:
+        deployment = _deployment()
         with mock.patch.object(GlobalApiDeploymentKey, "objects") as objects:
             objects.get.side_effect = GlobalApiDeploymentKey.DoesNotExist
             with pytest.raises(UnauthorizedKey):
                 KeyHelper.validate_global_api_deployment_key(
-                    api_key=WELL_FORMED_UUID, api_deployment=_deployment()
+                    api_key=WELL_FORMED_UUID, api_deployment=deployment
                 )
 
     def test_malformed_key_raises_unauthorized_not_server_error(self) -> None:
         """A non-UUID bearer token must 401, not 500 — UUIDField coercion."""
+        deployment = _deployment()
         with mock.patch.object(GlobalApiDeploymentKey, "objects") as objects:
             objects.get.side_effect = ValidationError("badly formed UUID")
             with pytest.raises(UnauthorizedKey):
                 KeyHelper.validate_global_api_deployment_key(
-                    api_key="not-a-uuid", api_deployment=_deployment()
+                    api_key="not-a-uuid", api_deployment=deployment
                 )
 
     def test_out_of_scope_key_raises_unauthorized(self) -> None:
         key = mock.MagicMock()
         key.has_access_to_deployment.return_value = False
+        deployment = _deployment()
         with mock.patch.object(GlobalApiDeploymentKey, "objects") as objects:
             objects.get.return_value = key
             with pytest.raises(UnauthorizedKey):
                 KeyHelper.validate_global_api_deployment_key(
-                    api_key=WELL_FORMED_UUID, api_deployment=_deployment()
+                    api_key=WELL_FORMED_UUID, api_deployment=deployment
                 )
 
     def test_authorized_key_is_returned_for_audit(self) -> None:
@@ -216,12 +219,13 @@ class TestValidateApiFallbackOrdering:
         assert result is global_key
 
     def test_both_paths_failing_propagates_unauthorized(self) -> None:
+        deployment = _deployment()
         with mock.patch.object(dh, "KeyHelper") as key_helper:
             key_helper.validate_api_key.side_effect = UnauthorizedKey
             key_helper.validate_global_api_deployment_key.side_effect = UnauthorizedKey
             with pytest.raises(UnauthorizedKey):
                 dh.DeploymentHelper.validate_api(
-                    api_deployment=_deployment(), api_key=WELL_FORMED_UUID
+                    api_deployment=deployment, api_key=WELL_FORMED_UUID
                 )
 
 
@@ -262,23 +266,26 @@ class TestGlobalKeyLlmProfileScoping:
             )
 
     def test_cross_org_profile_is_rejected(self) -> None:
+        serializer = self._serializer()
         with mock.patch.object(ProfileManager, "objects") as objects:
             objects.get.return_value = self._profile(ORG_B)
             with pytest.raises(DRFValidationError, match="Profile not found"):
-                self._serializer().validate_llm_profile_id(self.PROFILE_ID)
+                serializer.validate_llm_profile_id(self.PROFILE_ID)
 
     def test_profile_without_a_tool_fails_closed(self) -> None:
         """No prompt studio tool means no derivable org — reject, don't guess."""
+        serializer = self._serializer()
         with mock.patch.object(ProfileManager, "objects") as objects:
             objects.get.return_value = self._profile(None)
             with pytest.raises(DRFValidationError, match="Profile not found"):
-                self._serializer().validate_llm_profile_id(self.PROFILE_ID)
+                serializer.validate_llm_profile_id(self.PROFILE_ID)
 
     def test_unknown_profile_is_rejected(self) -> None:
+        serializer = self._serializer()
         with mock.patch.object(ProfileManager, "objects") as objects:
             objects.get.side_effect = ProfileManager.DoesNotExist
             with pytest.raises(DRFValidationError, match="Profile not found"):
-                self._serializer().validate_llm_profile_id(self.PROFILE_ID)
+                serializer.validate_llm_profile_id(self.PROFILE_ID)
 
 
 class TestUpdateSerializerScopeValidation:
