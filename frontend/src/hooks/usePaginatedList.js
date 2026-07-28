@@ -19,8 +19,8 @@ function buildPagedParams({ page, pageSize, search, sortBy, order }) {
     params.search = search;
   }
   if (sortBy) {
-    params.sort_by = sortBy;
-    params.order = order;
+    // DRF OrderingFilter: `?ordering=field`, a leading `-` sorts descending.
+    params.ordering = (order === "desc" ? "-" : "") + sortBy;
   }
   return params;
 }

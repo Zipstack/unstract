@@ -4,7 +4,7 @@ from typing import Any
 
 from account_v2.models import User
 from django.db import IntegrityError
-from django.db.models import ProtectedError, QuerySet
+from django.db.models import ProtectedError, Q, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
@@ -28,7 +28,6 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
-from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
@@ -149,6 +148,9 @@ class AdapterInstanceViewSet(
 ):
     serializer_class = AdapterInstanceSerializer
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["adapter_name", "created_by__email", "created_at", "modified_at"]
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -191,16 +193,14 @@ class AdapterInstanceViewSet(
         ):
             queryset = queryset.filter(**filter_args)
 
-        # Owner-inclusive search + per-column sort (name/owner/created); re-wraps
-        # via pk__in to drop the DISTINCT ON in for_user() so any column sorts.
-        return apply_search_and_sort(
-            queryset,
-            model=AdapterInstance,
-            name_field="adapter_name",
-            request=self.request,
-            select_related=("created_by",),
-            prefetch_related=("memberships__user",),
-        )
+        # Owner-inclusive search: match the resource name or the owner's email.
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(adapter_name__icontains=search) | Q(created_by__email__icontains=search)
+            )
+
+        return queryset
 
     def get_serializer_class(
         self,

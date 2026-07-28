@@ -4,6 +4,7 @@ from typing import Any
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
@@ -21,7 +22,6 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
-from utils.list_query import apply_search_and_sort
 from utils.organization_utils import filter_queryset_by_organization, resolve_organization
 from utils.pagination import OptionalPagination
 
@@ -78,6 +78,9 @@ class WorkflowViewSet(
 ):
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["workflow_name", "created_by__email", "created_at", "modified_at"]
     notification_resource_name_field = "workflow_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -105,24 +108,24 @@ class WorkflowViewSet(
             WorkflowKey.WF_IS_ACTIVE,
             WorkflowKey.WF_NAME,
         )
-        # Use for_user method to include shared workflows
-        queryset = (
-            Workflow.objects.for_user(self.request.user).filter(**filter_args)
-            if filter_args
-            else Workflow.objects.for_user(self.request.user)
+        # Use for_user to include shared workflows; prefetch owner/co-owner
+        # joins to avoid per-row queries in the Owned By column.
+        queryset = Workflow.objects.for_user(self.request.user)
+        if filter_args:
+            queryset = queryset.filter(**filter_args)
+        queryset = queryset.select_related("created_by").prefetch_related(
+            "memberships__user"
         )
 
-        # Owner-inclusive search + per-column sort (name/owner/created); re-wraps
-        # via pk__in (harmless here — for_user() uses plain .distinct()) and
-        # re-attaches the owner/co-owner joins to avoid N+1 in list views.
-        return apply_search_and_sort(
-            queryset,
-            model=Workflow,
-            name_field="workflow_name",
-            request=self.request,
-            select_related=("created_by",),
-            prefetch_related=("memberships__user",),
-        )
+        # Owner-inclusive search: match the workflow name or the owner's email.
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(workflow_name__icontains=search)
+                | Q(created_by__email__icontains=search)
+            )
+
+        return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":

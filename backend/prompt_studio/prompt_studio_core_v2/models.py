@@ -47,7 +47,7 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
-            .distinct("tool_id")
+            .distinct()
         )
 
 

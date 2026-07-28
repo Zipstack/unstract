@@ -7,7 +7,7 @@ from connector_auth_v2.exceptions import CacheMissException, MissingParamExcepti
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
-from django.db.models import ProtectedError, QuerySet
+from django.db.models import ProtectedError, Q, QuerySet
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
@@ -21,7 +21,6 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
-from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
@@ -48,6 +47,14 @@ class ConnectorInstanceViewSet(
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = [
+        "connector_name",
+        "created_by__email",
+        "created_at",
+        "modified_at",
+    ]
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -124,16 +131,15 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Owner-inclusive search + per-column sort (name/owner/created); re-wraps
-        # via pk__in to drop the DISTINCT ON in for_user() so any column sorts.
-        return apply_search_and_sort(
-            queryset,
-            model=ConnectorInstance,
-            name_field="connector_name",
-            request=self.request,
-            select_related=("created_by",),
-            prefetch_related=("memberships__user",),
-        )
+        # Owner-inclusive search: match the resource name or the owner's email.
+        search = self.request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(connector_name__icontains=search)
+                | Q(created_by__email__icontains=search)
+            )
+
+        return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.

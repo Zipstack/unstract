@@ -291,7 +291,7 @@ function ResourceTable({
       title: (
         <SortHeader
           label="Name"
-          sortKey="name"
+          sortKey={titleProp}
           sortType="text"
           sort={sort}
           onSortChange={onSortChange}
@@ -305,7 +305,7 @@ function ResourceTable({
       title: (
         <SortHeader
           label="Owned By"
-          sortKey="owner"
+          sortKey="created_by__email"
           sortType="text"
           sort={sort}
           onSortChange={onSortChange}
@@ -319,7 +319,7 @@ function ResourceTable({
       title: (
         <SortHeader
           label="Created Date"
-          sortKey="created"
+          sortKey={dateProp}
           sortType="date"
           sort={sort}
           onSortChange={onSortChange}

@@ -12,7 +12,7 @@ from api_v2.models import APIDeployment
 from celery import signature
 from celery.result import AsyncResult
 from django.db import IntegrityError
-from django.db.models import Count, OuterRef, QuerySet, Subquery
+from django.db.models import Count, OuterRef, Q, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
@@ -32,7 +32,6 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
-from utils.list_query import apply_search_and_sort
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
@@ -134,6 +133,9 @@ class PromptStudioCoreView(
 
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["tool_name", "created_by__email", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -162,21 +164,8 @@ class PromptStudioCoreView(
             "memberships__user"
         )
         if self.action == "list":
-            # Owner-inclusive search + per-column sort (name/owner/created);
-            # re-wraps via pk__in to drop the DISTINCT ON in for_user() so any
-            # column sorts.
-            qs = apply_search_and_sort(
-                qs,
-                model=CustomTool,
-                name_field="tool_name",
-                request=self.request,
-                select_related=("created_by",),
-                prefetch_related=("memberships__user",),
-            )
-            # apply_search_and_sort returns a fresh CustomTool.objects chain, so
-            # the prompt_count annotation goes on afterwards. Subquery keeps the
-            # count out of the outer GROUP BY, which would otherwise collide with
-            # the sort column.
+            # Subquery rather than a join-aggregate: Count() over a join would
+            # need a GROUP BY that fights the queryset's distinct()
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -184,10 +173,22 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            return qs.annotate(_prompt_count=Subquery(prompt_count_sq))
-        # Order by the DISTINCT ON field so pagination is deterministic for the
-        # admin/service (non-list) branch.
-        return qs.order_by("tool_id")
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
+            # keeping the plain field orderable. Only prompt writes bump —
+            # profile/document edits and queryset-level prompt writes do not;
+            # any new write path must bump CustomTool itself
+            qs = qs.select_related("created_by").annotate(
+                _prompt_count=Subquery(prompt_count_sq),
+            )
+            # Owner-inclusive search: match the tool name or the owner's email.
+            search = self.request.query_params.get("search")
+            if search:
+                qs = qs.filter(
+                    Q(tool_name__icontains=search)
+                    | Q(created_by__email__icontains=search)
+                )
+        return qs
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""

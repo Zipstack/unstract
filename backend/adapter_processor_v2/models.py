@@ -59,7 +59,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
                 | models.Q(is_friction_less=True)
                 | models.Q(pk__in=group_shared_ids)
             )
-            .distinct("id")
+            .distinct()
         )
 
 
