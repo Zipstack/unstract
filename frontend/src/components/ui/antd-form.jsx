@@ -113,6 +113,37 @@ function useAntdForm() {
         return methods.getValues();
       },
 
+      /**
+       * antd's `setFields([{ name, errors, value }])`.
+       *
+       * Six modals call this from their `onValuesChange` handler to clear the
+       * error on the field being edited — New Workflow, API Deployment (both
+       * variants), ETL Task, Notifications, LLM Profile and the Prompt Studio
+       * project modal. It was missing entirely, so those handlers would throw
+       * `TypeError: form.setFields is not a function` on the first keystroke.
+       */
+      setFields: (fields = []) => {
+        for (const field of fields) {
+          const name = toFieldName(field?.name);
+          if (!name) {
+            continue;
+          }
+          if ("value" in field) {
+            methods.setValue(name, field.value, { shouldDirty: true });
+          }
+          // antd clears an error with `errors: []` and sets one with a
+          // non-empty array.
+          const errors = field?.errors;
+          if (Array.isArray(errors)) {
+            if (errors.length) {
+              methods.setError(name, { type: "server", message: errors[0] });
+            } else {
+              methods.clearErrors(name);
+            }
+          }
+        }
+      },
+
       resetFields: () => methods.reset({}),
       submit: () => methods.handleSubmit(() => undefined)(),
       isFieldsTouched: () => methods.formState.isDirty,
@@ -124,13 +155,16 @@ function useAntdForm() {
   return [instance];
 }
 
-/** antd `<Form form layout onFinish>`. */
+/** antd `<Form form layout onFinish initialValues onValuesChange>`. */
 const Form = React.forwardRef(function Form(
   {
     form,
     layout = "horizontal",
     onFinish,
     onFinishFailed,
+    initialValues,
+    onValuesChange,
+    name,
     className,
     children,
     ...props
@@ -141,6 +175,43 @@ const Form = React.forwardRef(function Form(
   const fallback = useAntdForm();
   const instance = form ?? fallback[0];
   const methods = instance.__methods;
+
+  /*
+   * antd seeds the fields from `initialValues` ON MOUNT ONLY and documents
+   * that later changes are ignored.
+   *
+   * Matching that exactly is load-bearing here, not pedantry: the call-sites
+   * pass `initialValues={formDetails}` AND write `formDetails` from
+   * `onValuesChange`. Re-applying on every change would reset the form to the
+   * value it just reported — an infinite loop that clobbers typing mid-
+   * keystroke. The ref makes it run once per mount, and `destroyOnClose`
+   * remounts the modal so reopening still re-seeds.
+   */
+  const seeded = React.useRef(false);
+  if (!seeded.current && initialValues) {
+    seeded.current = true;
+    methods.reset(initialValues, { keepDefaultValues: false });
+  }
+
+  /*
+   * antd calls `onValuesChange(changedValues, allValues)` on every edit. This
+   * was dropped, so handlers that mirror the form into component state never
+   * ran: the state kept its initial value and Save posted an empty body while
+   * looking like it did nothing. RHF's `watch` callback is the equivalent
+   * subscription, and it reports the name of the field that changed.
+   */
+  React.useEffect(() => {
+    if (!onValuesChange) {
+      return undefined;
+    }
+    const subscription = methods.watch((allValues, { name: changedName }) => {
+      if (!changedName) {
+        return;
+      }
+      onValuesChange({ [changedName]: allValues[changedName] }, allValues);
+    });
+    return () => subscription.unsubscribe();
+  }, [methods, onValuesChange]);
 
   return (
     <FormProvider {...methods}>
@@ -186,6 +257,18 @@ function FormItem({
   rules,
   required,
   valuePropName = "value",
+  /*
+   * antd's server-error channel. The call-sites do NOT validate on the client
+   * before submitting — they post, catch the 400, and feed the response into
+   * `validateStatus="error"` + `help="<message>"` on the offending item.
+   *
+   * Both were falling into `...props` and landing on the wrapper div, so the
+   * backend's message was never displayed (and React warned about unknown DOM
+   * attributes). Submitting an invalid form therefore looked like the Save
+   * button did nothing at all.
+   */
+  validateStatus,
+  help,
   className,
   children,
   ...props
@@ -199,6 +282,18 @@ function FormItem({
       <div className={cn("space-y-2", className)} {...props}>
         {label ? <Label>{label}</Label> : null}
         {children}
+        {help ? (
+          <p
+            className={cn(
+              "text-sm",
+              validateStatus === "error"
+                ? "text-destructive"
+                : "text-muted-foreground",
+            )}
+          >
+            {help}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -238,8 +333,17 @@ function FormItem({
           },
         };
 
+        // antd shows `help` in place of the rule message when it is set, and
+        // `validateStatus` decides whether the control reads as errored.
+        const hasError = validateStatus === "error" || Boolean(fieldState.error);
+        const message = help ?? fieldState.error?.message;
+
         return (
-          <div className={cn("ant-form-item space-y-2", className)} {...props}>
+          <div
+            className={cn("ant-form-item space-y-2", className)}
+            {...props}
+            data-status={hasError ? "error" : undefined}
+          >
             {label ? (
               <Label htmlFor={name}>
                 {required ? <span className="text-destructive">* </span> : null}
@@ -247,11 +351,28 @@ function FormItem({
               </Label>
             ) : null}
             <div className="ant-form-item-control-input">
-              {React.cloneElement(child, injected)}
+              {React.cloneElement(child, {
+                ...injected,
+                // Give the control itself the error ring, the way antd's
+                // `validateStatus` does.
+                ...(hasError
+                  ? {
+                      className: cn(
+                        child.props.className,
+                        "border-destructive focus-visible:ring-destructive",
+                      ),
+                    }
+                  : {}),
+              })}
             </div>
-            {fieldState.error ? (
-              <p className="text-sm text-destructive">
-                {fieldState.error.message}
+            {message ? (
+              <p
+                className={cn(
+                  "text-sm",
+                  hasError ? "text-destructive" : "text-muted-foreground",
+                )}
+              >
+                {message}
               </p>
             ) : null}
           </div>

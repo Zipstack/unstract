@@ -160,4 +160,131 @@ describe("Form.Item accepts antd's array NamePath", () => {
     // The nested shape antd would have produced.
     expect(onFinish.mock.calls[0][0]).toMatchObject({ tier1: { up_to: "42" } });
   });
+  /**
+   * These four antd APIs were all missing, and together they broke every
+   * create/edit modal in the app: the Save button appeared to do nothing.
+   *
+   *   onValuesChange -> never fired, so call-sites mirroring the form into
+   *                     component state kept their initial (empty) value and
+   *                     submitted an empty body
+   *   setFields      -> the handler those call-sites run on each keystroke
+   *   validateStatus
+   *   + help         -> how the backend's 400 is surfaced per field; the
+   *                     call-sites deliberately do NOT validate client-side
+   */
+  describe("antd Form APIs the create/edit modals depend on", () => {
+    it("fires onValuesChange with the changed field and all values", async () => {
+      const onValuesChange = vi.fn();
+      render(
+        <Form layout="vertical" onValuesChange={onValuesChange}>
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "abc" },
+      });
+
+      await waitFor(() => expect(onValuesChange).toHaveBeenCalled());
+      const [changed, all] = onValuesChange.mock.calls.at(-1);
+      expect(changed).toMatchObject({ tool_name: "abc" });
+      expect(all).toMatchObject({ tool_name: "abc" });
+    });
+
+    it("seeds fields from initialValues", () => {
+      render(
+        <Form layout="vertical" initialValues={{ tool_name: "seeded" }}>
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.getByRole("textbox")).toHaveValue("seeded");
+    });
+
+    it("ignores later initialValues changes, as antd does", () => {
+      // The call-sites pass initialValues={state} AND write that state from
+      // onValuesChange. Re-seeding on change would clobber typing.
+      const { rerender } = render(
+        <Form layout="vertical" initialValues={{ tool_name: "first" }}>
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value: "typed" },
+      });
+      rerender(
+        <Form layout="vertical" initialValues={{ tool_name: "second" }}>
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.getByRole("textbox")).toHaveValue("typed");
+    });
+
+    it("exposes form.setFields for clearing and setting errors", async () => {
+      let api;
+      render(
+        <Form layout="vertical" onValuesChange={vi.fn()}>
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      // The instance form: assert the method exists on a useForm() result.
+      function Probe() {
+        const [form] = Form.useForm();
+        api = form;
+        return null;
+      }
+      render(<Probe />);
+      expect(typeof api.setFields).toBe("function");
+      // Must not throw for either shape the call-sites use.
+      expect(() =>
+        api.setFields([{ name: "tool_name", errors: [] }]),
+      ).not.toThrow();
+      expect(() =>
+        api.setFields([{ name: "tool_name", errors: ["Bad name"] }]),
+      ).not.toThrow();
+    });
+
+    it("renders a backend error through validateStatus + help", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item
+            label="Name"
+            name="tool_name"
+            validateStatus="error"
+            help="Tool name already exists"
+          >
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      const msg = screen.getByText("Tool name already exists");
+      expect(msg).toBeInTheDocument();
+      expect(msg.className).toContain("text-destructive");
+      expect(screen.getByRole("textbox").className).toContain(
+        "border-destructive",
+      );
+    });
+
+    it("does not leak validateStatus/help onto the DOM", () => {
+      const { container } = render(
+        <Form layout="vertical">
+          <Form.Item name="x" validateStatus="error" help="msg">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      const item = container.querySelector(".ant-form-item");
+      expect(item.getAttribute("validateStatus")).toBeNull();
+      expect(item.getAttribute("help")).toBeNull();
+    });
+  });
 });

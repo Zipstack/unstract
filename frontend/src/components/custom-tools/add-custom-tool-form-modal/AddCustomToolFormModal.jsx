@@ -176,6 +176,12 @@ function AddCustomToolFormModal({
               <EmojiPicker
                 previewConfig={{ showPreview: false }}
                 lazyLoadEmojis
+                // The picker sizes its own internal scroller from `height`,
+                // so the popover's max-height alone cannot shorten it — it
+                // would just clip. 320px keeps the whole picker (including
+                // its search box and category bar) inside the viewport when
+                // the trigger sits low in the modal.
+                height={320}
                 onEmojiClick={(emoji) => {
                   updateIcon(emoji.emoji);
                   setShowEmojiPicker(false);

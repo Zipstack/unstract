@@ -470,6 +470,9 @@ const Upload = React.forwardRef(function Upload(
         }}
         role="button"
         tabIndex={disabled ? -1 : 0}
+        // A `role="button"` span gets no cursor from the browser at all, and
+        // it is not a <button> so `buttonVariants` never reaches it.
+        className={cn(disabled ? "cursor-not-allowed" : "cursor-pointer")}
       >
         {children ?? (
           <Button icon={<UploadIcon className="size-4" />}>Upload</Button>
@@ -627,7 +630,7 @@ const Segmented = React.forwardRef(function Segmented(
             type="button"
             onClick={() => onChange?.(val)}
             className={cn(
-              "ant-segmented-item rounded px-3 py-1 text-sm",
+              "ant-segmented-item cursor-pointer rounded px-3 py-1 text-sm disabled:cursor-not-allowed",
               String(value) === String(val)
                 ? "bg-background shadow-sm"
                 : "text-muted-foreground",
@@ -655,7 +658,7 @@ const Menu = React.forwardRef(function Menu(
           disabled={item.disabled}
           onClick={() => onClick?.({ key: item.key })}
           className={cn(
-            "flex items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent",
+            "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed",
             selectedKeys.includes(item.key) && "bg-accent font-medium",
           )}
         >
@@ -769,7 +772,7 @@ const Tree = React.forwardRef(function Tree(
       <div key={String(n.key)} style={{ paddingLeft: depth * 12 }}>
         <button
           type="button"
-          className="rounded px-1 py-0.5 text-left text-sm hover:bg-accent"
+          className="cursor-pointer rounded px-1 py-0.5 text-left text-sm hover:bg-accent"
           onClick={() => onSelect?.([n.key], { node: n })}
         >
           {n.title}
@@ -863,7 +866,7 @@ const FloatButton = React.forwardRef(function FloatButton(
       title={tooltip}
       onClick={onClick}
       className={cn(
-        "fixed bottom-6 right-6 z-50 flex size-11 items-center justify-center rounded-full shadow-lg",
+        "fixed bottom-6 right-6 z-50 flex size-11 cursor-pointer items-center justify-center rounded-full shadow-lg",
         type === "primary"
           ? "bg-primary text-primary-foreground"
           : "border bg-background text-foreground",
@@ -915,7 +918,7 @@ const Transfer = React.forwardRef(function Transfer(
           <button
             key={String(item.key)}
             type="button"
-            className="block w-full px-3 py-1.5 text-left text-sm hover:bg-accent"
+            className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-accent"
             onClick={() => move(item.key, toTarget)}
           >
             {render ? render(item) : item.title}

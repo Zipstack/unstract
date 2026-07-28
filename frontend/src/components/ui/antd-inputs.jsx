@@ -124,7 +124,7 @@ const Input = React.forwardRef(function Input(
         ) : null}
         {control}
         {suffix ? (
-          <span className="absolute right-2 text-muted-foreground">
+          <span className="absolute right-2 cursor-pointer text-muted-foreground">
             {suffix}
           </span>
         ) : null}
@@ -187,7 +187,7 @@ const Password = React.forwardRef(function Password(
       <button
         type="button"
         aria-label={show ? "Hide password" : "Show password"}
-        className="absolute right-2 text-muted-foreground"
+        className="absolute right-2 cursor-pointer text-muted-foreground"
         onClick={() => setShow((s) => !s)}
       >
         {show ? <EyeOff className="size-4" /> : <Eye className="size-4" />}

@@ -94,7 +94,7 @@ const Tag = React.forwardRef(function Tag(
           type="button"
           onClick={onClose}
           aria-label="Close"
-          className="ml-0.5"
+          className="ml-0.5 cursor-pointer"
         >
           <X className="size-3" />
         </button>
@@ -176,7 +176,7 @@ const Alert = React.forwardRef(function Alert(
         <button
           type="button"
           aria-label="Close"
-          className="absolute right-3 top-3"
+          className="absolute right-3 top-3 cursor-pointer"
           onClick={(e) => {
             setOpen(false);
             onClose?.(e);

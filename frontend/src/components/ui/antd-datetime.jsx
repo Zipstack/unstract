@@ -352,7 +352,7 @@ const RangePicker = React.forwardRef(function RangePicker(
             type="button"
             disabled={disabled}
             className={cn(
-              "ant-picker ant-picker-range inline-flex h-9 items-center gap-2",
+              "ant-picker ant-picker-range inline-flex h-9 cursor-pointer items-center gap-2",
               "rounded-md border border-input bg-transparent px-3 py-1",
               "text-sm shadow-sm transition-colors",
               "hover:bg-accent hover:text-accent-foreground",
@@ -385,7 +385,7 @@ const RangePicker = React.forwardRef(function RangePicker(
                       setOpen(false);
                     }}
                     className={cn(
-                      "whitespace-nowrap rounded-md px-2 py-1.5 text-left text-sm",
+                      "cursor-pointer whitespace-nowrap rounded-md px-2 py-1.5 text-left text-sm",
                       "hover:bg-accent hover:text-accent-foreground",
                       "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
                     )}

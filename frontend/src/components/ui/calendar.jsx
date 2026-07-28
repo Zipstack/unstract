@@ -60,8 +60,8 @@ function Calendar({ className, classNames, showOutsideDays = true, ...props }) {
           "[&:has([aria-selected].day-range-start)]:rounded-l-md",
         ),
         day_button: cn(
-          "inline-flex size-8 items-center justify-center rounded-md p-0",
-          "font-normal aria-selected:opacity-100",
+          "inline-flex size-8 cursor-pointer items-center justify-center rounded-md p-0",
+          "font-normal aria-selected:opacity-100 disabled:cursor-not-allowed",
           "hover:bg-accent hover:text-accent-foreground",
           "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
         ),
