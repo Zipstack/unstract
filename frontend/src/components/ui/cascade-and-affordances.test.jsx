@@ -94,4 +94,21 @@ describe("cascade and affordance guards", () => {
       expect(trigger.getAttribute("arrow")).toBeNull();
     });
   });
+  /**
+   * The "left and right borders are missing" report, three rounds running.
+   * The borders were always drawn; `shadow-sm` (a vertical-only offset)
+   * reinforced the top and bottom edges so the bare 1px sides looked absent
+   * beside them. The antd reference computes `box-shadow: none`.
+   */
+  describe("form controls draw an even border on all four sides", () => {
+    it("Input carries no vertical-offset shadow", () => {
+      render(<Input />);
+      expect(screen.getByRole("textbox").className).not.toContain("shadow-sm");
+    });
+
+    it("Textarea carries no vertical-offset shadow", () => {
+      render(<Textarea />);
+      expect(screen.getByRole("textbox").className).not.toContain("shadow-sm");
+    });
+  });
 });

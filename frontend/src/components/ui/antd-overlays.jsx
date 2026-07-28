@@ -434,10 +434,39 @@ const AntPopover = React.forwardRef(function AntPopover(
       <PopoverContent
         ref={ref}
         side={placement.replace(/(Top|Bottom|Left|Right)$/, "")}
-        align={/Top$/.test(placement) ? "start" : /Bottom$/.test(placement) ? "end" : "center"}
+        /*
+         * antd's placement suffix names the alignment edge, and which axis it
+         * refers to depends on the side: `bottomLeft` is "below, aligned to
+         * the left" while `rightTop` is "to the right, aligned to the top".
+         * Both are Radix's `align="start"`; Right/Bottom suffixes are "end".
+         * The previous mapping only tested Top/Bottom, so the Left/Right
+         * suffixes silently fell through to `center`.
+         */
+        align={
+          /(Top|Left)$/.test(placement)
+            ? "start"
+            : /(Bottom|Right)$/.test(placement)
+              ? "end"
+              : "center"
+        }
         collisionPadding={8}
+        /*
+         * Content-sized, like antd's bubble.
+         *
+         * The earlier `max-w-[min(92vw,26rem)]` (416px) was itself a clipping
+         * box: the emoji picker needs ~440px once its search field and
+         * category bar are counted, so its right-hand column was sliced off
+         * mid-emoji.
+         *
+         * `--radix-popover-content-available-width` is what the popover may
+         * actually occupy on the chosen side, so the bubble grows to its
+         * content and only shrinks when the viewport genuinely cannot fit it.
+         * Padding is left to the call-site (via `overlayClassName`), since the
+         * sidebar and ConfigureDs popovers want shadcn's default `p-4` while a
+         * self-chromed widget like the picker wants none.
+         */
         className={cn(
-          "ant-popover-inner w-auto max-w-[min(92vw,26rem)]",
+          "ant-popover-inner w-auto max-w-[var(--radix-popover-content-available-width)]",
           overlayClassName,
           className,
         )}

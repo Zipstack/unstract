@@ -168,7 +168,13 @@ function AddCustomToolFormModal({
             // Without this the picker is a controlled popover with no way to
             // report a close, so Esc and clicking outside did nothing.
             onOpenChange={setShowEmojiPicker}
-            placement="rightTop"
+            /*
+             * `rightTop` threw the picker out past the modal's right edge,
+             * where it was sliced off mid-column. Opening downward from the
+             * trigger keeps its full width on screen; Radix still flips it
+             * upward automatically when there is no room below.
+             */
+            placement="bottomLeft"
             arrow={false}
             trigger={"click"}
             className="emoji-modal"
@@ -189,7 +195,13 @@ function AddCustomToolFormModal({
               />
             }
           >
-            <Button onClick={() => setShowEmojiPicker((prev) => !prev)}>
+            {/*
+             * No onClick here: the Popover trigger already toggles `open` and
+             * reports it through onOpenChange. Doing both meant two state
+             * updates per click — Radix's (open -> false) and this one
+             * (!prev), which race and can leave the picker unable to reopen.
+             */}
+            <Button>
               {icon} {icon ? "Change" : "Choose"} Icon
             </Button>
           </Popover>

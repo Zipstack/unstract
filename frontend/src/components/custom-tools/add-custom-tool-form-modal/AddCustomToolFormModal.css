@@ -18,7 +18,10 @@
  * padding (shadcn's PopoverContent defaults to `p-4`) or the bubble is padded
  * on all sides and pushed wider than the viewport allows.
  */
-.emoji-modal {
+.emoji-modal.emoji-modal {
+  /* Doubled selector for specificity: this competes with Tailwind's `p-4`
+   * utility on PopoverContent, and a single class ties with it on
+   * specificity — leaving the winner down to source order. */
   padding: 0;
   width: fit-content;
 }
