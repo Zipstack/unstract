@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from django.test import TestCase, TransactionTestCase
+from django.test import TestCase
 from django.utils import timezone
 
 from account_v2.models import Organization
@@ -81,7 +81,7 @@ class TestTimeHelpers(TestCase):
         assert result.microsecond == 0
 
 
-class TestCleanupTasks(TransactionTestCase):
+class TestCleanupTasks(TestCase):
     """Tests for cleanup tasks."""
 
     def setUp(self):
