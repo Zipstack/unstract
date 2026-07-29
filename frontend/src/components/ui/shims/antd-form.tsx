@@ -2,6 +2,7 @@ import * as React from "react";
 import {
   Controller,
   FormProvider,
+  type UseFormReturn,
   useForm,
   useFormContext,
 } from "react-hook-form";
@@ -29,9 +30,92 @@ import { cn } from "@/lib/utils";
  * exactly as antd did.
  */
 
+/**
+ * The antd Form surface these shims accept.
+ *
+ * This file is the strongest case for typing the layer. Four of these props
+ * were MISSING and fell into `...props`, each failing silently:
+ *
+ *   - `onValuesChange` — handlers mirroring the form into state never ran, so
+ *     Save posted an empty body and looked like it did nothing
+ *   - `setFields` — six modals called it and got
+ *     `TypeError: form.setFields is not a function` on the first keystroke
+ *   - `initialValues` — fields were never seeded
+ *   - `validateStatus` / `help` — the backend's 400 message landed on a DOM
+ *     div instead of being displayed
+ *
+ * Naming each one means the next omission is a compile error at the call-site,
+ * not a defect a user has to report.
+ */
+
+/** antd's NamePath: a string, or an array for nested fields. */
+type NamePath = string | Array<string | number>;
+
+interface AntdRule {
+  required?: boolean;
+  message?: string;
+  max?: number;
+  min?: number;
+  pattern?: RegExp;
+  /** antd hands (rule, value); rejecting marks the field invalid. */
+  validator?: (rule: unknown, value: unknown) => Promise<unknown> | unknown;
+}
+
+/** One entry of antd's `form.setFields([...])`. */
+interface FieldData {
+  name?: NamePath;
+  value?: unknown;
+  /** An empty array clears the error; a non-empty one sets it. */
+  errors?: string[];
+}
+
+type FormValues = Record<string, unknown>;
+
+/** The instance returned by `Form.useForm()`. */
+interface FormInstance {
+  /** Escape hatch to the underlying react-hook-form methods. */
+  __methods: UseFormReturn<FormValues>;
+  setFieldsValue: (values?: FormValues) => void;
+  setFieldValue: (name: NamePath, value: unknown) => void;
+  getFieldsValue: () => FormValues;
+  getFieldValue: (name: NamePath) => unknown;
+  /** Resolves with the values, REJECTS when invalid, as antd does. */
+  validateFields: () => Promise<FormValues>;
+  setFields: (fields?: FieldData[]) => void;
+  resetFields: () => void;
+  submit: () => void;
+  isFieldsTouched: () => boolean;
+  getFieldsError: () => Array<[string, unknown]>;
+}
+
+interface AntFormProps
+  extends Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit"> {
+  form?: FormInstance;
+  layout?: "horizontal" | "vertical" | "inline";
+  onFinish?: (values: FormValues) => void;
+  onFinishFailed?: (errors: unknown) => void;
+  /** Applied ON MOUNT ONLY, matching antd. */
+  initialValues?: FormValues;
+  onValuesChange?: (changed: FormValues, all: FormValues) => void;
+}
+
+interface FormItemProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+  name?: NamePath;
+  label?: React.ReactNode;
+  rules?: AntdRule[];
+  required?: boolean;
+  /** `checked` for switches and checkboxes, `value` otherwise. */
+  valuePropName?: string;
+  /** antd's server-error channel, paired with `help`. */
+  validateStatus?: "error" | "warning" | "success" | "validating";
+  help?: React.ReactNode;
+  children?: React.ReactNode;
+}
+
 /** Translate antd `rules` into RHF's validate/required options. */
-function toRules(rules = [], label) {
-  const out = {};
+function toRules(rules: AntdRule[] = [], label?: React.ReactNode) {
+  const out: Record<string, unknown> = {};
   for (const rule of rules) {
     if (rule?.required) {
       out.required = rule.message ?? `${label ?? "This field"} is required`;
@@ -55,14 +139,20 @@ function toRules(rules = [], label) {
       };
     }
     if (typeof rule?.validator === "function") {
+      const validator = rule.validator;
+      const existing = (out.validate ?? {}) as Record<string, unknown>;
       out.validate = {
-        ...(out.validate ?? {}),
-        [`custom${Object.keys(out.validate ?? {}).length}`]: async (value) => {
+        ...existing,
+        [`custom${Object.keys(existing).length}`]: async (value: unknown) => {
           try {
-            await rule.validator({}, value);
+            await validator({}, value);
             return true;
           } catch (e) {
-            return e?.message ?? rule.message ?? "Invalid value";
+            return (
+              (e instanceof Error ? e.message : undefined) ??
+              rule.message ??
+              "Invalid value"
+            );
           }
         },
       };
@@ -75,7 +165,7 @@ function toRules(rules = [], label) {
  * antd's `Form.useForm()`. Returns `[form]`, where `form` carries the
  * imperative methods the existing call-sites already use.
  */
-function useAntdForm() {
+function useAntdForm(): [FormInstance] {
   const methods = useForm({ mode: "onSubmit", shouldUnregister: false });
 
   const instance = React.useMemo(
@@ -83,18 +173,21 @@ function useAntdForm() {
       __methods: methods,
 
       /** antd: set one or many fields. */
-      setFieldsValue: (values = {}) => {
+      setFieldsValue: (values: FormValues = {}) => {
         for (const [k, v] of Object.entries(values)) {
           methods.setValue(k, v, { shouldDirty: false, shouldValidate: false });
         }
       },
       // These take a NamePath too, so they get the same normalisation the
       // Form.Item name does.
-      setFieldValue: (name, value) =>
-        methods.setValue(toFieldName(name), value, { shouldDirty: true }),
+      setFieldValue: (name: NamePath, value: unknown) =>
+        methods.setValue(toFieldName(name) as string, value, {
+          shouldDirty: true,
+        }),
 
       getFieldsValue: () => methods.getValues(),
-      getFieldValue: (name) => methods.getValues(toFieldName(name)),
+      getFieldValue: (name: NamePath) =>
+        methods.getValues(toFieldName(name) as string),
 
       /**
        * antd resolves with the values and REJECTS when invalid — call-sites do
@@ -104,7 +197,11 @@ function useAntdForm() {
       validateFields: async () => {
         const ok = await methods.trigger();
         if (!ok) {
-          const err = new Error("Validation failed");
+          // antd rejects with an error carrying `errorFields`, and call-sites
+          // read it, so the shape is declared rather than bolted on untyped.
+          const err: Error & { errorFields?: unknown[] } = new Error(
+            "Validation failed",
+          );
           err.errorFields = Object.entries(methods.formState.errors).map(
             ([name, e]) => ({ name: [name], errors: [e?.message] }),
           );
@@ -122,7 +219,7 @@ function useAntdForm() {
        * project modal. It was missing entirely, so those handlers would throw
        * `TypeError: form.setFields is not a function` on the first keystroke.
        */
-      setFields: (fields = []) => {
+      setFields: (fields: FieldData[] = []) => {
         for (const field of fields) {
           const name = toFieldName(field?.name);
           if (!name) {
@@ -156,7 +253,7 @@ function useAntdForm() {
 }
 
 /** antd `<Form form layout onFinish initialValues onValuesChange>`. */
-const Form = React.forwardRef(function Form(
+const FormBase = React.forwardRef<HTMLFormElement, AntFormProps>(function Form(
   {
     form,
     layout = "horizontal",
@@ -243,7 +340,7 @@ const Form = React.forwardRef(function Form(
  *
  * The array form is antd's dotted path, so joining reproduces it exactly.
  */
-function toFieldName(name) {
+function toFieldName(name?: NamePath): string | undefined {
   return Array.isArray(name) ? name.join(".") : name;
 }
 
@@ -272,7 +369,7 @@ function FormItem({
   className,
   children,
   ...props
-}) {
+}: FormItemProps) {
   const methods = useFormContext();
   const name = toFieldName(rawName);
 
@@ -304,7 +401,15 @@ function FormItem({
       control={methods.control}
       rules={toRules(rules, label)}
       render={({ field, fieldState }) => {
-        const child = React.Children.only(children);
+        // The child is the control being wired. Narrowed to an element
+        // because the injection below reads its existing id/onChange/onBlur
+        // and hands them back so a child that sets its own keeps working.
+        const child = React.Children.only(children) as React.ReactElement<{
+          id?: string;
+          className?: string;
+          onChange?: (e: unknown) => void;
+          onBlur?: (e: unknown) => void;
+        }>;
         const injected = {
           // `<Label htmlFor={name}>` needs a matching id on the control, or
           // the label points at nothing — clicking it does not focus the
@@ -316,18 +421,21 @@ function FormItem({
             valuePropName === "checked"
               ? Boolean(field.value)
               : (field.value ?? ""),
-          onChange: (e) => {
+          onChange: (e: unknown) => {
             // Works for both DOM events and value-first callbacks (Select).
-            const next =
+            const target =
               e && typeof e === "object" && "target" in e
-                ? valuePropName === "checked"
-                  ? e.target.checked
-                  : e.target.value
-                : e;
+                ? (e as { target: HTMLInputElement }).target
+                : null;
+            const next = target
+              ? valuePropName === "checked"
+                ? target.checked
+                : target.value
+              : e;
             field.onChange(next);
             child.props.onChange?.(e);
           },
-          onBlur: (e) => {
+          onBlur: (e: unknown) => {
             field.onBlur();
             child.props.onBlur?.(e);
           },
@@ -383,10 +491,14 @@ function FormItem({
   );
 }
 
-Form.Item = FormItem;
-Form.useForm = useAntdForm;
-Form.List = function FormList({ children }) {
-  return children;
-};
+/** Namespace object, so `<Form.Item>` type-checks and shim-completeness
+ * still finds the statics by value. */
+const Form = Object.assign(FormBase, {
+  Item: FormItem,
+  useForm: useAntdForm,
+  List: function FormList({ children }: { children?: React.ReactNode }) {
+    return children;
+  },
+});
 
 export { Form };
