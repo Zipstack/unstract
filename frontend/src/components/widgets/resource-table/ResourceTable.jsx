@@ -256,7 +256,7 @@ function ResourceTable({
             type="button"
             className="action-icon-btn"
             aria-label={`Edit ${type}`}
-            disabled={deprecated}
+            aria-disabled={deprecated}
             onClick={(event) => !deprecated && handleEdit?.(event, item)}
           >
             <EditOutlined className="action-icon-buttons edit-icon" />
@@ -268,7 +268,7 @@ function ResourceTable({
               type="button"
               className="action-icon-btn"
               aria-label={`Share ${type}`}
-              disabled={deprecated}
+              aria-disabled={deprecated}
               onClick={(event) => !deprecated && handleShare(event, item, true)}
             >
               <ShareAltOutlined className="action-icon-buttons share-icon" />

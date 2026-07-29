@@ -176,7 +176,7 @@
   display: inline-flex;
 }
 
-.resource-table .action-icon-btn:disabled {
+.resource-table .action-icon-btn[aria-disabled="true"] {
   opacity: 0.4;
   cursor: not-allowed;
 }
