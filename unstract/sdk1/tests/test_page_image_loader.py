@@ -262,6 +262,35 @@ class TestByteBudget:
         assert err.max_total_bytes == 50
         assert "pages to extract" in str(err)
 
+    def test_budget_rejects_from_metadata_before_any_read(self) -> None:
+        # A single pathological object must never be pulled into memory:
+        # the budget is checked from storage size metadata BEFORE reads.
+        fs = _store({1: b"g" * 100})
+        reads: list[str] = []
+        original_read = fs.read
+        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
+        with pytest.raises(PageImageSetTooLargeError):
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert reads == []  # zero bytes entered memory
+
+    def test_budget_enforced_at_read_time_without_size_metadata(self) -> None:
+        # Backends lacking a size() API still get the read-time guard.
+        fs = _store({1: b"a" * 30, 2: b"b" * 30})
+
+        class NoSizeFs:
+            exists = fs.exists
+            ls = fs.ls
+            read = fs.read
+
+        with pytest.raises(PageImageSetTooLargeError):
+            load_page_images(NoSizeFs(), _DIR, max_total_bytes=50)
+
+    def test_unreadable_size_metadata_falls_back_to_read_guard(self) -> None:
+        fs = _store({1: b"a" * 30, 2: b"b" * 30})
+        fs.size = lambda path: (_ for _ in ()).throw(OSError("no stat"))
+        with pytest.raises(PageImageSetTooLargeError):
+            load_page_images(fs, _DIR, max_total_bytes=50)
+
     def test_within_budget_loads(self) -> None:
         fs = _store({1: b"a" * 10, 2: b"b" * 10})
         assert len(load_page_images(fs, _DIR, max_total_bytes=25)) == 2

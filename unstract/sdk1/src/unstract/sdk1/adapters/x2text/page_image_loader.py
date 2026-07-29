@@ -216,9 +216,11 @@ def load_page_images(
     """Discover, cap-check, read, and base64-encode all page images.
 
     The page-count cap runs before any bytes are read so an oversized
-    document fails fast and cheap; the aggregate byte budget is enforced
-    while reading so an unusually large render cannot grow memory or the
-    provider request unbounded. ``None`` disables either limit.
+    document fails fast and cheap. The aggregate byte budget is enforced
+    twice: first from storage *metadata* before any read (so even a single
+    pathological object is never pulled into worker memory), then again
+    while reading as a belt-and-braces guard for backends without size
+    metadata and for stat/read races. ``None`` disables either limit.
 
     Raises:
         PageCapExceededError: more pages than ``page_cap`` allows.
@@ -236,6 +238,34 @@ def load_page_images(
             page_count=len(discovered),
             page_cap=page_cap,
         )
+
+    def _too_large(page_number: int, total_bytes: int) -> PageImageSetTooLargeError:
+        return PageImageSetTooLargeError(
+            f"Page images total more than "
+            f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
+            f"of {len(discovered)} — too large to send to the LLM in "
+            "one request. Reduce the page range (e.g. via the adapter's "
+            "'pages to extract' setting).",
+            page_store_dir=page_store_dir,
+            total_bytes=total_bytes,
+            max_total_bytes=max_total_bytes,
+        )
+
+    # Pre-read budget check from storage metadata (e.g. an object HEAD):
+    # rejects before ANY image bytes enter worker memory. Duck-typed —
+    # backends without a size() API fall through to the read-time guard.
+    size_of = getattr(fs, "size", None)
+    if max_total_bytes is not None and callable(size_of):
+        stat_total = 0
+        for page_number, path in discovered:
+            try:
+                stat_total += int(size_of(path))
+            except Exception:
+                # Unknown size — rely on the read-time accounting below.
+                break
+            if stat_total > max_total_bytes:
+                raise _too_large(page_number, stat_total)
+
     loaded = []
     total_bytes = 0
     for page_number, path in discovered:
@@ -258,16 +288,7 @@ def load_page_images(
         if max_total_bytes is not None and total_bytes > max_total_bytes:
             # Stop before encoding/retaining more — the page cap bounds the
             # count, this bounds the payload.
-            raise PageImageSetTooLargeError(
-                f"Page images total more than "
-                f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
-                f"of {len(discovered)} — too large to send to the LLM in "
-                "one request. Reduce the page range (e.g. via the adapter's "
-                "'pages to extract' setting).",
-                page_store_dir=page_store_dir,
-                total_bytes=total_bytes,
-                max_total_bytes=max_total_bytes,
-            )
+            raise _too_large(page_number, total_bytes)
         encoded = base64.b64encode(bytes(data)).decode("ascii")
         loaded.append(
             LoadedPageImage(page_number=page_number, path=path, base64_data=encoded)

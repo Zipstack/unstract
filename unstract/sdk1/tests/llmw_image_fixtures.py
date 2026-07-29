@@ -127,6 +127,13 @@ class InMemoryFileStorage:
         prefix = key.rstrip("/") + "/"
         return any(stored.startswith(prefix) for stored in self._files)
 
+    def size(self, path: str) -> int:
+        """Byte size from 'metadata' (fsspec info-style), like real backends."""
+        try:
+            return len(self._files[str(path)])
+        except KeyError:
+            raise FileNotFoundError(str(path)) from None
+
     def ls(self, path: str) -> list[str]:
         """Direct children of ``path`` (full paths), fsspec-style."""
         from pathlib import PurePosixPath
