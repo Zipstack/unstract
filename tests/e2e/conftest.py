@@ -12,6 +12,7 @@ import os
 import time
 import uuid
 from dataclasses import dataclass
+from urllib.parse import quote, urlparse
 
 import pytest
 import requests
@@ -74,7 +75,13 @@ def authed_session(platform: PlatformEndpoints) -> requests.Session:
     with X-CSRFToken) so org-scoped endpoints are reachable. Session-scoped:
     logged in once, reused across tests. Tests that exercise login itself
     should build their own session instead.
+
+    Cloud runs set UNSTRACT_AUTH_MODE=auth0 to drive the Auth0 plugin against
+    the hermetic mock sidecar instead of the OSS form login.
     """
+    if os.environ.get("UNSTRACT_AUTH_MODE") == "auth0":
+        return _auth0_login(platform)
+
     base = platform.backend_url.rstrip("/")
     session = CsrfSession()
 
@@ -105,6 +112,70 @@ def authed_session(platform: PlatformEndpoints) -> requests.Session:
         timeout=10,
     )
     resp.raise_for_status()
+    return session
+
+
+# Fixed CI email; the mock derives a stable sub/user from it, so the id_token
+# and the Management-API lookup on /callback stay mutually consistent.
+_AUTH0_CI_EMAIL = "ci-user@ci.unstract.io"
+_AUTH0_CI_HEADER = {"x-unstract-ci-run": "true"}
+
+
+def _auth0_login(platform: PlatformEndpoints) -> CsrfSession:
+    """Log in via the Auth0 plugin against the mock sidecar; return the session.
+
+    The backend legs are identical to prod (GET /login -> 302 to the mock's
+    /authorize, /callback runs the code exchange). Only the browser is faked:
+    appending login_hint makes the mock skip its credential screen straight to
+    a code.
+
+    Split-horizon note: the backend advertises the authorize redirect at its
+    internal ZIPSTACK_ID_DOMAIN (e.g. mock-auth0:8080), which the host test
+    process can't resolve. The id_token issuer is set by the *backend's* /token
+    call, not this browser leg, so we simply rewrite the authorize netloc to the
+    host-reachable MOCK_AUTH0_URL; the opaque code still validates on /callback.
+    """
+    base = platform.backend_url.rstrip("/")
+    mock_url = os.environ.get("MOCK_AUTH0_URL", "").rstrip("/")
+    session = CsrfSession()
+
+    # Leg 1: /login -> 302 to the mock's /authorize with the CI client.
+    resp = session.get(
+        f"{base}/api/v1/login",
+        headers=_AUTH0_CI_HEADER,
+        allow_redirects=False,
+        timeout=10,
+    )
+    assert resp.status_code == 302, f"login: expected 302, got {resp.status_code}"
+    authorize = resp.headers["Location"]
+    if mock_url:
+        authorize = urlparse(authorize)._replace(
+            scheme=urlparse(mock_url).scheme, netloc=urlparse(mock_url).netloc
+        ).geturl()
+
+    # Leg 2: play the browser — login_hint short-circuits to a code + state.
+    bounce = requests.get(
+        authorize + "&login_hint=" + quote(_AUTH0_CI_EMAIL),
+        allow_redirects=False,
+        timeout=10,
+    )
+    assert bounce.status_code == 302, bounce.text
+    callback = bounce.headers["Location"]
+    assert urlparse(callback).path.endswith("/callback"), callback
+
+    # Leg 3: hand the callback back to the backend to establish the session.
+    resp = session.get(
+        callback, headers=_AUTH0_CI_HEADER, allow_redirects=False, timeout=15
+    )
+    assert resp.status_code in (302, 200), f"callback: {resp.status_code} {resp.text}"
+
+    # Org handshake, same as the OSS fixture, so org-scoped endpoints work.
+    orgs = session.get(f"{base}/api/v1/organization", timeout=10)
+    orgs.raise_for_status()
+    org_id = orgs.json()["organizations"][0]["id"]
+    session.post(
+        f"{base}/api/v1/organization/{org_id}/set", timeout=10
+    ).raise_for_status()
     return session
 
 

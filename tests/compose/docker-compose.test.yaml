@@ -10,6 +10,38 @@ services:
       # Workers ask the backend for this, so this is the value that normally
       # takes effect for fan-out.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
+      # Auth0 e2e (cloud image only): point the plugin at the mock sidecar over
+      # the compose network. The backend's /token call sets the id_token issuer,
+      # so ZIPSTACK_ID_DOMAIN just has to match how the backend reaches the mock
+      # (mock-auth0:8080). Defaults are the hermetic CI values, so this overlay
+      # + COMPOSE_PROFILES=auth0 logs in with no extra config. OSS ignores them.
+      - ZIPSTACK_ID_SCHEME=${ZIPSTACK_ID_SCHEME:-http}
+      - ALLOW_INSECURE_ZIPSTACK_ID_SCHEME=${ALLOW_INSECURE_ZIPSTACK_ID_SCHEME:-true}
+      - ZIPSTACK_ID_DOMAIN=${ZIPSTACK_ID_DOMAIN:-mock-auth0:8080}
+      - ZIPSTACK_ID_DEFAULT_DOMAIN=${ZIPSTACK_ID_DEFAULT_DOMAIN:-mock-auth0:8080}
+      - CI_ZIPSTACK_ID_DOMAIN=${CI_ZIPSTACK_ID_DOMAIN:-mock-auth0:8080}
+      - CI_ZIPSTACK_ID_CLIENT_ID=${CI_ZIPSTACK_ID_CLIENT_ID:-ci-client-id-abc123}
+      - CI_ZIPSTACK_ID_CLIENT_SECRET=${CI_ZIPSTACK_ID_CLIENT_SECRET:-ci-client-secret-xyz789}
+      # Mock validates M2M creds too, so the Management-API token client must
+      # be a pair it knows — reuse the CI pair.
+      - TOKEN_CLIENT_ID=${CI_ZIPSTACK_ID_CLIENT_ID:-ci-client-id-abc123}
+      - TOKEN_CLIENT_SECRET=${CI_ZIPSTACK_ID_CLIENT_SECRET:-ci-client-secret-xyz789}
+
+  # Hermetic Auth0 stand-in for cloud e2e login. Off unless COMPOSE_PROFILES
+  # includes `auth0`, so OSS e2e is untouched. HTTP-only by design (TLS is an
+  # external concern in-cluster). Port published so the host test process can
+  # play the browser leg (it rewrites the authorize URL to MOCK_AUTH0_URL).
+  mock-auth0:
+    profiles: [auth0]
+    image: us-central1-docker.pkg.dev/pandoras-tamer/zipstack-id/mock-auth0-http:${MOCK_AUTH0_TAG:-v1.1.1-rc1}
+    ports:
+      - "${MOCK_AUTH0_HOST_PORT:-18080}:8080"
+    environment:
+      - AUTH0_DOMAIN=mock-auth0
+      - AUTH0_CLIENT_ID=${MOCK_AUTH0_CLIENT_ID:-prod-client-unused}
+      - AUTH0_CLIENT_SECRET=${MOCK_AUTH0_CLIENT_SECRET:-prod-secret-unused}
+      - AUTH0_CI_CLIENT_ID=${CI_ZIPSTACK_ID_CLIENT_ID:-ci-client-id-abc123}
+      - AUTH0_CI_CLIENT_SECRET=${CI_ZIPSTACK_ID_CLIENT_SECRET:-ci-client-secret-xyz789}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
