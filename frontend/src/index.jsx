@@ -20,7 +20,7 @@ import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import config from "./config.js";
 import { getDeployment } from "./helpers/PostHogDeployment.js";
-import { SocketProvider } from "./helpers/SocketContext.js";
+import { SocketProvider } from "./helpers/SocketContext.jsx";
 import "./index.css";
 
 // Runtime config (containerized deployments) wins when it carries a

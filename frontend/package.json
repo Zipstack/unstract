@@ -82,7 +82,8 @@
     "check": "biome check src/",
     "check:fix": "biome check --write src/",
     "lint:all": "biome check --write src/",
-    "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\\.jsx\\?$' | sed 's|^frontend/||' | sort -u | xargs -r biome check --write"
+    "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep -E '\\.[jt]sx?$' | sed 's|^frontend/||' | sort -u | xargs -r biome check --write",
+    "typecheck": "tsc --noEmit"
   },
   "browserslist": {
     "production": [
@@ -110,6 +111,7 @@
     "happy-dom": "^20.10.2",
     "jsdom": "^27.0.1",
     "tailwindcss": "^4",
+    "typescript": "^7.0.2",
     "vite": "^7.3.5",
     "vite-plugin-svgr": "^4.5.0",
     "vitest": "^3.2.6"

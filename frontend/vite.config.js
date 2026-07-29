@@ -92,19 +92,35 @@ export default defineConfig(({ mode }) => {
       // cloud-plugin imports are still resolved to stubs first.
       tailwindcss(),
       react({
-        // Include .js files for JSX transformation
-        include: "**/*.{jsx,js}",
+        // Include .js files for JSX transformation, plus the TypeScript
+        // shim layer so it gets Fast Refresh in dev like everything else.
+        include: "**/*.{jsx,js,tsx,ts}",
       }),
       // SVG as React component support (for `import Logo from './logo.svg?react'`)
       svgr(),
     ],
 
-    // ESBuild configuration to handle JSX in .js files
-    esbuild: {
-      loader: "jsx",
-      include: /src\/.*\.jsx?$/,
-      exclude: [],
-    },
+    /*
+     * No `esbuild` override here, deliberately — Vite's defaults
+     * (`include: /\.(m?ts|[jt]sx)$/`, and a loader derived per-file from the
+     * extension) are exactly right once TypeScript is in the tree.
+     *
+     * This block previously read `{ loader: "jsx", include: /src\/.*\.jsx?$/ }`
+     * to cope with the handful of plain-.js files that contain JSX. Both
+     * halves break TypeScript, and each costs a build to diagnose:
+     *
+     *   - `include` REPLACES Vite's default filter rather than extending it,
+     *     so .ts/.tsx were never transformed at all and failed to parse with a
+     *     bare "Expected ';', '}' or <eof>".
+     *   - `loader` reaches esbuild's single-file transform API, where it must
+     *     be a string (the per-extension map form is bundle-API only) and is
+     *     applied to every matched file. One blanket "jsx" hands TypeScript to
+     *     the JSX parser, which misreads the `<` in
+     *     `React.forwardRef<HTMLButtonElement, Props>(…)` as an opening tag.
+     *
+     * JSX-in-.js is instead handled by @vitejs/plugin-react's `include` above,
+     * which runs those files through Babel's JSX transform.
+     */
 
     // Resolve configuration
     resolve: {

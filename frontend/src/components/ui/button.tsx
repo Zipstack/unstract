@@ -1,4 +1,4 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import { Slot } from "radix-ui";
 import * as React from "react";
 
@@ -51,7 +51,20 @@ const buttonVariants = cva(
  * handlers through a ref. Without it those triggers are silently inert —
  * the Prompt Studio Export menu never opened and fired no request at all.
  */
-const Button = React.forwardRef(function Button(
+/*
+ * Typed because the antd-* shims wrap this component: without a props type
+ * here, TypeScript cannot verify that a shim passes a real `variant`/`size`,
+ * and the whole point of typing the shim layer is to make those boundaries
+ * checkable.
+ */
+export interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  /** Render the child element instead of a <button> (Radix `asChild`). */
+  asChild?: boolean;
+}
+
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     className,
     variant = "default",
