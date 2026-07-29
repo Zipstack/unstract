@@ -342,7 +342,6 @@ function ConnectorsPage() {
               iconProp="icon"
               idProp="id"
               dateProp="created_at"
-              ownerEmailProp="owner_email"
               handleEdit={handleEditConnector}
               handleShare={handleShareConnector}
               handleDelete={handleDeleteConnector}

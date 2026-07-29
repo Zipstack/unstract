@@ -446,7 +446,6 @@ function Workflows() {
               descriptionProp="description"
               idProp="id"
               dateProp="created_at"
-              ownerEmailProp="owner_email"
               handleEdit={updateProject}
               handleShare={handleShare}
               handleDelete={deleteProject}

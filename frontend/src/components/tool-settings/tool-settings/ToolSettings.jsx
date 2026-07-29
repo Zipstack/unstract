@@ -405,7 +405,6 @@ function ToolSettings({ type }) {
                 iconProp="icon"
                 idProp="id"
                 dateProp="created_at"
-                ownerEmailProp="owner_email"
                 handleEdit={handleEdit}
                 handleShare={handleShare}
                 handleDelete={handleDelete}

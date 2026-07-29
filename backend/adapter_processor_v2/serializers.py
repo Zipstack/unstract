@@ -215,7 +215,6 @@ class AdapterListSerializer(BaseAdapterSerializer):
         request = self.context.get("request")
         rep["is_owner"] = instance.is_owner(request.user) if request else False
         rep["co_owners_count"] = instance.co_owners_count()
-        rep["owner_email"] = instance.owner_email()
         rep["owner_emails"] = instance.owner_emails()
 
         return rep

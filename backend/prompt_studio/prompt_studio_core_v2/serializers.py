@@ -48,7 +48,6 @@ class CustomToolListSerializer(serializers.ModelSerializer):
     prompt_count = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
     co_owners_count = serializers.SerializerMethodField()
-    owner_email = serializers.SerializerMethodField()
     owner_emails = serializers.SerializerMethodField()
 
     class Meta:
@@ -67,7 +66,6 @@ class CustomToolListSerializer(serializers.ModelSerializer):
             "prompt_count",
             "is_owner",
             "co_owners_count",
-            "owner_email",
             "owner_emails",
         ]
 
@@ -80,9 +78,6 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
     def get_co_owners_count(self, instance) -> int:
         return instance.co_owners_count()
-
-    def get_owner_email(self, instance) -> str | None:
-        return instance.owner_email()
 
     def get_owner_emails(self, instance) -> list[str]:
         return instance.owner_emails()

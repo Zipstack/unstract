@@ -136,7 +136,6 @@ function ResourceTable({
   idProp,
   dateProp = "created_at",
   modifiedProp = "modified_at",
-  ownerEmailProp = "created_by_email",
   ownerEmailsProp = "owner_emails",
   countProp,
   countLabel,
@@ -197,7 +196,9 @@ function ResourceTable({
   };
 
   const renderOwner = (item) => {
-    const email = item?.[ownerEmailProp];
+    // owner_emails is earliest-first; [0] is the primary shown owner.
+    const ownerEmails = item?.[ownerEmailsProp];
+    const email = Array.isArray(ownerEmails) ? ownerEmails[0] : undefined;
     // "Me" must track the DISPLAYED owner, not the viewer's own membership —
     // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
     // the shown email so the creator viewing their own resource still reads "Me".
@@ -209,7 +210,6 @@ function ResourceTable({
     const swatch = colorForSeed(email || name);
     // With co-owners, name only the primary inline (+N); the tooltip lists all
     // owners so search hitting a hidden co-owner is still explainable.
-    const ownerEmails = item?.[ownerEmailsProp];
     const ownerTooltip =
       Array.isArray(ownerEmails) && ownerEmails.length > 1
         ? ownerEmails.join(", ")
@@ -443,7 +443,6 @@ ResourceTable.propTypes = {
   idProp: PropTypes.string.isRequired,
   dateProp: PropTypes.string,
   modifiedProp: PropTypes.string,
-  ownerEmailProp: PropTypes.string,
   ownerEmailsProp: PropTypes.string,
   countProp: PropTypes.string,
   countLabel: PropTypes.string,

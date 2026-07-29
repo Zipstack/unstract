@@ -500,7 +500,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
                 idProp="tool_id"
                 dateProp="created_at"
                 modifiedProp="modified_at"
-                ownerEmailProp="owner_email"
                 countProp="prompt_count"
                 countLabel="Prompts"
                 handleEdit={handleEdit}
