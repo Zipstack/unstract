@@ -87,6 +87,10 @@ class TestSendClubbedFailureRecovery:
         ):
             _send()
         # Permanent error → terminal DEAD_LETTER, no PENDING revert / refund.
+        # The dead-letter update is guarded to only touch rows still SENDING
+        # (same clobber-guard the transient-revert path asserts).
+        fkw = buf.objects.filter.call_args.kwargs
+        assert fkw["status"] == BufferStatus.SENDING.value
         ukw = buf.objects.filter.return_value.update.call_args.kwargs
         assert ukw == {"status": BufferStatus.DEAD_LETTER.value}
 
