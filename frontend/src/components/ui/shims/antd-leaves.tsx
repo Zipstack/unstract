@@ -38,7 +38,107 @@ import { cn } from "@/lib/utils";
  */
 
 /** antd Tag colour token → Badge variant / class. */
-const TAG_VARIANT = {
+/**
+ * The antd surface these leaf shims accept.
+ *
+ * Enumerated by hand rather than inferred, for the reason this whole layer
+ * exists: an unrecognised prop falls into `...props` and disappears without a
+ * warning. Naming each one makes the next omission a compile error at the
+ * call-site.
+ */
+type TagColor =
+  | "success"
+  | "processing"
+  | "error"
+  | "warning"
+  | "default"
+  | "blue"
+  | "green"
+  | "red"
+  | "orange"
+  | "purple"
+  | "cyan"
+  | "magenta"
+  | "gold"
+  | "lime"
+  | "geekblue"
+  | "volcano";
+
+type AlertType = "success" | "info" | "warning" | "error";
+
+interface TagProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** A known token maps to a variant; anything else is used as a raw colour. */
+  color?: TagColor | string;
+  icon?: React.ReactNode;
+  closable?: boolean;
+  onClose?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  bordered?: boolean;
+}
+
+interface SpinProps extends React.HTMLAttributes<HTMLSpanElement> {
+  size?: "small" | "default" | "large";
+  /** Caption rendered beside the spinner. */
+  tip?: React.ReactNode;
+}
+
+interface AlertProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+  message?: React.ReactNode;
+  description?: React.ReactNode;
+  type?: AlertType;
+  showIcon?: boolean;
+  closable?: boolean;
+  onClose?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  /** Full-width banner styling, as antd does. */
+  banner?: boolean;
+  action?: React.ReactNode;
+}
+
+interface ImageProps
+  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+  width?: number | string;
+  height?: number | string;
+  /** antd opens a lightbox; accepted so call-sites keep compiling. */
+  preview?: boolean;
+  /** Shown when the image fails to load. */
+  fallback?: string;
+}
+
+interface DividerProps extends React.HTMLAttributes<HTMLDivElement> {
+  type?: "horizontal" | "vertical";
+}
+
+interface EmptyProps extends React.HTMLAttributes<HTMLDivElement> {
+  description?: React.ReactNode;
+  image?: React.ReactNode;
+}
+
+interface AvatarProps
+  extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
+  /** A token, or an explicit pixel size. */
+  size?: "small" | "default" | "large" | number;
+  shape?: "circle" | "square";
+  src?: string;
+  icon?: React.ReactNode;
+  alt?: string;
+  children?: React.ReactNode;
+}
+
+interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
+  percent?: number;
+  status?: "success" | "exception" | "normal" | "active";
+  showInfo?: boolean;
+}
+
+/*
+ * antd colour token → Badge variant. Typed as the Badge variant union rather
+ * than plain strings, so a token mapped to a variant that does not exist is a
+ * compile error here instead of an unstyled tag in the UI.
+ */
+const TAG_VARIANT: Record<
+  string,
+  React.ComponentProps<typeof Badge>["variant"]
+> = {
   success: "success",
   green: "success",
   warning: "warning",
@@ -52,7 +152,7 @@ const TAG_VARIANT = {
 };
 
 /** antd `<Tag>`. Custom colours (e.g. `rgb(...)`) fall through to inline style. */
-const Tag = React.forwardRef(function Tag(
+const Tag = React.forwardRef<HTMLDivElement, TagProps>(function Tag(
   {
     color,
     icon,
@@ -66,9 +166,12 @@ const Tag = React.forwardRef(function Tag(
   },
   ref,
 ) {
-  const variant = color ? TAG_VARIANT[color] : "secondary";
+  const known = color
+    ? TAG_VARIANT[color as keyof typeof TAG_VARIANT]
+    : undefined;
+  const variant = known ?? "secondary";
   // A raw CSS colour antd would have applied directly.
-  const custom = color && !TAG_VARIANT[color] ? color : undefined;
+  const custom = color && !known ? color : undefined;
 
   return (
     <Badge
@@ -104,7 +207,7 @@ const Tag = React.forwardRef(function Tag(
 });
 
 /** antd `<Spin>`. Only the bare indicator form is used in this codebase. */
-const Spin = React.forwardRef(function Spin(
+const Spin = React.forwardRef<HTMLSpanElement, SpinProps>(function Spin(
   { size, tip, className, ...props },
   ref,
 ) {
@@ -134,7 +237,7 @@ const ALERT_ICON = {
 };
 
 /** antd `<Alert message description type showIcon closable banner />`. */
-const Alert = React.forwardRef(function Alert(
+const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
   {
     message,
     description,
@@ -190,7 +293,7 @@ const Alert = React.forwardRef(function Alert(
 });
 
 /** antd `<Image>`. `preview` is not reimplemented — no call-site enables it. */
-const Image = React.forwardRef(function Image(
+const Image = React.forwardRef<HTMLImageElement, ImageProps>(function Image(
   {
     src,
     alt = "",
@@ -217,7 +320,7 @@ const Image = React.forwardRef(function Image(
 });
 
 /** antd `<Divider type="vertical|horizontal">`. */
-const Divider = React.forwardRef(function Divider(
+const Divider = React.forwardRef<HTMLDivElement, DividerProps>(function Divider(
   { type = "horizontal", className, children, ...props },
   ref,
 ) {
@@ -245,7 +348,7 @@ const Divider = React.forwardRef(function Divider(
 });
 
 /** antd `<Empty description image />`. */
-const Empty = React.forwardRef(function Empty(
+const Empty = React.forwardRef<HTMLDivElement, EmptyProps>(function Empty(
   { description = "No data", image, className, children, ...props },
   ref,
 ) {
@@ -268,7 +371,7 @@ const Empty = React.forwardRef(function Empty(
 const AVATAR_SIZE = { small: "size-6", default: "size-8", large: "size-10" };
 
 /** antd `<Avatar size shape src icon />`. */
-const Avatar = React.forwardRef(function Avatar(
+const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
   {
     size = "default",
     shape,
@@ -302,29 +405,31 @@ const Avatar = React.forwardRef(function Avatar(
 });
 
 /** antd `<Progress percent status />`. */
-const Progress = React.forwardRef(function Progress(
-  { percent = 0, status, showInfo = true, className, ...props },
-  ref,
-) {
-  return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <ShadcnProgress
-        ref={ref}
-        value={percent}
-        className={cn(
-          "flex-1",
-          status === "exception" && "[&>div]:bg-destructive",
-          status === "success" && "[&>div]:bg-success",
-        )}
-        {...props}
-      />
-      {showInfo ? (
-        <span className="text-xs text-muted-foreground">
-          {Math.round(percent)}%
-        </span>
-      ) : null}
-    </div>
-  );
-});
+const Progress = React.forwardRef<HTMLDivElement, ProgressProps>(
+  function Progress(
+    { percent = 0, status, showInfo = true, className, ...props },
+    ref,
+  ) {
+    return (
+      <div className={cn("flex items-center gap-2", className)}>
+        <ShadcnProgress
+          ref={ref}
+          value={percent}
+          className={cn(
+            "flex-1",
+            status === "exception" && "[&>div]:bg-destructive",
+            status === "success" && "[&>div]:bg-success",
+          )}
+          {...props}
+        />
+        {showInfo ? (
+          <span className="text-xs text-muted-foreground">
+            {Math.round(percent)}%
+          </span>
+        ) : null}
+      </div>
+    );
+  },
+);
 
 export { Alert, Avatar, Divider, Empty, Image, Progress, Spin, Tag };

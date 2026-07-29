@@ -30,14 +30,22 @@ const badgeVariants = cva(
   },
 );
 
-function Badge({
-  className,
-  variant,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof badgeVariants>) {
-  return (
-    <div className={cn(badgeVariants({ variant }), className)} {...props} />
-  );
-}
+/*
+ * forwardRef so the ref is part of the declared surface — the antd `Tag` shim
+ * renders Badge with one. As with `Label`, React 19 would carry the ref
+ * through the props spread at runtime either way; declaring it keeps the type
+ * honest about what the component accepts.
+ */
+const Badge = React.forwardRef<
+  HTMLDivElement,
+  React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof badgeVariants>
+>(({ className, variant, ...props }, ref) => (
+  <div
+    ref={ref}
+    className={cn(badgeVariants({ variant }), className)}
+    {...props}
+  />
+));
+Badge.displayName = "Badge";
 
 export { Badge, badgeVariants };
