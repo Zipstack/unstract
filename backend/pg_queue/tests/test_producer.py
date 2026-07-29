@@ -110,12 +110,11 @@ class TestEnqueueTask:
         # NaN would slip past the default lenient encoder and only fail at the
         # jsonb insert (DataError); allow_nan=False surfaces it as a ValueError at
         # the enqueue seam so the notification dispatcher can dead-letter it.
+        nan_kwargs = {"score": float("nan")}
         with patch(_MODEL) as model:
             model.objects.create.return_value = MagicMock(msg_id=1)
             with pytest.raises(ValueError):
-                producer.enqueue_task(
-                    task_name="t", queue="celery", kwargs={"score": float("nan")}
-                )
+                producer.enqueue_task(task_name="t", queue="celery", kwargs=nan_kwargs)
 
     def test_enqueue_failure_logs_and_propagates(self):
         with patch(_MODEL) as model:
