@@ -32,6 +32,11 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-border: var(--border);
+  /* antd draws list/table separators at rgba(5,5,5,.06), which composites to
+   * #f0f0f0 — a hairline four shades lighter than --border. Exposed as its
+   * own token so `divide-separator` can match it without repainting every
+   * card edge and <Separator> in the app. */
+  --color-separator: var(--separator);
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
@@ -133,6 +138,7 @@
   --success: #15803d;
   --warning: #b45309;
   --border: var(--neutral-200);
+  --separator: var(--neutral-150);
   --input: var(--neutral-300);
   --ring: var(--primary);
 
@@ -209,6 +215,8 @@
   --success: #4ade80;
   --warning: #fbbf24;
   --border: rgba(255, 255, 255, 0.1);
+  /* Dark counterpart: lighter than --border for the same hairline effect. */
+  --separator: rgba(255, 255, 255, 0.06);
   --input: #343434;
   --ring: var(--primary);
 
@@ -266,7 +274,6 @@
   }
 }
 
-
 /* ------------------------------------------------------------------
  * Existing Unstract rules — unchanged below this line, except the
  * body font-family fix noted in P0-12.
@@ -281,6 +288,21 @@ body {
   /* P0-12: `!important` dropped and repointed at --font-sans; it otherwise
    * overrode the design token on every element. */
   font-family: var(--font-sans);
+  /*
+   * Base size for text that inherits rather than carrying a size class.
+   *
+   * `--text-sm` alone was not enough: it only reaches elements that use
+   * `text-sm`, so anything relying on inheritance kept the UA default of
+   * 16px. The "Owned By:" label in the project list rendered at 16px next
+   * to 13px siblings for exactly that reason.
+   *
+   * Set on `body`, deliberately NOT on `html` — Tailwind v4 derives spacing,
+   * gaps and control heights from rem, so moving the ROOT size would shrink
+   * the whole UI rather than just the type. Body inheritance carries the
+   * text without touching any of that.
+   */
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;

@@ -381,17 +381,21 @@ describe("antd-compatible structural shims (P4)", () => {
 
   /**
    * `divide-y` sets the border WIDTH only; Tailwind's default border colour is
-   * black. Without `divide-border` every list row gained a solid black rule
-   * where antd drew a near-invisible hairline.
+   * black. Without an explicit divide colour every list row gained a solid
+   * black rule where antd drew a near-invisible hairline.
+   *
+   * The token is `separator` (#f0f0f0), not `border` (#e5e5e5): antd draws
+   * this rule at rgba(5,5,5,.06), and --border is four shades darker, which
+   * reads as a hard rule between rows rather than a hairline.
    */
-  it("List colours its row dividers with the border token", () => {
+  it("List colours its row dividers with the separator token", () => {
     const { container } = render(
       <List
         dataSource={[{ id: 1 }, { id: 2 }]}
         renderItem={(i) => <span>{i.id}</span>}
       />,
     );
-    expect(container.firstChild.className).toContain("divide-border");
+    expect(container.firstChild.className).toContain("divide-separator");
   });
 
   it("List still stacks when no grid prop is given", () => {

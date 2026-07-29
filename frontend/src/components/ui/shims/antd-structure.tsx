@@ -489,7 +489,15 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
         // default border colour is black. antd's list separator is a
         // near-invisible rgba(5,5,5,.06) hairline, so without `divide-border`
         // every row gained a solid black rule between it and the next.
-        isGrid ? "grid" : "divide-y divide-border",
+        /*
+         * `divide-separator` (#f0f0f0), not `divide-border` (#e5e5e5).
+         * antd draws this separator as rgba(5,5,5,.06), which composites to
+         * #f0f0f0 on white — a hairline. --border is four shades darker and
+         * read as a hard rule between rows. Scoped here rather than by
+         * retargeting --border, which also paints card edges and <Separator>
+         * app-wide. The token is declared in index.css for light AND dark.
+         */
+        isGrid ? "grid" : "divide-y divide-separator",
         isGrid && LIST_GRID_COLS[cols as number],
         className,
       )}
@@ -499,7 +507,12 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
       {header ? <div className="py-2 font-medium">{header}</div> : null}
       {dataSource.length ? (
         dataSource.map((item, i) => (
-          <div key={i} className={isGrid ? undefined : "py-2"}>
+          // py-4, not py-2: antd's `.ant-list-item` uses 16px vertical
+          // padding. At 8px the rows read as a cramped table rather than the
+          // reference's list — measured 96px per row against antd's 82px,
+          // because the tighter padding let each row's content set the
+          // height instead of the padding doing it.
+          <div key={i} className={isGrid ? undefined : "py-4"}>
             {renderItem?.(item, i)}
           </div>
         ))

@@ -37,6 +37,25 @@ describe("cascade and affordance guards", () => {
       ).toBeTruthy();
     });
 
+    /*
+     * A Tailwind colour utility only exists if the token is registered in
+     * `@theme inline`. `divide-separator` (the antd-matching list hairline)
+     * would otherwise compile to nothing and the rows would lose their rule
+     * silently — no error, no failing test, just a visual regression.
+     */
+    it("exposes --separator to Tailwind for both themes", () => {
+      expect(
+        css,
+        "--color-separator must be in @theme inline or `divide-separator` does not exist",
+      ).toMatch(
+        /@theme inline\s*\{[\s\S]*?--color-separator:\s*var\(--separator\)/,
+      );
+      // Declared for light...
+      expect(css).toMatch(/:root\s*\{[\s\S]*?--separator:/);
+      // ...and dark, or dark mode falls back to the light hairline.
+      expect(css).toMatch(/\.dark\s*\{[\s\S]*?--separator:/);
+    });
+
     it("form controls ask for --input, not the generic --border", () => {
       // If a text control ever drops to a bare `border`, it renders a
       // different grey from its neighbours — worse than the original bug.
