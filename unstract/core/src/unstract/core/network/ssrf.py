@@ -74,18 +74,18 @@ def _resolve(host: str) -> set[str]:
 
 
 def _is_public(addr: str) -> bool:
+    """Whether an address is globally routable.
+
+    ``is_global`` is an allowlist maintained against the IANA special-purpose
+    registries, so it stays correct as ranges are added. Enumerating the
+    negative flags instead misses ranges that belong to none of them — RFC 6598
+    shared address space (100.64.0.0/10) is private in practice but is not
+    ``is_private``, ``is_reserved`` or any of the rest.
+    """
     try:
-        ip = ipaddress.ip_address(addr)
+        return ipaddress.ip_address(addr).is_global
     except ValueError:
         return False
-    return not (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
 
 
 def is_safe_webhook_url(

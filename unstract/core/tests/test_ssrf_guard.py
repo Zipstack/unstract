@@ -64,6 +64,11 @@ def test_parser_differential_is_refused(url):
         "https://172.16.0.1/hook",
         "https://0.0.0.0/hook",
         "https://internal.corp/hook",
+        # Ranges that belong to no single "is_private"-style flag but are not
+        # globally routable. Enumerating negative flags misses these.
+        "https://100.64.0.1/hook",  # RFC 6598 shared address space (CGNAT)
+        "https://198.18.0.1/hook",  # RFC 2544 benchmarking
+        "https://192.0.0.1/hook",  # IETF protocol assignments
     ],
 )
 def test_internal_targets_are_refused(url):

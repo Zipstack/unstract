@@ -40,13 +40,19 @@ class NotificationSerializer(serializers.ModelSerializer):
         return data
 
     def _validate_url(self, data):
-        """Reject internal webhook targets at creation time.
+        """Reject internal webhook targets when a URL is supplied.
 
         URLField only checks the shape, so an internal address would be stored
         and only refused later at the sink, silently and out of the user's
         sight. Fail here instead; the sink guard stays as the real control.
+
+        Only checks a URL the caller actually sent. Re-resolving the stored one
+        would make an unrelated PATCH fail whenever DNS is briefly unavailable
+        or a legacy record predates this check.
         """
-        url = data.get("url", getattr(self.instance, "url", None))
+        if "url" not in data:
+            return
+        url = data["url"]
         if url and not is_safe_webhook_url(url):
             raise serializers.ValidationError(
                 {"url": "URL must resolve to a public address."}

@@ -361,7 +361,9 @@ class WebhookTestAPIView(APIView):
                 # Status only: the body and headers of whatever was reached
                 # are not the caller's to read.
                 test_result = {
-                    "success": response.status_code < 400,
+                    # 2xx only: redirects are not followed, so a 301/302 means
+                    # the payload never reached the final destination.
+                    "success": 200 <= response.status_code < 300,
                     "status_code": response.status_code,
                     "url": validated_data["url"],
                     "request_headers": headers,

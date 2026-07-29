@@ -43,6 +43,20 @@ class NotificationSerializerUrlTest(SimpleTestCase):
         data = _notification_data("https://example.com/hook")
         assert NotificationSerializer().validate(data) == data
 
+    def test_patch_that_omits_url_is_not_revalidated(self):
+        """A PATCH touching other fields must not re-resolve the stored URL.
+
+        Otherwise a brief DNS failure, or a record predating this check, makes
+        an unrelated edit fail on a field the caller never sent.
+        """
+        # api=None so the api/pipeline check doesn't trip on Mock's truthy
+        # auto-attribute before the URL check is reached.
+        instance = Mock(api=None, url="http://127.0.0.1:8000/legacy")
+        serializer = NotificationSerializer(instance=instance)
+
+        data = {"pipeline": Mock(), "authorization_type": "NONE", "max_retries": 2}
+        assert serializer.validate(data) == data
+
 
 class WebhookTestEndpointTest(SimpleTestCase):
     """This endpoint had no URL check, and returned the response body."""
@@ -76,3 +90,14 @@ class WebhookTestEndpointTest(SimpleTestCase):
         assert "response_headers" not in response.data
         assert response.data["status_code"] == 200
         assert post.call_args.kwargs["allow_redirects"] is False
+
+    def test_redirect_is_not_reported_as_success(self):
+        """Redirects are not followed, so a 3xx means the payload never landed."""
+        with patch("requests.post") as post:
+            post.return_value.status_code = 302
+            post.return_value.headers = {}
+            post.return_value.text = ""
+            response = self._post("https://example.com/hook")
+
+        assert response.data["status_code"] == 302
+        assert response.data["success"] is False
