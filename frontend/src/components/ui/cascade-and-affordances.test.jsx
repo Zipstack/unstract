@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover } from "@/components/ui/shims/antd-overlays";
+import { Popover, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Textarea } from "@/components/ui/textarea";
 
 /**
@@ -176,6 +176,36 @@ describe("cascade and affordance guards", () => {
       expect(screen.queryByText("fly-out")).not.toBeInTheDocument();
       await user.hover(screen.getByRole("button", { name: "Platform" }));
       expect(await screen.findByText("fly-out")).toBeInTheDocument();
+    });
+
+    /*
+     * The sidebar's real shape, and why the first hover fix did not work.
+     *
+     * Every sidebar item wraps its content in a Tooltip, so the Popover's
+     * `asChild` trigger merges the hover handlers onto the TOOLTIP, not a DOM
+     * node. The Tooltip shim then either returned `children` raw (when there
+     * is no title — the expanded sidebar) or spread the props onto the tooltip
+     * BUBBLE, so the handlers never reached the element under the cursor.
+     *
+     * Both variants are asserted because the collapsed sidebar has a title and
+     * the expanded one does not — the earlier flat test passed while the real
+     * nesting stayed broken.
+     */
+    it.each([
+      ["without a tooltip title (expanded sidebar)", ""],
+      ["with a tooltip title (collapsed sidebar)", "Platform"],
+    ])("opens on hover through a nested Tooltip %s", async (_label, title) => {
+      const user = userEvent.setup();
+      render(
+        <Popover trigger="hover" content={<span>sub-menu</span>}>
+          <Tooltip title={title}>
+            <button type="button">Platform</button>
+          </Tooltip>
+        </Popover>,
+      );
+      expect(screen.queryByText("sub-menu")).not.toBeInTheDocument();
+      await user.hover(screen.getByRole("button", { name: "Platform" }));
+      expect(await screen.findByText("sub-menu")).toBeInTheDocument();
     });
 
     it("stays click-only when no trigger is given", async () => {

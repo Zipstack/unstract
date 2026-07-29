@@ -507,14 +507,21 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
       {header ? <div className="py-2 font-medium">{header}</div> : null}
       {dataSource.length ? (
         dataSource.map((item, i) => (
-          // py-4, not py-2: antd's `.ant-list-item` uses 16px vertical
-          // padding. At 8px the rows read as a cramped table rather than the
-          // reference's list — measured 96px per row against antd's 82px,
-          // because the tighter padding let each row's content set the
-          // height instead of the padding doing it.
-          <div key={i} className={isGrid ? undefined : "py-4"}>
-            {renderItem?.(item, i)}
-          </div>
+          /*
+           * NO vertical padding here.
+           *
+           * antd's `.ant-list-item` owns the 16px, and `renderItem` returns
+           * that item — so padding the wrapper too stacks a second 16+16px on
+           * top. An earlier pass set `py-4` here to match antd's 16px and
+           * produced 114px rows against the reference's 82px: the item was
+           * already correct at 82px and the wrapper added the surplus. `py-2`
+           * before it was the same bug, just smaller (96px).
+           *
+           * Call-sites that need padding put it on their own row (ListView
+           * uses `.cur-pointer { padding: 16px 0 }`), which is where antd
+           * puts it too.
+           */
+          <div key={i}>{renderItem?.(item, i)}</div>
         ))
       ) : (
         <div className="ant-list-empty-text py-6 text-center text-muted-foreground">

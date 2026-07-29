@@ -345,12 +345,19 @@ body {
 /* Custom scroll bar css starts */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #e8edf2 transparent;
+  /* Thumb visible against the track. #e8edf2 on a near-white surface was
+   * indistinguishable, which is what made scrollable areas look truncated. */
+  scrollbar-color: var(--neutral-300) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 3px;
-  height: 5px;
+  /*
+   * 8px, matching the reference. At the previous 3px the bar was thin enough
+   * to read as absent — the emoji picker in "Choose icon" scrolls, but nobody
+   * could tell, so the grid looked truncated rather than scrollable.
+   */
+  width: 8px;
+  height: 8px;
 }
 
 /* Track */
@@ -362,12 +369,12 @@ body {
 /* Handle */
 ::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background: #e8edf2;
+  background: var(--neutral-300);
 }
 
 /* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4dce5;
+  background: var(--neutral-400);
 }
 
 /* Corner where both X and Y scroll bar meets */

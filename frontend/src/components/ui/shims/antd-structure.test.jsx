@@ -388,6 +388,26 @@ describe("antd-compatible structural shims (P4)", () => {
    * this rule at rgba(5,5,5,.06), and --border is four shades darker, which
    * reads as a hard rule between rows rather than a hairline.
    */
+  /*
+   * The row wrapper must add NO vertical padding.
+   *
+   * antd puts the 16px on `.ant-list-item`, which is what `renderItem`
+   * returns, so padding the wrapper as well stacks a second 16+16px. That
+   * shipped twice: `py-2` gave 96px rows and the "fix" to `py-4` gave 114px,
+   * both against the reference's 82px — and jsdom reports no geometry, so
+   * only the class list can catch it.
+   */
+  it("List does not pad the row wrapper (renderItem owns its padding)", () => {
+    const { container } = render(
+      <List dataSource={[{ id: 1 }]} renderItem={(i) => <span>{i.id}</span>} />,
+    );
+    const wrapper = container.firstChild.firstChild;
+    expect(
+      wrapper.className,
+      "the wrapper must not add py-*; antd pads .ant-list-item, which renderItem returns",
+    ).not.toMatch(/\bpy-\d/);
+  });
+
   it("List colours its row dividers with the separator token", () => {
     const { container } = render(
       <List

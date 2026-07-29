@@ -356,13 +356,35 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
   { title, placement = "top", children, className, ...props },
   ref,
 ) {
+  /*
+   * Props that must reach the TRIGGER, not the tooltip bubble.
+   *
+   * A Tooltip is routinely the child of another `asChild` primitive — the
+   * sidebar nests it inside a hover Popover — and Radix merges that parent's
+   * props onto this component. Those props are pointer handlers meant for the
+   * element under the cursor. Spreading them onto TooltipContent (as the whole
+   * of `...props` used to be) put them on the bubble, where they never fire,
+   * and the `!title` branch below dropped them entirely by returning children
+   * raw. Either way the sidebar's Platform and HITL fly-outs never opened, with
+   * no error — the same silent prop-drop this layer keeps producing.
+   */
+  const { onMouseEnter, onMouseLeave, onFocus, onBlur, ...contentProps } =
+    props as React.HTMLAttributes<HTMLElement>;
+  const triggerProps = { onMouseEnter, onMouseLeave, onFocus, onBlur };
+
   if (!title) {
-    return children;
+    // No tooltip to show, but the trigger handlers still have to land on the
+    // child rather than being discarded with the wrapper.
+    return React.isValidElement(children)
+      ? React.cloneElement(children, triggerProps)
+      : children;
   }
   return (
     <TooltipProvider>
       <ShadcnTooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipTrigger asChild {...triggerProps}>
+          {children}
+        </TooltipTrigger>
         <TooltipContent
           ref={ref}
           side={
@@ -373,7 +395,7 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
               | "right"
           }
           className={cn("max-w-xs break-words", className)}
-          {...props}
+          {...contentProps}
         >
           {title}
         </TooltipContent>
