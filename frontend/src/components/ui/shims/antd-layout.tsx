@@ -23,10 +23,65 @@ import { cn } from "@/lib/utils";
  * dependent CSS is cleaned up.
  */
 
-/** antd `size` token → px gap. antd accepts a number or a preset. */
-const SIZE_PX = { small: 8, middle: 16, large: 24 };
+/**
+ * The antd layout surface these shims accept.
+ *
+ * Enumerated by hand rather than inferred: the failure mode this whole layer
+ * has is the silent prop-drop, where a call-site passes something the shim
+ * never destructures and `...props` swallows it without a warning. Naming
+ * each prop turns the next one into a compile error at the call-site.
+ */
+type SizeToken = "small" | "middle" | "large";
+type AlignToken = "start" | "end" | "center" | "baseline";
 
-function resolveGap(size) {
+/** antd accepts a token, a raw px number, or a [horizontal, vertical] pair. */
+type SpaceSize = SizeToken | number | Array<SizeToken | number>;
+
+interface SpaceProps extends React.HTMLAttributes<HTMLDivElement> {
+  direction?: "horizontal" | "vertical";
+  size?: SpaceSize;
+  align?: AlignToken;
+  wrap?: boolean;
+  /** Rendered between items, as antd does. */
+  split?: React.ReactNode;
+}
+
+interface RowProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** px, or [horizontal, vertical] px. */
+  gutter?: number | [number, number];
+  justify?: AlignToken | React.CSSProperties["justifyContent"];
+  align?: AlignToken | React.CSSProperties["alignItems"];
+  wrap?: boolean;
+}
+
+interface ColProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** Width in 24ths, antd's grid basis. */
+  span?: number;
+  offset?: number;
+  flex?: React.CSSProperties["flex"];
+  /**
+   * Internal: Row clones its children to pass its gutter down for padding.
+   * Not part of antd's API and not meant for call-sites.
+   */
+  __gutter?: number;
+}
+
+interface FlexProps extends React.HTMLAttributes<HTMLDivElement> {
+  vertical?: boolean;
+  justify?: AlignToken | React.CSSProperties["justifyContent"];
+  align?: AlignToken | React.CSSProperties["alignItems"];
+  gap?: SizeToken | number;
+  wrap?: boolean;
+}
+
+/** antd `size` token → px gap. antd accepts a number or a preset. */
+const SIZE_PX: Record<SizeToken, number> = {
+  small: 8,
+  middle: 16,
+  large: 24,
+};
+
+function resolveGap(size?: SpaceSize): number | number[] {
   if (size == null) {
     return SIZE_PX.small;
   }
@@ -39,7 +94,21 @@ function resolveGap(size) {
   return SIZE_PX[size] ?? SIZE_PX.small;
 }
 
-const ALIGN = {
+/**
+ * antd tokens differ from the CSS keywords: antd says `start`, flexbox wants
+ * `flex-start`. Call-sites pass either, so translate what we recognise and
+ * hand anything else to CSS untouched.
+ */
+function toCssAlign<T extends string | undefined>(
+  value: T,
+): string | undefined {
+  if (value == null) {
+    return undefined;
+  }
+  return ALIGN[value as AlignToken] ?? value;
+}
+
+const ALIGN: Record<AlignToken, string> = {
   start: "flex-start",
   end: "flex-end",
   center: "center",
@@ -50,7 +119,7 @@ const ALIGN = {
  * antd `<Space>`. Keeps the `.ant-space` / `.ant-space-item` structure so the
  * existing CSS that targets it keeps working.
  */
-const Space = React.forwardRef(function Space(
+const Space = React.forwardRef<HTMLDivElement, SpaceProps>(function Space(
   {
     direction = "horizontal",
     size,
@@ -65,9 +134,9 @@ const Space = React.forwardRef(function Space(
   ref,
 ) {
   const gap = resolveGap(size);
-  const items = React.Children.toArray(children).filter(
-    (c) => c !== null && c !== undefined && c !== false && c !== "",
-  );
+  // toArray already discards null, undefined and booleans, so the empty
+  // string is the only falsy child left worth dropping.
+  const items = React.Children.toArray(children).filter((c) => c !== "");
 
   return (
     <div
@@ -108,7 +177,7 @@ const Space = React.forwardRef(function Space(
 });
 
 /** antd `<Row>`. antd's 24-column grid, with the `.ant-row` hook preserved. */
-const Row = React.forwardRef(function Row(
+const Row = React.forwardRef<HTMLDivElement, RowProps>(function Row(
   { gutter, justify, align, wrap = true, className, style, children, ...props },
   ref,
 ) {
@@ -122,15 +191,15 @@ const Row = React.forwardRef(function Row(
         marginLeft: hGutter ? -hGutter / 2 : undefined,
         marginRight: hGutter ? -hGutter / 2 : undefined,
         rowGap: vGutter || undefined,
-        justifyContent: justify && (ALIGN[justify] ?? justify),
-        alignItems: align && (ALIGN[align] ?? align),
+        justifyContent: toCssAlign(justify),
+        alignItems: toCssAlign(align),
         ...style,
       }}
       data-gutter={hGutter || undefined}
       {...props}
     >
       {React.Children.map(children, (child) =>
-        React.isValidElement(child) && hGutter
+        React.isValidElement<ColProps>(child) && hGutter
           ? React.cloneElement(child, { __gutter: hGutter })
           : child,
       )}
@@ -139,7 +208,7 @@ const Row = React.forwardRef(function Row(
 });
 
 /** antd `<Col span={1..24}>`, sharing antd's 24-column basis. */
-const Col = React.forwardRef(function Col(
+const Col = React.forwardRef<HTMLDivElement, ColProps>(function Col(
   { span, offset, flex, __gutter, className, style, children, ...props },
   ref,
 ) {
@@ -167,7 +236,7 @@ const Col = React.forwardRef(function Col(
  * divs, no CSS in this repo targeting `.ant-flex` — but it lives here so the
  * four layout components are imported from one place.
  */
-const Flex = React.forwardRef(function Flex(
+const Flex = React.forwardRef<HTMLDivElement, FlexProps>(function Flex(
   { vertical, justify, align, gap, wrap, className, style, children, ...props },
   ref,
 ) {
@@ -181,9 +250,14 @@ const Flex = React.forwardRef(function Flex(
         className,
       )}
       style={{
-        justifyContent: justify && (ALIGN[justify] ?? justify),
-        alignItems: align && (ALIGN[align] ?? align),
-        gap: typeof gap === "number" ? `${gap}px` : (SIZE_PX[gap] ?? gap),
+        justifyContent: toCssAlign(justify),
+        alignItems: toCssAlign(align),
+        gap:
+          typeof gap === "number"
+            ? `${gap}px`
+            : gap != null
+              ? `${SIZE_PX[gap] ?? gap}px`
+              : undefined,
         ...style,
       }}
       {...props}
