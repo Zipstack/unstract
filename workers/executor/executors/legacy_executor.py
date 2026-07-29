@@ -2332,7 +2332,9 @@ class LegacyExecutor(BaseExecutor):
                     platform_api_key=params.get(PSKeys.PLATFORM_SERVICE_API_KEY, ""),
                     component=self._log_component,
                 ),
-                execution_id=str(params.get(PSKeys.EXECUTION_ID, "")),
+                scope_id=str(
+                    params.get(PSKeys.EXECUTION_ID) or params.get(PSKeys.RUN_ID) or ""
+                ),
             )
 
         try:

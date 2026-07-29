@@ -16,6 +16,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     LoadedPageImage,
     PageCapExceededError,
     PageImageSetIncompleteError,
+    PageImageSetTooLargeError,
     PageImagesNotFoundError,
     build_vision_message_content,
     discover_page_images,
@@ -247,3 +248,31 @@ class TestStaleListingAndToctou:
         # The in-memory double has no .fs attribute — must not error.
         fs = _store({1: b"a"})
         assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
+
+
+class TestByteBudget:
+    """The page cap bounds count; the byte budget bounds payload size."""
+
+    def test_over_budget_raises_typed_error(self) -> None:
+        fs = _store({1: b"a" * 30, 2: b"b" * 30, 3: b"c" * 30})
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        err = excinfo.value
+        assert err.total_bytes == 60  # stopped at page 2, not after all reads
+        assert err.max_total_bytes == 50
+        assert "pages to extract" in str(err)
+
+    def test_within_budget_loads(self) -> None:
+        fs = _store({1: b"a" * 10, 2: b"b" * 10})
+        assert len(load_page_images(fs, _DIR, max_total_bytes=25)) == 2
+
+    def test_none_disables_budget(self) -> None:
+        fs = _store({1: b"a" * 100})
+        assert len(load_page_images(fs, _DIR, max_total_bytes=None)) == 1
+
+    def test_default_budget_is_generous(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            DEFAULT_MAX_TOTAL_BYTES,
+        )
+
+        assert DEFAULT_MAX_TOTAL_BYTES == 50 * 1024 * 1024

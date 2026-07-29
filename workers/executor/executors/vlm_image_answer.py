@@ -37,6 +37,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageCapExceededError,
     PageImageLoadError,
     PageImageSetIncompleteError,
+    PageImageSetTooLargeError,
     PageImagesNotFoundError,
 )
 from unstract.sdk1.platform import PlatformHelper
@@ -50,28 +51,34 @@ PLUGIN_NAME = "vlm-image-answer"
 IMAGE_OUTPUT_REQUIRES_CLOUD = "IMAGE_OUTPUT_REQUIRES_CLOUD"
 IMAGE_OUTPUT_MISSING = "IMAGE_OUTPUT_MISSING"
 IMAGE_PAGE_CAP_EXCEEDED = "IMAGE_PAGE_CAP_EXCEEDED"
+IMAGE_PAGES_TOO_LARGE = "IMAGE_PAGES_TOO_LARGE"
 IMAGE_OUTPUT_UNSUPPORTED_OPERATION = "IMAGE_OUTPUT_UNSUPPORTED_OPERATION"
 VISION_LLM_REQUIRED = "VISION_LLM_REQUIRED"
 
 _LLMWHISPERER_ADAPTER_PREFIX = "llmwhisperer|"
 
-# (execution_id, adapter_instance_id) -> resolved config dict | None.
-# Execution-scoped so adapter edits are picked up by the next run; bounded
-# so a long-lived worker never grows it unchecked.
+# (scope_id, adapter_instance_id) -> resolved config dict | None, where
+# scope_id is the execution id or (for IDE runs, which carry no execution
+# id) the run id. Run-scoped on purpose: the cache exists to deduplicate
+# the N per-prompt resolutions within ONE run — never to cache across
+# runs, where it would pin a stale output mode after an adapter edit.
+# Bounded so a long-lived worker never grows it unchecked.
 _MODE_CACHE: OrderedDict[tuple[str, str], dict[str, Any] | None] = OrderedDict()
 _MODE_CACHE_MAX = 256
 
 
 def _resolve_image_mode_config(
-    shim: Any, adapter_instance_id: str, execution_id: str
+    shim: Any, adapter_instance_id: str, scope_id: str
 ) -> dict[str, Any] | None:
     """Return the x2text adapter config when it is in image mode, else None.
 
     Resolution goes through the platform service (the payload has no
-    adapter metadata); results are cached per (execution, adapter).
+    adapter metadata); results are cached per (scope, adapter). With no
+    scope id at all, caching is skipped entirely — a shared ("", adapter)
+    entry would serve a stale mode to every later run on this worker.
     """
-    cache_key = (execution_id, adapter_instance_id)
-    if cache_key in _MODE_CACHE:
+    cache_key = (scope_id, adapter_instance_id)
+    if scope_id and cache_key in _MODE_CACHE:
         _MODE_CACHE.move_to_end(cache_key)
         return _MODE_CACHE[cache_key]
 
@@ -84,9 +91,10 @@ def _resolve_image_mode_config(
     )
 
     result = config if is_image_mode else None
-    _MODE_CACHE[cache_key] = result
-    while len(_MODE_CACHE) > _MODE_CACHE_MAX:
-        _MODE_CACHE.popitem(last=False)
+    if scope_id:
+        _MODE_CACHE[cache_key] = result
+        while len(_MODE_CACHE) > _MODE_CACHE_MAX:
+            _MODE_CACHE.popitem(last=False)
     return result
 
 
@@ -119,8 +127,10 @@ def run_vlm_image_answer(
         return None
 
     usage_kwargs = usage_kwargs or {}
-    execution_id = str(usage_kwargs.get("execution_id", ""))
-    x2text_config = _resolve_image_mode_config(shim, adapter_instance_id, execution_id)
+    # IDE payloads carry no execution_id — fall back to the run id so the
+    # cache stays scoped to one run (see _MODE_CACHE).
+    scope_id = str(usage_kwargs.get("execution_id") or usage_kwargs.get("run_id") or "")
+    x2text_config = _resolve_image_mode_config(shim, adapter_instance_id, scope_id)
     if x2text_config is None:
         return None
 
@@ -154,6 +164,8 @@ def run_vlm_image_answer(
         raise VlmImageAnswerError(str(e), error_code=IMAGE_OUTPUT_MISSING) from e
     except PageCapExceededError as e:
         raise VlmImageAnswerError(str(e), error_code=IMAGE_PAGE_CAP_EXCEEDED) from e
+    except PageImageSetTooLargeError as e:
+        raise VlmImageAnswerError(str(e), error_code=IMAGE_PAGES_TOO_LARGE) from e
     except PageImageLoadError as e:
         raise VlmImageAnswerError(str(e), error_code=IMAGE_OUTPUT_MISSING) from e
     except VlmImageAnswerError:
@@ -181,7 +193,7 @@ def raise_if_image_mode_unsupported(
     operation: str,
     adapter_instance_id: str | None,
     shim: Any,
-    execution_id: str = "",
+    scope_id: str = "",
 ) -> None:
     """Guard operations that cannot run against image-mode documents.
 
@@ -191,7 +203,7 @@ def raise_if_image_mode_unsupported(
     """
     if not adapter_instance_id:
         return
-    config = _resolve_image_mode_config(shim, str(adapter_instance_id), execution_id)
+    config = _resolve_image_mode_config(shim, str(adapter_instance_id), scope_id)
     if config is not None:
         raise VlmImageAnswerError(
             f"{operation} is not supported in image output mode. Run "

@@ -38,6 +38,13 @@ logger = logging.getLogger(__name__)
 # (platform-configured), this is only the fallback.
 DEFAULT_PAGE_CAP = 20
 
+# Aggregate raw-byte budget across all loaded pages. The page cap bounds the
+# COUNT of images, not their size — without a byte budget, unusually large
+# renders would grow worker memory and the provider request unbounded
+# (base64 adds ~33% on top). 50MB raw comfortably exceeds any normal
+# LLMWhisperer render while staying inside provider request limits.
+DEFAULT_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
 
 
@@ -88,6 +95,23 @@ class PageCapExceededError(PageImageLoadError):
         super().__init__(message, page_store_dir=page_store_dir)
         self.page_count = page_count
         self.page_cap = page_cap
+
+
+class PageImageSetTooLargeError(PageImageLoadError):
+    """The combined size of the page images exceeds the byte budget."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        page_store_dir: str,
+        total_bytes: int,
+        max_total_bytes: int,
+    ) -> None:
+        """Record the observed total and the budget that was exceeded."""
+        super().__init__(message, page_store_dir=page_store_dir)
+        self.total_bytes = total_bytes
+        self.max_total_bytes = max_total_bytes
 
 
 @dataclass(frozen=True)
@@ -183,15 +207,22 @@ def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int
 
 
 def load_page_images(
-    fs: FileStorage, page_store_dir: str, *, page_cap: int | None = DEFAULT_PAGE_CAP
+    fs: FileStorage,
+    page_store_dir: str,
+    *,
+    page_cap: int | None = DEFAULT_PAGE_CAP,
+    max_total_bytes: int | None = DEFAULT_MAX_TOTAL_BYTES,
 ) -> list[LoadedPageImage]:
     """Discover, cap-check, read, and base64-encode all page images.
 
-    The cap check runs before any bytes are read so an oversized document
-    fails fast and cheap. ``page_cap=None`` disables the cap.
+    The page-count cap runs before any bytes are read so an oversized
+    document fails fast and cheap; the aggregate byte budget is enforced
+    while reading so an unusually large render cannot grow memory or the
+    provider request unbounded. ``None`` disables either limit.
 
     Raises:
         PageCapExceededError: more pages than ``page_cap`` allows.
+        PageImageSetTooLargeError: pages total more than ``max_total_bytes``.
         (plus the discovery errors from ``discover_page_images``)
     """
     discovered = discover_page_images(fs, page_store_dir)
@@ -206,6 +237,7 @@ def load_page_images(
             page_cap=page_cap,
         )
     loaded = []
+    total_bytes = 0
     for page_number, path in discovered:
         try:
             data = fs.read(path=path, mode="rb")
@@ -222,6 +254,20 @@ def load_page_images(
                 found_pages=[n for n, _ in discovered if n != page_number],
                 missing_pages=[page_number],
             ) from e
+        total_bytes += len(data)
+        if max_total_bytes is not None and total_bytes > max_total_bytes:
+            # Stop before encoding/retaining more — the page cap bounds the
+            # count, this bounds the payload.
+            raise PageImageSetTooLargeError(
+                f"Page images total more than "
+                f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
+                f"of {len(discovered)} — too large to send to the LLM in "
+                "one request. Reduce the page range (e.g. via the adapter's "
+                "'pages to extract' setting).",
+                page_store_dir=page_store_dir,
+                total_bytes=total_bytes,
+                max_total_bytes=max_total_bytes,
+            )
         encoded = base64.b64encode(bytes(data)).decode("ascii")
         loaded.append(
             LoadedPageImage(page_number=page_number, path=path, base64_data=encoded)

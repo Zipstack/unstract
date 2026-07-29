@@ -22,12 +22,14 @@ from executor.executors.vlm_image_answer import (  # noqa: E402
     IMAGE_OUTPUT_REQUIRES_CLOUD,
     IMAGE_OUTPUT_UNSUPPORTED_OPERATION,
     IMAGE_PAGE_CAP_EXCEEDED,
+    IMAGE_PAGES_TOO_LARGE,
     raise_if_image_mode_unsupported,
     run_vlm_image_answer,
 )
 
 from unstract.sdk1.adapters.x2text.page_image_loader import (  # noqa: E402
     PageCapExceededError,
+    PageImageSetTooLargeError,
     PageImagesNotFoundError,
 )
 
@@ -138,6 +140,75 @@ class TestDetection:
                 )
         assert resolve.call_count == 1
 
+    def test_run_id_scopes_cache_when_execution_id_missing(self):
+        # IDE payloads carry no execution_id: two RUNS on the same adapter
+        # must each resolve fresh (an adapter edit between runs takes
+        # effect), while prompts within one run share the cached result.
+        plugin = MagicMock()
+        plugin.run_with_metrics.return_value = {"answer": "a"}
+        with (
+            patch(
+                "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+                return_value=_IMAGE_CONFIG,
+            ) as resolve,
+            patch(
+                "executor.executors.vlm_image_answer.ExecutorPluginLoader.get",
+                return_value=plugin,
+            ),
+            patch(
+                "executor.executors.vlm_image_answer.FileUtils.get_fs_instance",
+                return_value=MagicMock(),
+            ),
+        ):
+            common = {
+                "shim": MagicMock(),
+                "llm": MagicMock(),
+                "file_path": "/data/extract/doc.txt",
+                "execution_source": "ide",
+                "metadata": {"context": {}},
+                "metrics": {},
+            }
+            for run in ("run-1", "run-2"):
+                for _ in range(2):  # two prompts per run
+                    run_vlm_image_answer(
+                        output={"x2text_adapter": "uuid-1", "name": "p"},
+                        usage_kwargs={"run_id": run},
+                        **common,
+                    )
+        assert resolve.call_count == 2  # once per run, not once total
+
+    def test_no_scope_id_never_caches(self):
+        # With neither execution_id nor run_id, a shared ("", adapter)
+        # entry would pin a stale mode forever — caching must be skipped.
+        plugin = MagicMock()
+        plugin.run_with_metrics.return_value = {"answer": "a"}
+        with (
+            patch(
+                "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+                return_value=_IMAGE_CONFIG,
+            ) as resolve,
+            patch(
+                "executor.executors.vlm_image_answer.ExecutorPluginLoader.get",
+                return_value=plugin,
+            ),
+            patch(
+                "executor.executors.vlm_image_answer.FileUtils.get_fs_instance",
+                return_value=MagicMock(),
+            ),
+        ):
+            for _ in range(3):
+                run_vlm_image_answer(
+                    output={"x2text_adapter": "uuid-1", "name": "p"},
+                    shim=MagicMock(),
+                    llm=MagicMock(),
+                    file_path="/data/extract/doc.txt",
+                    execution_source="ide",
+                    metadata={"context": {}},
+                    metrics={},
+                    usage_kwargs={},
+                )
+        assert resolve.call_count == 3
+
 
 class TestPluginAbsent:
     def test_raises_structured_error_never_falls_through(self):
@@ -180,6 +251,18 @@ class TestPluginDispatch:
             _call(plugin=plugin)
         assert excinfo.value.error_code == IMAGE_PAGE_CAP_EXCEEDED
 
+    def test_too_large_error_maps_to_pages_too_large_code(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = PageImageSetTooLargeError(
+            "too many bytes",
+            page_store_dir="/d/pages",
+            total_bytes=99,
+            max_total_bytes=10,
+        )
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _call(plugin=plugin)
+        assert excinfo.value.error_code == IMAGE_PAGES_TOO_LARGE
+
     def test_plugin_error_code_attribute_is_wrapped(self):
         class VisionError(Exception):
             error_code = "VISION_LLM_REQUIRED"
@@ -209,7 +292,7 @@ class TestUnsupportedOperationGuard:
                     operation="Single-pass extraction",
                     adapter_instance_id="uuid-1",
                     shim=MagicMock(),
-                    execution_id="e1",
+                    scope_id="e1",
                 )
         assert excinfo.value.error_code == IMAGE_OUTPUT_UNSUPPORTED_OPERATION
 
@@ -222,7 +305,7 @@ class TestUnsupportedOperationGuard:
                 operation="Single-pass extraction",
                 adapter_instance_id="uuid-1",
                 shim=MagicMock(),
-                execution_id="e1",
+                scope_id="e1",
             )  # no raise
 
     def test_no_adapter_id_passes(self):
