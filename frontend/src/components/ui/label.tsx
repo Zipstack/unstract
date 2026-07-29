@@ -3,7 +3,10 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-function Label({ className, ...props }) {
+function Label({
+  className,
+  ...props
+}: React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>) {
   return (
     <LabelPrimitive.Root
       data-slot="label"

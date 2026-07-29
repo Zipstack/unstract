@@ -13,7 +13,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/shims/antd-button";
 import {
   Collapsible,
   CollapsibleContent,
@@ -39,6 +38,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import { Button } from "@/components/ui/shims/antd-button";
 import {
   Tooltip as ShadcnTooltip,
   TooltipContent,
@@ -141,7 +141,11 @@ const Modal = React.forwardRef(function Modal(
          */
         style={
           width != null
-            ? { width, maxWidth: `min(${typeof width === "number" ? `${width}px` : width}, calc(100vw - 2rem))`, ...style }
+            ? {
+                width,
+                maxWidth: `min(${typeof width === "number" ? `${width}px` : width}, calc(100vw - 2rem))`,
+                ...style,
+              }
             : style
         }
         onPointerDownOutside={(e) => {

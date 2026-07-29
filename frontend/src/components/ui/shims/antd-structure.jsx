@@ -1,7 +1,6 @@
 import { CircleCheck, CircleX, Upload as UploadIcon } from "lucide-react";
 import * as React from "react";
 import { DataTable } from "@/components/data-table/DataTable";
-import { Button } from "@/components/ui/shims/antd-button";
 import {
   CardContent,
   CardHeader,
@@ -14,6 +13,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Skeleton as ShadcnSkeleton } from "@/components/ui/skeleton";
 import {
   Tabs as ShadcnTabs,

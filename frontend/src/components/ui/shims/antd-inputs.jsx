@@ -49,7 +49,13 @@ import { cn } from "@/lib/utils";
  * length is read from `value`/`defaultValue` and kept in sync on change
  * rather than assuming a controlled parent.
  */
-function useCountLabel({ showCount, maxLength, value, defaultValue, onChange }) {
+function useCountLabel({
+  showCount,
+  maxLength,
+  value,
+  defaultValue,
+  onChange,
+}) {
   const [len, setLen] = React.useState(
     String(value ?? defaultValue ?? "").length,
   );
@@ -120,7 +126,9 @@ const Input = React.forwardRef(function Input(
     ) : (
       <div className="relative flex items-center">
         {prefix ? (
-          <span className="absolute left-2 text-muted-foreground">{prefix}</span>
+          <span className="absolute left-2 text-muted-foreground">
+            {prefix}
+          </span>
         ) : null}
         {control}
         {suffix ? (

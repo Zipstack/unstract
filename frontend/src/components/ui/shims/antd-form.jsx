@@ -335,7 +335,8 @@ function FormItem({
 
         // antd shows `help` in place of the rule message when it is set, and
         // `validateStatus` decides whether the control reads as errored.
-        const hasError = validateStatus === "error" || Boolean(fieldState.error);
+        const hasError =
+          validateStatus === "error" || Boolean(fieldState.error);
         const message = help ?? fieldState.error?.message;
 
         return (
