@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Modal } from "@/components/ui/antd-overlays";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { useSessionStore } from "../../store/session-store";
 import "./PromptStudioModal.css";

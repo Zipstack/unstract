@@ -2,11 +2,11 @@ import { CircleHelp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Form } from "@/components/ui/antd-form";
-import { Input } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
-import { Modal } from "@/components/ui/antd-overlays";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
 import { workflowService } from "../../components/workflows/workflow/workflow-service";

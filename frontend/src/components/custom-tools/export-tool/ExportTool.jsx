@@ -1,11 +1,11 @@
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Radio, Select } from "@/components/ui/antd-inputs";
-import { Avatar } from "@/components/ui/antd-leaves";
-import { Modal, Popconfirm } from "@/components/ui/antd-overlays";
-import { List } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Radio, Select } from "@/components/ui/shims/antd-inputs";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./ExportTool.css";
 
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";

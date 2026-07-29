@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import dayjs from "dayjs";
 import { describe, expect, it, vi } from "vitest";
-import { RangePicker } from "@/components/ui/antd-datetime";
+import { RangePicker } from "@/components/ui/shims/antd-datetime";
 
 // End-to-end through the EXACT props MetricsDashboard passes.
 describe("MetricsDashboard integration shape", () => {

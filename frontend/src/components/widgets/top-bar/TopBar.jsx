@@ -1,9 +1,9 @@
 import debounce from "lodash/debounce";
 import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
-import { Input } from "@/components/ui/antd-inputs";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Typography } from "@/components/ui/antd-typography";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./TopBar.css";
 import { useNavigate } from "react-router-dom";
 

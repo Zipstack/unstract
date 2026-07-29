@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Image } from "@/components/ui/antd-leaves";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Typography } from "@/components/ui/antd-typography";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";

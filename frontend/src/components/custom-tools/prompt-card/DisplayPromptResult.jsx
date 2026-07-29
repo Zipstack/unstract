@@ -1,9 +1,9 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Space } from "@/components/ui/antd-layout";
-import { Spin } from "@/components/ui/antd-leaves";
-import { Typography } from "@/components/ui/antd-typography";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Spin } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import {
   displayPromptResult,

@@ -1,8 +1,8 @@
 import { Minus, Pencil } from "lucide-react";
 import { useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Input } from "@/components/ui/antd-inputs";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";

@@ -2,10 +2,10 @@ import { debounce } from "lodash";
 import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Input } from "@/components/ui/antd-inputs";
-import { Segmented } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Segmented } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./ToolNavBar.css";
 

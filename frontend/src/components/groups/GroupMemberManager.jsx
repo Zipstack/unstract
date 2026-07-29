@@ -1,10 +1,10 @@
 import { CircleHelp, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Select } from "@/components/ui/antd-inputs";
-import { Avatar } from "@/components/ui/antd-leaves";
-import { Modal, Popconfirm } from "@/components/ui/antd-overlays";
-import { List } from "@/components/ui/antd-structure";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";

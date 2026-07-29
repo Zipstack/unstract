@@ -1,8 +1,8 @@
 import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Space } from "@/components/ui/antd-layout";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { EmptyPlaceholder } from "../../../assets";
 

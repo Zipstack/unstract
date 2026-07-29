@@ -6,7 +6,7 @@ import {
   Text,
   Title,
   Typography,
-} from "@/components/ui/antd-typography";
+} from "@/components/ui/shims/antd-typography";
 
 describe("Typography shim (P1-03)", () => {
   it("renders Text as a span with the content", () => {

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Typography } from "@/components/ui/antd-typography";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";

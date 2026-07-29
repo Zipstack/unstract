@@ -5,8 +5,8 @@ import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import { FileWarning, RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Result } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Result } from "@/components/ui/shims/antd-structure";
 
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";

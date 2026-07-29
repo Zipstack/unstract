@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
-import { Space } from "@/components/ui/antd-layout";
-import { Modal } from "@/components/ui/antd-overlays";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 function ConfirmModal({
   children,

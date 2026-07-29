@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
-import { Form } from "@/components/ui/antd-form";
-import { Select } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
-import { Typography } from "@/components/ui/antd-typography";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 

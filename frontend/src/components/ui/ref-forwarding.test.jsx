@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Dropdown } from "@/components/ui/antd-overlays";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
 import { Button } from "@/components/ui/button";
 import { CustomButton } from "@/components/widgets/custom-button/CustomButton";
 

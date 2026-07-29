@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import cronstrue from "cronstrue";
 import { describe, expect, it, vi } from "vitest";
 
-import { Modal } from "@/components/ui/antd-overlays";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 import CronGenerator from "./CronGenerator";
 
 /**

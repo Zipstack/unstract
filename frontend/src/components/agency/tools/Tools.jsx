@@ -1,7 +1,7 @@
 import debounce from "lodash/debounce";
 import { Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Input } from "@/components/ui/antd-inputs";
+import { Input } from "@/components/ui/shims/antd-inputs";
 import "./Tools.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

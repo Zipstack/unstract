@@ -1,6 +1,6 @@
 import { Plus } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/components/ui/antd-button";
+import { Button } from "@/components/ui/shims/antd-button";
 
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { groupsService } from "../components/groups/groups-service.js";

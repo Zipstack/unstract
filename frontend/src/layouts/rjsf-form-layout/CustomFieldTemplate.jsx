@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Alert } from "@/components/ui/antd-leaves";
+import { Alert } from "@/components/ui/shims/antd-leaves";
 import "./CustomFieldTemplate.css";
 
 const CustomFieldTemplate = (props) => {

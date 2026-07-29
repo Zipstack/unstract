@@ -1,8 +1,8 @@
 import { Check } from "lucide-react";
 import PropTypes from "prop-types";
-import { Flex } from "@/components/ui/antd-layout";
-import { Image } from "@/components/ui/antd-leaves";
-import { Typography } from "@/components/ui/antd-typography";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard";
 import "./WorkflowCard.css";

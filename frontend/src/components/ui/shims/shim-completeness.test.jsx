@@ -1,18 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DatePicker } from "@/components/ui/antd-datetime";
-import { Form } from "@/components/ui/antd-form";
-import { Input, Radio, Select } from "@/components/ui/antd-inputs";
-import { Collapse, Dropdown, Modal } from "@/components/ui/antd-overlays";
+import { DatePicker } from "@/components/ui/shims/antd-datetime";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Radio, Select } from "@/components/ui/shims/antd-inputs";
+import { Collapse, Dropdown, Modal } from "@/components/ui/shims/antd-overlays";
 import {
   Card,
   Layout,
   List,
   Table,
   Tabs,
-} from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+} from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 /**
  * Guard against the failure mode that took down Prompt Studio in the dev
@@ -44,7 +44,24 @@ const SHIMS = {
 
 /** Every `<Foo.Bar …>` in the app source, excluding the shims themselves. */
 function collectSubComponentUsages() {
-  const root = path.resolve(import.meta.dirname, "../..");
+  // ../../.. — this file lives in src/components/ui/shims/, so three levels
+  // up is `src/`. It was "../.." before the shims moved into their own
+  // directory; left unchanged it would have silently scanned only
+  // src/components/ and quietly reduced this guard's coverage.
+  const root = path.resolve(import.meta.dirname, "../../..");
+  /*
+   * Assert the scan root, because getting it wrong does NOT fail this test —
+   * it silently scans a smaller tree and finds nothing to complain about. The
+   * shims move from `ui/` to `ui/shims/` changed the required depth from
+   * "../.." to "../../..", and every assertion below still passed with the
+   * stale value while covering only part of the app.
+   */
+  if (path.basename(root) !== "src") {
+    throw new Error(
+      `shim-completeness scan root must be src/, got ${root}. ` +
+        "Fix the relative depth rather than the assertion.",
+    );
+  }
   const found = new Set();
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -59,7 +76,8 @@ function collectSubComponentUsages() {
       if (!entry.name.endsWith(".jsx") || entry.name.includes(".test.")) {
         continue;
       }
-      if (full.includes(`${path.sep}ui${path.sep}antd-`)) {
+      // The shims themselves are the definition, not a call-site.
+      if (full.includes(`${path.sep}shims${path.sep}antd-`)) {
         continue;
       }
       // Strip comments first: a doc comment mentioning `Modal.confirm` is not

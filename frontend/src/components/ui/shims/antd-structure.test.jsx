@@ -16,7 +16,7 @@ import {
   Tabs,
   Transfer,
   Upload,
-} from "@/components/ui/antd-structure";
+} from "@/components/ui/shims/antd-structure";
 
 describe("antd-compatible structural shims (P4)", () => {
   it("Card renders title and body", () => {

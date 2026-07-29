@@ -1,9 +1,9 @@
 import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Upload } from "@/components/ui/antd-structure";
-import { Text } from "@/components/ui/antd-typography";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Upload } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 import { message } from "@/hooks/useAppToast";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";

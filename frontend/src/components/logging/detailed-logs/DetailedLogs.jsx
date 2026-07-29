@@ -13,12 +13,12 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Checkbox, Input } from "@/components/ui/antd-inputs";
-import { Flex } from "@/components/ui/antd-layout";
-import { Dropdown, Tooltip } from "@/components/ui/antd-overlays";
-import { Card, Table } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Checkbox, Input } from "@/components/ui/shims/antd-inputs";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Dropdown, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card, Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";

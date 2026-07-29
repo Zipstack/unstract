@@ -7,7 +7,7 @@ import {
   DatePicker,
   RangePicker,
   TimePicker,
-} from "@/components/ui/antd-datetime";
+} from "@/components/ui/shims/antd-datetime";
 
 /**
  * D7 is the reason these tests exist. Call-sites are written against antd's

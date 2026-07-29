@@ -9,7 +9,7 @@ import {
   Radio,
   Select,
   Switch,
-} from "@/components/ui/antd-inputs";
+} from "@/components/ui/shims/antd-inputs";
 
 /**
  * The point of these tests is antd's onChange CONVENTIONS, which differ per

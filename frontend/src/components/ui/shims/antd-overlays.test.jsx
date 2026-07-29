@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { Dropdown, Modal, Tooltip } from "@/components/ui/antd-overlays";
+import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 
 describe("antd-compatible overlay shims (P2)", () => {
   it("renders nothing when closed", () => {

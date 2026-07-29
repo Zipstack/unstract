@@ -1,11 +1,11 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Form } from "@/components/ui/antd-form";
-import { Select } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
-import { Divider } from "@/components/ui/antd-leaves";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Text, Title } from "@/components/ui/antd-typography";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Divider } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Text, Title } from "@/components/ui/shims/antd-typography";
 
 import "./AdapterSelectionModal.css";
 

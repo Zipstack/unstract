@@ -1,10 +1,10 @@
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Switch } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Table } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";

@@ -1,8 +1,8 @@
 import { ChevronDown } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { Tree } from "@/components/ui/antd-structure";
-import { Text } from "@/components/ui/antd-typography";
+import { Tree } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 
 import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";

@@ -1,9 +1,9 @@
 import { RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Switch } from "@/components/ui/antd-inputs";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./LogsRefreshControls.css";
 
 function LogsRefreshControls({

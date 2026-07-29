@@ -1,8 +1,8 @@
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Table } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";

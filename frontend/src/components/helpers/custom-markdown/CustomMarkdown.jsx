@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
-import { Link, Paragraph, Text } from "@/components/ui/antd-typography";
+import { Link, Paragraph, Text } from "@/components/ui/shims/antd-typography";
 
 import { isSafeExternalUrl } from "../../../helpers/urlSafety";
 import { useSessionStore } from "../../../store/session-store";

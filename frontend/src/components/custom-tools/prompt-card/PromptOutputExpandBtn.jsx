@@ -1,7 +1,7 @@
 import { Move } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Tooltip } from "@/components/ui/antd-overlays";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import { PromptOutputsModal } from "./PromptOutputsModal";
 

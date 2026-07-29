@@ -1,7 +1,7 @@
 import { ArrowLeft, Pencil } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";

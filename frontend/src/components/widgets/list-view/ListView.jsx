@@ -1,10 +1,10 @@
 import { CircleHelp, Info, Pencil, Share2, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
-import { Flex } from "@/components/ui/antd-layout";
-import { Avatar, Image } from "@/components/ui/antd-leaves";
-import { Popconfirm, Tooltip } from "@/components/ui/antd-overlays";
-import { List } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Avatar, Image } from "@/components/ui/shims/antd-leaves";
+import { Popconfirm, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./ListView.css";
 import { useNavigate } from "react-router-dom";
 

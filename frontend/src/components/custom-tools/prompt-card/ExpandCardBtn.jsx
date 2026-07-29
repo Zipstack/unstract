@@ -1,8 +1,8 @@
 import { Maximize, Minimize } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Tooltip } from "@/components/ui/antd-overlays";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 function ExpandCardBtn({ expandCard, setExpandCard }) {
   const [icon, setIcon] = useState(null);

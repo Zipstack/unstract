@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Layout } from "@/components/ui/antd-structure";
+import { Layout } from "@/components/ui/shims/antd-structure";
 import "./PageLayout.css";
 
 import { LazyOutlet } from "../../components/error/LazyOutlet/LazyOutlet.jsx";

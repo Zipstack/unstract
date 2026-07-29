@@ -3,11 +3,11 @@ import { LogIn, LogOut, Settings, User, UserRoundCog } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Col, Row, Space } from "@/components/ui/antd-layout";
-import { Alert, Image } from "@/components/ui/antd-leaves";
-import { Dropdown } from "@/components/ui/antd-overlays";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Image } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {

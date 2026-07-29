@@ -1,8 +1,8 @@
 import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Radio } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
 
 const FilterIcon = ({ filtered }) => (
   <Filter style={{ color: filtered ? "var(--primary)" : undefined }} />

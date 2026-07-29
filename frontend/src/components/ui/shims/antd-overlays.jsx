@@ -13,7 +13,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Button } from "@/components/ui/antd-button";
+import { Button } from "@/components/ui/shims/antd-button";
 import {
   Collapsible,
   CollapsibleContent,

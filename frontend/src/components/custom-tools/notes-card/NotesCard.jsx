@@ -1,10 +1,10 @@
 import { CircleCheck, Pencil, RefreshCw, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Col, Row, Space } from "@/components/ui/antd-layout";
-import { Tag } from "@/components/ui/antd-leaves";
-import { Collapse, Tooltip } from "@/components/ui/antd-overlays";
-import { Card } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Collapse, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
 import "./NotesCard.css";
 import { useEffect, useState } from "react";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";

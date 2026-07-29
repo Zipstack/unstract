@@ -1,7 +1,7 @@
 import { uniqueId } from "lodash";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef } from "react";
-import { Table } from "@/components/ui/antd-structure";
+import { Table } from "@/components/ui/shims/antd-structure";
 import { useSocketLogsStore } from "../../store/socket-logs-store";
 import "./DisplayLogsAndNotifications.css";
 import { getDateTimeString } from "../../helpers/GetStaticData";

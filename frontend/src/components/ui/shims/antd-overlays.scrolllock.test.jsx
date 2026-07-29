@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { Modal } from "@/components/ui/antd-overlays";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 /**
  * P2-02 / P0-12: `body { overflow: hidden }` vs Radix's scroll-lock.

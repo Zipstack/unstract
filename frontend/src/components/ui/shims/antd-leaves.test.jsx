@@ -9,7 +9,7 @@ import {
   Progress,
   Spin,
   Tag,
-} from "@/components/ui/antd-leaves";
+} from "@/components/ui/shims/antd-leaves";
 
 describe("antd-compatible leaf shims (P1-06)", () => {
   it("renders Tag content", () => {

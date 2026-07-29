@@ -2,11 +2,11 @@ import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Input, InputNumber, Switch } from "@/components/ui/antd-inputs";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Divider, Tag } from "@/components/ui/antd-leaves";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input, InputNumber, Switch } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";

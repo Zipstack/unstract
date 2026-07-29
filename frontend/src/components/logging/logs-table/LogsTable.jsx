@@ -1,8 +1,8 @@
 import { CircleX, Hourglass, Info, Search } from "lucide-react";
-import { Input } from "@/components/ui/antd-inputs";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Table } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./LogsTable.css";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";

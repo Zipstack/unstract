@@ -1,10 +1,10 @@
 import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Alert, Empty, Spin, Tag } from "@/components/ui/antd-leaves";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Card, Table, Tabs } from "@/components/ui/antd-structure";
-import { Text } from "@/components/ui/antd-typography";
+import { Alert, Empty, Spin, Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card, Table, Tabs } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";

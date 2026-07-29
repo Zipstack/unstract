@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/antd-button";
-import { Col, Row } from "@/components/ui/antd-layout";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";

@@ -9,8 +9,8 @@ import {
   Zap,
 } from "lucide-react";
 import PropTypes from "prop-types";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Empty, Spin } from "@/components/ui/antd-leaves";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Empty, Spin } from "@/components/ui/shims/antd-leaves";
 
 import "./MetricsDashboard.css";
 

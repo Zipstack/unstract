@@ -1,12 +1,12 @@
 import { ArrowLeft, CircleCheck, Copy, Mail, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Col, Row, Space } from "@/components/ui/antd-layout";
-import { Spin } from "@/components/ui/antd-leaves";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Card } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Spin } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./Profile.css";
 
 import { OrganizationIcon } from "../../assets";

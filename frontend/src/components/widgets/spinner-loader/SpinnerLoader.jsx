@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Spin } from "@/components/ui/antd-leaves";
+import { Spin } from "@/components/ui/shims/antd-leaves";
 
 import "./SpinnerLoader.css";
 

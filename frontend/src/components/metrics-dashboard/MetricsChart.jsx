@@ -13,10 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Button } from "@/components/ui/antd-button";
-import { Empty, Spin } from "@/components/ui/antd-leaves";
-import { Dropdown } from "@/components/ui/antd-overlays";
-import { Card } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Empty, Spin } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
 
 import "./MetricsDashboard.css";
 

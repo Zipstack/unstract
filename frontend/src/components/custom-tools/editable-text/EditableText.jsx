@@ -1,7 +1,7 @@
 import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Input } from "@/components/ui/antd-inputs";
+import { Input } from "@/components/ui/shims/antd-inputs";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";

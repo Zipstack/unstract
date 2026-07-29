@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Checkbox, Input } from "@/components/ui/antd-inputs";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Tag } from "@/components/ui/antd-leaves";
-import { Dropdown, Tooltip } from "@/components/ui/antd-overlays";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Checkbox, Input } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Dropdown, Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import {
   PROMPT_RUN_TYPES,

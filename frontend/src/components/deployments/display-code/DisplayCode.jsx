@@ -2,9 +2,9 @@ import Handlebars from "handlebars";
 import { CircleCheck, Copy } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Select } from "@/components/ui/antd-inputs";
-import { Modal, Tooltip } from "@/components/ui/antd-overlays";
-import { Tabs } from "@/components/ui/antd-structure";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
 
 import CodeSnippet from "./CodeSnippet.jsx";
 import "./DisplayCode.css";

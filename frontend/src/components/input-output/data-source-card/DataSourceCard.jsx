@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
-import { Image } from "@/components/ui/antd-leaves";
-import { Card } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./DataSourceCard.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";

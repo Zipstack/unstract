@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Result } from "@/components/ui/antd-structure";
+import { Result } from "@/components/ui/shims/antd-structure";
 
 function GenericError() {
   const [searchParams] = useSearchParams();

@@ -1,10 +1,10 @@
 import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
-import { Button } from "@/components/ui/antd-button";
-import { Space } from "@/components/ui/antd-layout";
-import { Tag } from "@/components/ui/antd-leaves";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Tabs } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";

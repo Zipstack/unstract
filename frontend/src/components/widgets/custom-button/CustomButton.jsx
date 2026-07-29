@@ -1,6 +1,6 @@
 import PropTypes from "prop-types";
 import * as React from "react";
-import { Button } from "@/components/ui/antd-button";
+import { Button } from "@/components/ui/shims/antd-button";
 
 /**
  * forwardRef is load-bearing, not decoration. CustomButton is used as the

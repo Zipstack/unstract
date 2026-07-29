@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Tag } from "@/components/ui/antd-leaves";
+import { Tag } from "@/components/ui/shims/antd-leaves";
 import "./ProfileInfoBar.css";
 
 const ProfileInfoBar = ({ profiles, profileId }) => {

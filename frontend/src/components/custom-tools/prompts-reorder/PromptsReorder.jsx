@@ -2,7 +2,7 @@ import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { Space } from "@/components/ui/antd-layout";
+import { Space } from "@/components/ui/shims/antd-layout";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import DraggablePrompt from "./DraggablePrompt";

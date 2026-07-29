@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Button } from "@/components/ui/antd-button";
+import { Button } from "@/components/ui/shims/antd-button";
 
 describe("antd-compatible Button shim (P1-04)", () => {
   it("renders children in a real <button>", () => {

@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import React, { useCallback, useEffect, useState } from "react";
-import { Form } from "@/components/ui/antd-form";
-import { Checkbox } from "@/components/ui/antd-inputs";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Checkbox } from "@/components/ui/shims/antd-inputs";
 
 const FilterPromptFields = React.memo(
   ({ isOpen, selectedPrompts, setSelectedPrompts }) => {

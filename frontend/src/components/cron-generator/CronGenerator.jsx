@@ -2,7 +2,7 @@ import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 
-import { Modal } from "@/components/ui/antd-overlays";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 import { cn } from "@/lib/utils";
 
 /**

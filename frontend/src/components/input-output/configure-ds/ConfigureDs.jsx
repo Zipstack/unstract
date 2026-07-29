@@ -1,8 +1,8 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
-import { Col, Row } from "@/components/ui/antd-layout";
-import { Popover } from "@/components/ui/antd-overlays";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Popover } from "@/components/ui/shims/antd-overlays";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";

@@ -79,7 +79,7 @@ describe("antd must not return", () => {
           .readFileSync(full, "utf8")
           .replace(/\/\*[\s\S]*?\*\//g, "")
           .replace(/^\s*\/\/.*$/gm, "");
-        // Real imports only. Our own `@/components/ui/antd-*` shims keep the
+        // Real imports only. Our own `@/components/ui/shims/antd-*` shims keep the
         // antd NAME deliberately while running on shadcn, so they must not
         // match: the pattern anchors on the exact specifier.
         if (/from\s+["']antd["']|from\s+["']@ant-design\//.test(src)) {

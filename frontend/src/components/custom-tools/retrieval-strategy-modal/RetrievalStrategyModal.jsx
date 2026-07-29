@@ -10,12 +10,12 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Radio } from "@/components/ui/antd-inputs";
-import { Space } from "@/components/ui/antd-layout";
-import { Alert, Divider, Spin } from "@/components/ui/antd-leaves";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Paragraph, Text, Title } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Divider, Spin } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Paragraph, Text, Title } from "@/components/ui/shims/antd-typography";
 
 import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
 import "./RetrievalStrategyModal.css";

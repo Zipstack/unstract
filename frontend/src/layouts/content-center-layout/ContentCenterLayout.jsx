@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { Typography } from "@/components/ui/antd-typography";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./ContentCenterLayout.css";
 
 function ContentCenterLayout({ children, headerText, mainText, subText }) {

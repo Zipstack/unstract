@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
-import { Empty } from "@/components/ui/antd-leaves";
-import { Typography } from "@/components/ui/antd-typography";
+import { Empty } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";

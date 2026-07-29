@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Drawer } from "@/components/ui/antd-structure";
+import { Drawer } from "@/components/ui/shims/antd-structure";
 
 import { OutputAnalyzerHeader } from "./OutputAnalyzerHeader";
 import "./OutputAnalyzer.css";

@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Col, Flex, Row, Space } from "@/components/ui/antd-layout";
+import { Col, Flex, Row, Space } from "@/components/ui/shims/antd-layout";
 
 describe("antd-compatible layout shims (P1-05)", () => {
   // The reason these are shims rather than a gap-* swap: 20 hand-written CSS

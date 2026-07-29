@@ -1,7 +1,7 @@
 import { CircleCheck, CircleX, Upload as UploadIcon } from "lucide-react";
 import * as React from "react";
 import { DataTable } from "@/components/data-table/DataTable";
-import { Button } from "@/components/ui/antd-button";
+import { Button } from "@/components/ui/shims/antd-button";
 import {
   CardContent,
   CardHeader,

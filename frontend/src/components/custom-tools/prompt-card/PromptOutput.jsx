@@ -2,12 +2,12 @@ import { AnimatePresence, motion } from "framer-motion";
 import { CirclePlay, Database, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Radio } from "@/components/ui/antd-inputs";
-import { Col, Space } from "@/components/ui/antd-layout";
-import { Divider, Image } from "@/components/ui/antd-leaves";
-import { Tooltip } from "@/components/ui/antd-overlays";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Col, Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Image } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import {
   displayPromptResult,

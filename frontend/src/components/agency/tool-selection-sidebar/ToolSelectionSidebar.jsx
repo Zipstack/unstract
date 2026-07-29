@@ -1,11 +1,11 @@
 import { FileText, Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/antd-button";
-import { Input } from "@/components/ui/antd-inputs";
-import { Tag } from "@/components/ui/antd-leaves";
-import { Card, List } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Card, List } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./ToolSelectionSidebar.css";
 import { ToolIcon } from "../tool-icon/ToolIcon";

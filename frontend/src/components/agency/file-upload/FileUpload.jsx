@@ -3,9 +3,9 @@
 
 import { Upload as UploadIcon } from "lucide-react";
 import PropTypes from "prop-types";
-import { Button } from "@/components/ui/antd-button";
-import { Modal } from "@/components/ui/antd-overlays";
-import { Upload } from "@/components/ui/antd-structure";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Upload } from "@/components/ui/shims/antd-structure";
 import { message } from "@/hooks/useAppToast";
 import {
   WORKFLOW_PAGE_MAX_FILES,

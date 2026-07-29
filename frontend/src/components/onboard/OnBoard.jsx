@@ -1,10 +1,10 @@
 import { CircleCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/antd-button";
-import { Col, Row, Space } from "@/components/ui/antd-layout";
-import { Card, Layout } from "@/components/ui/antd-structure";
-import { Typography } from "@/components/ui/antd-typography";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Card, Layout } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";
