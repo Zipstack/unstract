@@ -457,6 +457,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       <ToolNavBar
         title="Prompt Studio"
         enableSearch
+        searchPlaceholder="Search by name or owner"
         onSearch={(value) => handleSearch(value)}
         customButtons={customButtonsElement}
         segmentOptions={segmentOptions}

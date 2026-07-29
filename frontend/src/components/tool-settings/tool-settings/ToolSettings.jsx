@@ -357,6 +357,7 @@ function ToolSettings({ type }) {
       <ToolNavBar
         title={titles[type]}
         enableSearch
+        searchPlaceholder="Search by name or owner"
         searchKey={type}
         onSearch={(value) => handleSearch(value)}
         customButtons={

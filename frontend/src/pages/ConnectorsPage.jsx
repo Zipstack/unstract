@@ -304,6 +304,7 @@ function ConnectorsPage() {
       <ToolNavBar
         title="Connectors"
         enableSearch
+        searchPlaceholder="Search by name or owner"
         onSearch={(value) => handleSearch(value)}
         customButtons={newConnectorButton}
       />

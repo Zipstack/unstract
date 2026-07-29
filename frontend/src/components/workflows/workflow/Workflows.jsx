@@ -404,6 +404,7 @@ function Workflows() {
       <ToolNavBar
         title="Workflows"
         enableSearch
+        searchPlaceholder="Search by name or owner"
         customButtons={newWorkflowButton}
         onSearch={(value) => handleSearch(value)}
       />
