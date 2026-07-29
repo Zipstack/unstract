@@ -11,7 +11,7 @@ from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from celery import signature
 from celery.result import AsyncResult
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404
@@ -439,20 +439,24 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
-        ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-            is_default=False
-        )
-
-        # The id comes straight from the request body, so scope it to the same
-        # tool the de-dup update above ran against. get_object_or_404 keeps a
-        # non-matching id a 404 rather than an unhandled DoesNotExist.
+        # Resolve the target before clearing anything: the id comes straight
+        # from the request body, and clearing first would leave the tool with no
+        # default at all when it does not match. Scoped to the same tool the
+        # caller already passed authz on, so another tool's id is a 404.
         profile_manager = get_object_or_404(
             ProfileManager,
             pk=request.data["default_profile"],
             prompt_studio_tool=prompt_tool,
         )
-        profile_manager.is_default = True
-        profile_manager.save()
+
+        # Both writes in one transaction so a failure between them cannot leave
+        # the tool with zero defaults or two.
+        with transaction.atomic():
+            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                is_default=False
+            )
+            profile_manager.is_default = True
+            profile_manager.save()
 
         return Response(
             status=status.HTTP_200_OK,

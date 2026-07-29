@@ -103,6 +103,12 @@ class CrossOrgIsolationTest(TestCase):
         # End state: acting as org A, as a request would.
         UserContext.set_organization_identifier(self.a.org.organization_id)
 
+    def tearDown(self) -> None:
+        # UserContext is thread-local, not DB state, so TestCase's transaction
+        # rollback does not clear it. Tests below deliberately switch org and
+        # would otherwise leak that into whatever runs next.
+        UserContext.set_organization_identifier(None)
+
     # --- manager scoping: the default-deny layer (A-1) --------------------
 
     def test_document_of_other_org_is_not_gettable(self):
@@ -168,6 +174,25 @@ class CrossOrgIsolationTest(TestCase):
             DocumentManager.objects.get(
                 pk=self.a.document.document_id, tool=sibling
             )
+
+    def test_rejected_default_leaves_the_existing_default_intact(self):
+        """A non-matching id must not clear the tool's current default.
+
+        The de-dup update runs against every profile on the tool, so resolving
+        the target after it would leave the tool with no default at all when the
+        id turns out to be someone else's.
+        """
+        assert ProfileManager.objects.get(pk=self.a.profile.profile_id).is_default
+
+        with self.assertRaises(ProfileManager.DoesNotExist):
+            ProfileManager.objects.get(
+                pk=self.b.profile.profile_id, prompt_studio_tool=self.a.tool
+            )
+
+        self.a.profile.refresh_from_db()
+        assert self.a.profile.is_default, (
+            "the tool lost its default profile while rejecting another org's id"
+        )
 
     def test_make_profile_default_lookup_is_tool_scoped(self):
         """This lookup runs after ``get_object()`` has already passed authz on
