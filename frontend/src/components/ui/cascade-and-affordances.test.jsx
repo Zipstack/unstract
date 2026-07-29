@@ -111,4 +111,41 @@ describe("cascade and affordance guards", () => {
       expect(screen.getByRole("textbox").className).not.toContain("shadow-sm");
     });
   });
+  /**
+   * React 19 stopped applying `defaultProps` to FUNCTION components — the
+   * declaration is simply ignored, so every default silently becomes
+   * undefined. That is the same silent-prop-drop class that produced the
+   * Save-does-nothing bug, so it is guarded rather than trusted.
+   *
+   * Class components still honour defaultProps, which is why ErrorBoundary
+   * is allowed to keep its block.
+   */
+  it("no function component relies on defaultProps (React 19)", () => {
+    const SRC = path.join(process.cwd(), "src");
+    const offenders = [];
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== "node_modules") {
+            walk(full);
+          }
+          continue;
+        }
+        if (!entry.name.endsWith(".jsx") || entry.name.includes(".test.")) {
+          continue;
+        }
+        const src = fs.readFileSync(full, "utf8");
+        const m = src.match(/^(\w+)\.defaultProps\s*=/m);
+        if (m && !new RegExp(`class\\s+${m[1]}\\s+extends`).test(src)) {
+          offenders.push(`${path.relative(SRC, full)} (${m[1]})`);
+        }
+      }
+    };
+    walk(SRC);
+    expect(
+      offenders,
+      "React 19 ignores defaultProps on function components — use default parameters instead",
+    ).toEqual([]);
+  });
 });

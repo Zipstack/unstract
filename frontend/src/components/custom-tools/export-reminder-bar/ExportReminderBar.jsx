@@ -5,7 +5,7 @@ import { Space } from "@/components/ui/shims/antd-layout";
 import { Alert } from "@/components/ui/shims/antd-leaves";
 import "./ExportReminderBar.css";
 
-function ExportReminderBar({ message, onExport, isExporting }) {
+function ExportReminderBar({ message, onExport, isExporting = false }) {
   return (
     <div className="export-reminder-bar">
       <Alert
@@ -38,8 +38,5 @@ ExportReminderBar.propTypes = {
   isExporting: PropTypes.bool,
 };
 
-ExportReminderBar.defaultProps = {
-  isExporting: false,
-};
 
 export { ExportReminderBar };

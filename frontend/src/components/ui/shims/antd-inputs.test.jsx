@@ -19,9 +19,10 @@ import {
  */
 describe("antd-compatible input shims (P3-03)", () => {
   it("renders a text input and forwards typing as a DOM event", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Input onChange={onChange} />);
-    userEvent.type(screen.getByRole("textbox"), "hi");
+    await user.type(screen.getByRole("textbox"), "hi");
     expect(onChange).toHaveBeenCalled();
     // antd hands Input an EVENT, so call-sites read e.target.value.
     expect(onChange.mock.calls[0][0].target).toBeDefined();
@@ -40,34 +41,38 @@ describe("antd-compatible input shims (P3-03)", () => {
   });
 
   it("Input.Password masks by default and reveals on toggle", async () => {
+    const user = userEvent.setup();
     const { container } = render(<Input.Password />);
     const field = container.querySelector("input");
     expect(field.getAttribute("type")).toBe("password");
-    userEvent.click(screen.getByRole("button", { name: /show password/i }));
+    await user.click(screen.getByRole("button", { name: /show password/i }));
     expect(field.getAttribute("type")).toBe("text");
   });
 
   it("Input.Search fires onSearch on Enter", async () => {
+    const user = userEvent.setup();
     const onSearch = vi.fn();
     render(<Input.Search onSearch={onSearch} />);
-    userEvent.type(screen.getByRole("textbox"), "q{enter}");
+    await user.type(screen.getByRole("textbox"), "q{enter}");
     expect(onSearch).toHaveBeenCalled();
   });
 
   // antd hands InputNumber a NUMBER, not an event.
   it("InputNumber calls onChange with a number, not an event", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<InputNumber onChange={onChange} />);
-    userEvent.type(screen.getByRole("spinbutton"), "42");
+    await user.type(screen.getByRole("spinbutton"), "42");
     const last = onChange.mock.calls.at(-1)[0];
     expect(typeof last).toBe("number");
   });
 
-  it("InputNumber emits null when cleared, not NaN", () => {
+  it("InputNumber emits null when cleared, not NaN", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<InputNumber value={5} onChange={onChange} />);
     const el = screen.getByRole("spinbutton");
-    userEvent.clear(el);
+    await user.clear(el);
     if (onChange.mock.calls.length) {
       expect(onChange.mock.calls.at(-1)[0]).toBeNull();
     }
@@ -75,9 +80,10 @@ describe("antd-compatible input shims (P3-03)", () => {
 
   // antd hands Checkbox an EVENT with target.checked; Radix gives a boolean.
   it("Checkbox onChange receives an event-shaped object with target.checked", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Checkbox onChange={onChange}>Accept</Checkbox>);
-    userEvent.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("checkbox"));
     expect(onChange).toHaveBeenCalled();
     expect(onChange.mock.calls[0][0].target.checked).toBe(true);
   });
@@ -89,9 +95,10 @@ describe("antd-compatible input shims (P3-03)", () => {
 
   // antd hands Switch a BOOLEAN.
   it("Switch onChange receives a boolean", async () => {
+    const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Switch onChange={onChange} />);
-    userEvent.click(screen.getByRole("switch"));
+    await user.click(screen.getByRole("switch"));
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
@@ -143,19 +150,21 @@ describe("antd-compatible input shims (P3-03)", () => {
    * fields) rendered no counter while `maxLength` still truncated typing.
    */
   describe("showCount (antd parity)", () => {
-    it("renders the antd 'N / max' readout and tracks typing", () => {
+    it("renders the antd 'N / max' readout and tracks typing", async () => {
+      const user = userEvent.setup();
       render(<Input.TextArea showCount maxLength={200} />);
 
       expect(screen.getByText("0 / 200")).toBeInTheDocument();
-      userEvent.type(screen.getByRole("textbox"), "hello");
+      await user.type(screen.getByRole("textbox"), "hello");
       expect(screen.getByText("5 / 200")).toBeInTheDocument();
     });
 
-    it("still forwards the caller's onChange while counting", () => {
+    it("still forwards the caller's onChange while counting", async () => {
+      const user = userEvent.setup();
       const onChange = vi.fn();
       render(<Input showCount maxLength={30} onChange={onChange} />);
 
-      userEvent.type(screen.getByRole("textbox"), "ab");
+      await user.type(screen.getByRole("textbox"), "ab");
       expect(onChange).toHaveBeenCalledTimes(2);
       expect(screen.getByText("2 / 30")).toBeInTheDocument();
     });

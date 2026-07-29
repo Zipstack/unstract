@@ -17,7 +17,7 @@ function AddSourceModal({
   open,
   setOpen,
   type,
-  isConnector,
+  isConnector = false,
   connectorMode,
   addNewItem,
   editItemId,
@@ -232,8 +232,5 @@ AddSourceModal.propTypes = {
   setEditItemId: PropTypes.func.isRequired,
 };
 
-AddSourceModal.defaultProps = {
-  isConnector: false,
-};
 
 export { AddSourceModal };

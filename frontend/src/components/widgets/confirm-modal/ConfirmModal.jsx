@@ -9,7 +9,7 @@ function ConfirmModal({
   content,
   okText,
   cancelText,
-  isDisabled,
+  isDisabled = false,
 }) {
   const [modal, contextHolder] = Modal.useModal();
 
@@ -37,9 +37,6 @@ function ConfirmModal({
   );
 }
 
-ConfirmModal.defaultProps = {
-  isDisabled: false,
-};
 
 ConfirmModal.propTypes = {
   children: PropTypes.any.isRequired,

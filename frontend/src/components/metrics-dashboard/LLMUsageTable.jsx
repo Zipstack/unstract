@@ -124,7 +124,7 @@ const columns = [
   },
 ];
 
-function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
+function DeploymentUsageTable({ startDate = null, endDate = null, refetchRef = null }) {
   const [activeType, setActiveType] = useState("API");
 
   const { data, loading, error, refetch } = useDeploymentUsage(
@@ -256,10 +256,5 @@ DeploymentUsageTable.propTypes = {
   refetchRef: PropTypes.shape({ current: PropTypes.func }),
 };
 
-DeploymentUsageTable.defaultProps = {
-  startDate: null,
-  endDate: null,
-  refetchRef: null,
-};
 
 export { DeploymentUsageTable };

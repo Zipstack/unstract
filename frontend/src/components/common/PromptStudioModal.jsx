@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/shims/antd-overlays";
 import { useSessionStore } from "../../store/session-store";
 import "./PromptStudioModal.css";
 
-export function PromptStudioModal({ onClose, showModal }) {
+export function PromptStudioModal({ onClose = null, showModal = false }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
 
@@ -70,7 +70,3 @@ PromptStudioModal.propTypes = {
   showModal: PropTypes.bool,
 };
 
-PromptStudioModal.defaultProps = {
-  onClose: null,
-  showModal: false,
-};

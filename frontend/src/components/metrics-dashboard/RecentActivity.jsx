@@ -74,7 +74,7 @@ const TYPE_CONFIG = {
  *
  * @return {JSX.Element} The rendered recent activity component.
  */
-function RecentActivity({ data, loading }) {
+function RecentActivity({ data = null, loading = false }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const orgName = sessionDetails?.orgName;
@@ -187,9 +187,5 @@ RecentActivity.propTypes = {
   loading: PropTypes.bool,
 };
 
-RecentActivity.defaultProps = {
-  data: null,
-  loading: false,
-};
 
 export { RecentActivity };

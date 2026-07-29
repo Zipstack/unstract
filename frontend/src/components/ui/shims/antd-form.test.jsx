@@ -90,18 +90,20 @@ describe("antd-compatible Form shim (P3)", () => {
   });
 
   it("accepts typed input and submits via onFinish", async () => {
+    const user = userEvent.setup();
     const onFinish = vi.fn();
     render(<Harness onFinish={onFinish} />);
-    userEvent.type(screen.getAllByRole("textbox")[0], "Typed");
-    userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(screen.getAllByRole("textbox")[0], "Typed");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(onFinish).toHaveBeenCalled());
     expect(onFinish.mock.calls[0][0].name).toBe("Typed");
   });
 
   it("blocks onFinish while a required field is empty", async () => {
+    const user = userEvent.setup();
     const onFinish = vi.fn();
     render(<Harness onFinish={onFinish} />);
-    userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() =>
       expect(screen.getByText("Group name is required")).toBeInTheDocument(),
     );

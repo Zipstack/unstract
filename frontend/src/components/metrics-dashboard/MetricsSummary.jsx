@@ -149,7 +149,7 @@ function formatValue(value, precision = 0) {
   return Math.round(value).toLocaleString();
 }
 
-function MetricsSummary({ data, loading }) {
+function MetricsSummary({ data = null, loading = false }) {
   if (loading) {
     return (
       <div className="metrics-loading">
@@ -248,9 +248,5 @@ MetricsSummary.propTypes = {
   loading: PropTypes.bool,
 };
 
-MetricsSummary.defaultProps = {
-  data: null,
-  loading: false,
-};
 
 export { MetricsSummary };
