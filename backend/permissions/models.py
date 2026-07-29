@@ -57,6 +57,18 @@ class HasMembersMixin:
         # pk breaks created_at ties so the label is stable across requests.
         return min(owners, key=lambda m: (m.created_at, m.pk)).user.email
 
+    def owner_emails(self) -> list[str]:
+        # Every live OWNER email, earliest-first (``owner_email`` is just the
+        # head). Backs the Owned By tooltip so all co-owners are named, not only
+        # the primary + a ``+N`` count. Reads prefetched ``memberships``.
+        owners = [
+            m
+            for m in self.memberships.all()  # type: ignore[attr-defined]
+            if m.role == ResourceRole.OWNER and not m.user.is_service_account
+        ]
+        owners.sort(key=lambda m: (m.created_at, m.pk))
+        return [m.user.email for m in owners]
+
     def is_owner(self, user: Any) -> bool:
         if user is None:
             return False

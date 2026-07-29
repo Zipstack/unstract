@@ -137,6 +137,7 @@ function ResourceTable({
   dateProp = "created_at",
   modifiedProp = "modified_at",
   ownerEmailProp = "created_by_email",
+  ownerEmailsProp = "owner_emails",
   countProp,
   countLabel,
   handleEdit,
@@ -206,6 +207,13 @@ function ResourceTable({
       item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
     const initials = (email || name).slice(0, 2).toUpperCase();
     const swatch = colorForSeed(email || name);
+    // With co-owners, name only the primary inline (+N); the tooltip lists all
+    // owners so search hitting a hidden co-owner is still explainable.
+    const ownerEmails = item?.[ownerEmailsProp];
+    const ownerTooltip =
+      Array.isArray(ownerEmails) && ownerEmails.length > 1
+        ? ownerEmails.join(", ")
+        : `${name}${extra}`;
 
     const cell = (
       <Space size={10} className="resource-table-owner">
@@ -219,7 +227,7 @@ function ResourceTable({
         <div className="resource-table-owner-text">
           <Typography.Text
             className="resource-table-owner-name"
-            ellipsis={{ tooltip: `${name}${extra}` }}
+            ellipsis={{ tooltip: ownerTooltip }}
           >
             {name}
             {extra}
@@ -436,6 +444,7 @@ ResourceTable.propTypes = {
   dateProp: PropTypes.string,
   modifiedProp: PropTypes.string,
   ownerEmailProp: PropTypes.string,
+  ownerEmailsProp: PropTypes.string,
   countProp: PropTypes.string,
   countLabel: PropTypes.string,
   handleEdit: PropTypes.func,

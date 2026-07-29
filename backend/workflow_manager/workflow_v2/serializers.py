@@ -86,6 +86,7 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         representation["is_owner"] = instance.is_owner(request.user) if request else False
         representation["co_owners_count"] = instance.co_owners_count()
         representation["owner_email"] = instance.owner_email()
+        representation["owner_emails"] = instance.owner_emails()
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:

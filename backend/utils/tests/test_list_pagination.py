@@ -309,7 +309,10 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
                 created_at=BASE_TIME + timedelta(minutes=minute)
             )
 
-        assert type(wf).objects.get(pk=wf.pk).owner_email() == self.coowner.email
+        fresh = type(wf).objects.get(pk=wf.pk)
+        assert fresh.owner_email() == self.coowner.email
+        # owner_emails() is the full roster, earliest-first, svc still skipped.
+        assert fresh.owner_emails() == [self.coowner.email, self.owner.email]
 
         # Tied created_at: pk decides, so the label never flips between requests.
         wf.memberships.all().delete()
@@ -320,8 +323,12 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
         type(tied[0]).objects.filter(pk__in=[m.pk for m in tied]).update(
             created_at=BASE_TIME
         )
-        earliest = min(tied, key=lambda m: m.pk)
-        assert type(wf).objects.get(pk=wf.pk).owner_email() == earliest.user.email
+        ordered = sorted(tied, key=lambda m: m.pk)
+        fresh = type(wf).objects.get(pk=wf.pk)
+        assert fresh.owner_email() == ordered[0].user.email
+        assert fresh.owner_emails() == [m.user.email for m in ordered]
 
         wf.memberships.all().delete()
-        assert type(wf).objects.get(pk=wf.pk).owner_email() is None
+        fresh = type(wf).objects.get(pk=wf.pk)
+        assert fresh.owner_email() is None
+        assert fresh.owner_emails() == []
