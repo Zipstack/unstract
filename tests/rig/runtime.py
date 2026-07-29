@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import ClassVar, Protocol
 
 from tests.rig.groups import REPO_ROOT
@@ -32,6 +33,37 @@ log = logging.getLogger(__name__)
 
 COMPOSE_OVERLAY = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
+
+# Extra compose overlays a downstream repo can layer on (e.g. a cloud repo
+# adding an auth mock or an LLM proxy it copied into this tree). Same contract
+# as UNSTRACT_RIG_EXTRA_MANIFESTS: os.pathsep-separated, relative to REPO_ROOT.
+EXTRA_COMPOSE_ENV = "UNSTRACT_RIG_EXTRA_COMPOSE"
+
+
+def _extra_compose_files() -> list[Path]:
+    raw = os.environ.get(EXTRA_COMPOSE_ENV, "").strip()
+    if not raw:
+        return []
+    paths: list[Path] = []
+    for entry in filter(None, (e.strip() for e in raw.split(os.pathsep))):
+        p = Path(entry)
+        p = p if p.is_absolute() else REPO_ROOT / p
+        if not p.is_file():
+            raise ValueError(
+                f"{EXTRA_COMPOSE_ENV}: {entry!r} is not a file (resolved to {p})"
+            )
+        paths.append(p)
+    return paths
+
+
+def _compose_file_args() -> list[str]:
+    """The ``-f`` args for compose: base, the test overlay, then any extras."""
+    args = ["-f", str(BASE_COMPOSE)]
+    if COMPOSE_OVERLAY.exists():
+        args += ["-f", str(COMPOSE_OVERLAY)]
+    for extra in _extra_compose_files():
+        args += ["-f", str(extra)]
+    return args
 
 # Shared by the workers and the tests, so the exact completion is assertable.
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
@@ -134,9 +166,7 @@ class ComposeRuntime:
     def up(self) -> PlatformEndpoints:
         if shutil.which("docker") is None:
             raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
-        files = ["-f", str(BASE_COMPOSE)]
-        if COMPOSE_OVERLAY.exists():
-            files += ["-f", str(COMPOSE_OVERLAY)]
+        files = _compose_file_args()
         _run(["docker", "compose", "-p", self.project_name, *files, "up", "-d", "--wait"])
         endpoints = PlatformEndpoints.from_env()
         _wait_ready(endpoints)
@@ -145,9 +175,7 @@ class ComposeRuntime:
     def down(self) -> None:
         if shutil.which("docker") is None:
             return
-        files = ["-f", str(BASE_COMPOSE)]
-        if COMPOSE_OVERLAY.exists():
-            files += ["-f", str(COMPOSE_OVERLAY)]
+        files = _compose_file_args()
         self._dump_logs(files)
         _run(
             [

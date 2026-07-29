@@ -62,3 +62,48 @@ def test_platform_endpoints_from_env_uses_defaults(monkeypatch) -> None:
     assert endpoints.backend_url == "http://localhost:8000"
     assert endpoints.runner_url == "http://localhost:5002"
     assert endpoints.admin_user == "unstract"
+
+
+# ── Injection seams: extra compose overlays + pluggable login provider ───────
+
+from tests.e2e.conftest import _load_login_provider, _oss_form_login  # noqa: E402
+from tests.rig.runtime import EXTRA_COMPOSE_ENV, _extra_compose_files  # noqa: E402
+
+
+def test_extra_compose_files_empty_when_unset(monkeypatch) -> None:
+    monkeypatch.delenv(EXTRA_COMPOSE_ENV, raising=False)
+    assert _extra_compose_files() == []
+
+
+def test_extra_compose_files_reads_existing_paths(monkeypatch, tmp_path) -> None:
+    a, b = tmp_path / "a.yaml", tmp_path / "b.yaml"
+    a.write_text("services: {}")
+    b.write_text("services: {}")
+    import os as _os
+
+    monkeypatch.setenv(EXTRA_COMPOSE_ENV, _os.pathsep.join([str(a), str(b)]))
+    assert _extra_compose_files() == [a, b]
+
+
+def test_extra_compose_files_rejects_missing(monkeypatch, tmp_path) -> None:
+    monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(tmp_path / "nope.yaml"))
+    with pytest.raises(ValueError, match=EXTRA_COMPOSE_ENV):
+        _extra_compose_files()
+
+
+def test_login_provider_defaults_to_oss(monkeypatch) -> None:
+    monkeypatch.delenv("UNSTRACT_E2E_LOGIN_PROVIDER", raising=False)
+    assert _load_login_provider() is _oss_form_login
+
+
+def test_login_provider_resolves_dotted_path(monkeypatch) -> None:
+    monkeypatch.setenv("UNSTRACT_E2E_LOGIN_PROVIDER", "json.loads")
+    import json
+
+    assert _load_login_provider() is json.loads
+
+
+def test_login_provider_rejects_bare_name(monkeypatch) -> None:
+    monkeypatch.setenv("UNSTRACT_E2E_LOGIN_PROVIDER", "loads")
+    with pytest.raises(ValueError, match="module.func"):
+        _load_login_provider()
