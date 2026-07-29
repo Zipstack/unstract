@@ -1,4 +1,4 @@
-import { cva } from "class-variance-authority";
+import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -21,7 +21,16 @@ const spinnerVariants = cva("animate-spin text-muted-foreground", {
   },
 });
 
-function Spinner({ className, size, label = "Loading", ...props }) {
+function Spinner({
+  className,
+  size,
+  label = "Loading",
+  ...props
+}: Omit<React.ComponentPropsWithoutRef<typeof Loader2>, "ref"> &
+  VariantProps<typeof spinnerVariants> & {
+    /** Accessible name announced for the busy state. */
+    label?: string;
+  }) {
   return (
     <Loader2
       role="status"

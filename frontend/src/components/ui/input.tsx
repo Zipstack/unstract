@@ -17,7 +17,10 @@ import { cn } from "@/lib/utils";
  * from Textarea and the Select trigger too, or those controls would keep the
  * asymmetry while sitting next to a fixed Input in the same form.
  */
-const Input = React.forwardRef(({ className, type, ...props }, ref) => {
+const Input = React.forwardRef<
+  HTMLInputElement,
+  React.InputHTMLAttributes<HTMLInputElement>
+>(({ className, type, ...props }, ref) => {
   return (
     <input
       type={type}

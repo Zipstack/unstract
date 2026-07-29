@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
  * registry entry, but the Midnight Bloom mockups use it in the command/search
  * affordance.
  */
-function Kbd({ className, ...props }) {
+function Kbd({ className, ...props }: React.HTMLAttributes<HTMLElement>) {
   return (
     <kbd
       className={cn(

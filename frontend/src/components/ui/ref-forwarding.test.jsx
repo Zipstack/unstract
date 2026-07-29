@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Button } from "@/components/ui/button";
+import { Label } from "@/components/ui/label";
 import { Dropdown } from "@/components/ui/shims/antd-overlays";
 import { CustomButton } from "@/components/widgets/custom-button/CustomButton";
 
@@ -70,5 +71,32 @@ describe("ref forwarding through the trigger chain", () => {
     await waitFor(() =>
       expect(screen.getByText("Export as Tool")).toBeInTheDocument(),
     );
+  });
+
+  /*
+   * `FormLabel` renders `Label` with a ref, so assert it arrives.
+   *
+   * This one is a guard, not a caught bug: Label was a plain function
+   * component before being typed, and under React 19 `ref` is an ordinary
+   * prop, so the `{...props}` spread already carried it through. What this
+   * catches is a future refactor that stops spreading — destructuring the
+   * props it uses and dropping the rest silently detaches FormLabel's ref
+   * with no warning, which is exactly how the Export-button bug above
+   * shipped.
+   */
+  it("Label forwards its ref (FormLabel renders it with one)", () => {
+    let node = null;
+    render(
+      <Label
+        ref={(n) => {
+          node = n;
+        }}
+        htmlFor="field"
+      >
+        label
+      </Label>,
+    );
+    expect(node).toBeInstanceOf(HTMLElement);
+    expect(node.tagName).toBe("LABEL");
   });
 });

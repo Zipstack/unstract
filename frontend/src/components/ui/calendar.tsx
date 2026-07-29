@@ -16,7 +16,14 @@ import { cn } from "@/lib/utils";
  * enums, so they are checked against the installed version rather than being
  * guessed strings.
  */
-function Calendar({ className, classNames, showOutsideDays = true, ...props }) {
+export type CalendarProps = React.ComponentProps<typeof DayPicker>;
+
+function Calendar({
+  className,
+  classNames,
+  showOutsideDays = true,
+  ...props
+}: CalendarProps) {
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
