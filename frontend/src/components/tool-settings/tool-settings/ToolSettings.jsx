@@ -105,6 +105,7 @@ function ToolSettings({ type }) {
     setPagination,
     searchTerm,
     sort,
+    userSorted,
     fetchRef,
     requestList,
     resetList,
@@ -395,6 +396,7 @@ function ToolSettings({ type }) {
                 loading={isLoading}
                 pagination={pagination}
                 sort={sort}
+                userSorted={userSorted}
                 onPaginationChange={handlePaginationChange}
                 onSortChange={handleSortChange}
                 titleProp="adapter_name"

@@ -44,6 +44,11 @@ const colorForSeed = (seed = "") => {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 };
 
+// Owner/Created/Modified/Actions share one compact width so they read as an
+// evenly-spaced group; Name has no width and absorbs the remaining space. Sized
+// to fit a full timestamp on one line.
+const COMPACT_COL_WIDTH = 210;
+
 // Sort-menu wording differs for text vs date columns (per the design).
 const SORT_OPTIONS = {
   text: [
@@ -61,8 +66,16 @@ const SORT_OPTIONS = {
  * Newest First for dates). Server-driven — picking an option refetches.
  * @return {JSX.Element} Rendered sortable header
  */
-function SortHeader({ label, sortKey, sortType = "text", sort, onSortChange }) {
-  const active = sort?.sortBy === sortKey;
+function SortHeader({
+  label,
+  sortKey,
+  sortType = "text",
+  sort,
+  userSorted,
+  onSortChange,
+}) {
+  // Don't light up the default sort column on load — only once the user picks.
+  const active = userSorted && sort?.sortBy === sortKey;
   const items = [
     ...SORT_OPTIONS[sortType],
     { type: "divider" },
@@ -100,6 +113,7 @@ SortHeader.propTypes = {
   sortKey: PropTypes.string.isRequired,
   sortType: PropTypes.oneOf(["text", "date"]),
   sort: PropTypes.object,
+  userSorted: PropTypes.bool,
   onSortChange: PropTypes.func,
 };
 
@@ -113,6 +127,7 @@ function ResourceTable({
   loading,
   pagination,
   sort,
+  userSorted,
   onPaginationChange,
   onSortChange,
   titleProp,
@@ -303,17 +318,17 @@ function ResourceTable({
           sortKey={titleProp}
           sortType="text"
           sort={sort}
+          userSorted={userSorted}
           onSortChange={onSortChange}
         />
       ),
       key: "name",
-      width: "34%",
       render: (_, item) => renderName(item),
     },
     showOwner && {
       title: <span className="resource-table-th static">Owned By</span>,
       key: "owner",
-      width: "22%",
+      width: COMPACT_COL_WIDTH,
       render: (_, item) => renderOwner(item),
     },
     {
@@ -323,12 +338,22 @@ function ResourceTable({
           sortKey={dateProp}
           sortType="date"
           sort={sort}
+          userSorted={userSorted}
           onSortChange={onSortChange}
         />
       ),
       key: "created",
-      width: "15%",
-      render: (_, item) => formattedDateTime(item?.[dateProp]) || "-",
+      width: COMPACT_COL_WIDTH,
+      render: (_, item) => {
+        const formatted = formattedDateTime(item?.[dateProp]);
+        return formatted ? (
+          <Typography.Text ellipsis={{ tooltip: formatted }}>
+            {formatted}
+          </Typography.Text>
+        ) : (
+          "-"
+        );
+      },
     },
     {
       title: (
@@ -337,11 +362,12 @@ function ResourceTable({
           sortKey={modifiedProp}
           sortType="date"
           sort={sort}
+          userSorted={userSorted}
           onSortChange={onSortChange}
         />
       ),
       key: "modified",
-      width: "15%",
+      width: COMPACT_COL_WIDTH,
       render: (_, item) => {
         const iso = item?.[modifiedProp];
         const rel = timeAgo(iso);
@@ -355,7 +381,7 @@ function ResourceTable({
     {
       title: <span className="resource-table-th static right">Actions</span>,
       key: "actions",
-      width: "14%",
+      width: COMPACT_COL_WIDTH,
       align: "right",
       render: (_, item) => renderActions(item),
     },
@@ -400,6 +426,7 @@ ResourceTable.propTypes = {
   loading: PropTypes.bool,
   pagination: PropTypes.object,
   sort: PropTypes.object,
+  userSorted: PropTypes.bool,
   onPaginationChange: PropTypes.func,
   onSortChange: PropTypes.func,
   titleProp: PropTypes.string.isRequired,

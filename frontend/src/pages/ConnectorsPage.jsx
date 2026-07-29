@@ -80,6 +80,7 @@ function ConnectorsPage() {
     setPagination,
     searchTerm,
     sort,
+    userSorted,
     fetchRef,
     requestList,
     syncRequested,
@@ -332,6 +333,7 @@ function ConnectorsPage() {
               loading={loading}
               pagination={pagination}
               sort={sort}
+              userSorted={userSorted}
               onPaginationChange={handlePaginationChange}
               onSortChange={handleSortChange}
               titleProp="connector_name"

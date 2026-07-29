@@ -101,6 +101,10 @@ function usePaginatedList({
     sortBy: defaultSortBy,
     order: defaultOrder,
   });
+  // The default sort still drives the server; this only gates the header's
+  // "active" styling so the default column isn't highlighted until the user
+  // explicitly picks a sort.
+  const [userSorted, setUserSorted] = useState(false);
 
   // Page assigns its fetch fn here; handlers call the latest one via the ref.
   const fetchRef = useRef(null);
@@ -154,6 +158,7 @@ function usePaginatedList({
       ? { sortBy, order: order || "asc" }
       : { sortBy: defaultSortBy, order: defaultOrder };
     setSort(nextSort);
+    setUserSorted(Boolean(sortBy));
     requestList(
       1,
       pagination.pageSize,
@@ -169,6 +174,7 @@ function usePaginatedList({
   const resetList = () => {
     setSearchTerm("");
     setSort({ sortBy: defaultSortBy, order: defaultOrder });
+    setUserSorted(false);
     requestList(1, defaultPageSize, "", defaultSortBy, defaultOrder);
   };
 
@@ -192,6 +198,7 @@ function usePaginatedList({
     searchTerm,
     setSearchTerm,
     sort,
+    userSorted,
     fetchRef,
     requestList,
     resetList,

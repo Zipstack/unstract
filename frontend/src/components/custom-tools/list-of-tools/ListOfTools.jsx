@@ -127,6 +127,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     searchTerm,
     setSearchTerm,
     sort,
+    userSorted,
     fetchRef,
     requestList,
     syncRequested,
@@ -489,6 +490,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
                 loading={isLoading}
                 pagination={pagination}
                 sort={sort}
+                userSorted={userSorted}
                 onPaginationChange={handlePaginationChange}
                 onSortChange={handleSortChange}
                 titleProp="tool_name"

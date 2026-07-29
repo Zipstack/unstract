@@ -79,6 +79,7 @@ function Workflows() {
     setPagination,
     searchTerm,
     sort,
+    userSorted,
     fetchRef,
     requestList,
     syncRequested,
@@ -437,6 +438,7 @@ function Workflows() {
               loading={loading}
               pagination={pagination}
               sort={sort}
+              userSorted={userSorted}
               onPaginationChange={handlePaginationChange}
               onSortChange={handleSortChange}
               titleProp="workflow_name"
