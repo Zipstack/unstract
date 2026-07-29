@@ -63,6 +63,7 @@ function collectSubComponentUsages() {
     );
   }
   const found = new Set();
+  let scanned = 0;
   const walk = (dir) => {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);
@@ -73,13 +74,17 @@ function collectSubComponentUsages() {
         walk(full);
         continue;
       }
-      if (!entry.name.endsWith(".jsx") || entry.name.includes(".test.")) {
+      // .tsx as well as .jsx: the shim layer is being converted to TypeScript
+      // file by file, and a `.jsx`-only filter would quietly stop scanning
+      // each file as it converts — the scan still passes, just over less.
+      if (!/\.[jt]sx$/.test(entry.name) || entry.name.includes(".test.")) {
         continue;
       }
       // The shims themselves are the definition, not a call-site.
       if (full.includes(`${path.sep}shims${path.sep}antd-`)) {
         continue;
       }
+      scanned += 1;
       // Strip comments first: a doc comment mentioning `Modal.confirm` is not
       // a call-site, and flagging it would train people to ignore this test.
       const src = fs
@@ -99,14 +104,34 @@ function collectSubComponentUsages() {
     }
   };
   walk(root);
-  return [...found].sort();
+  return { usages: [...found].sort(), scanned };
 }
 
 describe("shim completeness — every <Foo.Bar> used must be defined", () => {
-  const usages = collectSubComponentUsages();
+  const { usages, scanned } = collectSubComponentUsages();
 
   it("finds sub-component usages to check", () => {
     expect(usages.length).toBeGreaterThan(0);
+  });
+
+  /*
+   * This scan has silently narrowed twice: once when the shims moved to
+   * ui/shims/ and the "../.." depth went stale, and once when the extension
+   * filter still said `.jsx` after files began converting to `.tsx`. Both
+   * times every assertion below still passed, over a fraction of the app.
+   *
+   * `usages.length > 0` does not catch that — one surviving file keeps it
+   * true. A floor on the number of files actually read does. 275 match
+   * today; 200 leaves room for ordinary churn while a dropped extension or
+   * a wrong root (which cost ~all of them) fails loudly.
+   */
+  it("scans the whole app, not a subset", () => {
+    expect(
+      scanned,
+      "shim-completeness scanned far fewer files than expected — the walk " +
+        "root or the extension filter has drifted, so the assertions below " +
+        "are covering only part of the app.",
+    ).toBeGreaterThan(200);
   });
 
   for (const usage of usages) {

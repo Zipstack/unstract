@@ -132,7 +132,9 @@ describe("cascade and affordance guards", () => {
           }
           continue;
         }
-        if (!entry.name.endsWith(".jsx") || entry.name.includes(".test.")) {
+        // .tsx too — a `.jsx`-only filter would stop checking each shim as it
+        // converts to TypeScript, and this guard would pass over less and less.
+        if (!/\.[jt]sx$/.test(entry.name) || entry.name.includes(".test.")) {
           continue;
         }
         const src = fs.readFileSync(full, "utf8");
