@@ -50,8 +50,15 @@ def _json_safe(value: Any) -> Any:
     ``PgQueueMessage.message`` is a plain ``JSONField`` (no Django encoder), and
     the worker consumer already receives string ids on the existing PG dispatch
     path, so coercing here keeps both transports consistent.
+
+    ``allow_nan=False`` rejects ``NaN``/``Infinity`` here with a ``ValueError``
+    rather than letting Python's default lenient encoder emit the non-standard
+    ``NaN``/``Infinity`` tokens: Postgres ``jsonb`` rejects those at insert with a
+    ``django.db.DataError`` (a permanent failure the notification dispatcher's
+    ``(ValueError, TypeError)`` seam would otherwise miss, looping the row). Fail
+    at the intended seam instead.
     """
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(json.dumps(value, default=str, allow_nan=False))
 
 
 def enqueue_task(

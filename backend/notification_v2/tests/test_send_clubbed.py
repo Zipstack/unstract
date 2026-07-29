@@ -99,14 +99,15 @@ class TestOrgIdentifier:
             assert views._org_identifier(7) == "org-uuid"
         org.objects.filter.assert_called_once_with(pk=7)
 
-    def test_missing_org_returns_none_and_warns(self):
+    def test_missing_org_returns_none_and_logs_error(self):
         with (
             patch.object(views, "Organization") as org,
-            patch.object(views.logger, "warning") as warn,
+            patch.object(views.logger, "error") as err,
         ):
             chain = org.objects.filter.return_value.values_list.return_value
             chain.first.return_value = None
             assert views._org_identifier(7) is None
-        # A dangling FK is logged (org-traceable) rather than swallowed.
-        warn.assert_called_once()
-        assert "org_pk" in warn.call_args.args[0]
+        # A dangling FK is a data anomaly: logged at error (Sentry-routed),
+        # org-traceable, rather than swallowed.
+        err.assert_called_once()
+        assert "org_pk" in err.call_args.args[0]

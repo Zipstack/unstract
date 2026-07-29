@@ -106,6 +106,17 @@ class TestEnqueueTask:
         when = model.objects.create.call_args.kwargs["message"]["kwargs"]["when"]
         assert isinstance(when, str) and "2026-06-18" in when
 
+    def test_json_safe_rejects_nan_with_value_error(self):
+        # NaN would slip past the default lenient encoder and only fail at the
+        # jsonb insert (DataError); allow_nan=False surfaces it as a ValueError at
+        # the enqueue seam so the notification dispatcher can dead-letter it.
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            with pytest.raises(ValueError):
+                producer.enqueue_task(
+                    task_name="t", queue="celery", kwargs={"score": float("nan")}
+                )
+
     def test_enqueue_failure_logs_and_propagates(self):
         with patch(_MODEL) as model:
             model.objects.create.side_effect = RuntimeError("db down")

@@ -93,8 +93,10 @@ def dispatch_webhook_notification(
                 queue=queue,
                 args=args,
                 kwargs=kwargs,
-                # enqueue_task's org_id is str-typed — coerce None→"" (unlike the
-                # routing arg above, this `or ""` is load-bearing).
+                # enqueue_task types org_id as str; None→"" here satisfies that
+                # type only, not runtime — enqueue_task itself re-coerces
+                # ``org_id or ""`` at insert (producer.py), so this has no runtime
+                # effect.
                 org_id=org_string_id or "",
                 task_id=dispatch_id,
             )

@@ -538,7 +538,11 @@ def _org_identifier(org_pk: int) -> str | None:
         .first()
     )
     if org_string_id is None:
-        logger.warning(
+        # Sentry-routed (logger.error): a live buffer row with no org is a data
+        # anomaly (dangling FK / corruption) that shouldn't happen under the
+        # CASCADE constraint, not routine noise. Routing still fails closed to
+        # Celery in resolve_transport.
+        logger.error(
             "metric=notification_org_identifier_missing_total org_pk=%s "
             "(dangling FK; notification routing falls back to Celery)",
             org_pk,
@@ -554,7 +558,7 @@ def _send_clubbed(
     platform: str,
     max_retries: int,
     buffer_ids: list[str],
-    org_id: Any,
+    org_id: int,
 ) -> None:
     """Send the clubbed Celery task after the DB transition has committed.
 
@@ -605,9 +609,12 @@ def _send_clubbed(
             len(buffer_ids),
         )
     except PermanentDispatchError:
-        # PG-ONLY permanent failure — enqueue_task validation (priority range /
-        # reply_key+callback exclusivity) or payload serialization — fails
-        # identically every flush tick. Dead-letter now (distinct metric) instead
+        # PG-ONLY permanent failure. From this path the only reachable cause is
+        # payload JSON-serialization (e.g. a NaN/Infinity float that jsonb rejects
+        # at insert): this call passes no reply_key/callback and a default in-range
+        # priority, so enqueue_task's other permanent checks can't fire here (the
+        # full set lives on PermanentDispatchError's docstring). It fails
+        # identically every flush tick — dead-letter now (distinct metric) instead
         # of reverting to PENDING and re-rendering + re-dispatching + emitting a
         # broker_failure traceback until the attempt cap. The Celery path never
         # raises this, so the flag-off flow is unchanged: a Celery send_task failure
@@ -650,7 +657,7 @@ def _send_clubbed(
         )
 
 
-def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) -> None:
+def _penalize_render_failure(buffer_ids: list[str], org_id: int, platform: str) -> None:
     """Charge a dispatch attempt to a group whose payloads failed to render.
 
     The SENDING-claim increment never runs on a render failure, so count it here
@@ -670,7 +677,7 @@ def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) 
 
 
 def _dispatch_group(
-    org_id: Any,
+    org_id: int,
     webhook_url: str,
     auth_sig: str,
     platform: str,

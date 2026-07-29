@@ -70,10 +70,10 @@ class WorkerType(str, Enum):
         slicing the import path.
         """
         directory_mapping = {
-            "api_deployment": "api-deployment",
+            WorkerType.API_DEPLOYMENT: "api-deployment",
             # All others use same name for directory and module
         }
-        return directory_mapping.get(self.value, self.value)
+        return directory_mapping.get(self, self.value)
 
     def is_pluggable(self) -> bool:
         """Check if this worker type is a pluggable worker.
