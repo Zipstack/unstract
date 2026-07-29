@@ -248,5 +248,4 @@ MetricsSummary.propTypes = {
   loading: PropTypes.bool,
 };
 
-
 export { MetricsSummary };

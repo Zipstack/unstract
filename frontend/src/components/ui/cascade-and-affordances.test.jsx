@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +76,66 @@ describe("cascade and affordance guards", () => {
       expect(screen.getByRole("button").className).toContain("cursor-pointer");
     });
 
+    it("dialog and sheet close buttons carry cursor-pointer", () => {
+      // Radix renders these as bare <button>s inside the primitive, so they
+      // never pass through the Button variants that supply the cursor.
+      const dialog = fs.readFileSync(
+        path.join(process.cwd(), "src/components/ui/dialog.tsx"),
+        "utf8",
+      );
+      const sheet = fs.readFileSync(
+        path.join(process.cwd(), "src/components/ui/sheet.tsx"),
+        "utf8",
+      );
+      for (const [name, src] of [
+        ["dialog", dialog],
+        ["sheet", sheet],
+      ]) {
+        const close = src.match(/\.Close className="([^"]*)"/);
+        expect(
+          close,
+          `${name} should render a .Close with a className`,
+        ).toBeTruthy();
+        expect(
+          close[1],
+          `the ${name} close button needs cursor-pointer — Tailwind v4 dropped the preflight`,
+        ).toContain("cursor-pointer");
+      }
+    });
+
+    /*
+     * antd shipped an icon FONT, so `font-size` sized its icons. lucide ships
+     * SVGs, which ignore font-size entirely and fall back to their own 24px
+     * default — every such rule silently rendered a third too large.
+     */
+    it("icon CSS rules set explicit dimensions, not just font-size", () => {
+      const offenders = [];
+      const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (entry.name !== "node_modules") walk(full);
+            continue;
+          }
+          if (!entry.name.endsWith(".css")) continue;
+          const txt = fs.readFileSync(full, "utf8");
+          for (const m of txt.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+            const sel = m[1].trim().split("\n").pop().trim();
+            const body = m[2];
+            if (!/font-size:\s*\d+px/.test(body)) continue;
+            if (!/icon|svg|anticon|glyph|chevron|caret/i.test(sel)) continue;
+            if (/width|height/.test(body)) continue;
+            offenders.push(`${path.relative(process.cwd(), full)}: ${sel}`);
+          }
+        }
+      };
+      walk(path.join(process.cwd(), "src"));
+      expect(
+        offenders,
+        "these icon rules size by font-size only, which does nothing to an SVG",
+      ).toEqual([]);
+    });
+
     it("keeps the not-allowed affordance for disabled buttons", () => {
       render(<Button disabled>Nope</Button>);
       // `disabled:pointer-events-none` suppresses the hand; the class list
@@ -97,6 +158,35 @@ describe("cascade and affordance guards", () => {
       );
       expect(screen.getByText("body")).toBeInTheDocument();
       expect(container).toBeTruthy();
+    });
+
+    /*
+     * `trigger="hover"` was destructured and then ignored, so the sidebar's
+     * HITL and Platform fly-out menus never opened on hover — Radix Popover
+     * is click-only. A dropped prop like this raises no error and no warning,
+     * which is why it needs a behavioural test rather than a class check.
+     */
+    it("opens on hover when the call-site asks for trigger='hover'", async () => {
+      const user = userEvent.setup();
+      render(
+        <Popover trigger="hover" content={<span>fly-out</span>}>
+          <button type="button">Platform</button>
+        </Popover>,
+      );
+      expect(screen.queryByText("fly-out")).not.toBeInTheDocument();
+      await user.hover(screen.getByRole("button", { name: "Platform" }));
+      expect(await screen.findByText("fly-out")).toBeInTheDocument();
+    });
+
+    it("stays click-only when no trigger is given", async () => {
+      const user = userEvent.setup();
+      render(
+        <Popover content={<span>clicky</span>}>
+          <button type="button">Open</button>
+        </Popover>,
+      );
+      await user.hover(screen.getByRole("button", { name: "Open" }));
+      expect(screen.queryByText("clicky")).not.toBeInTheDocument();
     });
 
     it("does not leak antd-only props onto the DOM", () => {

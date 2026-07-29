@@ -37,7 +37,6 @@ function ConfirmModal({
   );
 }
 
-
 ConfirmModal.propTypes = {
   children: PropTypes.any.isRequired,
   handleConfirm: PropTypes.func.isRequired,

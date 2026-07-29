@@ -187,5 +187,4 @@ RecentActivity.propTypes = {
   loading: PropTypes.bool,
 };
 
-
 export { RecentActivity };

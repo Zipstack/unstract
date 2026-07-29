@@ -201,6 +201,11 @@
 .profile-card .field-icon {
   color: #9ca3af;
   font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
@@ -250,4 +255,9 @@
 
 .role-badge .anticon {
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }

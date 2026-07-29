@@ -232,5 +232,4 @@ AddSourceModal.propTypes = {
   setEditItemId: PropTypes.func.isRequired,
 };
 
-
 export { AddSourceModal };

@@ -363,6 +363,11 @@
 
 .card-list-workflow-link-icon {
   font-size: 11px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 11px;
+  height: 11px;
   color: rgba(0, 0, 0, 0.55);
 }
 
@@ -512,6 +517,11 @@
 
 .card-list-meta-label .anticon {
   font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
 }
 
 .card-list-meta-icon {
@@ -870,6 +880,11 @@
 
   .action-icon-btn {
     font-size: 16px;
+    /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+    width: 16px;
+    height: 16px;
   }
 }
 
@@ -1129,6 +1144,11 @@
 
 .card-list-workflow-link-row .anticon {
   font-size: 11px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 11px;
+  height: 11px;
   color: rgba(0, 0, 0, 0.55);
 }
 

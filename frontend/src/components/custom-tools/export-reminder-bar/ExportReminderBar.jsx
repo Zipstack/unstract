@@ -38,5 +38,4 @@ ExportReminderBar.propTypes = {
   isExporting: PropTypes.bool,
 };
 
-
 export { ExportReminderBar };

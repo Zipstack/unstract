@@ -590,20 +590,73 @@ const AntPopover = React.forwardRef<HTMLDivElement, PopoverProps>(
     },
     ref,
   ) {
-    const isOpen = open ?? visible;
+    const controlledOpen = open ?? visible;
     const handleOpenChange = onOpenChange ?? onVisibleChange;
+
+    /*
+     * antd's `trigger="hover"` has no Radix equivalent — Radix Popover opens
+     * on click only. The prop was being destructured and then ignored, so the
+     * sidebar's HITL and Platform fly-out menus simply never appeared on
+     * hover: a silent prop-drop, the exact failure this layer keeps producing.
+     *
+     * Driven here rather than with Radix's HoverCard because the call-sites
+     * also CLICK these items to navigate, and swapping the primitive would
+     * change that behaviour. A small close delay keeps the menu reachable
+     * while the pointer travels from the trigger to the panel.
+     */
+    const triggers = Array.isArray(antdTrigger)
+      ? antdTrigger
+      : [antdTrigger ?? "click"];
+    const isHover = triggers.includes("hover");
+
+    const [hoverOpen, setHoverOpen] = React.useState(false);
+    const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const cancelClose = () => {
+      if (closeTimer.current) {
+        clearTimeout(closeTimer.current);
+        closeTimer.current = null;
+      }
+    };
+    React.useEffect(() => cancelClose, []);
+
+    const hoverHandlers = isHover
+      ? {
+          onMouseEnter: () => {
+            cancelClose();
+            setHoverOpen(true);
+          },
+          onMouseLeave: () => {
+            cancelClose();
+            closeTimer.current = setTimeout(() => setHoverOpen(false), 150);
+          },
+        }
+      : undefined;
+
+    // An explicit `open`/`visible` still wins, so controlled call-sites are
+    // unaffected by the hover tracking above.
+    const isOpen = controlledOpen ?? (isHover ? hoverOpen : undefined);
 
     return (
       <Popover
         open={isOpen}
         // Always present, even when the call-site tracks state itself — without
         // it Radix cannot dismiss a controlled popover at all.
-        onOpenChange={(next) => handleOpenChange?.(next)}
+        onOpenChange={(next) => {
+          if (isHover) {
+            setHoverOpen(next);
+          }
+          handleOpenChange?.(next);
+        }}
         {...props}
       >
-        <PopoverTrigger asChild>{children}</PopoverTrigger>
+        <PopoverTrigger asChild {...hoverHandlers}>
+          {children}
+        </PopoverTrigger>
         <PopoverContent
           ref={ref}
+          // Same handlers on the panel: without them the 150ms timer fires as
+          // the pointer crosses the gap and the menu closes under the cursor.
+          {...hoverHandlers}
           side={
             placement.replace(/(Top|Bottom|Left|Right)$/, "") as
               | "top"

@@ -30,7 +30,14 @@
 }
 
 .action-icon-buttons {
-  font-size: 18px;
+  /*
+   * width/height, not font-size. antd's icons were an icon FONT, so
+   * `font-size: 18px` sized them; lucide ships SVGs, which ignore font-size
+   * entirely and fall back to their own 24px default. Every action icon in
+   * the list therefore rendered a third larger than the reference.
+   */
+  width: 18px;
+  height: 18px;
   z-index: 20;
   color: var(--foreground);
   cursor: pointer;
@@ -144,7 +151,10 @@
 
 .list-view-info-icon {
   color: #8c8c8c;
-  font-size: 13px;
+  /* Same icon-font → SVG issue as .action-icon-buttons above. The reference
+   * renders this at 14px. */
+  width: 14px;
+  height: 14px;
 }
 
 .edit-icon:hover {

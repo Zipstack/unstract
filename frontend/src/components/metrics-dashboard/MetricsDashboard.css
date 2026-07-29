@@ -30,7 +30,8 @@
 }
 
 /* Tab content padding — direct child only */
-.metrics-dashboard-container > .ant-tabs
+.metrics-dashboard-container
+  > .ant-tabs
   > .ant-tabs-content-holder
   > .ant-tabs-content {
   padding: 16px;
@@ -71,6 +72,11 @@
 
 .summary-card-icon span {
   font-size: 24px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 24px;
+  height: 24px;
 }
 
 .summary-card-content {
@@ -124,6 +130,11 @@
 
 .metric-icon {
   font-size: 16px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
 }
 
 .metric-count {
@@ -395,6 +406,11 @@
 
 .subscription-stat-icon {
   font-size: 16px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
   color: var(--primary);
   margin-bottom: 6px;
 }
@@ -543,4 +559,9 @@
 .llm-usage-info-icon {
   color: #8c8c8c;
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }

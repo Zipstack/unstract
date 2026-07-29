@@ -12,7 +12,11 @@ import { Button } from "@/components/ui/shims/antd-button";
 import { Input, InputNumber, Select } from "@/components/ui/shims/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
 import { Tag } from "@/components/ui/shims/antd-leaves";
-import { Modal, Popconfirm, Tooltip } from "@/components/ui/shims/antd-overlays";
+import {
+  Modal,
+  Popconfirm,
+  Tooltip,
+} from "@/components/ui/shims/antd-overlays";
 import { Table } from "@/components/ui/shims/antd-structure";
 import { Text, Typography } from "@/components/ui/shims/antd-typography";
 import { message } from "@/hooks/useAppToast";

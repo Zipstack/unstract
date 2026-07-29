@@ -14,6 +14,11 @@
 
 .import-tool-uploader .ant-upload-drag-icon {
   font-size: 48px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 48px;
+  height: 48px;
   color: var(--primary);
   margin-bottom: 16px;
 }
