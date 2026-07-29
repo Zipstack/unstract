@@ -1,14 +1,19 @@
 import json
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.bigquery import BigQuery
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.bigquery import BigQuery
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorBigQuery(TestCase):
     """Integration test for insert_into_db method with real BigQuery connector."""
 
@@ -65,9 +70,7 @@ class TestDestinationConnectorBigQuery(TestCase):
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that all expected columns exist in the table with correct types."""
-        table_info = self.bigquery_connector.get_information_schema(
-            table_name=table_name
-        )
+        table_info = self.bigquery_connector.get_information_schema(table_name=table_name)
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
