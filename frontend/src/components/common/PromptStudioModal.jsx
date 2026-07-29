@@ -69,4 +69,3 @@ PromptStudioModal.propTypes = {
   onClose: PropTypes.func,
   showModal: PropTypes.bool,
 };
-
