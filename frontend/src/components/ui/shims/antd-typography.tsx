@@ -23,8 +23,40 @@ import { cn } from "@/lib/utils";
  * regression, which C4 forbids. `Ellipsis` below implements both.
  */
 
+/**
+ * The antd Typography surface these shims accept.
+ *
+ * Enumerating it is the point of the TypeScript conversion. Every bug this
+ * layer has produced was a silent prop-drop: a call-site passes a prop, the
+ * shim never destructures it, and `...props` swallows it with no error at all
+ * (`showCount`, `onValuesChange`, `setFields`, `validateStatus` each shipped
+ * that way). With an explicit interface the next one is a compile error at the
+ * call-site instead of a defect in the UI.
+ */
+type TypographyType = "secondary" | "success" | "warning" | "danger";
+
+/** antd's `ellipsis`: `true`, or a config object. */
+type EllipsisConfig = {
+  /** Lines to clamp to. Only 1–6 have a static Tailwind class; see CLAMP_CLASS. */
+  rows?: number;
+  /** `true` shows the element's own children on hover; a node shows that node. */
+  tooltip?: boolean | React.ReactNode;
+};
+type EllipsisProp = boolean | EllipsisConfig;
+
+interface TypographyCommonProps {
+  type?: TypographyType;
+  strong?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  /** antd spells this `delete`; destructured as `del` since it is a keyword. */
+  delete?: boolean;
+  code?: boolean;
+  ellipsis?: EllipsisProp;
+}
+
 /** antd `type` → Midnight Bloom token classes. */
-const TYPE_CLASS = {
+const TYPE_CLASS: Record<TypographyType, string> = {
   secondary: "text-muted-foreground",
   success: "text-success",
   warning: "text-warning",
@@ -46,7 +78,7 @@ const TYPE_CLASS = {
  */
 // Written out rather than interpolated (`line-clamp-${n}`): Tailwind scans
 // source statically and never sees a class name built at runtime.
-const CLAMP_CLASS = {
+const CLAMP_CLASS: Record<number, string> = {
   1: "truncate whitespace-nowrap",
   2: "line-clamp-2",
   3: "line-clamp-3",
@@ -55,12 +87,19 @@ const CLAMP_CLASS = {
   6: "line-clamp-6",
 };
 
-const Ellipsis = React.forwardRef(function Ellipsis(
+interface EllipsisProps extends React.HTMLAttributes<HTMLElement> {
+  ellipsis?: EllipsisProp;
+  /** The element or component to render as, supplied by the caller. */
+  Comp: React.ElementType;
+}
+
+const Ellipsis = React.forwardRef<HTMLElement, EllipsisProps>(function Ellipsis(
   { ellipsis, children, className, Comp, ...props },
   ref,
 ) {
-  const cfg = ellipsis === true ? {} : ellipsis;
-  const rows = cfg?.rows ?? 1;
+  const cfg: EllipsisConfig =
+    ellipsis === true || ellipsis === false || ellipsis == null ? {} : ellipsis;
+  const rows = cfg.rows ?? 1;
   const clampClass = CLAMP_CLASS[rows] ?? CLAMP_CLASS[1];
 
   const el = (
@@ -69,7 +108,7 @@ const Ellipsis = React.forwardRef(function Ellipsis(
     </Comp>
   );
 
-  if (!cfg?.tooltip) {
+  if (!cfg.tooltip) {
     return el;
   }
 
@@ -86,7 +125,14 @@ const Ellipsis = React.forwardRef(function Ellipsis(
 });
 
 /** Shared prop → class handling for Text / Paragraph / Link. */
-function useTypographyClass({ type, strong, italic, underline, del, code }) {
+function useTypographyClass({
+  type,
+  strong,
+  italic,
+  underline,
+  del,
+  code,
+}: Omit<TypographyCommonProps, "delete" | "ellipsis"> & { del?: boolean }) {
   return cn(
     // ~8 CSS rules target .ant-typography (margins, line-height).
     "ant-typography",
@@ -101,8 +147,15 @@ function useTypographyClass({ type, strong, italic, underline, del, code }) {
   );
 }
 
+interface TextProps
+  extends TypographyCommonProps,
+    Omit<React.HTMLAttributes<HTMLElement>, "color"> {
+  /** Renders a <mark> instead of a <span>. */
+  mark?: boolean;
+}
+
 /** antd `<Typography.Text>`. Renders a <span>. */
-const Text = React.forwardRef(function Text(
+const Text = React.forwardRef<HTMLElement, TextProps>(function Text(
   {
     className,
     type,
@@ -149,13 +202,19 @@ const Text = React.forwardRef(function Text(
   );
 });
 
+interface TitleProps
+  extends TypographyCommonProps,
+    Omit<React.HTMLAttributes<HTMLHeadingElement>, "color"> {
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 /** antd `<Typography.Title level={1..5}>`. Renders the matching heading. */
-const Title = React.forwardRef(function Title(
+const Title = React.forwardRef<HTMLHeadingElement, TitleProps>(function Title(
   { className, level = 1, type, ellipsis, children, ...props },
   ref,
 ) {
-  const Comp = `h${Math.min(Math.max(level, 1), 6)}`;
-  const size = {
+  const Comp = `h${Math.min(Math.max(level, 1), 6)}` as React.ElementType;
+  const size: string | undefined = {
     1: "text-3xl font-bold tracking-tight",
     2: "text-2xl font-semibold tracking-tight",
     3: "text-xl font-semibold",
@@ -189,40 +248,50 @@ const Title = React.forwardRef(function Title(
   );
 });
 
+interface ParagraphProps
+  extends TypographyCommonProps,
+    Omit<React.HTMLAttributes<HTMLParagraphElement>, "color"> {}
+
 /** antd `<Typography.Paragraph>`. Renders a <p>. */
-const Paragraph = React.forwardRef(function Paragraph(
-  { className, type, strong, italic, ellipsis, children, ...props },
-  ref,
-) {
-  const base = useTypographyClass({ type, strong, italic });
+const Paragraph = React.forwardRef<HTMLParagraphElement, ParagraphProps>(
+  function Paragraph(
+    { className, type, strong, italic, ellipsis, children, ...props },
+    ref,
+  ) {
+    const base = useTypographyClass({ type, strong, italic });
 
-  if (ellipsis) {
+    if (ellipsis) {
+      return (
+        <Ellipsis
+          Comp="p"
+          ellipsis={ellipsis}
+          className={cn(base, className)}
+          ref={ref}
+          {...props}
+        >
+          {children}
+        </Ellipsis>
+      );
+    }
+
     return (
-      <Ellipsis
-        Comp="p"
-        ellipsis={ellipsis}
-        className={cn(base, className)}
-        ref={ref}
-        {...props}
-      >
+      <p ref={ref} className={cn(base, className)} {...props}>
         {children}
-      </Ellipsis>
+      </p>
     );
-  }
+  },
+);
 
-  return (
-    <p ref={ref} className={cn(base, className)} {...props}>
-      {children}
-    </p>
-  );
-});
+interface LinkProps
+  extends TypographyCommonProps,
+    Omit<React.AnchorHTMLAttributes<HTMLAnchorElement>, "color" | "type"> {}
 
 /**
  * antd `<Typography.Link>`. Renders an <a>.
  * NOTE: unrelated to react-router's `Link` — the 3 call-sites that use
  * react-router keep importing it from there.
  */
-const Link = React.forwardRef(function Link(
+const Link = React.forwardRef<HTMLAnchorElement, LinkProps>(function Link(
   { className, type, strong, italic, children, ...props },
   ref,
 ) {
@@ -247,13 +316,15 @@ const Link = React.forwardRef(function Link(
  * change — matching how antd exposes these.
  */
 const Typography = Object.assign(
-  React.forwardRef(function Typography({ className, children, ...props }, ref) {
-    return (
-      <div ref={ref} className={cn(className)} {...props}>
-        {children}
-      </div>
-    );
-  }),
+  React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElement>>(
+    function Typography({ className, children, ...props }, ref) {
+      return (
+        <div ref={ref} className={cn(className)} {...props}>
+          {children}
+        </div>
+      );
+    },
+  ),
   { Text, Title, Paragraph, Link },
 );
 
