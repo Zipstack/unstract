@@ -44,11 +44,6 @@ const colorForSeed = (seed = "") => {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 };
 
-// Owner/Created/Modified/Actions share one compact width so they read as an
-// evenly-spaced group; Name has no width and absorbs the remaining space. Sized
-// to fit a full timestamp on one line.
-const COMPACT_COL_WIDTH = 210;
-
 // Sort-menu wording differs for text vs date columns (per the design).
 const SORT_OPTIONS = {
   text: [
@@ -331,12 +326,13 @@ function ResourceTable({
         />
       ),
       key: "name",
+      width: "34%",
       render: (_, item) => renderName(item),
     },
     showOwner && {
       title: <span className="resource-table-th static">Owned By</span>,
       key: "owner",
-      width: COMPACT_COL_WIDTH,
+      width: "22%",
       render: (_, item) => renderOwner(item),
     },
     {
@@ -351,17 +347,8 @@ function ResourceTable({
         />
       ),
       key: "created",
-      width: COMPACT_COL_WIDTH,
-      render: (_, item) => {
-        const formatted = formattedDateTime(item?.[dateProp]);
-        return formatted ? (
-          <Typography.Text ellipsis={{ tooltip: formatted }}>
-            {formatted}
-          </Typography.Text>
-        ) : (
-          "-"
-        );
-      },
+      width: "15%",
+      render: (_, item) => formattedDateTime(item?.[dateProp]) || "-",
     },
     {
       title: (
@@ -375,7 +362,7 @@ function ResourceTable({
         />
       ),
       key: "modified",
-      width: COMPACT_COL_WIDTH,
+      width: "15%",
       render: (_, item) => {
         const iso = item?.[modifiedProp];
         const rel = timeAgo(iso);
@@ -389,7 +376,7 @@ function ResourceTable({
     {
       title: <span className="resource-table-th static right">Actions</span>,
       key: "actions",
-      width: COMPACT_COL_WIDTH,
+      width: "14%",
       align: "right",
       render: (_, item) => renderActions(item),
     },

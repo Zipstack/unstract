@@ -2,19 +2,13 @@
    (Name / Owned By / Created / Modified / Actions) */
 
 .resource-table {
-  /* Name has no fixed width and absorbs the slack; the other columns are a
-     fixed compact width (set in the JSX) so they stay evenly spaced. */
+  /* Fill the content width like the design; proportional column widths (set on
+     each column) keep it balanced without one column hogging the slack. */
   width: 100%;
   padding: 0 4px 24px 4px;
 }
 
-/* Below this the fixed columns would crush, so the table scrolls inside its
-   own container instead. overflow-x on the content is the scroll boundary, so
-   the min-width never pushes the page wider. */
-.resource-table table {
-  min-width: 1040px;
-}
-
+/* Let wide content scroll inside the table instead of the page body */
 .resource-table .ant-table-content {
   overflow-x: auto;
 }
@@ -125,12 +119,6 @@
 /* Owned By column: avatar + name/email, clickable to manage co-owners */
 .resource-table-owner {
   min-width: 0;
-  max-width: 100%;
-}
-
-/* Let the name/email item shrink so it ellipsizes within the cell */
-.resource-table-owner .ant-space-item {
-  min-width: 0;
 }
 
 .resource-table-owner-avatar {
@@ -148,10 +136,12 @@
 
 .resource-table-owner-name {
   font-weight: 500;
+  max-width: 190px;
 }
 
 .resource-table-owner-email {
   font-size: 12px;
+  max-width: 190px;
 }
 
 .resource-table-owner-btn {
