@@ -94,4 +94,14 @@ def validate_image_output_allowed(
         return
     if adapter_id is not None and not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
         return
-    raise ValidationError(IMAGE_OUTPUT_REQUIRES_CLOUD)
+    logger.warning(
+        "Rejecting image output mode without the consumer plugin "
+        "(adapter_id=%s, output_mode=%s)",
+        adapter_id,
+        adapter_metadata.get(ImageOutputConstants.OUTPUT_MODE),
+    )
+    # Dict detail, not a bare string: this is raised from inside
+    # ``to_internal_value``, where DRF folds the detail into its per-field
+    # error mapping — a bare string there crashes error collection with a
+    # 500 instead of surfacing a clean 400.
+    raise ValidationError({"adapter_metadata": [IMAGE_OUTPUT_REQUIRES_CLOUD]})
