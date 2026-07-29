@@ -5,7 +5,10 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from unstract.sdk1.adapters.exceptions import ExtractorError
-from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.constants import (
+    ImageOutputConstants,
+    X2TextConstants,
+)
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
     TextExtractionResult,
@@ -66,17 +69,31 @@ class LLMWhispererV2(X2TextAdapter):
         return True
 
     @staticmethod
-    def _validate_pdf_only(input_file_path: str) -> None:
+    def _validate_pdf_only(input_file_path: str, fs: FileStorage | None = None) -> None:
         """Enforce the PDF-only constraint for image output mode (v1).
+
+        Checks the filename extension first; when the storage name carries no
+        ``.pdf`` suffix, falls back to content sniffing — workflow executions
+        store the source file under an extension-less name (e.g. ``SOURCE``),
+        so an extension-only check would false-reject every deployment input.
+        Fail-closed: if the content cannot be verified either, reject.
 
         The message is sourced from ``ImageOutputConfig`` so it stays identical
         to the UI-layer validation surfaced in ``adapter_processor_v2``.
         """
-        if not ImageOutputConfig.is_pdf(input_file_path):
-            raise ExtractorError(
-                ImageOutputConfig.PDF_ONLY_ERROR,
-                status_code=400,
-            )
+        if ImageOutputConfig.is_pdf(input_file_path):
+            return
+        if fs is not None:
+            try:
+                header = fs.read(path=input_file_path, mode="rb", length=5)
+            except Exception:
+                header = b""
+            if ImageOutputConstants.is_pdf_bytes(header):
+                return
+        raise ExtractorError(
+            ImageOutputConfig.PDF_ONLY_ERROR,
+            status_code=400,
+        )
 
     def _process_image_mode(
         self,
@@ -98,7 +115,7 @@ class LLMWhispererV2(X2TextAdapter):
         ``tag`` is forwarded for service-side usage reporting.
         """
         logger.info("Image mode: processing %s in image output mode", input_file_path)
-        self._validate_pdf_only(input_file_path)
+        self._validate_pdf_only(input_file_path, fs=fs)
         whisper_hash, page_images = LLMWhispererHelper.get_page_images(
             config=self.config,
             input_file_path=input_file_path,

@@ -51,10 +51,20 @@ class ImageOutputConstants:
     # zero-padded) — cast to int before sorting.
     PAGE_NUMBER_REGEX = r"page_(\d+)\.png"
 
+    # Leading bytes of every PDF file — the content-based check for inputs
+    # whose storage name carries no extension (workflow executions store the
+    # source file under an extension-less name like ``SOURCE``).
+    PDF_MAGIC_BYTES = b"%PDF-"
+
     @staticmethod
     def is_pdf(file_name: str) -> bool:
         """Return True when ``file_name`` is a PDF (case-insensitive suffix)."""
         return Path(file_name).suffix.lower() == ImageOutputConstants.PDF_EXTENSION
+
+    @staticmethod
+    def is_pdf_bytes(header: bytes) -> bool:
+        """Return True when ``header`` starts with the PDF magic bytes."""
+        return bytes(header).startswith(ImageOutputConstants.PDF_MAGIC_BYTES)
 
 
 def build_page_store_dir(output_file_path: str | None, input_file_path: str) -> str:
