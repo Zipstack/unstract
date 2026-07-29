@@ -33,13 +33,239 @@ import { cn } from "@/lib/utils";
  */
 
 /** antd `<Table>` → the shared DataTable. */
-const Table = DataTable;
-Table.Column = function Column() {
+/*
+ * Namespace objects use Object.assign so the statics stay in the inferred
+ * type: `<Card.Meta>` and `<Collapse.Panel>`-style sub-components must both
+ * type-check AND remain resolvable by value, because the shim-completeness
+ * guard reads them that way to catch a missing one before React error #130
+ * takes down a whole route.
+ */
+function Column() {
   return null;
-};
+}
+const Table = Object.assign(DataTable, { Column });
 
 /** antd `<Card title extra bordered>`. */
-const Card = React.forwardRef(function Card(
+/**
+ * The antd surface these structural shims accept.
+ *
+ * Enumerated by hand, like the other shims, because the failure mode of this
+ * layer is the silent prop-drop: a call-site passes something the shim never
+ * destructures and `...props` swallows it with no error at all. `Upload.Dragger`
+ * is the cautionary tale here — it was aliased to `Upload`, so the drop zone
+ * rendered as a plain button and drag-and-drop simply did nothing.
+ */
+type SizeToken = "small" | "middle" | "large" | "default";
+
+/** A `{ key, label }` descriptor, antd's usual shape for list-like data. */
+interface KeyedItem {
+  key?: string;
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface CardProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  title?: React.ReactNode;
+  /** Rendered at the top-right of the header. */
+  extra?: React.ReactNode;
+  bordered?: boolean;
+  size?: SizeToken;
+  /** antd v5 per-slot style overrides, e.g. `{ body: {...} }`. */
+  styles?: { header?: React.CSSProperties; body?: React.CSSProperties };
+}
+
+interface TabsProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
+  items?: Array<KeyedItem & { children?: React.ReactNode }>;
+  activeKey?: string;
+  defaultActiveKey?: string;
+  onChange?: (key: string) => void;
+  tabBarExtraContent?: React.ReactNode;
+  type?: "line" | "card" | "editable-card";
+}
+
+interface ListProps<T = unknown> extends React.HTMLAttributes<HTMLDivElement> {
+  dataSource?: T[];
+  renderItem?: (item: T, index: number) => React.ReactNode;
+  header?: React.ReactNode;
+  footer?: React.ReactNode;
+  /** antd's responsive grid; `column` picks the fixed column count. */
+  grid?: { column?: number; gutter?: number };
+  locale?: { emptyText?: React.ReactNode };
+}
+
+interface LayoutProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** antd uses this to switch the flex direction when a Sider is present. */
+  hasSider?: boolean;
+}
+
+/** antd's file wrapper. `originFileObj` is the real File the call-sites read. */
+interface UploadFile {
+  uid?: string;
+  name?: string;
+  status?: "uploading" | "done" | "error" | "removed";
+  originFileObj?: File;
+  response?: unknown;
+}
+
+interface UploadProps
+  extends Omit<React.HTMLAttributes<HTMLElement>, "onChange"> {
+  /** Returning false cancels the upload, as antd does. */
+  beforeUpload?: (file: File, fileList: File[]) => boolean | Promise<unknown>;
+  customRequest?: (options: {
+    file: File;
+    onSuccess?: (body?: unknown) => void;
+    onError?: (err?: unknown) => void;
+  }) => void;
+  onChange?: (info: { file: UploadFile; fileList: UploadFile[] }) => void;
+  accept?: string;
+  multiple?: boolean;
+  showUploadList?: boolean;
+  fileList?: UploadFile[];
+  disabled?: boolean;
+}
+
+interface ResultProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  status?: "success" | "error" | "info" | "warning" | "404" | "403" | "500";
+  title?: React.ReactNode;
+  subTitle?: React.ReactNode;
+  extra?: React.ReactNode;
+  icon?: React.ReactNode;
+}
+
+interface DrawerProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  open?: boolean;
+  onClose?: () => void;
+  title?: React.ReactNode;
+  placement?: "top" | "right" | "bottom" | "left";
+  width?: number | string;
+}
+
+interface SegmentedOption {
+  label?: React.ReactNode;
+  value: string | number;
+  icon?: React.ReactNode;
+}
+
+interface SegmentedProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
+  /** antd accepts bare strings as well as `{ label, value }` objects. */
+  options?: Array<SegmentedOption | string>;
+  value?: string | number;
+  onChange?: (value: string | number) => void;
+}
+
+interface MenuProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
+  items?: KeyedItem[];
+  selectedKeys?: string[];
+  onClick?: (info: { key: string }) => void;
+  mode?: "vertical" | "horizontal" | "inline";
+}
+
+interface SkeletonProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  active?: boolean;
+  /** `true`, or `{ rows }` for an explicit line count. */
+  paragraph?: boolean | { rows?: number };
+  title?: boolean;
+}
+
+interface StepsProps extends React.HTMLAttributes<HTMLOListElement> {
+  current?: number;
+  items?: Array<{ title?: React.ReactNode; description?: React.ReactNode }>;
+}
+
+interface PaginationProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
+  current?: number;
+  pageSize?: number;
+  total?: number;
+  onChange?: (page: number, pageSize: number) => void;
+  showSizeChanger?: boolean;
+}
+
+interface TreeNode {
+  key: string;
+  title?: React.ReactNode;
+  children?: TreeNode[];
+}
+
+interface TreeProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onSelect"> {
+  treeData?: TreeNode[];
+  onSelect?: (keys: string[], info: { node: TreeNode }) => void;
+}
+
+interface DescriptionsProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
+  title?: React.ReactNode;
+  items?: Array<{
+    key?: string;
+    label?: React.ReactNode;
+    children?: React.ReactNode;
+  }>;
+  column?: number;
+  bordered?: boolean;
+}
+
+interface StatisticProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "title" | "prefix"> {
+  title?: React.ReactNode;
+  value?: React.ReactNode;
+  /** Decimal places applied when `value` is numeric. */
+  precision?: number;
+  prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
+  valueStyle?: React.CSSProperties;
+}
+
+interface FloatButtonProps
+  extends Omit<React.HTMLAttributes<HTMLButtonElement>, "type"> {
+  icon?: React.ReactNode;
+  onClick?: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  tooltip?: React.ReactNode;
+  type?: "default" | "primary";
+}
+
+interface TransferItem {
+  key: string;
+  title?: React.ReactNode;
+  disabled?: boolean;
+}
+
+interface TransferProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
+  dataSource?: TransferItem[];
+  targetKeys?: string[];
+  /** antd reports the new target keys, the direction, and what moved. */
+  onChange?: (
+    nextTargetKeys: string[],
+    direction: "left" | "right",
+    movedKeys: string[],
+  ) => void;
+  render?: (item: TransferItem) => React.ReactNode;
+  titles?: [React.ReactNode, React.ReactNode];
+}
+
+interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
+  count?: number;
+  /** Renders a dot instead of a number. */
+  dot?: boolean;
+  status?: "success" | "processing" | "default" | "error" | "warning";
+  color?: string;
+  /** Counts above this render as "N+". */
+  overflowCount?: number;
+  showZero?: boolean;
+  offset?: [number, number];
+}
+
+const CardBase = React.forwardRef<HTMLDivElement, CardProps>(function Card(
   {
     title,
     extra,
@@ -88,7 +314,17 @@ const Card = React.forwardRef(function Card(
 });
 
 /** antd `<Card.Meta avatar title description />`. */
-Card.Meta = function CardMeta({ avatar, title, description, className }) {
+function CardMeta({
+  avatar,
+  title,
+  description,
+  className,
+}: {
+  avatar?: React.ReactNode;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cn("ant-card-meta flex items-start gap-3", className)}>
       {avatar}
@@ -104,13 +340,13 @@ Card.Meta = function CardMeta({ avatar, title, description, className }) {
       </div>
     </div>
   );
-};
+}
 
 /**
  * antd `<Tabs items activeKey onChange>`. Also supports the legacy
  * `<Tabs.TabPane>` children form.
  */
-const Tabs = React.forwardRef(function Tabs(
+const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
   {
     items,
     activeKey,
@@ -127,18 +363,28 @@ const Tabs = React.forwardRef(function Tabs(
   const panes =
     items ??
     React.Children.toArray(children)
-      .filter(Boolean)
+      .filter(
+        (
+          c,
+        ): c is React.ReactElement<{
+          tabKey?: string;
+          key?: string;
+          tab?: React.ReactNode;
+          children?: React.ReactNode;
+          disabled?: boolean;
+        }> => React.isValidElement(c),
+      )
       .map((c) => ({
-        key: c.props?.tabKey ?? c.props?.key,
-        label: c.props?.tab,
-        children: c.props?.children,
+        key: c.props.tabKey ?? c.props.key,
+        label: c.props.tab,
+        children: c.props.children,
+        disabled: c.props.disabled,
       }));
 
   const first = panes[0]?.key;
 
   return (
     <ShadcnTabs
-      ref={ref}
       // Radix treats a present-but-undefined `value` as controlled, which
       // freezes the tabs. Pass EITHER value (antd's controlled activeKey) OR
       // defaultValue (uncontrolled), never both.
@@ -147,7 +393,8 @@ const Tabs = React.forwardRef(function Tabs(
         : { defaultValue: String(defaultActiveKey ?? first ?? "") })}
       onValueChange={(v) => onChange?.(v)}
       className={cn("ant-tabs", className)}
-      {...props}
+      // Radix Root takes value/defaultValue/onValueChange/orientation only;
+      // the remaining antd props are consumed above, not forwarded.
     >
       <div className="ant-tabs-nav flex items-center justify-between">
         <TabsList className="ant-tabs-nav-list">
@@ -176,12 +423,17 @@ const Tabs = React.forwardRef(function Tabs(
   );
 });
 
-Tabs.TabPane = function TabPane({ children }) {
+function TabPane({
+  children,
+}: {
+  tab?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   return children ?? null;
-};
+}
 
 // Written out so Tailwind sees the class names statically.
-const LIST_GRID_COLS = {
+const LIST_GRID_COLS: Record<number, string> = {
   1: "grid-cols-1",
   2: "grid-cols-2",
   3: "grid-cols-3",
@@ -197,7 +449,7 @@ const LIST_GRID_COLS = {
  * every adapter picker show one card per row in a tall scroller instead of a
  * 4-up grid — which is what happened on the Add LLM / Add Connector modals.
  */
-const List = React.forwardRef(function List(
+const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
   {
     dataSource = [],
     renderItem,
@@ -211,7 +463,7 @@ const List = React.forwardRef(function List(
   ref,
 ) {
   const cols = grid?.column;
-  const isGrid = Boolean(cols);
+  const isGrid = cols != null;
 
   return (
     <div
@@ -222,7 +474,7 @@ const List = React.forwardRef(function List(
         // near-invisible rgba(5,5,5,.06) hairline, so without `divide-border`
         // every row gained a solid black rule between it and the next.
         isGrid ? "grid" : "divide-y divide-border",
-        isGrid && LIST_GRID_COLS[cols],
+        isGrid && LIST_GRID_COLS[cols as number],
         className,
       )}
       style={isGrid && grid?.gutter ? { gap: grid.gutter } : undefined}
@@ -245,7 +497,12 @@ const List = React.forwardRef(function List(
   );
 });
 
-List.Item = function ListItem({ actions, children, className, ...props }) {
+function ListItem({
+  actions,
+  children,
+  className,
+  ...props
+}: React.HTMLAttributes<HTMLDivElement> & { actions?: React.ReactNode[] }) {
   return (
     <div
       className={cn("flex items-center justify-between gap-2", className)}
@@ -257,8 +514,16 @@ List.Item = function ListItem({ actions, children, className, ...props }) {
       ) : null}
     </div>
   );
-};
-List.Item.Meta = function ListItemMeta({ avatar, title, description }) {
+}
+function ListItemMeta({
+  avatar,
+  title,
+  description,
+}: {
+  avatar?: React.ReactNode;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2">
       {avatar}
@@ -270,7 +535,7 @@ List.Item.Meta = function ListItemMeta({ avatar, title, description }) {
       </div>
     </div>
   );
-};
+}
 
 /**
  * antd `<Layout>` and its slots.
@@ -289,44 +554,45 @@ List.Item.Meta = function ListItemMeta({ avatar, title, description }) {
  *    so no amount of `React.Children` inspection can see it. A Sider therefore
  *    registers itself with the nearest Layout through context on mount.
  */
-const SiderRegistryContext = React.createContext(null);
+const SiderRegistryContext = React.createContext<(() => () => void) | null>(
+  null,
+);
 
-const Layout = React.forwardRef(function Layout(
-  { className, hasSider, children, ...props },
-  ref,
-) {
-  // A descendant Sider flips this on mount, however deeply it is nested.
-  const [siderDetected, setSiderDetected] = React.useState(false);
-  const register = React.useCallback(() => {
-    setSiderDetected(true);
-    return () => setSiderDetected(false);
-  }, []);
+const LayoutBase = React.forwardRef<HTMLDivElement, LayoutProps>(
+  function Layout({ className, hasSider, children, ...props }, ref) {
+    // A descendant Sider flips this on mount, however deeply it is nested.
+    const [siderDetected, setSiderDetected] = React.useState(false);
+    const register = React.useCallback(() => {
+      setSiderDetected(true);
+      return () => setSiderDetected(false);
+    }, []);
 
-  const isRow = hasSider ?? siderDetected;
+    const isRow = hasSider ?? siderDetected;
 
-  return (
-    <SiderRegistryContext.Provider value={register}>
-      <div
-        ref={ref}
-        className={cn(
-          "flex min-h-0 flex-auto",
-          isRow ? "flex-row" : "flex-col",
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </div>
-    </SiderRegistryContext.Provider>
-  );
-});
+    return (
+      <SiderRegistryContext.Provider value={register}>
+        <div
+          ref={ref}
+          className={cn(
+            "flex min-h-0 flex-auto",
+            isRow ? "flex-row" : "flex-col",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </div>
+      </SiderRegistryContext.Provider>
+    );
+  },
+);
 
-Layout.Header = function Header({ className, ...p }) {
+function Header({ className, ...p }: React.HTMLAttributes<HTMLElement>) {
   return <header className={cn("flex items-center", className)} {...p} />;
-};
-Layout.Content = function Content({ className, ...p }) {
+}
+function Content({ className, ...p }: React.HTMLAttributes<HTMLElement>) {
   return <main className={cn("min-h-0 flex-auto", className)} {...p} />;
-};
+}
 /**
  * antd `<Layout.Sider collapsible collapsed collapsedWidth width>`.
  *
@@ -337,7 +603,18 @@ Layout.Content = function Content({ className, ...p }) {
  * in a 240px gutter. They are also consumed here so `collapsible` /
  * `collapsedWidth` never reach the DOM as invalid attributes.
  */
-Layout.Sider = function Sider({
+interface SiderProps extends React.HTMLAttributes<HTMLElement> {
+  width?: number | string;
+  collapsed?: boolean;
+  collapsedWidth?: number;
+  collapsible?: boolean;
+  /** `null` removes antd's built-in collapse handle. */
+  trigger?: React.ReactNode;
+  breakpoint?: "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
+  onCollapse?: (collapsed: boolean) => void;
+}
+
+function Sider({
   className,
   width = 200,
   collapsed,
@@ -349,7 +626,7 @@ Layout.Sider = function Sider({
   style,
   children,
   ...p
-}) {
+}: SiderProps) {
   // Tell the nearest ancestor Layout to lay out as a row (antd's hasSider).
   const register = React.useContext(SiderRegistryContext);
   React.useEffect(() => register?.(), [register]);
@@ -380,13 +657,13 @@ Layout.Sider = function Sider({
       <div className="ant-layout-sider-children">{children}</div>
     </aside>
   );
-};
-Layout.Footer = function Footer({ className, ...p }) {
+}
+function Footer({ className, ...p }: React.HTMLAttributes<HTMLElement>) {
   return <footer className={className} {...p} />;
-};
+}
 
 /** antd `<Upload beforeUpload customRequest>` over a hidden file input. */
-const Upload = React.forwardRef(function Upload(
+const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
   {
     beforeUpload,
     customRequest,
@@ -402,9 +679,9 @@ const Upload = React.forwardRef(function Upload(
   },
   ref,
 ) {
-  const inputRef = React.useRef(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
-  const handleFiles = async (files) => {
+  const handleFiles = async (files: File[]) => {
     for (const file of files) {
       // antd aborts the upload when beforeUpload returns false.
       const proceed = beforeUpload ? await beforeUpload(file, files) : true;
@@ -413,13 +690,15 @@ const Upload = React.forwardRef(function Upload(
       }
       customRequest?.({
         file,
-        onSuccess: (body) =>
+        onSuccess: (body?: unknown) =>
           onChange?.({
             file: { status: "done", response: body, originFileObj: file },
+            fileList: fileList ?? [],
           }),
-        onError: (err) =>
+        onError: (err?: unknown) =>
           onChange?.({
-            file: { status: "error", error: err, originFileObj: file },
+            file: { status: "error", response: err, originFileObj: file },
+            fileList: fileList ?? [],
           }),
       });
       if (!customRequest) {
@@ -494,7 +773,7 @@ const Upload = React.forwardRef(function Upload(
  * Reproduces antd's visuals (dashed border, tinted fill, hover/drag accent)
  * on Midnight Bloom tokens, and wires the drop events the name implies.
  */
-Upload.Dragger = React.forwardRef(function Dragger(
+const Dragger = React.forwardRef<HTMLElement, UploadProps>(function Dragger(
   { className, disabled, children, ...props },
   ref,
 ) {
@@ -530,7 +809,7 @@ Upload.Dragger = React.forwardRef(function Dragger(
 });
 
 /** antd `<Result status title subTitle extra>`. */
-const Result = React.forwardRef(function Result(
+const Result = React.forwardRef<HTMLDivElement, ResultProps>(function Result(
   {
     status = "info",
     title,
@@ -576,7 +855,7 @@ const Result = React.forwardRef(function Result(
 });
 
 /** antd `<Drawer open onClose placement>` → shadcn Sheet. */
-const Drawer = React.forwardRef(function Drawer(
+const Drawer = React.forwardRef<HTMLDivElement, DrawerProps>(function Drawer(
   {
     open,
     onClose,
@@ -610,42 +889,44 @@ const Drawer = React.forwardRef(function Drawer(
 });
 
 /** antd `<Segmented options value onChange>`. */
-const Segmented = React.forwardRef(function Segmented(
-  { options = [], value, onChange, className, ...props },
-  ref,
-) {
-  return (
-    <div
-      ref={ref}
-      className={cn("inline-flex gap-1 rounded-md bg-muted p-1", className)}
-      data-segmented=""
-      {...props}
-    >
-      {options.map((o) => {
-        const val = typeof o === "object" ? o.value : o;
-        const label = typeof o === "object" ? o.label : o;
-        return (
-          <button
-            key={String(val)}
-            type="button"
-            onClick={() => onChange?.(val)}
-            className={cn(
-              "ant-segmented-item cursor-pointer rounded px-3 py-1 text-sm disabled:cursor-not-allowed",
-              String(value) === String(val)
-                ? "bg-background shadow-sm"
-                : "text-muted-foreground",
-            )}
-          >
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-});
+const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
+  function Segmented(
+    { options = [], value, onChange, className, ...props },
+    ref,
+  ) {
+    return (
+      <div
+        ref={ref}
+        className={cn("inline-flex gap-1 rounded-md bg-muted p-1", className)}
+        data-segmented=""
+        {...props}
+      >
+        {options.map((o) => {
+          const val = typeof o === "object" ? o.value : o;
+          const label = typeof o === "object" ? o.label : o;
+          return (
+            <button
+              key={String(val)}
+              type="button"
+              onClick={() => onChange?.(val)}
+              className={cn(
+                "ant-segmented-item cursor-pointer rounded px-3 py-1 text-sm disabled:cursor-not-allowed",
+                String(value) === String(val)
+                  ? "bg-background shadow-sm"
+                  : "text-muted-foreground",
+              )}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    );
+  },
+);
 
 /** antd `<Menu items onClick>` — a simple vertical list. */
-const Menu = React.forwardRef(function Menu(
+const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
   { items = [], selectedKeys = [], onClick, mode, className, ...props },
   ref,
 ) {
@@ -656,10 +937,10 @@ const Menu = React.forwardRef(function Menu(
           key={String(item.key)}
           type="button"
           disabled={item.disabled}
-          onClick={() => onClick?.({ key: item.key })}
+          onClick={() => onClick?.({ key: String(item.key) })}
           className={cn(
             "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed",
-            selectedKeys.includes(item.key) && "bg-accent font-medium",
+            selectedKeys.includes(String(item.key)) && "bg-accent font-medium",
           )}
         >
           {item.icon}
@@ -669,28 +950,30 @@ const Menu = React.forwardRef(function Menu(
     </nav>
   );
 });
-Menu.Item = function MenuItem({ children }) {
+function MenuItem({ children }: { children?: React.ReactNode }) {
   return children ?? null;
-};
+}
 
 /** antd `<Skeleton active paragraph />`. */
-const Skeleton = React.forwardRef(function Skeleton(
-  { active, paragraph, title = true, className, ...props },
-  ref,
-) {
-  const rows = paragraph?.rows ?? 3;
-  return (
-    <div ref={ref} className={cn("space-y-2", className)} {...props}>
-      {title ? <ShadcnSkeleton className="h-5 w-1/3" /> : null}
-      {Array.from({ length: rows }).map((_, i) => (
-        <ShadcnSkeleton key={i} className="h-4 w-full" />
-      ))}
-    </div>
-  );
-});
+const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
+  function Skeleton(
+    { active, paragraph, title = true, className, ...props },
+    ref,
+  ) {
+    const rows = typeof paragraph === "object" ? (paragraph.rows ?? 3) : 3;
+    return (
+      <div ref={ref} className={cn("space-y-2", className)} {...props}>
+        {title ? <ShadcnSkeleton className="h-5 w-1/3" /> : null}
+        {Array.from({ length: rows }).map((_, i) => (
+          <ShadcnSkeleton key={i} className="h-4 w-full" />
+        ))}
+      </div>
+    );
+  },
+);
 
 /** antd `<Steps current items>`. */
-const Steps = React.forwardRef(function Steps(
+const Steps = React.forwardRef<HTMLOListElement, StepsProps>(function Steps(
   { current = 0, items = [], className, ...props },
   ref,
 ) {
@@ -722,53 +1005,55 @@ const Steps = React.forwardRef(function Steps(
 });
 
 /** antd `<Pagination current pageSize total onChange>`. */
-const Pagination = React.forwardRef(function Pagination(
-  {
-    current = 1,
-    pageSize = 10,
-    total = 0,
-    onChange,
-    showSizeChanger,
-    className,
-    ...props
+const Pagination = React.forwardRef<HTMLDivElement, PaginationProps>(
+  function Pagination(
+    {
+      current = 1,
+      pageSize = 10,
+      total = 0,
+      onChange,
+      showSizeChanger,
+      className,
+      ...props
+    },
+    ref,
+  ) {
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    return (
+      <div
+        ref={ref}
+        className={cn("flex items-center justify-end gap-2 text-sm", className)}
+        {...props}
+      >
+        <Button
+          size="small"
+          disabled={current <= 1}
+          onClick={() => onChange?.(current - 1, pageSize)}
+        >
+          Previous
+        </Button>
+        <span className="text-muted-foreground">
+          Page {current} of {pages}
+        </span>
+        <Button
+          size="small"
+          disabled={current >= pages}
+          onClick={() => onChange?.(current + 1, pageSize)}
+        >
+          Next
+        </Button>
+      </div>
+    );
   },
-  ref,
-) {
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  return (
-    <div
-      ref={ref}
-      className={cn("flex items-center justify-end gap-2 text-sm", className)}
-      {...props}
-    >
-      <Button
-        size="small"
-        disabled={current <= 1}
-        onClick={() => onChange?.(current - 1, pageSize)}
-      >
-        Previous
-      </Button>
-      <span className="text-muted-foreground">
-        Page {current} of {pages}
-      </span>
-      <Button
-        size="small"
-        disabled={current >= pages}
-        onClick={() => onChange?.(current + 1, pageSize)}
-      >
-        Next
-      </Button>
-    </div>
-  );
-});
+);
 
 /** antd `<Tree treeData>` — a shallow nested list; no call-site drags nodes. */
-const Tree = React.forwardRef(function Tree(
+const Tree = React.forwardRef<HTMLDivElement, TreeProps>(function Tree(
   { treeData = [], onSelect, className, ...props },
   ref,
 ) {
-  const renderNodes = (nodes, depth = 0) =>
-    nodes.map((n) => (
+  const renderNodes = (nodes: TreeNode[], depth = 0): React.ReactNode =>
+    nodes.map((n: TreeNode) => (
       <div key={String(n.key)} style={{ paddingLeft: depth * 12 }}>
         <button
           type="button"
@@ -792,161 +1077,190 @@ const Tree = React.forwardRef(function Tree(
  * antd `<Descriptions>` — a label/value grid. Only cloud plugins use it, but it
  * lives here per D9 so both repos share one implementation.
  */
-const Descriptions = React.forwardRef(function Descriptions(
-  { title, items, column = 3, bordered, className, children, ...props },
-  ref,
-) {
-  return (
-    <div ref={ref} className={cn("w-full", className)} {...props}>
-      {title ? <div className="mb-2 font-medium">{title}</div> : null}
-      <dl
-        className={cn(
-          "grid gap-x-4 gap-y-2",
-          bordered && "rounded-md border p-3",
-        )}
-        style={{ gridTemplateColumns: `repeat(${column}, minmax(0, 1fr))` }}
-      >
-        {items
-          ? items.map((item) => (
-              <div key={String(item.key ?? item.label)}>
-                <dt className="text-sm text-muted-foreground">{item.label}</dt>
-                <dd className="text-sm">{item.children}</dd>
-              </div>
-            ))
-          : children}
-      </dl>
-    </div>
-  );
-});
+const DescriptionsBase = React.forwardRef<HTMLDivElement, DescriptionsProps>(
+  function Descriptions(
+    { title, items, column = 3, bordered, className, children, ...props },
+    ref,
+  ) {
+    return (
+      <div ref={ref} className={cn("w-full", className)} {...props}>
+        {title ? <div className="mb-2 font-medium">{title}</div> : null}
+        <dl
+          className={cn(
+            "grid gap-x-4 gap-y-2",
+            bordered && "rounded-md border p-3",
+          )}
+          style={{ gridTemplateColumns: `repeat(${column}, minmax(0, 1fr))` }}
+        >
+          {items
+            ? items.map((item) => (
+                <div key={String(item.key ?? item.label)}>
+                  <dt className="text-sm text-muted-foreground">
+                    {item.label}
+                  </dt>
+                  <dd className="text-sm">{item.children}</dd>
+                </div>
+              ))
+            : children}
+        </dl>
+      </div>
+    );
+  },
+);
 
-Descriptions.Item = function DescriptionsItem({ label, children }) {
+function DescriptionsItem({
+  label,
+  children,
+}: {
+  label?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   return (
     <div>
       <dt className="text-sm text-muted-foreground">{label}</dt>
       <dd className="text-sm">{children}</dd>
     </div>
   );
-};
+}
 
 /** antd `<Statistic title value prefix suffix precision />`. */
-const Statistic = React.forwardRef(function Statistic(
-  { title, value, precision, prefix, suffix, valueStyle, className, ...props },
-  ref,
-) {
-  const shown =
-    typeof value === "number" && precision != null
-      ? value.toFixed(precision)
-      : value;
-  return (
-    <div ref={ref} className={cn("space-y-1", className)} {...props}>
-      {title ? (
-        <div className="text-sm text-muted-foreground">{title}</div>
-      ) : null}
-      <div
-        className="flex items-baseline gap-1 text-2xl font-semibold"
-        style={valueStyle}
-      >
-        {prefix}
-        <span>{shown}</span>
-        {suffix ? <span className="text-base">{suffix}</span> : null}
+const Statistic = React.forwardRef<HTMLDivElement, StatisticProps>(
+  function Statistic(
+    {
+      title,
+      value,
+      precision,
+      prefix,
+      suffix,
+      valueStyle,
+      className,
+      ...props
+    },
+    ref,
+  ) {
+    const shown =
+      typeof value === "number" && precision != null
+        ? value.toFixed(precision)
+        : value;
+    return (
+      <div ref={ref} className={cn("space-y-1", className)} {...props}>
+        {title ? (
+          <div className="text-sm text-muted-foreground">{title}</div>
+        ) : null}
+        <div
+          className="flex items-baseline gap-1 text-2xl font-semibold"
+          style={valueStyle}
+        >
+          {prefix}
+          <span>{shown}</span>
+          {suffix ? <span className="text-base">{suffix}</span> : null}
+        </div>
       </div>
-    </div>
-  );
-});
+    );
+  },
+);
 
 /** antd `<FloatButton icon onClick tooltip />`. */
-const FloatButton = React.forwardRef(function FloatButton(
-  { icon, onClick, tooltip, type, className, children, ...props },
-  ref,
-) {
-  return (
-    <button
-      ref={ref}
-      type="button"
-      title={tooltip}
-      onClick={onClick}
-      className={cn(
-        "fixed bottom-6 right-6 z-50 flex size-11 cursor-pointer items-center justify-center rounded-full shadow-lg",
-        type === "primary"
-          ? "bg-primary text-primary-foreground"
-          : "border bg-background text-foreground",
-        className,
-      )}
-      {...props}
-    >
-      {icon ?? children}
-    </button>
-  );
-});
-FloatButton.Group = function FloatButtonGroup({ children }) {
+const FloatButtonBase = React.forwardRef<HTMLButtonElement, FloatButtonProps>(
+  function FloatButton(
+    { icon, onClick, tooltip, type, className, children, ...props },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        title={typeof tooltip === "string" ? tooltip : undefined}
+        onClick={onClick}
+        className={cn(
+          "fixed bottom-6 right-6 z-50 flex size-11 cursor-pointer items-center justify-center rounded-full shadow-lg",
+          type === "primary"
+            ? "bg-primary text-primary-foreground"
+            : "border bg-background text-foreground",
+          className,
+        )}
+        {...props}
+      >
+        {icon ?? children}
+      </button>
+    );
+  },
+);
+function FloatButtonGroup({ children }: { children?: React.ReactNode }) {
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2">
       {children}
     </div>
   );
-};
+}
 
 /**
  * antd `<Transfer>` — dual list with move-between controls. Kept minimal: the
  * cloud call-sites use dataSource/targetKeys/onChange only.
  */
-const Transfer = React.forwardRef(function Transfer(
-  {
-    dataSource = [],
-    targetKeys = [],
-    onChange,
-    render,
-    titles = ["Source", "Target"],
-    className,
-    ...props
-  },
-  ref,
-) {
-  const inTarget = new Set(targetKeys);
-  const move = (key, toTarget) => {
-    const next = toTarget
-      ? [...targetKeys, key]
-      : targetKeys.filter((k) => k !== key);
-    onChange?.(next, toTarget ? "right" : "left", [key]);
-  };
+const Transfer = React.forwardRef<HTMLDivElement, TransferProps>(
+  function Transfer(
+    {
+      dataSource = [],
+      targetKeys = [],
+      onChange,
+      render,
+      titles = ["Source", "Target"],
+      className,
+      ...props
+    },
+    ref,
+  ) {
+    const inTarget = new Set(targetKeys);
+    const move = (key: string, toTarget: boolean) => {
+      const next = toTarget
+        ? [...targetKeys, key]
+        : targetKeys.filter((k) => k !== key);
+      onChange?.(next, toTarget ? "right" : "left", [key]);
+    };
 
-  const column = (title, entries, toTarget) => (
-    <div className="flex-1 rounded-md border">
-      <div className="border-b px-3 py-2 text-sm font-medium">{title}</div>
-      <div className="max-h-64 divide-y divide-border overflow-auto">
-        {entries.map((item) => (
-          <button
-            key={String(item.key)}
-            type="button"
-            className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-accent"
-            onClick={() => move(item.key, toTarget)}
-          >
-            {render ? render(item) : item.title}
-          </button>
-        ))}
+    const column = (
+      title: React.ReactNode,
+      entries: TransferItem[],
+      toTarget: boolean,
+    ) => (
+      <div className="flex-1 rounded-md border">
+        <div className="border-b px-3 py-2 text-sm font-medium">{title}</div>
+        <div className="max-h-64 divide-y divide-border overflow-auto">
+          {entries.map((item) => (
+            <button
+              key={String(item.key)}
+              type="button"
+              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-accent"
+              onClick={() => move(item.key, toTarget)}
+            >
+              {render ? render(item) : item.title}
+            </button>
+          ))}
+        </div>
       </div>
-    </div>
-  );
+    );
 
-  return (
-    <div
-      ref={ref}
-      className={cn("flex items-start gap-3", className)}
-      {...props}
-    >
-      {column(
-        titles[0],
-        dataSource.filter((d) => !inTarget.has(d.key)),
-        true,
-      )}
-      {column(
-        titles[1],
-        dataSource.filter((d) => inTarget.has(d.key)),
-        false,
-      )}
-    </div>
-  );
-});
+    return (
+      <div
+        ref={ref}
+        className={cn("flex items-start gap-3", className)}
+        {...props}
+      >
+        {column(
+          titles[0],
+          dataSource.filter((d) => !inTarget.has(d.key)),
+          true,
+        )}
+        {column(
+          titles[1],
+          dataSource.filter((d) => inTarget.has(d.key)),
+          false,
+        )}
+      </div>
+    );
+  },
+);
 
 /**
  * antd `<Badge count dot status>` — a small counter/dot overlaid on its child.
@@ -958,7 +1272,7 @@ const Transfer = React.forwardRef(function Transfer(
  * fall through `{...props}` onto the wrapper span painted a solid grey block
  * behind the icon button on every prompt card in Prompt Studio.
  */
-const Badge = React.forwardRef(function Badge(
+const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
   {
     count,
     dot,
@@ -1024,6 +1338,26 @@ const Badge = React.forwardRef(function Badge(
       ) : null}
     </span>
   );
+});
+
+const Card = Object.assign(CardBase, { Meta: CardMeta });
+const Tabs = Object.assign(TabsBase, { TabPane });
+const List = Object.assign(ListBase, {
+  Item: Object.assign(ListItem, { Meta: ListItemMeta }),
+});
+const Layout = Object.assign(LayoutBase, {
+  Header,
+  Content,
+  Sider,
+  Footer,
+});
+const Upload = Object.assign(UploadBase, { Dragger });
+const Menu = Object.assign(MenuBase, { Item: MenuItem });
+const Descriptions = Object.assign(DescriptionsBase, {
+  Item: DescriptionsItem,
+});
+const FloatButton = Object.assign(FloatButtonBase, {
+  Group: FloatButtonGroup,
 });
 
 export {
