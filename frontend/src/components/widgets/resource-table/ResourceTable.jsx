@@ -134,10 +134,12 @@ function ResourceTable({
   ownerEmailsProp = "owner_emails",
   countProp,
   countLabel,
+  extraColumns = [],
   handleEdit,
   handleShare,
   handleDelete,
   handleCoOwner,
+  onRowClick,
   sessionDetails,
   showOwner = true,
   isClickable = true,
@@ -373,6 +375,9 @@ function ResourceTable({
         );
       },
     },
+    // Resource-specific columns (e.g. Files, Latest Version) sit between the
+    // shared date columns and Actions.
+    ...extraColumns,
     {
       title: <span className="resource-table-th static right">Actions</span>,
       key: "actions",
@@ -399,7 +404,12 @@ function ResourceTable({
       onChange={handleChange}
       rowClassName={isClickable ? "resource-table-row-clickable" : ""}
       onRow={(item) => ({
-        onClick: isClickable ? () => navigate(`${item?.[idProp]}`) : undefined,
+        // onRowClick lets callers override the default relative nav (e.g. an
+        // absolute org-scoped path with router state).
+        onClick: isClickable
+          ? () =>
+              onRowClick ? onRowClick(item) : navigate(`${item?.[idProp]}`)
+          : undefined,
       })}
       pagination={{
         current: pagination?.current,
@@ -433,10 +443,12 @@ ResourceTable.propTypes = {
   ownerEmailsProp: PropTypes.string,
   countProp: PropTypes.string,
   countLabel: PropTypes.string,
+  extraColumns: PropTypes.array,
   handleEdit: PropTypes.func,
   handleShare: PropTypes.func,
   handleDelete: PropTypes.func,
   handleCoOwner: PropTypes.func,
+  onRowClick: PropTypes.func,
   sessionDetails: PropTypes.object,
   showOwner: PropTypes.bool,
   isClickable: PropTypes.bool,
