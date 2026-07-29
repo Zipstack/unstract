@@ -85,6 +85,14 @@ interface TabsProps
   onChange?: (key: string) => void;
   tabBarExtraContent?: React.ReactNode;
   type?: "line" | "card" | "editable-card";
+  /*
+   * Passed by the cloud manual-review plugin (`<Tabs … size="large">`) and
+   * accepted rather than forwarded — the tab sizing comes from the shadcn
+   * primitive's own classes. Declared because omitting it would make the
+   * cloud build fail to compile against this interface, which is precisely
+   * the silent gap that typing this layer is meant to expose.
+   */
+  size?: SizeToken;
 }
 
 interface ListProps<T = unknown> extends React.HTMLAttributes<HTMLDivElement> {
@@ -212,6 +220,12 @@ interface DescriptionsProps
   }>;
   column?: number;
   bordered?: boolean;
+  /*
+   * Passed by two cloud plugins (`size="small"` / `"middle"`). Accepted
+   * rather than forwarded — the DOM has no such attribute, and the density
+   * comes from this shim's own classes.
+   */
+  size?: SizeToken;
 }
 
 interface StatisticProps
@@ -354,6 +368,8 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
     onChange,
     tabBarExtraContent,
     type,
+    // Consumed, not forwarded: antd's token is not a DOM attribute.
+    size: _size,
     className,
     children,
     ...props

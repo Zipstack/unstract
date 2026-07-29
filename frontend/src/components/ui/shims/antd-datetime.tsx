@@ -495,6 +495,10 @@ const RangePicker = React.forwardRef<HTMLDivElement, RangePickerProps>(
                 >
                   {presets.map((preset) => (
                     <button
+                      // Safe as a key because every call-site in both repos
+                      // labels presets with a plain string ("Last 7 Days" &c.).
+                      // Two ELEMENT labels would both stringify to
+                      // "[object Object]" and collide.
                       key={String(preset.label)}
                       type="button"
                       onClick={() => {
