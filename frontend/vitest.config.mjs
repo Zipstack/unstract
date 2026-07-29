@@ -24,7 +24,13 @@ function jsxInJs() {
       if (!/\/src\/.*\.js$/.test(filepath)) {
         return null;
       }
-      return transformWithEsbuild(code, filepath, { loader: "jsx" });
+      // jsx: "automatic" — see the note in vite.config.js. Without it esbuild
+      // emits classic React.createElement against a React these files never
+      // import, which throws at render rather than failing the build.
+      return transformWithEsbuild(code, filepath, {
+        loader: "jsx",
+        jsx: "automatic",
+      });
     },
   };
 }

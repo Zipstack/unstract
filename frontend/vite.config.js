@@ -111,7 +111,25 @@ function jsxInJs() {
       if (!/\/src\/.*\.js$/.test(filepath)) {
         return null;
       }
-      return transformWithEsbuild(code, filepath, { loader: "jsx" });
+      return transformWithEsbuild(code, filepath, {
+        loader: "jsx",
+        /*
+         * `jsx: "automatic"` is load-bearing, and its absence does NOT fail
+         * the build — it produces a white screen at runtime.
+         *
+         * esbuild defaults to the classic runtime, emitting
+         * `React.createElement(...)`. These files use JSX without importing
+         * React (the automatic runtime injects `jsx-runtime` itself), so the
+         * classic output referenced an undefined binding and threw
+         * `ReferenceError: React is not defined` while rendering the router —
+         * killing the whole app, with a green build and HTTP 200 throughout.
+         *
+         * The old `esbuild` block never hit this because Vite applies its own
+         * resolved `jsx` setting to that path; a standalone
+         * transformWithEsbuild call does not inherit it.
+         */
+        jsx: "automatic",
+      });
     },
   };
 }
