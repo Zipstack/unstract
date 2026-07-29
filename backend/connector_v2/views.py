@@ -128,7 +128,15 @@ class ConnectorInstanceViewSet(
 
         search = self.request.query_params.get("search")
         if search:
-            queryset = queryset.filter(connector_name__icontains=search)
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(connector_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
 
         return queryset
 

@@ -180,7 +180,15 @@ class PromptStudioCoreView(
             )
             search = self.request.query_params.get("search")
             if search:
-                qs = qs.filter(tool_name__icontains=search)
+                from django.db.models import Q
+                from tenant_account_v2.sharing_helpers import (
+                    resources_matching_owner_search,
+                )
+
+                qs = qs.filter(
+                    Q(tool_name__icontains=search)
+                    | Q(pk__in=resources_matching_owner_search(qs.model, search))
+                )
         return qs
 
     def get_object(self):
@@ -942,8 +950,7 @@ class PromptStudioCoreView(
                 # than a bare 500 that a status-code-keyed client would misread as a
                 # terminal task failure.
                 logger.exception(
-                    "task_status: pg_task_result read failed for %s; treating as "
-                    "pending",
+                    "task_status: pg_task_result read failed for %s; treating as pending",
                     task_id,
                 )
                 row = None

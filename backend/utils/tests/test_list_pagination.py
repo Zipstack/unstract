@@ -239,26 +239,34 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
                 assert response.data["count"] == 3
                 assert all("alpha" in name for name in names)
 
-    def test_search_matches_name_not_owner_email(self) -> None:
-        """``?search=`` matches the resource name only, not the owner's email.
+    def test_search_matches_name_and_owner_email(self) -> None:
+        """``?search=`` matches the resource name or the displayed owner's email.
 
-        UN-3769 narrowed search from owner-inclusive (``created_by__email``) to
-        name-only so the search box and the Owned By column agree; the owner's
-        email substring must no longer return their rows.
+        UN-3770 restored owner search, but against the OWNER membership that
+        backs the Owned By column — not the audit-only ``created_by`` (UN-2202).
+        A viewer's email must not surface the row; only owners match.
         """
         for endpoint in LIST_ENDPOINTS:
             with self.subTest(kind=endpoint.kind):
-                self._create(endpoint, f"{endpoint.kind}-searchable", owner=self.owner)
-
-                by_email = self._list(
-                    endpoint, self.owner, page=1, page_size=10, search="owner"
+                obj = self._create(
+                    endpoint, f"{endpoint.kind}-searchable", owner=self.owner
                 )
+                # Viewer shares the row but is not an owner.
+                obj.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+
                 by_name = self._list(
                     endpoint, self.owner, page=1, page_size=10, search="searchable"
                 )
+                by_owner = self._list(
+                    endpoint, self.owner, page=1, page_size=10, search="owner@example"
+                )
+                by_viewer = self._list(
+                    endpoint, self.owner, page=1, page_size=10, search="viewer@example"
+                )
 
-                assert by_email.data["count"] == 0
                 assert by_name.data["count"] == 1
+                assert by_owner.data["count"] == 1
+                assert by_viewer.data["count"] == 0
 
     def test_dropped_owner_ordering_field_is_ignored(self) -> None:
         """``?ordering=created_by__email`` is a dropped field, so it's ignored.
