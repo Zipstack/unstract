@@ -165,12 +165,23 @@
   justify-content: flex-end;
 }
 
-.resource-table .disabled-icon {
+.resource-table .action-icon-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  display: inline-flex;
+}
+
+.resource-table .action-icon-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
 }
 
 /* Destructive action is red, per the design */
-.resource-table .delete-icon:not(.disabled-icon) {
+.resource-table .delete-icon {
   color: #ff4d4f;
 }

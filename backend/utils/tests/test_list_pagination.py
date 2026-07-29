@@ -164,20 +164,23 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
     def test_client_ordering_keeps_pk_tiebreaker(self) -> None:
         """``?ordering=`` replaces the view default, so pk must still be appended.
 
-        Every row here shares one ``modified_at``. Primary keys are random
-        UUIDs, so ordering by pk is unrelated to insertion order — the returned
-        sequence only matches if pk survived as the tie-breaker.
+        Two ``modified_at`` groups with ties in each: an ascending client order
+        must list the older group first — distinguishing it from the
+        ``-modified_at`` default — and break each in-group tie by pk. Primary
+        keys are random UUIDs unrelated to insertion order, so the sequence only
+        matches if pk survived as the tie-breaker.
         """
         for endpoint in LIST_ENDPOINTS:
             with self.subTest(kind=endpoint.kind):
                 created = []
-                for i in range(6):
-                    obj = self._create(endpoint, f"{endpoint.kind}-tied-{i}")
-                    self._stamp(obj, BASE_TIME)
-                    created.append(obj)
+                for group in range(2):
+                    for i in range(3):
+                        obj = self._create(endpoint, f"{endpoint.kind}-g{group}-{i}")
+                        self._stamp(obj, BASE_TIME + timedelta(minutes=group))
+                        created.append((group, obj))
                 expected = [
                     getattr(obj, endpoint.name_field)
-                    for obj in sorted(created, key=lambda o: str(o.pk))
+                    for _, obj in sorted(created, key=lambda t: (t[0], str(t[1].pk)))
                 ]
 
                 pages = [
@@ -299,6 +302,18 @@ class ListPaginationContractTests(CoOwnerOrgTestMixin, TestCase):
             )
 
         assert type(wf).objects.get(pk=wf.pk).owner_email() == self.coowner.email
+
+        # Tied created_at: pk decides, so the label never flips between requests.
+        wf.memberships.all().delete()
+        tied = [
+            wf.memberships.create(user=user, role=ResourceRole.OWNER)
+            for user in (self.owner, self.coowner)
+        ]
+        type(tied[0]).objects.filter(pk__in=[m.pk for m in tied]).update(
+            created_at=BASE_TIME
+        )
+        earliest = min(tied, key=lambda m: m.pk)
+        assert type(wf).objects.get(pk=wf.pk).owner_email() == earliest.user.email
 
         wf.memberships.all().delete()
         assert type(wf).objects.get(pk=wf.pk).owner_email() is None

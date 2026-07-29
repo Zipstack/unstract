@@ -126,7 +126,6 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Name search.
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(connector_name__icontains=search)

@@ -116,7 +116,6 @@ class WorkflowViewSet(
             "memberships__user"
         )
 
-        # Name search.
         search = self.request.query_params.get("search")
         if search:
             queryset = queryset.filter(workflow_name__icontains=search)

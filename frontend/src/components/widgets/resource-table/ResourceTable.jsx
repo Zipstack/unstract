@@ -252,21 +252,27 @@ function ResourceTable({
         role="none"
       >
         <Tooltip title={disabledTitle}>
-          <EditOutlined
-            className={`action-icon-buttons edit-icon ${
-              deprecated ? "disabled-icon" : ""
-            }`}
+          <button
+            type="button"
+            className="action-icon-btn"
+            aria-label={`Edit ${type}`}
+            disabled={deprecated}
             onClick={(event) => !deprecated && handleEdit?.(event, item)}
-          />
+          >
+            <EditOutlined className="action-icon-buttons edit-icon" />
+          </button>
         </Tooltip>
         {handleShare && (
           <Tooltip title={disabledTitle}>
-            <ShareAltOutlined
-              className={`action-icon-buttons share-icon ${
-                deprecated ? "disabled-icon" : ""
-              }`}
+            <button
+              type="button"
+              className="action-icon-btn"
+              aria-label={`Share ${type}`}
+              disabled={deprecated}
               onClick={(event) => !deprecated && handleShare(event, item, true)}
-            />
+            >
+              <ShareAltOutlined className="action-icon-buttons share-icon" />
+            </button>
           </Tooltip>
         )}
         <Popconfirm
@@ -277,7 +283,13 @@ function ResourceTable({
           icon={<QuestionCircleOutlined />}
           onConfirm={(event) => handleDelete?.(event, item)}
         >
-          <DeleteOutlined className="action-icon-buttons delete-icon" />
+          <button
+            type="button"
+            className="action-icon-btn"
+            aria-label={`Delete ${type}`}
+          >
+            <DeleteOutlined className="action-icon-buttons delete-icon" />
+          </button>
         </Popconfirm>
       </Space>
     );

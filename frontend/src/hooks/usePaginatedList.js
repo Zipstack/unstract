@@ -59,7 +59,9 @@ function applyPagedResponse({
   if (seq !== latestSeqRef.current) {
     return undefined;
   }
-  const results = data?.results ?? data ?? [];
+  // A 204 body or an unexpected object must not reach antd Table as dataSource.
+  const raw = data?.results ?? data;
+  const results = Array.isArray(raw) ? raw : [];
   const total = data?.count ?? results.length;
   // Deleting the last row on a page leaves it empty; step back a page.
   if (results.length === 0 && page > 1 && total > 0) {

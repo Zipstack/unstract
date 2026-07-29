@@ -54,7 +54,8 @@ class HasMembersMixin:
         ]
         if not owners:
             return None
-        return min(owners, key=lambda m: m.created_at).user.email
+        # pk breaks created_at ties so the label is stable across requests.
+        return min(owners, key=lambda m: (m.created_at, m.pk)).user.email
 
     def is_owner(self, user: Any) -> bool:
         if user is None:
