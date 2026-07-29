@@ -113,6 +113,17 @@ def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int
         PageImagesNotFoundError: directory missing or no page images in it.
         PageImageSetIncompleteError: duplicate or missing page numbers.
     """
+    # Object-store backends serve listings from fsspec's directory cache in
+    # long-lived worker processes; a page purged since the last listing would
+    # still "exist" here and only blow up at read time. Refresh the cache
+    # first so discovery reflects reality (no-op for backends without one).
+    invalidate = getattr(getattr(fs, "fs", None), "invalidate_cache", None)
+    if callable(invalidate):
+        try:
+            invalidate(page_store_dir)
+        except Exception:  # pragma: no cover - cache refresh is best-effort
+            logger.debug("Could not invalidate listing cache for %s", page_store_dir)
+
     try:
         entries = fs.ls(page_store_dir) if fs.exists(page_store_dir) else None
     except FileNotFoundError:
@@ -196,7 +207,21 @@ def load_page_images(
         )
     loaded = []
     for page_number, path in discovered:
-        data = fs.read(path=path, mode="rb")
+        try:
+            data = fs.read(path=path, mode="rb")
+        except FileNotFoundError as e:
+            # TOCTOU guard: the page vanished between discovery and read
+            # (purged concurrently, or discovery served a stale listing).
+            # Surface the typed incomplete-set error, never a raw IO error.
+            raise PageImageSetIncompleteError(
+                f"Page image {PurePosixPath(path).name} is missing from "
+                f"'{page_store_dir}' (it disappeared after discovery); the "
+                "page set is incomplete. Re-extract the document with cache "
+                "bypass to regenerate it (billed per page).",
+                page_store_dir=page_store_dir,
+                found_pages=[n for n, _ in discovered if n != page_number],
+                missing_pages=[page_number],
+            ) from e
         encoded = base64.b64encode(bytes(data)).decode("ascii")
         loaded.append(
             LoadedPageImage(page_number=page_number, path=path, base64_data=encoded)

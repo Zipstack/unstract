@@ -197,3 +197,53 @@ class TestLocalFileStorageBackend:
         with pytest.raises(PageImageSetIncompleteError) as excinfo:
             discover_page_images(fs, pages_dir)
         assert excinfo.value.missing_pages == [2]
+
+
+class TestStaleListingAndToctou:
+    """Regressions from live testing.
+
+    Object-store listing caches and read-time disappearance must surface
+    typed errors, never raw IO errors.
+    """
+
+    def test_read_time_file_not_found_maps_to_incomplete(self) -> None:
+        # Discovery sees 3 pages (e.g. a stale fsspec dircache), but page 2
+        # was purged — the read must raise the typed incomplete-set error.
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        del fs._files[f"{_DIR}/page_002.png"]
+
+        class StaleLsFs:
+            def exists(self, path: str) -> bool:
+                return True
+
+            def ls(self, path: str) -> list[str]:
+                return [f"{_DIR}/page_00{n}.png" for n in (1, 2, 3)]
+
+            def read(self, path: str, mode: str = "rb", **_: object) -> bytes:
+                return fs.read(path, mode)
+
+        with pytest.raises(PageImageSetIncompleteError) as excinfo:
+            load_page_images(StaleLsFs(), _DIR)
+        err = excinfo.value
+        assert err.missing_pages == [2]
+        assert err.found_pages == [1, 3]
+        assert "cache bypass" in str(err)
+
+    def test_discovery_invalidates_backend_listing_cache(self) -> None:
+        # When the FileStorage wraps an fsspec filesystem exposing
+        # invalidate_cache (s3fs etc.), discovery must refresh it first.
+        calls: list[str] = []
+
+        class Underlying:
+            def invalidate_cache(self, path: str) -> None:
+                calls.append(path)
+
+        fs = _store({1: b"a"})
+        fs.fs = Underlying()
+        discover_page_images(fs, _DIR)
+        assert calls == [_DIR]
+
+    def test_backends_without_listing_cache_are_fine(self) -> None:
+        # The in-memory double has no .fs attribute — must not error.
+        fs = _store({1: b"a"})
+        assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
