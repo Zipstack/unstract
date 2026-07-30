@@ -162,12 +162,18 @@ class ComposeRuntime:
 
     def __init__(self, *, project_name: str = "unstract-test") -> None:
         self.project_name = project_name
+        # Captured at up() so down() tears down the exact same file set even if
+        # UNSTRACT_RIG_EXTRA_COMPOSE changes or an overlay is removed mid-run.
+        self._compose_files: list[str] | None = None
 
     def up(self) -> PlatformEndpoints:
         if shutil.which("docker") is None:
             raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
-        files = _compose_file_args()
-        _run(["docker", "compose", "-p", self.project_name, *files, "up", "-d", "--wait"])
+        self._compose_files = _compose_file_args()
+        _run(
+            ["docker", "compose", "-p", self.project_name, *self._compose_files,
+             "up", "-d", "--wait"]
+        )
         endpoints = PlatformEndpoints.from_env()
         _wait_ready(endpoints)
         return endpoints
@@ -175,7 +181,14 @@ class ComposeRuntime:
     def down(self) -> None:
         if shutil.which("docker") is None:
             return
-        files = _compose_file_args()
+        files = self._compose_files
+        if files is None:
+            # down() without a prior up() (e.g. pre-run cleanup): best-effort,
+            # never let a since-removed overlay abort teardown.
+            try:
+                files = _compose_file_args()
+            except ValueError:
+                files = ["-f", str(BASE_COMPOSE)]
         self._dump_logs(files)
         _run(
             [

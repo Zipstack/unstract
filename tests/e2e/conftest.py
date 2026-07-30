@@ -77,11 +77,16 @@ def _load_login_provider() -> Callable[[PlatformEndpoints], requests.Session]:
     if not dotted:
         return _oss_form_login
     module_name, _, func_name = dotted.rpartition(".")
-    if not module_name:
+    if not module_name or not func_name:
         raise ValueError(
             f"{LOGIN_PROVIDER_ENV} must be a 'module.func' path, got {dotted!r}"
         )
-    return getattr(importlib.import_module(module_name), func_name)
+    provider = getattr(importlib.import_module(module_name), func_name)
+    if not callable(provider):
+        raise ValueError(
+            f"{LOGIN_PROVIDER_ENV}={dotted!r} does not resolve to a callable"
+        )
+    return provider
 
 
 @pytest.fixture(scope="session")

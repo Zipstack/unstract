@@ -105,5 +105,17 @@ def test_login_provider_resolves_dotted_path(monkeypatch) -> None:
 
 def test_login_provider_rejects_bare_name(monkeypatch) -> None:
     monkeypatch.setenv("UNSTRACT_E2E_LOGIN_PROVIDER", "loads")
-    with pytest.raises(ValueError, match="module.func"):
+    with pytest.raises(ValueError, match=r"module\.func"):
+        _load_login_provider()
+
+
+def test_login_provider_rejects_trailing_dot(monkeypatch) -> None:
+    monkeypatch.setenv("UNSTRACT_E2E_LOGIN_PROVIDER", "json.")
+    with pytest.raises(ValueError, match=r"module\.func"):
+        _load_login_provider()
+
+
+def test_login_provider_rejects_non_callable(monkeypatch) -> None:
+    monkeypatch.setenv("UNSTRACT_E2E_LOGIN_PROVIDER", "json.__name__")
+    with pytest.raises(ValueError, match="callable"):
         _load_login_provider()
