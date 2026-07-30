@@ -447,10 +447,19 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
           label: c.props.children ?? c.props.label,
         }));
 
+    /*
+     * antd treats "" as "nothing selected" and shows the placeholder; several
+     * call-sites seed their state with `useState("")`. Radix reserves the
+     * empty string internally, so passing it through leaves the trigger blank
+     * AND suppresses the placeholder. Map it back to undefined.
+     */
+    const toValue = (v: string | number | undefined) =>
+      v == null || v === "" ? undefined : String(v);
+
     return (
       <ShadcnSelect
-        value={value != null ? String(value) : undefined}
-        defaultValue={defaultValue != null ? String(defaultValue) : undefined}
+        value={toValue(value)}
+        defaultValue={toValue(defaultValue)}
         onValueChange={(v) => {
           // Hand back the original (possibly non-string) option value.
           const match = items.find((o) => String(o.value) === v);

@@ -126,6 +126,23 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(screen.getByText("text")).toBeInTheDocument();
   });
 
+  /*
+   * antd reads "" as "nothing selected" and still shows the placeholder.
+   * Call-sites seed their state with `useState("")`, and Radix reserves the
+   * empty string internally — passing it through left the trigger blank with
+   * no placeholder at all.
+   */
+  it("Select shows the placeholder when the value is an empty string", () => {
+    render(
+      <Select
+        options={[{ value: "a", label: "Option A" }]}
+        value=""
+        placeholder="Pick one"
+      />,
+    );
+    expect(screen.getByText("Pick one")).toBeInTheDocument();
+  });
+
   it("Select accepts Select.Option children as well as options data", () => {
     render(
       <Select placeholder="Choose">
