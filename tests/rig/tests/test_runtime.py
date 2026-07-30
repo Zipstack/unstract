@@ -91,6 +91,32 @@ def test_extra_compose_files_rejects_missing(monkeypatch, tmp_path) -> None:
         _extra_compose_files()
 
 
+def test_down_survives_overlay_removed_after_up(monkeypatch, tmp_path) -> None:
+    """An overlay deleted mid-run must not abort teardown and leak containers."""
+    from tests.rig import runtime as rt
+
+    extra = tmp_path / "extra.yaml"
+    extra.write_text("services: {}")
+    monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(extra))
+    monkeypatch.setattr(rt.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(rt, "_wait_ready", lambda *_a, **_k: None)
+
+    commands: list[list[str]] = []
+    monkeypatch.setattr(rt, "_run", lambda cmd, **_k: commands.append(cmd))
+
+    compose = rt.ComposeRuntime()
+    compose.up()
+    assert str(extra) in commands[0]
+
+    extra.unlink()
+    monkeypatch.setattr(compose, "_dump_logs", lambda _files: None)
+    compose.down()
+
+    assert commands[-1][-3:] == ["down", "-v", "--remove-orphans"]
+    assert str(extra) not in commands[-1]
+    assert str(rt.BASE_COMPOSE) in commands[-1]
+
+
 def test_login_provider_defaults_to_oss(monkeypatch) -> None:
     monkeypatch.delenv("UNSTRACT_E2E_LOGIN_PROVIDER", raising=False)
     assert _load_login_provider() is _oss_form_login

@@ -65,6 +65,21 @@ def _compose_file_args() -> list[str]:
         args += ["-f", str(extra)]
     return args
 
+
+def _drop_missing_files(args: list[str]) -> list[str]:
+    """Keep only ``-f <path>`` pairs still on disk.
+
+    A compose file deleted since ``up()`` makes every later compose call fail to
+    parse, which would leak the whole project instead of tearing it down.
+    """
+    kept: list[str] = []
+    for flag, path in zip(args[::2], args[1::2]):
+        if Path(path).is_file():
+            kept += [flag, path]
+        else:
+            log.warning("compose file %s vanished; excluding it from teardown", path)
+    return kept
+
 # Shared by the workers and the tests, so the exact completion is assertable.
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
@@ -189,6 +204,7 @@ class ComposeRuntime:
                 files = _compose_file_args()
             except ValueError:
                 files = ["-f", str(BASE_COMPOSE)]
+        files = _drop_missing_files(files)
         self._dump_logs(files)
         _run(
             [
