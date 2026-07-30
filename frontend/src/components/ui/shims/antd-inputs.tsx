@@ -104,6 +104,12 @@ interface AntTextAreaProps
   autoSize?: boolean | { minRows?: number; maxRows?: number };
   /** See AntInputProps.variant — EditableText drives prompt VALUES through this. */
   variant?: string;
+  /**
+   * antd's control size. `<textarea>` has no `size` attribute, so leaving this
+   * in `...props` silently stamped `size="small"` on the DOM and the field kept
+   * shadcn's 60px floor — 28px taller than the reference, on every prompt.
+   */
+  size?: "small" | "middle" | "large";
 }
 
 interface AntSearchProps
@@ -335,7 +341,7 @@ const InputBase = React.forwardRef<HTMLInputElement, AntInputProps>(
 /** antd `<Input.TextArea rows autoSize showCount />`. */
 const TextArea = React.forwardRef<HTMLTextAreaElement, AntTextAreaProps>(
   function TextArea(
-    { rows = 3, autoSize, showCount, variant, className, ...props },
+    { rows = 3, autoSize, showCount, variant, size, className, ...props },
     ref,
   ) {
     const count = useCountLabel({ showCount, ...props });
@@ -396,6 +402,15 @@ const TextArea = React.forwardRef<HTMLTextAreaElement, AntTextAreaProps>(
               : rows
         }
         className={cn(
+          size === "small" && "px-2 py-1 text-sm",
+          size === "large" && "px-3 py-2",
+          /*
+           * shadcn's Textarea carries `min-h-[60px]`, a CSS floor that beats
+           * the inline height `resize()` computes. A one-line prompt therefore
+           * measured 60px against the reference's 32px. antd applies no floor
+           * when autoSize is on, so neither do we.
+           */
+          autoSizing && "min-h-0",
           // See the Input shim: EditableText renders prompt VALUES borderless
           // until they are hovered or edited.
           variant === "borderless" &&

@@ -62,6 +62,25 @@ describe("antd-compatible input shims (P3-03)", () => {
   });
 
   /*
+   * `size` is an antd prop with no `<textarea>` equivalent. It was not
+   * destructured, so it rode `...props` onto the DOM and the field kept
+   * shadcn's `min-h-[60px]` — every prompt value measured 60px against the
+   * reference's 32px. A stray attribute is the tell for this whole class of
+   * shim bug: it never throws, so only a DOM assertion catches it.
+   */
+  it("consumes antd's size instead of stamping it on the textarea", () => {
+    render(<Input.TextArea size="small" autoSize />);
+    const el = screen.getByRole("textbox");
+    expect(el).not.toHaveAttribute("size");
+    expect(el.className).toContain("text-sm");
+  });
+
+  it("drops the min-height floor when autoSize sizes the box", () => {
+    render(<Input.TextArea autoSize />);
+    expect(screen.getByRole("textbox").className).toContain("min-h-0");
+  });
+
+  /*
    * antd's `variant="borderless"` drops the border and background so the
    * field reads as plain text. EditableText swaps to it whenever a prompt
    * key/value is neither hovered nor edited; the prop was consumed but never
