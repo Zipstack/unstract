@@ -1,3 +1,6 @@
+// Install the global `Prism` at bootstrap, before any lazy chunk (incl. the
+// shared one holding prismjs add-ons) can load. See helpers/prismSetup.js.
+import "./helpers/prismSetup";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 import React from "react";

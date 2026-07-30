@@ -9,8 +9,8 @@ import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
-from typing import Any
+from enum import Enum, StrEnum
+from typing import Any, Literal, NotRequired, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +200,206 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
+class WorkflowTransport(str, Enum):
+    """Transport a single workflow execution rides end-to-end.
+
+    The migration unit is the *execution*, not the task: every stage of a
+    coupled pipeline (async_execute → file-batch fan-out → callback) must run
+    on one transport, decided once at execution creation and carried in the
+    task payload (see ``9e-design.md``). ``CELERY`` is the legacy default;
+    ``PG_QUEUE`` is the bespoke Postgres queue.
+    """
+
+    CELERY = "celery"
+    PG_QUEUE = "pg_queue"
+
+
+# Default transport when none is resolved/carried — keeps every pre-existing
+# payload and caller on the legacy path until a transport is explicitly chosen.
+DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
+
+
+def normalize_transport(value: object, *, logger: Any = None, context: str = "") -> str:
+    """Coerce an inbound transport value to a known ``WorkflowTransport`` value.
+
+    The transport crosses untrusted boundaries — a task payload, PG JSONB, an
+    older backend that omits the field — so a missing/garbage value must never
+    route an execution onto an unknown substrate. This **fails closed**: an
+    unrecognized value (``None``, ``"celary"``, ``""``) logs a warning (when a
+    ``logger`` is given) and falls back to :data:`DEFAULT_WORKFLOW_TRANSPORT`
+    (Celery). A recognized value passes through as its canonical string.
+
+    Coerce-not-raise is deliberate, and differs from how
+    ``WorkflowContextData.workflow_type`` is validated: ``transport`` has an
+    explicit safe default by design (the whole point of the seam is reversible
+    fallback to Celery), so a bad value should degrade to Celery, not crash the
+    execution. ``context`` is an optional suffix for the log line (e.g. an
+    ``exec:<id>`` tag) to make a version-skew warning traceable.
+    """
+    try:
+        return WorkflowTransport(value).value
+    except ValueError:
+        if logger is not None:
+            logger.warning(
+                "Unrecognized workflow transport %r%s; falling back to %r",
+                value,
+                context,
+                DEFAULT_WORKFLOW_TRANSPORT,
+            )
+        return DEFAULT_WORKFLOW_TRANSPORT
+
+
+def is_pg_transport(transport: str | None) -> bool:
+    """True if ``transport`` is the Postgres-queue transport.
+
+    Single source for "what counts as PG transport" — centralises the
+    ``== WorkflowTransport.PG_QUEUE.value`` comparison scattered across the
+    worker fan-out / barrier code, and the seam to extend if a second
+    PG-family transport is ever added.
+    """
+    return transport == WorkflowTransport.PG_QUEUE.value
+
+
+class WorkloadType(StrEnum):
+    """Workflow-execution workload class (fairness L2). Binary api-vs-not.
+
+    Shared single source of truth: the workers' ``queue_backend.fairness``
+    re-exports this, and the backend producer references its values, so neither
+    side hand-builds the wire strings. A ``str`` Enum serialises to its value
+    under ``json.dumps`` / the queue payload.
+    """
+
+    API = "api"
+    NON_API = "non_api"
+
+
+class QueueMessageState(StrEnum):
+    """Claim state of a ``pg_queue_message`` row (UN-3445 scan-past fix).
+
+    Single source of truth for the closed enum, shared across the two codebases
+    that can't import each other: the backend model (default + CheckConstraint +
+    the two partial-index conditions) and the workers' raw SQL (the claim in
+    ``pg_queue.client`` and the reaper re-arm in ``pg_queue.reaper``). A typo in
+    any one of those bare literals would silently break the state machine (e.g. a
+    mistyped re-arm no-ops → crashed work never redelivers), so every site sources
+    the string from here. A drift test asserts the DB CheckConstraint matches this
+    set, mirroring the ``priority`` (fairness) precedent. ``str`` Enum → serialises
+    to its value and compares equal to the bare string.
+
+    - ``READY``   — claimable: the dequeue's partial claim index holds only these.
+    - ``CLAIMED`` — in-flight: a consumer holds it, ``vt`` is its renewable lease;
+      re-armed back to ``READY`` by the reaper when the lease expires (crash).
+    """
+
+    READY = "ready"
+    CLAIMED = "claimed"
+
+
+# Fairness L3 priority bounds (1..10, higher = claimed sooner). Single source of
+# truth shared by the backend producer and the workers' fairness/queue client —
+# the DB CheckConstraint on pg_queue_message.priority is the writer-proof backstop.
+FAIRNESS_MIN_PRIORITY = 1
+FAIRNESS_MAX_PRIORITY = 10
+FAIRNESS_DEFAULT_PRIORITY = 5
+
+
+class FairnessPayload(TypedDict):
+    """Serialised fairness key — the wire shape of a ``FairnessKey.to_dict()``.
+
+    The PG-queue **backend↔worker contract**: the backend (producer) and the
+    workers' ``queue_backend.fairness`` (consumer) both reference this exact
+    sub-shape so they agree on the keys instead of a loose ``dict[str, Any]``.
+    Lives in ``unstract.core`` because backend and workers are separate
+    codebases that can't import each other — this is their single source of
+    truth. ``workload_type`` is a :class:`WorkloadType` value;
+    ``pipeline_priority`` is the 1..10 fairness L3 priority.
+    """
+
+    org_id: str | None
+    workload_type: Literal["api", "non_api"]
+    pipeline_priority: int
+
+
+class ContinuationSpec(TypedDict):
+    """A self-chained continuation — the PG wire-form of a Celery ``Signature``.
+
+    The async/callback executor path (``dispatch_with_callback``) attaches an
+    ``on_success`` / ``on_error`` callback. Celery carries these as ``link`` /
+    ``link_error`` signatures the broker fires automatically; PG has no such
+    broker mechanism, so the executor consumer **self-chains** instead — after it
+    runs ``execute_extraction`` it enqueues this continuation onto ``queue`` (the
+    §5 fire-and-forget model). ``task_name`` / ``kwargs`` / ``queue`` are exactly
+    the three fields read off a ``signature(task_name, kwargs=..., queue=...)`` so
+    the prompt-studio call sites keep passing Celery ``Signature``s unchanged and
+    the dispatcher translates them only on the PG branch.
+
+    The consumer passes the chained value the callback expects (the executor
+    result dict on success, the dispatch ``task_id`` on error) as the callback's
+    first positional arg, alongside the spec's ``kwargs`` as a distinct mapping —
+    mirroring how Celery's ``link`` prepends the parent task's return value.
+    """
+
+    task_name: str
+    kwargs: dict[str, Any]
+    queue: str
+
+
+class TaskPayload(TypedDict):
+    """The ``message`` JSONB of a task row in ``pg_queue_message``.
+
+    The PG-queue **producer↔consumer contract**: whoever enqueues a task (the
+    workers' ``dispatch()`` PG path, or the backend orchestrator producer)
+    serialises this; the consumer poll loop decodes it and runs the task. Keep
+    both sides reading the same keys. Shared in ``unstract.core`` so the backend
+    producer and the worker consumer agree on one definition.
+
+    ``fairness`` is a :class:`FairnessPayload` (serialised fairness key) or
+    ``None`` — the consumer rebuilds the ``x-fairness-key`` header from it,
+    mirroring the Celery dispatch path.
+
+    ``queue`` is diagnostic only: the consumer routes by the ``queue_name``
+    *column* of the row, not by this field. Producers record the logical queue
+    here for debugging (the backend producer always sets it; the workers'
+    ``to_payload`` may leave it ``None``).
+
+    ``reply_key`` is set only for **request-reply** dispatches (the executor RPC
+    on PG): the caller generates a unique key, waits on it, and the
+    executor consumer writes the task's result/error to ``pg_task_result`` under
+    it. "request-reply" is exactly "key present" — it is ``NotRequired[str]`` (not
+    ``str | None``) so there is one meaning per representation (absent = fire-and-
+    forget; present = a real key). It is deliberately a dedicated key, not
+    ``request_id`` (a caller-supplied tracing id that may not be unique).
+    """
+
+    task_name: str
+    args: list[Any]
+    kwargs: dict[str, Any]
+    queue: str | None
+    fairness: FairnessPayload | None
+    reply_key: NotRequired[str]
+    # Async/callback dispatch (``dispatch_with_callback``). Mutually exclusive with
+    # ``reply_key``: request-reply (blocking) sets ``reply_key``; fire-and-forget
+    # with callbacks sets these continuations. The executor consumer self-chains
+    # whichever applies after the task runs. ``task_id`` is the dispatch id the
+    # caller tracks (== Celery's task id); the consumer prepends it as the failed
+    # id to ``on_error`` (parity with Celery ``link_error``).
+    on_success: NotRequired[ContinuationSpec]
+    on_error: NotRequired[ContinuationSpec]
+    task_id: NotRequired[str]
+
+
+class PgTaskStatus(str, Enum):
+    """Status vocabulary for a ``pg_task_result`` row — the executor-RPC
+    request-reply contract (Phase 9). Shared in ``unstract.core`` so the writer
+    (workers ``PgResultBackend``) and reader (backend executor-RPC dispatcher),
+    which live in separate trees with no shared import, agree on one source of
+    truth rather than matching bare literals by eye across the process boundary.
+    """
+
+    COMPLETED = "completed"  # task returned; ``result`` holds ExecutionResult dict
+    FAILED = "failed"  # task raised; ``error`` holds the message
+
+
 class FileListingResult:
     """Result of listing files from a source."""
 
@@ -375,12 +575,34 @@ ExecutionStatus.choices = tuple(
 )
 
 
+# Canonical terminal-status values (COMPLETED/STOPPED/ERROR). One definition so
+# every terminal check — is_completed() below, and ORM ``status__in`` filters like
+# the reaper's file cascade — stays in sync when a status is added/removed.
+def _terminal_values(cls) -> frozenset[str]:
+    """The string values of the terminal execution statuses."""
+    return frozenset({cls.COMPLETED.value, cls.STOPPED.value, cls.ERROR.value})
+
+
+ExecutionStatus.terminal_values = classmethod(_terminal_values)
+
+
+# Terminal statuses that a stale/late writer must NOT overwrite (the terminal-one-way
+# guard). Derived from terminal_values() minus ERROR, so a *new* terminal status is
+# protected-by-default; ERROR is deliberately excluded so a premature ERROR (set by
+# an upstream/other path before the real callback) stays correctable to COMPLETED.
+def _protected_terminal_values(cls) -> frozenset[str]:
+    """String values of terminal statuses that are one-way (COMPLETED/STOPPED)."""
+    return cls.terminal_values() - {cls.ERROR.value}
+
+
+ExecutionStatus.protected_terminal_values = classmethod(_protected_terminal_values)
+
+
 # Add the is_completed method as a class method
 def _is_completed(cls, status: str) -> bool:
-    """Check if the execution status represents a completed state."""
+    """Check if the execution status represents a completed (terminal) state."""
     try:
-        status_enum = cls(status)
-        return status_enum in [cls.COMPLETED, cls.STOPPED, cls.ERROR]
+        return cls(status).value in cls.terminal_values()
     except ValueError:
         raise ValueError(f"Invalid status: {status}. Must be a valid ExecutionStatus.")
 
@@ -405,6 +627,15 @@ def _is_failure(cls, status: str) -> bool:
 
 ExecutionStatus.failure_statuses = classmethod(_failure_statuses)
 ExecutionStatus.is_failure = classmethod(_is_failure)
+
+
+# Statuses a run cannot move out of. `is_completed` is the boolean form.
+def _terminal_statuses(cls) -> frozenset["ExecutionStatus"]:
+    """Return the set of statuses that represent a finished run."""
+    return frozenset({cls.COMPLETED, cls.ERROR, cls.STOPPED})
+
+
+ExecutionStatus.terminal_statuses = classmethod(_terminal_statuses)
 
 
 def is_failure_run(execution_status: str | None, failed_files: int | None) -> bool:

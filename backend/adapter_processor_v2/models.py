@@ -6,10 +6,16 @@ from typing import Any
 from account_v2.models import User
 from cryptography.fernet import Fernet, InvalidToken
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import QuerySet
+from permissions.models import HasMembersMixin
 from tenant_account_v2.models import OrganizationMember
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import (
+    resources_visible_via_groups,
+    resources_visible_via_memberships,
+)
 from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
@@ -41,16 +47,14 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.get_queryset()
 
-        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
-
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+        member_ids = resources_visible_via_memberships(self.model, user)
 
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
-                | models.Q(shared_users=user)
+                models.Q(pk__in=member_ids)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
                 | models.Q(pk__in=group_shared_ids)
@@ -59,7 +63,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         )
 
 
-class AdapterInstance(DefaultOrganizationMixin, BaseModel):
+class AdapterInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -141,9 +145,10 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         db_comment="Metadata about adapter deprecation (reason, date, replacement)",
     )
 
-    # Introduced field to establish M2M relation between users and adapters.
-    # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
     description = models.TextField(blank=True, null=True, default=None)
 
     # ``shared_groups`` is stored polymorphically in

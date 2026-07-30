@@ -14,6 +14,7 @@ from unittest.mock import patch
 from account_v2.models import Organization, User
 from django.core.exceptions import PermissionDenied
 from django.test import TestCase
+from permissions.roles import ResourceRole
 from tenant_account_v2.models import OrganizationMember
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.user_context import UserContext
@@ -58,6 +59,8 @@ class RegistryShareDerivationTestBase(TestCase):
             created_by=self.owner,
             organization=self.org,
         )
+        # Creator's access flows through an OWNER membership row (UN-2202).
+        self.tool.memberships.create(user=self.owner, role=ResourceRole.OWNER)
         # Owner-only snapshot, as written by an unshared export.
         self.registry = PromptStudioRegistry.objects.create(
             name=self.tool.tool_name,
@@ -93,12 +96,14 @@ class ListToolsDerivationTests(RegistryShareDerivationTestBase):
         self.assertIn(self.registry.prompt_registry_id, self._visible_ids(self.other))
 
     def test_user_share_after_export_makes_tool_visible(self) -> None:
-        self.tool.shared_users.add(self.other)
+        self.tool.memberships.create(user=self.other, role=ResourceRole.VIEWER)
         self.assertIn(self.registry.prompt_registry_id, self._visible_ids(self.other))
 
     def test_unshare_after_share_hides_tool(self) -> None:
-        self.tool.shared_users.add(self.other)
-        self.tool.shared_users.remove(self.other)
+        self.tool.memberships.create(user=self.other, role=ResourceRole.VIEWER)
+        self.tool.memberships.filter(
+            user=self.other, role=ResourceRole.VIEWER
+        ).delete()
         self.assertNotIn(self.registry.prompt_registry_id, self._visible_ids(self.other))
 
     def test_legacy_row_falls_back_to_own_share_fields(self) -> None:

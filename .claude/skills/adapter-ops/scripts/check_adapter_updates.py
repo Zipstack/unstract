@@ -440,7 +440,8 @@ def main():
 
     args = parser.parse_args()
 
-    print(f"SDK1 Adapters Path: {SDK1_ADAPTERS}")
+    # stderr so --json output on stdout stays machine-parseable
+    print(f"SDK1 Adapters Path: {SDK1_ADAPTERS}", file=sys.stderr)
 
     adapter_types = ["llm", "embedding"] if args.adapter == "all" else [args.adapter]
     results = []

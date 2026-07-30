@@ -453,7 +453,7 @@ function AddLlmProfile({
   };
 
   return (
-    <div className="settings-body-pad-top add-llm-profile-scroll-root">
+    <div className="add-llm-profile-body">
       <Form
         form={form}
         layout="vertical"

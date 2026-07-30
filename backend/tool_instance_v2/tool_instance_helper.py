@@ -9,7 +9,11 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
-from permissions.permission import has_group_access
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -507,8 +511,8 @@ class ToolInstanceHelper:
             if not (
                 is_admin
                 or adapter_instance.shared_to_org
-                or adapter_instance.created_by == user
-                or adapter_instance.shared_users.filter(pk=user.pk).exists()
+                or _is_resource_owner(user, adapter_instance)
+                or _is_resource_viewer(user, adapter_instance)
                 or has_group_access(user, adapter_instance)
             ):
                 logger.error(
@@ -553,25 +557,21 @@ class ToolInstanceHelper:
             logger.info(f"Not validating tool access for tool: {tool_uid}")
             return
 
-        is_admin = OrganizationMemberService.is_user_organization_admin(user)
-
         # Try to find the tool in AgenticStudioRegistry if available
         if IS_AGENTIC_REGISTRY_AVAILABLE:
             try:
-                agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
-                if (
-                    is_admin
-                    or agentic_registry_tool.created_by == user
-                    or agentic_registry_tool.shared_to_org
-                    or agentic_registry_tool.shared_users.filter(pk=user.pk).exists()
-                ):
-                    return
-                raise PermissionDenied(
-                    "You don't have permission to perform this action."
-                )
-            except AgenticStudioRegistry.DoesNotExist:
-                # Not an agentic studio tool either
-                pass
+                if AgenticStudioRegistry.objects.filter(pk=tool_uid).exists():
+                    # Access derives from the linked project's current share
+                    # state, not the export-time snapshot.
+                    if (
+                        AgenticStudioRegistry.objects.list_tools(user)
+                        .filter(pk=tool_uid)
+                        .exists()
+                    ):
+                        return
+                    raise PermissionDenied(
+                        "You don't have permission to perform this action."
+                    )
             except DjangoValidationError:
                 # Invalid UUID format, might be a static tool
                 logger.info(f"Not validating tool access for tool: {tool_uid}")

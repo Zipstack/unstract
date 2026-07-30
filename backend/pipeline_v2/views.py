@@ -6,11 +6,13 @@ from account_v2.custom_exceptions import DuplicateData
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -43,7 +45,9 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PipelineViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
     pagination_class = CustomPagination
@@ -51,9 +55,24 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
     # Note: Default ordering with nulls_last is applied in get_queryset()
     # DRF's ordering attribute doesn't support nulls_last natively
+    notification_resource_name_field = "pipeline_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        # Only ETL/TASK pipelines map to a notification ResourceType.
+        if not notification_plugin:
+            return None
+        if resource.pipeline_type in (ResourceType.ETL.value, ResourceType.TASK.value):
+            return resource.pipeline_type
+        return None
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -61,7 +80,12 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet:
         # Use for_user manager method to include shared pipelines
-        queryset = Pipeline.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            Pipeline.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
+        )
 
         # Apply type filter if specified
         pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
@@ -125,9 +149,20 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
-            pipeline_instance = serializer.save()
-            # Create API key using the created instance
-            KeyHelper.create_api_key(pipeline_instance, request)
+            # ``save()`` schedules the cron job, which can raise a non-IntegrityError
+            # (JobSchedulingError/ValidationError) *after* the pipeline row commits.
+            # Without this transaction that leaves a pipeline with no OWNER row —
+            # and since ``created_by`` is audit-only (UN-2202), for_user() would
+            # never match it again, so only an org admin could clean it up.
+            with transaction.atomic():
+                pipeline_instance = serializer.save()
+                # Grant before the API key so the creator's access is committed
+                # with the row itself, matching api_deployment_views.create().
+                pipeline_instance.memberships.get_or_create(
+                    user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+                )
+                # Create API key using the created instance
+                KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
@@ -139,9 +174,15 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
-    @action(detail=True, methods=["get"], url_path="users", permission_classes=[IsOwner])
+    @action(detail=True, methods=["get"], url_path="users")
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
-        """Returns the list of users the pipeline is shared with."""
+        """Returns the list of users the pipeline is shared with.
+
+        Viewer-tier by design (``get_permissions`` →
+        ``IsOwnerOrSharedUserOrSharedToOrg``): a shared user may open the owner
+        popup (co-owners spec §10). ``get_permissions`` ignores any
+        ``permission_classes`` set on the decorator, so none is set here.
+        """
         pipeline = self.get_object()
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)

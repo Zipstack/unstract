@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.2.2",
     # # Adapter changes
     "tiktoken~=0.12.0",
-    "litellm==1.85.1",
+    "litellm==1.90.3",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
@@ -172,7 +172,7 @@ keep-dict-typing = true
 
 
 [tool.pytest.ini_options]
-python_files = ["tests.py", "test_*.py", "*_tests.py"]
+python_files = ["test_*.py", "*_test.py", "*_tests.py", "tests.py"]
 testpaths = ["tests"]
 asyncio_mode = "strict"
 markers = [

@@ -64,12 +64,18 @@ import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 from celery.canvas import Signature
 
 from unstract.core.cache.redis_client import create_redis_client
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT
 
+from .barrier import (
+    _DEFAULT_BARRIER_TTL_SECONDS,
+    CallbackDescriptor,
+    barrier_ttl_seconds,
+)
 from .decorator import worker_task
 from .fairness import FairnessKey
 from .handle import BarrierHandle
@@ -111,41 +117,11 @@ _BARRIER_REDIS_ENV_PREFIX = "WORKER_BARRIER_REDIS_"
 # longer workflows (e.g. multi-step pipelines with chained barriers)
 # or shorter known max-execution-time should tune via
 # ``WORKER_BARRIER_KEY_TTL_SECONDS``.
-_KEY_TTL_DEFAULT_SECONDS = 6 * 60 * 60  # 6h
-
-
-def _key_ttl_seconds() -> int:
-    """Read the TTL from env, applying the default only on absence.
-
-    Read at call time (not module import) so a test
-    ``monkeypatch.setenv`` flips the value without a module reload.
-
-    Invalid values (non-int, negative, zero) **raise**, matching the
-    posture in ``get_barrier()`` where ``WORKER_BARRIER_BACKEND=rediz``
-    raises rather than silently falling back to chord. A misconfigured
-    TTL shorter than execution wall-clock is a correctness issue per
-    this file's docstring (would cause spurious callback fires) —
-    operators get the same loud-on-misconfig signal as for the
-    backend flag.
-    """
-    raw = os.getenv("WORKER_BARRIER_KEY_TTL_SECONDS")
-    if raw is None:
-        return _KEY_TTL_DEFAULT_SECONDS
-    try:
-        value = int(raw)
-    except ValueError as e:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={raw!r} is not an integer. "
-            f"Unset the env var to default to {_KEY_TTL_DEFAULT_SECONDS}s "
-            f"(6h)."
-        ) from e
-    if value <= 0:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={value} must be a positive "
-            f"integer. Unset the env var to default to "
-            f"{_KEY_TTL_DEFAULT_SECONDS}s (6h)."
-        )
-    return value
+# TTL lives in barrier.py (shared with PgBarrier — both bound an orphaned
+# barrier by the same env var). Aliased so this module's internal call sites and
+# tests keep their names.
+_key_ttl_seconds = barrier_ttl_seconds
+_KEY_TTL_DEFAULT_SECONDS = _DEFAULT_BARRIER_TTL_SECONDS
 
 
 # Atomic ``RPUSH + EXPIRE + DECR``: returns ``(remaining, results)``.
@@ -338,10 +314,13 @@ class RedisDecrBarrier:
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """See :class:`queue_backend.barrier.Barrier.enqueue`.
 
-        Mirrors ``CeleryChordBarrier.enqueue`` semantics:
+        ``transport`` is accepted for Protocol parity and ignored — the Redis
+        barrier is the Celery-transport fan-in substrate (the PG transport uses
+        ``PgBarrier``'s fire-and-forget mode). Mirrors ``CeleryChordBarrier``:
 
         - Empty ``header_tasks`` → ``None`` (caller handles the
           zero-files contract); no Redis keys touched.
@@ -362,7 +341,7 @@ class RedisDecrBarrier:
         """
         # Explicit ``del`` documents the Protocol-parity intent and
         # satisfies static linters' unused-parameter check.
-        del app_instance
+        del app_instance, transport
         if not header_tasks:
             execution_id = callback_kwargs.get("execution_id")
             pipeline_id = callback_kwargs.get("pipeline_id")
@@ -509,27 +488,6 @@ class RedisDecrBarrier:
                 f"header_tasks={len(header_tasks)})"
             )
             raise
-
-
-class CallbackDescriptor(TypedDict):
-    """Shape of the dict baked into the link signature and re-read on
-    the worker that runs ``barrier_decr_and_check``.
-
-    This descriptor crosses a serialisation boundary (Celery
-    ``signature(...)`` → broker → consumer worker), so the four-key
-    contract is otherwise enforced only by string literals duplicated
-    across producer and consumer. Typing it as a ``TypedDict`` gives
-    the type checker a chance to catch typos / renames before they
-    surface as remote ``KeyError`` mid-aggregation.
-
-    ``fairness_headers`` is always present in the dict; ``None`` when
-    the producer passed no ``FairnessKey``.
-    """
-
-    task_name: str
-    kwargs: dict[str, Any]
-    queue: str
-    fairness_headers: dict[str, Any] | None
 
 
 @dataclass(frozen=True, slots=True)

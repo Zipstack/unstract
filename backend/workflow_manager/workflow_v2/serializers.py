@@ -13,7 +13,10 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
-from tenant_account_v2.sharing_helpers import serialize_group_refs
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
@@ -48,7 +51,6 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,
             },
-            "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
         }
 
@@ -80,6 +82,9 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         representation["created_by_email"] = (
             instance.created_by.email if instance.created_by else None
         )
+        request = self.context.get("request")
+        representation["is_owner"] = instance.is_owner(request.user) if request else False
+        representation["co_owners_count"] = instance.co_owners_count()
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:
@@ -187,6 +192,7 @@ class SharedUserListSerializer(ModelSerializer):
 
     shared_users = SerializerMethodField()
     shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
@@ -197,18 +203,23 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_users",
             "shared_to_org",
             "shared_groups",
+            "co_owners",
             "created_by",
         ]
 
     def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
+        """Return direct viewers (VIEWER members) with id and email."""
         return [
             {"id": user.id, "email": user.email}
-            for user in obj.shared_users.filter(is_service_account=False)
+            for user in obj.viewers()
+            if not user.is_service_account
         ]
 
     def get_shared_groups(self, obj):
         return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)
 
     def get_created_by(self, obj):
         """Return creator details."""

@@ -34,8 +34,12 @@ class BaselineCorruptError(RuntimeError):
 class CriticalPath:
     id: str
     description: str
-    entry: str
     covered_by: tuple[str, ...]
+    # "group": covered when any covered_by group runs green (coarse — survives
+    # the covering test being deleted). "marker": additionally requires ≥1
+    # passing test marked @pytest.mark.critical_path("<id>") in this run.
+    # Ratchet each path to "marker" as its tests get marked.
+    proof: Literal["group", "marker"] = "group"
 
 
 @dataclass(frozen=True)
@@ -65,6 +69,12 @@ class CriticalPathStatus:
     state: CriticalPathState
     covering_groups_run: tuple[str, ...]
     notes: str = ""
+    # True when a declared covering group is in this run's scope (or scoping is
+    # off). An out-of-scope gap (coverage only in an unrun tier, or none
+    # declared) must not gate under --fail-on-critical-gap. Defaults False so a
+    # regression that forgets to pass it can only under-gate (spurious warning),
+    # never over-gate (spurious build block).
+    in_scope: bool = False
 
     def __post_init__(self) -> None:
         # Make the contradictory states unrepresentable rather than relying on
@@ -80,17 +90,23 @@ def load_critical_paths(path: Path | None = None) -> CriticalPathRegistry:
     raw = yaml.safe_load((path or DEFAULT_REGISTRY).read_text())
     if not isinstance(raw, dict) or "paths" not in raw:
         raise ValueError(f"{path or DEFAULT_REGISTRY}: expected top-level `paths:` list")
-    return CriticalPathRegistry(
-        paths=tuple(
+    paths = []
+    for p in raw["paths"]:
+        proof = str(p.get("proof", "group"))
+        if proof not in ("group", "marker"):
+            raise ValueError(
+                f"critical path {p.get('id')!r}: proof must be 'group' or "
+                f"'marker', got {proof!r}"
+            )
+        paths.append(
             CriticalPath(
                 id=str(p["id"]),
                 description=str(p.get("description", "")),
-                entry=str(p.get("entry", "")),
                 covered_by=tuple(p.get("covered_by") or ()),
+                proof=proof,
             )
-            for p in raw["paths"]
         )
-    )
+    return CriticalPathRegistry(paths=tuple(paths))
 
 
 def validate_registry_against_manifest(
@@ -106,6 +122,11 @@ def validate_registry_against_manifest(
                     f"critical path {path.id!r}: "
                     f"covered_by references unknown group {g!r}"
                 )
+        if path.proof == "marker" and not path.covered_by:
+            errors.append(
+                f"critical path {path.id!r}: proof 'marker' requires a "
+                f"non-empty covered_by (marked tests must live in a group)"
+            )
     return errors
 
 
@@ -115,21 +136,27 @@ def evaluate(
     groups_run_green: Collection[str],
     baseline: dict[str, Any] | None,
     scope_groups: Collection[str] | None = None,
+    marker_proven: Collection[str] = (),
 ) -> list[CriticalPathStatus]:
     """Compute the status for each critical path against this build's results.
 
     Args:
         registry: parsed critical-paths registry.
         groups_run_green: names of groups that ran AND passed in this build.
+                  Pass only ``status == "pass"`` groups — a group that collected
+                  zero tests ("empty") must not attest coverage.
         baseline: parsed previous-summary.json from the main-branch cache, or None.
                   Expected shape: ``{"covered_paths": ["auth-login", ...]}``.
-        scope_groups: collection of every group the caller considered running
-                  this invocation (including dep-expanded deps and skipped
-                  optional placeholders). When a critical path's ``covered_by``
-                  is fully outside ``scope_groups``, the path is classified as
-                  ``gap`` rather than ``regression`` — running only the unit
-                  tier shouldn't flag e2e-tier paths as regressed. If ``None``,
-                  no scoping is applied (back-compat).
+        scope_groups: the groups this invocation actually runs (dep-expanded).
+                  When a critical path's ``covered_by`` is fully outside
+                  ``scope_groups``, the path is classified as ``gap`` rather than
+                  ``regression`` — running only the unit tier shouldn't flag
+                  e2e-tier paths as regressed. If ``None``, no scoping is applied
+                  (back-compat).
+        marker_proven: path ids with at least one passing
+                  ``@pytest.mark.critical_path`` test in this build. Paths with
+                  ``proof: marker`` require membership here on top of a green
+                  covering group.
 
     Returns:
         Statuses in the original registry order.
@@ -139,34 +166,52 @@ def evaluate(
     # when callers pass lists/tuples; the public signature accepts Collection
     # to leave that choice to them.
     green = set(groups_run_green)
+    proven = set(marker_proven)
     scope = None if scope_groups is None else set(scope_groups)
-    statuses: list[CriticalPathStatus] = []
-    for path in registry.paths:
-        covering = tuple(g for g in path.covered_by if g in green)
-        in_scope = scope is None or any(g in scope for g in path.covered_by)
-        state: CriticalPathState
-        if covering:
-            state = "covered"
-            note = ""
-        elif path.id in previously_covered and in_scope:
-            state = "regression"
-            note = "Was covered on the cached baseline; not covered in this build."
-        else:
-            state = "gap"
-            note = (
-                "Out of scope for this invocation."
-                if not in_scope
-                else "No group covering this path ran green in this build."
-            )
-        statuses.append(
-            CriticalPathStatus(
-                path=path,
-                state=state,
-                covering_groups_run=covering,
-                notes=note,
-            )
+    return [
+        _status_for(path, green, proven, previously_covered, scope)
+        for path in registry.paths
+    ]
+
+
+def _status_for(
+    path: CriticalPath,
+    green: set[str],
+    proven: set[str],
+    previously_covered: set[str],
+    scope: set[str] | None,
+) -> CriticalPathStatus:
+    covering = tuple(g for g in path.covered_by if g in green)
+    if path.proof == "marker" and path.id not in proven:
+        covering = ()
+    in_scope = scope is None or any(g in scope for g in path.covered_by)
+    if covering:
+        state: CriticalPathState = "covered"
+        note = ""
+    elif path.id in previously_covered and in_scope:
+        state = "regression"
+        note = "Was covered on the cached baseline; not covered in this build."
+    else:
+        state = "gap"
+        note = _gap_note(path, green, in_scope)
+    return CriticalPathStatus(
+        path=path,
+        state=state,
+        covering_groups_run=covering,
+        notes=note,
+        in_scope=in_scope,
+    )
+
+
+def _gap_note(path: CriticalPath, green: set[str], in_scope: bool) -> str:
+    if not in_scope:
+        return "Out of scope for this invocation."
+    if path.proof == "marker" and any(g in green for g in path.covered_by):
+        return (
+            "Covering group ran green but no passing "
+            "@pytest.mark.critical_path test attested this path."
         )
-    return statuses
+    return "No group covering this path ran green in this build."
 
 
 def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -> None:

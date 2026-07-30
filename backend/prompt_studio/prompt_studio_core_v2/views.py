@@ -17,8 +17,11 @@ from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -29,6 +32,7 @@ from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -81,6 +85,8 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from unstract.core.data_models import PgTaskStatus
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -120,12 +126,23 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            return None
+        return ResourceType.TEXT_EXTRACTOR.value
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -133,13 +150,16 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action == "destroy":
+        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "memberships__user"
+        )
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()
             prompt_count_sq = (
@@ -149,10 +169,20 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
+            # modified_at needs no annotation: prompt writes bump the parent
+            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
+            # keeping the plain field orderable. Only prompt writes bump —
+            # profile/document edits and queryset-level prompt writes do not;
+            # any new write path must bump CustomTool itself
             qs = qs.select_related("created_by").annotate(
-                _prompt_count=Subquery(prompt_count_sq)
+                _prompt_count=Subquery(prompt_count_sq),
             )
-        return qs
+            search = self.request.query_params.get("search")
+            if search:
+                qs = qs.filter(tool_name__icontains=search)
+        # Order by the DISTINCT ON field so pagination is deterministic and the
+        # admin/service branch (no distinct) is ordered too.
+        return qs.order_by("tool_id")
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
@@ -173,6 +203,11 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
@@ -446,9 +481,12 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
+            # user_id is the file-path owner (project creator);
+            # request_user is who triggered the action (UN-3739)
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -607,6 +645,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         # If document is being indexed, return pending status
@@ -719,6 +758,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         if context is None:
@@ -825,6 +865,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
             user_id=user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -872,6 +913,51 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         """
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()
+
+        # Gate on the same per-org ``pg_queue_enabled`` flag the executor dispatch
+        # uses (``resolve_pg_transport`` — bucketed per org): flag ON → the task rode
+        # PG, which records its terminal state in ``pg_task_result`` (the eager PG
+        # executor never writes a Celery result backend, so ``AsyncResult`` alone
+        # would poll "processing" forever — UN-3693); flag OFF (default) → Celery,
+        # unchanged, and PG is not touched. ``entity_id``/``context`` match
+        # ``resolve_pg_transport`` so the per-org bucket agrees with the dispatch.
+        # No wrapper: ``check_feature_flag_status`` already fails closed to ``False``
+        # (its own try/except + warning) on any Flipt error → reads as "off" → Celery.
+        org_id = str(UserSessionUtils.get_organization_id(request) or "")
+        pg_enabled = check_feature_flag_status(
+            flag_key=PG_QUEUE_FLAG_KEY,
+            entity_id=org_id or "default",
+            context={"organization_id": org_id},
+        )
+        if pg_enabled:
+            from pg_queue.models import PgTaskResult
+
+            try:
+                row = (
+                    PgTaskResult.objects.filter(task_id=task_id)
+                    .values("status", "error")
+                    .first()
+                )
+            except Exception:
+                # A transient DB blip degrades to "processing" (a poll retries) rather
+                # than a bare 500 that a status-code-keyed client would misread as a
+                # terminal task failure.
+                logger.exception(
+                    "task_status: pg_task_result read failed for %s; treating as "
+                    "pending",
+                    task_id,
+                )
+                row = None
+            # No row → not finished yet (there is no "pending" row). Status compared
+            # against PgTaskStatus (the writer's source of truth), not a bare literal.
+            if row is None:
+                return Response({"task_id": task_id, "status": "processing"})
+            if row["status"] == PgTaskStatus.COMPLETED.value:
+                return Response({"task_id": task_id, "status": "completed"})
+            return Response(
+                {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         result = AsyncResult(task_id, app=celery_app)
         if not result.ready():

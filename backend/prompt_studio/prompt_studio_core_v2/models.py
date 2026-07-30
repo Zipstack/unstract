@@ -4,9 +4,15 @@ from typing import Any
 
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
+from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import QuerySet
+from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import (
+    resources_visible_via_groups,
+    resources_visible_via_memberships,
+)
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel, BaseModelManager
@@ -30,16 +36,14 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
-        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
-
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+        member_ids = resources_visible_via_memberships(self.model, user)
 
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
-                | models.Q(shared_users=user)
+                models.Q(pk__in=member_ids)
                 | models.Q(shared_to_org=True)
                 | models.Q(pk__in=group_shared_ids)
             )
@@ -47,7 +51,7 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         )
 
 
-class CustomTool(DefaultOrganizationMixin, BaseModel):
+class CustomTool(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
     """Model to store the custom tools designed in the tool studio."""
 
     tool_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -161,10 +165,6 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         db_comment="Custom data for variable replacement in prompts using {{custom_data.key}} syntax",
     )
 
-    # Introduced field to establish M2M relation between users and custom_tool.
-    # This will introduce intermediary table which relates both the models.
-    shared_users = models.ManyToManyField(User, related_name="shared_custom_tools")
-
     # Field to enable organization-level sharing
     shared_to_org = models.BooleanField(
         default=False,
@@ -188,6 +188,11 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         blank=True,
         db_comment="Timestamp of the last successful export; NULL if never exported since the field was introduced.",
     )
+
+    # Owner + direct-viewer access lives here (UN-2202): OWNER / VIEWER rows in
+    # the polymorphic ``ResourceMembership`` table. ``created_by`` is
+    # audit-only; VIEWER rows succeed the former ``shared_users`` M2M.
+    memberships = GenericRelation("tenant_account_v2.ResourceMembership")
 
     objects = CustomToolModelManager()
 

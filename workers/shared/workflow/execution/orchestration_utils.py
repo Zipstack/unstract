@@ -10,6 +10,13 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from queue_backend import BarrierHandle, FairnessKey, get_barrier
+from queue_backend.pg_barrier import PgBarrier
+
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    ExecutionStatus,
+    is_pg_transport,
+)
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
@@ -17,20 +24,88 @@ from ...infrastructure.logging import WorkerLogger
 
 if TYPE_CHECKING:
     from celery.canvas import Signature
+    from queue_backend import Barrier
 
 logger = WorkerLogger.get_logger(__name__)
 
 # Single ``Barrier`` instance reused across all
-# ``WorkflowOrchestrationUtils.create_chord_execution`` calls. The
-# substrate is selected at module-import (worker startup) time by the
-# ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips
-# require a pod restart — same posture as every other ``WORKER_*``
-# env in the codebase.
+# ``WorkflowOrchestrationUtils.create_chord_execution`` calls on the **celery**
+# transport. The substrate is selected at module-import (worker startup) time by
+# the ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips require a
+# pod restart — same posture as every other ``WORKER_*`` env in the codebase.
 _BARRIER = get_barrier()
+
+
+def _barrier_for_transport(transport: str) -> Barrier:
+    """Pick the fan-in substrate for a per-execution transport (9e).
+
+    The ``pg_queue`` transport always coordinates on Postgres — it uses a fresh
+    :class:`PgBarrier` in its fire-and-forget mode regardless of
+    ``WORKER_BARRIER_BACKEND`` (the env-selected singleton is the *celery*-transport
+    substrate, which may be ``chord``). Every other transport uses that singleton.
+    """
+    if is_pg_transport(transport):
+        return PgBarrier()
+    return _BARRIER
 
 
 class WorkflowOrchestrationUtils:
     """Centralized workflow orchestration patterns and utilities."""
+
+    @staticmethod
+    def record_pg_orchestration_failure(
+        *,
+        api_client: Any,
+        execution_id: str,
+        total_files: int,
+        error_message: str,
+        logger: Any,
+        workflow_logger: Any | None = None,
+    ) -> None:
+        """Record a **PG** orchestration failure: surface the error to the UI and
+        reconcile the file counters, both best-effort.
+
+        Call this ONLY on the PG transport (the caller gates on
+        ``is_pg_transport``); the Celery failure path keeps its own original
+        status update untouched, so it stays byte-identical.
+
+        Two things happen, neither of which may disturb the caller's control flow
+        (it still has the original orchestration exception to log / re-raise):
+
+        * **(C)** if a ``workflow_logger`` is given, publish the error to the UI /
+          WebSocket logs (guarded — a logging hiccup must not abort the rest).
+        * **(B)** mark the attempted files failed via ``update_status`` so the run
+          reads "N failed" not "N in progress" (UI derives in-progress as
+          ``total - successful - failed``). ``total_files`` is sent alongside the
+          aggregates because the backend serializer requires it ("total_files is
+          required when file aggregates are provided") and enforces
+          ``successful + failed <= total`` — both hold here (0 + N <= N). The call
+          is wrapped: a status-update failure (e.g. a serializer/validation error)
+          is logged but **not** re-raised, so it can never mask the real
+          orchestration error or skip the caller's re-raise (greptile P1).
+        """
+        if workflow_logger:
+            try:
+                workflow_logger.log_error(
+                    logger, f"❌ Workflow orchestration failed: {error_message}"
+                )
+            except Exception as log_error:
+                logger.warning(f"Failed to publish error to UI logs: {log_error}")
+        try:
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.ERROR.value,
+                error_message=error_message,
+                total_files=total_files,
+                successful_files=0,
+                failed_files=total_files,
+            )
+        except Exception as status_error:
+            logger.error(
+                f"Failed to write ERROR status + file counts for execution "
+                f"{execution_id}: {status_error}",
+                exc_info=True,
+            )
 
     @staticmethod
     def create_chord_execution(
@@ -41,6 +116,7 @@ class WorkflowOrchestrationUtils:
         app_instance: Any,
         *,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
 
@@ -71,13 +147,14 @@ class WorkflowOrchestrationUtils:
             parent that direct pipeline status updates should be
             handled instead.
         """
-        return _BARRIER.enqueue(
+        return _barrier_for_transport(transport).enqueue(
             batch_tasks,
             callback_task_name=callback_task_name,
             callback_kwargs=callback_kwargs,
             callback_queue=callback_queue,
             app_instance=app_instance,
             fairness=fairness,
+            transport=transport,
         )
 
     @staticmethod
