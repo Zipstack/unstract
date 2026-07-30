@@ -7,6 +7,9 @@ need a real Docker daemon to exercise and live outside this unit-rig group.
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
@@ -91,18 +94,26 @@ def test_extra_compose_files_rejects_missing(monkeypatch, tmp_path) -> None:
         _extra_compose_files()
 
 
-def test_down_survives_overlay_removed_after_up(monkeypatch, tmp_path) -> None:
-    """An overlay deleted mid-run must not abort teardown and leak containers."""
+def test_down_uses_config_snapshot_after_overlay_removed(monkeypatch, tmp_path) -> None:
+    """An overlay deleted mid-run must still be torn down, resources included."""
     from tests.rig import runtime as rt
 
     extra = tmp_path / "extra.yaml"
-    extra.write_text("services: {}")
+    extra.write_text("services:\n  mock:\n    image: mock:latest\n")
     monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(extra))
     monkeypatch.setattr(rt.shutil, "which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(rt, "_wait_ready", lambda *_a, **_k: None)
 
     commands: list[list[str]] = []
     monkeypatch.setattr(rt, "_run", lambda cmd, **_k: commands.append(cmd))
+    # Stand in for `docker compose config`: echo the overlay-only service back.
+    monkeypatch.setattr(
+        rt.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess(
+            [], 0, stdout="services:\n  mock:\n    image: mock:latest\n", stderr=""
+        ),
+    )
 
     compose = rt.ComposeRuntime()
     compose.up()
@@ -112,9 +123,13 @@ def test_down_survives_overlay_removed_after_up(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(compose, "_dump_logs", lambda _files: None)
     compose.down()
 
-    assert commands[-1][-3:] == ["down", "-v", "--remove-orphans"]
-    assert str(extra) not in commands[-1]
-    assert str(rt.BASE_COMPOSE) in commands[-1]
+    down_cmd = commands[-1]
+    assert down_cmd[-3:] == ["down", "-v", "--remove-orphans"]
+    snapshot = Path(down_cmd[down_cmd.index("-f") + 1])
+    assert snapshot.is_file()
+    # The removed overlay's service survives in the snapshot, so `down -v` still
+    # owns everything it defined.
+    assert "mock:latest" in snapshot.read_text()
 
 
 def test_login_provider_defaults_to_oss(monkeypatch) -> None:

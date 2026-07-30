@@ -65,21 +65,6 @@ def _compose_file_args() -> list[str]:
         args += ["-f", str(extra)]
     return args
 
-
-def _drop_missing_files(args: list[str]) -> list[str]:
-    """Keep only ``-f <path>`` pairs still on disk.
-
-    A compose file deleted since ``up()`` makes every later compose call fail to
-    parse, which would leak the whole project instead of tearing it down.
-    """
-    kept: list[str] = []
-    for flag, path in zip(args[::2], args[1::2]):
-        if Path(path).is_file():
-            kept += [flag, path]
-        else:
-            log.warning("compose file %s vanished; excluding it from teardown", path)
-    return kept
-
 # Shared by the workers and the tests, so the exact completion is assertable.
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
@@ -177,18 +162,18 @@ class ComposeRuntime:
 
     def __init__(self, *, project_name: str = "unstract-test") -> None:
         self.project_name = project_name
-        # Captured at up() so down() tears down the exact same file set even if
+        # Captured at up() so down() tears down the exact same project even if
         # UNSTRACT_RIG_EXTRA_COMPOSE changes or an overlay is removed mid-run.
         self._compose_files: list[str] | None = None
 
     def up(self) -> PlatformEndpoints:
         if shutil.which("docker") is None:
             raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
-        self._compose_files = _compose_file_args()
+        files = _compose_file_args()
         _run(
-            ["docker", "compose", "-p", self.project_name, *self._compose_files,
-             "up", "-d", "--wait"]
+            ["docker", "compose", "-p", self.project_name, *files, "up", "-d", "--wait"]
         )
+        self._compose_files = self._snapshot_config(files) or files
         endpoints = PlatformEndpoints.from_env()
         _wait_ready(endpoints)
         return endpoints
@@ -204,7 +189,6 @@ class ComposeRuntime:
                 files = _compose_file_args()
             except ValueError:
                 files = ["-f", str(BASE_COMPOSE)]
-        files = _drop_missing_files(files)
         self._dump_logs(files)
         _run(
             [
@@ -219,6 +203,32 @@ class ComposeRuntime:
             ],
             check=False,
         )
+
+    def _snapshot_config(self, files: list[str]) -> list[str] | None:
+        """Freeze the merged compose config so teardown never rereads the sources.
+
+        The overlay files can move or be cleaned up between up() and down();
+        a resolved snapshot keeps every service, network and volume the project
+        owns visible to `down -v`, not just the ones still on disk. Returns None
+        when the snapshot can't be written, leaving the caller on raw paths.
+        """
+        target = REPO_ROOT / "reports" / f"compose-config-{self.project_name}.yaml"
+        try:
+            completed = subprocess.run(  # noqa: S603
+                ["docker", "compose", "-p", self.project_name, *files, "config"],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if completed.returncode != 0 or not completed.stdout.strip():
+                log.warning("compose config snapshot failed: %s", completed.stderr)
+                return None
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(completed.stdout)
+        except OSError as exc:
+            log.warning("Could not write compose config snapshot: %s", exc)
+            return None
+        return ["-f", str(target)]
 
     def _dump_logs(self, files: list[str]) -> None:
         """Capture service logs while the containers still exist.
