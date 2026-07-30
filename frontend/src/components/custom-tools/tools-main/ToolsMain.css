@@ -9,6 +9,14 @@
 
 .tools-main-tabs {
   padding: 4px 14px;
+  /* The doc-manager toolbar puts this block beside a file name and buttons and
+   * centres the row. antd's tab nav filled the block, so the 4px top padding
+   * never showed; the shadcn nav is shorter than the neighbouring 32px
+   * controls, which left it sitting at the top of its own box and the labels
+   * 5.6px above everything else. Centring the nav inside the block absorbs the
+   * difference without disturbing the padding other call-sites rely on. */
+  display: flex;
+  align-items: center;
 }
 
 .tools-main-tabs .ant-tabs-nav {
