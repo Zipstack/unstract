@@ -358,16 +358,15 @@ class WebhookTestAPIView(APIView):
                     allow_redirects=False,
                 )
 
-                # Status only: the body and headers of whatever was reached
-                # are not the caller's to read.
+                # Status only. The response body and headers are not the
+                # caller's to read, and request_headers carried back the
+                # Authorization value built from authorization_key.
                 test_result = {
                     # 2xx only: redirects are not followed, so a 301/302 means
                     # the payload never reached the final destination.
                     "success": 200 <= response.status_code < 300,
                     "status_code": response.status_code,
                     "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
                 }
 
                 logger.info(

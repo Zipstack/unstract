@@ -8,6 +8,7 @@ the internal webhook-test endpoint, which used to return the response body.
 
 from unittest.mock import Mock, patch
 
+import pytest
 from django.test import SimpleTestCase
 from notification_v2.internal_views import WebhookTestAPIView
 from notification_v2.serializers import NotificationSerializer
@@ -22,6 +23,23 @@ INTERNAL_URLS = [
     "http://127.0.0.1:8000/admin/",
     r"https://127.0.0.1:6666\@1.1.1.1",
 ]
+
+# Stub DNS so nothing here depends on the network. The serializer path does not
+# resolve at all; the endpoint path does, and would otherwise make a real
+# lookup for example.com and fail in an isolated runner.
+_FAKE_DNS = {"example.com": "93.184.216.34"}
+
+
+@pytest.fixture(autouse=True)
+def stub_dns(monkeypatch):
+    def fake_getaddrinfo(host, *_args, **_kwargs):
+        if host not in _FAKE_DNS:
+            raise OSError(f"unresolvable in test: {host}")
+        return [(None, None, None, "", (_FAKE_DNS[host], 0))]
+
+    monkeypatch.setattr(
+        "unstract.core.network.ssrf.socket.getaddrinfo", fake_getaddrinfo
+    )
 
 
 def _notification_data(url):
@@ -86,10 +104,13 @@ class WebhookTestEndpointTest(SimpleTestCase):
             response = self._post("https://example.com/hook")
 
         assert response.status_code == status.HTTP_200_OK
-        assert "response_body" not in response.data
-        assert "response_headers" not in response.data
         assert response.data["status_code"] == 200
         assert post.call_args.kwargs["allow_redirects"] is False
+
+        # Nothing about the upstream response comes back, and neither do the
+        # request headers — those carry the Authorization value we built.
+        for leaked in ("response_body", "response_headers", "request_headers"):
+            assert leaked not in response.data, f"{leaked} is echoed to the caller"
 
     def test_redirect_is_not_reported_as_success(self):
         """Redirects are not followed, so a 3xx means the payload never landed."""

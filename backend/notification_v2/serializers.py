@@ -49,11 +49,16 @@ class NotificationSerializer(serializers.ModelSerializer):
         Only checks a URL the caller actually sent. Re-resolving the stored one
         would make an unrelated PATCH fail whenever DNS is briefly unavailable
         or a legacy record predates this check.
+
+        resolve=False keeps DNS off the request thread — getaddrinfo honours no
+        timeout, so a slow resolver here would stall the worker serving the
+        request. Literal internal addresses are still refused; a hostname
+        pointing inward is caught at the sink, which is the real control.
         """
         if "url" not in data:
             return
         url = data["url"]
-        if url and not is_safe_webhook_url(url):
+        if url and not is_safe_webhook_url(url, resolve=False):
             raise serializers.ValidationError(
                 {"url": "URL must resolve to a public address."}
             )

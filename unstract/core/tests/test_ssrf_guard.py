@@ -129,6 +129,42 @@ def test_unresolvable_hosts_return_false_rather_than_raising(url, monkeypatch):
     assert is_safe_webhook_url(url) is False
 
 
+class TestWithoutResolution:
+    """resolve=False keeps DNS off request-handling threads.
+
+    getaddrinfo honours no timeout, so a slow resolver would stall the worker
+    serving the request. The syntactic checks still run.
+    """
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://127.0.0.1/hook",
+            "https://169.254.169.254/latest/meta-data/",
+            "https://10.0.0.5/hook",
+            "https://100.64.0.1/hook",
+            "https://[::1]/hook",
+            r"https://127.0.0.1:6666\@1.1.1.1",  # parsers disagree
+            "https://user:pass@example.com/hook",  # credentials
+            "ftp://example.com/hook",  # scheme
+        ],
+    )
+    def test_literal_and_syntactic_cases_still_refused(self, url):
+        assert is_safe_webhook_url(url, resolve=False) is False
+
+    def test_no_lookup_is_issued(self, monkeypatch):
+        def explode(*_a, **_k):
+            raise AssertionError("DNS was resolved on a resolve=False call")
+
+        monkeypatch.setattr("unstract.core.network.ssrf.socket.getaddrinfo", explode)
+        assert is_safe_webhook_url("https://anything.internal/hook", resolve=False)
+
+    def test_hostname_pointing_inward_is_left_to_the_sink(self):
+        """Accepted here by design — the sink still resolves and refuses it."""
+        assert is_safe_webhook_url("https://internal.corp/hook", resolve=False) is True
+        assert is_safe_webhook_url("https://internal.corp/hook") is False
+
+
 def test_any_internal_address_in_a_multi_answer_rrset_refuses():
     """A host that also answers with a loopback address is not safe."""
     assert is_safe_webhook_url("https://rebind.test/hook") is False

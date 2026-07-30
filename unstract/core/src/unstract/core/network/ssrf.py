@@ -89,7 +89,9 @@ def _is_public(addr: str) -> bool:
 
 
 def is_safe_webhook_url(
-    url: str | None, allowed_schemes: tuple[str, ...] = DEFAULT_ALLOWED_SCHEMES
+    url: str | None,
+    allowed_schemes: tuple[str, ...] = DEFAULT_ALLOWED_SCHEMES,
+    resolve: bool = True,
 ) -> bool:
     """Whether ``url`` may be dialled from inside the network.
 
@@ -97,10 +99,17 @@ def is_safe_webhook_url(
         url: The tenant-supplied URL.
         allowed_schemes: Schemes to accept. Callers that already require TLS
             should pass ``("https",)`` rather than widening to the default.
+        resolve: Whether to resolve the host and check every address. Leave it
+            on at the sinks — that is the real control. Turn it off on request
+            handling threads: ``socket.getaddrinfo`` honours no timeout, so a
+            slow or hostile resolver would stall the worker serving the
+            request. With it off, the syntactic checks still run and a literal
+            internal IP is still refused; a hostname that resolves internally
+            is caught at the sink instead.
 
     Returns:
         True only if the URL is well-formed, unambiguous to both parsers, and
-        resolves entirely to public addresses.
+        (when ``resolve`` is set) maps entirely to public addresses.
     """
     if not url:
         return False
@@ -132,6 +141,15 @@ def is_safe_webhook_url(
 
     if not host:
         return False
+
+    if not resolve:
+        # No DNS on this path. A literal address is still checked, since that
+        # needs no lookup and is how most internal targets are written.
+        try:
+            ipaddress.ip_address(host)
+        except ValueError:
+            return True
+        return _is_public(host)
 
     # Resolve the normalized host: that is the canonical form the transport
     # ends up dialling, so the addresses checked here are the ones used.
