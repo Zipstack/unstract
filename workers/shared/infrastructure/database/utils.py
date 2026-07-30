@@ -308,10 +308,14 @@ class WorkerDatabaseUtils:
         if error and has_error_col:
             values[TableColumns.ERROR_MESSAGE] = error
 
-        # Add status based on error presence
+        # Add status based on error presence. Use `.value` so the destination
+        # column stores the plain string ("SUCCESS"/"ERROR"), not the enum repr
+        # ("FileProcessingStatus.SUCCESS") that stringifying the member produces.
         if has_status_col:
             values[TableColumns.STATUS] = (
-                FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
+                FileProcessingStatus.ERROR.value
+                if error
+                else FileProcessingStatus.SUCCESS.value
             )
 
     @staticmethod
