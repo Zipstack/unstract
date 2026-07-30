@@ -295,6 +295,33 @@
   ::file-selector-button {
     border-color: var(--border);
   }
+
+  /*
+   * antd shipped its icons as a FONT: they sat on the text baseline and
+   * inherited font-size, so `<span><Icon /></span> Label` rendered inline as a
+   * matter of course. lucide ships SVGs, and Tailwind's preflight sets
+   * `svg { display: block }` with a 24px default — a block element forces its
+   * own line, so every such pair broke with the icon stacked ABOVE its text
+   * ("Not Indexed"/"Not Summarized" in Manage Documents, "Yet to run" on the
+   * prompt cards) and the glyph was oversized beside 14px copy.
+   *
+   * Restoring inline layout for icons that sit INSIDE a text flow fixes the
+   * whole class at once. Icons in a flex/grid container are untouched: those
+   * parents already align their children, and `display` is ignored for flex
+   * items anyway.
+   */
+  :where(span, p, label, td, th, li, a):not(:where(.flex, .inline-flex, .grid))
+    > svg.lucide,
+  :where(span, p, label, td, th, li, a):not(
+      :where(.flex, .inline-flex, .grid)
+    )
+    > :where(span, i):not(:where(.flex, .inline-flex))
+    > svg.lucide {
+    display: inline-block;
+    vertical-align: -0.145em; /* antd's icon baseline offset */
+    width: 1em;
+    height: 1em;
+  }
 }
 
 /* ------------------------------------------------------------------

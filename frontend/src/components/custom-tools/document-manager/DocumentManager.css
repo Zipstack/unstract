@@ -9,6 +9,10 @@
 
 .doc-manager-header {
   display: flex;
+  /* Without this, children default to `stretch`: the view tabs centred at one
+   * height while the file name and Manage Documents button sat 4-5px lower,
+   * so nothing in the row shared a baseline. */
+  align-items: center;
   justify-content: space-between;
   padding-right: 12px;
 }

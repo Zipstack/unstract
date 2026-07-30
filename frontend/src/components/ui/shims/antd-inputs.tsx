@@ -102,6 +102,8 @@ interface AntTextAreaProps
     CountProps {
   /** antd accepts `true` or a { minRows, maxRows } pair. */
   autoSize?: boolean | { minRows?: number; maxRows?: number };
+  /** See AntInputProps.variant — EditableText drives prompt VALUES through this. */
+  variant?: string;
 }
 
 interface AntSearchProps
@@ -281,6 +283,16 @@ const InputBase = React.forwardRef<HTMLInputElement, AntInputProps>(
           size === "small" && "h-8 text-sm",
           size === "large" && "h-11",
           status === "error" && "border-destructive",
+          /*
+           * antd's `variant="borderless"` drops the border AND the background,
+           * so the field reads as plain text until it is focused. EditableText
+           * swaps to it whenever a prompt key/value is neither hovered nor
+           * being edited — the prop was consumed but never implemented, so
+           * every prompt card showed input chrome permanently.
+           */
+          variant === "borderless" &&
+            "border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input",
+          variant === "filled" && "border-transparent bg-muted",
           prefix && "pl-8",
           className,
         )}
@@ -323,16 +335,77 @@ const InputBase = React.forwardRef<HTMLInputElement, AntInputProps>(
 /** antd `<Input.TextArea rows autoSize showCount />`. */
 const TextArea = React.forwardRef<HTMLTextAreaElement, AntTextAreaProps>(
   function TextArea(
-    { rows = 3, autoSize, showCount, className, ...props },
+    { rows = 3, autoSize, showCount, variant, className, ...props },
     ref,
   ) {
     const count = useCountLabel({ showCount, ...props });
 
+    /*
+     * antd's `autoSize` grows the field to fit its content. Only the OBJECT
+     * form ({minRows}) was handled, so `autoSize={true}` — what EditableText
+     * passes for every prompt value — fell through to the 3-row default and
+     * rendered a 74px box around a single line of text. That surplus repeated
+     * per prompt card, which is most of why each cell was ~76px taller than
+     * the reference.
+     */
+    const innerRef = React.useRef<HTMLTextAreaElement | null>(null);
+    const setRefs = React.useCallback(
+      (node: HTMLTextAreaElement | null) => {
+        innerRef.current = node;
+        if (typeof ref === "function") {
+          ref(node);
+        } else if (ref) {
+          ref.current = node;
+        }
+      },
+      [ref],
+    );
+
+    const autoSizing = autoSize === true || typeof autoSize === "object";
+    const minRows =
+      typeof autoSize === "object" ? (autoSize.minRows ?? 1) : rows;
+    const maxRows = typeof autoSize === "object" ? autoSize.maxRows : undefined;
+
+    const resize = React.useCallback(() => {
+      const el = innerRef.current;
+      if (!el || !autoSizing) {
+        return;
+      }
+      // Collapse first so the scrollHeight reflects the CURRENT content.
+      el.style.height = "auto";
+      const line = parseFloat(getComputedStyle(el).lineHeight) || 22;
+      const pad =
+        parseFloat(getComputedStyle(el).paddingTop) +
+        parseFloat(getComputedStyle(el).paddingBottom);
+      const min = (typeof autoSize === "object" ? minRows : 1) * line + pad;
+      const max = maxRows ? maxRows * line + pad : Infinity;
+      el.style.height = `${Math.min(Math.max(el.scrollHeight, min), max)}px`;
+    }, [autoSizing, autoSize, minRows, maxRows]);
+
+    React.useLayoutEffect(resize, [resize, props.value]);
+
     const control = (
       <Textarea
-        ref={ref}
-        rows={typeof autoSize === "object" ? (autoSize.minRows ?? rows) : rows}
-        className={className}
+        ref={setRefs}
+        onInput={resize}
+        rows={
+          autoSize === true
+            ? 1
+            : typeof autoSize === "object"
+              ? (autoSize.minRows ?? rows)
+              : rows
+        }
+        className={cn(
+          // See the Input shim: EditableText renders prompt VALUES borderless
+          // until they are hovered or edited.
+          variant === "borderless" &&
+            "border-transparent bg-transparent shadow-none hover:border-input focus-visible:border-input",
+          variant === "filled" && "border-transparent bg-muted",
+          // The box is sized to its content, so a scrollbar would be dead
+          // chrome — unless maxRows caps it.
+          autoSizing && !maxRows && "resize-none overflow-hidden",
+          className,
+        )}
         {...props}
         onChange={count.onChange}
       />

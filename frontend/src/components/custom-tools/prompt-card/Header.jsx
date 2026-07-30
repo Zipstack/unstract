@@ -3,6 +3,7 @@ import {
   CircleCheck,
   CirclePlay,
   EllipsisVertical,
+  FastForward,
   Info,
   LoaderCircle,
   RefreshCw,
@@ -448,7 +449,15 @@ function Header({
                   !!runGate?.disabled
                 }
               >
-                <CirclePlay className="prompt-card-actions-head" />
+                {/*
+                 * "All documents" needs a DIFFERENT glyph from the
+                 * "current document" button beside it. antd used
+                 * PlayCircleFilled vs PlayCircleOutlined; the icon migration
+                 * collapsed both to CirclePlay, leaving two identical buttons
+                 * distinguished only by their tooltips. The double-chevron
+                 * play reads as "run across everything".
+                 */}
+                <FastForward className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
           </>

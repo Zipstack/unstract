@@ -859,7 +859,13 @@ const Dragger = React.forwardRef<HTMLElement, UploadProps>(function Dragger(
     >
       <div
         className={cn(
-          "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input bg-muted/40 px-4 py-10 text-center transition-colors",
+          /*
+           * antd's `.ant-upload-drag` is `padding: 16px 0` and takes its
+           * height from the content. `py-10` (40px each side) made the
+           * Manage Documents dropzone 114px tall for a single line of text,
+           * dominating the modal.
+           */
+          "flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-input bg-muted/40 px-4 py-4 text-center transition-colors",
           !disabled && "hover:border-primary",
           dragging && "border-primary bg-primary/5",
           disabled && "cursor-not-allowed opacity-50",

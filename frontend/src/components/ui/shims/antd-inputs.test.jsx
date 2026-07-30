@@ -40,6 +40,54 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(screen.getByRole("textbox").getAttribute("rows")).toBe("6");
   });
 
+  /*
+   * antd's `autoSize` grows the field to fit its content. Only the OBJECT form
+   * ({minRows}) was handled, so `autoSize={true}` — what EditableText passes
+   * for every prompt value — fell through to the 3-row default and drew a 74px
+   * box around a single line of text, repeated on every prompt card.
+   */
+  it("autoSize={true} starts at one row rather than the 3-row default", () => {
+    render(<Input.TextArea autoSize />);
+    expect(screen.getByRole("textbox").getAttribute("rows")).toBe("1");
+  });
+
+  it("autoSize={true} hides the scrollbar since the box tracks its content", () => {
+    render(<Input.TextArea autoSize />);
+    expect(screen.getByRole("textbox").className).toContain("overflow-hidden");
+  });
+
+  it("keeps the 3-row default when autoSize is absent", () => {
+    render(<Input.TextArea />);
+    expect(screen.getByRole("textbox").getAttribute("rows")).toBe("3");
+  });
+
+  /*
+   * antd's `variant="borderless"` drops the border and background so the
+   * field reads as plain text. EditableText swaps to it whenever a prompt
+   * key/value is neither hovered nor edited; the prop was consumed but never
+   * implemented, so prompt cards showed input chrome permanently.
+   */
+  it("renders a borderless Input without visible chrome", () => {
+    render(<Input variant="borderless" />);
+    expect(screen.getByRole("textbox").className).toContain(
+      "border-transparent",
+    );
+  });
+
+  it("renders a borderless TextArea without visible chrome", () => {
+    render(<Input.TextArea variant="borderless" />);
+    expect(screen.getByRole("textbox").className).toContain(
+      "border-transparent",
+    );
+  });
+
+  it("leaves an outlined Input with its border", () => {
+    render(<Input variant="outlined" />);
+    expect(screen.getByRole("textbox").className).not.toContain(
+      "border-transparent",
+    );
+  });
+
   it("Input.Password masks by default and reveals on toggle", async () => {
     const user = userEvent.setup();
     const { container } = render(<Input.Password />);

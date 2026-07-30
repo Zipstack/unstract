@@ -258,7 +258,14 @@ function DataTable({
         </Table>
       </div>
 
-      {paginated && table.getPageCount() > 1 ? (
+      {/*
+       * antd's `hideOnSinglePage` defaults to FALSE — the pager stays put on a
+       * single page, which is why Manage Documents has a footer under its
+       * one-row table in the reference and had none here. Hiding it also made
+       * the modal's height jump as rows crossed the page-size boundary.
+       */}
+      {paginated &&
+      table.getPageCount() > (pagination?.hideOnSinglePage ? 1 : 0) ? (
         <div className="flex items-center justify-end gap-2 py-3 text-sm">
           <button
             type="button"
