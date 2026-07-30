@@ -166,6 +166,93 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(screen.getByText("Pick one")).toBeInTheDocument();
   });
 
+  /*
+   * antd's `mode="tags"` is a free-text multi-value chip editor. Radix's
+   * Select is single-select over a fixed option list and cannot express it, so
+   * `mode` was silently dropped: Custom Synonyms rendered a trigger that
+   * opened an EMPTY dropdown with no text input, leaving the feature unusable
+   * — a row could be added and its word typed, but never a synonym.
+   */
+  describe("Select mode='tags' (antd parity)", () => {
+    it("renders existing values as chips", () => {
+      render(<Select mode="tags" value={["alpha", "beta"]} />);
+      expect(screen.getByText("alpha")).toBeInTheDocument();
+      expect(screen.getByText("beta")).toBeInTheDocument();
+    });
+
+    it("lets the user type a new value and commit it with Enter", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Select mode="tags" value={[]} onChange={onChange} />);
+      await user.type(screen.getByRole("textbox"), "gamma{enter}");
+      expect(onChange).toHaveBeenCalledWith(["gamma"]);
+    });
+
+    it("appends to the existing values rather than replacing them", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Select mode="tags" value={["alpha"]} onChange={onChange} />);
+      await user.type(screen.getByRole("textbox"), "beta{enter}");
+      expect(onChange).toHaveBeenCalledWith(["alpha", "beta"]);
+    });
+
+    it("ignores blank entries and duplicates, as antd does", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Select mode="tags" value={["alpha"]} onChange={onChange} />);
+      const box = screen.getByRole("textbox");
+      await user.type(box, "   {enter}");
+      await user.type(box, "alpha{enter}");
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    it("removes a chip via its remove button", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select mode="tags" value={["alpha", "beta"]} onChange={onChange} />,
+      );
+      await user.click(screen.getByRole("button", { name: /remove alpha/i }));
+      expect(onChange).toHaveBeenCalledWith(["beta"]);
+    });
+
+    it("shows the placeholder only while empty", () => {
+      const { rerender } = render(
+        <Select mode="tags" value={[]} placeholder="Please enter synonyms" />,
+      );
+      expect(
+        screen.getByPlaceholderText("Please enter synonyms"),
+      ).toBeInTheDocument();
+
+      rerender(
+        <Select
+          mode="tags"
+          value={["alpha"]}
+          placeholder="Please enter synonyms"
+        />,
+      );
+      expect(
+        screen.queryByPlaceholderText("Please enter synonyms"),
+      ).not.toBeInTheDocument();
+    });
+
+    /*
+     * Custom Synonyms sits inside an antd Form; a bare Enter would submit it
+     * and discard the pending entry.
+     */
+    it("does not let Enter bubble out and submit the surrounding form", async () => {
+      const user = userEvent.setup();
+      const onSubmit = vi.fn((e) => e.preventDefault());
+      render(
+        <form onSubmit={onSubmit}>
+          <Select mode="tags" value={[]} onChange={vi.fn()} />
+        </form>,
+      );
+      await user.type(screen.getByRole("textbox"), "gamma{enter}");
+      expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
+
   it("Select accepts Select.Option children as well as options data", () => {
     render(
       <Select placeholder="Choose">

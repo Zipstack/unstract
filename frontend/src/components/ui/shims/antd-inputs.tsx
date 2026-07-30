@@ -125,15 +125,28 @@ interface SelectOption {
 }
 
 interface AntSelectProps {
-  value?: string | number;
+  value?: string | number | string[];
   defaultValue?: string | number;
   /** Receives the ORIGINAL option value, so non-string values survive. */
-  onChange?: (value: string | number, option?: SelectOption) => void;
+  onChange?: (
+    value: string | number | string[],
+    option?: SelectOption,
+  ) => void;
   options?: SelectOption[];
   placeholder?: React.ReactNode;
   disabled?: boolean;
   allowClear?: boolean;
   showSearch?: boolean;
+  /**
+   * antd's `tags` mode is a FREE-TEXT multi-value input: the user types a
+   * value, presses Enter, and it becomes a removable chip. Radix's Select is
+   * single-select over a fixed option list and cannot express this at all, so
+   * tags mode renders a dedicated chip editor instead (see TagsInput below).
+   * Custom Synonyms is the only call-site, and it was unusable without this:
+   * the dropdown opened with no options and no way to type.
+   */
+  mode?: "tags" | "multiple";
+  variant?: string;
   size?: SizeToken;
   className?: string;
   children?: React.ReactNode;
@@ -417,6 +430,92 @@ const InputNumber = React.forwardRef<HTMLInputElement, AntInputNumberProps>(
 /* ----------------------------------------------------------------- Select */
 
 /**
+ * antd `<Select mode="tags">` — a free-text, multi-value chip editor.
+ *
+ * Radix's Select is single-select over a fixed list of options, so there is no
+ * way to express this by configuring it: with `mode` dropped, Custom Synonyms
+ * rendered a trigger that opened an EMPTY dropdown with no text input, leaving
+ * the feature unusable (a row could be added and its word typed, but never a
+ * synonym). This is a purpose-built replacement rather than a Radix wrapper.
+ */
+function TagsInput({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  className,
+}: {
+  value?: string[];
+  onChange?: (value: string[]) => void;
+  placeholder?: React.ReactNode;
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [draft, setDraft] = React.useState("");
+  const tags = React.useMemo(
+    () => (Array.isArray(value) ? value : value == null ? [] : [String(value)]),
+    [value],
+  );
+
+  const commit = () => {
+    const next = draft.trim();
+    // antd de-duplicates and ignores an empty entry.
+    if (next && !tags.includes(next)) {
+      onChange?.([...tags, next]);
+    }
+    setDraft("");
+  };
+
+  return (
+    <div
+      className={cn(
+        "flex min-h-8 flex-wrap items-center gap-1 rounded-md px-2 py-1",
+        disabled && "cursor-not-allowed opacity-50",
+        className,
+      )}
+    >
+      {tags.map((tag) => (
+        <span
+          key={tag}
+          className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs"
+        >
+          {tag}
+          {!disabled && (
+            <button
+              type="button"
+              aria-label={`Remove ${tag}`}
+              className="cursor-pointer leading-none opacity-60 hover:opacity-100"
+              onClick={() => onChange?.(tags.filter((t) => t !== tag))}
+            >
+              ×
+            </button>
+          )}
+        </span>
+      ))}
+      <input
+        type="text"
+        className="min-w-24 flex-1 bg-transparent text-sm outline-none"
+        placeholder={tags.length ? undefined : (placeholder as string)}
+        value={draft}
+        disabled={disabled}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === ",") {
+            // Enter would otherwise submit the surrounding antd Form.
+            e.preventDefault();
+            commit();
+          } else if (e.key === "Backspace" && !draft && tags.length) {
+            onChange?.(tags.slice(0, -1));
+          }
+        }}
+        // antd also commits the pending entry when focus leaves.
+        onBlur={commit}
+      />
+    </div>
+  );
+}
+
+/**
  * antd `<Select options onChange>`. antd calls onChange with the VALUE; Radix
  * does too, so the adaptation is mostly about accepting either `options` data
  * or `<Select.Option>` children.
@@ -432,6 +531,9 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       disabled,
       allowClear,
       showSearch,
+      mode,
+      // antd styling prop; consumed so it cannot land on the DOM
+      variant,
       size,
       className,
       children,
@@ -439,6 +541,25 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
     },
     ref,
   ) {
+    // Free-text multi-value entry; Radix's Select cannot express it.
+    if (mode === "tags" || mode === "multiple") {
+      return (
+        <TagsInput
+          value={
+            Array.isArray(value)
+              ? value
+              : value == null
+                ? []
+                : [String(value)]
+          }
+          onChange={(next) => onChange?.(next)}
+          placeholder={placeholder}
+          disabled={disabled}
+          className={className}
+        />
+      );
+    }
+
     const items =
       options ??
       React.Children.toArray(children)
@@ -460,8 +581,10 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
      * empty string internally, so passing it through leaves the trigger blank
      * AND suppresses the placeholder. Map it back to undefined.
      */
-    const toValue = (v: string | number | undefined) =>
-      v == null || v === "" ? undefined : String(v);
+    const toValue = (v: string | number | string[] | undefined) =>
+      // An array only reaches here if a call-site passes one without a `mode`;
+      // antd shows nothing in that case, and Radix would throw on a non-string.
+      v == null || v === "" || Array.isArray(v) ? undefined : String(v);
 
     return (
       <ShadcnSelect
