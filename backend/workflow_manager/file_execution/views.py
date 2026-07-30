@@ -1,9 +1,6 @@
 from django.db.models import OuterRef, Subquery
-from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
-from utils.filters.organization_filter import OrganizationFilterBackend
 from utils.pagination import CustomPagination
 
 from workflow_manager.file_execution.filter import FileExecutionFilter
@@ -21,10 +18,6 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     ordering_fields = ["created_at", "execution_time", "file_size"]
     ordering = ["created_at"]
     filterset_class = FileExecutionFilter
-    # Plain OrderingFilter (not the global deterministic one): this is a
-    # high-volume table and appending pk to the ordering can't be served by an
-    # ordered index scan. Opted out explicitly rather than via the global default.
-    filter_backends = [OrganizationFilterBackend, DjangoFilterBackend, OrderingFilter]
 
     def get_queryset(self):
         execution_id = self.kwargs.get("pk")

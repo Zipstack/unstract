@@ -7,14 +7,11 @@ from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
-from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOwner
 from rest_framework import status, viewsets
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from utils.filters.organization_filter import OrganizationFilterBackend
 from utils.pagination import CustomPagination
 
 from workflow_manager.workflow_v2.filters import ExecutionLogFilter
@@ -37,10 +34,6 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     ordering_fields = ["event_time"]
     ordering = ["event_time"]
     filterset_class = ExecutionLogFilter
-    # Plain OrderingFilter (not the global deterministic one): ExecutionLog is
-    # high-volume and its (…, event_time) indexes don't include pk, so appending
-    # pk forces a Sort node. Opted out explicitly rather than via the global default.
-    filter_backends = [OrganizationFilterBackend, DjangoFilterBackend, OrderingFilter]
 
     def get_queryset(self) -> QuerySet:
         execution_id = self.kwargs.get("pk")

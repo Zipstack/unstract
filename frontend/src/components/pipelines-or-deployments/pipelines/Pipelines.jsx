@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import {
@@ -11,7 +11,10 @@ import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
@@ -39,6 +42,8 @@ import "./Pipelines.css";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
   const [openEtlOrTaskModal, setOpenEtlOrTaskModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
@@ -158,26 +163,37 @@ function Pipelines({ type }) {
       params,
     };
 
-    axiosPrivate(requestOptions)
+    const seq = ++seqRef.current;
+    return axiosPrivate(requestOptions)
       .then((res) => {
-        const data = res?.data;
-        // Handle paginated response
-        setTableData(data.results || data);
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
+        const stepback = applyPagedResponse({
+          data: res?.data,
+          page,
           pageSize,
-          total: data.count ?? data.results?.length ?? data.length ?? 0,
-        }));
-
-        activateScrollRestore();
+          seq,
+          latestSeqRef: seqRef,
+          setList: setTableData,
+          setPagination,
+          refetchPrevPage: () => getPipelineList(page - 1, pageSize, search),
+        });
+        if (seq === seqRef.current) {
+          activateScrollRestore();
+        }
+        return stepback;
       })
       .catch((err) => {
+        // A newer request superseded this one — don't surface its error.
+        if (seq !== seqRef.current) {
+          return;
+        }
         setAlertDetails(handleException(err));
         clearPendingScroll();
       })
       .finally(() => {
-        setTableLoading(false);
+        // Only the newest request owns the shared loading state.
+        if (seq === seqRef.current) {
+          setTableLoading(false);
+        }
       });
   };
 
