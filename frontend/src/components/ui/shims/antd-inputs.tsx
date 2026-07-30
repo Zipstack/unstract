@@ -770,7 +770,14 @@ const RadioBase = React.forwardRef<HTMLButtonElement, AntRadioProps>(
     return (
       <Label
         className={cn(
-          "ant-radio-wrapper flex items-center gap-2 font-normal",
+          /*
+           * INLINE-flex, as antd's .ant-radio-wrapper is. A block-level `flex`
+           * spans the full cell, so a label-less radio (the "Select Default"
+           * column renders one per row) pinned itself to the left edge and
+           * ignored the cell's `text-align: center` — it sat 39px off from its
+           * own centred column header.
+           */
+          "ant-radio-wrapper inline-flex items-center gap-2 font-normal",
           !disabled && "cursor-pointer",
           className,
         )}

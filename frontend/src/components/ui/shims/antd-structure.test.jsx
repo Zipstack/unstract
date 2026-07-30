@@ -153,6 +153,24 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(container.querySelector("svg")).not.toBeNull();
   });
 
+  /*
+   * antd's `.ant-table-thead > tr > th` is `background: #fafafa` with a 1px
+   * #f0f0f0 bottom border (read off the reference's own stylesheet). shadcn
+   * leaves the header transparent, so against the white table surface the
+   * header row was indistinguishable from the body.
+   */
+  it("gives the Table header row a distinct background", () => {
+    const { container } = render(
+      <Table
+        columns={[{ title: "Name", dataIndex: "name", key: "name" }]}
+        dataSource={[{ key: "1", name: "a" }]}
+      />,
+    );
+    const headerRow = container.querySelector("thead tr");
+    expect(headerRow.className).toContain("neutral-50");
+    expect(headerRow.className).toContain("border-b");
+  });
+
   it("Table accepts antd's object form of `loading`", () => {
     const { container } = render(
       <Table
@@ -546,6 +564,28 @@ describe("antd-compatible structural shims (P4)", () => {
       );
       const wrapper = container.querySelector("svg").parentElement;
       expect(wrapper.className).toContain("shrink-0");
+    });
+
+    /*
+     * antd marks the selected item with a PRIMARY tint and primary text, not
+     * a grey. `bg-accent` resolved to the same #f5f5f5 as the hover state, so
+     * the active settings page looked identical to an idle one.
+     */
+    it("distinguishes the selected item from the hover state", () => {
+      render(
+        <Menu
+          selectedKeys={["1"]}
+          items={[
+            { key: "1", label: "Active" },
+            { key: "2", label: "Idle" },
+          ]}
+        />,
+      );
+      const active = screen.getByText("Active").closest("button");
+      const idle = screen.getByText("Idle").closest("button");
+      expect(active.className).toContain("text-primary");
+      expect(active.className).not.toContain("bg-accent");
+      expect(idle.className).not.toContain("text-primary");
     });
 
     it("renders items that carry no icon", () => {

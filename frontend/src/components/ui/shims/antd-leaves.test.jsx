@@ -68,6 +68,27 @@ describe("antd-compatible leaf shims (P1-06)", () => {
     expect(container.firstChild.className).toContain("destructive");
   });
 
+  /*
+   * antd tints info alerts blue (colorInfoBg #e6f4ff / colorInfo #1677ff).
+   * `info` had no branch at all, so the "Highlight Feature Availability"
+   * notice fell through to the plain default variant and rendered as a
+   * neutral grey box with none of the visual language of an info message.
+   */
+  it("gives an info Alert the blue info theme", () => {
+    const { container } = render(
+      <Alert type="info" showIcon message="Heads up" />,
+    );
+    const el = container.querySelector('[role="alert"]') ?? container.firstChild;
+    expect(el.className).toContain("bg-info-bg");
+    expect(el.className).toContain("border-info");
+  });
+
+  it("defaults to the info theme when no type is given, as antd does", () => {
+    const { container } = render(<Alert message="Heads up" />);
+    const el = container.querySelector('[role="alert"]') ?? container.firstChild;
+    expect(el.className).toContain("bg-info-bg");
+  });
+
   it("Alert dismisses itself when closable, and calls onClose", () => {
     const onClose = vi.fn();
     render(<Alert closable onClose={onClose} message="Dismiss me" />);

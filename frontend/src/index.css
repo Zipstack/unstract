@@ -31,6 +31,9 @@
   --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  /* antd styles info alerts blue; success/warning already had tokens. */
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
   --color-border: var(--border);
   /* antd draws list/table separators at rgba(5,5,5,.06), which composites to
    * #f0f0f0 — a hairline four shades lighter than --border. Exposed as its
@@ -149,6 +152,9 @@
   --destructive-foreground: var(--neutral-0);
   --success: #15803d;
   --warning: #b45309;
+  /* antd v5 info tokens: colorInfo #1677ff on colorInfoBg #e6f4ff. */
+  --info: #1677ff;
+  --info-bg: #e6f4ff;
   --border: var(--neutral-200);
   --separator: var(--neutral-150);
   --well: var(--neutral-200);
@@ -227,6 +233,8 @@
   --destructive-foreground: var(--neutral-50);
   --success: #4ade80;
   --warning: #fbbf24;
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.12);
   --border: rgba(255, 255, 255, 0.1);
   /* Dark counterpart: lighter than --border for the same hairline effect. */
   --separator: rgba(255, 255, 255, 0.06);

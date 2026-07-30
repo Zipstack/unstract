@@ -266,6 +266,14 @@ const Alert = React.forwardRef<HTMLDivElement, AlertProps>(function Alert(
       className={cn(
         type === "success" && "border-success/40 text-success",
         type === "warning" && "border-warning/40 text-warning",
+        /*
+         * antd tints info alerts BLUE (colorInfoBg #e6f4ff, colorInfo
+         * #1677ff). `info` had no branch at all, so it fell through to the
+         * plain default variant and the "Highlight Feature Availability"
+         * notice rendered as a neutral grey box with none of the visual
+         * language of an info message.
+         */
+        type === "info" && "border-info/40 bg-info-bg [&>svg]:text-info",
         banner && "rounded-none border-x-0",
         className,
       )}

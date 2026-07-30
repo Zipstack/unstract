@@ -143,7 +143,20 @@ function DataTable({
         <Table className={cn(size === "small" && "text-sm")}>
           <TableHeader className="ant-table-thead">
             {table.getHeaderGroups().map((hg) => (
-              <TableRow key={hg.id}>
+              /*
+               * antd's `.ant-table-thead > tr > th` is `background: #fafafa`
+               * with a 1px #f0f0f0 bottom border (verified against the
+               * reference's own stylesheet). shadcn leaves the header
+               * transparent, so on the now-white table surface the header row
+               * was indistinguishable from the body.
+               *
+               * `hover:bg-muted` on TableRow would otherwise repaint the
+               * header on hover, so it is neutralised here.
+               */
+              <TableRow
+                key={hg.id}
+                className="border-b border-separator bg-[var(--neutral-50)] hover:bg-[var(--neutral-50)]"
+              >
                 {hg.headers.map((header) => {
                   const sorted = header.column.getIsSorted();
                   return (

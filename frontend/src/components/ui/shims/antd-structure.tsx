@@ -1003,7 +1003,14 @@ const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
           onClick={() => onClick?.({ key: String(item.key) })}
           className={cn(
             "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed",
-            selectedKeys.includes(String(item.key)) && "bg-accent font-medium",
+            /*
+             * antd marks the selected item with a PRIMARY tint and primary
+             * text (colorPrimaryBg + colorPrimary), not a grey. `bg-accent`
+             * resolved to the same #f5f5f5 as the hover state, so the active
+             * settings page was indistinguishable from an idle one.
+             */
+            selectedKeys.includes(String(item.key)) &&
+              "bg-[var(--violet-50)] font-medium text-primary hover:bg-[var(--violet-50)]",
           )}
         >
           {/*

@@ -307,6 +307,20 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(onChange).toHaveBeenCalled();
   });
 
+  /*
+   * The "Select Default" column renders one label-less radio per row and
+   * centres it with `text-align: center` on the cell. A block-level `flex`
+   * wrapper spans the whole cell and ignores that, pinning the radio to the
+   * left edge — it measured 39px off its own centred column header. antd's
+   * .ant-radio-wrapper is INLINE-flex, which respects text-align.
+   */
+  it("wraps a Radio in an inline-flex label so a cell can centre it", () => {
+    const { container } = render(<Radio checked />);
+    const wrapper = container.querySelector("label");
+    expect(wrapper.className).toContain("inline-flex");
+    expect(wrapper.className).not.toMatch(/(^|\s)flex(\s|$)/);
+  });
+
   it("Radio reflects an unchecked standalone state", () => {
     render(<Radio checked={false} />);
     expect(screen.getByRole("radio")).not.toBeChecked();
