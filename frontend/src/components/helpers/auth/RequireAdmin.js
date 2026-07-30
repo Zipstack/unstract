@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 
+import config from "../../../config";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { NotFound } from "../../error/NotFound/NotFound.jsx";
@@ -12,7 +13,7 @@ const RequireAdmin = () => {
   const [isVerifying, setIsVerifying] = useState(true);
   const orgId = sessionDetails?.orgId;
   const orgName = sessionDetails?.orgName;
-  const isOpenSource = orgName === "mock_org";
+  const isOpenSource = orgName === config.defaultOrgName;
 
   useEffect(() => {
     const verifyAdminStatus = async () => {

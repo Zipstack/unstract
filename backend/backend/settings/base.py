@@ -172,6 +172,10 @@ CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+# Name/id of the default organization created for the open-source (single-tenant)
+# deployment. Configurable so the org segment of URLs (e.g. /mock_org/tools) can be
+# a meaningful name. Defaults to "mock_org" for backward compatibility.
+DEFAULT_ORGANIZATION_NAME = os.environ.get("DEFAULT_ORGANIZATION_NAME", "mock_org")
 SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
 SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
 SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")

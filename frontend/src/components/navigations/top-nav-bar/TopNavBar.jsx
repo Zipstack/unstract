@@ -176,7 +176,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const isUnstract = !(effectiveProduct && effectiveProduct !== "unstract");
   const isAPIHub = effectiveProduct === "verticals";
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
-  const isOpenSource = orgName === "mock_org";
+  const isOpenSource = orgName === config.defaultOrgName;
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
