@@ -1,6 +1,7 @@
-import { DatePicker, Tabs } from "antd";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { DatePicker } from "@/components/ui/shims/antd-datetime";
+import { Tabs } from "@/components/ui/shims/antd-structure";
 import {
   ApiDeployments,
   ETLIcon,

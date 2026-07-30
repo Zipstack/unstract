@@ -1,4 +1,4 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -22,11 +22,7 @@ function Header({ type, openAddModal, enableSearch, onSearch, setSearchList }) {
   };
 
   const addButton = (
-    <CustomButton
-      type="primary"
-      icon={<PlusOutlined />}
-      onClick={handleOnClick}
-    >
+    <CustomButton type="primary" icon={<Plus />} onClick={handleOnClick}>
       {deploymentsStaticContent[type].addBtn}
     </CustomButton>
   );

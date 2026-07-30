@@ -1,24 +1,13 @@
-import {
-  LoginOutlined,
-  LogoutOutlined,
-  SettingOutlined,
-  UserOutlined,
-  UserSwitchOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Image,
-  Row,
-  Space,
-  Typography,
-} from "antd";
 import axios from "axios";
+import { LogIn, LogOut, Settings, User, UserRoundCog } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Image } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
@@ -266,7 +255,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     };
 
     const handleClick = isLoggedIn ? logout : handleLogin;
-    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const icon = isLoggedIn ? <LogOut /> : <LogIn />;
     const label = isLoggedIn ? "Logout" : "Login";
 
     return [
@@ -281,7 +270,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               disabled={shouldDisableRouting}
               type="text"
             >
-              <UserOutlined /> Profile
+              <User /> Profile
             </Button>
           ),
         },
@@ -300,7 +289,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             placement="left"
           >
             <div className="ant-dropdown-trigger">
-              <UserSwitchOutlined /> Switch Org
+              <UserRoundCog /> Switch Org
             </div>
           </Dropdown>
         ),
@@ -324,7 +313,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               className="logout-button"
               type="text"
             >
-              <SettingOutlined /> Custom Plans
+              <Settings /> Custom Plans
             </Button>
           ),
         },

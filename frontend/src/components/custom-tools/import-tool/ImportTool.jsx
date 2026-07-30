@@ -1,14 +1,15 @@
-import { InboxOutlined } from "@ant-design/icons";
-import { Modal, message, Typography, Upload } from "antd";
+import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Upload } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
+import { message } from "@/hooks/useAppToast";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";
 import "./ImportTool.css";
 
 const { Dragger } = Upload;
-const { Text } = Typography;
-
 function ImportTool({ open, setOpen, onImport, loading }) {
   const [fileList, setFileList] = useState([]);
   const [projectData, setProjectData] = useState(null);
@@ -106,7 +107,7 @@ function ImportTool({ open, setOpen, onImport, loading }) {
 
         <Dragger {...uploadProps}>
           <p className="ant-upload-drag-icon">
-            <InboxOutlined />
+            <Inbox />
           </p>
           <p className="ant-upload-text">
             Click or drag file to this area to upload

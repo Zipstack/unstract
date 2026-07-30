@@ -1,4 +1,4 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 
@@ -303,7 +303,7 @@ function ToolSettings({ type }) {
           <CustomButton
             type="primary"
             onClick={handleOpenAddSourceModal}
-            icon={<PlusOutlined />}
+            icon={<Plus />}
           >
             {btnText[type]}
           </CustomButton>

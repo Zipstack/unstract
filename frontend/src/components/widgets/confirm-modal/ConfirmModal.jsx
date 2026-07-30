@@ -1,5 +1,6 @@
-import { Modal, Space } from "antd";
 import PropTypes from "prop-types";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 function ConfirmModal({
   children,
@@ -8,7 +9,7 @@ function ConfirmModal({
   content,
   okText,
   cancelText,
-  isDisabled,
+  isDisabled = false,
 }) {
   const [modal, contextHolder] = Modal.useModal();
 
@@ -35,10 +36,6 @@ function ConfirmModal({
     </>
   );
 }
-
-ConfirmModal.defaultProps = {
-  isDisabled: false,
-};
 
 ConfirmModal.propTypes = {
   children: PropTypes.any.isRequired,

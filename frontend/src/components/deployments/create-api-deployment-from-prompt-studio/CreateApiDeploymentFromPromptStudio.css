@@ -48,7 +48,7 @@
   h4 {
   text-align: center;
   margin-bottom: 24px;
-  color: #52c41a;
+  color: var(--success);
 }
 
 .create-api-deployment-from-prompt-studio-modal .success-content .ant-btn {
@@ -83,7 +83,8 @@
 }
 
 /* Form textarea styles for Display Name and API Name */
-.create-api-deployment-from-prompt-studio-modal .ant-form-item-control-input
+.create-api-deployment-from-prompt-studio-modal
+  .ant-form-item-control-input
   textarea[maxlength="30"],
 .create-api-deployment-from-prompt-studio-modal
   .ant-form-item-control-input

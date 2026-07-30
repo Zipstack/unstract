@@ -1,9 +1,11 @@
-import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Segmented, Typography } from "antd";
-import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
+import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Segmented } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./ToolNavBar.css";
 
@@ -44,7 +46,7 @@ function ToolNavBar({
           <Button
             type="text"
             shape="circle"
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft />}
             onClick={handleBack}
           />
         )}
@@ -60,7 +62,7 @@ function ToolNavBar({
                   <Button
                     type="text"
                     size="small"
-                    icon={<EditOutlined />}
+                    icon={<Pencil />}
                     className="tool-nav-bar__edit-icon"
                     onClick={onEditTitle}
                     aria-label="Edit title"
@@ -90,7 +92,7 @@ function ToolNavBar({
       </div>
       <div className="tool-nav-bar__right">
         {enableSearch && (
-          <Search
+          <Input.Search
             key={searchKey}
             className="tool-nav-bar__search"
             placeholder="Search by name"

@@ -1,5 +1,6 @@
-import { Col, Row, Typography } from "antd";
 import PropTypes from "prop-types";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { InputPlaceholder, OutputPlaceholder } from "../../../assets";
 import "./InputOutput.css";

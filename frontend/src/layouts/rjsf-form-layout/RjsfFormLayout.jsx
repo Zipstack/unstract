@@ -1,8 +1,12 @@
-import Form from "@rjsf/antd";
+// P3-05: @rjsf/core instead of @rjsf/antd. This layout already supplies its own
+// `widgets` and `templates` for every field type, so the antd theme was only
+// contributing the wrapper chrome — there is no widget registry to rebuild.
+import Form from "@rjsf/core";
 import validator from "@rjsf/validator-ajv8";
-import { Alert, Space } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useMemo } from "react";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Alert } from "@/components/ui/shims/antd-leaves";
 
 import CustomMarkdown from "../../components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { AltDateTimeWidget } from "../../components/rjsf-custom-widgets/alt-date-time-widget/AltDateTimeWidget.jsx";

@@ -1,7 +1,8 @@
-import { FullscreenExitOutlined, FullscreenOutlined } from "@ant-design/icons";
-import { Button, Tooltip } from "antd";
+import { Maximize, Minimize } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 function ExpandCardBtn({ expandCard, setExpandCard }) {
   const [icon, setIcon] = useState(null);
@@ -9,10 +10,10 @@ function ExpandCardBtn({ expandCard, setExpandCard }) {
 
   useEffect(() => {
     if (expandCard) {
-      setIcon(<FullscreenExitOutlined className="prompt-card-actions-head" />);
+      setIcon(<Minimize className="prompt-card-actions-head" />);
       setTooltip("Collapse");
     } else {
-      setIcon(<FullscreenOutlined className="prompt-card-actions-head" />);
+      setIcon(<Maximize className="prompt-card-actions-head" />);
       setTooltip("Expand");
     }
   }, [expandCard]);

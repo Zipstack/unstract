@@ -1,23 +1,12 @@
-import {
-  ArrowLeftOutlined,
-  CaretRightOutlined,
-  DownOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Collapse,
-  Form,
-  Input,
-  Row,
-  Select,
-  Space,
-  Typography,
-  theme,
-} from "antd";
+import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Collapse } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -57,7 +46,8 @@ function AddLlmProfile({
   const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const { token } = theme.useToken();
+  // P4: antd's theme token replaced by the Midnight Bloom CSS variable.
+  const token = { colorBgContainer: "var(--card)" };
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { getStrategies } = useRetrievalStrategies();
@@ -277,11 +267,11 @@ function AddLlmProfile({
                   : "Select retrieval strategy"}
               </span>
               <div className="retrieval-strategy-actions">
-                <SettingOutlined
+                <Settings
                   className="retrieval-strategy-settings-icon"
                   title="Configure retrieval strategy"
                 />
-                <DownOutlined className="retrieval-strategy-dropdown-icon" />
+                <ChevronDown className="retrieval-strategy-dropdown-icon" />
               </div>
             </button>
           </Form.Item>
@@ -380,7 +370,7 @@ function AddLlmProfile({
   };
 
   const handleCaretIcon = (isActive) => {
-    return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
+    return <ChevronRight rotate={isActive ? 90 : 0} />;
   };
 
   const handleLlmChangeForTokens = async (value) => {
@@ -464,7 +454,7 @@ function AddLlmProfile({
         <SpaceWrapper>
           <div>
             <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
-              <ArrowLeftOutlined />
+              <ArrowLeft />
             </Button>
             <Typography.Text className="add-cus-tool-header">
               {modalTitle}

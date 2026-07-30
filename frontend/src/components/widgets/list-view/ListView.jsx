@@ -1,22 +1,11 @@
-import {
-  Avatar,
-  Flex,
-  Image,
-  List,
-  Popconfirm,
-  Tooltip,
-  Typography,
-} from "antd";
+import { CircleHelp, Info, Pencil, Share2, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Avatar, Image } from "@/components/ui/shims/antd-leaves";
+import { Popconfirm, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./ListView.css";
-import {
-  DeleteOutlined,
-  EditOutlined,
-  InfoCircleOutlined,
-  QuestionCircleOutlined,
-  ShareAltOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
@@ -95,7 +84,7 @@ function ListView({
         <Avatar
           size={20}
           className="adapters-list-user-avatar"
-          icon={<UserOutlined />}
+          icon={<User />}
         />
         <Typography.Text disabled className="adapters-list-user-prefix">
           Owned By:
@@ -191,7 +180,7 @@ function ListView({
               Updated {updatedAgo}
             </Typography.Text>
             <Tooltip title={() => renderItemMetadata(item)}>
-              <InfoCircleOutlined
+              <Info
                 className="list-view-info-icon"
                 aria-label="Creation and modification details"
               />
@@ -209,7 +198,7 @@ function ListView({
       role="none"
     >
       <Tooltip title={item?.is_deprecated ? "This adapter is deprecated" : ""}>
-        <EditOutlined
+        <Pencil
           key={`${item.id}-edit`}
           onClick={(event) => {
             if (item?.is_deprecated) {
@@ -230,7 +219,7 @@ function ListView({
         <Tooltip
           title={item?.is_deprecated ? "This adapter is deprecated" : ""}
         >
-          <ShareAltOutlined
+          <Share2
             key={`${item.id}-share`}
             className={`action-icon-buttons share-icon ${
               item?.is_deprecated ? "disabled-icon" : ""
@@ -254,13 +243,13 @@ function ListView({
         description={`Are you sure to delete ${item[titleProp]}`}
         okText="Yes"
         cancelText="No"
-        icon={<QuestionCircleOutlined />}
+        icon={<CircleHelp />}
         onConfirm={(event) => {
           handleDeleteClick(event, item);
         }}
       >
         <Typography.Text>
-          <DeleteOutlined className="action-icon-buttons delete-icon" />
+          <Trash2 className="action-icon-buttons delete-icon" />
         </Typography.Text>
       </Popconfirm>
     </div>

@@ -1,7 +1,11 @@
-import { DownOutlined, UpOutlined } from "@ant-design/icons";
-import { Button, Card, Flex, Space, Tooltip, Typography } from "antd";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 /**
  * Individual card item renderer for CardGridView
@@ -235,7 +239,7 @@ function CardItem({
       <Button
         type="text"
         className="card-expand-chevron"
-        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+        icon={isExpanded ? <ChevronUp /> : <ChevronDown />}
         onClick={handleToggleExpand}
       />
     );

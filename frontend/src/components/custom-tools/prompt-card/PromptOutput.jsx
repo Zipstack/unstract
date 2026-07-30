@@ -1,22 +1,13 @@
-import {
-  DatabaseOutlined,
-  InfoCircleOutlined,
-  PlayCircleFilled,
-  PlayCircleOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Divider,
-  Image,
-  Radio,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
 import { AnimatePresence, motion } from "framer-motion";
+import { CirclePlay, Database, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Col, Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Image } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import {
   displayPromptResult,
@@ -372,10 +363,10 @@ function PromptOutput({
                     <div className="llm-info-right">
                       <Space>
                         <Tooltip title={tooltipContent(profile?.conf)}>
-                          <InfoCircleOutlined className="prompt-card-actions-head" />
+                          <Info className="prompt-card-actions-head" />
                         </Tooltip>
                         <Tooltip title="Chunk used">
-                          <DatabaseOutlined
+                          <Database
                             onClick={() => {
                               setIsIndexOpen(true);
                               setOpenIndexProfile(promptOutputData?.context);
@@ -447,7 +438,7 @@ function PromptOutput({
                           isPublicSource
                         }
                       >
-                        <PlayCircleOutlined className="prompt-card-actions-head" />
+                        <CirclePlay className="prompt-card-actions-head" />
                       </Button>
                     </Tooltip>
                     <Tooltip title="Run LLM for all documents">
@@ -469,7 +460,7 @@ function PromptOutput({
                           isPublicSource
                         }
                       >
-                        <PlayCircleFilled className="prompt-card-actions-head" />
+                        <CirclePlay className="prompt-card-actions-head" />
                       </Button>
                     </Tooltip>
                     <PromptOutputExpandBtn

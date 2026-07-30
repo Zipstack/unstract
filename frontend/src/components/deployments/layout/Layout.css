@@ -4,7 +4,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
 }
 
 .layout-header {
@@ -51,13 +51,13 @@
 }
 
 .layout-body .table .workflowName {
-  color: #1890ff;
+  color: var(--primary);
   cursor: pointer;
 }
 
 .layout-body .gap {
   padding-bottom: 3px;
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
 }
 
 .layout-body .empty {

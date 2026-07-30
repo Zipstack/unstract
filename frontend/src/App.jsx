@@ -1,8 +1,10 @@
-import { Button, ConfigProvider, notification, theme } from "antd";
 import axios from "axios";
+import { ThemeProvider, useTheme } from "next-themes";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
+import { Toaster } from "@/components/ui/sonner";
+import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
@@ -32,30 +34,9 @@ try {
 }
 
 function App() {
-  const [notificationAPI, contextHolder] = notification.useNotification();
-  const { defaultAlgorithm, darkAlgorithm } = theme;
   const { sessionDetails, isLogoutLoading } = useSessionStore();
   const { alertDetails } = useAlertStore();
   const { pushLogMessages } = useSocketLogsStore();
-
-  const btn = (
-    <>
-      <Button
-        type="link"
-        size="small"
-        onClick={() => notificationAPI.destroy(alertDetails?.key)}
-      >
-        Close
-      </Button>
-      <Button
-        type="link"
-        size="small"
-        onClick={() => notificationAPI.destroy()}
-      >
-        Close All
-      </Button>
-    </>
-  );
 
   useEffect(() => {
     if (!alertDetails?.content) {
@@ -84,14 +65,11 @@ function App() {
       </>
     );
 
-    notificationAPI.open({
-      message: alertDetails?.title,
-      description,
-      type: alertDetails?.type,
-      duration: alertDetails?.duration,
-      btn,
-      key: alertDetails?.key,
-    });
+    // P2-06: sonner is now the single notification surface. The antd
+    // `notification` branch (and its btn/contextHolder scaffolding) is gone.
+    // `description` carries the rendered markdown + ID lines that antd used to
+    // display, so the alert body is unchanged.
+    showAppToast(alertDetails, description);
 
     const logSuffix = [
       showExecutionId && `Execution ID: \`${alertDetails.executionId}\``,
@@ -114,23 +92,9 @@ function App() {
   }, [alertDetails]);
 
   return (
-    <ConfigProvider
-      direction={window.direction || "ltr"}
-      theme={{
-        algorithm:
-          sessionDetails.currentTheme === THEME.DARK
-            ? darkAlgorithm
-            : defaultAlgorithm,
-        components: {
-          Button: {
-            colorPrimary: "#092C4C",
-            colorPrimaryHover: "#0e4274",
-            colorPrimaryActive: "#092C4C",
-          },
-        },
-      }}
-    >
+    <>
       <HelmetProvider>
+        <SyncShadcnTheme currentTheme={sessionDetails.currentTheme} />
         {isLogoutLoading && (
           <div className="fullscreen-loader">
             <GenericLoader />
@@ -140,12 +104,50 @@ function App() {
           <PostHogPageviewTracker />
           <PageTitle title={"Unstract"} />
           {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
-          {contextHolder}
+          {/* top-right matches where antd's notification stack used to
+              appear; sonner defaults to bottom-right (C4). */}
+          <Toaster position="top-right" closeButton richColors />
           <Router />
         </BrowserRouter>
       </HelmetProvider>
-    </ConfigProvider>
+    </>
   );
 }
 
-export { App };
+/**
+ * P0-15: mirror the existing session theme onto next-themes so ONE piece of
+ * state drives both antd's algorithm and the `.dark` class that the Midnight
+ * Bloom tokens key off.
+ *
+ * `sessionDetails.currentTheme` remains the single source of truth — this only
+ * reflects it. How the theme is persisted, and where the user toggles it, are
+ * deliberately unchanged (C4).
+ */
+function SyncShadcnTheme({ currentTheme }) {
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    setTheme(currentTheme === THEME.DARK ? THEME.DARK : THEME.LIGHT);
+  }, [currentTheme, setTheme]);
+
+  return null;
+}
+
+/**
+ * next-themes owns the `.dark` class on <html>. `enableSystem` is off because
+ * the app's theme is driven by the user's stored preference, not the OS.
+ */
+function AppWithProviders() {
+  return (
+    <ThemeProvider
+      attribute="class"
+      enableSystem={false}
+      defaultTheme={THEME.LIGHT}
+      disableTransitionOnChange
+    >
+      <App />
+    </ThemeProvider>
+  );
+}
+
+export { AppWithProviders as App };

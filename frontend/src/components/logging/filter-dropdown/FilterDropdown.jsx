@@ -1,9 +1,11 @@
-import { FilterOutlined } from "@ant-design/icons";
-import { Button, Radio, Space } from "antd";
+import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
 
 const FilterIcon = ({ filtered }) => (
-  <FilterOutlined style={{ color: filtered ? "#1677ff" : undefined }} />
+  <Filter style={{ color: filtered ? "var(--primary)" : undefined }} />
 );
 
 const FilterDropdown = ({

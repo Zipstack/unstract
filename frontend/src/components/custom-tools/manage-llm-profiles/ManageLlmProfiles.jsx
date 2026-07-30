@@ -1,6 +1,10 @@
-import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Radio, Table, Tooltip, Typography } from "antd";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -122,13 +126,13 @@ function ManageLlmProfiles() {
             <Tooltip title="Copy Profile ID">
               <Button
                 size="small"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 onClick={() => copyProfileId(item?.profile_id)}
               />
             </Tooltip>
             <Button
               size="small"
-              icon={<EditOutlined />}
+              icon={<Pencil />}
               disabled={isPublicSource}
               onClick={() => handleEdit(item?.profile_id)}
             />
@@ -144,7 +148,7 @@ function ManageLlmProfiles() {
               >
                 <Button
                   size="small"
-                  icon={<DeleteOutlined />}
+                  icon={<Trash2 />}
                   disabled={
                     isPublicSource || defaultLlmProfile === item?.profile_id
                   }

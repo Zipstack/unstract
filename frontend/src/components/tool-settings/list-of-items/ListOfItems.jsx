@@ -1,6 +1,8 @@
-import { DeleteOutlined, EditOutlined, MoreOutlined } from "@ant-design/icons";
-import { Card, Dropdown, Image } from "antd";
+import { EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
 
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
@@ -47,7 +49,7 @@ function ListOfItems({
                       {
                         label: "Edit",
                         key: "edit",
-                        icon: <EditOutlined />,
+                        icon: <Pencil />,
                         onClick: () => setEditItemId(item?.id),
                       },
                       {
@@ -60,14 +62,14 @@ function ListOfItems({
                           </ConfirmModal>
                         ),
                         key: "delete",
-                        icon: <DeleteOutlined />,
+                        icon: <Trash2 />,
                       },
                     ],
                   }}
                   trigger={["click"]}
                   placement="bottomRight"
                 >
-                  <MoreOutlined />
+                  <EllipsisVertical />
                 </Dropdown>
               }
             >

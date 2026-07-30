@@ -1,6 +1,8 @@
-import { PlusOutlined } from "@ant-design/icons";
-import { Button, Space, Typography } from "antd";
+import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { EmptyPlaceholder } from "../../../assets";
 
@@ -15,7 +17,7 @@ function EmptyState({ text, btnText, handleClick }) {
           </div>
           {btnText?.length > 0 && (
             <div className="display-flex-center">
-              <Button type="link" icon={<PlusOutlined />} onClick={handleClick}>
+              <Button type="link" icon={<Plus />} onClick={handleClick}>
                 {btnText}
               </Button>
             </div>

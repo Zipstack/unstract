@@ -1,27 +1,26 @@
 import {
-  ClockCircleOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExportOutlined,
-  HistoryOutlined,
-  MoreOutlined,
-  ShareAltOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
-import {
-  Avatar,
-  Button,
-  Card,
-  Dropdown,
-  Flex,
-  Popconfirm,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
+  Clock,
+  Copy,
+  EllipsisVertical,
+  ExternalLink,
+  History,
+  Pencil,
+  Share2,
+  Trash2,
+  User,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import {
+  Dropdown,
+  Popconfirm,
+  Tooltip,
+} from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {
   copyToClipboard,
@@ -59,13 +58,13 @@ function CardActionBox({
       <Button
         type="text"
         className="action-icon-btn edit-icon"
-        icon={<EditOutlined />}
+        icon={<Pencil />}
         onClick={handleEditAction}
       />
       <Button
         type="text"
         className="action-icon-btn share-icon"
-        icon={<ShareAltOutlined />}
+        icon={<Share2 />}
         onClick={handleShareAction}
       />
       <Popconfirm
@@ -83,7 +82,7 @@ function CardActionBox({
         <Button
           type="text"
           className="action-icon-btn delete-icon"
-          icon={<DeleteOutlined />}
+          icon={<Trash2 />}
           onClick={(e) => e.stopPropagation()}
         />
       </Popconfirm>
@@ -95,7 +94,7 @@ function CardActionBox({
         <Button
           type="text"
           className="card-kebab-menu"
-          icon={<MoreOutlined />}
+          icon={<EllipsisVertical />}
           onClick={(e) => e.stopPropagation()}
         />
       </Dropdown>
@@ -127,7 +126,7 @@ function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
 
   const ownerContent = (
     <Space size={10} className="card-list-field-value">
-      <UserOutlined />
+      <User />
       <Tooltip title={email}>
         <Typography.Text>{ownerDisplay}</Typography.Text>
       </Tooltip>
@@ -176,7 +175,7 @@ function LastRunFieldRow({ lastRunTime }) {
         Last Run
       </Typography.Text>
       <Space size={10} className="card-list-field-value">
-        <ClockCircleOutlined />
+        <Clock />
         <Typography.Text>
           {lastRunTime ? formattedDateTime(lastRunTime) : "Never"}
         </Typography.Text>
@@ -210,7 +209,7 @@ function Last5RunsFieldRow({
         Last 5 Runs
       </Typography.Text>
       <Space size={10} className="card-list-field-value">
-        <HistoryOutlined />
+        <History />
         <StatusPillsComponent
           statuses={statuses}
           executionType={executionType}
@@ -291,7 +290,7 @@ function WorkflowFieldRow({
           onClick={(e) => e.stopPropagation()}
         >
           {workflowName}
-          <ExportOutlined />
+          <ExternalLink />
         </Link>
       </Space>
     </Flex>
@@ -332,7 +331,7 @@ function ApiEndpointSection({ apiEndpoint }) {
             <Tooltip title="Copy endpoint">
               <Button
                 className="copy-btn-outlined"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();

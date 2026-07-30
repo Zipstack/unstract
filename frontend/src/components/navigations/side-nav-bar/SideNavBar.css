@@ -1,5 +1,18 @@
+/*
+ * The sidebar shares the top nav's surface.
+ *
+ * PageLayout.css paints `.topNav` with `var(--primary)`; this file used to
+ * hardcode #0d3a63, so the two bars that meet at the top-left corner were
+ * different colours.
+ *
+ * Deliberately NOT `var(--sidebar)`: that token is `--neutral-0` (white) in
+ * light mode, and every rule below this one is written for a dark surface —
+ * white headings, #b4c2cf item text, rgba(255,255,255,…) dividers, and
+ * `filter: brightness(0) invert(1)` on the icons. On white they would all
+ * disappear. `--primary` keeps the light-on-dark family valid.
+ */
 .side-bar {
-  background-color: #0d3a63 !important;
+  background-color: var(--primary);
   overflow: hidden;
   height: 100%;
 }
@@ -25,9 +38,18 @@
   display: none;
 }
 
-/* Hide scrollbar when sidebar is collapsed */
+/*
+ * The collapsed rail scrolls too.
+ *
+ * This rule used to set `overflow-y: hidden`, and its comment said "hide
+ * scrollbar" — but the scrollbar is already hidden by `scrollbar-width: none`
+ * and the ::-webkit-scrollbar rule above. Setting `hidden` did not hide a
+ * scrollbar, it disabled SCROLLING: the collapsed rail needs 929px for its
+ * icons in a 668px viewport, so the bottom entries were unreachable on any
+ * window shorter than ~1000px.
+ */
 .side-bar.ant-layout-sider-collapsed .sidebar-content-wrapper {
-  overflow-y: hidden;
+  overflow-y: auto;
 }
 
 /* Toggle container - fixed at bottom */
@@ -51,12 +73,23 @@
 
 .sidebar-toggle-icon {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 14px;
+  font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
   transition: color 0.2s;
 }
 
+/*
+ * Was #1890ff (antd's default blue) — an off-palette accent that now sits on
+ * a violet sidebar. The pinned state just needs to read as "on" against the
+ * unpinned rgba(255,255,255,0.6) above, so full white carries it without
+ * introducing a third brand colour.
+ */
 .sidebar-toggle-icon.pinned {
-  color: #1890ff;
+  color: #ffffff;
 }
 
 .secondary-list-wrapper {
@@ -74,20 +107,40 @@
   width: 100%;
 }
 
+/*
+ * The menu icons are inline SVG assets with `fill="#90A4B7"` baked in — a
+ * slate grey picked for the old navy sidebar, where it measured 4.54:1. On
+ * `--primary` violet it collapses to 1.84:1 and the icons all but vanish.
+ *
+ * The assets are data-URI <img> sources, so `color` cannot reach them and
+ * recolouring would mean re-authoring every SVG. Instead the same filter the
+ * rule below already uses for hover/active is applied at rest, then dimmed
+ * with opacity to match `.sidebar-item-text`'s 0.85 — so an idle icon is
+ * white-at-85% and the active one goes to full white, preserving the
+ * inactive/active distinction the hover rule was drawing.
+ */
 .side-bar .menu-item-icon {
   margin-top: 1;
   height: auto;
   width: 25px;
+  filter: brightness(0) invert(1);
+  opacity: 0.85;
 }
 
 .space-styles-active .menu-item-icon,
 .space-styles:hover .menu-item-icon {
   filter: brightness(0) invert(1);
+  opacity: 1;
 }
 
 .sidebar-footer-icons {
   color: white;
   font-size: 20px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 20px;
+  height: 20px;
 }
 .sidebar-footer-text {
   color: white;
@@ -101,9 +154,15 @@
   width: 100%;
 }
 
+/*
+ * Was #005b82 — a navy-family highlight chosen for the old navy sidebar,
+ * which reads as a muddy blue patch on violet. A white overlay tints
+ * whatever the surface happens to be, so it tracks `--primary` in both
+ * light and dark mode instead of naming a second colour.
+ */
 .space-styles-active,
 .space-styles:hover {
-  background: #005b82;
+  background: rgba(255, 255, 255, 0.16);
 }
 
 .space-styles-disable {
@@ -116,8 +175,18 @@
   font-size: 15px;
 }
 
+/*
+ * #b4c2cf was a muted slate picked to sit on the old navy sidebar, where it
+ * measured 6.41:1. On `--primary` violet it falls to 2.6:1 — under even the
+ * 3:1 large-text floor, so it cannot carry over.
+ *
+ * White is 4.72:1 on violet and clears AA for normal text; the tints between
+ * (#e8e5fb, #dcd8f9) top out at 3.82:1 and do not. Muting is done with
+ * opacity instead, which keeps the ratio close to white's while still
+ * separating inactive items from the active one (which is full-strength).
+ */
 .sidebar-item-text {
-  color: #b4c2cf;
+  color: rgba(255, 255, 255, 0.85);
   text-align: left;
 }
 
@@ -141,8 +210,9 @@
   width: 240px;
 }
 
+/* Name kept (used by SideNavBar.jsx); the value follows the 13px body size. */
 .fs-14 {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .fs-11 {
@@ -161,9 +231,10 @@
   margin: 10px 0;
 }
 
+/* Same rebase as .sidebar-item-text — #b4c2cf is 2.6:1 on violet. */
 .sidebar-antd-icon {
   font-size: 22px;
-  color: #b4c2cf;
+  color: rgba(255, 255, 255, 0.85);
   width: 25px;
   display: flex;
   align-items: center;

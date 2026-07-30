@@ -1,7 +1,10 @@
-import { CloseOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
-import { Button, Space, Tag, Typography } from "antd";
+import { ChevronDown, ChevronUp, X } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 export const LogsHeader = memo(function LogsHeader({
   isMinimized,
@@ -10,9 +13,9 @@ export const LogsHeader = memo(function LogsHeader({
   onToggleExpand,
   onMinimize,
 }) {
-  const expandCollapseIcon = isFull ? <DownOutlined /> : <UpOutlined />;
+  const expandCollapseIcon = isFull ? <ChevronDown /> : <ChevronUp />;
 
-  const minimizeIcon = <CloseOutlined />;
+  const minimizeIcon = <X />;
 
   return (
     <div className="logs-header-container">

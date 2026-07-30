@@ -1,6 +1,7 @@
-import { ArrowsAltOutlined } from "@ant-design/icons";
-import { Button, Tooltip } from "antd";
+import { Move } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import { PromptOutputsModal } from "./PromptOutputsModal";
 
@@ -24,7 +25,7 @@ function PromptOutputExpandBtn({
           className="prompt-card-action-button"
           onClick={() => setOpenExpandModal(true)}
         >
-          <ArrowsAltOutlined className="prompt-card-actions-head" />
+          <Move className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
       <PromptOutputsModal

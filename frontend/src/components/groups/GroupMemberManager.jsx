@@ -1,7 +1,10 @@
-import { DeleteOutlined, QuestionCircleOutlined } from "@ant-design/icons";
-import { Avatar, List, Modal, Popconfirm, Select } from "antd";
+import { CircleHelp, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";
@@ -138,10 +141,10 @@ function GroupMemberManager({ open, group, onClose }) {
                     description={`Remove ${item.email} from this group?`}
                     okText="Remove"
                     cancelText="Cancel"
-                    icon={<QuestionCircleOutlined />}
+                    icon={<CircleHelp />}
                     onConfirm={() => handleRemove(item.user_id)}
                   >
-                    <DeleteOutlined style={{ cursor: "pointer" }} />
+                    <Trash2 style={{ cursor: "pointer" }} />
                   </Popconfirm>
                 }
               >

@@ -1,8 +1,12 @@
-import { SearchOutlined } from "@ant-design/icons";
-import { Col, Input, Row, Spin, Tabs, Typography } from "antd";
 import debounce from "lodash/debounce";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Spin } from "@/components/ui/shims/antd-leaves";
+import { Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { ConnectorCard } from "../connector-card/ConnectorCard";
 import "./ConnectorListModal.css";
@@ -96,7 +100,7 @@ function ConnectorListModal({
       <div className="connector-search-section">
         <Input
           placeholder="Search for connectors..."
-          prefix={<SearchOutlined className="search-icon" />}
+          prefix={<Search className="search-icon" />}
           onChange={handleSearchChange}
           value={searchText}
           size="large"

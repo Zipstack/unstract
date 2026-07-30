@@ -1,22 +1,12 @@
-import {
-  ArrowLeftOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Divider,
-  Input,
-  InputNumber,
-  Row,
-  Switch,
-  Tag,
-  Typography,
-} from "antd";
+import { ArrowLeft, Copy, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input, InputNumber, Switch } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
@@ -467,7 +457,7 @@ function PlatformSettings() {
             type="text"
             onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
           >
-            <ArrowLeftOutlined />
+            <ArrowLeft />
           </Button>
           <Typography.Text className="plt-set-head-typo">
             Platform Settings
@@ -515,7 +505,7 @@ function PlatformSettings() {
                                     size="small"
                                     value={keys[keyIndex].key}
                                     suffix={
-                                      <CopyOutlined
+                                      <Copy
                                         onClick={() =>
                                           copyText(keys[keyIndex].key)
                                         }
@@ -543,7 +533,7 @@ function PlatformSettings() {
                                 >
                                   <Button
                                     size="small"
-                                    icon={<DeleteOutlined />}
+                                    icon={<Trash2 />}
                                     disabled={keyDetails?.id === null}
                                     loading={isDeletingIndex === keyIndex}
                                   />

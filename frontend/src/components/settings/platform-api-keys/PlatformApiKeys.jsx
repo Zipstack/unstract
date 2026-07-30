@@ -1,25 +1,13 @@
-import {
-  ArrowLeftOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Switch,
-  Table,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { ArrowLeft, Copy, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select, Switch } from "@/components/ui/shims/antd-inputs";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
@@ -265,7 +253,7 @@ function PlatformApiKeys() {
             <Typography.Text className="platform-api-keys__key-text">
               {record?.key}
             </Typography.Text>
-            <CopyOutlined className="platform-api-keys__copy-icon" />
+            <Copy className="platform-api-keys__copy-icon" />
           </Button>
         </Tooltip>
       ),
@@ -323,13 +311,13 @@ function PlatformApiKeys() {
             okText="Rotate"
           >
             <Tooltip title="Rotate key">
-              <Button size="small" icon={<SyncOutlined />} />
+              <Button size="small" icon={<RefreshCw />} />
             </Tooltip>
           </ConfirmModal>
           <Tooltip title="Edit">
             <Button
               size="small"
-              icon={<EditOutlined />}
+              icon={<Pencil />}
               onClick={() => openEditModal(record)}
             />
           </Tooltip>
@@ -340,7 +328,7 @@ function PlatformApiKeys() {
             okText="Delete"
           >
             <Tooltip title="Delete">
-              <Button size="small" danger icon={<DeleteOutlined />} />
+              <Button size="small" danger icon={<Trash2 />} />
             </Tooltip>
           </ConfirmModal>
         </div>
@@ -359,7 +347,7 @@ function PlatformApiKeys() {
               navigate(`/${sessionDetails?.orgName}/settings/platform`)
             }
           >
-            <ArrowLeftOutlined />
+            <ArrowLeft />
           </Button>
           <Typography.Text className="plt-set-head-typo">
             Platform API Keys
@@ -371,7 +359,7 @@ function PlatformApiKeys() {
               <div className="platform-api-keys__header-actions">
                 <Button
                   type="primary"
-                  icon={<PlusOutlined />}
+                  icon={<Plus />}
                   onClick={() => setIsCreateModalOpen(true)}
                 >
                   New Key

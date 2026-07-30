@@ -1,7 +1,9 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Select, Typography } from "antd";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -178,7 +180,7 @@ function DefaultTriad() {
           type="text"
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
-          <ArrowLeftOutlined />
+          <ArrowLeft />
         </Button>
         <Typography.Text className="plt-set-head-typo">
           Default LLM Profile

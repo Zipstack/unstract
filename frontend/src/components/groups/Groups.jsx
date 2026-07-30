@@ -1,13 +1,10 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EllipsisOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  TeamOutlined,
-} from "@ant-design/icons";
-import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
+import { Ellipsis, Pencil, Plus, RotateCw, Trash2, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Dropdown, Modal } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../layouts/island-layout/IslandLayout.jsx";
@@ -142,7 +139,7 @@ function Groups() {
       key: "members",
       label: (
         <Space onClick={() => handleManageMembers(record)}>
-          <TeamOutlined />
+          <Users />
           <span>Manage members</span>
         </Space>
       ),
@@ -151,7 +148,7 @@ function Groups() {
       key: "edit",
       label: (
         <Space onClick={() => handleEdit(record)}>
-          <EditOutlined />
+          <Pencil />
           <span>Edit</span>
         </Space>
       ),
@@ -160,7 +157,7 @@ function Groups() {
       key: "delete",
       label: (
         <Space onClick={() => handleDeleteClick(record)}>
-          <DeleteOutlined />
+          <Trash2 />
           <span>Delete</span>
         </Space>
       ),
@@ -184,7 +181,7 @@ function Groups() {
           trigger={["click"]}
           placement="bottomLeft"
         >
-          <EllipsisOutlined rotate={90} style={{ cursor: "pointer" }} />
+          <Ellipsis rotate={90} style={{ cursor: "pointer" }} />
         </Dropdown>
       ),
     },
@@ -200,16 +197,12 @@ function Groups() {
         searchKey="name"
         searchPlaceholder="Search Groups"
       >
-        <CustomButton
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleCreate}
-        >
+        <CustomButton type="primary" icon={<Plus />} onClick={handleCreate}>
           New Group
         </CustomButton>
         <Button
           shape="circle"
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={refresh}
           className="groups-reload-button"
         />

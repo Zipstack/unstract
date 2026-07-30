@@ -46,12 +46,12 @@
 }
 
 .retrieval-strategy-selector:hover {
-  border-color: #40a9ff !important;
+  border-color: var(--violet-300) !important;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
 }
 
 .retrieval-strategy-selector:active {
-  border-color: #1890ff !important;
+  border-color: var(--primary) !important;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15);
 }
 
@@ -75,13 +75,23 @@
 }
 
 .retrieval-strategy-settings-icon {
-  color: #1890ff;
+  color: var(--primary);
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
   cursor: pointer;
 }
 
 .retrieval-strategy-dropdown-icon {
   color: #bfbfbf;
   font-size: 10px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 10px;
+  height: 10px;
   cursor: pointer;
 }

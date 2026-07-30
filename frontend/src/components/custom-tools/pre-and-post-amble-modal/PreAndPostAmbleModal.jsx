@@ -1,7 +1,11 @@
-import { ExpandOutlined } from "@ant-design/icons";
-import { Button, Input, Modal, Space, Typography } from "antd";
+import { Expand } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./PreAndPostAmbleModal.css";
 
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -119,7 +123,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
               autoSize={{ minRows: 4 }}
             />
             <Button
-              icon={<ExpandOutlined />}
+              icon={<Expand />}
               className="expand-button"
               onClick={toggleExpandModal}
               type="text"

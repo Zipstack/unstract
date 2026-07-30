@@ -36,7 +36,7 @@
 
 .tool-logs-table .ant-table {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 14px !important;
+  font-size: 13px !important;
   background-color: #fff;
 }
 
@@ -50,6 +50,6 @@
 }
 
 .display-logs-md {
-  font-size: 14px;
+  font-size: 13px;
   padding-left: 5px;
 }

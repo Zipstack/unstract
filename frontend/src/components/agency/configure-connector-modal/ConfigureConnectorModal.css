@@ -26,7 +26,7 @@
 }
 
 .conn-modal-col-left {
-  background-color: var(--page-bg-3);
+  background-color: var(--muted);
 }
 
 .conn-modal-col .ant-tabs-nav {
@@ -99,7 +99,7 @@
 }
 
 .connector-dropdown-add-new:focus {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: -2px;
   background-color: #f0f0f0;
 }
@@ -155,6 +155,11 @@
 
 .connector-placeholder-icon {
   font-size: 48px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 48px;
+  height: 48px;
   margin-bottom: 16px;
   color: #bfbfbf;
 }

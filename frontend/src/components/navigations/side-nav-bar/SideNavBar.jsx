@@ -1,22 +1,13 @@
-import {
-  BranchesOutlined,
-  DoubleRightOutlined,
-  FileProtectOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Divider,
-  Image,
-  Layout,
-  Popover,
-  Space,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { ChevronsRight, FileCheck, GitBranch } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Image, Tag } from "@/components/ui/shims/antd-leaves";
+import { Popover, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Layout } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
@@ -362,7 +353,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           id: 1.3,
           title: "Workflows",
           description: "Build no-code data workflows for unstructured data",
-          icon: BranchesOutlined,
+          icon: GitBranch,
           image: Workflows,
           path: `/${orgName}/workflows`,
           active: globalThis.location.pathname.startsWith(
@@ -417,7 +408,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           id: 3.1,
           title: "LLMs",
           description: "Setup platform wide access to Large Language Models",
-          icon: BranchesOutlined,
+          icon: GitBranch,
           image: LlmIcon,
           path: `/${orgName}/settings/llms`,
           active: globalThis.location.pathname.startsWith(
@@ -629,7 +620,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                               ?.toLowerCase()
                               ?.replaceAll(/\s+/g, "-")}`}
                           >
-                            <FileProtectOutlined className="sidebar-antd-icon" />
+                            <FileCheck className="sidebar-antd-icon" />
                             {!collapsed && (
                               <div>
                                 <Typography className="sidebar-item-text fs-14">
@@ -792,7 +783,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           aria-pressed={isPinned}
           aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
           icon={
-            <DoubleRightOutlined
+            <ChevronsRight
               className={`sidebar-toggle-icon${isPinned ? " pinned" : ""}`}
             />
           }
