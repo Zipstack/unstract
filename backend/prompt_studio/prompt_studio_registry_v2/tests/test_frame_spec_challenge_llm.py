@@ -23,52 +23,67 @@ migration check. ``test_adapter_type_is_always_declared`` fails loudly if a
 future change pops it again.
 
 These tests exercise the real ``frame_spec`` and the real
-``_update_schema_for_adapter_type``, importing both normally and patching only
-the two DB lookups (the default profile and the adapter list). No module is
-stubbed into ``sys.modules``: that pattern shadows the real ``unstract.*``
-packages for every later test in the pytest process and was deliberately removed
-from this repo (see ``9a76a745`` and ``b60dd6f3``).
+``_update_schema_for_adapter_type``, patching only the two DB lookups (the
+default profile and the adapter list). Nothing is stubbed into ``sys.modules``:
+that pattern shadows the real ``unstract.*`` packages for every later test in the
+pytest process and was deliberately removed from this repo (see ``9a76a745`` and
+``b60dd6f3``).
 
-Both helpers live in Django-coupled modules, so they are imported inside
-``_django_helpers()`` rather than at module scope: the ``unit-backend`` rig
-group runs without ``pytest-django`` and without ``DJANGO_SETTINGS_MODULE``, and
-a module-level import would fail collection for the whole file there. The
-``unstract.tool_registry`` / ``unstract.sdk1`` imports below need no Django and
-stay at module scope.
+Every real import happens inside ``_deps()`` rather than at module scope -- see
+its docstring for why.
 """
 
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import jsonschema
 import pytest
-from unstract.sdk1.constants import AdapterTypes
-from unstract.tool_registry.dto import Spec
-from unstract.tool_registry.tool_utils import ToolUtils
 
 
-def _django_helpers():
-    """Import the two Django-coupled helpers, configuring Django on demand.
+def _deps():
+    """Import everything this module needs, at call time rather than import time.
 
-    Skips rather than errors when the environment cannot configure Django, so
-    this file never breaks collection for the rest of the suite.
+    Nothing is imported at module scope on purpose. ``frame_spec`` and
+    ``ToolProcessor`` are Django-coupled, and the ``unit-backend`` rig group
+    runs without ``pytest-django`` and without ``DJANGO_SETTINGS_MODULE``, so a
+    module-level import raises ``ImproperlyConfigured`` during collection and
+    takes the whole file down.
+
+    ``django`` genuinely missing is an environment gap -> skip. Anything else is
+    a real problem and fails loudly: in particular, a sibling test module that
+    stubs ``unstract.*`` or ``account_v2`` into ``sys.modules`` at its own import
+    time (pytest imports every module during collection, before running any
+    test) leaves these imports resolving to mocks. Skipping on that would hide
+    the breakage instead of reporting it.
     """
     try:
         import django
+    except ImportError as exc:  # pragma: no cover - environment guard
+        pytest.skip(f"django is not installed: {exc}")
 
-        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
-        django.setup()
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+    django.setup()
 
-        from tool_instance_v2.tool_processor import ToolProcessor
-        from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (  # noqa: E501
-            PromptStudioRegistryHelper,
-        )
-    except Exception as exc:  # pragma: no cover - environment guard
-        pytest.skip(f"Django app registry unavailable: {type(exc).__name__}: {exc}")
-    return PromptStudioRegistryHelper, ToolProcessor
+    from tool_instance_v2.tool_processor import ToolProcessor
+    from unstract.sdk1.constants import AdapterTypes
+    from unstract.tool_registry.dto import Spec
+    from unstract.tool_registry.tool_utils import ToolUtils
+
+    from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
+        PromptStudioRegistryHelper,
+    )
+
+    return SimpleNamespace(
+        helper=PromptStudioRegistryHelper,
+        tool_processor=ToolProcessor,
+        AdapterTypes=AdapterTypes,
+        Spec=Spec,
+        ToolUtils=ToolUtils,
+    )
 
 
 REAL_ADAPTER_ID = "11111111-2222-3333-4444-555555555555"
@@ -97,10 +112,10 @@ def _default_profile(llm_id: str = REAL_ADAPTER_ID):
     return MagicMock(llm=MagicMock(id=llm_id))
 
 
-def _frame_spec(tool: Any) -> Spec:
-    helper, _ = _django_helpers()
+def _frame_spec(tool: Any) -> Any:
+    deps = _deps()
     with patch(PROFILE_LOOKUP, return_value=_default_profile()):
-        return helper.frame_spec(tool=tool)
+        return deps.helper.frame_spec(tool=tool)
 
 
 def _build_instance_schema(tool: Any) -> dict[str, Any]:
@@ -110,12 +125,12 @@ def _build_instance_schema(tool: Any) -> dict[str, Any]:
     ``frame_spec`` output is persisted as ``tool_spec`` and later rehydrated
     via ``Spec.from_dict`` in ``get_tool_by_prompt_registry_id``.
     """
-    _, tool_processor = _django_helpers()
+    deps = _deps()
     spec = _frame_spec(tool)
     adapters = [MagicMock(id=REAL_ADAPTER_ID, adapter_name="My LLM")]
     with patch(ADAPTER_LOOKUP, return_value=adapters):
-        tool_processor._update_schema_for_adapter_type(
-            spec, spec.get_llm_adapter_properties_keys(), AdapterTypes.LLM, None
+        deps.tool_processor._update_schema_for_adapter_type(
+            spec, spec.get_llm_adapter_properties_keys(), deps.AdapterTypes.LLM, None
         )
     return spec.to_dict()
 
@@ -126,9 +141,10 @@ def _seeded_metadata(spec_dict: dict[str, Any]) -> dict[str, Any]:
     Calls the real ``ToolUtils.get_default_settings`` rather than reimplementing
     its type->zero-value table, so a change to the seeding rule surfaces here.
     """
+    deps = _deps()
     tool = MagicMock()
-    tool.spec = Spec.from_dict(spec_dict)
-    return ToolUtils.get_default_settings(tool)
+    tool.spec = deps.Spec.from_dict(spec_dict)
+    return deps.ToolUtils.get_default_settings(tool)
 
 
 def _validation_errors(schema: dict[str, Any], instance: dict[str, Any]) -> list[Any]:
@@ -191,10 +207,10 @@ class TestChallengeLlmResolution:
     """``frame_spec`` seeds the same LLM the export path resolves."""
 
     def test_tool_challenge_llm_takes_precedence(self) -> None:
-        helper, _ = _django_helpers()
+        deps = _deps()
         tool = _make_tool(enable_challenge=True, challenge_llm_id=OTHER_ADAPTER_ID)
         with patch(PROFILE_LOOKUP, return_value=_default_profile()) as get_default:
-            spec = helper.frame_spec(tool=tool)
+            spec = deps.helper.frame_spec(tool=tool)
 
         assert spec.properties["challenge_llm"]["default"] == OTHER_ADAPTER_ID
         get_default.assert_not_called()
