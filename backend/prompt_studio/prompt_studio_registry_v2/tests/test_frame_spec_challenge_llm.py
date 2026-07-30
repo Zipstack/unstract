@@ -28,23 +28,48 @@ the two DB lookups (the default profile and the adapter list). No module is
 stubbed into ``sys.modules``: that pattern shadows the real ``unstract.*``
 packages for every later test in the pytest process and was deliberately removed
 from this repo (see ``9a76a745`` and ``b60dd6f3``).
+
+Both helpers live in Django-coupled modules, so they are imported inside
+``_django_helpers()`` rather than at module scope: the ``unit-backend`` rig
+group runs without ``pytest-django`` and without ``DJANGO_SETTINGS_MODULE``, and
+a module-level import would fail collection for the whole file there. The
+``unstract.tool_registry`` / ``unstract.sdk1`` imports below need no Django and
+stay at module scope.
 """
 
 from __future__ import annotations
 
+import os
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import jsonschema
 import pytest
-from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.sdk1.constants import AdapterTypes
 from unstract.tool_registry.dto import Spec
 from unstract.tool_registry.tool_utils import ToolUtils
 
-from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
-    PromptStudioRegistryHelper,
-)
+
+def _django_helpers():
+    """Import the two Django-coupled helpers, configuring Django on demand.
+
+    Skips rather than errors when the environment cannot configure Django, so
+    this file never breaks collection for the rest of the suite.
+    """
+    try:
+        import django
+
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+        django.setup()
+
+        from tool_instance_v2.tool_processor import ToolProcessor
+        from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (  # noqa: E501
+            PromptStudioRegistryHelper,
+        )
+    except Exception as exc:  # pragma: no cover - environment guard
+        pytest.skip(f"Django app registry unavailable: {type(exc).__name__}: {exc}")
+    return PromptStudioRegistryHelper, ToolProcessor
+
 
 REAL_ADAPTER_ID = "11111111-2222-3333-4444-555555555555"
 OTHER_ADAPTER_ID = "99999999-8888-7777-6666-555555555555"
@@ -53,9 +78,7 @@ PROFILE_LOOKUP = (
     "prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper"
     ".ProfileManager.get_default_llm_profile"
 )
-ADAPTER_LOOKUP = (
-    "tool_instance_v2.tool_processor.AdapterProcessor.get_adapters_by_type"
-)
+ADAPTER_LOOKUP = "tool_instance_v2.tool_processor.AdapterProcessor.get_adapters_by_type"
 
 
 def _make_tool(*, enable_challenge: bool, challenge_llm_id: str | None = None):
@@ -75,8 +98,9 @@ def _default_profile(llm_id: str = REAL_ADAPTER_ID):
 
 
 def _frame_spec(tool: Any) -> Spec:
+    helper, _ = _django_helpers()
     with patch(PROFILE_LOOKUP, return_value=_default_profile()):
-        return PromptStudioRegistryHelper.frame_spec(tool=tool)
+        return helper.frame_spec(tool=tool)
 
 
 def _build_instance_schema(tool: Any) -> dict[str, Any]:
@@ -86,10 +110,11 @@ def _build_instance_schema(tool: Any) -> dict[str, Any]:
     ``frame_spec`` output is persisted as ``tool_spec`` and later rehydrated
     via ``Spec.from_dict`` in ``get_tool_by_prompt_registry_id``.
     """
+    _, tool_processor = _django_helpers()
     spec = _frame_spec(tool)
     adapters = [MagicMock(id=REAL_ADAPTER_ID, adapter_name="My LLM")]
     with patch(ADAPTER_LOOKUP, return_value=adapters):
-        ToolProcessor._update_schema_for_adapter_type(
+        tool_processor._update_schema_for_adapter_type(
             spec, spec.get_llm_adapter_properties_keys(), AdapterTypes.LLM, None
         )
     return spec.to_dict()
@@ -166,9 +191,10 @@ class TestChallengeLlmResolution:
     """``frame_spec`` seeds the same LLM the export path resolves."""
 
     def test_tool_challenge_llm_takes_precedence(self) -> None:
+        helper, _ = _django_helpers()
         tool = _make_tool(enable_challenge=True, challenge_llm_id=OTHER_ADAPTER_ID)
         with patch(PROFILE_LOOKUP, return_value=_default_profile()) as get_default:
-            spec = PromptStudioRegistryHelper.frame_spec(tool=tool)
+            spec = helper.frame_spec(tool=tool)
 
         assert spec.properties["challenge_llm"]["default"] == OTHER_ADAPTER_ID
         get_default.assert_not_called()
@@ -189,9 +215,9 @@ class TestInvalidValuesStillRejected:
 
         errors = _validation_errors(schema, {"challenge_llm": ""})
 
-        assert any(e.validator == "enum" for e in errors), (
-            f"Expected an enum violation, got {[e.validator for e in errors]}"
-        )
+        assert any(
+            e.validator == "enum" for e in errors
+        ), f"Expected an enum violation, got {[e.validator for e in errors]}"
 
     def test_unknown_adapter_id_is_rejected(self) -> None:
         schema = _build_instance_schema(_make_tool(enable_challenge=True))
