@@ -441,13 +441,15 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
                   // Underline the active tab; keep the label tinted like antd.
                   "rounded-none border-b-2 border-transparent bg-transparent px-0 font-normal shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none",
                 /*
-                 * Symmetric padding, not `pb-2`. Bottom-heavy padding puts the
-                 * LABEL above the centre of its own 36px box, so `align-items:
-                 * center` on the toolbar lined up the boxes while the text sat
-                 * 5.6px above the file name beside it. antd pads 12px evenly
-                 * for a 22px label box.
+                 * No vertical padding. The doc-manager toolbar centres these
+                 * tabs against a file name and buttons, and any padding here
+                 * inflates the label's own box (`pb-2` gave 36px, `py-3` 48px)
+                 * so the TEXT rides above the centre the row aligns on, ~5.6px
+                 * clear of the file name. antd's label box is 22px — the line
+                 * height alone. The active underline comes from the border, so
+                 * it does not need the padding either.
                  */
-                type !== "card" && "py-3",
+                type !== "card" && "py-0",
               )}
             >
               {p.label}

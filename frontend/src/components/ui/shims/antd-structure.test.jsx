@@ -57,16 +57,17 @@ describe("antd-compatible structural shims (P4)", () => {
   });
 
   /*
-   * The doc-manager toolbar centres the tabs against a file name and buttons.
-   * Bottom-heavy padding (`pb-2`) put the LABEL above the centre of its own
-   * box, so `align-items: center` aligned the boxes while the text sat 5.6px
-   * high. Padding has to stay symmetric for the row to share one line.
+   * The doc-manager toolbar centres these tabs against a file name and
+   * buttons. Vertical padding inflates the label's own box (`pb-2` gave 36px,
+   * `py-3` 48px) so the TEXT rides above the centre the row aligns on, ~5.6px
+   * clear of the file name. antd's label box is 22px — the line height alone.
    */
-  it("Tabs pad line-style labels symmetrically so text centres with siblings", () => {
+  it("Tabs give line-style labels no vertical padding to inflate the box", () => {
     render(<Tabs items={[{ key: "1", label: "One", children: "x" }]} />);
     const cls = screen.getByRole("tab").className;
-    expect(cls).toContain("py-3");
+    expect(cls).toContain("py-0");
     expect(cls).not.toContain("pb-2");
+    expect(cls).not.toContain("py-3");
   });
 
   it("Tabs keep the pill look when type='card'", () => {
