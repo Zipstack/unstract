@@ -46,6 +46,18 @@ describe("Typography shim (P1-03)", () => {
     expect(screen.getByText("c").className).toContain("font-mono");
   });
 
+  /*
+   * antd's inline code carries a border as well as a fill. Without it the
+   * snippets in Custom Data ("{{custom_data.key}}") sat at #f5f5f5 on a
+   * #fafafa surface — a five-value difference, effectively invisible.
+   */
+  it("gives inline code a border so it stands out from body text", () => {
+    render(<Text code>{"{{custom_data.key}}"}</Text>);
+    const el = screen.getByText("{{custom_data.key}}");
+    expect(el.className).toContain("border");
+    expect(el.className).toContain("bg-muted");
+  });
+
   it("renders Title at the requested heading level", () => {
     render(
       <>

@@ -9,6 +9,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import * as React from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
+import { Empty } from "@/components/ui/shims/antd-leaves";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Table,
@@ -150,6 +151,14 @@ function DataTable({
                       key={header.id}
                       style={{ width: header.column.columnDef.meta?.width }}
                       className={cn(
+                        /*
+                         * shadcn's TableHead defaults to `font-medium
+                         * text-muted-foreground`, which renders headers at
+                         * weight 500 in grey. antd's `.ant-table-thead > th`
+                         * is weight 600 at near-full opacity, so dev's column
+                         * titles read as washed out beside the reference.
+                         */
+                        "font-semibold text-foreground",
                         header.column.columnDef.meta?.align === "center" &&
                           "text-center",
                         header.column.columnDef.meta?.align === "right" &&
@@ -214,12 +223,21 @@ function DataTable({
                 </TableRow>
               ))
             ) : (
-              <TableRow>
-                <TableCell
-                  colSpan={cols.length}
-                  className="h-24 text-center text-muted-foreground"
-                >
-                  {emptyText}
+              <TableRow className="hover:bg-transparent">
+                <TableCell colSpan={cols.length} className="p-0">
+                  {/*
+                   * antd renders <Empty> here — an illustration above the
+                   * text — not a bare string. Emitting only `emptyText` left
+                   * "No data" floating in the middle of the table with no
+                   * icon, which read as a rendering failure rather than an
+                   * empty state. A caller that passes its own node (an
+                   * <Empty> with a custom image, say) still gets it as-is.
+                   */}
+                  {typeof emptyText === "string" ? (
+                    <Empty description={emptyText} />
+                  ) : (
+                    emptyText
+                  )}
                 </TableCell>
               </TableRow>
             )}

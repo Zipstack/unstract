@@ -8,6 +8,7 @@ import {
   Drawer,
   Layout,
   List,
+  Menu,
   Pagination,
   Result,
   Segmented,
@@ -91,9 +92,17 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("row 2")).toBeInTheDocument();
   });
 
-  it("List shows an empty state for no data", () => {
-    render(<List dataSource={[]} renderItem={() => null} />);
+  /*
+   * antd renders an <Empty> illustration here, not a bare string. Asserting
+   * only the TEXT is what let the icon go missing: "No data" floating alone
+   * in a table reads as a rendering failure rather than an empty state.
+   */
+  it("List shows an empty state with an icon for no data", () => {
+    const { container } = render(
+      <List dataSource={[]} renderItem={() => null} />,
+    );
     expect(screen.getByText("No data")).toBeInTheDocument();
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
   // Table delegates to the shared DataTable (D5/D9).
@@ -133,13 +142,15 @@ describe("antd-compatible structural shims (P4)", () => {
   });
 
   it("Table shows an empty state when dataSource is empty", () => {
-    render(
+    const { container } = render(
       <Table
         columns={[{ title: "Name", dataIndex: "name", key: "name" }]}
         dataSource={[]}
       />,
     );
     expect(screen.getByText("No data")).toBeInTheDocument();
+    // antd puts an <Empty> illustration here, not a bare string.
+    expect(container.querySelector("svg")).not.toBeNull();
   });
 
   it("Table accepts antd's object form of `loading`", () => {
@@ -495,6 +506,51 @@ describe("antd-compatible structural shims (P4)", () => {
         },
       });
       expect(beforeUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  /*
+   * The Settings menu passes an icon per item. Dropped straight into the flex
+   * row, a LONG label squeezes the SVG to width 0 while leaving its height at
+   * 24 — "SummarizedExtraction" rendered as a blank gap where every shorter
+   * sibling showed its icon. The icon needs its own shrink-0 box.
+   */
+  describe("Menu icons", () => {
+    it("renders an icon for every item, including long labels", () => {
+      const { container } = render(
+        <Menu
+          items={[
+            { key: "1", label: "Grammar", icon: <svg data-testid="i1" /> },
+            {
+              key: "2",
+              label: "SummarizedExtraction",
+              icon: <svg data-testid="i2" />,
+            },
+          ]}
+        />,
+      );
+      expect(container.querySelectorAll("svg")).toHaveLength(2);
+    });
+
+    it("gives the icon a shrink-proof wrapper so a long label cannot crush it", () => {
+      const { container } = render(
+        <Menu
+          items={[
+            {
+              key: "2",
+              label: "SummarizedExtraction",
+              icon: <svg data-testid="i2" />,
+            },
+          ]}
+        />,
+      );
+      const wrapper = container.querySelector("svg").parentElement;
+      expect(wrapper.className).toContain("shrink-0");
+    });
+
+    it("renders items that carry no icon", () => {
+      render(<Menu items={[{ key: "1", label: "Plain" }]} />);
+      expect(screen.getByText("Plain")).toBeInTheDocument();
     });
   });
 });

@@ -142,8 +142,14 @@ function useTypographyClass({
     italic && "italic",
     underline && "underline",
     del && "line-through",
+    /*
+     * antd's inline code has a BORDER as well as a fill — that outline is what
+     * makes it read as code. `bg-muted` alone is #f5f5f5, five values off the
+     * #fafafa surface it sits on, so the snippets in Custom Data were
+     * indistinguishable from body text.
+     */
     code &&
-      "rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground",
+      "rounded border border-separator bg-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground",
   );
 }
 

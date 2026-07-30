@@ -14,6 +14,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/shims/antd-button";
+import { Empty } from "@/components/ui/shims/antd-leaves";
 import { Skeleton as ShadcnSkeleton } from "@/components/ui/skeleton";
 import {
   Tabs as ShadcnTabs,
@@ -545,8 +546,13 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
           <div key={i}>{renderItem?.(item, i)}</div>
         ))
       ) : (
-        <div className="ant-list-empty-text py-6 text-center text-muted-foreground">
-          {locale?.emptyText ?? "No data"}
+        <div className="ant-list-empty-text">
+          {/* antd shows an <Empty> illustration here, not a bare string. */}
+          {locale?.emptyText ? (
+            locale.emptyText
+          ) : (
+            <Empty description="No data" />
+          )}
         </div>
       )}
       {footer ? <div className="py-2">{footer}</div> : null}
@@ -1000,8 +1006,17 @@ const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
             selectedKeys.includes(String(item.key)) && "bg-accent font-medium",
           )}
         >
-          {item.icon}
-          {item.label}
+          {/*
+            * The icon needs its own shrink-0 box. Dropped straight into the
+            * flex row, a long label squeezes the SVG to width 0 while leaving
+            * its height at 24 — "SummarizedExtraction" in the Prompt Studio
+            * settings menu rendered as a blank gap where every shorter
+            * sibling showed its icon. antd wraps the icon for the same reason.
+            */}
+          {item.icon ? (
+            <span className="flex shrink-0 items-center">{item.icon}</span>
+          ) : null}
+          <span className="truncate">{item.label}</span>
         </button>
       ))}
     </nav>
