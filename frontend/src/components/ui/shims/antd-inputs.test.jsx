@@ -115,6 +115,17 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(screen.getByText("Pick one")).toBeInTheDocument();
   });
 
+  /*
+   * antd renders the VALUE when an option has no label. The prompt card's
+   * enforce-type dropdown is built as `{ value: "text" }` with no label, so
+   * rendering a bare `label` left the trigger showing an empty box where the
+   * reference shows "text".
+   */
+  it("Select falls back to the option value when no label is given", () => {
+    render(<Select options={[{ value: "text" }, { value: "json" }]} value="text" />);
+    expect(screen.getByText("text")).toBeInTheDocument();
+  });
+
   it("Select accepts Select.Option children as well as options data", () => {
     render(
       <Select placeholder="Choose">

@@ -472,7 +472,14 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
         <SelectContent>
           {items.map((o) => (
             <SelectItem key={String(o.value)} value={String(o.value)}>
-              {o.label}
+              {/*
+               * antd falls back to the VALUE when an option carries no label,
+               * and call-sites rely on it: the prompt card's enforce-type list
+               * is built as `{ value: "text" }` with no label at all. Rendering
+               * a bare `label` left every item blank, so the trigger showed an
+               * empty box instead of the selected type.
+               */}
+              {o.label ?? String(o.value)}
             </SelectItem>
           ))}
         </SelectContent>
