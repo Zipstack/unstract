@@ -164,6 +164,14 @@ interface AntRadioProps {
   disabled?: boolean;
   className?: string;
   children?: React.ReactNode;
+  /*
+   * Standalone (ungrouped) radios are driven by these, as antd allows. Both
+   * handlers are supported because the call-sites are split: Manage Documents
+   * and ManageLlmProfiles use onClick, PromptOutput uses onChange.
+   */
+  checked?: boolean;
+  onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }
 
 interface AntRadioGroupProps {
@@ -555,21 +563,71 @@ const Switch = React.forwardRef<HTMLButtonElement, AntSwitchProps>(
 
 /* ------------------------------------------------------------------ Radio */
 
+/*
+ * Marks that a Radio is inside a Radio.Group.
+ *
+ * antd allows a STANDALONE `<Radio checked onClick />` — Manage Documents and
+ * the LLM-profiles settings table both render one per row, with no group, to
+ * pick the active document/profile. Radix's RadioGroupItem cannot do that: it
+ * reads its group's context and throws
+ * "`RadioGroupItemProvider` must be used within `RadioGroup`", which took down
+ * the whole route via the error boundary — the reported "clicking Settings /
+ * Manage Documents throws error".
+ *
+ * So the shim has to cover both shapes: grouped items go to Radix, ungrouped
+ * ones render a native input that honours `checked`/`onClick` directly.
+ */
+const InRadioGroupContext = React.createContext(false);
+
 const RadioBase = React.forwardRef<HTMLButtonElement, AntRadioProps>(
-  function Radio({ value, disabled, className, children, ...props }, ref) {
+  function Radio(
+    {
+      value,
+      disabled,
+      className,
+      children,
+      checked,
+      onClick,
+      onChange,
+      ...props
+    },
+    ref,
+  ) {
+    const inGroup = React.useContext(InRadioGroupContext);
+
     return (
       <Label
         className={cn(
           "ant-radio-wrapper flex items-center gap-2 font-normal",
+          !disabled && "cursor-pointer",
           className,
         )}
       >
-        <RadioGroupItem
-          ref={ref}
-          value={String(value)}
-          disabled={disabled}
-          {...props}
-        />
+        {inGroup ? (
+          <RadioGroupItem
+            ref={ref}
+            value={String(value)}
+            disabled={disabled}
+            {...props}
+          />
+        ) : (
+          /*
+           * Standalone: a native radio, styled to match the Radix one. `name`
+           * is deliberately omitted — these are independent single radios, and
+           * sharing a name would make the browser deselect its siblings.
+           */
+          <input
+            type="radio"
+            className="size-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50"
+            checked={checked ?? false}
+            disabled={disabled}
+            onClick={onClick}
+            // React requires onChange on a controlled input; forward the
+            // caller's when there is one so PromptOutput's radio still fires.
+            onChange={onChange ?? (() => undefined)}
+            {...props}
+          />
+        )}
         {children}
       </Label>
     );
@@ -601,17 +659,20 @@ const RadioGroup = React.forwardRef<HTMLDivElement, AntRadioGroupProps>(
         className={cn("ant-radio-group flex flex-col gap-2", className)}
         {...props}
       >
-        {options
-          ? options.map((o) => (
-              <Radio
-                key={String(o.value)}
-                value={o.value}
-                disabled={o.disabled}
-              >
-                {o.label}
-              </Radio>
-            ))
-          : children}
+        {/* Tells descendant Radios they may use Radix's RadioGroupItem. */}
+        <InRadioGroupContext.Provider value={true}>
+          {options
+            ? options.map((o) => (
+                <Radio
+                  key={String(o.value)}
+                  value={o.value}
+                  disabled={o.disabled}
+                >
+                  {o.label}
+                </Radio>
+              ))
+            : children}
+        </InRadioGroupContext.Provider>
       </ShadcnRadioGroup>
     );
   },

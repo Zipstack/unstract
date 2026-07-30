@@ -182,12 +182,20 @@ function AddCustomToolFormModal({
               <EmojiPicker
                 previewConfig={{ showPreview: false }}
                 lazyLoadEmojis
-                // The picker sizes its own internal scroller from `height`,
-                // so the popover's max-height alone cannot shorten it — it
-                // would just clip. 320px keeps the whole picker (including
-                // its search box and category bar) inside the viewport when
-                // the trigger sits low in the modal.
-                height={320}
+                /*
+                 * `height` is the picker's TOTAL height, and its search box,
+                 * category bar and padding take ~132px of it — so at 320 the
+                 * scrollable emoji grid was only 188px inside a 326px panel.
+                 * The wheel then appeared dead: it works only while the
+                 * pointer is inside that short strip, and most of the visible
+                 * panel is not it.
+                 *
+                 * 450 gives the grid ~318px, filling the panel. The popover
+                 * caps itself at `--radix-popover-content-available-height`
+                 * and the picker scrolls internally, so a short viewport
+                 * shrinks the panel rather than clipping the picker.
+                 */
+                height={450}
                 onEmojiClick={(emoji) => {
                   updateIcon(emoji.emoji);
                   setShowEmojiPicker(false);

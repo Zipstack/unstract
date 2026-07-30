@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -122,6 +122,38 @@ describe("antd-compatible input shims (P3-03)", () => {
       </Select>,
     );
     expect(screen.getByText("Choose")).toBeInTheDocument();
+  });
+
+  /*
+   * antd allows a STANDALONE `<Radio checked onClick />` with no group — Manage
+   * Documents and the LLM-profiles table each render one per row to mark the
+   * active item. Radix's RadioGroupItem reads its group context and THROWS
+   * without one ("`RadioGroupItemProvider` must be used within `RadioGroup`"),
+   * which the error boundary turned into a dead route: clicking Settings or
+   * Manage Documents showed "Couldn't load this page".
+   */
+  it("Radio renders standalone, outside any Radio.Group", () => {
+    const onClick = vi.fn();
+    // Would throw before the fix, failing the test at render.
+    render(<Radio checked onClick={onClick} />);
+    const radio = screen.getByRole("radio");
+    expect(radio).toBeChecked();
+    fireEvent.click(radio);
+    expect(onClick).toHaveBeenCalled();
+  });
+
+  // PromptOutput drives its standalone radio with onChange, not onClick, so
+  // both handlers have to reach the native input.
+  it("Radio forwards onChange on a standalone radio", () => {
+    const onChange = vi.fn();
+    render(<Radio checked={false} onChange={onChange} />);
+    fireEvent.click(screen.getByRole("radio"));
+    expect(onChange).toHaveBeenCalled();
+  });
+
+  it("Radio reflects an unchecked standalone state", () => {
+    render(<Radio checked={false} />);
+    expect(screen.getByRole("radio")).not.toBeChecked();
   });
 
   it("Radio.Group renders its options and fires an event-shaped onChange", () => {
