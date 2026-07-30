@@ -3720,6 +3720,7 @@ dev = [
     { name = "unstract-workflow-execution" },
 ]
 test = [
+    { name = "jsonschema" },
     { name = "pytest" },
 ]
 
@@ -3784,7 +3785,10 @@ dev = [
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
 ]
-test = [{ name = "pytest", specifier = ">=8.0.1" }]
+test = [
+    { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
+    { name = "pytest", specifier = ">=8.0.1" },
+]
 
 [[package]]
 name = "unstract-connectors"

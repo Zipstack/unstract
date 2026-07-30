@@ -1,323 +1,208 @@
 """Regression tests for ``PromptStudioRegistryHelper.frame_spec``'s handling of
 ``challenge_llm``.
 
-Pins the fix for the deploy-time failure where an exported tool that never used
-LLMChallenge ended in pipeline status ERROR with
-``422 Unprocessable Entity: Tool validation failed``.
+Pins the fix for the deploy-time failure where an exported tool ended in
+pipeline status ERROR with ``422 Unprocessable Entity: Tool validation failed``.
 
 The mechanism these tests lock down:
 
-  1. ``get_default_settings`` seeds a ``"type": "string"`` property that has no
-     spec ``default`` with ``""``, so the tool instance stores
-     ``challenge_llm: ""``.
+  1. ``ToolUtils.get_default_settings`` seeds each spec property into tool
+     instance metadata using the spec ``default`` when present, else the zero
+     value for the declared type -- ``""`` for a string.
   2. A property declaring ``adapterType: "LLM"`` gets an ``enum`` of real
      adapter IDs injected by ``_update_schema_for_adapter_type``.
-  3. ``""`` is not in that enum, so validation rejects it -- and this fired
-     regardless of ``enable_challenge``.
+  3. ``""`` is not in that enum, so deployment validation rejected it.
 
-Note the failure is an **enum** violation, not a ``required`` one: a
-present-but-empty key satisfies ``required``. Dropping ``challenge_llm`` from
-``required`` alone therefore does *not* fix it, which is why ``frame_spec``
-makes the ``adapterType`` declaration itself conditional. These tests assert
-that distinction directly so a future "simplification" back to an unconditional
-``adapterType`` fails loudly.
+The fix seeds ``challenge_llm`` with a resolved adapter ID rather than dropping
+its ``adapterType``. That distinction is load-bearing and is asserted directly
+here: ``adapterType`` is the sole discriminator in ``Spec.get_adapter_properties``
+(tool-registry ``dto.py``), so removing it would silently unregister
+``challenge_llm`` from every adapter-aware path -- the ``challenge_llm_adapter_id``
+write that runtime reads, the settings-form dropdown, and the lazy adapter-id
+migration check. ``test_adapter_type_is_always_declared`` fails loudly if a
+future change pops it again.
 
-The tests exercise the **real** ``frame_spec`` body and the **real**
-``_update_schema_for_adapter_type`` body composed together, rather than
-reimplementing either -- a copy of the logic would stay green even if the
-shipped code broke.
-
-Django is not importable in a plain checkout (no ``pytest-django``; the app
-registry is not loaded), and both helpers live in Django-coupled modules. So
-the two function bodies are extracted from source and executed against stubs,
-mirroring the approach in
-``prompt_studio_core_v2/tests/test_build_index_payload.py``. If either function
-cannot be extracted -- because it was renamed or restructured -- the tests fail
-rather than silently skip.
+These tests exercise the real ``frame_spec`` and the real
+``_update_schema_for_adapter_type``, importing both normally and patching only
+the two DB lookups (the default profile and the adapter list). No module is
+stubbed into ``sys.modules``: that pattern shadows the real ``unstract.*``
+packages for every later test in the pytest process and was deliberately removed
+from this repo (see ``9a76a745`` and ``b60dd6f3``).
 """
 
 from __future__ import annotations
 
-import enum
-import importlib.util
-import re
-import sys
-import textwrap
-import types
-from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock, patch
 
+import jsonschema
 import pytest
+from tool_instance_v2.tool_processor import ToolProcessor
+from unstract.sdk1.constants import AdapterTypes
+from unstract.tool_registry.dto import Spec
+from unstract.tool_registry.tool_utils import ToolUtils
 
-jsonschema = pytest.importorskip(
-    "jsonschema", reason="jsonschema is required to exercise the real validator"
+from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
+    PromptStudioRegistryHelper,
 )
-
-BACKEND_DIR = Path(__file__).resolve().parents[3]
-REPO_ROOT = BACKEND_DIR.parent
-
-REGISTRY_HELPER = (
-    BACKEND_DIR
-    / "prompt_studio"
-    / "prompt_studio_registry_v2"
-    / "prompt_studio_registry_helper.py"
-)
-TOOL_PROCESSOR = BACKEND_DIR / "tool_instance_v2" / "tool_processor.py"
-DTO_PATH = REPO_ROOT / "unstract" / "tool-registry" / "src" / "unstract" / "tool_registry"
-
-
-class _AdapterTypes(str, enum.Enum):
-    LLM = "LLM"
-    EMBEDDING = "EMBEDDING"
-    VECTOR_DB = "VECTOR_DB"
-    X2TEXT = "X2TEXT"
-    OCR = "OCR"
-
-
-def _stub_package(name: str, **attrs: Any) -> types.ModuleType:
-    module = types.ModuleType(name)
-    module.__path__ = []  # type: ignore[attr-defined]
-    for key, value in attrs.items():
-        setattr(module, key, value)
-    sys.modules[name] = module
-    return module
-
-
-def _load_spec_class() -> Any:
-    """Load the real ``Spec`` dataclass without importing the SDK-heavy package."""
-    _stub_package("unstract")
-    _stub_package("unstract.sdk1")
-    _stub_package("unstract.sdk1.constants", AdapterTypes=_AdapterTypes)
-    _stub_package("unstract.tool_registry")
-
-    constants_spec = importlib.util.spec_from_file_location(
-        "unstract.tool_registry.constants", DTO_PATH / "constants.py"
-    )
-    constants = importlib.util.module_from_spec(constants_spec)
-    constants_spec.loader.exec_module(constants)
-    sys.modules["unstract.tool_registry.constants"] = constants
-
-    dto_spec = importlib.util.spec_from_file_location(
-        "unstract.tool_registry.dto", DTO_PATH / "dto.py"
-    )
-    dto = importlib.util.module_from_spec(dto_spec)
-    dto_spec.loader.exec_module(dto)
-    return dto.Spec
-
-
-def _extract_function(path: Path, start_marker: str) -> str:
-    """Return the dedented source of a method beginning with ``start_marker``.
-
-    Fails the test if the marker is absent, so a rename surfaces here instead of
-    quietly reducing coverage.
-    """
-    source = path.read_text()
-    if start_marker not in source:
-        pytest.fail(
-            f"Could not find {start_marker!r} in {path}. If it was renamed or "
-            "restructured, update this test rather than deleting it."
-        )
-    body = source[source.index(start_marker) :]
-    end = body.find("\n    @staticmethod")
-    if end != -1:
-        body = body[:end]
-    return textwrap.dedent(body)
-
-
-SPEC_CLS = _load_spec_class()
-
-
-def _load_json_schema_key() -> Any:
-    spec = importlib.util.spec_from_file_location(
-        "_psr_constants",
-        BACKEND_DIR / "prompt_studio" / "prompt_studio_registry_v2" / "constants.py",
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.JsonSchemaKey
-
-
-def _real_frame_spec():
-    body = _extract_function(
-        REGISTRY_HELPER, "    def frame_spec(tool: CustomTool) -> Spec:"
-    )
-    body = body.replace(
-        "def frame_spec(tool: CustomTool) -> Spec:", "def frame_spec(tool):"
-    )
-    namespace: dict[str, Any] = {
-        "Spec": SPEC_CLS,
-        "Any": Any,
-        "JsonSchemaKey": _load_json_schema_key(),
-    }
-    exec(compile(body, str(REGISTRY_HELPER), "exec"), namespace)
-    return namespace["frame_spec"]
-
-
-def _real_update_schema():
-    """Extract ``_update_schema_for_adapter_type`` with a stubbed adapter lookup."""
-    body = _extract_function(TOOL_PROCESSOR, "    def _update_schema_for_adapter_type(")
-    body = re.sub(
-        r"def _update_schema_for_adapter_type\([^)]*\)[^:]*:",
-        "def update_schema(schema, keys, adapter_type, user):",
-        body,
-        flags=re.S,
-    )
-
-    class _Adapter:
-        def __init__(self, adapter_id: str, name: str) -> None:
-            self.id = adapter_id
-            self.adapter_name = name
-
-    class _AdapterProcessor:
-        @staticmethod
-        def get_adapters_by_type(adapter_type: Any, user: Any = None) -> list[_Adapter]:
-            return [_Adapter(REAL_ADAPTER_ID, "My LLM")]
-
-    namespace: dict[str, Any] = {
-        "AdapterProcessor": _AdapterProcessor,
-        "Spec": SPEC_CLS,
-        "AdapterTypes": _AdapterTypes,
-        "User": object,
-        "Any": Any,
-    }
-    exec(compile(body, str(TOOL_PROCESSOR), "exec"), namespace)
-    return namespace["update_schema"]
-
 
 REAL_ADAPTER_ID = "11111111-2222-3333-4444-555555555555"
+OTHER_ADAPTER_ID = "99999999-8888-7777-6666-555555555555"
+
+PROFILE_LOOKUP = (
+    "prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper"
+    ".ProfileManager.get_default_llm_profile"
+)
+ADAPTER_LOOKUP = (
+    "tool_instance_v2.tool_processor.AdapterProcessor.get_adapters_by_type"
+)
 
 
-@dataclass
-class _FakeCustomTool:
+def _make_tool(*, enable_challenge: bool, challenge_llm_id: str | None = None):
     """Minimal stand-in for ``CustomTool`` -- ``frame_spec`` reads only these."""
+    tool = MagicMock(name="CustomTool")
+    tool.tool_id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    tool.description = "A tool exported from Prompt Studio"
+    tool.enable_challenge = enable_challenge
+    tool.challenge_llm = (
+        None if challenge_llm_id is None else MagicMock(id=challenge_llm_id)
+    )
+    return tool
 
-    tool_id: str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    description: str = "A tool exported from Prompt Studio"
-    enable_challenge: bool = False
+
+def _default_profile(llm_id: str = REAL_ADAPTER_ID):
+    return MagicMock(llm=MagicMock(id=llm_id))
 
 
-def _build_instance_schema(*, enable_challenge: bool) -> dict[str, Any]:
+def _frame_spec(tool: Any) -> Spec:
+    with patch(PROFILE_LOOKUP, return_value=_default_profile()):
+        return PromptStudioRegistryHelper.frame_spec(tool=tool)
+
+
+def _build_instance_schema(tool: Any) -> dict[str, Any]:
     """Compose export-time ``frame_spec`` with deploy-time enum injection.
 
-    This is the exact path a tool instance's metadata is validated against:
-    ``frame_spec`` output is persisted as ``tool_spec`` and later rehydrated via
-    ``Spec.from_dict`` in ``get_tool_by_prompt_registry_id``.
+    This is the path a tool instance's metadata is validated against:
+    ``frame_spec`` output is persisted as ``tool_spec`` and later rehydrated
+    via ``Spec.from_dict`` in ``get_tool_by_prompt_registry_id``.
     """
-    frame_spec = _real_frame_spec()
-    update_schema = _real_update_schema()
-
-    spec = frame_spec(_FakeCustomTool(enable_challenge=enable_challenge))
-    llm_keys = spec.get_llm_adapter_properties_keys()
-    update_schema(spec, llm_keys, _AdapterTypes.LLM, None)
+    spec = _frame_spec(tool)
+    adapters = [MagicMock(id=REAL_ADAPTER_ID, adapter_name="My LLM")]
+    with patch(ADAPTER_LOOKUP, return_value=adapters):
+        ToolProcessor._update_schema_for_adapter_type(
+            spec, spec.get_llm_adapter_properties_keys(), AdapterTypes.LLM, None
+        )
     return spec.to_dict()
+
+
+def _seeded_metadata(spec_dict: dict[str, Any]) -> dict[str, Any]:
+    """Seed instance metadata the way tool-instance creation really does.
+
+    Calls the real ``ToolUtils.get_default_settings`` rather than reimplementing
+    its type->zero-value table, so a change to the seeding rule surfaces here.
+    """
+    tool = MagicMock()
+    tool.spec = Spec.from_dict(spec_dict)
+    return ToolUtils.get_default_settings(tool)
 
 
 def _validation_errors(schema: dict[str, Any], instance: dict[str, Any]) -> list[Any]:
     return list(jsonschema.Draft7Validator(schema).iter_errors(instance))
 
 
-def _seeded_default(schema: dict[str, Any], prop: str) -> Any:
-    """Mimic ``ToolUtils.get_default_settings`` for a single property.
+@pytest.mark.parametrize("enable_challenge", [False, True])
+class TestSeededInstanceDeploys:
+    """A freshly created tool instance must pass deployment validation.
 
-    Kept in lockstep with the real seeding rule: use the spec ``default`` when
-    present, else the zero value for the declared type.
+    This is the reported bug, and it fired regardless of ``enable_challenge``.
     """
-    prop_schema = schema["properties"][prop]
-    if "default" in prop_schema:
-        return prop_schema["default"]
-    return {"string": "", "integer": 0, "boolean": False}[prop_schema["type"]]
 
+    def test_seeded_metadata_validates(self, enable_challenge: bool) -> None:
+        schema = _build_instance_schema(_make_tool(enable_challenge=enable_challenge))
 
-class TestChallengeDisabled:
-    """With LLMChallenge off, an unset ``challenge_llm`` must deploy cleanly."""
-
-    def test_seeded_empty_value_validates(self) -> None:
-        """The reported bug: a tool that never used LLMChallenge 422s on deploy."""
-        schema = _build_instance_schema(enable_challenge=False)
-        seeded = _seeded_default(schema, "challenge_llm")
-
-        errors = _validation_errors(schema, {"challenge_llm": seeded})
+        errors = _validation_errors(schema, _seeded_metadata(schema))
 
         assert errors == [], (
-            "An instance seeded by get_default_settings must validate when "
-            f"LLMChallenge is off; got {[e.validator for e in errors]}"
+            "Metadata seeded by get_default_settings must pass deployment "
+            f"validation; got {[e.validator for e in errors]}"
         )
 
-    def test_no_enum_is_injected(self) -> None:
-        """No ``adapterType`` means no enum, which is what makes "unset" legal.
+    def test_seeded_challenge_llm_is_a_real_adapter_id(
+        self, enable_challenge: bool
+    ) -> None:
+        """The seeded value must be usable, not merely valid."""
+        schema = _build_instance_schema(_make_tool(enable_challenge=enable_challenge))
 
-        Guards the actual fix: dropping ``required`` alone would leave the enum
-        in place and the 422 intact.
+        assert _seeded_metadata(schema)["challenge_llm"] == REAL_ADAPTER_ID
+
+    def test_adapter_type_is_always_declared(self, enable_challenge: bool) -> None:
+        """``adapterType`` gates every adapter-aware path -- never drop it.
+
+        Without it ``challenge_llm`` leaves ``get_llm_adapter_properties()``, so
+        ``challenge_llm_adapter_id`` is never written and the settings form
+        loses its adapter dropdown.
         """
-        schema = _build_instance_schema(enable_challenge=False)
+        spec = _frame_spec(_make_tool(enable_challenge=enable_challenge))
 
-        assert "enum" not in schema["properties"]["challenge_llm"], (
-            "challenge_llm must not carry an adapter enum while LLMChallenge is "
-            "off, otherwise the empty seeded value is unrepresentable"
-        )
+        assert "challenge_llm" in spec.get_llm_adapter_properties_keys()
+        assert "challenge_llm" in spec.get_llm_adapter_properties()
 
-    def test_challenge_llm_is_not_required(self) -> None:
-        schema = _build_instance_schema(enable_challenge=False)
-        assert "challenge_llm" not in schema.get("required", [])
+    def test_dropdown_metadata_is_present(self, enable_challenge: bool) -> None:
+        """The settings form renders its dropdown from enum/enumNames."""
+        schema = _build_instance_schema(_make_tool(enable_challenge=enable_challenge))
+        prop = schema["properties"]["challenge_llm"]
 
-    def test_a_real_adapter_id_still_validates(self) -> None:
-        """Turning the feature off must not reject a value the user did set."""
-        schema = _build_instance_schema(enable_challenge=False)
-        assert _validation_errors(schema, {"challenge_llm": REAL_ADAPTER_ID}) == []
+        assert prop["enum"] == [REAL_ADAPTER_ID]
+        assert prop["enumNames"] == ["My LLM"]
+
+    def test_challenge_llm_stays_required(self, enable_challenge: bool) -> None:
+        """Always seeded, so requiredness costs nothing and keeps the contract."""
+        schema = _build_instance_schema(_make_tool(enable_challenge=enable_challenge))
+
+        assert "challenge_llm" in schema["required"]
 
 
-class TestChallengeEnabled:
-    """With LLMChallenge on, the adapter constraint must still be enforced."""
+class TestChallengeLlmResolution:
+    """``frame_spec`` seeds the same LLM the export path resolves."""
 
-    def test_empty_value_is_rejected(self) -> None:
-        """The fix must not open a hole: challenge on + no LLM must not pass.
+    def test_tool_challenge_llm_takes_precedence(self) -> None:
+        tool = _make_tool(enable_challenge=True, challenge_llm_id=OTHER_ADAPTER_ID)
+        with patch(PROFILE_LOOKUP, return_value=_default_profile()) as get_default:
+            spec = PromptStudioRegistryHelper.frame_spec(tool=tool)
 
-        This is the regression that a careless "just allow empty strings"
-        implementation would introduce.
-        """
-        schema = _build_instance_schema(enable_challenge=True)
+        assert spec.properties["challenge_llm"]["default"] == OTHER_ADAPTER_ID
+        get_default.assert_not_called()
+
+    def test_falls_back_to_default_profile_llm(self) -> None:
+        spec = _frame_spec(_make_tool(enable_challenge=False))
+
+        assert spec.properties["challenge_llm"]["default"] == REAL_ADAPTER_ID
+
+
+class TestInvalidValuesStillRejected:
+    """The fix must not open a hole: a bad adapter must still fail."""
+
+    @pytest.mark.parametrize("enable_challenge", [False, True])
+    def test_empty_value_is_rejected(self, enable_challenge: bool) -> None:
+        """A stored ``""`` -- the pre-fix state -- must not validate."""
+        schema = _build_instance_schema(_make_tool(enable_challenge=enable_challenge))
 
         errors = _validation_errors(schema, {"challenge_llm": ""})
 
-        assert errors, "An enabled LLMChallenge must not accept an empty adapter"
-        assert any(
-            error.validator == "enum" for error in errors
-        ), f"Expected an enum violation, got {[e.validator for e in errors]}"
+        assert any(e.validator == "enum" for e in errors), (
+            f"Expected an enum violation, got {[e.validator for e in errors]}"
+        )
+
+    def test_unknown_adapter_id_is_rejected(self) -> None:
+        schema = _build_instance_schema(_make_tool(enable_challenge=True))
+
+        errors = _validation_errors(schema, {"challenge_llm": OTHER_ADAPTER_ID})
+
+        assert any(e.validator == "enum" for e in errors)
 
     def test_missing_key_is_rejected(self) -> None:
-        schema = _build_instance_schema(enable_challenge=True)
+        schema = _build_instance_schema(_make_tool(enable_challenge=True))
+
         errors = _validation_errors(schema, {})
-        assert any(error.validator == "required" for error in errors)
 
-    def test_real_adapter_id_validates(self) -> None:
-        schema = _build_instance_schema(enable_challenge=True)
-        assert _validation_errors(schema, {"challenge_llm": REAL_ADAPTER_ID}) == []
-
-    def test_enum_holds_real_adapter_ids(self) -> None:
-        schema = _build_instance_schema(enable_challenge=True)
-        assert schema["properties"]["challenge_llm"]["enum"] == [REAL_ADAPTER_ID]
-
-
-def test_other_adapter_properties_are_untouched() -> None:
-    """The fix is scoped to ``challenge_llm``.
-
-    ``_update_schema_for_adapter_type`` runs for LLM/EMBEDDING/VECTOR_DB/X2TEXT/
-    OCR on every tool. Broadening the empty-value allowance there would make
-    ``""`` valid for every optional adapter on every tool -- and then fail at
-    runtime on ``AdapterInstance.objects.get(id="")``. This asserts the enum is
-    injected verbatim for a property this fix does not own.
-    """
-    update_schema = _real_update_schema()
-    spec = SPEC_CLS(
-        title="unrelated-tool",
-        description="A tool that is not from Prompt Studio",
-        required=[],
-        properties={"some_llm": {"type": "string", "adapterType": "LLM"}},
-    )
-
-    update_schema(spec, ["some_llm"], _AdapterTypes.LLM, None)
-
-    assert spec.properties["some_llm"]["enum"] == [REAL_ADAPTER_ID], (
-        "Adapter enums outside challenge_llm must keep listing only real " "adapter IDs"
-    )
+        assert any(e.validator == "required" for e in errors)

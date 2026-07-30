@@ -71,7 +71,10 @@ dev = [
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]
-test = ["pytest>=8.0.1"]
+# jsonschema also arrives via unstract-tool-registry, but the schema tests
+# import it directly - declare it so the suite fails loudly rather than
+# skipping if that transitive path ever changes.
+test = ["pytest>=8.0.1", "jsonschema>=4.18.6,<5.0"]
 deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let uv decide version

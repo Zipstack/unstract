@@ -723,11 +723,10 @@ class PromptStudioHelper:
 
         # A prompt need not carry its own profile FK - fall back to the project
         # default, matching index_document and single-pass extraction.
+        # get_default_llm_profile raises DefaultProfileError when no project
+        # default exists, so there is no falsy case left to guard against.
         if not profile_manager:
             profile_manager = ProfileManager.get_default_llm_profile(tool)
-
-        if not profile_manager:
-            raise DefaultProfileError()
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
@@ -912,7 +911,11 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(prompt.prompt_id)],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None) argument.
+            # The callback otherwise re-resolves the project default, so a
+            # default change mid-run would book output against a different
+            # profile than the one that produced it.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -1819,11 +1822,10 @@ class PromptStudioHelper:
 
         # A prompt need not carry its own profile FK - fall back to the project
         # default, matching index_document and single-pass extraction.
+        # get_default_llm_profile raises DefaultProfileError when no project
+        # default exists, so there is no falsy case left to guard against.
         if not profile_manager:
             profile_manager = ProfileManager.get_default_llm_profile(tool)
-
-        if not profile_manager:
-            raise DefaultProfileError()
 
         monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
         monitor_llm: str | None = None

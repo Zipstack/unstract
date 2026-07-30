@@ -38,6 +38,23 @@ class PromptStudioRegistryHelper:
     """
 
     @staticmethod
+    def _resolve_challenge_llm_id(tool: CustomTool) -> str:
+        """Resolve the adapter ID to seed as challenge_llm's spec default.
+
+        Mirrors the precedence frame_export_json already uses: the tool's own
+        challenge_llm FK, else the project default profile's LLM.
+
+        Args:
+            tool (CustomTool): Saved tool data
+
+        Returns:
+            str: Adapter instance ID of the challenger LLM
+        """
+        if tool.challenge_llm:
+            return str(tool.challenge_llm.id)
+        return str(ProfileManager.get_default_llm_profile(tool).llm.id)
+
+    @staticmethod
     def frame_spec(tool: CustomTool) -> Spec:
         """Method to return spec of the Custom tool.
 
@@ -47,22 +64,27 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
+        # A "type": "string" property with no spec default is seeded into tool
+        # instance metadata as "" (ToolUtils.get_default_settings). Because
+        # challenge_llm declares adapterType, the instance schema carries an
+        # enum of real adapter IDs, which "" can never satisfy - so deployment
+        # validation rejected a tool that never used LLMChallenge.
+        #
+        # Seed the resolved LLM instead of leaving it empty. adapterType stays
+        # declared unconditionally: it is the sole discriminator in
+        # Spec.get_adapter_properties() (tool-registry dto.py), so dropping it
+        # would take challenge_llm out of every adapter-aware path - the
+        # challenge_llm_adapter_id writes that runtime actually reads
+        # (structure_tool_task.py), the settings-form adapter dropdown, and the
+        # lazy adapter-id migration check.
         challenge_llm_property: dict[str, Any] = {
             "type": "string",
             "title": "Challenger LLM",
             "adapterType": "LLM",
             "description": "LLM to use for LLMChallenge",
             "adapterIdKey": "challenge_llm_adapter_id",
+            "default": PromptStudioRegistryHelper._resolve_challenge_llm_id(tool),
         }
-        if not tool.enable_challenge:
-            # With LLMChallenge off the tool instance stores challenge_llm as ""
-            # (no spec default to seed it). Declaring adapterType here would make
-            # the tool instance schema carry an enum of real adapter IDs only,
-            # which "" can never satisfy - so deployment validation rejects a
-            # tool that never used LLMChallenge in the first place. Leave the
-            # property a free-form string until the feature is switched on.
-            challenge_llm_property.pop("adapterType")
-            challenge_llm_property["default"] = ""
 
         properties = {
             "challenge_llm": challenge_llm_property,
@@ -98,15 +120,10 @@ class PromptStudioRegistryHelper:
             },
         }
 
-        # challenge_llm is only meaningful when LLMChallenge is enabled. Marking
-        # it required unconditionally makes a tool instance that never set one
-        # fail validation at deployment time, long after export succeeded.
-        required = [JsonSchemaKey.CHALLENGE_LLM] if tool.enable_challenge else []
-
         spec = Spec(
             title=str(tool.tool_id),
             description=tool.description,
-            required=required,
+            required=[JsonSchemaKey.CHALLENGE_LLM],
             properties=properties,
         )
         return spec
