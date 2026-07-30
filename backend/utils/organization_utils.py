@@ -72,7 +72,23 @@ def get_organization_context(organization: Organization) -> dict[str, Any]:
 
 
 def filter_queryset_by_organization(queryset, request, organization_field="organization"):
-    """Filter a Django queryset by organization context from request.
+    """Filter a Django queryset by the request's organization context.
+
+    Fails closed. Six internal viewsets set ``skip_org_filter = True``, which
+    disables OrganizationFilterBackend, leaving this function as their only
+    tenant boundary — so returning the queryset unfiltered when there is no
+    organization context hands back every organization's rows. A scoping helper
+    returns nothing when it cannot scope, never everything.
+
+    The absent-header case is not exotic: ``InternalAPIAuthMiddleware`` logs a
+    warning and continues when ``X-Organization-ID`` is missing, so any caller
+    holding the internal service key reaches here without context simply by
+    omitting it.
+
+    Note for callers that genuinely span organizations — the leader-elected
+    reaper is one — query the model directly rather than routing through here.
+    ``recover_stuck_pg_executions`` already does, which is why failing closed
+    does not affect it.
 
     Args:
         queryset: Django QuerySet to filter
@@ -80,16 +96,22 @@ def filter_queryset_by_organization(queryset, request, organization_field="organ
         organization_field: Field name for organization relationship (default: 'organization')
 
     Returns:
-        Filtered queryset or empty queryset if organization not found
+        The queryset filtered to the request's organization, or an empty
+        queryset when the organization is absent or unresolvable.
     """
     org_id = getattr(request, "organization_id", None)
-    if org_id:
-        organization = resolve_organization(org_id, raise_on_not_found=False)
-        if organization:
-            # Use dynamic field lookup
-            filter_kwargs = {organization_field: organization}
-            return queryset.filter(**filter_kwargs)
-        else:
-            # Return empty queryset if organization not found
-            return queryset.none()
-    return queryset
+    if not org_id:
+        logger.warning(
+            "Organization scoping requested without organization context on %s; "
+            "returning no rows. A caller that must span organizations should "
+            "query the model directly instead of using this helper.",
+            getattr(request, "path", "<unknown path>"),
+        )
+        return queryset.none()
+
+    organization = resolve_organization(org_id, raise_on_not_found=False)
+    if not organization:
+        logger.warning("Organization %s not found; returning no rows.", org_id)
+        return queryset.none()
+
+    return queryset.filter(**{organization_field: organization})
