@@ -94,26 +94,38 @@ def test_extra_compose_files_rejects_missing(monkeypatch, tmp_path) -> None:
         _extra_compose_files()
 
 
-def test_down_uses_config_snapshot_after_overlay_removed(monkeypatch, tmp_path) -> None:
-    """An overlay deleted mid-run must still be torn down, resources included."""
+_OVERLAY_YAML = "services:\n  mock:\n    image: mock:latest\n"
+
+
+def _up_then_delete_overlay(monkeypatch, tmp_path, *, snapshot_ok: bool):
+    """up() with an extra overlay, then delete it — the mid-run removal case.
+
+    Returns (runtime_module, docker_commands, subprocess_calls).
+    """
     from tests.rig import runtime as rt
 
     extra = tmp_path / "extra.yaml"
-    extra.write_text("services:\n  mock:\n    image: mock:latest\n")
+    extra.write_text(_OVERLAY_YAML)
     monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(extra))
     monkeypatch.setattr(rt.shutil, "which", lambda _: "/usr/bin/docker")
     monkeypatch.setattr(rt, "_wait_ready", lambda *_a, **_k: None)
 
     commands: list[list[str]] = []
     monkeypatch.setattr(rt, "_run", lambda cmd, **_k: commands.append(cmd))
-    # Stand in for `docker compose config`: echo the overlay-only service back.
-    monkeypatch.setattr(
-        rt.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess(
-            [], 0, stdout="services:\n  mock:\n    image: mock:latest\n", stderr=""
-        ),
-    )
+
+    # Stands in for `docker compose config` (and, after down, `docker volume`).
+    calls: list[list[str]] = []
+
+    def fake_run(cmd, *_a, **_k):
+        calls.append(cmd)
+        return subprocess.CompletedProcess(
+            cmd,
+            0 if snapshot_ok else 1,
+            stdout=_OVERLAY_YAML if snapshot_ok else "",
+            stderr="" if snapshot_ok else "boom",
+        )
+
+    monkeypatch.setattr(rt.subprocess, "run", fake_run)
 
     compose = rt.ComposeRuntime()
     compose.up()
@@ -122,45 +134,39 @@ def test_down_uses_config_snapshot_after_overlay_removed(monkeypatch, tmp_path) 
     extra.unlink()
     monkeypatch.setattr(compose, "_dump_logs", lambda _files: None)
     compose.down()
+    return rt, extra, commands, calls
+
+
+def test_down_uses_config_snapshot_after_overlay_removed(monkeypatch, tmp_path) -> None:
+    """The snapshot keeps the removed overlay's resources in scope for down -v."""
+    _rt, _extra, commands, _calls = _up_then_delete_overlay(
+        monkeypatch, tmp_path, snapshot_ok=True
+    )
 
     down_cmd = commands[-1]
     assert down_cmd[-3:] == ["down", "-v", "--remove-orphans"]
     snapshot = Path(down_cmd[down_cmd.index("-f") + 1])
     assert snapshot.is_file()
-    # The removed overlay's service survives in the snapshot, so `down -v` still
-    # owns everything it defined.
     assert "mock:latest" in snapshot.read_text()
 
 
-def test_down_drops_removed_overlay_when_snapshot_failed(monkeypatch, tmp_path) -> None:
-    """Snapshot failure plus a removed overlay must still tear the project down."""
-    from tests.rig import runtime as rt
-
-    extra = tmp_path / "extra.yaml"
-    extra.write_text("services:\n  mock:\n    image: mock:latest\n")
-    monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(extra))
-    monkeypatch.setattr(rt.shutil, "which", lambda _: "/usr/bin/docker")
-    monkeypatch.setattr(rt, "_wait_ready", lambda *_a, **_k: None)
-
-    commands: list[list[str]] = []
-    monkeypatch.setattr(rt, "_run", lambda cmd, **_k: commands.append(cmd))
-    monkeypatch.setattr(
-        rt.subprocess,
-        "run",
-        lambda *_a, **_k: subprocess.CompletedProcess([], 1, stdout="", stderr="boom"),
+def test_down_sweeps_volumes_when_snapshot_failed(monkeypatch, tmp_path) -> None:
+    """Without a snapshot the file is dropped, so volumes go by project label."""
+    rt, extra, commands, calls = _up_then_delete_overlay(
+        monkeypatch, tmp_path, snapshot_ok=False
     )
-
-    compose = rt.ComposeRuntime()
-    compose.up()
-
-    extra.unlink()
-    monkeypatch.setattr(compose, "_dump_logs", lambda _files: None)
-    compose.down()
 
     down_cmd = commands[-1]
     assert down_cmd[-3:] == ["down", "-v", "--remove-orphans"]
     assert str(extra) not in down_cmd
     assert str(rt.BASE_COMPOSE) in down_cmd
+    # Teardown can no longer see what the overlay declared, so it falls back to
+    # the label every compose-created volume carries.
+    assert any(
+        c[:3] == ["docker", "volume", "ls"]
+        and any("com.docker.compose.project=" in part for part in c)
+        for c in calls
+    ), calls
 
 
 def test_login_provider_defaults_to_oss(monkeypatch) -> None:

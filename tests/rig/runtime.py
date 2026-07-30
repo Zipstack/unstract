@@ -206,21 +206,51 @@ class ComposeRuntime:
                 files = ["-f", str(BASE_COMPOSE)]
         # No-op on the snapshot, which is a single file we wrote ourselves; this
         # covers the raw-path cases (snapshot unavailable, or no prior up()).
-        files = _drop_missing_files(files)
-        self._dump_logs(files)
+        readable = _drop_missing_files(files)
+        self._dump_logs(readable)
         _run(
             [
                 "docker",
                 "compose",
                 "-p",
                 self.project_name,
-                *files,
+                *readable,
                 "down",
                 "-v",
                 "--remove-orphans",
             ],
             check=False,
         )
+        if len(readable) != len(files):
+            # `down -v` only removes volumes it can still see declared, so a
+            # dropped file takes its volumes out of scope. The project label is
+            # on them regardless of which file declared them.
+            self._remove_project_volumes()
+
+    def _remove_project_volumes(self) -> None:
+        try:
+            listed = subprocess.run(  # noqa: S603
+                [
+                    "docker",
+                    "volume",
+                    "ls",
+                    "-q",
+                    "--filter",
+                    f"label=com.docker.compose.project={self.project_name}",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            names = listed.stdout.split()
+            if names:
+                subprocess.run(  # noqa: S603
+                    ["docker", "volume", "rm", "-f", *names],
+                    capture_output=True,
+                    check=False,
+                )
+        except OSError as exc:
+            log.warning("Could not remove leftover project volumes: %s", exc)
 
     def _snapshot_config(self, files: list[str]) -> list[str] | None:
         """Freeze the merged compose config so teardown never rereads the sources.
