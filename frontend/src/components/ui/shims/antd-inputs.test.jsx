@@ -77,7 +77,22 @@ describe("antd-compatible input shims (P3-03)", () => {
 
   it("drops the min-height floor when autoSize sizes the box", () => {
     render(<Input.TextArea autoSize />);
-    expect(screen.getByRole("textbox").className).toContain("min-h-0");
+    const cls = screen.getByRole("textbox").className;
+    expect(cls).toContain("min-h-0");
+    expect(cls).not.toContain("min-h-[60px]");
+  });
+
+  /*
+   * antd's small autoSize field computes `padding: 0` vertically and floors at
+   * 32px. Removing shadcn's 60px floor without matching those two numbers
+   * lands the box at 29px — close, but still off the reference.
+   */
+  it("matches antd's 32px floor and zero vertical padding when small", () => {
+    render(<Input.TextArea size="small" autoSize />);
+    const cls = screen.getByRole("textbox").className;
+    expect(cls).toContain("min-h-8");
+    expect(cls).toContain("py-0");
+    expect(cls).not.toContain("min-h-[60px]");
   });
 
   /*

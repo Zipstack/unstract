@@ -5,7 +5,12 @@ import {
   getSortedRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+} from "lucide-react";
 import * as React from "react";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -73,6 +78,47 @@ function toColumns(antdColumns = [], rowSelection) {
       enableSorting: false,
     },
     ...cols,
+  ];
+}
+
+/** One 24px square in antd's pager: a page number, an arrow, or the ellipsis. */
+function PagerButton({ children, label, active, ...props }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "inline-flex size-6 items-center justify-center rounded border text-xs transition-colors",
+        "disabled:cursor-not-allowed disabled:opacity-40",
+        active
+          ? "border-primary text-primary"
+          : "border-separator hover:border-primary hover:text-primary",
+      )}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * antd shows every page up to 7, then collapses the middle to an ellipsis so
+ * the pager keeps a fixed width. Returns page numbers with "…" for the gaps.
+ */
+function pageNumbers(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  // First and last are always reachable; the window slides around `current`.
+  const from = Math.max(2, Math.min(current - 1, total - 4));
+  const to = Math.min(total - 1, Math.max(current + 1, 5));
+  return [
+    1,
+    ...(from > 2 ? ["…"] : []),
+    ...Array.from({ length: to - from + 1 }, (_, i) => from + i),
+    ...(to < total - 1 ? ["…"] : []),
+    total,
   ];
 }
 
@@ -266,27 +312,47 @@ function DataTable({
        */}
       {paginated &&
       table.getPageCount() > (pagination?.hideOnSinglePage ? 1 : 0) ? (
-        <div className="flex items-center justify-end gap-2 py-3 text-sm">
-          <button
-            type="button"
-            className="rounded-md border px-2 py-1 disabled:opacity-50"
+        /*
+         * antd's pager is a 24px strip of square numbered buttons with 16px
+         * margins, right-aligned. The "Previous / Page 1 of 1 / Next" text row
+         * this replaces stood 56px tall and read as a different component
+         * beside the reference.
+         */
+        <div className="ant-pagination my-4 flex items-center justify-end gap-2 text-sm">
+          <PagerButton
+            label="Previous page"
             onClick={() => table.previousPage()}
             disabled={!table.getCanPreviousPage()}
           >
-            Previous
-          </button>
-          <span className="text-muted-foreground">
-            Page {table.getState().pagination.pageIndex + 1} of{" "}
-            {table.getPageCount()}
-          </span>
-          <button
-            type="button"
-            className="rounded-md border px-2 py-1 disabled:opacity-50"
+            <ChevronLeft className="size-3" />
+          </PagerButton>
+          {pageNumbers(
+            table.getState().pagination.pageIndex + 1,
+            table.getPageCount(),
+          ).map((page, i) =>
+            page === "…" ? (
+              // Keyed by position: the ellipsis carries no identity of its own.
+              <span key={`gap-${i}`} className="w-6 text-center">
+                …
+              </span>
+            ) : (
+              <PagerButton
+                key={page}
+                label={`Page ${page}`}
+                active={page === table.getState().pagination.pageIndex + 1}
+                onClick={() => table.setPageIndex(page - 1)}
+              >
+                {page}
+              </PagerButton>
+            ),
+          )}
+          <PagerButton
+            label="Next page"
             onClick={() => table.nextPage()}
             disabled={!table.getCanNextPage()}
           >
-            Next
-          </button>
+            <ChevronRight className="size-3" />
+          </PagerButton>
         </div>
       ) : null}
     </div>
