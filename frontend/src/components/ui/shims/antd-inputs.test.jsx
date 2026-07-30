@@ -237,6 +237,24 @@ describe("antd-compatible input shims (P3-03)", () => {
     });
 
     /*
+     * antd's `multiple` is a FIXED-OPTION multi-select with no free text.
+     * GroupMemberManager and FileHistoryModal use it to pick from a known
+     * list, so routing it to the tag editor would replace a picker with an
+     * arbitrary-text box and hide the options entirely.
+     */
+    it("does not route mode='multiple' to the free-text tag editor", () => {
+      render(
+        <Select
+          mode="multiple"
+          options={[{ value: "a", label: "Option A" }]}
+          placeholder="Pick some"
+        />,
+      );
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(screen.getByText("Pick some")).toBeInTheDocument();
+    });
+
+    /*
      * Custom Synonyms sits inside an antd Form; a bare Enter would submit it
      * and discard the pending entry.
      */
@@ -307,6 +325,16 @@ describe("antd-compatible input shims (P3-03)", () => {
     );
     expect(screen.getByText("One")).toBeInTheDocument();
     expect(screen.getByText("Two")).toBeInTheDocument();
+  });
+
+  /*
+   * antd v5's `variant` ("borderless" | "filled" | "outlined") replaced
+   * `bordered`. Custom Synonyms writes variant="borderless" on BOTH controls
+   * in its row, so an unconsumed prop reaches the DOM as an unknown attribute.
+   */
+  it("keeps antd's `variant` off the DOM input", () => {
+    render(<Input variant="borderless" />);
+    expect(screen.getByRole("textbox")).not.toHaveAttribute("variant");
   });
 
   it("passes disabled through to the underlying control", () => {

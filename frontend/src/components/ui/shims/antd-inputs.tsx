@@ -89,6 +89,12 @@ interface AntInputProps
   size?: SizeToken;
   status?: "error" | "warning";
   bordered?: boolean;
+  /**
+   * antd v5's replacement for `bordered` ("borderless" | "filled" |
+   * "outlined"). Consumed so it cannot reach the DOM as an unknown attribute —
+   * Custom Synonyms writes `variant="borderless"` on its word input.
+   */
+  variant?: string;
 }
 
 interface AntTextAreaProps
@@ -258,6 +264,7 @@ const InputBase = React.forwardRef<HTMLInputElement, AntInputProps>(
       size,
       status,
       bordered,
+      variant,
       showCount,
       className,
       ...props
@@ -541,8 +548,18 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
     },
     ref,
   ) {
-    // Free-text multi-value entry; Radix's Select cannot express it.
-    if (mode === "tags" || mode === "multiple") {
+    /*
+     * Free-text multi-value entry; Radix's Select cannot express it.
+     *
+     * ONLY `tags`. antd's `multiple` is a fixed-option multi-select over
+     * `options` with NO free text, and the two call-sites that use it
+     * (GroupMemberManager, FileHistoryModal) pick from a known list — routing
+     * them here would replace a picker with an arbitrary-text box and hide
+     * the options entirely. They still need a real multi-select; until that
+     * exists they keep the single-select fallback below, which at least shows
+     * the options.
+     */
+    if (mode === "tags") {
       return (
         <TagsInput
           value={
