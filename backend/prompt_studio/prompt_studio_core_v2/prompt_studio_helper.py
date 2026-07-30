@@ -1105,7 +1105,9 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None)
+            # argument - same reason as build_fetch_response_payload above.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
