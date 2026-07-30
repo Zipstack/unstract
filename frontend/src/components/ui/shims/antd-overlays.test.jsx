@@ -1,7 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import {
+  Collapse,
+  Dropdown,
+  Modal,
+  Tooltip,
+} from "@/components/ui/shims/antd-overlays";
 
 describe("antd-compatible overlay shims (P2)", () => {
   it("renders nothing when closed", () => {
@@ -273,6 +278,137 @@ describe("antd-compatible overlay shims (P2)", () => {
       expect(
         screen.getByRole("button", { name: "More actions" }),
       ).toBeDisabled();
+    });
+  });
+
+  /*
+   * `activeKey` is antd's CONTROLLED open state, and it is the ONLY way any
+   * call-site in this app opens a Collapse — the prompt card, the notes card
+   * and the LLM-profile form all render their own chevron in a header row
+   * above the panel and feed the result back in as `activeKey`. The shim
+   * originally read only `defaultActiveKey`, so `activeKey` fell through to
+   * `...props`, landed on the DOM as an unknown attribute, and every panel
+   * stayed shut: each prompt card showed its title bar and nothing else — no
+   * prompt text, no coverage, no LLM profile, no output.
+   *
+   * These assert VISIBILITY rather than mere rendering. A smoke test that only
+   * checked the tree rendered would have passed against the broken shim.
+   */
+  describe("Collapse activeKey (antd parity)", () => {
+    it("shows the panel body when activeKey names the panel", () => {
+      render(
+        <Collapse activeKey={"1"}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.getByText("card body")).toBeVisible();
+    });
+
+    // Call-sites write `activeKey={expandCard && "1"}`, so a closed card hands
+    // the shim `false` — which must read as "closed", not as a key.
+    it("hides the body when activeKey is false", () => {
+      render(
+        <Collapse activeKey={false}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.queryByText("card body")).not.toBeInTheDocument();
+    });
+
+    it("follows activeKey when the parent toggles it", () => {
+      const { rerender } = render(
+        <Collapse activeKey={false}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.queryByText("card body")).not.toBeInTheDocument();
+
+      rerender(
+        <Collapse activeKey={"1"}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.getByText("card body")).toBeVisible();
+    });
+
+    it("opens an `items` panel from activeKey too", () => {
+      render(
+        <Collapse
+          activeKey={"1"}
+          items={[{ key: "1", label: "Advanced", children: "settings body" }]}
+        />,
+      );
+      expect(screen.getByText("settings body")).toBeVisible();
+    });
+
+    // AddLlmProfile drives its panel from onChange; without it the header is dead.
+    it("reports toggles through onChange", () => {
+      const onChange = vi.fn();
+      render(
+        <Collapse
+          activeKey={false}
+          onChange={onChange}
+          items={[{ key: "1", label: "Advanced", children: "settings body" }]}
+        />,
+      );
+      fireEvent.click(screen.getByText("Advanced"));
+      expect(onChange).toHaveBeenCalledWith(["1"]);
+    });
+
+    it("renders the caller's expandIcon with the active state", () => {
+      render(
+        <Collapse
+          activeKey={"1"}
+          expandIcon={({ isActive }) => <span>{isActive ? "open" : "shut"}</span>}
+          items={[{ key: "1", label: "Advanced", children: "settings body" }]}
+        />,
+      );
+      expect(screen.getByText("open")).toBeInTheDocument();
+    });
+
+    // A panel with no header and no arrow must not grow a stray empty bar.
+    it("renders no header bar for a headerless, arrowless panel", () => {
+      const { container } = render(
+        <Collapse activeKey={"1"}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(container.querySelector(".ant-collapse-header")).toBeNull();
+    });
+
+    // ghost/size are antd styling props; they must not reach the DOM.
+    it("keeps antd-only styling props off the DOM", () => {
+      const { container } = render(
+        <Collapse ghost size="small" activeKey={"1"}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      const root = container.firstElementChild;
+      expect(root.getAttribute("ghost")).toBeNull();
+      expect(root.getAttribute("activeKey")).toBeNull();
+    });
+
+    it("still honours uncontrolled defaultActiveKey", () => {
+      render(
+        <Collapse defaultActiveKey={["1"]}>
+          <Collapse.Panel key="1" showArrow={false}>
+            card body
+          </Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.getByText("card body")).toBeVisible();
     });
   });
 });

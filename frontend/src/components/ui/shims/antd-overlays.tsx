@@ -202,9 +202,53 @@ interface CollapseItem {
   children?: React.ReactNode;
 }
 
-interface CollapseProps extends React.HTMLAttributes<HTMLDivElement> {
+/*
+ * antd accepts a key, a list of keys, or nothing. Call-sites additionally
+ * pass a boolean via `activeKey={someFlag && "1"}`, which evaluates to
+ * `false` when the flag is off.
+ */
+type CollapseKey = string | string[] | boolean | undefined;
+
+/*
+ * `React.Children.toArray` REWRITES keys, turning `<Collapse.Panel key="1">`
+ * into ".$1" — so comparing a call-site's `activeKey="1"` against the child's
+ * key never matches and the panel silently stays shut. Strip the prefix back
+ * off before comparing.
+ */
+function normalizeKey(key: React.Key | null | undefined): string {
+  return String(key ?? "").replace(/^\.\$/, "");
+}
+
+/** True when `key` is listed as open by an antd activeKey/defaultActiveKey. */
+function isKeyOpen(active: CollapseKey, key: React.Key | null): boolean {
+  if (active === undefined || active === false || active === true) {
+    // `true` is not a key either — antd would match nothing.
+    return false;
+  }
+  const target = normalizeKey(key);
+  return Array.isArray(active)
+    ? active.some((k) => String(k) === target)
+    : String(active) === target;
+}
+
+interface CollapseProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
   items?: CollapseItem[];
-  defaultActiveKey?: string | string[];
+  defaultActiveKey?: CollapseKey;
+  /*
+   * antd's CONTROLLED open state. All three call-sites use it, and several
+   * write `activeKey={expandCard && "1"}`, so `false` reaches us meaning
+   * "closed" — hence the `boolean` in CollapseKey rather than a bare string.
+   */
+  activeKey?: CollapseKey;
+  onChange?: (key: string[]) => void;
+  /** antd renders the caret itself; call-sites pass a render function. */
+  expandIcon?: (panel: { isActive: boolean }) => React.ReactNode;
+  /** Borderless variant — consumed so it cannot land on the DOM. */
+  ghost?: boolean;
+  size?: "small" | "middle" | "large";
+  accordion?: boolean;
+  bordered?: boolean;
 }
 
 /** antd's `Modal.confirm({...})` / `Modal.useModal()` config. */
@@ -732,12 +776,75 @@ const AntPopover = React.forwardRef<HTMLDivElement, PopoverProps>(
   },
 );
 
-/** antd `<Collapse items>` / `<Collapse.Panel>`. */
+/**
+ * antd `<Collapse items>` / `<Collapse.Panel>`.
+ *
+ * `activeKey` is antd's CONTROLLED open state and every call-site in the app
+ * uses it: the prompt cards and notes cards toggle their body from a chevron
+ * that lives in their own header row (outside this component), and the
+ * LLM-profile form drives its advanced-settings panel the same way. Supporting
+ * only `defaultActiveKey` left the prop to fall into `...props` and land on the
+ * DOM as an unknown attribute, while every Collapsible stayed closed forever —
+ * so each prompt card rendered its title bar and nothing else: no prompt text,
+ * no coverage, no LLM profile, no output.
+ */
 const CollapseBase = React.forwardRef<HTMLDivElement, CollapseProps>(
   function Collapse(
-    { items, defaultActiveKey, className, children, ...props },
+    {
+      items,
+      defaultActiveKey,
+      activeKey,
+      onChange,
+      expandIcon,
+      // consumed so they cannot land on the DOM as unknown attributes
+      ghost,
+      size,
+      accordion,
+      bordered,
+      className,
+      children,
+      ...props
+    },
     ref,
   ) {
+    // Controlled whenever the call-site passes activeKey at all — including
+    // the `false` that `activeKey={flag && "1"}` produces when closed.
+    const controlled = activeKey !== undefined;
+
+    const renderPanel = (
+      key: React.Key | null,
+      header: React.ReactNode,
+      body: React.ReactNode,
+      showArrow: boolean,
+    ) => {
+      const open = isKeyOpen(controlled ? activeKey : defaultActiveKey, key);
+      // antd renders no header bar for a panel with neither a label nor an
+      // arrow; adding one here would inject a stray empty strip above the
+      // body, since these call-sites already have their own header row.
+      const hasHeader = Boolean(header) || showArrow;
+      return (
+        <Collapsible
+          key={key ?? undefined}
+          {...(controlled
+            ? { open }
+            : { defaultOpen: open })}
+          onOpenChange={(next) =>
+            onChange?.(next && key != null ? [normalizeKey(key)] : [])
+          }
+        >
+          {hasHeader ? (
+            <CollapsibleTrigger className="ant-collapse-header flex w-full items-center justify-between py-2 text-left font-medium">
+              {header}
+              {expandIcon?.({ isActive: open })}
+            </CollapsibleTrigger>
+          ) : null}
+          <CollapsibleContent className="ant-collapse-content-box">
+            {body}
+          </CollapsibleContent>
+        </Collapsible>
+      );
+    };
+
     // Legacy children form: <Collapse><Collapse.Panel header=…>…</Collapse.Panel></Collapse>
     if (!items) {
       const panels = React.Children.toArray(children).filter(
@@ -751,50 +858,22 @@ const CollapseBase = React.forwardRef<HTMLDivElement, CollapseProps>(
       );
       return (
         <div ref={ref} className={className} {...props}>
-          {panels.map((panel, i) => {
-            const { header, children: body, showArrow } = panel.props;
-            return (
-              <Collapsible
-                key={panel.key ?? i}
-                defaultOpen={
-                  Array.isArray(defaultActiveKey)
-                    ? defaultActiveKey.includes(String(panel.key))
-                    : defaultActiveKey === panel.key
-                }
-              >
-                {header || showArrow !== false ? (
-                  <CollapsibleTrigger className="ant-collapse-header flex w-full items-center justify-between py-2 text-left font-medium">
-                    {header}
-                  </CollapsibleTrigger>
-                ) : null}
-                <CollapsibleContent className="ant-collapse-content-box">
-                  {body}
-                </CollapsibleContent>
-              </Collapsible>
-            );
-          })}
+          {panels.map((panel, i) =>
+            renderPanel(
+              panel.key ?? i,
+              panel.props.header,
+              panel.props.children,
+              panel.props.showArrow !== false,
+            ),
+          )}
         </div>
       );
     }
     return (
       <div ref={ref} className={className} {...props}>
-        {items.map((item) => (
-          <Collapsible
-            key={item.key}
-            defaultOpen={
-              Array.isArray(defaultActiveKey)
-                ? defaultActiveKey.includes(item.key)
-                : defaultActiveKey === item.key
-            }
-          >
-            <CollapsibleTrigger className="ant-collapse-header flex w-full items-center justify-between py-2 text-left font-medium">
-              {item.label}
-            </CollapsibleTrigger>
-            <CollapsibleContent className="ant-collapse-content-box">
-              {item.children}
-            </CollapsibleContent>
-          </Collapsible>
-        ))}
+        {items.map((item) =>
+          renderPanel(item.key, item.label, item.children, true),
+        )}
       </div>
     );
   },
@@ -944,7 +1023,14 @@ function confirmStatic(cfg: ConfirmConfig = {}) {
  * React error #130, which takes down the entire route rather than just this
  * component. That is what crashed Prompt Studio.
  */
-function CollapsePanel({ children }: { children?: React.ReactNode }) {
+function CollapsePanel({
+  children,
+}: {
+  children?: React.ReactNode;
+  /* Read off `panel.props` by Collapse above; declared so call-sites type-check. */
+  header?: React.ReactNode;
+  showArrow?: boolean;
+}) {
   return children ?? null;
 }
 
