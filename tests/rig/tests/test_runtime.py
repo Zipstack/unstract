@@ -132,6 +132,37 @@ def test_down_uses_config_snapshot_after_overlay_removed(monkeypatch, tmp_path) 
     assert "mock:latest" in snapshot.read_text()
 
 
+def test_down_drops_removed_overlay_when_snapshot_failed(monkeypatch, tmp_path) -> None:
+    """Snapshot failure plus a removed overlay must still tear the project down."""
+    from tests.rig import runtime as rt
+
+    extra = tmp_path / "extra.yaml"
+    extra.write_text("services:\n  mock:\n    image: mock:latest\n")
+    monkeypatch.setenv(EXTRA_COMPOSE_ENV, str(extra))
+    monkeypatch.setattr(rt.shutil, "which", lambda _: "/usr/bin/docker")
+    monkeypatch.setattr(rt, "_wait_ready", lambda *_a, **_k: None)
+
+    commands: list[list[str]] = []
+    monkeypatch.setattr(rt, "_run", lambda cmd, **_k: commands.append(cmd))
+    monkeypatch.setattr(
+        rt.subprocess,
+        "run",
+        lambda *_a, **_k: subprocess.CompletedProcess([], 1, stdout="", stderr="boom"),
+    )
+
+    compose = rt.ComposeRuntime()
+    compose.up()
+
+    extra.unlink()
+    monkeypatch.setattr(compose, "_dump_logs", lambda _files: None)
+    compose.down()
+
+    down_cmd = commands[-1]
+    assert down_cmd[-3:] == ["down", "-v", "--remove-orphans"]
+    assert str(extra) not in down_cmd
+    assert str(rt.BASE_COMPOSE) in down_cmd
+
+
 def test_login_provider_defaults_to_oss(monkeypatch) -> None:
     monkeypatch.delenv("UNSTRACT_E2E_LOGIN_PROVIDER", raising=False)
     assert _load_login_provider() is _oss_form_login

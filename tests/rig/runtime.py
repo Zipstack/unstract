@@ -65,6 +65,21 @@ def _compose_file_args() -> list[str]:
         args += ["-f", str(extra)]
     return args
 
+
+def _drop_missing_files(args: list[str]) -> list[str]:
+    """Keep only the ``-f <path>`` pairs still on disk.
+
+    A path compose can't read makes it refuse the whole command, so a file that
+    vanished mid-run would block teardown entirely rather than cost one overlay.
+    """
+    kept: list[str] = []
+    for flag, path in zip(args[::2], args[1::2]):
+        if Path(path).is_file():
+            kept += [flag, path]
+        else:
+            log.warning("compose file %s vanished; excluding it from teardown", path)
+    return kept
+
 # Shared by the workers and the tests, so the exact completion is assertable.
 LLM_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
 DEFAULT_LLM_MOCK_RESPONSE = "MOCK_LLM_OK"
@@ -189,6 +204,9 @@ class ComposeRuntime:
                 files = _compose_file_args()
             except ValueError:
                 files = ["-f", str(BASE_COMPOSE)]
+        # No-op on the snapshot, which is a single file we wrote ourselves; this
+        # covers the raw-path cases (snapshot unavailable, or no prior up()).
+        files = _drop_missing_files(files)
         self._dump_logs(files)
         _run(
             [
