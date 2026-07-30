@@ -102,6 +102,29 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(onChange).toHaveBeenCalledWith(true);
   });
 
+  /*
+   * antd treats `value` as an alias for `checked` on Switch. The cloud
+   * SummarizeManager writes `value={isContext}` for "Summarize Context";
+   * reading only `checked` let it fall into ...props, land on the DOM, and the
+   * switch never reflected its state.
+   */
+  it("Switch reflects state passed as antd's `value` alias", () => {
+    render(<Switch value />);
+    expect(screen.getByRole("switch")).toBeChecked();
+  });
+
+  it("Switch still prefers an explicit checked over value", () => {
+    render(<Switch checked={false} value={true} />);
+    expect(screen.getByRole("switch")).not.toBeChecked();
+  });
+
+  // Radix stamps its own value="on" (like a native checkbox), so the check is
+  // that our boolean never reaches the DOM as value="true".
+  it("does not leak the antd `value` boolean onto the DOM", () => {
+    render(<Switch value />);
+    expect(screen.getByRole("switch")).not.toHaveAttribute("value", "true");
+  });
+
   it("Select renders options from the antd `options` data prop", () => {
     render(
       <Select

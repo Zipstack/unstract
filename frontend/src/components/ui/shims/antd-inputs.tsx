@@ -151,6 +151,13 @@ interface AntCheckboxProps {
 
 interface AntSwitchProps {
   checked?: boolean;
+  /**
+   * antd accepts `value` as an alias for `checked` (it is what Form.Item
+   * injects). SummarizeManager's "Summarize Context" toggle is written
+   * `value={isContext}`, so reading only `checked` left the prop to fall into
+   * `...props`, land on the DOM, and the switch never reflected its state.
+   */
+  value?: boolean;
   defaultChecked?: boolean;
   /** antd hands over a plain boolean here, unlike Checkbox. */
   onChange?: (checked: boolean) => void;
@@ -560,13 +567,22 @@ const Checkbox = React.forwardRef<HTMLButtonElement, AntCheckboxProps>(
 /** antd `<Switch checked onChange>` — onChange receives a boolean. */
 const Switch = React.forwardRef<HTMLButtonElement, AntSwitchProps>(
   function Switch(
-    { checked, defaultChecked, onChange, disabled, size, className, ...props },
+    {
+      checked,
+      value,
+      defaultChecked,
+      onChange,
+      disabled,
+      size,
+      className,
+      ...props
+    },
     ref,
   ) {
     return (
       <ShadcnSwitch
         ref={ref}
-        checked={checked}
+        checked={checked ?? value}
         defaultChecked={defaultChecked}
         disabled={disabled}
         onCheckedChange={(next) => onChange?.(next)}
