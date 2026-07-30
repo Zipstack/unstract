@@ -43,6 +43,27 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("Second")).toBeInTheDocument();
   });
 
+  /*
+   * antd's default tab style is `line` (transparent strip, underlined active
+   * label). shadcn's primitive ships the pill/card look, so Prompt Studio
+   * rendered a grey rounded pill where the reference draws an underline.
+   */
+  it("Tabs default to antd's line style, not shadcn's pill", () => {
+    render(<Tabs items={[{ key: "1", label: "One", children: "x" }]} />);
+    const list = screen.getByRole("tablist");
+    expect(list.className).toContain("bg-transparent");
+    expect(list.className).toContain("rounded-none");
+  });
+
+  it("Tabs keep the pill look when type='card'", () => {
+    render(
+      <Tabs type="card" items={[{ key: "1", label: "One", children: "x" }]} />,
+    );
+    expect(screen.getByRole("tablist").className).not.toContain(
+      "bg-transparent",
+    );
+  });
+
   it("Tabs fires onChange with the selected key", () => {
     const onChange = vi.fn();
     render(

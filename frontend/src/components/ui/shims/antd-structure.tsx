@@ -413,12 +413,33 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
       // the remaining antd props are consumed above, not forwarded.
     >
       <div className="ant-tabs-nav flex items-center justify-between">
-        <TabsList className="ant-tabs-nav-list">
+        {/*
+         * antd's DEFAULT tab style is `line`: transparent strip, the active
+         * label tinted and underlined. shadcn's primitive ships the `card`
+         * look instead — a grey rounded pill with a raised active chip — which
+         * is what Prompt Studio was rendering against the reference's
+         * underline. `type="card"` opts back into the pill.
+         *
+         * Overridden here rather than in the primitive, so call-sites that
+         * genuinely want shadcn's segmented tabs keep it.
+         */}
+        <TabsList
+          className={cn(
+            "ant-tabs-nav-list",
+            type !== "card" &&
+              "h-auto gap-4 rounded-none bg-transparent p-0 text-foreground",
+          )}
+        >
           {panes.map((p) => (
             <TabsTrigger
               key={String(p.key)}
               value={String(p.key)}
               disabled={p.disabled}
+              className={cn(
+                type !== "card" &&
+                  // Underline the active tab; keep the label tinted like antd.
+                  "rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 font-normal shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none",
+              )}
             >
               {p.label}
             </TabsTrigger>
