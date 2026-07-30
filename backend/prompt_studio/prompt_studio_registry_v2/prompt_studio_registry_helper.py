@@ -444,10 +444,18 @@ class PromptStudioRegistryHelper:
                 JsonSchemaKey.PROMPT_REGISTRY_ID
             )
             # Back-reference to the Prompt Studio project that produced this
-            # entry. Without it callers can only correlate on `name`, which is
-            # ambiguous when two projects share one.
-            tool_metadata[JsonSchemaKey.CUSTOM_TOOL] = prompts.get(
-                JsonSchemaKey.CUSTOM_TOOL
+            # entry. `function_name` is the registry UUID, so without this the
+            # only correlator left is `name`, which is ambiguous when two
+            # projects share one. Read from the `custom_tool` FK column but
+            # publish as `tool_id` -- what this identifier is called on every
+            # other public surface. Stringified like the other `TOOL_ID` uses,
+            # so the value does not depend on DRF's renderer to leave the dict.
+            # The other producers of this list (`fetch_tools_descriptions`,
+            # cloud's agentic registry) emit no such key at all, so consumers
+            # must treat a missing key and a `None` value alike.
+            custom_tool_id = prompts.get(JsonSchemaKey.CUSTOM_TOOL)
+            tool_metadata[JsonSchemaKey.TOOL_ID] = (
+                str(custom_tool_id) if custom_tool_id else None
             )
             tool_list.append(tool_metadata)
             tool_metadata = {}
