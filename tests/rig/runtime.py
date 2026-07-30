@@ -73,7 +73,7 @@ def _drop_missing_files(args: list[str]) -> list[str]:
     vanished mid-run would block teardown entirely rather than cost one overlay.
     """
     kept: list[str] = []
-    for flag, path in zip(args[::2], args[1::2]):
+    for flag, path in zip(args[::2], args[1::2], strict=True):
         if Path(path).is_file():
             kept += [flag, path]
         else:
