@@ -294,6 +294,11 @@
 
 .recent-activity-info {
   font-size: 11px;
+  /* width/height, not font-size alone: these classes sit on lucide SVGs,
+   * which ignore font-size and fall back to their own 24px default. The
+   * antd originals were an icon FONT, where font-size was the size. */
+  width: 11px;
+  height: 11px;
   color: #8c8c8c;
   cursor: help;
 }

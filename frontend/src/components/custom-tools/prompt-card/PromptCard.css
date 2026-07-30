@@ -27,6 +27,11 @@
 
 .prompt-card-actions-head {
   font-size: 12px;
+  /* width/height, not font-size alone: these classes sit on lucide SVGs,
+   * which ignore font-size and fall back to their own 24px default. The
+   * antd originals were an icon FONT, where font-size was the size. */
+  width: 12px;
+  height: 12px;
   color: #575859;
 }
 

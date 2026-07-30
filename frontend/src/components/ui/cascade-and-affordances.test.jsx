@@ -106,10 +106,21 @@ describe("cascade and affordance guards", () => {
     /*
      * antd shipped an icon FONT, so `font-size` sized its icons. lucide ships
      * SVGs, which ignore font-size entirely and fall back to their own 24px
-     * default — every such rule silently rendered a third too large.
+     * default — every such rule silently renders its icon oversized.
+     *
+     * Matching on selector NAMES (icon|svg|anticon…) was the first version of
+     * this guard and it missed the real ones: `.prompt-card-actions-head`
+     * carries eight lucide icons and has no icon-ish word in its name, so the
+     * whole prompt-card action row rendered 16px against the reference's 12.
+     *
+     * So this reads the JSX instead: collect every class applied to a lucide
+     * component (they are PascalCase imports from lucide-react), then flag any
+     * CSS rule that sizes one of those classes with font-size alone.
      */
-    it("icon CSS rules set explicit dimensions, not just font-size", () => {
-      const offenders = [];
+    it("classes on lucide icons set explicit dimensions, not just font-size", () => {
+      const iconClasses = new Set();
+      const cssRules = [];
+
       const walk = (dir) => {
         for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
           const full = path.join(dir, entry.name);
@@ -117,22 +128,66 @@ describe("cascade and affordance guards", () => {
             if (entry.name !== "node_modules") walk(full);
             continue;
           }
-          if (!entry.name.endsWith(".css")) continue;
           const txt = fs.readFileSync(full, "utf8");
+
+          if (/\.(jsx|tsx)$/.test(entry.name)) {
+            // Only files that actually import icons from lucide-react.
+            const imports = txt.match(
+              /import\s*\{([^}]*)\}\s*from\s*"lucide-react"/,
+            );
+            if (!imports) continue;
+            const names = imports[1]
+              .split(",")
+              .map((n) =>
+                n
+                  .trim()
+                  .split(/\s+as\s+/)
+                  .pop()
+                  .trim(),
+              )
+              .filter(Boolean);
+            for (const name of names) {
+              const re = new RegExp(
+                `<${name}\\b[^>]*className=[{"]\`?([^"\`}]*)`,
+                "g",
+              );
+              for (const m of txt.matchAll(re)) {
+                for (const cls of m[1].split(/\s+/)) {
+                  // Skip template holes and Tailwind utilities.
+                  if (cls && !cls.includes("$") && !cls.includes("-[")) {
+                    iconClasses.add(cls);
+                  }
+                }
+              }
+            }
+            continue;
+          }
+
+          if (!entry.name.endsWith(".css")) continue;
           for (const m of txt.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
             const sel = m[1].trim().split("\n").pop().trim();
             const body = m[2];
             if (!/font-size:\s*\d+px/.test(body)) continue;
-            if (!/icon|svg|anticon|glyph|chevron|caret/i.test(sel)) continue;
             if (/width|height/.test(body)) continue;
-            offenders.push(`${path.relative(process.cwd(), full)}: ${sel}`);
+            cssRules.push({
+              file: path.relative(process.cwd(), full),
+              sel,
+              classes: [...sel.matchAll(/\.([a-zA-Z][\w-]*)/g)].map(
+                (c) => c[1],
+              ),
+            });
           }
         }
       };
       walk(path.join(process.cwd(), "src"));
+
+      const offenders = cssRules
+        .filter((r) => r.classes.some((c) => iconClasses.has(c)))
+        .map((r) => `${r.file}: ${r.sel}`);
+
       expect(
         offenders,
-        "these icon rules size by font-size only, which does nothing to an SVG",
+        "these rules size a lucide SVG with font-size, which does nothing — set width/height",
       ).toEqual([]);
     });
 

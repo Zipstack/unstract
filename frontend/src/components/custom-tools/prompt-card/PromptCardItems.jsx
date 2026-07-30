@@ -275,7 +275,11 @@ function PromptCardItems({
                           {isCoverageLoading ? (
                             <SpinnerLoader size="small" />
                           ) : (
-                            <Search className="font-size-12" />
+                            // size-3 (12px), not `font-size-12`: that class is
+                            // a TEXT utility shared with the Typography.Link
+                            // below, and font-size does nothing to an SVG — the
+                            // icon fell back to lucide's 24px default.
+                            <Search className="size-3" />
                           )}
                           <Typography.Link className="font-size-12">
                             Coverage: {promptCoverage?.length || 0} of{" "}
