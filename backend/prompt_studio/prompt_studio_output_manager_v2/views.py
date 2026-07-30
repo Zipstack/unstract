@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status, viewsets
@@ -119,20 +118,22 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         tool_id = request.GET.get("tool_id")
         document_manager_id = request.GET.get("document_manager")
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
-        tool_not_found = PromptOutputManagerErrorMessage.TOOL_NOT_FOUND
         if not tool_id:
             raise ValidationError(detail=tool_validation_message)
 
-        try:
-            # Fetch ToolStudioPrompt records based on tool_id.
-            # Custom actions skip filter_queryset(), so OrganizationFilterBackend
-            # never runs — scope explicitly to prevent cross-tenant reads.
-            tool_studio_prompts = ToolStudioPrompt.objects.filter(
-                tool_id=tool_id,
-                tool_id__organization=UserContext.get_organization(),
-            ).order_by("sequence_number")
-        except ObjectDoesNotExist:
-            raise ValidationError(detail=tool_not_found)
+        # Fetch ToolStudioPrompt records based on tool_id.
+        # Custom actions skip filter_queryset(), so OrganizationFilterBackend
+        # never runs — scope explicitly to prevent cross-tenant reads.
+        #
+        # No exception handling here: filter() does not raise for a missing or
+        # out-of-org tool, it returns empty. Empty is also the correct result
+        # for a tool that simply has no prompts yet, which is the normal state
+        # of a newly created project — so this stays a 200 with an empty body
+        # rather than a validation error.
+        tool_studio_prompts = ToolStudioPrompt.objects.filter(
+            tool_id=tool_id,
+            tool_id__organization=UserContext.get_organization(),
+        ).order_by("sequence_number")
 
         # Invoke helper method to frame and fetch default response.
         result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(
