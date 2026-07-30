@@ -194,8 +194,12 @@ function ResourceTable({
 
   const renderOwner = (item) => {
     // owner_emails is earliest-first; [0] is the primary shown owner.
+    // Fall back to created_by_email so rows with no live OWNER membership
+    // (platform API-key sessions, pre-backfill rows) don't render "Unknown".
     const ownerEmails = item?.[ownerEmailsProp];
-    const email = Array.isArray(ownerEmails) ? ownerEmails[0] : undefined;
+    const email =
+      (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
+      item?.created_by_email;
     // "Me" must track the DISPLAYED owner, not the viewer's own membership —
     // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
     // the shown email so the creator viewing their own resource still reads "Me".

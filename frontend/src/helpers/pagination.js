@@ -34,11 +34,19 @@ function unwrapList(res) {
  * @param {Object} config - axios request config; `url` is required
  * @return {Promise<Array>} all rows across all pages
  */
+// Mirrors backend Pagination.MAX_PAGE_SIZE. Requesting the max up front keeps
+// the common case (an org below this many rows) to a single round-trip once the
+// endpoints paginate by default; the loop stays as the tail guard past it.
+const MAX_PAGE_SIZE = 1000;
+
 async function fetchAllPages(axiosInstance, config) {
   const request = (params) =>
     axiosInstance({ ...config, method: "GET", ...(params ? { params } : {}) });
 
-  const first = await request();
+  const first = await request({
+    ...(config?.params ?? {}),
+    page_size: MAX_PAGE_SIZE,
+  });
   if (Array.isArray(first?.data)) {
     return first.data;
   }
@@ -48,7 +56,11 @@ async function fetchAllPages(axiosInstance, config) {
   let page = 1;
   while (rows.length < total) {
     page += 1;
-    const res = await request({ ...(config?.params ?? {}), page });
+    const res = await request({
+      ...(config?.params ?? {}),
+      page,
+      page_size: MAX_PAGE_SIZE,
+    });
     const nextRows = res?.data?.results ?? [];
     // A page that adds nothing would otherwise spin forever on a bad count.
     if (!nextRows.length) {
