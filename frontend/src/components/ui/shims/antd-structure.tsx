@@ -439,7 +439,15 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
               className={cn(
                 type !== "card" &&
                   // Underline the active tab; keep the label tinted like antd.
-                  "rounded-none border-b-2 border-transparent bg-transparent px-0 pb-2 font-normal shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none",
+                  "rounded-none border-b-2 border-transparent bg-transparent px-0 font-normal shadow-none data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:text-primary data-[state=active]:shadow-none",
+                /*
+                 * Symmetric padding, not `pb-2`. Bottom-heavy padding puts the
+                 * LABEL above the centre of its own 36px box, so `align-items:
+                 * center` on the toolbar lined up the boxes while the text sat
+                 * 5.6px above the file name beside it. antd pads 12px evenly
+                 * for a 22px label box.
+                 */
+                type !== "card" && "py-3",
               )}
             >
               {p.label}

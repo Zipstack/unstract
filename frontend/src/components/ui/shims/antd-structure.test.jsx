@@ -56,6 +56,19 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(list.className).toContain("rounded-none");
   });
 
+  /*
+   * The doc-manager toolbar centres the tabs against a file name and buttons.
+   * Bottom-heavy padding (`pb-2`) put the LABEL above the centre of its own
+   * box, so `align-items: center` aligned the boxes while the text sat 5.6px
+   * high. Padding has to stay symmetric for the row to share one line.
+   */
+  it("Tabs pad line-style labels symmetrically so text centres with siblings", () => {
+    render(<Tabs items={[{ key: "1", label: "One", children: "x" }]} />);
+    const cls = screen.getByRole("tab").className;
+    expect(cls).toContain("py-3");
+    expect(cls).not.toContain("pb-2");
+  });
+
   it("Tabs keep the pill look when type='card'", () => {
     render(
       <Tabs type="card" items={[{ key: "1", label: "One", children: "x" }]} />,
