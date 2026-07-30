@@ -818,10 +818,15 @@ const CollapseBase = React.forwardRef<HTMLDivElement, CollapseProps>(
       showArrow: boolean,
     ) => {
       const open = isKeyOpen(controlled ? activeKey : defaultActiveKey, key);
-      // antd renders no header bar for a panel with neither a label nor an
-      // arrow; adding one here would inject a stray empty strip above the
-      // body, since these call-sites already have their own header row.
-      const hasHeader = Boolean(header) || showArrow;
+      /*
+       * A header bar is only rendered when there is something to put in it.
+       * The prompt and notes cards pass no `header` — they draw their own
+       * title row, with its own expand chevron, ABOVE this component — so a
+       * bar here would be an empty clickable strip wedged between that row
+       * and the body. (NotesCard also leaves `showArrow` at its default, so
+       * keying off the arrow alone is not enough.)
+       */
+      const hasHeader = Boolean(header) && showArrow;
       return (
         <Collapsible
           key={key ?? undefined}

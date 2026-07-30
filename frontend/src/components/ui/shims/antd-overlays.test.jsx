@@ -374,6 +374,21 @@ describe("antd-compatible overlay shims (P2)", () => {
       expect(screen.getByText("open")).toBeInTheDocument();
     });
 
+    /*
+     * NotesCard omits showArrow, so it keeps antd's `true` default while
+     * still passing no header. It draws its own title row above the panel,
+     * so a bar here would be an empty clickable strip in between.
+     */
+    it("renders no header bar for a headerless panel that kept showArrow", () => {
+      const { container } = render(
+        <Collapse activeKey={"1"}>
+          <Collapse.Panel key="1">note body</Collapse.Panel>
+        </Collapse>,
+      );
+      expect(screen.getByText("note body")).toBeVisible();
+      expect(container.querySelector(".ant-collapse-header")).toBeNull();
+    });
+
     // A panel with no header and no arrow must not grow a stray empty bar.
     it("renders no header bar for a headerless, arrowless panel", () => {
       const { container } = render(
