@@ -228,13 +228,9 @@ class PromptStudioCoreView(
         instance.delete(organization_id)
 
     def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
-        """Check if a tool is being used in any workflows.
+        """Whether ``instance``'s exported tool is in use, and by which workflows.
 
-        Args:
-            instance: The CustomTool instance to check
-
-        Returns:
-            Tuple of (is_used: bool, dependent_workflows: set)
+        An unexported project has no registry row and so no dependants.
         """
         registry = getattr(instance, "prompt_studio_registries", None)
         if not registry:
@@ -244,25 +240,11 @@ class PromptStudioCoreView(
         return bool(dependent_wfs), dependent_wfs
 
     def _get_deployment_types(self, workflow_ids: set) -> set:
-        """Get all deployment types where the tool is used.
-
-        Args:
-            workflow_ids: Set of workflow IDs to check
-
-        Returns:
-            Set of deployment type strings
-        """
+        """Deployment kinds reachable from ``workflow_ids``."""
         return deployment_types_for(workflow_ids)
 
     def _format_deployment_types_message(self, deployment_types: set) -> str:
-        """Format deployment types into human-readable message.
-
-        Args:
-            deployment_types: Set of deployment type strings
-
-        Returns:
-            Formatted message string or empty string if no types
-        """
+        """Render the "re-export needed" notice, or "" when nothing is deployed."""
         types_text = join_deployment_types(deployment_types)
         if not types_text:
             return ""

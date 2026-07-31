@@ -34,11 +34,11 @@ they run in the rig's integration tier rather than the per-PR unit tier.
 from __future__ import annotations
 
 import heapq
-import textwrap
 from pathlib import Path
 from typing import Any
 
 import pytest
+from tests_common.source_extraction import extract_defs
 
 BACKEND_DIR = Path(__file__).resolve().parents[3]
 PERMISSION_MODULE = BACKEND_DIR / "prompt_studio" / "permission.py"
@@ -81,13 +81,7 @@ class _Request:
 
 def _build_permission(*, org_admins: set[str]) -> Any:
     """Extract the real ``IsRegistryToolOwner`` against stubbed collaborators."""
-    source = PERMISSION_MODULE.read_text()
-    if START_MARKER not in source:
-        pytest.fail(
-            f"Could not find {START_MARKER!r} in {PERMISSION_MODULE}. If it was "
-            "renamed, update this test rather than deleting it."
-        )
-    body = textwrap.dedent(source[source.index(START_MARKER) :])
+    (body,) = extract_defs(PERMISSION_MODULE, (START_MARKER,), ("\nclass ",))
 
     class _BasePermission:
         pass
@@ -228,12 +222,9 @@ def _queryset(rows: list[Any], *, required_filters: tuple[str, ...] = ()) -> Any
 
         def filter(self, **kwargs: Any) -> _QS:
             if required_filters and not all(k in kwargs for k in required_filters):
-                return _QS.__new__(_QS)._empty()
+                # `required_filters` is non-empty here, so this is unmatched.
+                return _QS()
             return _QS(matched=True)
-
-        def _empty(self) -> _QS:
-            self._matched = False
-            return self
 
         def values_list(self, *_: Any, **__: Any) -> _QS:
             return self
@@ -266,29 +257,21 @@ class _BaseView:
         return DELETED
 
 
-def _extract(module: Path, markers: tuple[str, ...], stops: tuple[str, ...]) -> list[str]:
-    """Slice each named definition out of ``module``'s source.
+def _logged_workflow_limit() -> int:
+    """Read the real cap rather than restating it."""
+    source = VIEWS_MODULE.read_text()
+    marker = "_LOGGED_WORKFLOW_LIMIT = "
+    if marker not in source:
+        pytest.fail(f"Could not find {marker!r} in {VIEWS_MODULE}.")
+    return int(source.split(marker)[1].split("\n")[0].strip())
 
-    ``pytest.fail`` on a missing marker rather than skipping: a rename must
-    break loudly, since a silently-skipped guard test is worse than none.
-    """
-    source = module.read_text()
-    parts = []
-    for marker in markers:
-        if marker not in source:
-            pytest.fail(
-                f"Could not find {marker!r} in {module}. If it was renamed or "
-                "inlined, update this test rather than deleting it."
-            )
-        start = source.index(marker)
-        rest = source[start + len(marker) :]
-        end = len(rest)
-        for needle in stops:
-            found = rest.find(needle)
-            if found != -1:
-                end = min(end, found)
-        parts.append(marker + rest[:end])
-    return parts
+
+class _SilentLogger:
+    def info(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def warning(self, *_: Any, **__: Any) -> None:
+        pass
 
 
 def _build_guard(
@@ -309,8 +292,8 @@ def _build_guard(
     wiring unpinned: dropping that one line made in-use tools deletable with
     the whole suite still green.
     """
-    view_parts = _extract(VIEWS_MODULE, GUARD_MARKERS, ("\n    def ", "\n    @"))
-    helper_parts = _extract(TOOL_USAGE_MODULE, HELPER_MARKERS, ("\ndef ",))
+    view_parts = extract_defs(VIEWS_MODULE, GUARD_MARKERS, ("\n    def ", "\n    @"))
+    helper_parts = extract_defs(TOOL_USAGE_MODULE, HELPER_MARKERS, ("\ndef ",))
 
     body = (
         "\n".join(helper_parts)
@@ -364,23 +347,6 @@ def _build_guard(
     }
     exec(compile(body, str(VIEWS_MODULE), "exec"), namespace)
     return namespace["_Guard"]()
-
-
-def _logged_workflow_limit() -> int:
-    """Read the real cap rather than restating it."""
-    source = VIEWS_MODULE.read_text()
-    marker = "_LOGGED_WORKFLOW_LIMIT = "
-    if marker not in source:
-        pytest.fail(f"Could not find {marker!r} in {VIEWS_MODULE}.")
-    return int(source.split(marker)[1].split("\n")[0].strip())
-
-
-class _SilentLogger:
-    def info(self, *_: Any, **__: Any) -> None:
-        pass
-
-    def warning(self, *_: Any, **__: Any) -> None:
-        pass
 
 
 class _Instance:

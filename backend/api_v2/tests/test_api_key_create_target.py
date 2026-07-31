@@ -44,40 +44,12 @@ from typing import Any
 
 import pytest
 from django.core.exceptions import ValidationError as DjangoValidationError
+from tests_common.source_extraction import exec_def, extract_defs
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PERMISSION_MODULE = BACKEND_DIR / "permissions" / "permission.py"
 
-
-def _extract_defs(
-    module: Path, markers: tuple[str, ...], stops: tuple[str, ...]
-) -> list[str]:
-    """Slice each named definition out of ``module``'s source.
-
-    ``pytest.fail`` on a missing marker rather than skipping: a rename must
-    break loudly, since a silently-skipped guard test is worse than none.
-    """
-    source = module.read_text()
-    parts = []
-    for marker in markers:
-        if marker not in source:
-            pytest.fail(
-                f"Could not find {marker!r} in {module}. If it was renamed or "
-                "inlined, update this test rather than deleting it."
-            )
-        start = source.index(marker)
-        rest = source[start + len(marker) :]
-        end = len(rest)
-        for needle in stops:
-            found = rest.find(needle)
-            if found != -1:
-                end = min(end, found)
-        parts.append(marker + rest[:end])
-    return parts
-
-
 START_MARKER = "class IsParentDeploymentOwner(permissions.BasePermission):"
-END_MARKER = "\nclass "
 
 
 class _User:
@@ -119,15 +91,7 @@ class _APIKey:
 
 def _build_permission(*, org_admins: set[str]) -> Any:
     """Extract the real ``IsParentDeploymentOwner`` against stubbed collaborators."""
-    source = PERMISSION_MODULE.read_text()
-    if START_MARKER not in source:
-        pytest.fail(
-            f"Could not find {START_MARKER!r} in {PERMISSION_MODULE}. If it was "
-            "renamed, update this test rather than deleting it."
-        )
-    rest = source[source.index(START_MARKER) :]
-    next_class = rest.find(END_MARKER, len(START_MARKER))
-    body = textwrap.dedent(rest if next_class == -1 else rest[:next_class])
+    (body,) = extract_defs(PERMISSION_MODULE, (START_MARKER,), ("\nclass ",))
 
     class _BasePermission:
         pass
@@ -256,9 +220,6 @@ CREATE_MARKER = (
     "    def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:"
 )
 
-CREATED = object()
-"""Sentinel proving the key was actually minted."""
-
 
 class _ValidationError(Exception):
     """Stand-in for ``serializers.ValidationError`` (a 400)."""
@@ -311,20 +272,8 @@ def _build_create(
     inverted ``isinstance`` guard and against the wrong object being handed to
     ``check_object_permissions``.
     """
-    source = VIEW_MODULE.read_text()
-    if CREATE_MARKER not in source:
-        pytest.fail(
-            f"Could not find {CREATE_MARKER!r} in {VIEW_MODULE}. If the "
-            "signature changed, update this test rather than deleting it."
-        )
-    start = source.index(CREATE_MARKER)
-    rest = source[start + len(CREATE_MARKER) :]
-    end = len(rest)
-    for needle in ("\n    def ", "\n    @"):
-        found = rest.find(needle)
-        if found != -1:
-            end = min(end, found)
-    body = textwrap.dedent(CREATE_MARKER + rest[:end])
+    (body,) = extract_defs(VIEW_MODULE, (CREATE_MARKER,), ("\n    def ", "\n    @"))
+    body = textwrap.dedent(body)
 
     checked: list[Any] = []
 
@@ -563,32 +512,24 @@ class TestLookupHelpersTolerateMalformedIds:
 
     @staticmethod
     def _build_get_api_by_id(raises: BaseException) -> Any:
-        marker = "    def get_api_by_id(api_id: str) -> APIDeployment | None:"
-        (body,) = _extract_defs(
-            BACKEND_DIR / "api_v2" / "utils.py", (marker,), ("\n    @",)
-        )
-
         class _APIDeploymentModel:
             objects = _raising_manager(raises)
             DoesNotExist = _DoesNotExist
 
-        namespace: dict[str, Any] = {
-            "APIDeployment": _APIDeploymentModel,
-            "ValidationError": DjangoValidationError,
-            "Any": Any,
-        }
-        exec(compile(textwrap.dedent(body), "utils.py", "exec"), namespace)
+        namespace = exec_def(
+            BACKEND_DIR / "api_v2" / "utils.py",
+            "    def get_api_by_id(api_id: str) -> APIDeployment | None:",
+            ("\n    @",),
+            {
+                "APIDeployment": _APIDeploymentModel,
+                "ValidationError": DjangoValidationError,
+                "Any": Any,
+            },
+        )
         return namespace["get_api_by_id"]
 
     @staticmethod
     def _build_get_pipeline_by_id(raises: BaseException) -> Any:
-        marker = "    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:"
-        (body,) = _extract_defs(
-            BACKEND_DIR / "pipeline_v2" / "pipeline_processor.py",
-            (marker,),
-            ("\n    @",),
-        )
-
         class _PipelineModel:
             DoesNotExist = _DoesNotExist
 
@@ -597,12 +538,16 @@ class TestLookupHelpersTolerateMalformedIds:
             def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Any:
                 raise raises
 
-        namespace: dict[str, Any] = {
-            "Pipeline": _PipelineModel,
-            "ValidationError": DjangoValidationError,
-            "Any": Any,
-        }
-        exec(compile(textwrap.dedent(body), "pipeline_processor.py", "exec"), namespace)
+        namespace = exec_def(
+            BACKEND_DIR / "pipeline_v2" / "pipeline_processor.py",
+            "    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:",
+            ("\n    @",),
+            {
+                "Pipeline": _PipelineModel,
+                "ValidationError": DjangoValidationError,
+                "Any": Any,
+            },
+        )
         return lambda pipeline_id: namespace["get_pipeline_by_id"](_Cls, pipeline_id)
 
     def test_get_api_by_id_returns_none_for_a_malformed_id(self) -> None:
