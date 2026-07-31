@@ -105,11 +105,16 @@ def _fetch(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def test_serializer_emits_the_custom_tool_column() -> None:
     """The projection can only publish what the serializer serializes.
 
-    Drives the serializer's real ``to_representation`` rather than inspecting
-    ``get_fields()``, so both ways the key can vanish are caught: narrowing
-    ``Meta.fields``, and an override that drops it on the way out. Rendering a
-    plain stub keeps this DB-free -- a real instance would make
-    ``PrimaryKeyRelatedField`` evaluate its queryset.
+    Renders through ``PromptStudioRegistrySerializer.to_representation`` -- the
+    whole serializer, not a field-by-field reconstruction -- so every way the
+    key can vanish is caught: narrowing ``Meta.fields``, a field-level
+    ``to_representation`` override, and a serializer-level one that pops the
+    key after the fields have run.
+
+    The stub stands in for a saved row so this stays DB-free; a real instance
+    would make ``PrimaryKeyRelatedField`` evaluate its queryset. It carries
+    every field the serializer reads, so a newly added field surfaces here as a
+    loud ``AttributeError`` rather than a silent gap in coverage.
     """
     stub = SimpleNamespace(
         prompt_registry_id=uuid.UUID(PROMPT_REGISTRY_ID),
@@ -117,18 +122,20 @@ def test_serializer_emits_the_custom_tool_column() -> None:
         name="Invoice extractor",
         description="Extracts invoice fields",
         icon="icon-data",
+        url="",
+        tool_property={},
+        tool_spec={},
+        tool_metadata={},
+        shared_to_org=False,
+        shared_users=SimpleNamespace(all=list),
+        organization=None,
+        created_by=None,
+        modified_by=None,
+        created_at=None,
+        modified_at=None,
     )
-    serializer = PromptStudioRegistrySerializer()
-    fields = {
-        name: field
-        for name, field in serializer.get_fields().items()
-        if not field.write_only and hasattr(stub, name)
-    }
 
-    rendered = {
-        name: field.to_representation(getattr(stub, name))
-        for name, field in fields.items()
-    }
+    rendered = PromptStudioRegistrySerializer().to_representation(stub)
 
     assert "custom_tool" in rendered, (
         "PromptStudioRegistrySerializer must serialize `custom_tool`; without "
