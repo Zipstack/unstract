@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Any
 
+from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
 from prompt_studio.prompt_studio_registry_v2.constants import (
@@ -157,7 +158,10 @@ class ToolInstanceSerializer(AuditSerializer):
 
     @staticmethod
     def _overlay_resolved_challenge_llm(
-        tool: Tool, tool_settings: dict[str, Any], tool_uid: str
+        tool: Tool,
+        tool_settings: dict[str, Any],
+        tool_uid: str,
+        user: User | None,
     ) -> None:
         """Seed `challenge_llm` from the value the export already resolved.
 
@@ -170,6 +174,15 @@ class ToolInstanceSerializer(AuditSerializer):
         The export resolved a real adapter ID for this setting (falling back to
         the default profile's LLM when the project set none), so prefer it.
 
+        Only seed a value this user can actually use. The enum injected at
+        deployment is built per-user, and an exported tool can be shared, so the
+        exporter's adapter may be invisible to whoever creates the instance -
+        and it may since have been deleted. Seeding such an id would trade the
+        "" enum violation for an equally opaque one naming a real UUID. Leaving
+        the key empty instead lets `update_metadata_with_default_adapter` fill
+        in this user's default LLM, which is what happened before the export
+        value was available at all.
+
         Deliberately scoped to `challenge_llm` alone. The export's
         `tool_settings` overlaps the spec on four other keys
         (`enable_challenge`, `summarize_as_source`, `enable_highlight`,
@@ -178,7 +191,8 @@ class ToolInstanceSerializer(AuditSerializer):
         instances - a cost-, latency- and output-affecting change, and a
         separate decision from fixing this validation failure.
 
-        Non-Prompt-Studio tools resolve to {}, making this a no-op for them.
+        Tools whose spec has no `challenge_llm` return before any query; a
+        Prompt-Studio-shaped tool with no registry row resolves to {}.
         """
         challenge_llm_key = JsonSchemaKey.CHALLENGE_LLM
         if challenge_llm_key not in tool_settings:
@@ -189,17 +203,45 @@ class ToolInstanceSerializer(AuditSerializer):
         )
         resolved_challenge_llm = resolved_settings.get(challenge_llm_key)
         if not resolved_challenge_llm:
+            logger.debug(
+                "Export for tool %s resolved no challenge_llm; leaving the "
+                "spec-seeded default in place",
+                tool_uid,
+            )
+            return
+
+        if not ToolInstanceSerializer._is_adapter_usable_by(resolved_challenge_llm, user):
+            logger.warning(
+                "Resolved challenge_llm %s for tool %s is not accessible to the "
+                "creating user; falling back to their default LLM adapter",
+                resolved_challenge_llm,
+                tool_uid,
+            )
             return
 
         tool_settings[challenge_llm_key] = resolved_challenge_llm
-        # Every other path writes the adapter key and its companion ID key
-        # together (see `ToolInstanceHelper.update_metadata_with_default_adapter`),
-        # so keep the same shape here rather than inventing a new one.
+        # Write the companion ID key alongside, the shape every other writer
+        # emits (see `ToolInstanceHelper.update_metadata_with_default_adapter`).
         adapter_property = tool.spec.properties.get(challenge_llm_key, {})
         adapter_id_key = adapter_property.get(
             AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
         )
         tool_settings[adapter_id_key] = resolved_challenge_llm
+
+    @staticmethod
+    def _is_adapter_usable_by(adapter_id: str, user: User | None) -> bool:
+        """Whether `adapter_id` exists and is visible to `user`.
+
+        A missing user (the serializer used outside a request) cannot be scoped
+        against, so fall back to a plain existence check - that still screens
+        out the deleted-adapter case, which needs no sharing to hit.
+        """
+        queryset = AdapterInstance.objects
+        return (
+            queryset.for_user(user).filter(id=adapter_id).exists()
+            if user is not None
+            else queryset.filter(id=adapter_id).exists()
+        )
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         workflow_id = validated_data.pop(WorkflowKey.WF_ID)
@@ -224,7 +266,13 @@ class ToolInstanceSerializer(AuditSerializer):
         # TODO: Use version from tool props
         validated_data[TIKey.VERSION] = ""
         tool_settings = ToolProcessor.get_default_settings(tool)
-        self._overlay_resolved_challenge_llm(tool, tool_settings, str(tool_uid))
+        request = self.context.get("request")
+        self._overlay_resolved_challenge_llm(
+            tool,
+            tool_settings,
+            str(tool_uid),
+            getattr(request, "user", None),
+        )
         validated_data[TIKey.METADATA] = {
             # TODO: Review and remove tool instance ID
             WorkflowKey.WF_TOOL_INSTANCE_ID: str(validated_data[TIKey.PK]),
