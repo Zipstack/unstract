@@ -1,10 +1,12 @@
 import { fireEvent, render, screen } from "@testing-library/react";
+import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
   Collapse,
   Dropdown,
   Modal,
+  Popover,
   Tooltip,
 } from "@/components/ui/shims/antd-overlays";
 
@@ -127,6 +129,50 @@ describe("antd-compatible overlay shims (P2)", () => {
     expect(
       screen.getByRole("button", { name: "hoverable" }),
     ).toBeInTheDocument();
+  });
+
+  /*
+   * A Tooltip is routinely the child of another `asChild` primitive — the
+   * sidebar nests it inside a hover Popover. Radix identifies its trigger by
+   * the REF it passes down, so a Tooltip that forwards handlers but drops the
+   * ref leaves the parent with no anchor to measure. The Platform fly-out did
+   * open, correctly populated, at y=-616: entirely above the viewport.
+   */
+  it("forwards a parent primitive's ref to the trigger element", () => {
+    const ref = React.createRef();
+    render(
+      <Tooltip title="" ref={ref}>
+        <button type="button">anchored</button>
+      </Tooltip>,
+    );
+    expect(ref.current).toBe(screen.getByRole("button", { name: "anchored" }));
+  });
+
+  it("forwards the ref to the trigger even when a title is present", () => {
+    const ref = React.createRef();
+    render(
+      <Tooltip title="hint" ref={ref}>
+        <button type="button">anchored</button>
+      </Tooltip>,
+    );
+    // The bubble is NOT the anchor: the parent must measure the trigger.
+    expect(ref.current).toBe(screen.getByRole("button", { name: "anchored" }));
+  });
+
+  it("opens a hover Popover nested behind a Tooltip", async () => {
+    render(
+      <Popover content={<div>fly-out</div>} trigger="hover">
+        <Tooltip title="">
+          <button type="button">Platform</button>
+        </Tooltip>
+      </Popover>,
+    );
+    const trigger = screen.getByRole("button", { name: "Platform" });
+    expect(trigger).toHaveAttribute("aria-haspopup");
+
+    // The hover handlers have to survive the Tooltip in between.
+    fireEvent.mouseEnter(trigger);
+    expect(await screen.findByText("fly-out")).toBeInTheDocument();
   });
 
   // Regression: `centered` used to add a duplicate centring utility, which

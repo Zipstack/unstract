@@ -412,25 +412,69 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
    * raw. Either way the sidebar's Platform and HITL fly-outs never opened, with
    * no error — the same silent prop-drop this layer keeps producing.
    */
-  const { onMouseEnter, onMouseLeave, onFocus, onBlur, ...contentProps } =
-    props as React.HTMLAttributes<HTMLElement>;
-  const triggerProps = { onMouseEnter, onMouseLeave, onFocus, onBlur };
+  const {
+    onMouseEnter,
+    onMouseLeave,
+    onFocus,
+    onBlur,
+    onPointerDown,
+    onPointerEnter,
+    onPointerLeave,
+    onClick,
+    ...rest
+  } = props as React.HTMLAttributes<HTMLElement>;
+  const triggerProps = {
+    onMouseEnter,
+    onMouseLeave,
+    onFocus,
+    onBlur,
+    onPointerDown,
+    onPointerEnter,
+    onPointerLeave,
+    onClick,
+  };
+
+  /*
+   * Radix identifies an `asChild` trigger by the REF it passes down, and any
+   * aria/data attributes it sets ride along in `rest`. Forwarding only the
+   * pointer handlers made the sidebar fly-outs open with no anchor: Radix had
+   * nothing to measure, so it positioned Platform's 236x308 panel at y=-616,
+   * entirely above the viewport. It was open and correct — just off-screen.
+   *
+   * `rest` carries those attributes because a parent `asChild` primitive
+   * merges them onto this component, so it belongs on the trigger too, not on
+   * the tooltip bubble.
+   */
+  /*
+   * Cast because the trigger element is whatever the call-site passed — a
+   * Space, an Image, a button — so the concrete ref type is not knowable here.
+   * `asChild` forwards it to that element regardless.
+   */
+  const anchorProps = { ...rest, ...triggerProps, ref } as Record<
+    string,
+    unknown
+  >;
 
   if (!title) {
-    // No tooltip to show, but the trigger handlers still have to land on the
-    // child rather than being discarded with the wrapper.
+    // No tooltip to show, but the trigger props — ref included — still have to
+    // land on the child rather than being discarded with the wrapper.
     return React.isValidElement(children)
-      ? React.cloneElement(children, triggerProps)
+      ? React.cloneElement(children as React.ReactElement, anchorProps)
       : children;
   }
   return (
     <TooltipProvider>
       <ShadcnTooltip>
-        <TooltipTrigger asChild {...triggerProps}>
+        {/*
+         * The outer primitive's ref and attributes go on the TRIGGER: they
+         * identify the element it anchors to, and the bubble is not that
+         * element. `ref` is deliberately not forwarded to TooltipContent here
+         * for the same reason.
+         */}
+        <TooltipTrigger asChild {...anchorProps}>
           {children}
         </TooltipTrigger>
         <TooltipContent
-          ref={ref}
           side={
             placement.replace(/(Top|Bottom|Left|Right)$/, "") as
               | "top"
@@ -439,7 +483,6 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
               | "right"
           }
           className={cn("max-w-xs break-words", className)}
-          {...contentProps}
         >
           {title}
         </TooltipContent>

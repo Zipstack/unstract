@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
+import { ConfirmHost } from "@/components/widgets/confirm-modal/ConfirmHost";
 import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
@@ -107,6 +108,9 @@ function App() {
           {/* top-right matches where antd's notification stack used to
               appear; sonner defaults to bottom-right (C4). */}
           <Toaster position="top-right" closeButton richColors />
+          {/* Mounted once here so a confirm dialog outlives whatever opened
+              it — Delete sits inside a dropdown that unmounts on click. */}
+          <ConfirmHost />
           <Router />
         </BrowserRouter>
       </HelmetProvider>
