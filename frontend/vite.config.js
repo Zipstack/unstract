@@ -133,6 +133,12 @@ export default defineConfig(({ mode }) => {
                 target: env.VITE_BACKEND_URL,
                 changeOrigin: true,
                 secure: false,
+                // Forward WebSocket upgrades too — the Socket.IO log/result
+                // channel connects to `/api/v1/socket` with a websocket-only
+                // transport. Without this the upgrade is never proxied to the
+                // backend and Prompt Studio results never stream to the UI in
+                // dev. (Prod is unaffected: Traefik routes /api/v1/socket.)
+                ws: true,
               },
             }
           : undefined,
@@ -143,6 +149,10 @@ export default defineConfig(({ mode }) => {
       target: "esnext",
       outDir: "build",
       sourcemap: true,
+      // Single stylesheet: per-chunk CSS loads in navigation order, making
+      // equal-specificity cross-component rules resolve unpredictably. JS
+      // splitting is unaffected.
+      cssCodeSplit: false,
       // Chunk size warning limit
       chunkSizeWarningLimit: 1000,
       rollupOptions: {

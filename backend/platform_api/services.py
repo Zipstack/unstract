@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 
     from platform_api.models import PlatformApiKey
 
-# Business app labels whose models may have created_by / shared_users fields.
+# Business app labels whose models may carry created_by / membership rows.
 # Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
 _BUSINESS_APP_LABELS = {
     "adapter_processor_v2",
@@ -73,11 +73,20 @@ def _get_user_fk_fields(model: type) -> list[str]:
 
 
 def _get_user_m2m_fields(model: type) -> list[str]:
-    """Return names of all ManyToManyField fields pointing to User."""
+    """Return names of ManyToMany-to-User fields safe to mutate via ``.add()``.
+
+    Only auto-created (implicit) through tables qualify. A custom through model
+    can't be mutated with ``.add()`` / ``.remove()``, so it is excluded — the
+    sole such data (resource memberships, UN-2202) now lives in the polymorphic
+    ``ResourceMembership`` table and is transferred by
+    :func:`_transfer_membership_rows`.
+    """
     return [
         f.name
         for f in model._meta.get_fields()
-        if isinstance(f, models.ManyToManyField) and f.related_model is User
+        if isinstance(f, models.ManyToManyField)
+        and f.related_model is User
+        and f.remote_field.through._meta.auto_created
     ]
 
 
@@ -107,16 +116,49 @@ def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> No
             getattr(instance, field_name).remove(from_user)
 
 
+def _transfer_membership_rows(from_user: User, to_user: User) -> None:
+    """Re-point OWNER/VIEWER ``ResourceMembership`` rows across all resources.
+
+    One polymorphic table covers every resource (UN-2202). ``unique_together
+    (user, content_type, object_id)`` caps ``to_user`` at one row per resource,
+    so when both users hold a row on the same resource they are reconciled by
+    role precedence (OWNER outranks VIEWER): ``to_user`` keeps the stronger of
+    the two roles and ``from_user``'s row is dropped. Without this, transferring
+    an OWNER onto an existing VIEWER would silently leave the resource ownerless.
+    """
+    from permissions.roles import ResourceRole
+    from tenant_account_v2.models import ResourceMembership
+
+    # Rank so a collision only ever promotes to_user, never demotes them.
+    role_rank = {ResourceRole.VIEWER: 0, ResourceRole.OWNER: 1}
+
+    # to_user's current rows keyed by resource, to compare roles on collision.
+    to_rows = {
+        (r.content_type_id, r.object_id): r
+        for r in ResourceMembership.objects.filter(user=to_user)
+    }
+    for row in ResourceMembership.objects.filter(user=from_user):
+        existing = to_rows.get((row.content_type_id, row.object_id))
+        if existing is None:
+            row.user = to_user
+            row.save(update_fields=["user"])
+            continue
+        # to_user already holds a row here — keep the higher-ranked role.
+        if role_rank.get(row.role, 0) > role_rank.get(existing.role, 0):
+            existing.role = row.role
+            existing.save(update_fields=["role"])
+        row.delete()
+
+
 def transfer_ownership(from_user: User, to_user: User | None) -> None:
     """Transfer all resource ownership from one user to another.
 
     Replaces from_user with to_user across business models:
     - created_by / modified_by ForeignKey fields
-    - shared_users ManyToMany fields
-
-    Also cleans up redundancy: if to_user becomes created_by (owner),
-    they are removed from shared_users on that record since ownership
-    already grants full access.
+    - auto-through ManyToMany fields to User
+    - OWNER/VIEWER membership rows (custom-through, UN-2202) — re-pointed,
+      reconciling by role precedence when to_user already holds a row so the
+      resource keeps an owner.
     """
     if not to_user:
         return
@@ -126,6 +168,8 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
             if model._meta.app_label not in _BUSINESS_APP_LABELS:
                 continue
             _transfer_model_ownership(model, from_user, to_user)
+        # Memberships live in one polymorphic table — transfer once, not per model.
+        _transfer_membership_rows(from_user, to_user)
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:

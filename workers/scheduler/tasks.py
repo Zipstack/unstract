@@ -7,7 +7,7 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend import FairnessKey, QueueBackend, dispatch, worker_task
 from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
@@ -23,7 +23,13 @@ from shared.models.scheduler_models import (
 from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
 
-from unstract.core.data_models import NotificationPayload, NotificationSource
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    NotificationPayload,
+    NotificationSource,
+    is_pg_transport,
+    normalize_transport,
+)
 
 # Import the exact backend logic to ensure consistency
 
@@ -138,6 +144,17 @@ def _execute_scheduled_workflow(
                 pipeline_id=context.pipeline_id,
             )
 
+        # Transport this execution rides (9e), decided by the backend at creation
+        # and carried in the dispatched task's payload. Absent key (older backend)
+        # → celery default; a present-but-unrecognized value (version skew) is
+        # coerced to celery with a loud warning rather than dispatched onto an
+        # unknown substrate (fail-closed).
+        transport = normalize_transport(
+            workflow_execution.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+            logger=logger,
+            context=f" [exec:{execution_id}]",
+        )
+
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Created workflow execution for scheduled pipeline {context.pipeline_name}"
         )
@@ -164,8 +181,13 @@ def _execute_scheduled_workflow(
                 kwargs={
                     "use_file_history": context.use_file_history,
                     "pipeline_id": context.pipeline_id,
+                    "transport": transport,
                 },
                 queue=QueueName.GENERAL,
+                # Orchestrator transport (9e PR A / 2d): route async_execute_bin
+                # onto PG for a pg_queue execution (carried-marker wins over the
+                # allow-list); None keeps the legacy Celery dispatch.
+                backend=QueueBackend.PG if is_pg_transport(transport) else None,
                 fairness=FairnessKey(
                     org_id=context.organization_id,
                     workload_type=WorkloadType.NON_API,

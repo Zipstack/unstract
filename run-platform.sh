@@ -355,7 +355,7 @@ first_setup=false
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
 # Add workers manually for env setup
 services+=("workers")
-ignore_services=("tool-structure" "tool-sidecar" "tool-classifier" "tool-text_extractor" "worker-unified")
+ignore_services=("tool-sidecar" "tool-classifier" "tool-text_extractor" "worker-unified")
 current_version=""
 target_branch=""
 

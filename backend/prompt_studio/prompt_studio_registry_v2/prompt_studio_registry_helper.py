@@ -206,13 +206,10 @@ class PromptStudioRegistryHelper:
             if not shared_with_org:
                 obj.shared_users.clear()
                 obj.shared_users.add(*user_ids)
-                # add prompt studio users
-                # for shared_user in custom_tool.shared_users:
-                obj.shared_users.add(
-                    *custom_tool.shared_users.all().values_list("id", flat=True)
-                )
-                # add prompt studio owner
-                obj.shared_users.add(custom_tool.created_by)
+                # Mirror the source tool's access: its direct viewers and its
+                # owners (creator + co-owners, UN-2202).
+                obj.shared_users.add(*[u.id for u in custom_tool.viewers()])
+                obj.shared_users.add(*[u.id for u in custom_tool.owners()])
             else:
                 obj.shared_users.clear()
             obj.save()

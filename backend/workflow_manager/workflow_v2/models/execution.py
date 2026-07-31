@@ -9,6 +9,7 @@ from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
@@ -63,25 +64,22 @@ class WorkflowExecutionManager(BaseModelManager):
                 return self.filter(workflow__organization=org)
             return self.all()
 
-        # Filter for workflow access
-        workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
+        # Filter for workflow access (owner or direct viewer via membership).
+        # ``created_by`` is audit-only (UN-2202); VIEWER rows replaced shared_users.
+        # ``object_id`` is varchar, so resolve the ids via the cast helper rather
+        # than a ``memberships`` JOIN (Postgres refuses ``uuid = varchar``).
+        workflow_filter = Q(
+            workflow_id__in=resources_visible_via_memberships(Workflow, user)
+        )
 
         # Filter for API deployments the user can access
         api_filter = Q(
-            pipeline_id__in=models.Subquery(
-                APIDeployment.objects.filter(
-                    Q(created_by=user) | Q(shared_users=user)
-                ).values("id")
-            )
+            pipeline_id__in=resources_visible_via_memberships(APIDeployment, user)
         )
 
         # Filter for Pipelines the user can access
         pipeline_filter = Q(
-            pipeline_id__in=models.Subquery(
-                Pipeline.objects.filter(Q(created_by=user) | Q(shared_users=user)).values(
-                    "id"
-                )
-            )
+            pipeline_id__in=resources_visible_via_memberships(Pipeline, user)
         )
 
         # Combine deployment filters
@@ -143,6 +141,12 @@ class WorkflowExecution(BaseModel):
         editable=False,
         null=True,
         db_comment="task id of asynchronous execution",
+    )
+    queue_message_id = models.BigIntegerField(
+        editable=False,
+        null=True,
+        db_comment="pg_queue_message.msg_id for PG-transport executions "
+        "(the queue-row handle; task_id stays NULL on the PG path)",
     )
     workflow = models.ForeignKey(
         Workflow,
@@ -214,6 +218,22 @@ class WorkflowExecution(BaseModel):
         indexes = [
             models.Index(fields=["workflow_id", "-created_at"]),
             models.Index(fields=["pipeline_id", "-created_at"]),
+            # Partial index over ACTIVE (non-terminal) executions only — see
+            # migration 0023. Keeps the hot "is there an in-flight execution of
+            # this workflow?" lookup (WHERE workflow_id=… AND status IN active)
+            # O(active) instead of O(all-history-for-workflow). The predicate is
+            # the COMPLEMENT of the terminal set: the *index* stays usable if a new
+            # *active* status is added, but the callers use a frozen positive
+            # status IN ('PENDING','EXECUTING') list — so a new active status is
+            # indexed yet not returned until every caller's list is updated too.
+            # Only a new *terminal* status needs this predicate updated; the literal
+            # is kept in sync with ExecutionStatus.terminal_values() by
+            # tests/test_active_execution_index.py.
+            models.Index(
+                fields=["workflow_id"],
+                name="we_active_by_workflow_idx",
+                condition=~Q(status__in=["COMPLETED", "STOPPED", "ERROR"]),
+            ),
         ]
 
     @property
@@ -347,8 +367,54 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
-        should_release_rate_limit = False
+        from django.db import transaction
 
+        should_release_rate_limit = False
+        with transaction.atomic():
+            # Lock the row and read the PERSISTED marker + status together, so routing
+            # AND the write are atomic. Never trust the (possibly stale) in-memory
+            # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+            # handle, mis-routed to an unlocked legacy full save(), would write NULL
+            # back into queue_message_id and permanently disable every guard. Under
+            # this lock a concurrent _record_dispatch_handle serializes after us.
+            locked = (
+                WorkflowExecution.objects.select_for_update()
+                .filter(pk=self.pk)
+                .values("queue_message_id", "status", "attempts")
+                .first()
+            )
+            if locked is None:
+                return
+            if locked["queue_message_id"] is None:
+                should_release_rate_limit = self._apply_legacy_update(
+                    status, error, increment_attempt
+                )
+            else:
+                should_release_rate_limit = self._apply_pg_guarded_update(
+                    locked, status, error, increment_attempt
+                )
+        if should_release_rate_limit and self.pipeline_id:
+            # Release the slot only once the status write is DURABLE. update_execution()
+            # has its own atomic(), but callers (update_status, the PG reaper's
+            # _recover_one_stuck_pg_execution) wrap it in an OUTER transaction with
+            # further writes (file aggregates, cascade). Firing the Redis release inline
+            # would free the rate-limit slot even if that outer txn later rolls back —
+            # freed slot + un-persisted status. transaction.on_commit fires on the
+            # OUTERMOST commit and is dropped on rollback; in autocommit (no surrounding
+            # txn) it runs immediately. So the happy path is unchanged for both
+            # transports, only the rollback leak is closed.
+            transaction.on_commit(self._release_api_deployment_rate_limit)
+
+    def _apply_legacy_update(
+        self,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> bool:
+        """Celery-path (queue_message_id NULL) — unchanged full save(); runs inside the
+        caller's locked transaction. Returns whether to release the rate-limit slot.
+        """
+        should_release = False
         if status is not None:
             status = ExecutionStatus(status)
             self.status = status.value
@@ -358,18 +424,90 @@ class WorkflowExecution(BaseModel):
                 ExecutionStatus.STOPPED,
             ]:
                 self.execution_time = CommonUtils.time_since(self.created_at, 3)
-                should_release_rate_limit = True
-
+                should_release = True
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             self.attempts += 1
-
         self.save()
+        return should_release
 
-        # Release rate limit slot for API deployment executions after save
-        if should_release_rate_limit and self.pipeline_id:
-            self._release_api_deployment_rate_limit()
+    def _apply_pg_guarded_update(
+        self,
+        locked: dict,
+        status: ExecutionStatus | None,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> bool:
+        """PG-path terminal-one-way guarded write, inside the caller's row lock. Refuses
+        a revert of a protected-terminal (COMPLETED/STOPPED) status — ERROR stays
+        correctable — while still applying error / increment_attempt. Field-scoped
+        (``update_fields``) so a stale object can never clobber counters or the marker,
+        and the post-save cache publishes the status actually persisted. Returns whether
+        to release the rate-limit slot.
+        """
+        committed = locked["status"]
+        should_release = False
+        update_fields: list[str] = []
+        if status is not None:
+            status_fields, should_release = self._apply_guarded_status(
+                ExecutionStatus(status), committed, error, increment_attempt
+            )
+            update_fields.extend(status_fields)
+        if error:
+            self.error_message = error[:EXECUTION_ERROR_LENGTH]
+            update_fields.append("error_message")
+        if increment_attempt:
+            # Increment from the locked committed value, not the stale in-memory one.
+            self.attempts = locked["attempts"] + 1
+            update_fields.append("attempts")
+        if update_fields:
+            update_fields.append("modified_at")
+            self.save(update_fields=update_fields)
+        return should_release
+
+    def _apply_guarded_status(
+        self,
+        status: ExecutionStatus,
+        committed: str,
+        error: str | None,
+        increment_attempt: bool,
+    ) -> tuple[list[str], bool]:
+        """Apply the status change under the terminal-one-way guard.
+
+        Returns ``(update_fields, should_release_rate_limit)``. On a refused revert of
+        a protected-terminal (COMPLETED/STOPPED) row, keeps ``self.status == committed``
+        and returns ``([], False)`` — the caller still applies error / increment.
+        """
+        if (
+            committed in ExecutionStatus.protected_terminal_values()
+            and status.value != committed
+        ):
+            logger.warning(
+                "update_execution: refusing to revert protected status '%s' with "
+                "'%s' for execution %s (stale-writer guard); error=%s "
+                "increment_attempt=%s still applied",
+                committed,
+                status.value,
+                self.id,
+                bool(error),
+                increment_attempt,
+            )
+            self.status = committed  # keep self + post-save cache consistent with DB
+            return [], False
+
+        self.status = status.value
+        fields = ["status"]
+        should_release = False
+        if status in [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ]:
+            self.execution_time = CommonUtils.time_since(self.created_at, 3)
+            fields.append("execution_time")
+            should_release = True
+        return fields, should_release
 
     def _release_api_deployment_rate_limit(self) -> None:
         """Release rate limit slot for API deployment executions.

@@ -2,10 +2,12 @@ import logging
 import uuid
 from typing import Any
 
+from account_v2.models import User
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
     IsFrictionLessAdapter,
     IsFrictionLessAdapterDelete,
@@ -13,9 +15,11 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
@@ -24,6 +28,8 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
+from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -137,8 +143,25 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
-class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
+class AdapterInstanceViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
+):
     serializer_class = AdapterInstanceSerializer
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["adapter_name", "created_at", "modified_at"]
+    notification_resource_name_field = "adapter_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return {
+            "LLM": ResourceType.LLM.value,
+            "EMBEDDING": ResourceType.EMBEDDING.value,
+            "VECTOR_DB": ResourceType.VECTOR_DB.value,
+            "X2TEXT": ResourceType.X2TEXT.value,
+        }.get(resource.adapter_type, ResourceType.LLM.value)
 
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: hidden from non-owners (update/retrieve),
@@ -157,13 +180,31 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = AdapterInstance.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            AdapterInstance.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
+        )
         if filter_args := FilterHelper.build_filter_args(
             self.request,
             constant.ADAPTER_TYPE,
             constant.ADAPTER_NAME,
         ):
             queryset = queryset.filter(**filter_args)
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(adapter_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
+
         return queryset
 
     def get_serializer_class(
@@ -172,6 +213,28 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         if self.action == "list":
             return AdapterListSerializer
         return AdapterInstanceSerializer
+
+    @staticmethod
+    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
+        """Controlled mode (UN-3584): only org admins may create LLM adapters
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) and non-LLM adapter types bypass; the default
+        (flag off) keeps creation open for everyone.
+        """
+        if adapter_type != AdapterKeys.LLM:
+            return
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_llm_adapter_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "LLM adapter creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -184,9 +247,10 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             use_platform_unstract_key = True
 
         serializer.is_valid(raise_exception=True)
-        try:
-            adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
+        self._enforce_llm_creation_restriction(request, adapter_type)
 
+        try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
                 adapter_metadata_b = serializer.validated_data.get(
                     AdapterKeys.ADAPTER_METADATA_B
@@ -199,7 +263,17 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
                     adapter_metadata_b
                 )
 
-            instance = serializer.save()
+            # Bind the adapter to the request-scoped organization, overriding any
+            # client-supplied `organization` in the payload (the serializer
+            # exposes it via fields="__all__"). This keeps the row's org
+            # consistent with the org the controlled-mode check above evaluated,
+            # so the per-org restriction can't be sidestepped via the payload.
+            instance = serializer.save(organization=UserContext.get_organization())
+            # ``created_by`` is audit-only; the creator's access flows through
+            # an OWNER membership row (UN-2202 co-owners).
+            instance.memberships.get_or_create(
+                user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+            )
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
@@ -359,10 +433,11 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
             adapter.refresh_from_db()
             after_user_ids = self._effective_member_ids(adapter)
             removed = before_user_ids - after_user_ids
-            # The owner always retains access via ``created_by``; never clear
-            # their defaults on a share-axis change (e.g. a ``shared_to_org``
-            # toggle-off, which drops the owner from the org-member set).
-            removed.discard(adapter.created_by_id)
+            # Owners (creator + co-owners) keep full access via their OWNER
+            # membership row regardless of the share axes; never clear their
+            # defaults on a share-axis change (e.g. a ``shared_to_org`` toggle-off,
+            # which drops them from the effective org-member set).
+            removed -= {m.user_id for m in adapter.owner_memberships()}
             self._clear_default_adapter_for_removed_users(adapter, removed)
         return response
 
@@ -372,6 +447,19 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         from tenant_account_v2.sharing_helpers import compute_effective_members
 
         return {member["user_id"] for member in compute_effective_members(adapter)}
+
+    def on_owner_removed(self, resource: AdapterInstance, user: User) -> None:
+        """Clear the removed co-owner's dangling default adapter — but only if
+        they lost all effective access (they may still be in a shared group or
+        covered by ``shared_to_org``; a surviving direct VIEWER row is not
+        possible, since ``uniq_resource_membership`` means the promotion to
+        OWNER consumed it). Mirrors the ``share`` cleanup, which
+        ``remove_co_owner`` would otherwise skip.
+        """
+        resource.refresh_from_db()
+        if user.pk in self._effective_member_ids(resource):
+            return
+        self._clear_default_adapter_for_removed_users(resource, {user.pk})
 
     def _notify_shared_users(
         self,

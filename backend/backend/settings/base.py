@@ -160,8 +160,6 @@ DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")
 PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
-PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
-PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )
@@ -340,6 +338,8 @@ SHARED_APPS = (
     # For the organization model
     "account_v2",
     "account_usage",
+    # PG Queue — extension-free bespoke queue (cross-org infra, shared schema)
+    "pg_queue",
     # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
@@ -627,7 +627,7 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
-        "rest_framework.filters.OrderingFilter",
+        "utils.filters.ordering_filter.DeterministicOrderingFilter",
     ],
     # For API versioning
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",

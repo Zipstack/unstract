@@ -224,14 +224,20 @@ class ExecutionResponse(APIResponse):
         execution_id: str | None = None,
         status: str = ResponseStatus.ERROR,
         message: str | None = None,
+        status_code: int | None = None,
     ) -> "ExecutionResponse":
-        """Create an error execution response."""
+        """Create an error execution response.
+
+        ``status_code`` is the HTTP status of the failed call (e.g. 404), so callers
+        can distinguish "resource gone" from a transient server error.
+        """
         return cls(
             success=False,
             execution_id=execution_id,
             status=status,
             error=error,
             message=message,
+            status_code=status_code,
         )
 
 

@@ -10,18 +10,15 @@ set -e
 UNSTRACT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BACKEND_DIR="${UNSTRACT_ROOT}/backend"
 PLATFORM_SERVICE_DIR="${UNSTRACT_ROOT}/platform-service"
-PROMPT_SERVICE_DIR="${UNSTRACT_ROOT}/prompt-service"
 FILESYSTEM_DIR="${UNSTRACT_ROOT}/unstract/filesystem"
 TOOL_REGISTRY_DIR="${UNSTRACT_ROOT}/unstract/tool-registry"
 CLASSIFIER_DIR="${UNSTRACT_ROOT}/tools/classifier"
-STRUCTURE_DIR="${UNSTRACT_ROOT}/tools/structure"
 TEXT_EXTRACTOR_DIR="${UNSTRACT_ROOT}/tools/text_extractor"
 
 # Organized directory arrays
-STRUCTURE_TOOL_DIRS=("$STRUCTURE_DIR")
 CUSTOM_TOOL_DIRS=("$CLASSIFIER_DIR" "$TEXT_EXTRACTOR_DIR")
 PACKAGE_DIRS=("$FILESYSTEM_DIR" "$TOOL_REGISTRY_DIR")
-SERVICE_DIRS=("$BACKEND_DIR" "$PLATFORM_SERVICE_DIR" "$PROMPT_SERVICE_DIR")
+SERVICE_DIRS=("$BACKEND_DIR" "$PLATFORM_SERVICE_DIR")
 ROOT_DIR="$UNSTRACT_ROOT"
 
 # Additional files having version
@@ -149,66 +146,6 @@ check_file() {
     if [[ ! -f "$1" ]]; then
         echo "Error: File not found: $1"
         exit 1
-    fi
-}
-
-# Update structure tool version in sample.env
-update_structure_tool_version() {
-    local file="$1"
-    local version_arg="$2"
-    local old_url_version
-    local old_tag_version
-    local new_version
-
-    echo "Processing structure tool..."
-
-    # Check if file exists
-    if [[ ! -f "$file" ]]; then
-        echo "Warning: $file not found, skipping structure tool update"
-        return
-    fi
-
-    log "Checking structure tool version in $file"
-    check_file "$file"
-
-    # NOTE: Currently we bump only patch version for tools
-    if [[ "$version_arg" != *"."* ]]; then
-        version_arg="patch"
-        echo "Set target version for structure tool as $version_arg"
-    fi
-
-    # Extract current structure tool versions
-    old_url_version=$(grep 'STRUCTURE_TOOL_IMAGE_URL' "$file" | grep -o '[0-9.]\+"$' | tr -d '"')
-    old_tag_version=$(grep 'STRUCTURE_TOOL_IMAGE_TAG' "$file" | grep -o '[0-9.]\+"$' | tr -d '"')
-
-    if [[ -z "$old_url_version" || -z "$old_tag_version" ]]; then
-        echo "Error: Could not find structure tool version in $file"
-        exit 1
-    fi
-
-    log "Found structure tool URL version: $old_url_version"
-    log "Found structure tool TAG version: $old_tag_version"
-
-    # Handle special version keywords
-    if [[ "$version_arg" == "patch" || "$version_arg" == "minor" || "$version_arg" == "major" ]]; then
-        new_version=$(bump_version "$old_url_version" "$version_arg")
-        log "Auto-bumped structure tool version: $old_url_version -> $new_version ($version_arg)"
-    else
-        new_version="$version_arg"
-    fi
-
-    if [[ "$old_url_version" == "$new_version" && "$old_tag_version" == "$new_version" ]]; then
-        echo "Structure tool version already at $new_version, skipping update"
-        return
-    fi
-
-    if [[ "$DRY_RUN" == true ]]; then
-        echo "Would update structure tool URL version from $old_url_version to $new_version in $file"
-        echo "Would update structure tool TAG version from $old_tag_version to $new_version in $file"
-    else
-        echo "Updating structure tool versions from $old_url_version/$old_tag_version to $new_version in $file"
-        sed -i "s/STRUCTURE_TOOL_IMAGE_URL=\"docker:unstract\/tool-structure:$old_url_version\"/STRUCTURE_TOOL_IMAGE_URL=\"docker:unstract\/tool-structure:$new_version\"/g" "$file"
-        sed -i "s/STRUCTURE_TOOL_IMAGE_TAG=\"$old_tag_version\"/STRUCTURE_TOOL_IMAGE_TAG=\"$new_version\"/g" "$file"
     fi
 }
 
@@ -416,8 +353,6 @@ reset_directory_changes() {
     reset_file "$BACKEND_DIR/uv.lock"
     reset_file "$PLATFORM_SERVICE_DIR/pyproject.toml"
     reset_file "$PLATFORM_SERVICE_DIR/uv.lock"
-    reset_file "$PROMPT_SERVICE_DIR/pyproject.toml"
-    reset_file "$PROMPT_SERVICE_DIR/uv.lock"
 
     # Reset package directories
     reset_file "$FILESYSTEM_DIR/pyproject.toml"
@@ -431,7 +366,7 @@ reset_directory_changes() {
     reset_file "$TEXT_EXTRACTOR_DIR/requirements.txt"
     reset_file "$TEXT_EXTRACTOR_DIR/src/config/properties.json"
 
-    # Reset structure tool directories
+    # Reset additional files
     reset_file "$SAMPLE_ENV_FILE"
     reset_file "$TOOL_REGISTRY_JSON_FILE"
 }
@@ -463,30 +398,27 @@ process_directories() {
 
     echo "[-] Processing all directories and files for version bump..."
 
-    # 1. Process structure tool
-    update_structure_tool_version "$SAMPLE_ENV_FILE" "$TARGET_VERSION"
-
-    # 2. Process custom tools
+    # 1. Process custom tools
     echo "[-] Processing custom tools..."
     for dir in "${CUSTOM_TOOL_DIRS[@]}"; do
         update_custom_tool_version "$dir" "$TARGET_VERSION" "$TOOL_REGISTRY_JSON_FILE"
     done
 
-    # 3. Process packages (similar to services)
+    # 2. Process packages (similar to services)
     echo "[-] Processing packages..."
     for dir in "${PACKAGE_DIRS[@]}"; do
         update_sdk_version "$dir/pyproject.toml" "$TARGET_VERSION"
         generate_uvlock "$dir"
     done
 
-    # 4. Process services
+    # 3. Process services
     echo "[-] Processing services..."
     for dir in "${SERVICE_DIRS[@]}"; do
         update_sdk_version "$dir/pyproject.toml" "$TARGET_VERSION"
         generate_uvlock "$dir"
     done
 
-    # 5. Process root directory
+    # 4. Process root directory
     echo "[-] Processing root directory..."
     update_sdk_version "$ROOT_DIR/pyproject.toml" "$TARGET_VERSION"
     generate_uvlock "$ROOT_DIR"

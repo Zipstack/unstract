@@ -237,6 +237,11 @@ class QueueResult:
     file_content: str
     whisper_hash: str | None = None
     file_execution_id: str | None = None
+    # Workflow execution id — carried into the HITL queue message so the
+    # manual-review consumer can populate hitl_queue.execution_id. Mirrors the
+    # workers QueueResult (shared/models/result_models.py); kept in sync so the
+    # column is populated whichever destination path enqueues the review.
+    execution_id: str | None = None
     enqueued_at: float | None = None
     ttl_seconds: int | None = None
     extracted_text: str | None = None
@@ -264,6 +269,7 @@ class QueueResult:
             "workflow_id": self.workflow_id,
             "file_content": self.file_content,
             "file_execution_id": self.file_execution_id,
+            "execution_id": self.execution_id,
             "enqueued_at": self.enqueued_at,
             "ttl_seconds": self.ttl_seconds,
             "extracted_text": self.extracted_text,
