@@ -411,10 +411,14 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
          * Analyzer's profile tabs) uses `<Tabs.TabPane key=...>`, so its tabs
          * rendered permanently inactive with the panel `hidden`.
          *
-         * `toArray` prefixes keys with ".$", which must come off before the
-         * value is compared against antd's activeKey.
+         * `toArray` rewrites keys, and the prefix is NOT always ".$": children
+         * arriving through a nested array — here a conditional pane followed by
+         * a `.map()` — get ".N:$" instead. Strip either form, or the value
+         * never matches antd's activeKey and the ".1:$…" string leaks out
+         * through onChange as a profile id (that was the 500).
          */
-        key: c.props.tabKey ?? String(c.key ?? "").replace(/^\.\$/, ""),
+        key:
+          c.props.tabKey ?? String(c.key ?? "").replace(/^\.(\d+:)?\$/, ""),
         label: c.props.tab,
         children: c.props.children,
         disabled: c.props.disabled,

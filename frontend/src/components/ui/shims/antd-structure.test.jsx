@@ -93,6 +93,29 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("second")).toBeInTheDocument();
   });
 
+  /*
+   * The real CombinedOutput shape: a conditional pane followed by a `.map()`.
+   * That nesting makes React.Children.toArray use a ".N:$" prefix rather than
+   * ".$", which a regex anchored on ".$" alone does not strip — the tab stayed
+   * inactive even after the key was read off the element.
+   */
+  it("Tabs strip the nested-array key prefix too", () => {
+    const profiles = [{ id: "p2", name: "Two" }];
+    render(
+      <Tabs activeKey="p2">
+        {false && <Tabs.TabPane tab="Default" key="0" />}
+        {profiles.map((p) => (
+          <Tabs.TabPane tab={p.name} key={p.id}>
+            body {p.id}
+          </Tabs.TabPane>
+        ))}
+      </Tabs>,
+    );
+    expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
+      "Two",
+    );
+  });
+
   it("Tabs report an unprefixed key through onChange", () => {
     const onChange = vi.fn();
     render(
