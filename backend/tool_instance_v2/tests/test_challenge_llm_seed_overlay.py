@@ -291,9 +291,27 @@ class TestDefaultAdapterDoesNotClobberSeededValue:
     def test_seeded_challenge_llm_survives_the_default_walk(self) -> None:
         """The exported value is kept, not replaced by the user's default."""
         metadata = self._run_default_adapter_walk(
+            {
+                JsonSchemaKey.CHALLENGE_LLM: RESOLVED_CHALLENGE_LLM,
+                CHALLENGE_LLM_ADAPTER_ID_KEY: RESOLVED_CHALLENGE_LLM,
+            }
+        )
+        assert metadata[JsonSchemaKey.CHALLENGE_LLM] == RESOLVED_CHALLENGE_LLM
+        assert metadata[CHALLENGE_LLM_ADAPTER_ID_KEY] == RESOLVED_CHALLENGE_LLM
+
+    def test_kept_value_never_leaves_a_half_written_pair(self) -> None:
+        """Skipping the write must not strand a missing companion ID key.
+
+        `update_metadata_with_adapter_properties` warns that a UUID-shaped value
+        at the adapter key with no matching ID key "bypasses the lazy migrator
+        and fails schema enum validation later". Preserving a value must not
+        manufacture that shape.
+        """
+        metadata = self._run_default_adapter_walk(
             {JsonSchemaKey.CHALLENGE_LLM: RESOLVED_CHALLENGE_LLM}
         )
         assert metadata[JsonSchemaKey.CHALLENGE_LLM] == RESOLVED_CHALLENGE_LLM
+        assert metadata[CHALLENGE_LLM_ADAPTER_ID_KEY] == RESOLVED_CHALLENGE_LLM
 
     def test_unset_challenge_llm_still_gets_the_user_default(self) -> None:
         """The guard fills gaps -- it must not disable the default entirely."""

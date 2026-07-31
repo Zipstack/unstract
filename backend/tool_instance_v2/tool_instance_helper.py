@@ -225,7 +225,13 @@ class ToolInstanceHelper:
             # the exported project's challenger LLM, and it is one of the LLM
             # adapter properties walked here. Overwriting it would replace a
             # tool-specific choice with the user's global default.
-            if metadata.get(adapter_key):
+            existing_value = metadata.get(adapter_key)
+            if existing_value:
+                # Keep the pair consistent even when the value arrived from a
+                # path that only wrote the adapter key. A populated adapter key
+                # with a missing ID key is the half-written shape nothing else
+                # in the system emits.
+                metadata.setdefault(metadata_key_for_id, existing_value)
                 continue
             metadata[adapter_key] = str(adapter.id)
             metadata[metadata_key_for_id] = str(adapter.id)
