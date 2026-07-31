@@ -48,12 +48,23 @@ def extract_defs(
     return parts
 
 
+def _line_offset(source: str, marker: str) -> int:
+    """0-based line on which ``marker`` starts."""
+    return source.count("\n", 0, source.index(marker))
+
+
 def exec_def(module: Path, marker: str, stops: tuple[str, ...], namespace: Any) -> Any:
     """Extract one definition, ``exec`` it in ``namespace``, and hand it back.
 
     The body is dedented so a method can be executed at module level, which is
     what lets a view method be driven without standing up the class.
+
+    Blank lines are prepended so the snippet sits at its real line number.
+    ``compile`` is given the true path, so without the padding a traceback
+    would pair a genuine filename with a snippet-relative line -- pointing
+    whoever debugs a failure at whatever unrelated source sits there.
     """
     (body,) = extract_defs(module, (marker,), stops)
-    exec(compile(textwrap.dedent(body), str(module), "exec"), namespace)
+    padding = "\n" * _line_offset(module.read_text(), marker)
+    exec(compile(padding + textwrap.dedent(body), str(module), "exec"), namespace)
     return namespace
