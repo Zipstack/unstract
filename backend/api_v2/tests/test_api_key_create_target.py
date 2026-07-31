@@ -43,9 +43,38 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from django.core.exceptions import ValidationError as DjangoValidationError
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 PERMISSION_MODULE = BACKEND_DIR / "permissions" / "permission.py"
+
+
+def _extract_defs(
+    module: Path, markers: tuple[str, ...], stops: tuple[str, ...]
+) -> list[str]:
+    """Slice each named definition out of ``module``'s source.
+
+    ``pytest.fail`` on a missing marker rather than skipping: a rename must
+    break loudly, since a silently-skipped guard test is worse than none.
+    """
+    source = module.read_text()
+    parts = []
+    for marker in markers:
+        if marker not in source:
+            pytest.fail(
+                f"Could not find {marker!r} in {module}. If it was renamed or "
+                "inlined, update this test rather than deleting it."
+            )
+        start = source.index(marker)
+        rest = source[start + len(marker) :]
+        end = len(rest)
+        for needle in stops:
+            found = rest.find(needle)
+            if found != -1:
+                end = min(end, found)
+        parts.append(marker + rest[:end])
+    return parts
+
 
 START_MARKER = "class IsParentDeploymentOwner(permissions.BasePermission):"
 END_MARKER = "\nclass "
@@ -505,51 +534,111 @@ class TestCreateBodyContract:
             view.create(_Req({}, OWNER), pipeline_id=MALFORMED_ID)
 
 
+class _DoesNotExist(Exception):
+    """Stand-in for ``Model.DoesNotExist``."""
+
+
+def _raising_manager(exc: BaseException) -> Any:
+    """A ``.objects`` whose ``get()`` raises ``exc``."""
+
+    class _Objects:
+        @staticmethod
+        def get(**_: Any) -> Any:
+            raise exc
+
+    return _Objects()
+
+
 class TestLookupHelpersTolerateMalformedIds:
     """The fix lives in the helpers, so pin the contract there.
 
     Both are reached with unvalidated caller input. Catching only
     ``DoesNotExist`` leaves ``ValidationError`` to escape as a 500.
+
+    The real ``django.core.exceptions.ValidationError`` is used -- Django is
+    installed in the unit tier even though *settings* are unconfigured, so the
+    exception class is importable and the ``except`` clause is exercised for
+    real rather than matched as source text.
     """
 
     @staticmethod
-    def _caught_exceptions(path: Path, marker: str) -> str:
-        """The ``except (...)`` line of the named function, docstring excluded.
-
-        Asserting on the whole body would match the *prose* explaining why
-        ``ValidationError`` is caught, so reverting the code while leaving the
-        comment would pass.
-        """
-        source = path.read_text()
-        if marker not in source:
-            pytest.fail(f"Could not find {marker!r} in {path}.")
-        body = source[source.index(marker) :]
-        body = body[: body.find("\n    @")] if "\n    @" in body else body
-        excepts = [
-            line for line in body.splitlines() if line.strip().startswith("except")
-        ]
-        if not excepts:
-            pytest.fail(f"No `except` clause found in {marker!r} ({path}).")
-        return "\n".join(excepts)
-
-    def test_get_api_by_id_treats_a_malformed_id_as_not_found(self) -> None:
-        caught = self._caught_exceptions(
-            BACKEND_DIR / "api_v2" / "utils.py",
-            "    def get_api_by_id(api_id: str) -> APIDeployment | None:",
+    def _build_get_api_by_id(raises: BaseException) -> Any:
+        marker = "    def get_api_by_id(api_id: str) -> APIDeployment | None:"
+        (body,) = _extract_defs(
+            BACKEND_DIR / "api_v2" / "utils.py", (marker,), ("\n    @",)
         )
 
-        assert "ValidationError" in caught, (
-            "A non-UUID id raises ValidationError, not DoesNotExist; without "
-            "catching it, malformed client input becomes a 500"
-        )
+        class _APIDeploymentModel:
+            objects = _raising_manager(raises)
+            DoesNotExist = _DoesNotExist
 
-    def test_get_pipeline_by_id_treats_a_malformed_id_as_not_found(self) -> None:
-        caught = self._caught_exceptions(
+        namespace: dict[str, Any] = {
+            "APIDeployment": _APIDeploymentModel,
+            "ValidationError": DjangoValidationError,
+            "Any": Any,
+        }
+        exec(compile(textwrap.dedent(body), "utils.py", "exec"), namespace)
+        return namespace["get_api_by_id"]
+
+    @staticmethod
+    def _build_get_pipeline_by_id(raises: BaseException) -> Any:
+        marker = "    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:"
+        (body,) = _extract_defs(
             BACKEND_DIR / "pipeline_v2" / "pipeline_processor.py",
-            "    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:",
+            (marker,),
+            ("\n    @",),
         )
 
-        assert "ValidationError" in caught, (
-            "A non-UUID id raises ValidationError, not DoesNotExist; without "
-            "catching it, malformed client input becomes a 500"
+        class _PipelineModel:
+            DoesNotExist = _DoesNotExist
+
+        class _Cls:
+            @staticmethod
+            def fetch_pipeline(pipeline_id: str, check_active: bool = True) -> Any:
+                raise raises
+
+        namespace: dict[str, Any] = {
+            "Pipeline": _PipelineModel,
+            "ValidationError": DjangoValidationError,
+            "Any": Any,
+        }
+        exec(compile(textwrap.dedent(body), "pipeline_processor.py", "exec"), namespace)
+        return lambda pipeline_id: namespace["get_pipeline_by_id"](_Cls, pipeline_id)
+
+    def test_get_api_by_id_returns_none_for_a_malformed_id(self) -> None:
+        """A non-UUID id raises ValidationError, not DoesNotExist.
+
+        Left uncaught it escapes the view as a 500 with a traceback, for what
+        is ordinary client garbage.
+        """
+        get_api_by_id = self._build_get_api_by_id(DjangoValidationError("bad uuid"))
+
+        assert get_api_by_id(MALFORMED_ID) is None
+
+    def test_get_api_by_id_still_returns_none_when_the_row_is_absent(self) -> None:
+        get_api_by_id = self._build_get_api_by_id(_DoesNotExist())
+
+        assert get_api_by_id("api-1") is None
+
+    def test_get_pipeline_by_id_returns_none_for_a_malformed_id(self) -> None:
+        get_pipeline_by_id = self._build_get_pipeline_by_id(
+            DjangoValidationError("bad uuid")
         )
+
+        assert get_pipeline_by_id(MALFORMED_ID) is None
+
+    def test_get_pipeline_by_id_still_returns_none_when_the_row_is_absent(self) -> None:
+        get_pipeline_by_id = self._build_get_pipeline_by_id(_DoesNotExist())
+
+        assert get_pipeline_by_id("pipe-1") is None
+
+    def test_an_unexpected_error_is_not_swallowed(self) -> None:
+        """The catch must stay narrow -- a real fault must still surface.
+
+        Broadening to a bare ``except Exception`` would turn database outages
+        into silent 404s.
+        """
+        get_api_by_id = self._build_get_api_by_id(RuntimeError("database is down"))
+
+        with pytest.raises(RuntimeError):
+            get_api_by_id("api-1")
