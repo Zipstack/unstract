@@ -105,16 +105,18 @@ def _fetch(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 def test_serializer_emits_the_custom_tool_column() -> None:
     """The projection can only publish what the serializer serializes.
 
-    Renders through ``PromptStudioRegistrySerializer.to_representation`` -- the
-    whole serializer, not a field-by-field reconstruction -- so every way the
-    key can vanish is caught: narrowing ``Meta.fields``, a field-level
-    ``to_representation`` override, and a serializer-level one that pops the
-    key after the fields have run.
+    Renders the way production does -- ``many=True``, through ``ListSerializer``
+    -- so every way the key can vanish is caught: narrowing ``Meta.fields``,
+    ``exclude``, ``write_only``, a field- or serializer-level
+    ``to_representation`` override, and a ``Meta.list_serializer_class`` that
+    strips the key on the list path only. Rendering a single instance would miss
+    that last one, since production never serializes one row at a time.
 
     The stub stands in for a saved row so this stays DB-free; a real instance
-    would make ``PrimaryKeyRelatedField`` evaluate its queryset. It carries
-    every field the serializer reads, so a newly added field surfaces here as a
-    loud ``AttributeError`` rather than a silent gap in coverage.
+    would make ``PrimaryKeyRelatedField`` evaluate its queryset. It only needs
+    the attributes asserted on below: DRF raises ``SkipField`` for anything
+    missing on the stub and omits that key, so an unrelated field added to the
+    model later is quietly skipped rather than breaking this test.
     """
     stub = SimpleNamespace(
         prompt_registry_id=uuid.UUID(PROMPT_REGISTRY_ID),
@@ -135,7 +137,7 @@ def test_serializer_emits_the_custom_tool_column() -> None:
         modified_at=None,
     )
 
-    rendered = PromptStudioRegistrySerializer().to_representation(stub)
+    (rendered,) = PromptStudioRegistrySerializer([stub], many=True).data
 
     assert "custom_tool" in rendered, (
         "PromptStudioRegistrySerializer must serialize `custom_tool`; without "
