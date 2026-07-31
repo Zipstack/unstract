@@ -274,13 +274,15 @@ class TestPoisonDropMarksExecution:
 
     def test_poison_log_enriched_with_org_and_read_ct(self, monkeypatch, caplog):
         # Q2 debuggability: the poison drop logs a clear "poison-dropped" message
-        # carrying read_ct + org_id so a dropped task is greppable/Sentry-visible.
+        # carrying read_ct + org_id + queue so a dropped task is greppable/
+        # Sentry-visible and its source queue is identifiable at a glance.
         monkeypatch.setattr(
             "queue_backend.pg_queue.recovery.mark_execution_error",
             lambda *a, **k: True,
         )
         client = MagicMock()
-        client.read.return_value = [self._poison(read_ct=6)]
+        payload = {**_callback_payload(), "queue": "agentic_callback"}
+        client.read.return_value = [self._poison(payload=payload, read_ct=6)]
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
             PgQueueConsumer(
                 ["q"], client=client, api_client=MagicMock(), max_attempts=5
@@ -288,6 +290,7 @@ class TestPoisonDropMarksExecution:
         assert "poison-dropped" in caplog.text
         assert "read_ct=6" in caplog.text
         assert "org_id=org-1" in caplog.text  # org surfaced for the dropped task
+        assert "queue=agentic_callback" in caplog.text  # source queue surfaced
 
     def test_positional_orchestration_poison_marks_error(self, monkeypatch):
         # H2 regression: a poisoned async_execute_bin carries execution_id

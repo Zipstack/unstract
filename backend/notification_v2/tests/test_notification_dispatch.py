@@ -2,8 +2,10 @@
 
 ``resolve_transport`` + ``enqueue_task`` are patched on the module, so no Flipt /
 DB is needed — these pin the routing contract: PG when the flag resolves PG,
-Celery otherwise (fail-closed), with byte-identical args/kwargs/queue on both
-paths.
+Celery otherwise (fail-closed), with identical args/queue on both paths. The
+kwargs are identical EXCEPT ``raise_on_final_failure``, which is forced ``False``
+on the PG branch (the re-raise means "redeliver" on PG, not "dead-letter" — see
+``test_pg_forces_raise_on_final_failure_false``).
 """
 
 from __future__ import annotations
@@ -49,7 +51,9 @@ class TestDispatchWebhookNotification:
         assert kwargs["task_name"] == "send_webhook_notification"
         assert kwargs["queue"] == _QUEUE
         assert kwargs["args"] == _ARGS
-        assert kwargs["kwargs"] == _KWARGS
+        # Every kwarg is forwarded verbatim EXCEPT raise_on_final_failure, which the
+        # PG branch forces False (see test_pg_forces_raise_on_final_failure_false).
+        assert kwargs["kwargs"] == {**_KWARGS, "raise_on_final_failure": False}
         assert kwargs["org_id"] == "org_x"
         # The minted PG task id is returned and threaded into the enqueue row.
         assert kwargs["task_id"] == task_id
@@ -119,8 +123,10 @@ class TestDispatchWebhookNotification:
         assert resolve.call_args.kwargs["execution_id"] == task_id
         assert enqueue.call_args.kwargs["task_id"] == task_id
 
-    def test_args_and_kwargs_identical_on_both_paths(self):
-        # The consumer must behave the same regardless of transport.
+    def test_args_and_queue_identical_on_both_paths(self):
+        # The consumer must behave the same regardless of transport — args/queue are
+        # byte-identical, and kwargs match apart from the transport-specific
+        # raise_on_final_failure override (asserted separately below).
         celery = MagicMock()
         with patch.object(nd, "resolve_transport", return_value="celery"):
             _dispatch(celery)
@@ -132,5 +138,32 @@ class TestDispatchWebhookNotification:
         ):
             _dispatch(celery2)
         assert enqueue.call_args.kwargs["args"] == celery_call["args"]
-        assert enqueue.call_args.kwargs["kwargs"] == celery_call["kwargs"]
         assert enqueue.call_args.kwargs["queue"] == celery_call["queue"]
+        # kwargs differ ONLY by the PG-forced raise_on_final_failure flag.
+        pg_kwargs = enqueue.call_args.kwargs["kwargs"]
+        assert pg_kwargs == {**celery_call["kwargs"], "raise_on_final_failure": False}
+
+    def test_pg_forces_raise_on_final_failure_false(self):
+        # Regression (UN-3753): on the PG consumer a re-raise on retry exhaustion
+        # leaves the row for vt-expiry redelivery — the subscriber would be re-POSTed
+        # up to max_attempts times AND a false poison-drop would be logged. The
+        # dispatch seam must override raise_on_final_failure -> False on the PG branch
+        # (worker already marks buffers DEAD_LETTER directly) so the task returns None
+        # -> the consumer acks -> the endpoint is hit once, matching Celery's external
+        # behaviour. The Celery branch keeps the caller's True verbatim.
+        assert _KWARGS["raise_on_final_failure"] is True  # guard the fixture premise
+        celery = MagicMock()
+        with (
+            patch.object(nd, "resolve_transport", return_value="pg_queue"),
+            patch.object(nd, "enqueue_task", return_value=1) as enqueue,
+        ):
+            _dispatch(celery)
+        assert enqueue.call_args.kwargs["kwargs"]["raise_on_final_failure"] is False
+        # The caller's dict is not mutated in place (a fresh dict is enqueued).
+        assert _KWARGS["raise_on_final_failure"] is True
+
+        celery2 = MagicMock()
+        with patch.object(nd, "resolve_transport", return_value="celery"):
+            _dispatch(celery2)
+        sent_kwargs = celery2.send_task.call_args.kwargs["kwargs"]
+        assert sent_kwargs["raise_on_final_failure"] is True

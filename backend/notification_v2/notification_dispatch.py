@@ -87,12 +87,23 @@ def dispatch_webhook_notification(
     # Use the shared is_pg_transport() — the single source for "what counts as PG
     # transport" — rather than opening a second comparison site.
     if is_pg_transport(transport):
+        # ``raise_on_final_failure`` is Celery semantics: on the Celery path a
+        # terminal failure re-raises so the task ends FAILURE and link_error
+        # dead-letters the rows, with NO message-level redelivery. On the PG
+        # consumer the same re-raise means the OPPOSITE — the worker already marked
+        # the buffers DEAD_LETTER directly, so re-raising only leaves the row for
+        # vt-expiry redelivery (bounded by max_attempts), re-POSTing the subscriber
+        # on every redelivery and tripping a false poison-drop. Force it False on the
+        # PG branch so a terminal failure returns None → the consumer acks (deletes)
+        # the row → single pass, matching Celery's external behaviour. (Celery branch
+        # below keeps kwargs verbatim — byte-identical.)
+        pg_kwargs = {**kwargs, "raise_on_final_failure": False}
         try:
             enqueue_task(
                 task_name=WEBHOOK_NOTIFICATION_TASK,
                 queue=queue,
                 args=args,
-                kwargs=kwargs,
+                kwargs=pg_kwargs,
                 # enqueue_task types org_id as str; None→"" here satisfies that
                 # type only, not runtime — enqueue_task itself re-coerces
                 # ``org_id or ""`` at insert (producer.py), so this has no runtime
