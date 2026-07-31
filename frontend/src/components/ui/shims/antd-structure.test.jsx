@@ -313,17 +313,115 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("Right item")).toBeInTheDocument();
   });
 
-  it("Transfer moves an item and reports the new targetKeys", () => {
+  /*
+   * antd's Transfer is a CHECKBOX widget: tick rows, then press the arrow
+   * between the panels. The earlier stub moved whichever row was clicked and
+   * drew no checkboxes, counts, search or arrows, so it read as a plain list
+   * beside the reference.
+   */
+  it("Transfer moves the CHECKED rows when the arrow is pressed", () => {
     const onChange = vi.fn();
     render(
       <Transfer
-        dataSource={[{ key: "1", title: "Movable" }]}
+        dataSource={[
+          { key: "1", title: "Movable" },
+          { key: "2", title: "Other" },
+        ]}
         targetKeys={[]}
         onChange={onChange}
       />,
     );
+    // Clicking the row alone must NOT move it.
     fireEvent.click(screen.getByText("Movable"));
+    expect(onChange).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByLabelText("Move selected to the right"));
     expect(onChange).toHaveBeenCalledWith(["1"], "right", ["1"]);
+  });
+
+  it("Transfer moves back to the left from the target panel", () => {
+    const onChange = vi.fn();
+    render(
+      <Transfer
+        dataSource={[{ key: "1", title: "Movable" }]}
+        targetKeys={["1"]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByText("Movable"));
+    fireEvent.click(screen.getByLabelText("Move selected to the left"));
+    expect(onChange).toHaveBeenCalledWith([], "left", ["1"]);
+  });
+
+  it("Transfer disables an arrow when nothing on that side is checked", () => {
+    render(
+      <Transfer dataSource={[{ key: "1", title: "A" }]} targetKeys={[]} />,
+    );
+    expect(
+      screen.getByLabelText("Move selected to the right"),
+    ).toBeDisabled();
+    expect(screen.getByLabelText("Move selected to the left")).toBeDisabled();
+  });
+
+  it("Transfer shows an item count per panel, like antd", () => {
+    render(
+      <Transfer
+        dataSource={[
+          { key: "1", title: "A" },
+          { key: "2", title: "B" },
+          { key: "3", title: "C" },
+        ]}
+        targetKeys={["3"]}
+        titles={["Source", "Target"]}
+      />,
+    );
+    expect(screen.getByText("2 items")).toBeInTheDocument();
+    expect(screen.getByText("1 items")).toBeInTheDocument();
+  });
+
+  /* `showSearch` was accepted and silently dropped. */
+  it("Transfer renders a filter box per panel when showSearch is set", () => {
+    render(
+      <Transfer
+        showSearch
+        dataSource={[
+          { key: "1", title: "Alpha" },
+          { key: "2", title: "Beta" },
+        ]}
+        targetKeys={[]}
+      />,
+    );
+    const boxes = screen.getAllByPlaceholderText("Search here");
+    expect(boxes).toHaveLength(2);
+
+    fireEvent.change(boxes[0], { target: { value: "alp" } });
+    expect(screen.getByText("Alpha")).toBeInTheDocument();
+    expect(screen.queryByText("Beta")).not.toBeInTheDocument();
+  });
+
+  it("Transfer renders no filter box without showSearch", () => {
+    render(
+      <Transfer dataSource={[{ key: "1", title: "A" }]} targetKeys={[]} />,
+    );
+    expect(screen.queryByPlaceholderText("Search here")).not.toBeInTheDocument();
+  });
+
+  it("Transfer select-all checks every row in its own panel", () => {
+    const onChange = vi.fn();
+    render(
+      <Transfer
+        dataSource={[
+          { key: "1", title: "A" },
+          { key: "2", title: "B" },
+        ]}
+        targetKeys={[]}
+        titles={["Source", "Target"]}
+        onChange={onChange}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Select all in Source"));
+    fireEvent.click(screen.getByLabelText("Move selected to the right"));
+    expect(onChange).toHaveBeenCalledWith(["1", "2"], "right", ["1", "2"]);
   });
 
   // Regression: these two bugs shipped to a dev deployment and produced an

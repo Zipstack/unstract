@@ -1,4 +1,10 @@
-import { CircleCheck, CircleX, Upload as UploadIcon } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  CircleX,
+  Upload as UploadIcon,
+} from "lucide-react";
 import * as React from "react";
 import { DataTable } from "@/components/data-table/DataTable";
 import {
@@ -7,6 +13,8 @@ import {
   CardTitle,
   Card as ShadcnCard,
 } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -266,6 +274,10 @@ interface TransferProps
   ) => void;
   render?: (item: TransferItem) => React.ReactNode;
   titles?: [React.ReactNode, React.ReactNode];
+  /** Adds a filter box to each panel. Both manual-review call-sites pass it. */
+  showSearch?: boolean;
+  locale?: { searchPlaceholder?: string; notFoundContent?: React.ReactNode };
+  disabled?: boolean;
 }
 
 interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
@@ -1290,8 +1302,13 @@ function FloatButtonGroup({ children }: { children?: React.ReactNode }) {
 }
 
 /**
- * antd `<Transfer>` — dual list with move-between controls. Kept minimal: the
- * cloud call-sites use dataSource/targetKeys/onChange only.
+ * antd `<Transfer>` — dual list with move-between controls.
+ *
+ * antd's Transfer is a CHECKBOX-selection widget: you tick rows in one panel,
+ * then press the arrow between the panels to move the checked set. The earlier
+ * stub moved a row on click and rendered neither checkboxes, item counts,
+ * search, nor the arrows — so against the reference it read as a plain list
+ * and `showSearch` (which the manual-review call-sites pass) did nothing.
  */
 const Transfer = React.forwardRef<HTMLDivElement, TransferProps>(
   function Transfer(
@@ -1301,57 +1318,189 @@ const Transfer = React.forwardRef<HTMLDivElement, TransferProps>(
       onChange,
       render,
       titles = ["Source", "Target"],
+      showSearch,
+      locale,
+      disabled,
       className,
       ...props
     },
     ref,
   ) {
-    const inTarget = new Set(targetKeys);
-    const move = (key: string, toTarget: boolean) => {
+    const inTarget = React.useMemo(() => new Set(targetKeys), [targetKeys]);
+    // Checked rows, tracked per side so the arrows know what to move.
+    const [checked, setChecked] = React.useState<Set<string>>(new Set());
+    const [search, setSearch] = React.useState({ left: "", right: "" });
+
+    const source = dataSource.filter((d) => !inTarget.has(d.key));
+    const target = dataSource.filter((d) => inTarget.has(d.key));
+
+    const label = (item: TransferItem) =>
+      render ? render(item) : (item.title ?? item.key);
+
+    const matches = (item: TransferItem, term: string) => {
+      if (!term) {
+        return true;
+      }
+      const text = typeof item.title === "string" ? item.title : String(item.key);
+      return text.toLowerCase().includes(term.toLowerCase());
+    };
+
+    const visible = (entries: TransferItem[], side: "left" | "right") =>
+      entries.filter((e) => matches(e, search[side]));
+
+    const toggle = (key: string) => {
+      setChecked((prev) => {
+        const next = new Set(prev);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        return next;
+      });
+    };
+
+    const move = (toTarget: boolean) => {
+      const from = toTarget ? source : target;
+      const moving = from.filter((d) => checked.has(d.key)).map((d) => d.key);
+      if (!moving.length) {
+        return;
+      }
       const next = toTarget
-        ? [...targetKeys, key]
-        : targetKeys.filter((k) => k !== key);
-      onChange?.(next, toTarget ? "right" : "left", [key]);
+        ? [...targetKeys, ...moving]
+        : targetKeys.filter((k) => !moving.includes(k));
+      onChange?.(next, toTarget ? "right" : "left", moving);
+      // antd clears the selection of whichever side just moved.
+      setChecked((prev) => {
+        const rest = new Set(prev);
+        for (const k of moving) {
+          rest.delete(k);
+        }
+        return rest;
+      });
     };
 
     const column = (
       title: React.ReactNode,
       entries: TransferItem[],
-      toTarget: boolean,
-    ) => (
-      <div className="flex-1 rounded-md border">
-        <div className="border-b px-3 py-2 text-sm font-medium">{title}</div>
-        <div className="max-h-64 divide-y divide-border overflow-auto">
-          {entries.map((item) => (
-            <button
-              key={String(item.key)}
-              type="button"
-              className="block w-full cursor-pointer px-3 py-1.5 text-left text-sm hover:bg-accent"
-              onClick={() => move(item.key, toTarget)}
-            >
-              {render ? render(item) : item.title}
-            </button>
-          ))}
+      side: "left" | "right",
+    ) => {
+      const rows = visible(entries, side);
+      const selectable = entries.filter((e) => !e.disabled);
+      const allChecked =
+        selectable.length > 0 && selectable.every((e) => checked.has(e.key));
+      const someChecked = selectable.some((e) => checked.has(e.key));
+
+      const toggleAll = () => {
+        setChecked((prev) => {
+          const next = new Set(prev);
+          for (const e of selectable) {
+            if (allChecked) {
+              next.delete(e.key);
+            } else {
+              next.add(e.key);
+            }
+          }
+          return next;
+        });
+      };
+
+      return (
+        <div className="ant-transfer-list flex min-w-0 flex-1 flex-col rounded-md border">
+          {/* antd's header: select-all on the left, count, then the title. */}
+          <div className="ant-transfer-list-header flex items-center gap-2 border-b px-3 py-2 text-sm">
+            <Checkbox
+              checked={allChecked ? true : someChecked ? "indeterminate" : false}
+              onCheckedChange={toggleAll}
+              disabled={disabled || !selectable.length}
+              aria-label={`Select all in ${
+                typeof title === "string" ? title : side
+              }`}
+            />
+            <span className="text-muted-foreground">
+              {someChecked
+                ? `${selectable.filter((e) => checked.has(e.key)).length}/${entries.length} items`
+                : `${entries.length} items`}
+            </span>
+            <span className="ml-auto truncate font-medium">{title}</span>
+          </div>
+
+          {showSearch ? (
+            <div className="border-b p-2">
+              <Input
+                value={search[side]}
+                placeholder={locale?.searchPlaceholder ?? "Search here"}
+                disabled={disabled}
+                onChange={(e) =>
+                  setSearch((prev) => ({ ...prev, [side]: e.target.value }))
+                }
+                className="h-8 text-sm"
+              />
+            </div>
+          ) : null}
+
+          <div className="ant-transfer-list-body max-h-64 overflow-auto">
+            {rows.length ? (
+              rows.map((item) => (
+                <label
+                  key={String(item.key)}
+                  className={cn(
+                    "flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent",
+                    (item.disabled || disabled) &&
+                      "cursor-not-allowed opacity-50",
+                  )}
+                >
+                  <Checkbox
+                    checked={checked.has(item.key)}
+                    disabled={item.disabled || disabled}
+                    onCheckedChange={() => toggle(item.key)}
+                  />
+                  <span className="min-w-0 truncate">{label(item)}</span>
+                </label>
+              ))
+            ) : (
+              <div className="px-3 py-6 text-center text-sm text-muted-foreground">
+                {locale?.notFoundContent ?? "No data"}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
-    );
+      );
+    };
+
+    const canMoveRight = source.some((d) => checked.has(d.key));
+    const canMoveLeft = target.some((d) => checked.has(d.key));
 
     return (
       <div
         ref={ref}
-        className={cn("flex items-start gap-3", className)}
+        className={cn("ant-transfer flex items-center gap-2", className)}
         {...props}
       >
-        {column(
-          titles[0],
-          dataSource.filter((d) => !inTarget.has(d.key)),
-          true,
-        )}
-        {column(
-          titles[1],
-          dataSource.filter((d) => inTarget.has(d.key)),
-          false,
-        )}
+        {column(titles[0], source, "left")}
+        {/* The arrows sit BETWEEN the panels, as in antd — moving the checked
+            set rather than the row that happened to be clicked. */}
+        <div className="flex shrink-0 flex-col gap-1">
+          <button
+            type="button"
+            aria-label="Move selected to the right"
+            disabled={disabled || !canMoveRight}
+            onClick={() => move(true)}
+            className="inline-flex size-6 items-center justify-center rounded border text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight className="size-3" />
+          </button>
+          <button
+            type="button"
+            aria-label="Move selected to the left"
+            disabled={disabled || !canMoveLeft}
+            onClick={() => move(false)}
+            className="inline-flex size-6 items-center justify-center rounded border text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="size-3" />
+          </button>
+        </div>
+        {column(titles[1], target, "right")}
       </div>
     );
   },

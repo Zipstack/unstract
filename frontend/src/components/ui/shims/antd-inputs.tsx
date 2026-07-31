@@ -161,6 +161,12 @@ interface AntSelectProps {
    */
   mode?: "tags" | "multiple";
   variant?: string;
+  /**
+   * Forwarded to the TRIGGER, not to Radix's Root (which renders nothing).
+   * Call-sites size these with `style={{ width: 200 }}`, and that was being
+   * dropped on the floor.
+   */
+  style?: React.CSSProperties;
   size?: SizeToken;
   className?: string;
   children?: React.ReactNode;
@@ -636,6 +642,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       variant,
       size,
       className,
+      style,
       children,
       ...props
     },
@@ -710,6 +717,11 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       >
         <SelectTrigger
           ref={ref}
+          /*
+           * `style` belongs on the TRIGGER, not on Radix's Root (which renders
+           * nothing) — call-sites size these with `style={{ width: 200 }}`.
+           */
+          style={style}
           className={cn(
             "ant-select-selector",
             size === "small" && "h-8 text-sm",
