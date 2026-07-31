@@ -404,7 +404,17 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         }> => React.isValidElement(c),
       )
       .map((c) => ({
-        key: c.props.tabKey ?? c.props.key,
+        /*
+         * The ELEMENT's key, not `props.key` — React never puts `key` in
+         * props, so reading it there yielded undefined for every pane and
+         * nothing ever matched `activeKey`. CombinedOutput (the Output
+         * Analyzer's profile tabs) uses `<Tabs.TabPane key=...>`, so its tabs
+         * rendered permanently inactive with the panel `hidden`.
+         *
+         * `toArray` prefixes keys with ".$", which must come off before the
+         * value is compared against antd's activeKey.
+         */
+        key: c.props.tabKey ?? String(c.key ?? "").replace(/^\.\$/, ""),
         label: c.props.tab,
         children: c.props.children,
         disabled: c.props.disabled,

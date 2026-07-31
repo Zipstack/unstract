@@ -70,6 +70,42 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(cls).not.toContain("py-3");
   });
 
+  /*
+   * React never exposes `key` in props, so reading `c.props.key` gave every
+   * TabPane `undefined` and nothing matched `activeKey`. The Output Analyzer's
+   * profile tabs rendered permanently inactive with their panel `hidden`, and
+   * onChange handed back the ".$"-prefixed key — which the call-site forwarded
+   * as a profile id, producing a 500.
+   */
+  it("Tabs read the pane key off the ELEMENT, not props", () => {
+    render(
+      <Tabs activeKey="p2">
+        <Tabs.TabPane tab="One" key="p1">
+          first
+        </Tabs.TabPane>
+        <Tabs.TabPane tab="Two" key="p2">
+          second
+        </Tabs.TabPane>
+      </Tabs>,
+    );
+    const selected = screen.getByRole("tab", { selected: true });
+    expect(selected).toHaveTextContent("Two");
+    expect(screen.getByText("second")).toBeInTheDocument();
+  });
+
+  it("Tabs report an unprefixed key through onChange", () => {
+    const onChange = vi.fn();
+    render(
+      <Tabs activeKey="p1" onChange={onChange}>
+        <Tabs.TabPane tab="One" key="p1" />
+        <Tabs.TabPane tab="Two" key="p2" />
+      </Tabs>,
+    );
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Two" }));
+    // ".$p2" here is what reached the backend as a profile id.
+    expect(onChange).toHaveBeenCalledWith("p2");
+  });
+
   it("Tabs keep the pill look when type='card'", () => {
     render(
       <Tabs type="card" items={[{ key: "1", label: "One", children: "x" }]} />,

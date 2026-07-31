@@ -1,4 +1,4 @@
-import { CirclePlay } from "lucide-react";
+import { CirclePlay, FastForward } from "lucide-react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
@@ -29,7 +29,9 @@ function RunAllPrompts() {
       </Tooltip>
       <Tooltip title="Run all prompts for all LLMs and documents">
         <Button
-          icon={<CirclePlay className="prompt-card-actions-head" />}
+          // All-documents runs use FastForward; the single-document button
+          // beside it keeps CirclePlay, so the two are told apart at a glance.
+          icon={<FastForward className="prompt-card-actions-head" />}
           onClick={() =>
             handlePromptRunRequest(
               PROMPT_RUN_TYPES.RUN_ALL_PROMPTS_ALL_LLMS_ALL_DOCS,

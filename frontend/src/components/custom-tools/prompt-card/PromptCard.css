@@ -33,6 +33,16 @@
   width: 12px;
   height: 12px;
   color: #575859;
+  transition: color 0.2s;
+}
+
+/* The button carries `hover:text-accent-foreground`, but that only sets an
+ * INHERITED colour — this rule puts `color` directly on the SVG, so it wins and
+ * the icon never reacted. Only the button's faint background changed, which on
+ * a tinted prompt card is nearly imperceptible: several icons looked like they
+ * had no hover state at all. Tint the icon itself. */
+.prompt-card-action-button:hover:not(:disabled) .prompt-card-actions-head {
+  color: var(--primary);
 }
 
 .prompt-card-head .ant-typography {

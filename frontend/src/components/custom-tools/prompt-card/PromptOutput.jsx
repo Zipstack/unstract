@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from "framer-motion";
-import { CirclePlay, Database, Info } from "lucide-react";
+import { CirclePlay, Database, FastForward, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
@@ -460,7 +460,9 @@ function PromptOutput({
                           isPublicSource
                         }
                       >
-                        <CirclePlay className="prompt-card-actions-head" />
+                        {/* All-documents run; the current-document button
+                            beside it keeps CirclePlay. */}
+                        <FastForward className="prompt-card-actions-head" />
                       </Button>
                     </Tooltip>
                     <PromptOutputExpandBtn

@@ -1,4 +1,4 @@
-import { CirclePlay } from "lucide-react";
+import { CirclePlay, FastForward } from "lucide-react";
 import PropTypes from "prop-types";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
@@ -44,7 +44,8 @@ function PromptOutputActions({
             isPublicSource
           }
         >
-          <CirclePlay className="prompt-card-actions-head" />
+          {/* All-documents run; the button beside it keeps CirclePlay. */}
+          <FastForward className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
     </>
