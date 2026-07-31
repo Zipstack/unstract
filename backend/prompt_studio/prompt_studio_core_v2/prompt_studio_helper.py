@@ -445,6 +445,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -822,6 +823,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -868,6 +872,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -929,6 +934,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1046,6 +1052,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -1123,6 +1132,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1371,6 +1381,29 @@ class PromptStudioHelper:
             tool_id=tool_id
         ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
+
+    @staticmethod
+    def _stamp_x2text_output_mode(output: dict, profile_manager) -> None:
+        """Stamp the x2text output mode onto a per-prompt payload.
+
+        Lets the executor detect image mode from the payload instead of a
+        platform-service call. LLMWhisperer-only (the sole adapter with an
+        image output mode); best-effort — a metadata read failure leaves
+        the stamp absent and the executor falls back to live resolution.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return
+        try:
+            adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+            if not adapter_id.startswith("llmwhisperer|"):
+                return
+            metadata = x2text.metadata or {}
+            output[TSPKeys.X2TEXT_OUTPUT_MODE] = metadata.get(
+                ImageOutputConstants.OUTPUT_MODE
+            )
+        except Exception:
+            logger.exception("Could not stamp x2text output mode; will resolve live")
 
     @staticmethod
     def _validate_image_output_pdf_only(
@@ -2050,6 +2083,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
         # Webhook postprocessing settings
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()

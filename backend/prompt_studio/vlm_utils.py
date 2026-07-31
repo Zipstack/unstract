@@ -21,6 +21,21 @@ try:
 except ImportError:
     _hooks = None
     VLM_IMAGE_ANSWER_AVAILABLE = False
+    # Distinguish "running OSS" (package absent — expected, silent) from
+    # "cloud hooks are broken" (package present but backend_hooks failed
+    # to import): in the latter case the adapter gating still enables
+    # image output mode while these hooks quietly stop existing.
+    try:
+        import plugins.vlm_image_answer  # noqa: F401
+    except ImportError:
+        pass
+    else:
+        logger.warning(
+            "plugins.vlm_image_answer is present but backend_hooks failed "
+            "to import — VLM profile warnings, deploy-time validation and "
+            "re-extraction invalidation are disabled while image output "
+            "mode remains enabled"
+        )
 
 
 def get_profile_vision_warning(profile_manager: Any) -> str | None:

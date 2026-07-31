@@ -397,6 +397,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         _SK.FILE_HASH: file_hash,
         _SK.FILE_NAME: file_name,
         _SK.FILE_PATH: extracted_input_file,
+        # Never rewritten (unlike FILE_PATH, which summarize/smart-table
+        # overrides mutate) — the page-image reader keys on this.
+        "extract_file_path": extracted_input_file,
         _SK.EXECUTION_SOURCE: _SK.TOOL,
         _SK.CUSTOM_DATA: custom_data,
         "PLATFORM_SERVICE_API_KEY": platform_service_api_key,

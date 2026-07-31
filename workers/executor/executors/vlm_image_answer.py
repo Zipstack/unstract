@@ -98,42 +98,71 @@ def _resolve_image_mode_config(
     return result
 
 
-def run_vlm_image_answer(
+def detect_image_mode_config(
     *,
     output: dict[str, Any],
     shim: Any,
-    llm: Any,
-    file_path: str,
-    execution_source: str,
-    metadata: dict[str, Any],
-    metrics: dict[str, Any],
     usage_kwargs: dict[str, Any] | None = None,
-) -> str | None:
-    """Answer an image-mode prompt via the cloud plugin.
+) -> dict[str, Any] | None:
+    """Detect image mode for one prompt; None means normal text path.
 
-    Returns:
-        The raw answer string when the prompt's x2text adapter is in image
-        mode (the caller assigns it in place of the RAG/completion answer,
-        so type conversion, lookups, webhooks etc. run unchanged), or
-        ``None`` when not in image mode (normal path continues).
+    Fast path: the backend stamps the adapter's ``x2text_output_mode``
+    onto the per-prompt payload (it already holds the decrypted adapter
+    metadata), so text-mode prompts cost nothing here. The platform-
+    service resolution runs only as the fallback for payloads without
+    the stamp (e.g. API deployments, older payloads).
 
-    Raises:
-        VlmImageAnswerError: image mode detected but the cloud plugin is
-            not installed, or the vision path failed in a way the user
-            must act on (missing images, page cap, non-vision LLM).
+    Returns the resolved adapter config for the plugin, or ``{}`` when
+    image mode was determined from the stamp alone.
     """
     adapter_instance_id = str(output.get(PSKeys.X2TEXT_ADAPTER) or "")
     if not adapter_instance_id:
+        return None
+
+    if PSKeys.X2TEXT_OUTPUT_MODE in output:
+        stamped_mode = output.get(PSKeys.X2TEXT_OUTPUT_MODE)
+        if stamped_mode == ImageOutputConstants.IMAGE_MODE:
+            return {}
         return None
 
     usage_kwargs = usage_kwargs or {}
     # IDE payloads carry no execution_id — fall back to the run id so the
     # cache stays scoped to one run (see _MODE_CACHE).
     scope_id = str(usage_kwargs.get("execution_id") or usage_kwargs.get("run_id") or "")
-    x2text_config = _resolve_image_mode_config(shim, adapter_instance_id, scope_id)
-    if x2text_config is None:
-        return None
+    return _resolve_image_mode_config(shim, adapter_instance_id, scope_id)
 
+
+def run_vlm_image_answer(
+    *,
+    output: dict[str, Any],
+    shim: Any,
+    llm: Any,
+    extract_file_path: str,
+    execution_source: str,
+    metadata: dict[str, Any],
+    metrics: dict[str, Any],
+    x2text_config: dict[str, Any],
+    usage_kwargs: dict[str, Any] | None = None,
+) -> str:
+    """Answer an image-mode prompt via the cloud plugin.
+
+    The caller has already detected image mode via
+    ``detect_image_mode_config``. ``extract_file_path`` must be the
+    extract-file path (never the summarize/source rewrite of it) — the
+    pages directory is derived from it via the shared writer/reader
+    helper.
+
+    Returns:
+        The raw answer string (the caller assigns it in place of the
+        RAG/completion answer, so type conversion, lookups, webhooks
+        etc. run unchanged).
+
+    Raises:
+        VlmImageAnswerError: the cloud plugin is not installed, or the
+            vision path failed in a way the user must act on (missing
+            images, page cap, non-vision LLM).
+    """
+    usage_kwargs = usage_kwargs or {}
     prompt_name = output.get(PSKeys.NAME, "")
     plugin_cls = ExecutorPluginLoader.get(PLUGIN_NAME)
     if plugin_cls is None:
@@ -147,7 +176,7 @@ def run_vlm_image_answer(
 
     shim.stream_log(f"Answering `{prompt_name}` from page images via vision LLM")
     fs = FileUtils.get_fs_instance(execution_source=execution_source)
-    page_store_dir = build_page_store_dir(file_path, file_path)
+    page_store_dir = build_page_store_dir(extract_file_path, extract_file_path)
 
     try:
         outcome = plugin_cls.run_with_metrics(
