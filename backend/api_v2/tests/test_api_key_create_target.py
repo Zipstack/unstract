@@ -251,6 +251,22 @@ class _Target:
         self.owner = owner
 
 
+MALFORMED_ID = "not-a-uuid"
+
+
+def _lookup(rows: dict[str, _Target] | None, key: Any) -> _Target | None:
+    """Model the real ``get_api_by_id`` / ``get_pipeline_by_id`` contract.
+
+    ``pk`` is a UUID column, so the ORM raises ``ValidationError`` (not
+    ``DoesNotExist``) on a non-UUID string. Both helpers catch it and return
+    ``None``; a stub that quietly returned ``None`` for *every* unknown key
+    would hide a caller that reintroduces the 500.
+    """
+    if not isinstance(key, str) or key == MALFORMED_ID:
+        return None
+    return (rows or {}).get(key)
+
+
 def _build_create(
     *,
     apis: dict[str, _Target] | None = None,
@@ -289,12 +305,12 @@ def _build_create(
     class _DeploymentHelper:
         @staticmethod
         def get_api_by_id(api_id: str) -> _Target | None:
-            return (apis or {}).get(api_id)
+            return _lookup(apis, api_id)
 
     class _PipelineProcessor:
         @staticmethod
         def get_pipeline_by_id(pipeline_id: str) -> _Target | None:
-            return (pipelines or {}).get(pipeline_id)
+            return _lookup(pipelines, pipeline_id)
 
     class _View:
         """Minimal DRF-ish host for the extracted method."""
@@ -467,3 +483,73 @@ class TestCreateBodyContract:
 
         with pytest.raises(_ValidationError):
             view.create(_Req({}, OWNER))
+
+    def test_malformed_identifier_in_the_body_is_not_a_server_fault(self) -> None:
+        """A non-UUID body value must 404, not 500.
+
+        The body is read before the serializer runs, so the value goes
+        straight into ``objects.get(pk=...)``. ``pk`` is a UUID column, which
+        raises ``ValidationError`` rather than ``DoesNotExist`` -- unhandled,
+        that surfaces as a 500 with a traceback for ordinary client garbage.
+        """
+        view = _build_create(apis={"api-1": _Target("api-1", OWNER)})
+
+        with pytest.raises(_NotFound):
+            view.create(_Req({"api": MALFORMED_ID}, OWNER))
+
+    def test_malformed_identifier_in_the_path_is_not_a_server_fault(self) -> None:
+        """Path segments are ``<str:>``, so they are unvalidated too."""
+        view = _build_create(pipelines={"pipe-1": _Target("pipe-1", OWNER)})
+
+        with pytest.raises(_NotFound):
+            view.create(_Req({}, OWNER), pipeline_id=MALFORMED_ID)
+
+
+class TestLookupHelpersTolerateMalformedIds:
+    """The fix lives in the helpers, so pin the contract there.
+
+    Both are reached with unvalidated caller input. Catching only
+    ``DoesNotExist`` leaves ``ValidationError`` to escape as a 500.
+    """
+
+    @staticmethod
+    def _caught_exceptions(path: Path, marker: str) -> str:
+        """The ``except (...)`` line of the named function, docstring excluded.
+
+        Asserting on the whole body would match the *prose* explaining why
+        ``ValidationError`` is caught, so reverting the code while leaving the
+        comment would pass.
+        """
+        source = path.read_text()
+        if marker not in source:
+            pytest.fail(f"Could not find {marker!r} in {path}.")
+        body = source[source.index(marker) :]
+        body = body[: body.find("\n    @")] if "\n    @" in body else body
+        excepts = [
+            line for line in body.splitlines() if line.strip().startswith("except")
+        ]
+        if not excepts:
+            pytest.fail(f"No `except` clause found in {marker!r} ({path}).")
+        return "\n".join(excepts)
+
+    def test_get_api_by_id_treats_a_malformed_id_as_not_found(self) -> None:
+        caught = self._caught_exceptions(
+            BACKEND_DIR / "api_v2" / "utils.py",
+            "    def get_api_by_id(api_id: str) -> APIDeployment | None:",
+        )
+
+        assert "ValidationError" in caught, (
+            "A non-UUID id raises ValidationError, not DoesNotExist; without "
+            "catching it, malformed client input becomes a 500"
+        )
+
+    def test_get_pipeline_by_id_treats_a_malformed_id_as_not_found(self) -> None:
+        caught = self._caught_exceptions(
+            BACKEND_DIR / "pipeline_v2" / "pipeline_processor.py",
+            "    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:",
+        )
+
+        assert "ValidationError" in caught, (
+            "A non-UUID id raises ValidationError, not DoesNotExist; without "
+            "catching it, malformed client input becomes a 500"
+        )

@@ -1,3 +1,4 @@
+import heapq
 import logging
 from typing import Any
 
@@ -97,25 +98,23 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
             return
 
         deployment_types = deployment_types_for(dependent_wfs)
-        # The IDs are what an operator needs to find the blocking rows; the
-        # slice bounds the line for a pathological fan-out.
-        blockers = sorted(str(wf) for wf in dependent_wfs)
-        logger.warning(
-            "Cannot delete exported tool %s, depended by %d workflow(s): %s",
-            instance.prompt_registry_id,
-            len(blockers),
-            blockers[:_LOGGED_WORKFLOW_LIMIT],
+        # The IDs are what an operator needs to find the blocking rows;
+        # `nsmallest` bounds the work for a pathological fan-out rather than
+        # sorting the whole set just to slice it.
+        blockers = heapq.nsmallest(
+            _LOGGED_WORKFLOW_LIMIT, (str(wf) for wf in dependent_wfs)
         )
-        if not deployment_types:
-            # Distinguishable from "genuinely undeployed": the deployment
-            # tables are org-scoped while ``ToolInstance`` is not, so an empty
-            # set here can also mean the dependants sit outside the active org.
-            logger.warning(
-                "No deployment type resolved for the %d workflow(s) blocking "
-                "tool %s; the 409 will carry only the generic wording.",
-                len(blockers),
-                instance.prompt_registry_id,
-            )
+        # An unresolved deployment type is worth calling out: the deployment
+        # tables are org-scoped while ``ToolInstance`` is not, so an empty set
+        # can mean the dependants sit outside the active org rather than that
+        # the workflows are genuinely undeployed. One line either way.
+        logger.warning(
+            "Cannot delete exported tool %s, depended by %d workflow(s) %s: %s",
+            instance.prompt_registry_id,
+            len(dependent_wfs),
+            sorted(deployment_types) or "(no deployment type resolved)",
+            blockers,
+        )
         raise RegistryToolInUseError(self._in_use_detail(deployment_types))
 
     @staticmethod

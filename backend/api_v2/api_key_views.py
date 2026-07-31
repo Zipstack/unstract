@@ -51,7 +51,9 @@ class APIKeyViewSet(viewsets.ModelViewSet):
 
         The path target is authoritative: a body naming the *other* target is
         a contradiction, not an override, and is refused rather than silently
-        creating a key for whichever one wins.
+        creating a key for whichever one wins. A body repeating the *same*
+        target is accepted and overwritten -- it agrees with the path, so
+        there is nothing to refuse.
         """
         # A JSON array (or scalar) body has no `.copy()` returning a mapping;
         # reject it as a 400 rather than letting `AttributeError` become a 500.

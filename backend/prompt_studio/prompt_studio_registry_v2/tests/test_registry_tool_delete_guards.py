@@ -33,6 +33,7 @@ they run in the rig's integration tier rather than the per-PR unit tier.
 
 from __future__ import annotations
 
+import heapq
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -346,6 +347,7 @@ def _build_guard(
         HUMAN_QUALITY_REVIEW = "Human in the Loop"
 
     namespace: dict[str, Any] = {
+        "heapq": heapq,
         "_BaseView": _BaseView,
         "ToolInstance": _Model(_queryset(workflow_ids, required_filters=("tool_id",))),
         "APIDeployment": _Model(_queryset([1] if api_deployments else [])),

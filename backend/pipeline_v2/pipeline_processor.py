@@ -1,5 +1,6 @@
 import logging
 
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from pipeline_v2.exceptions import InactivePipelineError
@@ -59,10 +60,17 @@ class PipelineProcessor:
         ownership, say -- must not be forced through ``get_active_pipeline``,
         which raises ``InactivePipelineError`` (422) and logs at ERROR for what
         is an ordinary request against a paused pipeline.
+
+        A malformed identifier is "not found", not a fault: ``pk`` is a UUID
+        column, so a non-UUID string raises ``ValidationError`` out of
+        ``to_python`` rather than ``DoesNotExist``. Callers reach this with
+        unvalidated caller input (path segments are ``<str:>``, and request
+        bodies are read before the serializer runs), so letting that escape
+        turns ordinary client garbage into a 500.
         """
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=False)
-        except Pipeline.DoesNotExist:
+        except (Pipeline.DoesNotExist, ValidationError):
             return None
 
     @staticmethod
