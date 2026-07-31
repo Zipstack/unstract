@@ -37,7 +37,18 @@ function ConfirmModal({
     });
   };
 
-  return <Space onClick={handleConfirmModal}>{children}</Space>;
+  /*
+   * `w-full` matters inside a DropdownMenuItem. The item carries `px-2 py-1.5`
+   * of its own, and Radix closes the menu on pointerdown anywhere in it — so a
+   * click landing in that padding ring dismissed everything without ever
+   * reaching this handler. That is why Delete worked only "sometimes",
+   * depending on where in the row the pointer came down.
+   */
+  return (
+    <Space className="w-full" onClick={handleConfirmModal}>
+      {children}
+    </Space>
+  );
 }
 
 ConfirmModal.propTypes = {

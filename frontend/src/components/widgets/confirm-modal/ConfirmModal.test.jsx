@@ -119,6 +119,44 @@ describe("ConfirmModal", () => {
     expect(onConfirm).toHaveBeenCalledTimes(1);
   });
 
+  /*
+   * Radix closes the menu on pointerdown anywhere in the item, so any part of
+   * the row that is NOT the ConfirmModal is a dead zone: the menu dismisses
+   * and the handler never runs. That is the "works sometimes" report — the
+   * outcome depended on where in the row the pointer landed.
+   */
+  it("leaves no dead zone between the menu item and its confirm trigger", async () => {
+    render(
+      <Harness>
+        <Dropdown
+          menu={{
+            items: [
+              {
+                key: "delete",
+                label: (
+                  <ConfirmModal handleConfirm={vi.fn()} content="Gone.">
+                    Delete
+                  </ConfirmModal>
+                ),
+              },
+            ],
+          }}
+        >
+          <button type="button">Open menu</button>
+        </Dropdown>
+      </Harness>,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    const item = await screen.findByRole("menuitem");
+    const trigger = item.querySelector(".ant-space");
+
+    // The item must not add padding around the trigger, and the trigger must
+    // span the row — together that leaves nothing clickable but the trigger.
+    expect(item.className).toContain("p-0");
+    expect(trigger.className).toContain("w-full");
+  });
+
   it("skips the dialog entirely when isDisabled", async () => {
     const onConfirm = vi.fn();
     render(

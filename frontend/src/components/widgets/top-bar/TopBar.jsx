@@ -37,8 +37,27 @@ function TopBar({
   return (
     <Row align="middle" justify="space-between" className="search-nav">
       <Col>
-        <ArrowLeft onClick={() => navigate(-1)} />
-        <Typography className="topbar-title">{title}</Typography>
+        {/*
+         * A real <button>, not a bare <ArrowLeft onClick>. lucide renders a
+         * plain SVG, so the handler landed on an element with no button
+         * semantics — not keyboard reachable, and the click did not register
+         * at all on these pages. antd's icon component supplied that wrapper.
+         *
+         * The row is an explicit flex: `.topbar-title` asks for `display:
+         * inline`, but Tailwind's preflight makes the SVG `display: block`,
+         * which broke the line and stacked the arrow above the title.
+         */}
+        <div className="topbar-heading">
+          <button
+            type="button"
+            className="topbar-back"
+            aria-label="Go back"
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft />
+          </button>
+          <Typography className="topbar-title">{title}</Typography>
+        </div>
       </Col>
       <Col>
         <div className="invite-user-search">

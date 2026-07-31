@@ -138,6 +138,38 @@ describe("antd-compatible overlay shims (P2)", () => {
    * ref leaves the parent with no anchor to measure. The Platform fly-out did
    * open, correctly populated, at y=-616: entirely above the viewport.
    */
+  /*
+   * `cloneElement` merges by key, so forwarding `onClick: undefined` from a
+   * parent that passes no handler OVERWRITES the child's own. That is how
+   * every sidebar item stopped navigating: each is a `<Space onClick>` inside
+   * a titleless Tooltip, and the click silently did nothing.
+   */
+  it("does not clobber the child's own handlers with undefined", async () => {
+    const onClick = vi.fn();
+    render(
+      <Tooltip title="">
+        <button type="button" onClick={onClick}>
+          go
+        </button>
+      </Tooltip>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the child's handlers working when a title is present", () => {
+    const onClick = vi.fn();
+    render(
+      <Tooltip title="hint">
+        <button type="button" onClick={onClick}>
+          go
+        </button>
+      </Tooltip>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "go" }));
+    expect(onClick).toHaveBeenCalledTimes(1);
+  });
+
   it("forwards a parent primitive's ref to the trigger element", () => {
     const ref = React.createRef();
     render(

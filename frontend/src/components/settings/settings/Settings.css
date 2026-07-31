@@ -62,6 +62,12 @@
   flex-direction: column;
 }
 
+/* antd nested `.ant-popover-inner` inside the overlay element; the shim puts
+ * both class names on ONE element, so the descendant form matched nothing and
+ * the panel kept shadcn's `p-4`. That doubled the padding to 16px and made the
+ * fly-out taller than it needed to be. `&` covers the merged element, the
+ * descendant form the nested case, so this holds either way. */
+.settings-popover-overlay.ant-popover-inner,
 .settings-popover-overlay .ant-popover-inner {
   padding: 8px;
   border-radius: 8px;

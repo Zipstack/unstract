@@ -423,16 +423,25 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
     onClick,
     ...rest
   } = props as React.HTMLAttributes<HTMLElement>;
-  const triggerProps = {
-    onMouseEnter,
-    onMouseLeave,
-    onFocus,
-    onBlur,
-    onPointerDown,
-    onPointerEnter,
-    onPointerLeave,
-    onClick,
-  };
+  /*
+   * Undefined entries are stripped, not spread. `cloneElement` merges by key,
+   * so an `onClick: undefined` from a parent that passes no handler OVERWRITES
+   * the child's own — which is exactly how every sidebar item stopped
+   * navigating: `<Space onClick={...}>` inside a titleless Tooltip had its
+   * handler replaced with undefined and the click did nothing.
+   */
+  const triggerProps = Object.fromEntries(
+    Object.entries({
+      onMouseEnter,
+      onMouseLeave,
+      onFocus,
+      onBlur,
+      onPointerDown,
+      onPointerEnter,
+      onPointerLeave,
+      onClick,
+    }).filter(([, v]) => v !== undefined),
+  );
 
   /*
    * Radix identifies an `asChild` trigger by the REF it passes down, and any
@@ -450,10 +459,13 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
    * Space, an Image, a button — so the concrete ref type is not knowable here.
    * `asChild` forwards it to that element regardless.
    */
-  const anchorProps = { ...rest, ...triggerProps, ref } as Record<
-    string,
-    unknown
-  >;
+  const anchorProps = {
+    ...rest,
+    ...triggerProps,
+    // Same reason as the handlers above: a bare `ref` key would overwrite the
+    // child's own ref with undefined whenever no parent supplied one.
+    ...(ref ? { ref } : {}),
+  } as Record<string, unknown>;
 
   if (!title) {
     // No tooltip to show, but the trigger props — ref included — still have to
@@ -522,7 +534,18 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
                 <DropdownMenuSeparator key={`div-${i}`} />
               ) : (
                 <DropdownMenuItem
-                  className="ant-dropdown-menu-item"
+                  /*
+                   * `p-0` plus a padded title span, rather than padding on the
+                   * item itself. antd's menu entries are frequently a whole
+                   * interactive element (ConfirmModal's clickable Space, for
+                   * one), and Radix closes the menu on pointerdown ANYWHERE in
+                   * the item — so a click in the item's own padding ring
+                   * dismissed the menu without ever reaching that element.
+                   * Delete therefore worked only "sometimes". Moving the
+                   * padding inward keeps the same hit area but makes all of it
+                   * belong to the child.
+                   */
+                  className="ant-dropdown-menu-item p-0"
                   key={item?.key ?? i}
                   disabled={item?.disabled}
                   onClick={(e) => {
@@ -530,9 +553,13 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
                     item?.onClick?.(e);
                   }}
                 >
-                  {item?.icon}
-                  <span className="ant-dropdown-menu-title-content">
-                    {item?.label}
+                  {/* Padding lives here, inside the click target, so the full
+                      row belongs to whatever the label renders. */}
+                  <span className="flex w-full items-center gap-2 px-2 py-1.5">
+                    {item?.icon}
+                    <span className="ant-dropdown-menu-title-content w-full">
+                      {item?.label}
+                    </span>
                   </span>
                 </DropdownMenuItem>
               ),
