@@ -269,4 +269,10 @@ urlpatterns = [
         include("prompt_studio.prompt_studio_core_v2.internal_urls"),
         name="prompt_studio_internal",
     ),
+    # Group-sharing email notification APIs
+    path(
+        "v1/group-notification/",
+        include("tenant_account_v2.internal_urls"),
+        name="group_notification_internal",
+    ),
 ]

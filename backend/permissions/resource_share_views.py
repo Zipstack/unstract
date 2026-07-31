@@ -91,12 +91,28 @@ class ResourceShareManagementMixin:
         users, group-membership for groups) live in
         ``ShareAuthorizationService``.
         """
+        from tenant_account_v2.share_notifications import (
+            notify_resource_shared_with_group,
+        )
         from tenant_account_v2.sharing_helpers import ShareAuthorizationService
 
         resource = self.get_object()  # type: ignore[attr-defined]
         desired = _extract_desired_share_state(request.data)
+        # Only the groups axis is diffed: it is the one that notifies, and
+        # snapshotting ``shared_users`` too would fetch every viewer twice for
+        # nothing. Reads go through ``ResourceGroupShare``, so no refresh is
+        # needed between the two.
+        groups_before = self._read_axis(resource, "shared_groups")
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
+        )
+        # ``_commit`` is the only atomic block on this path, so it has already
+        # committed — the diff reads persisted state and can never announce a
+        # share that rolled back.
+        notify_resource_shared_with_group(
+            resource=resource,
+            groups=self._read_axis(resource, "shared_groups") - groups_before,
+            actor=request.user,
         )
         return Response(status=status.HTTP_200_OK)
 

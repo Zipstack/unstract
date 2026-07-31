@@ -827,6 +827,42 @@ services:
     profiles:
       - pg-queue
 
+  # Notification consumer — webhook POSTs and the group-share emails (UN-3494).
+  # Without this, a notification enqueued on PG is durably stored and never run.
+  # Every task here is one short outbound HTTP call, so it stays light.
+  worker-pg-notification:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-notification
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8101:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-notification
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=notification
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=notifications
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_NOTIFICATION_CONCURRENCY:-4}
+      # One internal-API call (30s timeout) plus a SendGrid batch for the
+      # largest group, with headroom. Health-stale sits at or above it.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_NOTIFICATION_VT_SECONDS:-120}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_NOTIFICATION_HEALTH_STALE_SECONDS:-180}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
   # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
   # elects a single leader via pg_orchestrator_lock; extra replicas idle as
   # standby). Besides barrier-orphan recovery it runs the PG scheduler tick

@@ -6,6 +6,7 @@ while maintaining backward compatibility.
 """
 
 import os
+import time
 from typing import Any
 
 import httpx
@@ -465,6 +466,104 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 
     # Set priority flag and delegate to main processor
     return process_notification(notification_type, priority=True, **kwargs)
+
+
+# Retries for a transient backend problem (restart, 5xx). Kept inside the task
+# because only the PG transport redelivers a failed message — on Celery a raise
+# is terminal, so without this a rolling deploy would silently drop the email.
+_GROUP_NOTIFICATION_ATTEMPTS = 3
+_GROUP_NOTIFICATION_RETRY_DELAY = 2.0
+
+
+def _post_group_notification(endpoint: str, organization_id: str, payload: dict) -> None:
+    """POST a group-notification job to the backend and insist it succeeded.
+
+    Unlike ``_mark_buffer_outcome`` this deliberately **raises** on failure:
+    there is no reaper behind these rows, so a swallowed error would be a
+    silently unsent email. On the PG transport the raise also leaves the
+    message on the queue for redelivery, bounded by the consumer's attempt cap.
+
+    A 4xx is not retried — a rejected payload will be rejected again.
+    """
+    base_url = os.getenv("INTERNAL_API_BASE_URL")
+    api_key = os.getenv("INTERNAL_SERVICE_API_KEY")
+    if not base_url or not api_key:
+        raise RuntimeError(
+            "INTERNAL_API_BASE_URL / INTERNAL_SERVICE_API_KEY not set; "
+            "cannot send group notification"
+        )
+    url = f"{base_url.rstrip('/')}/v1/group-notification/{endpoint}/"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        # The backend resolves the tenant from this header; without it every
+        # org-scoped query comes back empty.
+        "X-Organization-ID": organization_id,
+    }
+    last_error = ""
+    for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
+        try:
+            with httpx.Client(transport=httpx.HTTPTransport(retries=2)) as client:
+                response = client.post(url, headers=headers, json=payload, timeout=30.0)
+        except Exception as e:  # noqa: BLE001 - transport failure, retry below
+            last_error = f"exception={e!r}"
+        else:
+            if response.status_code == 200:
+                return
+            last_error = f"http_{response.status_code} body={response.text[:200]}"
+            if response.status_code < 500:
+                break
+        if attempt < _GROUP_NOTIFICATION_ATTEMPTS:
+            logger.warning(
+                "Group notification %s attempt %d/%d failed (%s); retrying",
+                endpoint,
+                attempt,
+                _GROUP_NOTIFICATION_ATTEMPTS,
+                last_error,
+            )
+            time.sleep(_GROUP_NOTIFICATION_RETRY_DELAY)
+    raise RuntimeError(f"Group notification {endpoint} failed: {last_error}")
+
+
+@worker_task(name="notify_resource_shared_with_group")
+def notify_resource_shared_with_group(
+    group_ids: list[int],
+    actor_id: int,
+    resource_kind: str,
+    resource_id: str,
+    organization_id: str,
+) -> None:
+    """Email every current member of the groups a resource was shared with."""
+    _post_group_notification(
+        "resource-shared",
+        organization_id,
+        {
+            "group_ids": group_ids,
+            "actor_id": actor_id,
+            "resource_kind": resource_kind,
+            "resource_id": resource_id,
+        },
+    )
+
+
+@worker_task(name="notify_group_membership_changed")
+def notify_group_membership_changed(
+    group_id: int,
+    actor_id: int,
+    membership_action: str,
+    user_ids: list[int],
+    organization_id: str,
+) -> None:
+    """Email the users whose membership of a group just changed."""
+    _post_group_notification(
+        "membership-changed",
+        organization_id,
+        {
+            "group_id": group_id,
+            "actor_id": actor_id,
+            "membership_action": membership_action,
+            "user_ids": user_ids,
+        },
+    )
 
 
 @worker_task(name="notification_health_check")
