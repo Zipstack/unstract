@@ -789,13 +789,17 @@ class PgQueueConsumer:
         """
         execution_id, organization_id = _pipeline_identity(payload)
         logger.error(
-            "PG-queue consumer: task %r (msg_id=%s) exceeded max_attempts=%s "
-            "(read_ct=%s, execution_id=%s) — poison; full payload: %r",
+            "PG-queue consumer: poison-dropped task %r after %s attempts "
+            "(msg_id=%s, read_ct=%s, queue=%s, execution_id=%s, org_id=%s) — "
+            "exceeded max_attempts=%s; full payload: %r",
             task_name,
-            message.msg_id,
-            self.max_attempts,
             message.read_ct,
+            message.msg_id,
+            message.read_ct,
+            payload.get("queue"),
             execution_id,
+            organization_id or None,
+            self.max_attempts,
             payload,
         )
         # Failure channel (request-reply / on_error) → surface there, then drop.

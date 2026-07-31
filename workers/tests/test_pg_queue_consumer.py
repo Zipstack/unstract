@@ -272,6 +272,23 @@ class TestPoisonDropMarksExecution:
         client.delete.assert_called_once_with(5)  # then dropped
         client.set_vt.assert_not_called()
 
+    def test_poison_log_enriched_with_org_and_read_ct(self, monkeypatch, caplog):
+        # Q2 debuggability: the poison drop logs a clear "poison-dropped" message
+        # carrying read_ct + org_id so a dropped task is greppable/Sentry-visible.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: True,
+        )
+        client = MagicMock()
+        client.read.return_value = [self._poison(read_ct=6)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(
+                ["q"], client=client, api_client=MagicMock(), max_attempts=5
+            ).poll_once()
+        assert "poison-dropped" in caplog.text
+        assert "read_ct=6" in caplog.text
+        assert "org_id=org-1" in caplog.text  # org surfaced for the dropped task
+
     def test_positional_orchestration_poison_marks_error(self, monkeypatch):
         # H2 regression: a poisoned async_execute_bin carries execution_id
         # POSITIONALLY (args[2]) with no _barrier_context and — since its poison
@@ -978,7 +995,8 @@ class TestRecordTaskStatus:
     pg_task_result so the REST PromptStudio.task_status poll resolves under PG.
     completed unless the run raised (error) or the executor reported success=False
     (completed rows are status-only; failed rows carry the executor error text). TTL'd
-    + best-effort — never wedges the ack."""
+    + best-effort — never wedges the ack.
+    """
 
     _RB = "queue_backend.pg_queue.consumer.PgResultBackend"
     _RET = 86400
@@ -1103,6 +1121,34 @@ class TestLeaseRenewal:
         with patch.object(mod, "PgQueueClient"):  # no real DB connection
             c = mod.build_consumer_from_env()
         assert c.lease_seconds == 77
+
+    def test_env_wires_max_attempts(self, monkeypatch):
+        # Per-worker override: an execution worker keeps the default (at-least-once),
+        # the interactive orchestrator sets 1 (at-most-once, no LLM re-compute).
+        from queue_backend.pg_queue import consumer as mod
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", "1")
+        with patch.object(mod, "PgQueueClient"):  # no real DB connection
+            c = mod.build_consumer_from_env()
+        assert c.max_attempts == 1
+
+    def test_max_attempts_defaults_to_5_when_unset(self, monkeypatch):
+        from queue_backend.pg_queue import consumer as mod
+        from queue_backend.pg_queue.consumer import _DEFAULT_MAX_ATTEMPTS
+
+        monkeypatch.delenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", raising=False)
+        with patch.object(mod, "PgQueueClient"):  # no real DB connection
+            c = mod.build_consumer_from_env()
+        # The code default stays 5 so execution workers remain at-least-once.
+        assert c.max_attempts == _DEFAULT_MAX_ATTEMPTS == 5
+
+    def test_env_invalid_max_attempts_raises_named_error(self, monkeypatch):
+        from queue_backend.pg_queue import consumer as mod
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", "abc")
+        with patch.object(mod, "PgQueueClient"):
+            with pytest.raises(ValueError, match="WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS"):
+                mod.build_consumer_from_env()
 
     def test_poll_claims_with_lease_not_vt(self):
         client = MagicMock()
