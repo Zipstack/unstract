@@ -1,14 +1,12 @@
 """Shared share-management surface for resource ViewSets.
 
-The mixin is **axis-agnostic** — it operates over the sharing "axes" declared
-in :attr:`ResourceShareManagementMixin.share_axes`. ``shared_users`` is an M2M
-on the resource model, while ``shared_groups`` is stored polymorphically in
-``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers; new
-axes can be added by extending that attribute.
+The mixin is **axis-agnostic** — it reads the sharing "axes" named in
+``_SUPPORTED_SHARE_AXES``. ``shared_users`` is the direct-viewer axis, backed by
+VIEWER membership rows, while ``shared_groups`` is stored polymorphically in
+``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, ClassVar
+from typing import Any
 
 from django.db.models import Model
 from rest_framework import status
@@ -55,30 +53,8 @@ def _coerce_id_list(axis: str, value: Any) -> list[int]:
     return coerced
 
 
-@dataclass
-class AxisDiff:
-    """Pre/post snapshot for a single share axis (M2M field)."""
-
-    before: set[Any] = field(default_factory=set)
-    after: set[Any] = field(default_factory=set)
-
-    @property
-    def added(self) -> set[Any]:
-        return self.after - self.before
-
-    @property
-    def removed(self) -> set[Any]:
-        return self.before - self.after
-
-
 class ResourceShareManagementMixin:
-    """Adds the shared share-management surface to a resource ViewSet.
-
-    Subclasses declare share axes via :attr:`share_axes`. The default
-    covers ``shared_users`` + ``shared_groups``.
-    """
-
-    share_axes: ClassVar[tuple[str, ...]] = ("shared_users", "shared_groups")
+    """Adds the shared share-management surface to a resource ViewSet."""
 
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
@@ -113,39 +89,13 @@ class ResourceShareManagementMixin:
         members = compute_effective_members(self.get_object())  # type: ignore[attr-defined]
         return Response(EffectiveMemberSerializer(members, many=True).data)
 
-    def snapshot_share_axes(self, instance: Model) -> dict[str, set[Any]]:
-        """Capture every declared axis's current contents.
-
-        Call BEFORE ``super().partial_update(...)``; pair with
-        :meth:`diff_share_axes` afterward.
-        """
-        return {axis: self._read_axis(instance, axis) for axis in self.share_axes}
-
-    def diff_share_axes(
-        self,
-        instance: Model,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-    ) -> dict[str, AxisDiff]:
-        """Diff each axis that was touched by the request.
-
-        Returns a dict keyed by axis name with only the axes present in
-        ``request_data`` — callers can skip notification fan-out for axes
-        the client did not modify.
-        """
-        instance.refresh_from_db()
-        return {
-            axis: AxisDiff(
-                before=before[axis],
-                after=self._read_axis(instance, axis),
-            )
-            for axis in self.share_axes
-            if axis in request_data
-        }
-
     @staticmethod
     def _read_axis(instance: Model, axis: str) -> set[Any]:
         """Return the current set of related objects on the given axis.
+
+        The mixin's canonical axis reader — each axis has a different backing
+        store, so callers that need an axis's contents (e.g. diffing a share
+        before and after) go through here rather than touching the store.
 
         ``shared_users`` is the direct-viewer axis — since UN-2202 Phase 2 it
         is backed by VIEWER membership rows, not an M2M (all mixin hosts are
