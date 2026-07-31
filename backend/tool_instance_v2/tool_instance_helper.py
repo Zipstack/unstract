@@ -219,6 +219,14 @@ class ToolInstanceHelper:
             metadata_key_for_id = adapter_property.get(
                 AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
             )
+            # Only fill in what has no value yet. This runs right after tool
+            # instance creation, which may already have seeded a key with a
+            # value resolved for that specific tool - `challenge_llm` carries
+            # the exported project's challenger LLM, and it is one of the LLM
+            # adapter properties walked here. Overwriting it would replace a
+            # tool-specific choice with the user's global default.
+            if metadata.get(adapter_key):
+                continue
             metadata[adapter_key] = str(adapter.id)
             metadata[metadata_key_for_id] = str(adapter.id)
 

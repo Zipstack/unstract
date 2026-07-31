@@ -4,7 +4,10 @@ from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
-from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
+from prompt_studio.prompt_studio_registry_v2.constants import (
+    JsonSchemaKey,
+    PromptStudioRegistryKeys,
+)
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
@@ -20,6 +23,7 @@ from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.sdk1.adapters.enums import AdapterTypes
+from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 
@@ -151,6 +155,52 @@ class ToolInstanceSerializer(AuditSerializer):
             logger.error(f"Error transforming adapter IDs to names: {e}", exc_info=True)
         return display_metadata
 
+    @staticmethod
+    def _overlay_resolved_challenge_llm(
+        tool: Tool, tool_settings: dict[str, Any], tool_uid: str
+    ) -> None:
+        """Seed `challenge_llm` from the value the export already resolved.
+
+        `get_default_settings` walks the spec, and an adapter-valued property
+        with no `default` is seeded "". `challenge_llm` has none, so the
+        instance would store "" - and because the property declares
+        `adapterType: "LLM"`, an enum of real adapter IDs is injected into the
+        tool-instance schema, which "" then fails at deployment validation.
+
+        The export resolved a real adapter ID for this setting (falling back to
+        the default profile's LLM when the project set none), so prefer it.
+
+        Deliberately scoped to `challenge_llm` alone. The export's
+        `tool_settings` overlaps the spec on four other keys
+        (`enable_challenge`, `summarize_as_source`, `enable_highlight`,
+        `enable_word_confidence`); overlaying those would change whether
+        challenge, summarization and highlighting actually *run* on new
+        instances - a cost-, latency- and output-affecting change, and a
+        separate decision from fixing this validation failure.
+
+        Non-Prompt-Studio tools resolve to {}, making this a no-op for them.
+        """
+        challenge_llm_key = JsonSchemaKey.CHALLENGE_LLM
+        if challenge_llm_key not in tool_settings:
+            return
+
+        resolved_settings = PromptStudioRegistryHelper.get_resolved_settings(
+            prompt_registry_id=tool_uid
+        )
+        resolved_challenge_llm = resolved_settings.get(challenge_llm_key)
+        if not resolved_challenge_llm:
+            return
+
+        tool_settings[challenge_llm_key] = resolved_challenge_llm
+        # Every other path writes the adapter key and its companion ID key
+        # together (see `ToolInstanceHelper.update_metadata_with_default_adapter`),
+        # so keep the same shape here rather than inventing a new one.
+        adapter_property = tool.spec.properties.get(challenge_llm_key, {})
+        adapter_id_key = adapter_property.get(
+            AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+        )
+        tool_settings[adapter_id_key] = resolved_challenge_llm
+
     def create(self, validated_data: dict[str, Any]) -> Any:
         workflow_id = validated_data.pop(WorkflowKey.WF_ID)
         try:
@@ -174,20 +224,7 @@ class ToolInstanceSerializer(AuditSerializer):
         # TODO: Use version from tool props
         validated_data[TIKey.VERSION] = ""
         tool_settings = ToolProcessor.get_default_settings(tool)
-        # `get_default_settings` seeds an adapter-valued property with "" when
-        # the spec carries no default (e.g. challenge_llm). The exported tool
-        # already resolved a real value for it, so prefer that - otherwise the
-        # instance stores "", which fails deployment validation against the
-        # adapter enum. Only spec-declared keys are overlaid; the export's
-        # settings are a superset (llm, vector-db, ...) and the rest are not
-        # part of the instance schema. Non-Prompt-Studio tools resolve to {}
-        # here, making this a no-op for them.
-        resolved_settings = PromptStudioRegistryHelper.get_resolved_settings(
-            prompt_registry_id=str(tool_uid)
-        )
-        for key in tool_settings:
-            if key in resolved_settings:
-                tool_settings[key] = resolved_settings[key]
+        self._overlay_resolved_challenge_llm(tool, tool_settings, str(tool_uid))
         validated_data[TIKey.METADATA] = {
             # TODO: Review and remove tool instance ID
             WorkflowKey.WF_TOOL_INSTANCE_ID: str(validated_data[TIKey.PK]),
