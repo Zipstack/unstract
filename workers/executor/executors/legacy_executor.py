@@ -1792,9 +1792,7 @@ class LegacyExecutor(BaseExecutor):
                     output=output,
                     shim=shim,
                     llm=llm,
-                    extract_file_path=(
-                        params.get(PSKeys.EXTRACT_FILE_PATH) or file_path
-                    ),
+                    extract_file_path=(params.get(PSKeys.EXTRACT_FILE_PATH) or file_path),
                     execution_source=execution_source,
                     metadata=metadata,
                     metrics=metrics,
