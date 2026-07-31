@@ -34,6 +34,8 @@ both call sites. Please do not reintroduce source-text assertions here.
 from __future__ import annotations
 
 import os
+import uuid
+from contextlib import ExitStack
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -72,9 +74,15 @@ ALL_BUILDERS = ["build_fetch_response_payload", "build_bulk_fetch_response_paylo
 
 
 def _make_profile(profile_id: str) -> Any:
-    """A ProfileManager stand-in with the attributes the builders read."""
+    """A ProfileManager stand-in with the attributes the builders read.
+
+    ``profile_id`` is a real ``UUID``, matching the ``UUIDField`` on the model.
+    That is load-bearing: ``cb_kwargs`` is JSON-serialised by Celery
+    (``task_serializer = "json"``), so dropping the ``str()`` wrapper in the
+    helper would raise at dispatch. A ``str`` fake here would hide that.
+    """
     profile = MagicMock(name=f"ProfileManager<{profile_id}>")
-    profile.profile_id = profile_id
+    profile.profile_id = uuid.UUID(profile_id)
     profile.chunk_size = 512
     profile.chunk_overlap = 64
     return profile
@@ -119,27 +127,39 @@ def _call(
         )
         return _make_profile(EXPLICIT_ID)
 
+    # autospec on the collaborators whose signatures the builders call into, so
+    # an arity or keyword change in production fails here instead of staying
+    # green. The module-attribute patches below are legitimately opaque.
     patches = [
         patch.object(
-            psh.ProfileManager, "get_default_llm_profile", side_effect=_get_default
+            psh.ProfileManager,
+            "get_default_llm_profile",
+            autospec=True,
+            side_effect=lambda tool: _get_default(tool),
         ),
         patch.object(
-            psh.ProfileManagerHelper, "get_profile_manager", side_effect=_get_explicit
+            psh.ProfileManagerHelper,
+            "get_profile_manager",
+            autospec=True,
+            side_effect=lambda profile_manager_id: _get_explicit(profile_manager_id),
         ),
-        patch.object(helper, "_resolve_llm_ids", return_value=("m", "c")),
-        patch.object(helper, "validate_adapter_status", return_value=None),
-        patch.object(helper, "validate_profile_manager_owner_access", return_value=None),
-        patch.object(helper, "_get_platform_api_key", return_value="pk"),
-        patch.object(helper, "dynamic_extractor", return_value="text"),
+        patch.object(helper, "_resolve_llm_ids", autospec=True, return_value=("m", "c")),
+        patch.object(helper, "validate_adapter_status", autospec=True),
+        patch.object(helper, "validate_profile_manager_owner_access", autospec=True),
+        patch.object(helper, "_get_platform_api_key", autospec=True, return_value="pk"),
+        patch.object(helper, "dynamic_extractor", autospec=True, return_value="text"),
         # Must be a dict with a non-pending status: the builders early-return a
         # pending response (and no cb_kwargs) when indexing is still running.
-        patch.object(helper, "dynamic_indexer", return_value={"status": "COMPLETED"}),
-        patch.object(helper, "_build_grammar_list", return_value=[]),
-        patch.object(helper, "_build_prompt_output", return_value={}),
+        patch.object(
+            helper, "dynamic_indexer", autospec=True, return_value={"status": "COMPLETED"}
+        ),
+        patch.object(helper, "_build_grammar_list", autospec=True, return_value=[]),
+        patch.object(helper, "_build_prompt_output", autospec=True, return_value={}),
         # Returns the (mutated) output dict, so it must pass it through.
         patch.object(
             helper,
             "fetch_table_settings_if_enabled",
+            autospec=True,
             side_effect=lambda _doc, _prompt, _org, _user, _tool, output: output,
         ),
         patch.object(psh, "EnvHelper", MagicMock()),
@@ -149,9 +169,11 @@ def _call(
         patch.object(psh, "ExecutionContext", MagicMock()),
         patch.object(psh, "PromptStudioVariableService", MagicMock()),
     ]
-    for patcher in patches:
-        patcher.start()
-    try:
+    # ExitStack, not a bare start loop: a mistargeted patch would otherwise
+    # raise partway through and leak the already-started ones into later tests.
+    with ExitStack() as stack:
+        for patcher in patches:
+            stack.enter_context(patcher)
         kwargs: dict[str, Any] = {
             "tool": MagicMock(
                 tool_id="tool-1",
@@ -173,9 +195,6 @@ def _call(
         else:
             kwargs["prompt"] = prompt
         return getattr(helper, builder)(**kwargs)
-    finally:
-        for patcher in patches:
-            patcher.stop()
 
 
 @pytest.mark.parametrize("builder", FK_AWARE_BUILDERS)
@@ -314,9 +333,9 @@ class TestSynchronousFetchResponse:
             # this point needs storage and an LLM.
             patch.object(psh, "EnvHelper", MagicMock(side_effect=RuntimeError)),
         ]
-        for patcher in patches:
-            patcher.start()
-        try:
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
             with pytest.raises(Exception):  # noqa: B017 - halted deliberately
                 helper._fetch_response(
                     tool=MagicMock(tool_id="tool-1", summarize_as_source=False),
@@ -330,9 +349,6 @@ class TestSynchronousFetchResponse:
                     profile_manager_id=profile_manager_id,
                     request_user=None,
                 )
-        finally:
-            for patcher in patches:
-                patcher.stop()
 
         assert seen, "validate_adapter_status was never reached"
         return seen[0]
@@ -348,7 +364,7 @@ class TestSynchronousFetchResponse:
             default_profile=_make_profile(PROJECT_DEFAULT_ID),
         )
 
-        assert resolved.profile_id == PROJECT_DEFAULT_ID
+        assert str(resolved.profile_id) == PROJECT_DEFAULT_ID
 
     def test_prompt_fk_wins_over_project_default(self) -> None:
         psh, _ = _deps()
@@ -360,7 +376,7 @@ class TestSynchronousFetchResponse:
             default_profile=_make_profile(PROJECT_DEFAULT_ID),
         )
 
-        assert resolved.profile_id == PROMPT_FK_ID
+        assert str(resolved.profile_id) == PROMPT_FK_ID
 
 
 class TestSynchronousOutputAttribution:
@@ -398,9 +414,9 @@ class TestSynchronousOutputAttribution:
             ),
             patch.object(psh, "get_plugin", MagicMock(return_value=None)),
         ]
-        for patcher in patches:
-            patcher.start()
-        try:
+        with ExitStack() as stack:
+            for patcher in patches:
+                stack.enter_context(patcher)
             helper._execute_single_prompt(
                 id="prompt-1",
                 doc_path="/docs/a.pdf",
@@ -413,9 +429,6 @@ class TestSynchronousOutputAttribution:
                 profile_manager_id=profile_manager_id,
                 request_user=None,
             )
-        finally:
-            for patcher in patches:
-                patcher.stop()
 
         assert seen, "_handle_response was never reached"
         return seen["profile_manager_id"]
