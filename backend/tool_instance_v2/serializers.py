@@ -16,6 +16,7 @@ from rest_framework.serializers import ListField, Serializer, UUIDField, Validat
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.constants import ToolKey
@@ -24,7 +25,6 @@ from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from tool_instance_v2.tool_processor import ToolProcessor
 from unstract.sdk1.adapters.enums import AdapterTypes
-from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Tool
 from unstract.tool_registry.tool_utils import ToolUtils
 
@@ -223,9 +223,7 @@ class ToolInstanceSerializer(AuditSerializer):
         # Write the companion ID key alongside, the shape every other writer
         # emits (see `ToolInstanceHelper.update_metadata_with_default_adapter`).
         adapter_property = tool.spec.properties.get(challenge_llm_key, {})
-        adapter_id_key = adapter_property.get(
-            AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-        )
+        adapter_id_key = ToolInstanceHelper.get_adapter_id_key(adapter_property)
         tool_settings[adapter_id_key] = resolved_challenge_llm
 
     @staticmethod
@@ -279,7 +277,7 @@ class ToolInstanceSerializer(AuditSerializer):
         # TODO: Use version from tool props
         validated_data[TIKey.VERSION] = ""
         tool_settings = ToolProcessor.get_default_settings(tool)
-        request = self.context.get("request")
+        request = self.context.get(RequestKey.REQUEST)
         self._overlay_resolved_challenge_llm(
             tool,
             tool_settings,

@@ -167,7 +167,7 @@ class PromptStudioRegistryHelper:
         # module level, so importing back into `tool_instance_v2` would cycle.
         try:
             uuid.UUID(str(prompt_registry_id))
-        except (ValueError, AttributeError, TypeError):
+        except ValueError:
             return {}
         try:
             # Only `tool_metadata` is needed, and it is the largest column on the

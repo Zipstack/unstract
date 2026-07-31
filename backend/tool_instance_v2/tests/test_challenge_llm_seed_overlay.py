@@ -35,6 +35,8 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import jsonschema
+import pytest
+from django.db import OperationalError
 from prompt_studio.prompt_studio_registry_v2 import (
     prompt_studio_registry_helper as _psr_mod,
 )
@@ -124,35 +126,57 @@ def _run_overlay(
     tool: Any = None,
     tool_uid: str = PROMPT_REGISTRY_ID,
     adapter_visible: bool = True,
-) -> MagicMock:
+    user: Any = None,
+) -> tuple[MagicMock, MagicMock]:
     """Run the real overlay with the registry lookup and adapter check patched.
 
     `adapter_visible` models whether the resolved adapter is one the creating
     user can actually see - False covers both "shared tool, exporter's private
     adapter" and "adapter has since been deleted".
+
+    Returns the registry-lookup and visibility-check mocks, so a caller can
+    assert on how they were called and not only on the resulting settings.
     """
-    resolved_patch = (
-        patch.object(
-            PromptStudioRegistryHelper, "get_resolved_settings", return_value=resolved
-        )
-        if resolved is not None
-        else patch.object(PromptStudioRegistryHelper, "get_resolved_settings")
-    )
+    usable_mock = MagicMock(return_value=adapter_visible)
     with (
-        resolved_patch as resolved_mock,
         patch.object(
-            ToolInstanceSerializer,
-            "_is_adapter_usable_by",
-            MagicMock(return_value=adapter_visible),
-        ),
+            PromptStudioRegistryHelper,
+            "get_resolved_settings",
+            return_value=resolved or {},
+        ) as resolved_mock,
+        patch.object(ToolInstanceSerializer, "_is_adapter_usable_by", usable_mock),
     ):
         ToolInstanceSerializer._overlay_resolved_challenge_llm(
             tool if tool is not None else _make_tool(),
             tool_settings,
             tool_uid,
-            MagicMock(name="user"),
+            user if user is not None else MagicMock(name="user"),
         )
-    return resolved_mock
+    return resolved_mock, usable_mock
+
+
+def _run_default_adapter_walk(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Run the real default-adapter walk over a `challenge_llm` spec.
+
+    The adapter it offers is `USER_DEFAULT_LLM`, deliberately different from
+    `RESOLVED_CHALLENGE_LLM`, so callers can tell "kept the seeded value" apart
+    from "fell back to the user's default".
+    """
+    spec = Spec(
+        title="exported-tool",
+        description="Exported prompt studio tool",
+        required=[JsonSchemaKey.CHALLENGE_LLM],
+        properties={JsonSchemaKey.CHALLENGE_LLM: _challenge_llm_property()},
+    )
+    adapter = MagicMock(name="AdapterInstance")
+    adapter.id = USER_DEFAULT_LLM
+    ToolInstanceHelper.update_metadata_with_default_adapter(
+        adapter_type=_tih_mod.AdapterTypes.LLM,
+        schema_spec=spec,
+        adapter=adapter,
+        metadata=metadata,
+    )
+    return metadata
 
 
 class TestChallengeLlmOverlay:
@@ -234,7 +258,7 @@ class TestChallengeLlmOverlay:
             properties={"some_setting": {"type": "string", "default": "x"}},
         )
         tool_settings = {"some_setting": "x"}
-        resolved_mock = _run_overlay(tool_settings, tool=tool)
+        resolved_mock, _usable_mock = _run_overlay(tool_settings, tool=tool)
         resolved_mock.assert_not_called()
 
 
@@ -270,7 +294,7 @@ class TestOverlaySkipsUnusableAdapters:
             resolved=_exported_tool_settings(),
             adapter_visible=False,
         )
-        metadata = TestDefaultAdapterDoesNotClobberSeededValue._run_default_adapter_walk(
+        metadata = _run_default_adapter_walk(
             {JsonSchemaKey.CHALLENGE_LLM: tool_settings[JsonSchemaKey.CHALLENGE_LLM]}
         )
         assert metadata[JsonSchemaKey.CHALLENGE_LLM] == USER_DEFAULT_LLM
@@ -278,23 +302,10 @@ class TestOverlaySkipsUnusableAdapters:
 
     def test_usable_adapter_is_checked_against_the_creating_user(self) -> None:
         """The visibility check receives the resolved id and the user."""
-        tool_settings = _spec_seeded_settings()
         user = MagicMock(name="creating-user")
-        with (
-            patch.object(
-                PromptStudioRegistryHelper,
-                "get_resolved_settings",
-                return_value=_exported_tool_settings(),
-            ),
-            patch.object(
-                ToolInstanceSerializer,
-                "_is_adapter_usable_by",
-                MagicMock(return_value=True),
-            ) as usable_mock,
-        ):
-            ToolInstanceSerializer._overlay_resolved_challenge_llm(
-                _make_tool(), tool_settings, PROMPT_REGISTRY_ID, user
-            )
+        _resolved_mock, usable_mock = _run_overlay(
+            _spec_seeded_settings(), resolved=_exported_tool_settings(), user=user
+        )
         usable_mock.assert_called_once_with(RESOLVED_CHALLENGE_LLM, user)
 
 
@@ -307,13 +318,15 @@ class TestIsAdapterUsableBy:
     """
 
     @staticmethod
-    def _run(user: Any) -> tuple[bool, MagicMock]:
+    def _run(user: Any, *, exists: bool = True) -> tuple[bool, MagicMock]:
         exists_qs = MagicMock(name="filtered")
-        exists_qs.exists.return_value = True
+        exists_qs.exists.return_value = exists
         scoped = MagicMock(name="scoped")
         scoped.filter.return_value = exists_qs
         objects_mock = MagicMock(name="objects")
         objects_mock.for_user.return_value = scoped
+        # Wired too, so `filter.assert_not_called()` means "never bypassed
+        # for_user" rather than "would have blown up if it had".
         objects_mock.filter.return_value = exists_qs
         with patch.object(_ser_mod, "AdapterInstance", MagicMock(objects=objects_mock)):
             result = ToolInstanceSerializer._is_adapter_usable_by(
@@ -346,15 +359,8 @@ class TestIsAdapterUsableBy:
 
     def test_absent_adapter_is_not_usable(self) -> None:
         """A deleted or invisible adapter resolves to False."""
-        objects_mock = MagicMock(name="objects")
-        objects_mock.for_user.return_value.filter.return_value.exists.return_value = False
-        with patch.object(_ser_mod, "AdapterInstance", MagicMock(objects=objects_mock)):
-            assert (
-                ToolInstanceSerializer._is_adapter_usable_by(
-                    RESOLVED_CHALLENGE_LLM, MagicMock(name="user")
-                )
-                is False
-            )
+        result, _objects_mock = self._run(MagicMock(name="user"), exists=False)
+        assert result is False
 
     def test_missing_user_refuses_rather_than_falling_back(self) -> None:
         """No user means no scope - refuse instead of seeding on existence.
@@ -539,27 +545,9 @@ class TestDefaultAdapterDoesNotClobberSeededValue:
     property, so a user with a default LLM had the exported value replaced.
     """
 
-    @staticmethod
-    def _run_default_adapter_walk(metadata: dict[str, Any]) -> dict[str, Any]:
-        spec = Spec(
-            title="exported-tool",
-            description="Exported prompt studio tool",
-            required=[JsonSchemaKey.CHALLENGE_LLM],
-            properties={JsonSchemaKey.CHALLENGE_LLM: _challenge_llm_property()},
-        )
-        adapter = MagicMock(name="AdapterInstance")
-        adapter.id = USER_DEFAULT_LLM
-        ToolInstanceHelper.update_metadata_with_default_adapter(
-            adapter_type=_tih_mod.AdapterTypes.LLM,
-            schema_spec=spec,
-            adapter=adapter,
-            metadata=metadata,
-        )
-        return metadata
-
     def test_seeded_challenge_llm_survives_the_default_walk(self) -> None:
         """The exported value is kept, not replaced by the user's default."""
-        metadata = self._run_default_adapter_walk(
+        metadata = _run_default_adapter_walk(
             {
                 JsonSchemaKey.CHALLENGE_LLM: RESOLVED_CHALLENGE_LLM,
                 CHALLENGE_LLM_ADAPTER_ID_KEY: RESOLVED_CHALLENGE_LLM,
@@ -576,7 +564,7 @@ class TestDefaultAdapterDoesNotClobberSeededValue:
         and fails schema enum validation later". Preserving a value must not
         manufacture that shape.
         """
-        metadata = self._run_default_adapter_walk(
+        metadata = _run_default_adapter_walk(
             {JsonSchemaKey.CHALLENGE_LLM: RESOLVED_CHALLENGE_LLM}
         )
         assert metadata[JsonSchemaKey.CHALLENGE_LLM] == RESOLVED_CHALLENGE_LLM
@@ -616,13 +604,13 @@ class TestDefaultAdapterDoesNotClobberSeededValue:
 
     def test_unset_challenge_llm_still_gets_the_user_default(self) -> None:
         """The guard fills gaps -- it must not disable the default entirely."""
-        metadata = self._run_default_adapter_walk({JsonSchemaKey.CHALLENGE_LLM: ""})
+        metadata = _run_default_adapter_walk({JsonSchemaKey.CHALLENGE_LLM: ""})
         assert metadata[JsonSchemaKey.CHALLENGE_LLM] == USER_DEFAULT_LLM
         assert metadata[CHALLENGE_LLM_ADAPTER_ID_KEY] == USER_DEFAULT_LLM
 
     def test_absent_key_still_gets_the_user_default(self) -> None:
         """A key missing altogether is a gap too, and must be filled."""
-        metadata = self._run_default_adapter_walk({})
+        metadata = _run_default_adapter_walk({})
         assert metadata[JsonSchemaKey.CHALLENGE_LLM] == USER_DEFAULT_LLM
 
 
@@ -691,9 +679,6 @@ class TestGetResolvedSettings:
         Swallowing it would seed "" and resurface much later as the same
         confusing 422 this change exists to prevent.
         """
-        import pytest
-        from django.db import OperationalError
-
         values_qs = MagicMock(name="values_list")
         values_qs.get.side_effect = OperationalError("db down")
         with patch.object(
