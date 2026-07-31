@@ -230,17 +230,30 @@ class ToolInstanceSerializer(AuditSerializer):
 
     @staticmethod
     def _is_adapter_usable_by(adapter_id: str, user: User | None) -> bool:
-        """Whether `adapter_id` exists and is visible to `user`.
+        """Whether `adapter_id` is an LLM adapter visible to `user`.
 
-        A missing user (the serializer used outside a request) cannot be scoped
-        against, so fall back to a plain existence check - that still screens
-        out the deleted-adapter case, which needs no sharing to hit.
+        Mirrors `AdapterProcessor.get_adapters_by_type` exactly - same
+        `for_user` scoping, same `adapter_type` predicate - because that builds
+        the enum this value is validated against at deploy time, and any
+        divergence lets a value through here that the enum then rejects. The
+        type predicate is load-bearing: `CustomTool.challenge_llm` is an
+        unconstrained FK whose serializer has no `validate_challenge_llm`,
+        unlike its `summarize_llm_adapter` sibling, so a non-LLM adapter can
+        reach it.
+
+        Without a user there is no scope to check against, and answering "yes"
+        would seed on mere existence - passing another user's private adapter.
+        Refuse instead: the caller then leaves the key empty and the default
+        adapter fills it, which is safe in every case. Unreachable today, since
+        every site that constructs this serializer to write goes through
+        `get_serializer`, which supplies the request.
         """
-        queryset = AdapterInstance.objects
+        if user is None:
+            return False
         return (
-            queryset.for_user(user).filter(id=adapter_id).exists()
-            if user is not None
-            else queryset.filter(id=adapter_id).exists()
+            AdapterInstance.objects.for_user(user)
+            .filter(id=adapter_id, adapter_type=AdapterTypes.LLM.value)
+            .exists()
         )
 
     def create(self, validated_data: dict[str, Any]) -> Any:

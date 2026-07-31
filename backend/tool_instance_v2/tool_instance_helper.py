@@ -227,11 +227,12 @@ class ToolInstanceHelper:
             # tool-specific choice with the user's global default.
             existing_value = metadata.get(adapter_key)
             if existing_value:
-                # No current writer emits a populated adapter key without its
-                # ID key - this defends rows persisted before the overlay began
-                # writing both. Do not delete it as dead: a populated adapter
-                # key with a missing ID key bypasses the lazy migrator and then
-                # fails schema enum validation (see
+                # Keep the pair consistent for whoever populated the adapter
+                # key. No caller reaching here today leaves the ID key unset -
+                # this holds the invariant rather than repairing a known writer.
+                # Cheap and worth keeping: a populated adapter key with a
+                # missing ID key bypasses the lazy migrator and then fails
+                # schema enum validation (see
                 # `update_metadata_with_adapter_properties`).
                 metadata.setdefault(metadata_key_for_id, existing_value)
                 continue

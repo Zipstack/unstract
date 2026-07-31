@@ -43,6 +43,7 @@ from prompt_studio.prompt_studio_registry_v2.constants import JsonSchemaKey
 from tool_instance_v2 import serializers as _ser_mod
 from tool_instance_v2 import tool_instance_helper as _tih_mod
 from tool_instance_v2 import tool_processor as _tp_mod
+from unstract.sdk1.adapters.enums import AdapterTypes
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec
 from unstract.tool_registry.tool_utils import ToolUtils
@@ -297,6 +298,76 @@ class TestOverlaySkipsUnusableAdapters:
         usable_mock.assert_called_once_with(RESOLVED_CHALLENGE_LLM, user)
 
 
+class TestIsAdapterUsableBy:
+    """Direct coverage of the visibility check's own body.
+
+    Every other test patches this method out, so without these a `return True`
+    or `return False` stub would keep the whole suite green - while either
+    silently reintroduces the deploy-time 422 or makes the seed a no-op.
+    """
+
+    @staticmethod
+    def _run(user: Any) -> tuple[bool, MagicMock]:
+        exists_qs = MagicMock(name="filtered")
+        exists_qs.exists.return_value = True
+        scoped = MagicMock(name="scoped")
+        scoped.filter.return_value = exists_qs
+        objects_mock = MagicMock(name="objects")
+        objects_mock.for_user.return_value = scoped
+        objects_mock.filter.return_value = exists_qs
+        with patch.object(_ser_mod, "AdapterInstance", MagicMock(objects=objects_mock)):
+            result = ToolInstanceSerializer._is_adapter_usable_by(
+                RESOLVED_CHALLENGE_LLM, user
+            )
+        return result, objects_mock
+
+    def test_scopes_the_lookup_to_the_user(self) -> None:
+        """The query must go through `for_user`, not the raw manager.
+
+        This is what keeps the check aligned with the per-user enum built at
+        deploy time; an unscoped lookup would pass another user's adapter.
+        """
+        user = MagicMock(name="user")
+        result, objects_mock = self._run(user)
+        assert result is True
+        objects_mock.for_user.assert_called_once_with(user)
+        objects_mock.filter.assert_not_called()
+
+    def test_filters_on_id_and_llm_adapter_type(self) -> None:
+        """Both predicates must match `AdapterProcessor.get_adapters_by_type`.
+
+        Dropping the type predicate lets a visible non-LLM adapter through,
+        which the LLM enum then rejects at deploy - the same relocated 422.
+        """
+        _result, objects_mock = self._run(MagicMock(name="user"))
+        objects_mock.for_user.return_value.filter.assert_called_once_with(
+            id=RESOLVED_CHALLENGE_LLM, adapter_type=AdapterTypes.LLM.value
+        )
+
+    def test_absent_adapter_is_not_usable(self) -> None:
+        """A deleted or invisible adapter resolves to False."""
+        objects_mock = MagicMock(name="objects")
+        objects_mock.for_user.return_value.filter.return_value.exists.return_value = False
+        with patch.object(_ser_mod, "AdapterInstance", MagicMock(objects=objects_mock)):
+            assert (
+                ToolInstanceSerializer._is_adapter_usable_by(
+                    RESOLVED_CHALLENGE_LLM, MagicMock(name="user")
+                )
+                is False
+            )
+
+    def test_missing_user_refuses_rather_than_falling_back(self) -> None:
+        """No user means no scope - refuse instead of seeding on existence.
+
+        Answering "yes" here would fail open: any adapter that merely exists,
+        including another user's private one, would be seeded.
+        """
+        result, objects_mock = self._run(None)
+        assert result is False
+        objects_mock.for_user.assert_not_called()
+        objects_mock.filter.assert_not_called()
+
+
 class TestOverlayIsWiredIntoCreate:
     """The overlay's RESULT must reach the metadata `create` persists.
 
@@ -307,11 +378,16 @@ class TestOverlayIsWiredIntoCreate:
     """
 
     @staticmethod
-    def _create_and_capture_metadata() -> dict[str, Any]:
+    def _create_and_capture_metadata(
+        usable_mock: MagicMock | None = None,
+        request_user: Any = None,
+    ) -> dict[str, Any]:
         """Run the real `create` with the real overlay; return its metadata.
 
         `create` mutates the `validated_data` dict in place, so the metadata it
-        would persist is readable afterwards.
+        would persist is readable afterwards. The serializer is built with
+        request context, as `get_serializer` does in the view, so the
+        request->user hop the visibility check depends on is exercised.
         """
         workflow = MagicMock(name="Workflow")
         workflow.tool_instances.count.return_value = 0
@@ -321,6 +397,8 @@ class TestOverlayIsWiredIntoCreate:
             "workflow_id": "wf-1",
             "tool_id": PROMPT_REGISTRY_ID,
         }
+        request = MagicMock(name="request")
+        request.user = request_user if request_user is not None else MagicMock("user")
 
         with (
             patch.object(
@@ -350,13 +428,13 @@ class TestOverlayIsWiredIntoCreate:
             patch.object(
                 ToolInstanceSerializer,
                 "_is_adapter_usable_by",
-                MagicMock(return_value=True),
+                usable_mock if usable_mock is not None else MagicMock(return_value=True),
             ),
             patch.object(
                 _ser_mod.AuditSerializer, "create", MagicMock(return_value=MagicMock())
             ),
         ):
-            ToolInstanceSerializer().create(validated_data)
+            ToolInstanceSerializer(context={"request": request}).create(validated_data)
 
         return validated_data[_ser_mod.TIKey.METADATA]
 
@@ -369,6 +447,21 @@ class TestOverlayIsWiredIntoCreate:
         """So must its companion, or the pair is half-written on disk."""
         metadata = self._create_and_capture_metadata()
         assert metadata[CHALLENGE_LLM_ADAPTER_ID_KEY] == RESOLVED_CHALLENGE_LLM
+
+    def test_creating_user_reaches_the_visibility_check(self) -> None:
+        """`create` must forward the request's user, not lose it.
+
+        This hop is what makes the check per-user. If it degrades to None the
+        check has no scope to test against, so seeding would either fail open
+        on mere existence or stop working entirely - and no assertion about
+        metadata contents would notice.
+        """
+        request_user = MagicMock(name="request-user")
+        usable_mock = MagicMock(return_value=True)
+        self._create_and_capture_metadata(
+            usable_mock=usable_mock, request_user=request_user
+        )
+        usable_mock.assert_called_once_with(RESOLVED_CHALLENGE_LLM, request_user)
 
 
 class TestSeededValuePassesDeployValidation:
