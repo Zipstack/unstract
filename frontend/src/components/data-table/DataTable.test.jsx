@@ -1,6 +1,7 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { useState } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { DataTable } from "./DataTable";
 
@@ -18,6 +19,52 @@ const rowsFor = (n) =>
 function pager() {
   return document.querySelector(".ant-pagination");
 }
+
+describe("DataTable rowSelection", () => {
+  /*
+   * antd tolerates an inline `rowSelection={{ selectedRowKeys, onChange }}`,
+   * which is what most call-sites write — a fresh object on every render.
+   * Depending on that object (or on the TanStack `table`, likewise rebuilt each
+   * render) re-ran the mirror effect on every commit, and because the effect
+   * calls back into the parent's setState that is an infinite loop. It crashed
+   * the File History modal outright with React #185.
+   */
+  it("does not loop when rowSelection is an inline object", () => {
+    function Harness() {
+      const [keys, setKeys] = useState([]);
+      return (
+        <DataTable
+          columns={columns}
+          dataSource={rowsFor(2)}
+          rowKey="id"
+          rowSelection={{ selectedRowKeys: keys, onChange: setKeys }}
+        />
+      );
+    }
+    expect(() => render(<Harness />)).not.toThrow();
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+  });
+
+  it("still reports the selected keys through onChange", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        rowSelection={{ onChange }}
+      />,
+    );
+    await userEvent.click(screen.getAllByLabelText("Select row")[0]);
+    // The first call fires on mount with an empty selection, as antd's does.
+    await waitFor(() =>
+      expect(onChange).toHaveBeenLastCalledWith(
+        [1],
+        expect.arrayContaining([expect.objectContaining({ id: 1 })]),
+      ),
+    );
+  });
+});
 
 describe("DataTable pagination", () => {
   it("renders numbered page buttons rather than a Previous/Next text row", () => {

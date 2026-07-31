@@ -164,17 +164,36 @@ function DataTable({
         : String(row?.[rowKey] ?? index),
   });
 
+  /*
+   * Held in a ref, and deliberately NOT in the effect's deps.
+   *
+   * antd tolerates an inline `rowSelection={{ selectedRowKeys, onChange }}`,
+   * which most call-sites write — a fresh object every render. Depending on it
+   * (or on `table`, likewise rebuilt each render) re-ran this effect on every
+   * commit, and since it calls back into the parent's setState that is an
+   * infinite loop: React #185, which crashed the File History modal outright.
+   */
+  const rowSelectionRef = React.useRef(rowSelection);
+  rowSelectionRef.current = rowSelection;
+  const tableRef = React.useRef(table);
+  tableRef.current = table;
+
   // Mirror selection back through antd's callback shape.
   React.useEffect(() => {
-    if (!rowSelection?.onChange) {
+    const onChange = rowSelectionRef.current?.onChange;
+    if (!onChange) {
       return;
     }
-    const rows = table.getSelectedRowModel().rows.map((r) => r.original);
-    rowSelection.onChange(
+    const rows = tableRef.current
+      .getSelectedRowModel()
+      .rows.map((r) => r.original);
+    onChange(
       rows.map((r) => r?.[typeof rowKey === "function" ? "id" : rowKey]),
       rows,
     );
-  }, [selection, rowSelection, rowKey, table]);
+    // `selection` is the only real input: it changes exactly when the user
+    // ticks a row, which is when antd would fire onChange.
+  }, [selection, rowKey]);
 
   // antd accepts `loading` as a boolean or `{ spinning }`.
   const isLoading =
