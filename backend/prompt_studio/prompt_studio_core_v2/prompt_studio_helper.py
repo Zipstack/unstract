@@ -1711,13 +1711,26 @@ class PromptStudioHelper:
                     user_id=user_id,
                     request_user=request_user,
                 )
+            # Book the output against the profile the run actually used, the
+            # same ladder _fetch_response applies. Forwarding the raw (possibly
+            # None) argument makes _handle_response re-resolve the project
+            # default, so a prompt carrying its own FK would run under that FK
+            # but have its output stored under the project default.
+            resolved_profile_id = profile_manager_id
+            if not resolved_profile_id:
+                resolved_profile = (
+                    prompt_instance.profile_manager
+                    or ProfileManager.get_default_llm_profile(tool)
+                )
+                resolved_profile_id = str(resolved_profile.profile_id)
+
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,
                 prompts=prompts,
                 document_id=document_id,
                 is_single_pass=False,
-                profile_manager_id=profile_manager_id,
+                profile_manager_id=resolved_profile_id,
             )
         except APIException:
             # Validation responses are user-facing; DRF renders them as-is.

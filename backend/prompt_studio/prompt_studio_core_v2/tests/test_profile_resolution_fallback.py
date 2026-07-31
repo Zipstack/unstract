@@ -363,6 +363,85 @@ class TestSynchronousFetchResponse:
         assert resolved.profile_id == PROMPT_FK_ID
 
 
+class TestSynchronousOutputAttribution:
+    """``_execute_single_prompt`` must book output against the profile used.
+
+    The async builders record the resolved profile in ``cb_kwargs``; the
+    synchronous path hands ``profile_manager_id`` to ``_handle_response``, whose
+    ``None`` branch re-resolves the project default. A prompt carrying its own
+    FK would then run under the FK but store its output under the project
+    default.
+    """
+
+    def _handled_profile_id(
+        self, psh: Any, *, profile_manager_id: str | None, prompt_profile: Any
+    ) -> Any:
+        helper = psh.PromptStudioHelper
+        prompt = _make_prompt(prompt_profile)
+        prompt.enforce_type = "Text"
+        prompt.tool_id = MagicMock(tool_id="tool-1")
+        seen: dict[str, Any] = {}
+
+        patches = [
+            patch.object(helper, "_fetch_prompt_from_id", return_value=prompt),
+            patch.object(helper, "_fetch_response", return_value={"status": "OK"}),
+            patch.object(helper, "_publish_log", return_value=None),
+            patch.object(
+                psh.ProfileManager,
+                "get_default_llm_profile",
+                side_effect=lambda tool: _make_profile(PROJECT_DEFAULT_ID),
+            ),
+            patch.object(
+                helper,
+                "_handle_response",
+                side_effect=lambda **kw: seen.update(kw),
+            ),
+            patch.object(psh, "get_plugin", MagicMock(return_value=None)),
+        ]
+        for patcher in patches:
+            patcher.start()
+        try:
+            helper._execute_single_prompt(
+                id="prompt-1",
+                doc_path="/docs/a.pdf",
+                doc_name="a.pdf",
+                tool_id="tool-1",
+                org_id="org-1",
+                user_id="user-1",
+                document_id="doc-1",
+                run_id="run-1",
+                profile_manager_id=profile_manager_id,
+                request_user=None,
+            )
+        finally:
+            for patcher in patches:
+                patcher.stop()
+
+        assert seen, "_handle_response was never reached"
+        return seen["profile_manager_id"]
+
+    def test_prompt_fk_is_recorded_not_reresolved(self) -> None:
+        psh, _ = _deps()
+
+        recorded = self._handled_profile_id(
+            psh, profile_manager_id=None, prompt_profile=_make_profile(PROMPT_FK_ID)
+        )
+
+        assert recorded == PROMPT_FK_ID, (
+            "Output must be booked against the prompt's own profile; passing "
+            "None makes _handle_response re-resolve the project default"
+        )
+
+    def test_project_default_is_recorded_when_no_fk(self) -> None:
+        psh, _ = _deps()
+
+        recorded = self._handled_profile_id(
+            psh, profile_manager_id=None, prompt_profile=None
+        )
+
+        assert recorded == PROJECT_DEFAULT_ID
+
+
 def test_default_profile_error_is_a_client_error() -> None:
     """A missing default profile is user-fixable configuration, not a 500."""
     _psh, default_profile_error = _deps()
