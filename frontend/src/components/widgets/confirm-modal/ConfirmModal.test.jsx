@@ -151,10 +151,15 @@ describe("ConfirmModal", () => {
     const item = await screen.findByRole("menuitem");
     const trigger = item.querySelector(".ant-space");
 
-    // The item must not add padding around the trigger, and the trigger must
-    // span the row — together that leaves nothing clickable but the trigger.
+    // The item adds no padding of its own, and the padding it does apply is
+    // pushed onto the trigger via `[&>*]` — so the whole row is the trigger
+    // rather than a padded ring around it.
     expect(item.className).toContain("p-0");
     expect(trigger.className).toContain("w-full");
+    const label = item.querySelector(".ant-dropdown-menu-title-content");
+    expect(label.className).toContain("[&>*]:px-2");
+    expect(label.className).toContain("[&>*]:py-1.5");
+    expect(label.firstElementChild).toBe(trigger);
   });
 
   it("skips the dialog entirely when isDisabled", async () => {

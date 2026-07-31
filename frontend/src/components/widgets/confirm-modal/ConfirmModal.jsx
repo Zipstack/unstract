@@ -45,7 +45,7 @@ function ConfirmModal({
    * depending on where in the row the pointer came down.
    */
   return (
-    <Space className="w-full" onClick={handleConfirmModal}>
+    <Space className="w-full flex-1" onClick={handleConfirmModal}>
       {children}
     </Space>
   );

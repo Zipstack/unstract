@@ -553,13 +553,32 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
                     item?.onClick?.(e);
                   }}
                 >
-                  {/* Padding lives here, inside the click target, so the full
-                      row belongs to whatever the label renders. */}
-                  <span className="flex w-full items-center gap-2 px-2 py-1.5">
-                    {item?.icon}
-                    <span className="ant-dropdown-menu-title-content w-full">
-                      {item?.label}
+                  {/*
+                   * The padding is pushed onto the DEEPEST element via
+                   * `[&>*]:px-2 [&>*]:py-1.5`, not held on a wrapper. Radix
+                   * closes the menu on pointerdown anywhere in the item, so any
+                   * padding a label sits *inside* is a dead ring: the menu
+                   * dismisses and the label's own handler never fires. That is
+                   * why Delete only worked sometimes. Giving the label the
+                   * padding makes the entire row its click target.
+                   *
+                   * The fallback padding on the span covers plain-text labels,
+                   * which have no child to push it onto.
+                   */}
+                  {item?.icon ? (
+                    <span className="flex shrink-0 items-center pl-2">
+                      {item.icon}
                     </span>
+                  ) : null}
+                  <span
+                    className={cn(
+                      "ant-dropdown-menu-title-content w-full",
+                      "[&>*]:w-full [&>*]:px-2 [&>*]:py-1.5",
+                      // Only pads when the label is bare text, not an element.
+                      "[&:not(:has(>*))]:px-2 [&:not(:has(>*))]:py-1.5",
+                    )}
+                  >
+                    {item?.label}
                   </span>
                 </DropdownMenuItem>
               ),
