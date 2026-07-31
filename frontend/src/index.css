@@ -620,6 +620,16 @@ body {
   z-index: 2000;
 }
 
+/* Radix positions popovers/dropdowns/tooltips in this wrapper and gives it
+ * `z-index: 50`. This app predates that scale and uses much larger values —
+ * `.logs-container` alone is 999 — so a sidebar fly-out opened near the bottom
+ * of the screen was clipped by the Logs footer. Sit above the app's legacy
+ * z-indexes but below `.fullscreen-loader` (2000), which must still cover
+ * everything. */
+[data-radix-popper-content-wrapper] {
+  z-index: 1500 !important;
+}
+
 .notification-id-line,
 .notification-id-line__value {
   font-size: 12px;

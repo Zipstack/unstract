@@ -159,7 +159,9 @@ const getActiveSettingsKey = () => {
   if (currentPath.includes("/settings/review")) {
     return "review";
   }
-  return "platform";
+  // See getActiveHITLKey: no key rather than defaulting to the first entry,
+  // which otherwise looks selected from everywhere in the app.
+  return null;
 };
 
 const SettingsPopoverContent = ({ orgName, navigate, isAdmin }) => {
@@ -236,7 +238,10 @@ const getActiveHITLKey = (orgName) => {
   if (currentPath.startsWith(base)) {
     return "review";
   }
-  return "review";
+  // No key when the current route is not under HITL at all. Falling back to
+  // "review" painted the first entry as selected from every other page in the
+  // app, which reads as "you are here" when you are not.
+  return null;
 };
 
 const HITLPopoverContent = ({ orgName, role, navigate }) => {
