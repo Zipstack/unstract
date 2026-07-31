@@ -317,18 +317,27 @@ class TestSynchronousFetchResponse:
             patch.object(
                 psh.ProfileManager,
                 "get_default_llm_profile",
+                autospec=True,
                 side_effect=lambda tool: default_profile,
             ),
             patch.object(
                 psh.ProfileManagerHelper,
                 "get_profile_manager",
-                side_effect=_get_explicit,
+                autospec=True,
+                side_effect=lambda profile_manager_id: _get_explicit(profile_manager_id),
             ),
-            patch.object(helper, "validate_adapter_status", side_effect=seen.append),
             patch.object(
-                helper, "validate_profile_manager_owner_access", return_value=None
+                helper,
+                "validate_adapter_status",
+                autospec=True,
+                side_effect=seen.append,
             ),
-            patch.object(helper, "_resolve_llm_ids", return_value=("m", "c")),
+            patch.object(
+                helper, "validate_profile_manager_owner_access", autospec=True
+            ),
+            patch.object(
+                helper, "_resolve_llm_ids", autospec=True, return_value=("m", "c")
+            ),
             # Stop the call once the profile has been observed; everything past
             # this point needs storage and an LLM.
             patch.object(psh, "EnvHelper", MagicMock(side_effect=RuntimeError)),
@@ -399,17 +408,29 @@ class TestSynchronousOutputAttribution:
         seen: dict[str, Any] = {}
 
         patches = [
-            patch.object(helper, "_fetch_prompt_from_id", return_value=prompt),
-            patch.object(helper, "_fetch_response", return_value={"status": "OK"}),
-            patch.object(helper, "_publish_log", return_value=None),
+            patch.object(
+                helper, "_fetch_prompt_from_id", autospec=True, return_value=prompt
+            ),
+            patch.object(
+                helper, "_fetch_response", autospec=True, return_value={"status": "OK"}
+            ),
+            patch.object(helper, "_publish_log", autospec=True),
             patch.object(
                 psh.ProfileManager,
                 "get_default_llm_profile",
+                autospec=True,
                 side_effect=lambda tool: _make_profile(PROJECT_DEFAULT_ID),
+            ),
+            patch.object(
+                psh.ProfileManagerHelper,
+                "get_profile_manager",
+                autospec=True,
+                side_effect=lambda profile_manager_id: _make_profile(profile_manager_id),
             ),
             patch.object(
                 helper,
                 "_handle_response",
+                autospec=True,
                 side_effect=lambda **kw: seen.update(kw),
             ),
             patch.object(psh, "get_plugin", MagicMock(return_value=None)),
@@ -453,6 +474,18 @@ class TestSynchronousOutputAttribution:
         )
 
         assert recorded == PROJECT_DEFAULT_ID
+
+    def test_explicit_id_round_trips(self) -> None:
+        """The explicit rung is a pass-through, but must stay one."""
+        psh, _ = _deps()
+
+        recorded = self._handled_profile_id(
+            psh,
+            profile_manager_id=EXPLICIT_ID,
+            prompt_profile=_make_profile(PROMPT_FK_ID),
+        )
+
+        assert recorded == EXPLICIT_ID
 
 
 def test_default_profile_error_is_a_client_error() -> None:
