@@ -26,8 +26,8 @@ These tests exercise the real ``frame_spec`` and the real
 ``_update_schema_for_adapter_type``, patching only the two DB lookups (the
 default profile and the adapter list). Nothing is stubbed into ``sys.modules``:
 that pattern shadows the real ``unstract.*`` packages for every later test in the
-pytest process and was deliberately removed from this repo (see ``9a76a745`` and
-``b60dd6f3``).
+pytest process, and the repo has been removing it (see the execution-serializer
+stub leak dropped in ``b60dd6f3``).
 
 Every real import happens inside ``_deps()`` rather than at module scope -- see
 its docstring for why.
@@ -48,17 +48,16 @@ def _deps():
     """Import everything this module needs, at call time rather than import time.
 
     Nothing is imported at module scope on purpose. ``frame_spec`` and
-    ``ToolProcessor`` are Django-coupled, and the ``unit-backend`` rig group
-    runs without ``pytest-django`` and without ``DJANGO_SETTINGS_MODULE``, so a
-    module-level import raises ``ImproperlyConfigured`` during collection and
-    takes the whole file down.
+    ``ToolProcessor`` need a configured Django app registry, so importing them
+    at module scope makes *collection* of this file depend on settings being
+    configured -- and a collection error takes the whole file down rather than
+    failing one test. Importing at call time keeps that failure local.
 
-    ``django`` genuinely missing is an environment gap -> skip. Anything else is
-    a real problem and fails loudly: in particular, a sibling test module that
-    stubs ``unstract.*`` or ``account_v2`` into ``sys.modules`` at its own import
-    time (pytest imports every module during collection, before running any
-    test) leaves these imports resolving to mocks. Skipping on that would hide
-    the breakage instead of reporting it.
+    ``django`` genuinely missing is an environment gap -> skip. Anything else
+    fails loudly rather than skipping, so a genuine import breakage is reported
+    instead of hidden. (This file previously resolved ``unstract.*`` to mocks
+    when a sibling module stubbed ``sys.modules`` during collection; that
+    stubbing is gone, and failing loudly here keeps it gone.)
     """
     try:
         import django

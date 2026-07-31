@@ -68,7 +68,8 @@ class PromptStudioRegistryHelper:
         # instance metadata as "" (ToolUtils.get_default_settings). Because
         # challenge_llm declares adapterType, the instance schema carries an
         # enum of real adapter IDs, which "" can never satisfy - so deployment
-        # validation rejected a tool that never used LLMChallenge.
+        # validation rejected the freshly seeded instance, regardless of whether
+        # LLMChallenge was enabled (the seeding never consulted that flag).
         #
         # Seed the resolved LLM instead of leaving it empty. adapterType stays
         # declared unconditionally: it is the sole discriminator in

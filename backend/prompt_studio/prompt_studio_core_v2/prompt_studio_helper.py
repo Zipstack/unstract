@@ -1002,10 +1002,10 @@ class PromptStudioHelper:
             if profile_manager_id
             else None
         )
+        # get_default_llm_profile raises DefaultProfileError when no project
+        # default exists, so there is no falsy case left to guard against.
         if not profile_manager:
             profile_manager = ProfileManager.get_default_llm_profile(tool)
-        if not profile_manager:
-            raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(
