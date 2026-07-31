@@ -11,6 +11,16 @@
 const runtimeConfig =
   typeof window !== "undefined" ? window.RUNTIME_CONFIG || {} : {};
 
+// Name of the default org for the open-source deployment. Must match the backend
+// DEFAULT_ORGANIZATION_NAME so the open-source check stays correct. Trimmed with a
+// blank fallback to mirror the backend (which strips DEFAULT_ORGANIZATION_NAME), so
+// surrounding whitespace can't desync open-source detection.
+const rawDefaultOrgName =
+  runtimeConfig.defaultOrgName ||
+  import.meta.env.VITE_DEFAULT_ORG_NAME ||
+  "mock_org";
+const defaultOrgName = rawDefaultOrgName.trim() || "mock_org";
+
 const config = {
   favicon:
     runtimeConfig.faviconPath ||
@@ -18,12 +28,7 @@ const config = {
     "/favicon.ico",
   logoUrl: runtimeConfig.logoUrl || import.meta.env.VITE_CUSTOM_LOGO_URL,
   version: runtimeConfig.version || import.meta.env.VITE_VERSION,
-  // Name of the default org for the open-source deployment. Must match the backend
-  // DEFAULT_ORGANIZATION_NAME so the open-source check below stays correct.
-  defaultOrgName:
-    runtimeConfig.defaultOrgName ||
-    import.meta.env.VITE_DEFAULT_ORG_NAME ||
-    "mock_org",
+  defaultOrgName,
   // Add more values as OR case, if needed for fallback.
 };
 

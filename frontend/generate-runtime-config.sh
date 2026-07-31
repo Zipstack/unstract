@@ -11,7 +11,18 @@ js_escape() {
   printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
 }
 
+# Trim surrounding whitespace so values match the backend, which strips
+# DEFAULT_ORGANIZATION_NAME; keeps open-source detection (name equality) in sync.
+trim() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
 APP_VERSION=$(js_escape "${UNSTRACT_APPS_VERSION:-}")
+
+# Resolve the default org name and normalize it exactly like the backend
+# (trim, then fall back to "mock_org" when blank) so OSS detection stays in sync.
+DEFAULT_ORG_NAME=$(trim "${VITE_DEFAULT_ORG_NAME:-${REACT_APP_DEFAULT_ORG_NAME:-mock_org}}")
+DEFAULT_ORG_NAME=${DEFAULT_ORG_NAME:-mock_org}
 
 cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 // This file is auto-generated at runtime. Do not modify manually.
@@ -19,7 +30,7 @@ window.RUNTIME_CONFIG = {
   faviconPath: "${VITE_FAVICON_PATH:-${REACT_APP_FAVICON_PATH}}",
   logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}",
   enablePosthog: "${VITE_ENABLE_POSTHOG:-${REACT_APP_ENABLE_POSTHOG}}",
-  defaultOrgName: "$(js_escape "${VITE_DEFAULT_ORG_NAME:-${REACT_APP_DEFAULT_ORG_NAME:-mock_org}}")",
+  defaultOrgName: "$(js_escape "$DEFAULT_ORG_NAME")",
   version: "${APP_VERSION}"
 };
 EOF
