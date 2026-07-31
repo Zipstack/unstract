@@ -398,7 +398,12 @@ class TestOverlayIsWiredIntoCreate:
             "tool_id": PROMPT_REGISTRY_ID,
         }
         request = MagicMock(name="request")
-        request.user = request_user if request_user is not None else MagicMock("user")
+        # `name=`, not positional: MagicMock's first positional arg is `spec`,
+        # which would build a str-specced mock that raises AttributeError the
+        # moment a test lets the real visibility check touch a User attribute.
+        request.user = (
+            request_user if request_user is not None else MagicMock(name="user")
+        )
 
         with (
             patch.object(
