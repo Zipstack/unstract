@@ -50,6 +50,21 @@ class PipelineProcessor:
         except Pipeline.DoesNotExist:
             return None
 
+    @classmethod
+    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:
+        """Retrieve a pipeline regardless of whether it is currently active.
+
+        The active/inactive distinction matters to callers that are about to
+        *run* something. Callers that only need to identify the row -- to check
+        ownership, say -- must not be forced through ``get_active_pipeline``,
+        which raises ``InactivePipelineError`` (422) and logs at ERROR for what
+        is an ordinary request against a paused pipeline.
+        """
+        try:
+            return cls.fetch_pipeline(pipeline_id, check_active=False)
+        except Pipeline.DoesNotExist:
+            return None
+
     @staticmethod
     def _update_pipeline_status(
         pipeline: Pipeline,

@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
@@ -6,6 +7,8 @@ from rest_framework.request import Request
 from rest_framework.views import APIView
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.user_context import UserContext
+
+logger = logging.getLogger(__name__)
 
 _REQUEST_ADMIN_CACHE_ATTR = "_cached_is_organization_admin"
 
@@ -170,18 +173,35 @@ class IsParentDeploymentOwner(permissions.BasePermission):
     ``obj`` may also be the parent itself. ``create`` is a collection-level
     action, so DRF never calls ``get_object()`` for it and there is no
     ``APIKey`` yet to check — the view hands the target ``APIDeployment`` /
-    ``Pipeline`` straight to ``check_object_permissions``. Neither declares an
-    ``api`` or ``pipeline`` field, so the lookups are ``getattr`` guarded and
-    fall through to ``obj``; a plain attribute access would raise
-    ``AttributeError`` (500) on exactly that call.
+    ``Pipeline`` straight to ``check_object_permissions``.
+
+    An ``APIKey`` is recognised by declaring both parent FKs; a parent by
+    carrying ``memberships`` (both models use ``HasMembersMixin``). Anything
+    else is **denied** rather than guessed at — an authorization gate that
+    cannot identify its subject must fail closed. Note this cannot collapse to
+    ``obj.api or obj.pipeline or obj``: the parents declare no ``api``
+    attribute, so that raises ``AttributeError`` (500) on every ``create``.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        owner_resource = (
-            getattr(obj, "api", None) or getattr(obj, "pipeline", None) or obj
-        )
+
+        if hasattr(obj, "api") and hasattr(obj, "pipeline"):
+            # An APIKey: ownership is inherited from whichever parent is set,
+            # falling back to the key itself when both are null.
+            owner_resource = obj.api or obj.pipeline or obj
+        elif hasattr(obj, "memberships"):
+            # The parent deployment/pipeline, handed over by ``create``.
+            owner_resource = obj
+        else:
+            logger.warning(
+                "IsParentDeploymentOwner received an unsupported object type "
+                "%s; denying.",
+                type(obj).__name__,
+            )
+            return False
+
         if _is_resource_owner(request.user, owner_resource):
             return True
         return _is_organization_admin(request)

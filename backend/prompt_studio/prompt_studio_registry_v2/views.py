@@ -1,28 +1,32 @@
 import logging
 from typing import Any
 
-from api_v2.models import APIDeployment
 from django.db.models import QuerySet
-from pipeline_v2.models import Pipeline
 from rest_framework import viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from prompt_studio.permission import IsRegistryToolOwner
-from prompt_studio.prompt_studio_core_v2.constants import DeploymentType
 from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
 from prompt_studio.prompt_studio_registry_v2.serializers import (
     PromptStudioRegistrySerializer,
+)
+from prompt_studio.tool_usage import (
+    dependent_workflow_ids,
+    deployment_types_for,
+    join_deployment_types,
 )
 
 from .exceptions import RegistryToolInUseError
 from .models import PromptStudioRegistry
 
 logger = logging.getLogger(__name__)
+
+# Blocking workflow IDs are logged so an operator can find the rows; capped so
+# a heavily-reused tool cannot emit an unbounded log line.
+_LOGGED_WORKFLOW_LIMIT = 20
 
 
 class PromptStudioRegistryView(viewsets.ModelViewSet):
@@ -59,41 +63,6 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
 
         return queryset
 
-    def _get_deployment_types(self, workflow_ids: set) -> set:
-        """Name the deployment kinds that reach ``workflow_ids``.
-
-        Mirrors ``PromptStudioCoreView._get_deployment_types``
-        (``prompt_studio_core_v2/views.py:249``) so the refusal can say *where*
-        the tool is still used rather than only that it is.
-        """
-        deployment_types: set = set()
-
-        # Inactive deployments are included: they still reference the tool and
-        # would break on re-activation.
-        if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
-            deployment_types.add(DeploymentType.API_DEPLOYMENT)
-
-        pipeline_type_mapping = {
-            Pipeline.PipelineType.ETL: DeploymentType.ETL_PIPELINE,
-            Pipeline.PipelineType.TASK: DeploymentType.TASK_PIPELINE,
-        }
-        pipeline_types = (
-            Pipeline.objects.filter(workflow_id__in=workflow_ids)
-            .values_list("pipeline_type", flat=True)
-            .distinct()
-        )
-        for pipeline_type in pipeline_types:
-            if pipeline_type in pipeline_type_mapping:
-                deployment_types.add(pipeline_type_mapping[pipeline_type])
-
-        if WorkflowEndpoint.objects.filter(
-            workflow_id__in=workflow_ids,
-            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
-        ).exists():
-            deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
-
-        return deployment_types
-
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
@@ -123,20 +92,31 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
         Split from ``destroy`` so the guard can be exercised without standing
         up DRF's delete machinery.
         """
-        dependent_wfs = set(
-            ToolInstance.objects.filter(tool_id=instance.pk)
-            .values_list("workflow_id", flat=True)
-            .distinct()
-        )
+        dependent_wfs = dependent_workflow_ids(instance.pk)
         if not dependent_wfs:
             return
-        logger.info(
-            f"Cannot delete exported tool {instance.prompt_registry_id}, "
-            f"depended by {len(dependent_wfs)} workflow(s)"
+
+        deployment_types = deployment_types_for(dependent_wfs)
+        # The IDs are what an operator needs to find the blocking rows; the
+        # slice bounds the line for a pathological fan-out.
+        blockers = sorted(str(wf) for wf in dependent_wfs)
+        logger.warning(
+            "Cannot delete exported tool %s, depended by %d workflow(s): %s",
+            instance.prompt_registry_id,
+            len(blockers),
+            blockers[:_LOGGED_WORKFLOW_LIMIT],
         )
-        raise RegistryToolInUseError(
-            self._in_use_detail(self._get_deployment_types(dependent_wfs))
-        )
+        if not deployment_types:
+            # Distinguishable from "genuinely undeployed": the deployment
+            # tables are org-scoped while ``ToolInstance`` is not, so an empty
+            # set here can also mean the dependants sit outside the active org.
+            logger.warning(
+                "No deployment type resolved for the %d workflow(s) blocking "
+                "tool %s; the 409 will carry only the generic wording.",
+                len(blockers),
+                instance.prompt_registry_id,
+            )
+        raise RegistryToolInUseError(self._in_use_detail(deployment_types))
 
     @staticmethod
     def _in_use_detail(deployment_types: set) -> str:
@@ -145,18 +125,12 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
         A tool can be attached to a workflow that is not deployed anywhere, so
         an empty set is normal and falls back to the generic wording.
         """
-        if not deployment_types:
+        types_text = join_deployment_types(deployment_types)
+        if not types_text:
             return (
                 "This exported tool is still used by one or more workflows. "
                 "Remove those usages before deleting it."
             )
-        types_list = sorted(deployment_types)
-        if len(types_list) == 1:
-            types_text = types_list[0]
-        elif len(types_list) == 2:
-            types_text = f"{types_list[0]} or {types_list[1]}"
-        else:
-            types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
         return (
             f"This exported tool is still used in {types_text}. "
             "Remove those usages before deleting it."

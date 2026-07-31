@@ -20,8 +20,15 @@ importable in a plain checkout, so the class body is extracted from source --
 mirroring ``prompt_studio_core_v2/tests/test_build_index_payload.py``. A rename
 fails these tests rather than silently skipping them.
 
-The in-use check is asserted against the same predicate the view applies
-(a non-empty set of dependent workflow IDs raises), without standing up the ORM.
+The in-use check is driven the same way: ``destroy``, ``_refuse_if_in_use`` and
+the shared helpers in ``prompt_studio/tool_usage.py`` are all executed against a
+stubbed ORM. ``destroy`` is included deliberately -- covering only the guard
+left its *call site* unpinned, and deleting that one line made in-use tools
+deletable with the whole suite still green.
+
+What is *not* covered here: route binding and the live permission cycle need a
+database, and ``backend/conftest.py`` auto-marks such tests ``integration`` so
+they run in the rig's integration tier rather than the per-PR unit tier.
 """
 
 from __future__ import annotations
@@ -177,11 +184,21 @@ class TestRegistryToolDeleteAuthorization:
 
 
 VIEWS_MODULE = BACKEND_DIR / "prompt_studio" / "prompt_studio_registry_v2" / "views.py"
+TOOL_USAGE_MODULE = BACKEND_DIR / "prompt_studio" / "tool_usage.py"
 
 GUARD_MARKERS = (
-    "    def _get_deployment_types(self, workflow_ids: set) -> set:",
+    "    def destroy(",
     "    def _refuse_if_in_use(self, instance: PromptStudioRegistry) -> None:",
     "    @staticmethod\n    def _in_use_detail(deployment_types: set) -> str:",
+)
+
+# The shared helpers live in ``prompt_studio/tool_usage.py``; they are pulled
+# in the same way so the guard runs against the real query and the real
+# grammar rather than a restatement of either.
+HELPER_MARKERS = (
+    "def dependent_workflow_ids(registry_pk: str) -> set:",
+    "def deployment_types_for(workflow_ids: set) -> set:",
+    "def join_deployment_types(deployment_types: set) -> str:",
 )
 
 
@@ -195,11 +212,26 @@ class _InUseError(Exception):
         self.detail = detail
 
 
-def _queryset(rows: list[Any]) -> Any:
-    """Minimal chainable stand-in for the ORM calls the guard makes."""
+def _queryset(rows: list[Any], *, required_filters: tuple[str, ...] = ()) -> Any:
+    """Minimal chainable stand-in for the ORM calls the guard makes.
+
+    ``required_filters`` names the kwargs the real query must narrow on. A
+    query that stops filtering returns nothing rather than silently returning
+    every row -- otherwise dropping ``tool_id=`` would look identical to a
+    correct lookup and no test could tell the difference.
+    """
 
     class _QS:
-        def filter(self, **_: Any) -> _QS:
+        def __init__(self, matched: bool = False) -> None:
+            self._matched = matched or not required_filters
+
+        def filter(self, **kwargs: Any) -> _QS:
+            if required_filters and not all(k in kwargs for k in required_filters):
+                return _QS.__new__(_QS)._empty()
+            return _QS(matched=True)
+
+        def _empty(self) -> _QS:
+            self._matched = False
             return self
 
         def values_list(self, *_: Any, **__: Any) -> _QS:
@@ -209,46 +241,82 @@ def _queryset(rows: list[Any]) -> Any:
             return self
 
         def exists(self) -> bool:
-            return bool(rows)
+            return bool(rows) and self._matched
 
         def __iter__(self) -> Any:
-            return iter(rows)
+            return iter(rows if self._matched else [])
 
     return _QS()
 
 
+DELETED = object()
+"""Sentinel returned by the stub base ``destroy``, proving the delete ran."""
+
+
+class _BaseView:
+    """Stands in for ``viewsets.ModelViewSet`` under the extracted ``destroy``.
+
+    Recording the ``super().destroy()`` hand-off is what lets a test assert
+    that an unused tool actually reaches the delete, and — more importantly —
+    that an in-use one never does.
+    """
+
+    def destroy(self, request: Any, *args: Any, **kwargs: Any) -> Any:
+        return DELETED
+
+
+def _extract(module: Path, markers: tuple[str, ...], stops: tuple[str, ...]) -> list[str]:
+    """Slice each named definition out of ``module``'s source.
+
+    ``pytest.fail`` on a missing marker rather than skipping: a rename must
+    break loudly, since a silently-skipped guard test is worse than none.
+    """
+    source = module.read_text()
+    parts = []
+    for marker in markers:
+        if marker not in source:
+            pytest.fail(
+                f"Could not find {marker!r} in {module}. If it was renamed or "
+                "inlined, update this test rather than deleting it."
+            )
+        start = source.index(marker)
+        rest = source[start + len(marker) :]
+        end = len(rest)
+        for needle in stops:
+            found = rest.find(needle)
+            if found != -1:
+                end = min(end, found)
+        parts.append(marker + rest[:end])
+    return parts
+
+
 def _build_guard(
     *,
-    dependent_workflow_ids: list[str],
+    workflow_ids: list[str],
     api_deployments: bool = False,
     pipeline_types: list[str] | None = None,
     manual_review: bool = False,
 ) -> Any:
     """Extract the real in-use guard against a stubbed ORM.
 
-    Same technique as ``_build_permission``: the method bodies come from
-    ``views.py``, so a change to the query, the raise, or the message wording
-    lands here rather than passing against a restated copy.
-    """
-    source = VIEWS_MODULE.read_text()
-    parts = []
-    for marker in GUARD_MARKERS:
-        if marker not in source:
-            pytest.fail(
-                f"Could not find {marker!r} in {VIEWS_MODULE}. If the guard was "
-                "renamed or inlined, update this test rather than deleting it."
-            )
-        start = source.index(marker)
-        rest = source[start + len(marker) :]
-        # Each method runs to the next top-level `    def ` / `    @` sibling.
-        end = len(rest)
-        for needle in ("\n    def ", "\n    @"):
-            found = rest.find(needle)
-            if found != -1:
-                end = min(end, found)
-        parts.append(marker + rest[:end])
+    Same technique as ``_build_permission``: the bodies come from ``views.py``
+    and ``tool_usage.py``, so a change to the query, the raise, or the message
+    wording lands here rather than passing against a restated copy.
 
-    body = "class _Guard:\n" + "\n".join(parts) + "\n"
+    ``destroy`` is extracted alongside the guard so its *call* to
+    ``_refuse_if_in_use`` is covered too. Testing the guard alone left the
+    wiring unpinned: dropping that one line made in-use tools deletable with
+    the whole suite still green.
+    """
+    view_parts = _extract(VIEWS_MODULE, GUARD_MARKERS, ("\n    def ", "\n    @"))
+    helper_parts = _extract(TOOL_USAGE_MODULE, HELPER_MARKERS, ("\ndef ",))
+
+    body = (
+        "\n".join(helper_parts)
+        + "\n\nclass _Guard(_BaseView):\n"
+        + "\n".join(view_parts)
+        + "\n"
+    )
 
     class _Model:
         def __init__(self, qs: Any) -> None:
@@ -278,22 +346,38 @@ def _build_guard(
         HUMAN_QUALITY_REVIEW = "Human in the Loop"
 
     namespace: dict[str, Any] = {
-        "ToolInstance": _Model(_queryset(dependent_workflow_ids)),
+        "_BaseView": _BaseView,
+        "ToolInstance": _Model(_queryset(workflow_ids, required_filters=("tool_id",))),
         "APIDeployment": _Model(_queryset([1] if api_deployments else [])),
         "Pipeline": _Pipeline,
         "WorkflowEndpoint": _WorkflowEndpoint,
         "DeploymentType": _DeploymentType,
         "RegistryToolInUseError": _InUseError,
         "PromptStudioRegistry": object,
+        "_LOGGED_WORKFLOW_LIMIT": _logged_workflow_limit(),
         "logger": _SilentLogger(),
+        "Request": object,
+        "Response": object,
         "Any": Any,
     }
     exec(compile(body, str(VIEWS_MODULE), "exec"), namespace)
     return namespace["_Guard"]()
 
 
+def _logged_workflow_limit() -> int:
+    """Read the real cap rather than restating it."""
+    source = VIEWS_MODULE.read_text()
+    marker = "_LOGGED_WORKFLOW_LIMIT = "
+    if marker not in source:
+        pytest.fail(f"Could not find {marker!r} in {VIEWS_MODULE}.")
+    return int(source.split(marker)[1].split("\n")[0].strip())
+
+
 class _SilentLogger:
     def info(self, *_: Any, **__: Any) -> None:
+        pass
+
+    def warning(self, *_: Any, **__: Any) -> None:
         pass
 
 
@@ -317,7 +401,7 @@ class TestRegistryToolInUseRefusal:
     """
 
     def test_tool_used_by_a_workflow_is_refused(self) -> None:
-        guard = _build_guard(dependent_workflow_ids=["wf-1"], api_deployments=True)
+        guard = _build_guard(workflow_ids=["wf-1"], api_deployments=True)
 
         with pytest.raises(_InUseError) as excinfo:
             guard._refuse_if_in_use(_Instance())
@@ -329,13 +413,13 @@ class TestRegistryToolInUseRefusal:
 
     def test_unused_tool_is_deletable(self) -> None:
         """No dependants means the guard stands aside -- it is not a blanket ban."""
-        guard = _build_guard(dependent_workflow_ids=[])
+        guard = _build_guard(workflow_ids=[])
 
         assert guard._refuse_if_in_use(_Instance()) is None
 
     def test_refusal_names_the_blocking_deployment(self) -> None:
         """The 409 must say *where* the tool is used, or the caller cannot act."""
-        guard = _build_guard(dependent_workflow_ids=["wf-1"], api_deployments=True)
+        guard = _build_guard(workflow_ids=["wf-1"], api_deployments=True)
 
         with pytest.raises(_InUseError) as excinfo:
             guard._refuse_if_in_use(_Instance())
@@ -344,7 +428,7 @@ class TestRegistryToolInUseRefusal:
 
     def test_refusal_names_every_distinct_blocker(self) -> None:
         guard = _build_guard(
-            dependent_workflow_ids=["wf-1", "wf-2"],
+            workflow_ids=["wf-1", "wf-2"],
             api_deployments=True,
             pipeline_types=["ETL"],
             manual_review=True,
@@ -357,9 +441,25 @@ class TestRegistryToolInUseRefusal:
         for expected in ("API Deployment", "ETL Pipeline", "Human in the Loop"):
             assert expected in detail
 
+    def test_two_blockers_are_joined_with_or(self) -> None:
+        """The 2-item branch has its own grammar; assert the whole sentence."""
+        guard = _build_guard(
+            workflow_ids=["wf-1"],
+            api_deployments=True,
+            pipeline_types=["ETL"],
+        )
+
+        with pytest.raises(_InUseError) as excinfo:
+            guard._refuse_if_in_use(_Instance())
+
+        assert excinfo.value.detail == (
+            "This exported tool is still used in API Deployment or ETL Pipeline. "
+            "Remove those usages before deleting it."
+        )
+
     def test_refusal_falls_back_when_no_deployment_is_identifiable(self) -> None:
         """A workflow need not be deployed anywhere; the refusal still stands."""
-        guard = _build_guard(dependent_workflow_ids=["wf-1"])
+        guard = _build_guard(workflow_ids=["wf-1"])
 
         with pytest.raises(_InUseError) as excinfo:
             guard._refuse_if_in_use(_Instance())
@@ -385,3 +485,38 @@ class TestRegistryToolInUseRefusal:
             "RegistryToolInUseError must be a 409 so callers can distinguish a "
             "correctable conflict from a server fault"
         )
+
+
+class TestDestroyIsWiredToTheGuard:
+    """``destroy`` must actually *call* the guard.
+
+    Testing ``_refuse_if_in_use`` in isolation left this unpinned: removing
+    the single call from ``destroy`` deleted in-use tools with the whole suite
+    still green. These drive the extracted ``destroy`` body, so the wiring —
+    not just the guard — is what fails when it breaks.
+    """
+
+    @staticmethod
+    def _view(guard: Any, instance: _Instance) -> Any:
+        guard.get_object = lambda: instance
+        return guard
+
+    def test_destroy_refuses_an_in_use_tool_before_deleting(self) -> None:
+        instance = _Instance()
+        guard = self._view(
+            _build_guard(workflow_ids=["wf-1"], api_deployments=True),
+            instance,
+        )
+
+        with pytest.raises(_InUseError) as excinfo:
+            guard.destroy(object())
+
+        assert excinfo.value.status_code == 409
+        assert "API Deployment" in excinfo.value.detail
+
+    def test_destroy_deletes_an_unused_tool(self) -> None:
+        """The guard must not become a blanket ban on deletion."""
+        instance = _Instance()
+        guard = self._view(_build_guard(workflow_ids=[]), instance)
+
+        assert guard.destroy(object()) is DELETED

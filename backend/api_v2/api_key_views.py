@@ -34,55 +34,73 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         return APIKeySerializer
 
     def create(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Create an API key, deriving the target from the URL.
+        """Create an API key for the deployment or pipeline being targeted.
 
         `POST keys/api/<api_id>/` and `POST keys/pipeline/<pipeline_id>/`
-        already name the resource in the path, so callers should not have to
-        repeat it in the body. The body-only routes (`keys/api/`,
-        `keys/pipeline/`) fall through to the default implementation.
+        already name the resource in the path, so callers need not repeat it
+        in the body. The body-only routes (`keys/api/`, `keys/pipeline/`) name
+        it in `api` / `pipeline` instead.
+
+        Whichever route is used, the target is resolved and **ownership is
+        checked here**, because `create` is collection-level: DRF resolves
+        `IsParentDeploymentOwner` for it but never calls `get_object()`, so
+        `has_object_permission` never runs on its own. Without this, any org
+        member could mint a live key for a deployment they do not own. The
+        check must cover the body-only routes too — otherwise the same hole is
+        simply reachable by moving the identifier from the path into the body.
 
         The path target is authoritative: a body naming the *other* target is
         a contradiction, not an override, and is refused rather than silently
-        creating a key for whichever one wins. Ownership of the target is
-        checked here because `create` is collection-level -- DRF resolves
-        `IsParentDeploymentOwner` for it but never calls `get_object()`, so
-        `has_object_permission` would otherwise never run and any org member
-        could mint a live key for a deployment they do not own.
+        creating a key for whichever one wins.
         """
-        api_id = kwargs.get("api_id")
-        pipeline_id = kwargs.get("pipeline_id")
-
-        if not (api_id or pipeline_id):
-            return super().create(request, *args, **kwargs)
-
         # A JSON array (or scalar) body has no `.copy()` returning a mapping;
         # reject it as a 400 rather than letting `AttributeError` become a 500.
         if not isinstance(request.data, dict):
-            raise serializers.ValidationError("Request body must be a JSON object.")
+            raise serializers.ValidationError(
+                {"non_field_errors": "Request body must be a JSON object."}
+            )
         request_data = request.data.copy()
 
+        api_id = kwargs.get("api_id")
+        pipeline_id = kwargs.get("pipeline_id")
+
+        if api_id and request_data.get("pipeline"):
+            raise serializers.ValidationError(
+                {
+                    "pipeline": "This endpoint creates a key for the API "
+                    "deployment named in the URL; remove `pipeline` from the body."
+                }
+            )
+        if pipeline_id and request_data.get("api"):
+            raise serializers.ValidationError(
+                {
+                    "api": "This endpoint creates a key for the pipeline named "
+                    "in the URL; remove `api` from the body."
+                }
+            )
+
+        # The path wins where it names a target; otherwise fall back to the
+        # body, so the body-only routes resolve to the same guarded path.
+        api_id = api_id or request_data.get("api")
+        pipeline_id = pipeline_id or request_data.get("pipeline")
+
         if api_id:
-            if request_data.get("pipeline"):
-                raise serializers.ValidationError(
-                    "This endpoint creates a key for the API deployment named "
-                    "in the URL; remove `pipeline` from the body."
-                )
             api = DeploymentHelper.get_api_by_id(api_id=api_id)
             if not api:
                 raise APINotFound()
             self.check_object_permissions(request, api)
             request_data["api"] = api_id
-        else:
-            if request_data.get("api"):
-                raise serializers.ValidationError(
-                    "This endpoint creates a key for the pipeline named in the "
-                    "URL; remove `api` from the body."
-                )
-            pipeline = PipelineProcessor.get_active_pipeline(pipeline_id=pipeline_id)
+        elif pipeline_id:
+            # `check_active=False`: minting a key does not require a running
+            # pipeline, and `get_active_pipeline` would both 422 on a paused
+            # one and disclose its state before the ownership check below.
+            pipeline = PipelineProcessor.get_pipeline_by_id(pipeline_id=pipeline_id)
             if not pipeline:
                 raise PipelineNotFound()
             self.check_object_permissions(request, pipeline)
             request_data["pipeline"] = pipeline_id
+        # Neither named: let the serializer raise its "one of api/pipeline"
+        # error rather than inventing a second wording for the same condition.
 
         serializer = self.get_serializer(data=request_data)
         serializer.is_valid(raise_exception=True)
