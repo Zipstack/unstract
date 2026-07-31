@@ -133,9 +133,7 @@ def _call(
         patch.object(helper, "dynamic_extractor", return_value="text"),
         # Must be a dict with a non-pending status: the builders early-return a
         # pending response (and no cb_kwargs) when indexing is still running.
-        patch.object(
-            helper, "dynamic_indexer", return_value={"status": "COMPLETED"}
-        ),
+        patch.object(helper, "dynamic_indexer", return_value={"status": "COMPLETED"}),
         patch.object(helper, "_build_grammar_list", return_value=[]),
         patch.object(helper, "_build_prompt_output", return_value={}),
         # Returns the (mutated) output dict, so it must pass it through.
@@ -271,6 +269,98 @@ class TestUnresolvableProfile:
                 default_profile=None,
                 default_raises=default_profile_error(),
             )
+
+
+class TestSynchronousFetchResponse:
+    """``_fetch_response`` carries the same fallback and is still live.
+
+    It is reached from ``fetch_response`` (the non-dispatch branch) and returns
+    a service response rather than ``cb_kwargs``, so the resolved profile is
+    observed where it is first consumed: ``validate_adapter_status``.
+    """
+
+    def _resolved_profile(
+        self,
+        psh: Any,
+        *,
+        profile_manager_id: str | None,
+        prompt_profile: Any,
+        default_profile: Any,
+    ) -> Any:
+        helper = psh.PromptStudioHelper
+        seen: list[Any] = []
+
+        def _get_explicit(profile_manager_id: str) -> Any:
+            assert profile_manager_id == EXPLICIT_ID
+            return _make_profile(EXPLICIT_ID)
+
+        patches = [
+            patch.object(
+                psh.ProfileManager,
+                "get_default_llm_profile",
+                side_effect=lambda tool: default_profile,
+            ),
+            patch.object(
+                psh.ProfileManagerHelper,
+                "get_profile_manager",
+                side_effect=_get_explicit,
+            ),
+            patch.object(helper, "validate_adapter_status", side_effect=seen.append),
+            patch.object(
+                helper, "validate_profile_manager_owner_access", return_value=None
+            ),
+            patch.object(helper, "_resolve_llm_ids", return_value=("m", "c")),
+            # Stop the call once the profile has been observed; everything past
+            # this point needs storage and an LLM.
+            patch.object(psh, "EnvHelper", MagicMock(side_effect=RuntimeError)),
+        ]
+        for patcher in patches:
+            patcher.start()
+        try:
+            with pytest.raises(Exception):  # noqa: B017 - halted deliberately
+                helper._fetch_response(
+                    tool=MagicMock(tool_id="tool-1", summarize_as_source=False),
+                    doc_path="/docs/a.pdf",
+                    doc_name="a.pdf",
+                    prompt=_make_prompt(prompt_profile),
+                    org_id="org-1",
+                    document_id="doc-1",
+                    run_id="run-1",
+                    user_id="user-1",
+                    profile_manager_id=profile_manager_id,
+                    request_user=None,
+                )
+        finally:
+            for patcher in patches:
+                patcher.stop()
+
+        assert seen, "validate_adapter_status was never reached"
+        return seen[0]
+
+    def test_prompt_without_profile_uses_project_default(self) -> None:
+        """The reported bug, on the synchronous path."""
+        psh, _ = _deps()
+
+        resolved = self._resolved_profile(
+            psh,
+            profile_manager_id=None,
+            prompt_profile=None,
+            default_profile=_make_profile(PROJECT_DEFAULT_ID),
+        )
+
+        assert resolved.profile_id == PROJECT_DEFAULT_ID
+
+    def test_prompt_fk_wins_over_project_default(self) -> None:
+        psh, _ = _deps()
+
+        resolved = self._resolved_profile(
+            psh,
+            profile_manager_id=None,
+            prompt_profile=_make_profile(PROMPT_FK_ID),
+            default_profile=_make_profile(PROJECT_DEFAULT_ID),
+        )
+
+        assert resolved.profile_id == PROMPT_FK_ID
 
 
 def test_default_profile_error_is_a_client_error() -> None:
