@@ -166,12 +166,22 @@ class IsParentDeploymentOwner(permissions.BasePermission):
     one is set). Admits the parent's owner (creator + co-owners), org admin,
     or service account -- mirrors ``IsParentToolOwner`` (UN-2202). Falls back
     to the key's own ``created_by`` when both parents are null.
+
+    ``obj`` may also be the parent itself. ``create`` is a collection-level
+    action, so DRF never calls ``get_object()`` for it and there is no
+    ``APIKey`` yet to check — the view hands the target ``APIDeployment`` /
+    ``Pipeline`` straight to ``check_object_permissions``. Neither declares an
+    ``api`` or ``pipeline`` field, so the lookups are ``getattr`` guarded and
+    fall through to ``obj``; a plain attribute access would raise
+    ``AttributeError`` (500) on exactly that call.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        owner_resource = obj.api or obj.pipeline or obj
+        owner_resource = (
+            getattr(obj, "api", None) or getattr(obj, "pipeline", None) or obj
+        )
         if _is_resource_owner(request.user, owner_resource):
             return True
         return _is_organization_admin(request)

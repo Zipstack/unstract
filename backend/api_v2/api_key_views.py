@@ -38,27 +38,57 @@ class APIKeyViewSet(viewsets.ModelViewSet):
 
         `POST keys/api/<api_id>/` and `POST keys/pipeline/<pipeline_id>/`
         already name the resource in the path, so callers should not have to
-        repeat it in the body. Fall back to whatever the body carries, keeping
-        the body-only routes (`keys/api/`, `keys/pipeline/`) working.
+        repeat it in the body. The body-only routes (`keys/api/`,
+        `keys/pipeline/`) fall through to the default implementation.
+
+        The path target is authoritative: a body naming the *other* target is
+        a contradiction, not an override, and is refused rather than silently
+        creating a key for whichever one wins. Ownership of the target is
+        checked here because `create` is collection-level -- DRF resolves
+        `IsParentDeploymentOwner` for it but never calls `get_object()`, so
+        `has_object_permission` would otherwise never run and any org member
+        could mint a live key for a deployment they do not own.
         """
         api_id = kwargs.get("api_id")
         pipeline_id = kwargs.get("pipeline_id")
 
-        if api_id or pipeline_id:
-            request_data = request.data.copy()
-            if api_id:
-                request_data.setdefault("api", api_id)
-            if pipeline_id:
-                request_data.setdefault("pipeline", pipeline_id)
-            serializer = self.get_serializer(data=request_data)
-            serializer.is_valid(raise_exception=True)
-            self.perform_create(serializer)
-            headers = self.get_success_headers(serializer.data)
-            return Response(
-                serializer.data, status=status.HTTP_201_CREATED, headers=headers
-            )
+        if not (api_id or pipeline_id):
+            return super().create(request, *args, **kwargs)
 
-        return super().create(request, *args, **kwargs)
+        # A JSON array (or scalar) body has no `.copy()` returning a mapping;
+        # reject it as a 400 rather than letting `AttributeError` become a 500.
+        if not isinstance(request.data, dict):
+            raise serializers.ValidationError("Request body must be a JSON object.")
+        request_data = request.data.copy()
+
+        if api_id:
+            if request_data.get("pipeline"):
+                raise serializers.ValidationError(
+                    "This endpoint creates a key for the API deployment named "
+                    "in the URL; remove `pipeline` from the body."
+                )
+            api = DeploymentHelper.get_api_by_id(api_id=api_id)
+            if not api:
+                raise APINotFound()
+            self.check_object_permissions(request, api)
+            request_data["api"] = api_id
+        else:
+            if request_data.get("api"):
+                raise serializers.ValidationError(
+                    "This endpoint creates a key for the pipeline named in the "
+                    "URL; remove `api` from the body."
+                )
+            pipeline = PipelineProcessor.get_active_pipeline(pipeline_id=pipeline_id)
+            if not pipeline:
+                raise PipelineNotFound()
+            self.check_object_permissions(request, pipeline)
+            request_data["pipeline"] = pipeline_id
+
+        serializer = self.get_serializer(data=request_data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @action(detail=True, methods=["get"])
     def api_keys(
