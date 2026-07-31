@@ -19,7 +19,7 @@ window.RUNTIME_CONFIG = {
   faviconPath: "${VITE_FAVICON_PATH:-${REACT_APP_FAVICON_PATH}}",
   logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}",
   enablePosthog: "${VITE_ENABLE_POSTHOG:-${REACT_APP_ENABLE_POSTHOG}}",
-  defaultOrgName: "${VITE_DEFAULT_ORG_NAME:-${REACT_APP_DEFAULT_ORG_NAME:-mock_org}}",
+  defaultOrgName: "$(js_escape "${VITE_DEFAULT_ORG_NAME:-${REACT_APP_DEFAULT_ORG_NAME:-mock_org}}")",
   version: "${APP_VERSION}"
 };
 EOF
