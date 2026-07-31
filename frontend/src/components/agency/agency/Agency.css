@@ -109,8 +109,13 @@
   flex-direction: column;
 }
 
+/* shadcn's Alert base is `w-full`, where antd's sized to its container. With
+ * `margin: 0 24px` that made the box 100% + 48px, so `.agency-layout`
+ * (overflow-x: auto) grew a horizontal scrollbar on every workflow page.
+ * Subtract the margins from the width rather than dropping them. */
 .deployment-alert {
   margin: 0 24px;
+  width: calc(100% - 48px);
 }
 .workflow-card-header {
   display: flex;
