@@ -399,6 +399,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
           tabKey?: string;
           key?: string;
           tab?: React.ReactNode;
+          icon?: React.ReactNode;
           children?: React.ReactNode;
           disabled?: boolean;
         }> => React.isValidElement(c),
@@ -420,6 +421,8 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         key:
           c.props.tabKey ?? String(c.key ?? "").replace(/^\.(\d+:)?\$/, ""),
         label: c.props.tab,
+        // antd supports an icon on TabPane too, not just on `items`.
+        icon: c.props.icon,
         children: c.props.children,
         disabled: c.props.disabled,
       }));
@@ -476,8 +479,20 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
                  * it does not need the padding either.
                  */
                 type !== "card" && "py-0",
+                // antd spaces the icon from its label; the base trigger has no
+                // gap because it never expects two children.
+                p.icon && "gap-2",
               )}
             >
+              {/*
+               * antd renders `items[].icon` before the label; the shim dropped
+               * it, so the Dashboard's nested usage tabs (API Deployments, ETL
+               * Pipelines, …) lost the icons the reference shows. `shrink-0`
+               * keeps a lucide SVG from being squeezed by the label.
+               */}
+              {p.icon ? (
+                <span className="flex shrink-0 items-center">{p.icon}</span>
+              ) : null}
               {p.label}
             </TabsTrigger>
           ))}

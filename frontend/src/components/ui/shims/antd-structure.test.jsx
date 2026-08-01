@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -127,6 +127,35 @@ describe("antd-compatible structural shims (P4)", () => {
     fireEvent.mouseDown(screen.getByRole("tab", { name: "Two" }));
     // ".$p2" here is what reached the backend as a profile id.
     expect(onChange).toHaveBeenCalledWith("p2");
+  });
+
+  /*
+   * antd renders `items[].icon` before the label. The shim rendered only the
+   * label, so the Dashboard's nested usage tabs (API Deployments, ETL
+   * Pipelines, …) lost the icons the reference shows on every one.
+   */
+  it("Tabs render an item's icon alongside its label", () => {
+    render(
+      <Tabs
+        items={[
+          {
+            key: "api",
+            label: "API Deployments",
+            icon: <svg data-testid="tab-icon" />,
+            children: "x",
+          },
+        ]}
+      />,
+    );
+    const tab = screen.getByRole("tab");
+    expect(within(tab).getByTestId("tab-icon")).toBeInTheDocument();
+    expect(tab).toHaveTextContent("API Deployments");
+    expect(tab.className).toContain("gap-2");
+  });
+
+  it("Tabs add no icon gap when an item has none", () => {
+    render(<Tabs items={[{ key: "a", label: "Plain", children: "x" }]} />);
+    expect(screen.getByRole("tab").className).not.toContain("gap-2");
   });
 
   it("Tabs keep the pill look when type='card'", () => {
