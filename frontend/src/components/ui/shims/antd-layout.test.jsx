@@ -91,6 +91,45 @@ describe("antd-compatible layout shims (P1-05)", () => {
     expect(container.querySelector(".ant-col").style.width).toBe("50%");
   });
 
+  /*
+   * antd's responsive Col props were not destructured, so `<Col xs={24}>` fell
+   * into `...props`, hit the DOM as an unknown attribute, and the column got
+   * NO width — the Dashboard's "Usage by Deployment" card shrank to fit its
+   * empty state instead of spanning the row.
+   */
+  it("sizes a Col from its responsive breakpoint props", () => {
+    const { container } = render(
+      <Row>
+        <Col xs={24}>full</Col>
+      </Row>,
+    );
+    expect(container.querySelector(".ant-col").style.width).toBe("100%");
+  });
+
+  it("does not leak breakpoint props onto the DOM", () => {
+    const { container } = render(
+      <Row>
+        <Col xs={24} md={12}>
+          x
+        </Col>
+      </Row>,
+    );
+    const col = container.querySelector(".ant-col");
+    expect(col).not.toHaveAttribute("xs");
+    expect(col).not.toHaveAttribute("md");
+  });
+
+  it("prefers the largest specified breakpoint over span", () => {
+    const { container } = render(
+      <Row>
+        <Col span={6} xs={24} md={12}>
+          x
+        </Col>
+      </Row>,
+    );
+    expect(container.querySelector(".ant-col").style.width).toBe("50%");
+  });
+
   it("applies gutter as negative row margin plus column padding", () => {
     const { container } = render(
       <Row gutter={16}>

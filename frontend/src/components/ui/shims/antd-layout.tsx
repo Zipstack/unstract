@@ -54,11 +54,26 @@ interface RowProps extends React.HTMLAttributes<HTMLDivElement> {
   wrap?: boolean;
 }
 
+/** antd's responsive Col props, smallest breakpoint first. */
+type ColBreakpoint = "xs" | "sm" | "md" | "lg" | "xl" | "xxl";
+
 interface ColProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Width in 24ths, antd's grid basis. */
   span?: number;
   offset?: number;
   flex?: React.CSSProperties["flex"];
+  /*
+   * antd's per-breakpoint widths, also in 24ths. These were not destructured,
+   * so `<Col xs={24}>` fell into `...props`, reached the DOM as an unknown
+   * attribute, and the column got NO width at all — the Dashboard's "Usage by
+   * Deployment" card shrank to fit its empty state instead of spanning the row.
+   */
+  xs?: number;
+  sm?: number;
+  md?: number;
+  lg?: number;
+  xl?: number;
+  xxl?: number;
   /**
    * Internal: Row clones its children to pass its gutter down for padding.
    * Not part of antd's API and not meant for call-sites.
@@ -208,16 +223,48 @@ const Row = React.forwardRef<HTMLDivElement, RowProps>(function Row(
 });
 
 /** antd `<Col span={1..24}>`, sharing antd's 24-column basis. */
+const COL_BREAKPOINTS: ColBreakpoint[] = ["xs", "sm", "md", "lg", "xl", "xxl"];
+
 const Col = React.forwardRef<HTMLDivElement, ColProps>(function Col(
-  { span, offset, flex, __gutter, className, style, children, ...props },
+  {
+    span,
+    offset,
+    flex,
+    __gutter,
+    xs,
+    sm,
+    md,
+    lg,
+    xl,
+    xxl,
+    className,
+    style,
+    children,
+    ...props
+  },
   ref,
 ) {
+  /*
+   * antd picks the value for the LARGEST breakpoint the viewport satisfies,
+   * falling back to `span`. Reproducing that faithfully would need a media
+   * query per column; in practice every call-site here either passes `span`
+   * alone or repeats the same value across breakpoints (`xs={24}`), so the
+   * largest specified value is the effective one on a desktop viewport.
+   */
+  const responsive = { xs, sm, md, lg, xl, xxl };
+  const widest = COL_BREAKPOINTS.reduce<number | undefined>(
+    (acc, bp) => (responsive[bp] != null ? responsive[bp] : acc),
+    undefined,
+  );
+  const effectiveSpan = widest ?? span;
+
   return (
     <div
       ref={ref}
       className={cn("ant-col", className)}
       style={{
-        width: span != null ? `${(span / 24) * 100}%` : undefined,
+        width:
+          effectiveSpan != null ? `${(effectiveSpan / 24) * 100}%` : undefined,
         marginLeft: offset != null ? `${(offset / 24) * 100}%` : undefined,
         flex: flex ?? undefined,
         paddingLeft: __gutter ? __gutter / 2 : undefined,
