@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 
+import { Switch as AntSwitch } from "@/components/ui/shims/antd-inputs";
 import {
   Collapse,
   Dropdown,
@@ -186,6 +187,26 @@ describe("antd-compatible overlay shims (P2)", () => {
       </Tooltip>,
     );
     expect(screen.getByRole("switch")).toHaveAttribute("data-state", "checked");
+  });
+
+  /*
+   * With a TITLE, Radix's own TooltipTrigger merges its `data-state` (the
+   * tooltip's open state) onto the `asChild` child — the shim cannot strip
+   * that. A Switch styled off `data-state` therefore rendered ENABLED
+   * deployments as an empty grey pill. The Switch keys off `aria-checked`
+   * instead, which survives the merge; this guards that it still does.
+   */
+  it("leaves a Switch child visibly checked inside a titled Tooltip", () => {
+    render(
+      <Tooltip title="Disable API deployment">
+        <AntSwitch checked onChange={() => {}} />
+      </Tooltip>,
+    );
+    const sw = screen.getByRole("switch");
+    expect(sw).toHaveAttribute("aria-checked", "true");
+    expect(sw.className).toContain("aria-checked:bg-primary");
+    // The thumb is inside the trigger, so its own state is untouched.
+    expect(sw.firstElementChild).toHaveAttribute("data-state", "checked");
   });
 
   it("forwards a parent primitive's ref to the trigger element", () => {

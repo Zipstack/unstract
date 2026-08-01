@@ -485,9 +485,16 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
       ? React.cloneElement(children as React.ReactElement, anchorProps)
       : children;
   }
+
   return (
     <TooltipProvider>
       <ShadcnTooltip>
+        {/*
+         * The outer primitive's ref and attributes go on the TRIGGER: they
+         * identify the element it anchors to, and the bubble is not that
+         * element. `ref` is deliberately not forwarded to TooltipContent here
+         * for the same reason.
+         */}
         {/*
          * The outer primitive's ref and attributes go on the TRIGGER: they
          * identify the element it anchors to, and the bubble is not that
