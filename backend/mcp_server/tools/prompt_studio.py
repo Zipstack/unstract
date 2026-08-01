@@ -61,8 +61,20 @@ def _dispatch(context: PlatformMCPContext, action: str, project_id: str, payload
     original_data = request.data
     try:
         request._full_data = payload
-        view = PromptStudioCoreView.as_view({"post": action})
-        response = view(request, pk=project_id)
+        # Do NOT route through as_view(): it calls initialize_request(), which
+        # builds a *new* DRF Request with no _full_data, so .data re-parses
+        # request.body — the JSON-RPC envelope — and the action never sees
+        # document_id/prompt_id. Call the action on a bare instance holding this
+        # request instead, the same pattern PipelineManager.execute_pipeline
+        # uses for executePipeline.
+        view_instance = PromptStudioCoreView()
+        view_instance.request = request
+        view_instance.args = ()
+        view_instance.kwargs = {"pk": project_id}
+        # get_object()/get_serializer() read self.request and self.kwargs["pk"];
+        # format_kwarg is what DRF's content negotiation path expects to exist.
+        view_instance.format_kwarg = None
+        response = getattr(view_instance, action)(request, pk=project_id)
     finally:
         request._full_data = original_data
 

@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from tags.serializers import TagParamsSerializer
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
@@ -287,9 +288,31 @@ def get_execution_status(
         ) from error
 
     validated = serializer.validated_data
-    response: ExecutionResponse = DeploymentHelper.get_execution_status(
-        validated.get(ApiExecution.EXECUTION_ID)
+    validated_id = validated.get(ApiExecution.EXECUTION_ID)
+
+    # Scope the id to this deployment's workflow before fetching anything.
+    # DeploymentHelper.get_execution_status resolves a bare
+    # WorkflowExecution.objects.get(id=...) with no tenant or deployment
+    # filter, and this deployment runs one shared schema rather than a schema
+    # per tenant. The API key narrows the caller to a *deployment*, not to an
+    # execution id within it, so without this check a key for deployment A
+    # could poll deployment B's execution — and, because a completed status
+    # acknowledges the result and drops it from cache, destroy it for the
+    # caller it belongs to.
+    execution = (
+        WorkflowExecution.objects.filter(
+            id=validated_id, workflow_id=context.api.workflow_id
+        )
+        .only("id")
+        .first()
     )
+    if execution is None:
+        raise MCPToolError(
+            f"No execution with id '{validated_id}' for this deployment. "
+            "Poll only ids returned by extractDocument."
+        )
+
+    response: ExecutionResponse = DeploymentHelper.get_execution_status(validated_id)
 
     if response.result_acknowledged:
         # The REST surface answers 406 here. An agent cannot act on a status

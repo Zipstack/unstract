@@ -202,9 +202,12 @@ def get_platform_execution_status(
     ``WorkflowExecution.objects.get(id=...)`` with no tenant filter, and this
     deployment runs a single shared schema rather than one per tenant, so
     without this check a caller could poll an execution id belonging to
-    another organization. On the deployment server the API key narrowed the
-    caller to one deployment; here nothing does, so the check is made
-    explicitly.
+    another organization.
+
+    ``get_execution_status`` makes the equivalent check on the deployment
+    server, anchored to that deployment's single workflow. The two differ only
+    in width: a platform key reaches every workflow in the org, so the filter
+    here is ``workflow_id__in=visible`` rather than one id.
     """
     from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 

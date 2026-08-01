@@ -25,6 +25,7 @@ from mcp_server.tools.execution import extract_document, get_execution_status
 # realistic one here keeps these tests honest about what the tool accepts.
 DOC_URL = "https://my-bucket.s3.us-east-1.amazonaws.com/invoice.pdf?X-Amz-Signature=abc"
 EXECUTION_ID = "33333333-3333-3333-3333-333333333333"
+WORKFLOW_ID = "44444444-4444-4444-4444-444444444444"
 
 
 class FakeOrganization:
@@ -36,6 +37,8 @@ class FakeAPI:
     api_name = "live-api"
     is_active = True
     organization = FakeOrganization()
+    # get_execution_status scopes the polled id to this deployment's workflow.
+    workflow_id = WORKFLOW_ID
 
 
 def make_context(active: bool = True) -> MCPContext:
@@ -249,8 +252,16 @@ class GetExecutionStatusTest(SimpleTestCase):
     def setUp(self) -> None:
         self.context = make_context()
 
-    def _run(self, response: ExecutionResponse, **kwargs):
+    def _run(self, response: ExecutionResponse, scoped: bool = True, **kwargs):
+        """Drive get_execution_status with the ORM scope check stubbed.
+
+        ``scoped=False`` models the id belonging to another deployment: the
+        filter finds nothing, which is what the guard keys off.
+        """
         with (
+            patch(
+                "mcp_server.tools.execution.WorkflowExecution.objects.filter"
+            ) as scope_filter,
             patch(
                 "mcp_server.tools.execution.ExecutionQuerySerializer.is_valid",
                 return_value=True,
@@ -274,9 +285,13 @@ class GetExecutionStatusTest(SimpleTestCase):
                 "mcp_server.tools.execution.DeploymentHelper.process_completed_execution"
             ) as process,
         ):
+            scope_filter.return_value.only.return_value.first.return_value = (
+                object() if scoped else None
+            )
             result = get_execution_status(
                 self.context, execution_id=EXECUTION_ID, **kwargs
             )
+        self.scope_filter = scope_filter
         return result, process
 
     def test_completed_execution_is_enriched_and_returned(self) -> None:
@@ -309,6 +324,74 @@ class GetExecutionStatusTest(SimpleTestCase):
 
         process.assert_not_called()
         assert result["execution_status"] == "EXECUTING"
+
+    def test_polled_id_is_scoped_to_this_deployments_workflow(self) -> None:
+        """The scope filter is anchored to the deployment, not just the id.
+
+        A filter on ``id`` alone would pass this test's sibling below while
+        leaving every execution in the shared schema pollable.
+        """
+        response = ExecutionResponse(
+            workflow_id="wf",
+            execution_id=EXECUTION_ID,
+            execution_status="EXECUTING",
+            result=None,
+        )
+
+        self._run(response)
+
+        self.scope_filter.assert_called_once_with(
+            id=EXECUTION_ID, workflow_id=WORKFLOW_ID
+        )
+
+    def test_execution_from_another_deployment_is_refused(self) -> None:
+        """Polling another deployment's execution must not reach the helper.
+
+        DeploymentHelper.get_execution_status resolves the id with no tenant
+        filter and acknowledging a completed result drops it from cache, so
+        reaching it at all would both disclose the result and destroy it for
+        the caller it belongs to.
+        """
+        response = ExecutionResponse(
+            workflow_id="wf",
+            execution_id=EXECUTION_ID,
+            execution_status="COMPLETED",
+            result=[{"file": "secret.pdf", "result": {"output": {"total": 42}}}],
+        )
+
+        with self.assertRaises(MCPToolError) as caught:
+            self._run(response, scoped=False)
+
+        assert "No execution with id" in str(caught.exception)
+
+    def test_foreign_execution_never_reaches_the_helper(self) -> None:
+        """The guard runs before the fetch, not alongside it."""
+        with (
+            patch(
+                "mcp_server.tools.execution.WorkflowExecution.objects.filter"
+            ) as scope_filter,
+            patch(
+                "mcp_server.tools.execution.ExecutionQuerySerializer.is_valid",
+                return_value=True,
+            ),
+            patch(
+                "mcp_server.tools.execution.ExecutionQuerySerializer.validated_data",
+                {
+                    "execution_id": EXECUTION_ID,
+                    "include_metadata": False,
+                    "include_metrics": False,
+                    "include_extracted_text": False,
+                },
+            ),
+            patch(
+                "mcp_server.tools.execution.DeploymentHelper.get_execution_status"
+            ) as fetch,
+        ):
+            scope_filter.return_value.only.return_value.first.return_value = None
+            with self.assertRaises(MCPToolError):
+                get_execution_status(self.context, execution_id=EXECUTION_ID)
+
+        fetch.assert_not_called()
 
     def test_acknowledged_result_explains_itself(self) -> None:
         """The REST surface answers 406 here; an agent cannot act on a status

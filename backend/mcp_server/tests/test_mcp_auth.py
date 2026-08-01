@@ -191,11 +191,18 @@ class MCPServerAuthTest(TestCase):
         It answers 405: a Streamable HTTP client issues GET to open an SSE
         stream, and this server pushes nothing, so declining is the conformant
         response. The identity body rides along for uptime probes.
+
+        No ``Allow`` header is asserted: DRF's ``finalize_response`` overwrites
+        a handler-set value and ``RemoveAllowHeaderMiddleware`` pops the header
+        globally, so the endpoint cannot emit one. See ``MCPTransportView.get``.
         """
         request = self.factory.get(f"/mcp/{ORG_ID}/live-api/")
         response = self.view(request, org_name=ORG_ID, api_name="live-api")
+        body = json.loads(response.content)
 
         assert response.status_code == 405
-        assert response["Allow"] == "POST"
-        assert response.data["name"] == "unstract"
-        assert "live-api" not in json.dumps(response.data)
+        assert body["name"] == "unstract"
+        # The whole rendered body, not just the parsed identity: the point of
+        # this test is that nothing anywhere in the response names the tenant.
+        assert "live-api" not in response.content.decode()
+        assert ORG_ID not in response.content.decode()

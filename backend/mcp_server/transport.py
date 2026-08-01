@@ -18,6 +18,7 @@ from typing import Any
 
 from django.http import JsonResponse
 from rest_framework import status, views
+from rest_framework.exceptions import ParseError
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -143,7 +144,7 @@ class BaseMCPView(views.APIView):
             "authMethods": ["bearer"],
         }
 
-    def get(self, request: Request, **kwargs: Any) -> Response:
+    def get(self, request: Request, **kwargs: Any) -> JsonResponse:
         """Refuse the SSE stream, but say who is here.
 
         Under Streamable HTTP a client issues GET to open a server-to-client
@@ -156,12 +157,19 @@ class BaseMCPView(views.APIView):
         The body is kept anyway: uptime checks and humans with curl probe this
         path, and a 405 may carry one. It stays deliberately free of tenant
         detail — it reveals only that an MCP server is mounted here.
+
+        ``JsonResponse``, not DRF's ``Response``, for the same reason ``post``
+        uses it: a DRF response runs content negotiation, so a client sending
+        ``Accept: text/html`` would be handed the browsable-API renderer.
+
+        No ``Allow`` header is set. RFC 9110 asks for one on a 405, but it
+        cannot survive here and pretending otherwise misleads a reader: DRF's
+        ``finalize_response`` overwrites any handler-set value with
+        ``default_response_headers`` (``GET, POST, HEAD, OPTIONS``), and
+        ``RemoveAllowHeaderMiddleware`` — global in ``MIDDLEWARE`` — then pops
+        the header from every response before it leaves the process.
         """
-        response = Response(self.server_info(), status=405)
-        # RFC 9110 requires Allow on a 405, and it tells a client which method
-        # this endpoint actually speaks.
-        response["Allow"] = "POST"
-        return response
+        return JsonResponse(self.server_info(), status=405)
 
     def post(self, request: Request, **kwargs: Any) -> JsonResponse:
         """Handle a single JSON-RPC request."""
@@ -169,7 +177,19 @@ class BaseMCPView(views.APIView):
         if context is None:
             return auth_error(self.auth_failure_message())
 
-        body = request.data
+        try:
+            body = request.data
+        except ParseError:
+            # DRF would answer 400 with its own error body. A JSON-RPC client
+            # is parsing for an envelope, so give it -32700 as the spec
+            # requires; the id is null because unparseable input has none.
+            return rpc_error(
+                None,
+                JSONRPC.PARSE_ERROR,
+                "Parse error",
+                "Request body is not valid JSON",
+            )
+
         if not isinstance(body, dict):
             # Batch requests are valid JSON-RPC 2.0 but are not used by MCP
             # clients; rejecting them explicitly beats a confusing downstream
@@ -196,10 +216,23 @@ class BaseMCPView(views.APIView):
                 request_id, JSONRPC.INVALID_REQUEST, "Invalid Request", "Missing method"
             )
 
+        # `params` is optional, but when present JSON-RPC allows an array or an
+        # object and MCP uses only objects. A truthy non-dict survives `or {}`
+        # and reaches `params.get(...)` downstream as an AttributeError, i.e. a
+        # Django 500 rather than an envelope the client can read.
+        params = body.get("params") or {}
+        if not isinstance(params, dict):
+            return rpc_error(
+                request_id,
+                JSONRPC.INVALID_PARAMS,
+                "Invalid params",
+                "'params' must be an object",
+            )
+
         return self._dispatch(
             method=method,
             request_id=request_id,
-            params=body.get("params") or {},
+            params=params,
             context=context,
         )
 
@@ -317,6 +350,22 @@ class BaseMCPView(views.APIView):
                 )
                 return rpc_error(
                     request_id, JSONRPC.INVALID_PARAMS, "Invalid params", str(error)
+                )
+            except Exception as error:
+                # Same catch-all the handler path below has, and for the same
+                # reason: a resolver filtering a UUID column by a malformed
+                # string raises Django ValidationError, which would otherwise
+                # escape post() and reach the client as a bare 500 with no
+                # JSON-RPC envelope at all.
+                logger.exception(
+                    f"MCP tool '{tool_name}' preflight failed unexpectedly: {error}"
+                )
+                return rpc_error(
+                    request_id,
+                    JSONRPC.TOOL_EXECUTION_ERROR,
+                    "Tool execution failed",
+                    f"Tool '{tool_name}' could not validate its arguments. "
+                    "Contact your Unstract administrator if this persists.",
                 )
 
         # Budget is checked after permission and preflight, and before the
