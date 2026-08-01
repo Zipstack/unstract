@@ -72,10 +72,12 @@ _SECRET_PATTERNS = (
 def redact_secrets(text: str | None) -> str | None:
     """Mask credential-shaped substrings in free-form text.
 
-    Applied to every error message these tools return. Execution errors are one
-    of the few places a secret reaches an agent without any tool asking for it:
-    a connector that fails to connect may report the connection string it
-    tried, and a provider client may echo the key it authenticated with.
+    Applied to the error messages these tools return, and — via
+    ``redact_structure`` — to upstream payloads that this app does not itself
+    assemble field by field. Execution errors are one of the few places a
+    secret reaches an agent without any tool asking for it: a connector that
+    fails to connect may report the connection string it tried, and a provider
+    client may echo the key it authenticated with.
 
     This is a safety net, not a guarantee — it cannot recognise a secret that
     looks like ordinary prose — so it complements the rule that structured
@@ -88,6 +90,27 @@ def redact_secrets(text: str | None) -> str | None:
     for pattern, replacement in _SECRET_PATTERNS:
         redacted = pattern.sub(replacement, redacted)
     return redacted
+
+
+def redact_structure(value: Any) -> Any:
+    """Apply ``redact_secrets`` to every string inside a nested structure.
+
+    The read tools serialize named fields, so what they return is known. The
+    billable and write tools do not: they hand back whatever the delegated view
+    or execution helper produced — ``response.data`` including non-2xx error
+    bodies, and raw execution results — which can carry a failed connector's
+    error text verbatim. Those paths get the same net the error messages get.
+
+    Containers are rebuilt rather than mutated, so a caller's queryset row or
+    cached dict is never altered as a side effect of being reported.
+    """
+    if isinstance(value, str):
+        return redact_secrets(value)
+    if isinstance(value, dict):
+        return {key: redact_structure(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return type(value)(redact_structure(item) for item in value)
+    return value
 
 
 def _org_workflow_ids(context: PlatformMCPContext) -> list[Any]:

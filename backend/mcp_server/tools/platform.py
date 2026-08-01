@@ -500,11 +500,15 @@ def execute_pipeline(context: PlatformMCPContext, pipeline_id: str) -> dict[str,
         request=context.request, pipeline_id=str(pipeline.id)
     )
 
+    from mcp_server.tools.observability import redact_structure
+
     return {
         "pipeline_id": str(pipeline.id),
         "pipeline_name": pipeline.pipeline_name,
         "status": getattr(response, "status_code", None),
-        "result": getattr(response, "data", None),
+        # Raw manager response rather than named fields, so it gets the same
+        # redaction net the error messages get.
+        "result": redact_structure(getattr(response, "data", None)),
     }
 
 

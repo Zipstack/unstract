@@ -88,6 +88,8 @@ def _result(response, project: CustomTool) -> dict[str, Any]:
     error bodies (a missing prompt id, an unindexed document) are precisely
     what the agent needs to correct its next call.
     """
+    from mcp_server.tools.observability import redact_structure
+
     status_code = getattr(response, "status_code", None)
     data = getattr(response, "data", None)
     ok = status_code is not None and 200 <= status_code < 300
@@ -97,7 +99,10 @@ def _result(response, project: CustomTool) -> dict[str, Any]:
         "project_name": project.tool_name,
         "ok": ok,
         "status": status_code,
-        "result": data,
+        # This app did not assemble `data` field by field — it is whatever the
+        # delegated view returned, error bodies included — so it gets the same
+        # redaction net the named error messages get.
+        "result": redact_structure(data),
     }
     if not ok:
         result["note"] = (

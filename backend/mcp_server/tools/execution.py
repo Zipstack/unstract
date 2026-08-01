@@ -18,6 +18,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.tools.observability import redact_structure
 from mcp_server.tools.platform import valid_uuid
 
 logger = logging.getLogger(__name__)
@@ -224,7 +225,9 @@ def extract_document(
         )
         raise MCPToolError(f"Extraction failed: {error}") from error
 
-    result = dict(response)
+    # Raw upstream response, not assembled field by field here, so it goes
+    # through the same redaction net as the error messages.
+    result = redact_structure(dict(response))
     # Surface the execution id unconditionally. On the pending path it is the
     # agent's only handle for polling, and execute_workflow does not guarantee
     # it is present in the response body.
@@ -345,5 +348,7 @@ def get_execution_status(
     return {
         "execution_id": execution_id,
         "execution_status": response.execution_status,
-        "result": response.result,
+        # Raw upstream result, not assembled field by field here: a failed
+        # connector's error text can embed the connection string it tried.
+        "result": redact_structure(response.result),
     }
