@@ -32,6 +32,7 @@ from dataclasses import dataclass
 import redis
 from django.conf import settings
 from django.core.cache import cache as default_cache
+from django_redis.exceptions import ConnectionInterrupted
 
 logger = logging.getLogger(__name__)
 
@@ -42,10 +43,20 @@ logger = logging.getLogger(__name__)
 # a log line as signal. A real defect here should surface as a 500, not as an
 # invisibly disabled spend guard.
 #
-# ConnectionError/TimeoutError are the stdlib builtins that django-redis and
-# other backends surface for socket failures; redis.RedisError covers the
-# client's own hierarchy.
-CACHE_ERRORS = (redis.RedisError, ConnectionError, TimeoutError, OSError)
+# `redis.RedisError` is the load-bearing member: django-redis's `omit_exception`
+# unwraps its `_main_exceptions` and re-raises the underlying cause, and those
+# are redis-py's own types, which derive from `Exception` rather than
+# `OSError` — so the stdlib entries below do NOT cover them. `redis` reaches
+# this environment as a django-redis dependency rather than a declared one;
+# `ConnectionInterrupted` is the wrapper raised when django-redis does not
+# unwrap, and the stdlib entries cover backends that are not redis at all.
+CACHE_ERRORS = (
+    redis.RedisError,
+    ConnectionInterrupted,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 # Key namespace. The window start is not encoded in the key: the TTL is what
 # expires the counter, giving a fixed window that begins at the first billable

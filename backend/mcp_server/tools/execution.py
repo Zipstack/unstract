@@ -18,7 +18,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
-from mcp_server.tools.observability import redact_structure
+from mcp_server.tools.observability import redact_secrets, redact_structure
 from mcp_server.tools.platform import valid_uuid
 
 logger = logging.getLogger(__name__)
@@ -223,7 +223,10 @@ def extract_document(
         logger.exception(
             f"MCP extractDocument failed for api '{context.api.api_name}': {error}"
         )
-        raise MCPToolError(f"Extraction failed: {error}") from error
+        # Redacted: this interpolates an upstream exception, and a connector
+        # that failed to connect reports the connection string it tried. The
+        # transport returns this message to the agent verbatim.
+        raise MCPToolError(f"Extraction failed: {redact_secrets(str(error))}") from error
 
     # Raw upstream response, not assembled field by field here, so it goes
     # through the same redaction net as the error messages.

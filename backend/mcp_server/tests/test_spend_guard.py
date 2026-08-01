@@ -117,6 +117,25 @@ class SpendGuardTest(SimpleTestCase):
 
         assert state.allowed is True
 
+    def test_cache_errors_covers_what_django_redis_actually_raises(self) -> None:
+        """Pin the hierarchy, because it is not the obvious one.
+
+        django-redis's ``omit_exception`` unwraps ``_main_exceptions`` and
+        re-raises the underlying cause. Those are redis-py's own exception
+        types, and they derive from ``Exception`` — **not** ``OSError``. So a
+        ``CACHE_ERRORS`` built from stdlib socket errors alone would silently
+        stop catching every real Redis failure, turning documented fail-open
+        into fail-closed on a billable call.
+        """
+        from django_redis.client.default import _main_exceptions
+
+        for exc in _main_exceptions:
+            with self.subTest(exc.__name__):
+                assert issubclass(exc, spend_guard.CACHE_ERRORS), (
+                    f"{exc.__name__} is raised by django-redis but not caught "
+                    "by CACHE_ERRORS — the spend guard would fail closed."
+                )
+
     def test_a_bug_in_the_cache_path_is_not_swallowed(self) -> None:
         """Fail-open covers the cache being unreachable, not every error.
 

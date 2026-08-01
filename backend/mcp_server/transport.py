@@ -161,12 +161,15 @@ class BaseMCPView(views.APIView):
         uses it: a DRF response runs content negotiation, so a client sending
         ``Accept: text/html`` would be handed the browsable-API renderer.
 
-        No ``Allow`` header is set. RFC 9110 asks for one on a 405, but it
-        cannot survive here and pretending otherwise misleads a reader: DRF's
-        ``finalize_response`` overwrites any handler-set value with
-        ``default_response_headers`` (``GET, POST, HEAD, OPTIONS``), and
-        ``RemoveAllowHeaderMiddleware`` — global in ``MIDDLEWARE`` — then pops
-        the header from every response before it leaves the process.
+        No ``Allow`` header is set here. RFC 9110 asks for one on a 405, but a
+        handler cannot control it and pretending otherwise misleads a reader:
+        DRF's ``finalize_response`` overwrites any handler-set value with
+        ``self.allowed_methods`` (``GET, POST, HEAD, OPTIONS``, since this view
+        defines both verbs), and ``RemoveAllowHeaderMiddleware`` — global in
+        ``MIDDLEWARE`` — then pops the header from every response before it
+        leaves the process. So a client sees no ``Allow`` at all; a test driving
+        the view through ``APIRequestFactory`` bypasses that middleware and sees
+        DRF's value.
         """
         return JsonResponse(self.server_info(), status=405)
 

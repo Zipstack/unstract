@@ -135,12 +135,56 @@ class RedactStructureTest(SimpleTestCase):
 
         assert original["error"] == "password=hunter2"
 
-    def test_tuples_keep_their_type(self) -> None:
+    def test_sequences_become_plain_lists(self) -> None:
+        """Sequence subclasses are normalised, not reconstructed.
+
+        Rebuilding via ``type(value)(...)`` raises for anything whose __init__
+        is not "an iterable" — which on this path means a crash on the return
+        of a billable tool, after the money was already spent.
+        """
         out = redact_structure(("password=hunter2", "plain"))
 
-        assert isinstance(out, tuple)
+        assert isinstance(out, list)
         assert "hunter2" not in out[0]
         assert out[1] == "plain"
+
+    def test_a_namedtuple_does_not_raise(self) -> None:
+        from collections import namedtuple
+
+        Row = namedtuple("Row", ["secret", "name"])
+
+        out = redact_structure(Row(secret="password=hunter2", name="a.pdf"))
+
+        assert "hunter2" not in out[0]
+        assert out[1] == "a.pdf"
+
+    def test_a_drf_return_list_does_not_raise(self) -> None:
+        """``ReturnList.__init__`` requires a ``serializer`` kwarg.
+
+        Reachable because the write paths return whatever a delegated
+        ``many=True`` serializer produced.
+        """
+        from rest_framework.utils.serializer_helpers import ReturnList
+
+        payload = ReturnList([{"error": "password=hunter2"}], serializer=object())
+
+        out = redact_structure({"results": payload})
+
+        assert "hunter2" not in json.dumps(out, default=str)
+
+    def test_nested_sequence_subclass_inside_a_dict(self) -> None:
+        """The dict branch recurses into the sequence branch, so a nested
+        subclass hits the same path a top-level one would.
+        """
+        from rest_framework.utils.serializer_helpers import ReturnList
+
+        payload = {
+            "outer": {"inner": ReturnList(["api_key=sk-abc"], serializer=object())}
+        }
+
+        out = redact_structure(payload)
+
+        assert "sk-abc" not in json.dumps(out, default=str)
 
 
 class WriteToolRedactionCallSitesTest(SimpleTestCase):
@@ -216,5 +260,67 @@ class WriteToolRedactionCallSitesTest(SimpleTestCase):
             out = get_execution_status(
                 context, execution_id="11111111-1111-1111-1111-111111111111"
             )
+
+        assert "hunter2" not in json.dumps(out, default=str)
+
+    def test_extract_document_result_is_redacted(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from mcp_server.tools.execution import extract_document
+
+        context = MagicMock()
+        context.api.is_active = True
+
+        with (
+            patch(
+                "mcp_server.tools.execution.ExecutionRequestSerializer.is_valid",
+                return_value=True,
+            ),
+            patch(
+                "mcp_server.tools.execution.ExecutionRequestSerializer.validated_data",
+                {"presigned_urls": ["https://x.s3.amazonaws.com/a.pdf?X-Amz-Signature=z"]},
+            ),
+            patch(
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                return_value=(True, {}),
+            ),
+            patch("mcp_server.tools.execution.DeploymentHelper.load_presigned_files"),
+            patch(
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow",
+                return_value={"error": self.CANARY},
+            ),
+        ):
+            out = extract_document(
+                context,
+                document_urls=["https://x.s3.amazonaws.com/a.pdf?X-Amz-Signature=z"],
+            )
+
+        assert "hunter2" not in json.dumps(out, default=str)
+
+    def test_execute_pipeline_result_is_redacted(self) -> None:
+        from unittest.mock import MagicMock, patch
+
+        from mcp_server.tools.platform import execute_pipeline
+
+        context = MagicMock()
+        context.org_name = "org-mcp"
+        response = MagicMock()
+        response.status_code = 200
+        response.data = {"detail": self.CANARY}
+
+        pipeline = MagicMock()
+        pipeline.id = "p1"
+        pipeline.pipeline_name = "P"
+
+        with (
+            patch(
+                "mcp_server.tools.platform._resolve_pipeline", return_value=pipeline
+            ),
+            patch(
+                "pipeline_v2.manager.PipelineManager.execute_pipeline",
+                return_value=response,
+            ),
+        ):
+            out = execute_pipeline(context, pipeline_id="p1")
 
         assert "hunter2" not in json.dumps(out, default=str)

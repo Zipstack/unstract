@@ -168,16 +168,21 @@ class NoCredentialLeakTest(TestCase):
 
         Write and billable tools are excluded because invoking them here would
         start real executions and spend real budget, not because they are
-        believed safe. They are the paths that return upstream data this app
-        did not assemble field by field, so they are covered differently: their
-        results pass through ``redact_structure`` (see
-        ``test_redaction.RedactStructureTest``, and the call sites in
-        ``tools/execution.py``, ``tools/platform.py`` and
-        ``tools/prompt_studio.py``).
+        believed safe. They fall into two groups:
 
-        That is a weaker guarantee than this sweep gives the read tools — a
-        regression that dropped a ``redact_structure`` call would be caught by
-        no test here. Extending the sweep to invoke the write tools against
+        * Those that **delegate** — the four Prompt Studio tools, ``executePipeline``
+          and ``extractDocument`` — return upstream data this app did not
+          assemble field by field, so their results pass through
+          ``redact_structure``. Those call sites are pinned by
+          ``test_redaction.WriteToolRedactionCallSitesTest``.
+        * ``setApiDeploymentActive`` and ``setPipelineActive`` hand-assemble
+          named fields exactly like the read tools; they are excluded only for
+          their side effect, not because they return anything raw.
+
+        That is still a weaker guarantee than this sweep gives the read tools:
+        it pins the call sites individually rather than walking the registry, so
+        a *new* delegating write tool added without redaction would be caught by
+        nothing here. Extending the sweep to invoke the write tools against
         stubbed delegates is worth doing and is not attempted in this change.
         """
         for name in PLATFORM_TOOLS.names():

@@ -72,12 +72,17 @@ _SECRET_PATTERNS = (
 def redact_secrets(text: str | None) -> str | None:
     """Mask credential-shaped substrings in free-form text.
 
-    Applied to the error messages these tools return, and — via
+    Applied to the free-form error fields the observability tools read off
+    execution records (``error_message``, ``execution_error``), and — via
     ``redact_structure`` — to upstream payloads that this app does not itself
     assemble field by field. Execution errors are one of the few places a
     secret reaches an agent without any tool asking for it: a connector that
     fails to connect may report the connection string it tried, and a provider
     client may echo the key it authenticated with.
+
+    **``MCPToolError`` messages are not automatically redacted.** A raise site
+    interpolating upstream text — ``raise MCPToolError(f"...{error}")`` — must
+    call this itself; the transport returns that message to the agent verbatim.
 
     This is a safety net, not a guarantee — it cannot recognise a secret that
     looks like ordinary prose — so it complements the rule that structured
@@ -95,21 +100,32 @@ def redact_secrets(text: str | None) -> str | None:
 def redact_structure(value: Any) -> Any:
     """Apply ``redact_secrets`` to every string inside a nested structure.
 
-    The read tools serialize named fields, so what they return is known. The
-    billable and write tools do not: they hand back whatever the delegated view
-    or execution helper produced — ``response.data`` including non-2xx error
-    bodies, and raw execution results — which can carry a failed connector's
-    error text verbatim. Those paths get the same net the error messages get.
+    Most tools serialize named fields, so what they return is known. The ones
+    that **delegate** do not: the Prompt Studio tools, ``executePipeline`` and
+    ``extractDocument`` hand back whatever the view or execution helper produced
+    — ``response.data`` including non-2xx error bodies, and raw execution
+    results — which can carry a failed connector's error text verbatim. Those
+    paths get the same net the error fields get. (``setApiDeploymentActive`` and
+    ``setPipelineActive`` write too, but build named fields, so they do not.)
 
     Containers are rebuilt rather than mutated, so a caller's queryset row or
-    cached dict is never altered as a side effect of being reported.
+    cached dict is never altered as a side effect of being reported. Sequences
+    come back as plain lists — see the comment below for why the input subclass
+    is deliberately not preserved.
     """
     if isinstance(value, str):
         return redact_secrets(value)
     if isinstance(value, dict):
         return {key: redact_structure(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
-        return type(value)(redact_structure(item) for item in value)
+        # Plain containers, deliberately not `type(value)(...)`. Rebuilding the
+        # exact subclass breaks on anything whose __init__ is not "an iterable":
+        # DRF's ReturnList requires a `serializer` kwarg, and a namedtuple takes
+        # positional fields. Either would raise here — on the *return* path of a
+        # billable tool, after the budget was spent and the upstream work paid
+        # for. The result is json.dumps-ed by the transport, so the subclass buys
+        # nothing.
+        return [redact_structure(item) for item in value]
     return value
 
 

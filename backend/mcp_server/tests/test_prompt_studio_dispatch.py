@@ -8,18 +8,37 @@ with no ``_full_data``. ``.data`` then re-parsed ``request.body``, so the view
 received the JSON-RPC envelope instead of ``document_id``/``prompt_id`` — and
 because these tools are billable, budget was consumed before the failure.
 
-The assertion that matters is on the payload the delegated action received.
-A test that only checked the tool returned a dict would have passed throughout.
+Two things are pinned here, and they are different. The payload assertions pin
+*argument construction* — that ``fetch_response`` maps ``prompt_id`` onto the
+view's ``id`` field, and so on. ``test_the_action_attribute_is_set`` and
+``test_get_object_is_reachable`` pin the *dispatch mechanism*, and they are the
+ones that fail if the bare-instance path is missing anything DRF needs.
 
-``SimpleTestCase``: the view and the project lookup are both patched, so no
-database is needed.
+**These tests drive a real ``PromptStudioCoreView`` subclass, not a mock.** An
+earlier version of this file patched the view class wholesale, which made every
+payload assertion pass against a dispatch that raised ``AttributeError`` in
+production: the actions call ``get_object()`` → ``get_queryset()``, which reads
+``self.action``, and ``self.action`` is set only by ``initialize_request`` —
+i.e. only by ``as_view()``. Mocking the collaborator whose behaviour is at issue
+is exactly how the bug this file exists to prevent got through a green suite.
+
+``SimpleTestCase``: only the ORM boundary (``get_queryset``) is stubbed, so no
+database is needed while the DRF machinery above it runs for real.
 """
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
+from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+from django.http import Http404
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import JSONParser
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.test import APIRequestFactory
 
 from mcp_server.tools.prompt_studio import (
     bulk_fetch_response,
@@ -47,30 +66,62 @@ class FakeProject:
     tool_name = "Invoice Prompts"
 
 
+def build_request(data=None):
+    """A real DRF Request whose body is the JSON-RPC envelope.
+
+    Built the way the transport builds one — the envelope really is what
+    ``.data`` re-parses to if dispatch loses ``_full_data``, so a regression
+    shows up as the envelope arriving at the action rather than as a mock
+    quietly returning whatever it was told to.
+    """
+    django_request = APIRequestFactory().post(
+        "/api/v1/unstract/org-mcp/mcp/",
+        data=json.dumps(data if data is not None else ENVELOPE),
+        content_type="application/json",
+    )
+    return Request(django_request, parsers=[JSONParser()])
+
+
+class RecordingView(PromptStudioCoreView):
+    """The real view, with only the database boundary stubbed.
+
+    ``get_object`` is overridden because the real one runs `for_user` querysets
+    and DRF filter backends that need a live DB. It deliberately still reads
+    ``self.action`` and ``self.kwargs`` first — the two attributes a bare
+    instance is missing — so this stub fails exactly where production would.
+    Everything else about the view is real.
+    """
+
+    seen: dict = {}
+
+    def get_object(self):
+        # Real get_object() → get_queryset() → `self.action == "list"`, and
+        # → self.kwargs[lookup]. Touch both so a bare instance missing either
+        # raises here just as it does in production.
+        _ = self.action == "list"
+        _ = self.kwargs["pk"]
+        return FakeProject()
+
+    def _record(self, request, pk=None):
+        RecordingView.seen = {
+            "payload": request.data,
+            "pk": pk,
+            "action": self.action,
+            "project": self.get_object(),
+        }
+        return Response({"ok": True}, status=200)
+
+    index_document = _record
+    fetch_response = _record
+    bulk_fetch_response = _record
+    single_pass_extraction = _record
+
+
 class PromptStudioDispatchTest(SimpleTestCase):
     def _run(self, tool, **kwargs):
-        """Invoke a tool with the view and project lookup stubbed.
-
-        Returns the payload the delegated action was called with, read off
-        ``request.data`` *at call time* — dispatch restores the original in a
-        ``finally``, so reading it afterwards would always show the envelope
-        and the assertion would be vacuous.
-        """
-        request = MagicMock()
-        request._full_data = ENVELOPE
-        request.data = ENVELOPE
-
-        seen: dict = {}
-
-        def capture(req, pk=None):
-            # request.data is a property on the real DRF Request backed by
-            # _full_data; the mock needs the two kept in step by hand.
-            seen["payload"] = request._full_data
-            seen["pk"] = pk
-            response = MagicMock()
-            response.status_code = 200
-            response.data = {"ok": True}
-            return response
+        """Invoke a tool against the real view, returning what the action saw."""
+        RecordingView.seen = {}
+        request = build_request()
 
         context = MagicMock()
         context.request = request
@@ -81,20 +132,14 @@ class PromptStudioDispatchTest(SimpleTestCase):
                 "mcp_server.tools.prompt_studio._resolve_project",
                 return_value=FakeProject(),
             ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView") as view_cls,
+            patch(
+                "mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView
+            ),
         ):
-            view_cls.return_value = MagicMock()
-            for action in (
-                "index_document",
-                "fetch_response",
-                "bulk_fetch_response",
-                "single_pass_extraction",
-            ):
-                setattr(view_cls.return_value, action, capture)
             result = tool(context, project_id=PROJECT_ID, **kwargs)
 
         self.request = request
-        return seen, result
+        return dict(RecordingView.seen), result
 
     def test_index_document_delivers_document_id(self) -> None:
         seen, result = self._run(index_document, document_id=DOCUMENT_ID)
@@ -151,63 +196,111 @@ class PromptStudioDispatchTest(SimpleTestCase):
 
         assert self.request._full_data == ENVELOPE
 
+    def test_the_action_attribute_is_set(self) -> None:
+        """``self.action`` is what ``get_queryset`` branches on.
+
+        ``ViewSetMixin.initialize_request`` normally sets it, and only
+        ``as_view()`` calls that — so a bare instance without it raises
+        AttributeError inside ``get_object()``. Every one of these tools calls
+        ``get_object()``, and the budget is claimed before the handler runs, so
+        omitting this fails all four *after* charging for them.
+        """
+        seen, _ = self._run(index_document, document_id=DOCUMENT_ID)
+
+        assert seen["action"] == "index_document"
+
+    def test_get_object_is_reachable(self) -> None:
+        """The action can resolve its project — the whole DRF path works.
+
+        This is the assertion a mocked view cannot make: it is what fails when
+        `action`, `kwargs` or `request` is missing from the bare instance.
+        """
+        seen, _ = self._run(index_document, document_id=DOCUMENT_ID)
+
+        assert isinstance(seen["project"], FakeProject)
+
     def test_dispatch_restores_request_data_after_a_failure(self) -> None:
         """Restoration is in a finally, so a raising view does not leak it."""
-        request = MagicMock()
-        request._full_data = ENVELOPE
-        request.data = ENVELOPE
+        request = build_request()
+
         context = MagicMock()
         context.request = request
         context.org_name = "org-mcp"
 
-        def boom(req, pk=None):
-            raise RuntimeError("view exploded")
+        class Exploding(RecordingView):
+            def index_document(self, req, pk=None):
+                raise RuntimeError("view exploded")
 
         with (
             patch(
                 "mcp_server.tools.prompt_studio._resolve_project",
                 return_value=FakeProject(),
             ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView") as view_cls,
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Exploding),
         ):
-            view_cls.return_value = MagicMock()
-            view_cls.return_value.index_document = boom
             with self.assertRaises(RuntimeError):
-                index_document(
-                    context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
-                )
+                index_document(context, project_id=PROJECT_ID, document_id=DOCUMENT_ID)
 
         assert request._full_data == ENVELOPE
 
-    def test_dispatch_does_not_use_as_view(self) -> None:
-        """as_view() is the bug: it rebuilds the request and drops _full_data.
+    def test_a_view_refusal_is_returned_as_data(self) -> None:
+        """Http404/APIException must not escape as a raw exception.
 
-        Pinned explicitly because the payload assertions above would keep
-        passing under a mock that made as_view() behave, while production
-        would resume failing.
+        ``dispatch()`` would have converted these to a non-2xx Response; the
+        bare-instance path bypasses it. ``_result`` documents non-2xx as
+        returned-as-data — the agent needs the reason to fix its next call —
+        so an escaping exception would become an opaque TOOL_EXECUTION_ERROR
+        with the budget already spent.
         """
-        request = MagicMock()
-        request._full_data = ENVELOPE
-        request.data = ENVELOPE
+        request = build_request()
+
         context = MagicMock()
         context.request = request
         context.org_name = "org-mcp"
+
+        class Refusing(RecordingView):
+            def index_document(self, req, pk=None):
+                raise Http404
 
         with (
             patch(
                 "mcp_server.tools.prompt_studio._resolve_project",
                 return_value=FakeProject(),
             ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView") as view_cls,
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Refusing),
         ):
-            response = MagicMock()
-            response.status_code = 200
-            response.data = {}
-            view_cls.return_value.index_document = MagicMock(return_value=response)
+            result = index_document(
+                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+            )
 
-            index_document(context, project_id=PROJECT_ID, document_id=DOCUMENT_ID)
+        assert result["ok"] is False
+        assert result["status"] == 404
 
-        view_cls.as_view.assert_not_called()
+    def test_a_permission_denial_is_returned_as_data(self) -> None:
+        """Same for check_object_permissions' PermissionDenied."""
+        request = build_request()
+
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        class Denying(RecordingView):
+            def index_document(self, req, pk=None):
+                raise PermissionDenied("nope")
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Denying),
+        ):
+            result = index_document(
+                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+            )
+
+        assert result["ok"] is False
+        assert result["status"] == 403
 
     def test_missing_request_is_an_agent_error(self) -> None:
         """A context with no live request refuses rather than raising."""

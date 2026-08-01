@@ -192,15 +192,19 @@ class MCPServerAuthTest(TestCase):
         stream, and this server pushes nothing, so declining is the conformant
         response. The identity body rides along for uptime probes.
 
-        No ``Allow`` header is asserted: DRF's ``finalize_response`` overwrites
-        a handler-set value and ``RemoveAllowHeaderMiddleware`` pops the header
-        globally, so the endpoint cannot emit one. See ``MCPTransportView.get``.
+        ``Allow`` is asserted at the value DRF actually produces, not the
+        ``"POST"`` a handler would like to set: ``finalize_response`` overwrites
+        any handler value with ``self.allowed_methods``. In the real WSGI stack
+        ``RemoveAllowHeaderMiddleware`` then pops the header entirely, but this
+        test drives the view through ``APIRequestFactory``, which runs no
+        middleware — so the header is visible here and worth pinning.
         """
         request = self.factory.get(f"/mcp/{ORG_ID}/live-api/")
         response = self.view(request, org_name=ORG_ID, api_name="live-api")
         body = json.loads(response.content)
 
         assert response.status_code == 405
+        assert "POST" in response["Allow"]
         assert body["name"] == "unstract"
         # The whole rendered body, not just the parsed identity: the point of
         # this test is that nothing anywhere in the response names the tenant.

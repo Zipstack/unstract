@@ -451,6 +451,7 @@ def execute_pipeline_schema() -> dict[str, Any]:
 
 def _resolve_pipeline(context: PlatformMCPContext, pipeline_id: str) -> Pipeline:
     """Find a pipeline the caller may reach, or refuse."""
+    valid_uuid(pipeline_id, "pipeline id", "Call listPipelines to see valid ids.")
     pipeline = Pipeline.objects.for_user(context.user).filter(id=pipeline_id).first()
     if pipeline is None:
         raise MCPToolError(

@@ -14,8 +14,10 @@ view keeps one code path, and keeps its permission and sharing checks.
 import logging
 from typing import Any
 
+from django.http import Http404
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+from rest_framework.exceptions import APIException
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
@@ -31,6 +33,9 @@ def _resolve_project(context: PlatformMCPContext, project_id: str) -> CustomTool
     but failing here produces a message the agent can act on rather than a
     404 surfaced as an unexpected error.
     """
+    from mcp_server.tools.platform import valid_uuid
+
+    valid_uuid(project_id, "project id", "Call listPromptStudioProjects for valid ids.")
     project = CustomTool.objects.for_user(context.user).filter(tool_id=project_id).first()
     if project is None:
         raise MCPToolError(
@@ -74,11 +79,40 @@ def _dispatch(context: PlatformMCPContext, action: str, project_id: str, payload
         # get_object()/get_serializer() read self.request and self.kwargs["pk"];
         # format_kwarg is what DRF's content negotiation path expects to exist.
         view_instance.format_kwarg = None
+        # `action` is normally set by ViewSetMixin.initialize_request, which
+        # only as_view() invokes. Without it get_queryset() raises
+        # AttributeError on `self.action == "list"` — every one of these tools
+        # calls get_object(), so omitting it fails all four, after the
+        # non-refundable budget has already been claimed.
+        view_instance.action = action
         response = getattr(view_instance, action)(request, pk=project_id)
+    except (APIException, Http404) as error:
+        # dispatch() would have run these through handle_exception() and
+        # returned a non-2xx Response. Bypassing it means get_object()'s Http404
+        # and check_object_permissions' PermissionDenied would escape as raw
+        # exceptions instead, which _result documents as being returned as data.
+        response = _exception_response(error)
     finally:
         request._full_data = original_data
 
     return response
+
+
+def _exception_response(error: Exception):
+    """Render a DRF exception the way ``dispatch`` would have.
+
+    Not a full ``handle_exception``: authentication challenges and throttling
+    headers are irrelevant here because the MCP transport already authenticated
+    the caller. What matters is that the view's own refusals stay readable to
+    the agent rather than becoming an opaque transport failure.
+    """
+    from rest_framework.response import Response
+
+    if isinstance(error, Http404):
+        return Response({"detail": "Not found."}, status=404)
+
+    detail = getattr(error, "detail", str(error))
+    return Response({"detail": detail}, status=getattr(error, "status_code", 500))
 
 
 def _result(response, project: CustomTool) -> dict[str, Any]:
