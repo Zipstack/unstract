@@ -33,12 +33,30 @@ function Calendar({
         // and this renders inside a popover whose own width is what matters —
         // on a wide screen the months still stacked, making the popover 250px
         // wide and ~700px tall, which ran off the bottom of the window.
-        months: "flex flex-row gap-4",
-        // `relative` anchors the absolutely-positioned prev/next buttons to
-        // each month rather than to the page.
-        month: "relative flex flex-col gap-4",
+        /*
+         * `relative` here, NOT on `month`. react-day-picker renders ONE nav for
+         * the whole calendar, so anchoring the absolute prev/next buttons to
+         * `.month` pinned both of them to the FIRST month — with
+         * `numberOfMonths={2}` the "next" arrow landed mid-popover instead of
+         * at the right edge. antd puts one pair at each outer edge.
+         */
+        months: "relative flex flex-row gap-4",
+        month: "flex flex-col gap-4",
         month_caption: "flex items-center justify-center pt-1",
         caption_label: "text-sm font-medium",
+        /*
+         * `captionLayout="dropdown"` swaps the caption for month/year selects
+         * (antd's clickable month and year buttons). react-day-picker ships no
+         * styles, so without these the selects render as raw browser controls.
+         */
+        dropdowns: "flex items-center gap-1 text-sm font-medium",
+        dropdown_root: "relative inline-flex items-center",
+        dropdown: cn(
+          "cursor-pointer appearance-none rounded-md border border-input",
+          "bg-transparent py-0.5 pl-1.5 pr-5 text-sm font-medium",
+          "hover:bg-accent focus-visible:outline-none focus-visible:ring-1",
+          "focus-visible:ring-ring",
+        ),
         nav: "flex items-center gap-1",
         button_previous: cn(
           "absolute left-1 top-3 z-10 inline-flex size-7 items-center justify-center",

@@ -469,7 +469,7 @@ const RangePicker = React.forwardRef<HTMLDivElement, RangePickerProps>(
               type="button"
               disabled={disabled}
               className={cn(
-                "ant-picker ant-picker-range inline-flex h-9 cursor-pointer items-center gap-2",
+                "ant-picker ant-picker-range inline-flex h-9 max-w-full cursor-pointer items-center gap-2",
                 "rounded-md border border-input bg-transparent px-3 py-1",
                 "text-sm shadow-sm transition-colors",
                 "hover:bg-accent hover:text-accent-foreground",
@@ -479,7 +479,14 @@ const RangePicker = React.forwardRef<HTMLDivElement, RangePickerProps>(
               )}
             >
               <CalendarIcon className="size-4 shrink-0" aria-hidden="true" />
-              <span className="whitespace-nowrap">{label}</span>
+              {/*
+               * `min-w-0` + `truncate`, not a bare `whitespace-nowrap`. With
+               * `showTime` the label carries full timestamps
+               * ("2026-07-02T00:00  →  2026-08-01T23:59"), and a nowrap span
+               * with no min-width floor forces the button past its container —
+               * the Logs filter row broke apart as soon as a range was picked.
+               */}
+              <span className="min-w-0 truncate">{label}</span>
             </button>
           </PopoverTrigger>
           <PopoverContent className="w-auto p-0" align="end">
@@ -523,6 +530,16 @@ const RangePicker = React.forwardRef<HTMLDivElement, RangePickerProps>(
                 selected={selectedRange}
                 onSelect={handleSelect}
                 disabled={isDayDisabled}
+                /*
+                 * antd's header offers a YEAR jump as well as a month one: a
+                 * `super-prev`/`super-next` pair plus clickable month and year
+                 * buttons. The arrows here step by month only, so picking a
+                 * date a year out meant twelve clicks. Dropdown captions give
+                 * back the direct month AND year selection.
+                 */
+                captionLayout="dropdown"
+                startMonth={new Date(new Date().getFullYear() - 5, 0)}
+                endMonth={new Date(new Date().getFullYear() + 5, 11)}
               />
             </div>
           </PopoverContent>
