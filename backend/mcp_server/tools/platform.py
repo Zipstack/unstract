@@ -17,7 +17,6 @@ existing permission tier — see ``MCPTool.required_method``.
 """
 
 import logging
-import uuid
 from typing import Any
 
 from api_v2.models import APIDeployment
@@ -28,13 +27,14 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from mcp_server import spend_guard
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.sanitize import (
+    LIST_LIMIT,
+    redact_structure,
+    truncation_note,
+    valid_uuid,
+)
 
 logger = logging.getLogger(__name__)
-
-# Listings are bounded so a large organization cannot blow up an agent's
-# context window. Chosen to comfortably cover real orgs while still being a
-# ceiling; tools report when they hit it rather than truncating silently.
-LIST_LIMIT = 100
 
 
 def no_args_schema() -> dict[str, Any]:
@@ -49,43 +49,6 @@ _ORG_WIDE_WARNING = (
     "organization, not only those shared with a particular user. Confirm you "
     "have the right target before calling."
 )
-
-
-def valid_uuid(value: str, field: str, hint: str) -> str:
-    """Reject a malformed id before it reaches a UUID-typed ORM filter.
-
-    Filtering a UUID column by an unparseable string raises Django's
-    ``ValidationError`` from the field itself, *before* the ``is None`` check
-    each call site writes — so the agent gets a generic failure instead of the
-    actionable message the site already prepared, and on the preflight path it
-    escaped the JSON-RPC envelope entirely.
-
-    Returns the value unchanged so it can be used inline.
-    """
-    try:
-        uuid.UUID(str(value))
-    except (ValueError, AttributeError, TypeError) as error:
-        raise MCPToolError(
-            f"'{value}' is not a valid {field}. Expected a UUID. {hint}"
-        ) from error
-    return value
-
-
-def _truncation_note(shown: int, total: int) -> dict[str, Any]:
-    """Describe a capped listing, or nothing when it was complete.
-
-    Silent truncation would read to an agent as "this is everything", which is
-    exactly the sort of wrong premise it would then build on.
-    """
-    if total <= shown:
-        return {}
-    return {
-        "truncated": True,
-        "note": (
-            f"Showing {shown} of {total}. Narrow the question or use the "
-            "Unstract UI to see the rest."
-        ),
-    }
 
 
 def platform_read_me_first(context: PlatformMCPContext) -> dict[str, Any]:
@@ -293,7 +256,7 @@ def list_api_deployments(context: PlatformMCPContext) -> dict[str, Any]:
             }
             for row in rows
         ],
-        **_truncation_note(len(rows), total),
+        **truncation_note(len(rows), total),
     }
 
 
@@ -314,7 +277,7 @@ def list_workflows(context: PlatformMCPContext) -> dict[str, Any]:
             }
             for row in rows
         ],
-        **_truncation_note(len(rows), total),
+        **truncation_note(len(rows), total),
     }
 
 
@@ -334,7 +297,7 @@ def list_prompt_studio_projects(context: PlatformMCPContext) -> dict[str, Any]:
             }
             for row in rows
         ],
-        **_truncation_note(len(rows), total),
+        **truncation_note(len(rows), total),
     }
 
 
@@ -356,7 +319,7 @@ def list_pipelines(context: PlatformMCPContext) -> dict[str, Any]:
             }
             for row in rows
         ],
-        **_truncation_note(len(rows), total),
+        **truncation_note(len(rows), total),
     }
 
 
@@ -500,8 +463,6 @@ def execute_pipeline(context: PlatformMCPContext, pipeline_id: str) -> dict[str,
     response = PipelineManager.execute_pipeline(
         request=context.request, pipeline_id=str(pipeline.id)
     )
-
-    from mcp_server.tools.observability import redact_structure
 
     return {
         "pipeline_id": str(pipeline.id),

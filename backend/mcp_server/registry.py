@@ -77,21 +77,14 @@ class MCPToolRegistry:
     Ordering is preserved so `tools/list` presents tools in the order they were
     registered; agents weight earlier tools more heavily, and `readMeFirst`
     needs to come first.
-
-    ``tier_gated`` marks a registry whose server re-applies the key's
-    permission tier per tool (``PlatformMCPView.check_tool_allowed``). Only
-    there does ``required_method`` carry authorization weight, so only there is
-    the write/method invariant enforced — the deployment server's key has no
-    tiers, and its ``extractDocument`` legitimately leaves the default.
     """
 
     _tools: dict[str, MCPTool] = field(default_factory=dict)
-    tier_gated: bool = False
 
     def register(self, tool: MCPTool) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Duplicate MCP tool registration: '{tool.name}'")
-        if self.tier_gated and tool.writes and tool.required_method == "GET":
+        if tool.writes and tool.required_method == "GET":
             # `writes` and `required_method` are independent fields, so
             # MCPTool(..., writes=True) silently keeps the "GET" default — and
             # ApiKeyPermission.allows("GET") is true for *every* tier, so
@@ -184,6 +177,10 @@ def build_deployment_registry() -> MCPToolRegistry:
             input_schema=extract_document_schema(),
             handler=extract_document,
             writes=True,
+            # The deployment server has no tiers, so nothing reads this here —
+            # but declaring it truthfully lets the write/method invariant in
+            # `register` be unconditional rather than opt-in.
+            required_method="POST",
         )
     )
     registry.register(
@@ -276,10 +273,7 @@ def build_platform_registry() -> MCPToolRegistry:
         single_pass_extraction_schema,
     )
 
-    # Tier-gated: this server re-applies the platform key's permission tier
-    # per tool, so `required_method` is load-bearing and a write tool left at
-    # the "GET" default is refused at registration.
-    registry = MCPToolRegistry(tier_gated=True)
+    registry = MCPToolRegistry()
 
     registry.register(
         MCPTool(

@@ -16,7 +16,7 @@ import json
 
 from django.test import SimpleTestCase
 
-from mcp_server.tools.observability import redact_secrets, redact_structure
+from mcp_server.sanitize import redact_secrets, redact_structure
 
 
 class RedactSecretsTest(SimpleTestCase):
@@ -81,6 +81,47 @@ class RedactSecretsTest(SimpleTestCase):
         for leaked in ("one", "two", "three"):
             assert f"={leaked}" not in out
         assert out.count("[REDACTED]") == 3
+
+
+class SecretAnchorTest(SimpleTestCase):
+    """The literal pre-filter must never change what redaction produces.
+
+    ``redact_secrets`` skips its regex passes when none of ``_SECRET_ANCHORS``
+    appears in the text. That is a pure speed optimisation — it walks every
+    string in an execution result, including raw OCR text — so it is only safe
+    while every pattern genuinely requires one of those literals. A new pattern
+    added without its anchor would silently stop matching.
+    """
+
+    def _unfiltered(self, text: str) -> str:
+        from mcp_server.sanitize import _SECRET_PATTERNS
+
+        out = text
+        for pattern, replacement in _SECRET_PATTERNS:
+            out = pattern.sub(replacement, out)
+        return out
+
+    def test_every_pattern_is_reachable_through_the_anchors(self) -> None:
+        """One representative match per pattern, asserted equal both ways."""
+        cases = [
+            "Authorization: Bearer abcdef123456",
+            "connect failed: password=hunter2",
+            "auth error api_key=sk-abc123",
+            "api-key = sk-abc123",
+            "secret_access_key=AKIAIOSFODNN7EXAMPLE",
+            "bad token=eyJhbGciOi",
+            "could not connect to postgresql://admin:s3cr3tpw@db:5432/x",
+            "PASSWORD: hunter2",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                assert redact_secrets(text) == self._unfiltered(text)
+                assert "[REDACTED]" in redact_secrets(text)
+
+    def test_anchorless_text_is_returned_untouched(self) -> None:
+        text = "File not found: invoice-2024-03.pdf (no such object in bucket)"
+
+        assert redact_secrets(text) == self._unfiltered(text) == text
 
 
 class RedactStructureTest(SimpleTestCase):
@@ -149,9 +190,11 @@ class RedactStructureTest(SimpleTestCase):
         assert out[1] == "plain"
 
     def test_a_namedtuple_does_not_raise(self) -> None:
-        from collections import namedtuple
+        from typing import NamedTuple
 
-        Row = namedtuple("Row", ["secret", "name"])
+        class Row(NamedTuple):
+            secret: str
+            name: str
 
         out = redact_structure(Row(secret="password=hunter2", name="a.pdf"))
 
@@ -278,7 +321,11 @@ class WriteToolRedactionCallSitesTest(SimpleTestCase):
             ),
             patch(
                 "mcp_server.tools.execution.ExecutionRequestSerializer.validated_data",
-                {"presigned_urls": ["https://x.s3.amazonaws.com/a.pdf?X-Amz-Signature=z"]},
+                {
+                    "presigned_urls": [
+                        "https://x.s3.amazonaws.com/a.pdf?X-Amz-Signature=z"
+                    ]
+                },
             ),
             patch(
                 "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
@@ -313,9 +360,7 @@ class WriteToolRedactionCallSitesTest(SimpleTestCase):
         pipeline.pipeline_name = "P"
 
         with (
-            patch(
-                "mcp_server.tools.platform._resolve_pipeline", return_value=pipeline
-            ),
+            patch("mcp_server.tools.platform._resolve_pipeline", return_value=pipeline),
             patch(
                 "pipeline_v2.manager.PipelineManager.execute_pipeline",
                 return_value=response,

@@ -124,9 +124,7 @@ class NoCredentialLeakTest(TestCase):
         self.project = CustomTool.objects.create(
             tool_name="Leak Prompts", description="d", author="acme"
         )
-        DocumentManager.objects.create(
-            document_name="leak-doc.pdf", tool=self.project
-        )
+        DocumentManager.objects.create(document_name="leak-doc.pdf", tool=self.project)
         # The webhook URL carries a canary because ToolStudioPrompt is the one
         # model in this sweep with a credential-bearing field that is not a
         # connector or adapter — a serializer-built response would carry it

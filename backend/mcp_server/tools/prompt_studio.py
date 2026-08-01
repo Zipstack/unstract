@@ -18,11 +18,22 @@ from django.http import Http404
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from rest_framework.exceptions import APIException
+from rest_framework.response import Response
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.sanitize import redact_structure, valid_uuid
 
 logger = logging.getLogger(__name__)
+
+# Payload fields that reach a UUID-typed lookup in the delegated view, mapped to
+# the label and next-step hint their refusal should carry. `id` is the view's
+# name for what the tool calls `prompt_id`.
+_UUID_FIELDS = {
+    "document_id": ("document id", "Call listPromptStudioDocuments for valid ids."),
+    "id": ("prompt id", "Call listPrompts for valid ids."),
+    "profile_manager": ("profile id", "Omit it to use the project default."),
+}
 
 
 def _resolve_project(context: PlatformMCPContext, project_id: str) -> CustomTool:
@@ -33,8 +44,6 @@ def _resolve_project(context: PlatformMCPContext, project_id: str) -> CustomTool
     but failing here produces a message the agent can act on rather than a
     404 surfaced as an unexpected error.
     """
-    from mcp_server.tools.platform import valid_uuid
-
     valid_uuid(project_id, "project id", "Call listPromptStudioProjects for valid ids.")
     project = CustomTool.objects.for_user(context.user).filter(tool_id=project_id).first()
     if project is None:
@@ -65,13 +74,6 @@ def _dispatch(context: PlatformMCPContext, action: str, project_id: str, payload
     # Http404, so it escapes the arm below and reaches the client as an opaque
     # failure, with the non-refundable budget already claimed. Guarding here
     # covers every tool rather than repeating it at six call sites.
-    from mcp_server.tools.platform import valid_uuid
-
-    _UUID_FIELDS = {
-        "document_id": ("document id", "Call listPromptStudioDocuments for valid ids."),
-        "id": ("prompt id", "Call listPrompts for valid ids."),
-        "profile_manager": ("profile id", "Omit it to use the project default."),
-    }
     for field, (label, hint) in _UUID_FIELDS.items():
         if payload.get(field):
             valid_uuid(payload[field], label, hint)
@@ -132,8 +134,6 @@ def _exception_response(error: Exception):
     tool result and leave no operator signal at all. Before this arm existed
     they reached the transport's own ``logger.exception``.
     """
-    from rest_framework.response import Response
-
     if isinstance(error, Http404):
         return Response({"detail": "Not found."}, status=404)
 
@@ -152,8 +152,6 @@ def _result(response, project: CustomTool) -> dict[str, Any]:
     error bodies (a missing prompt id, an unindexed document) are precisely
     what the agent needs to correct its next call.
     """
-    from mcp_server.tools.observability import redact_structure
-
     status_code = getattr(response, "status_code", None)
     data = getattr(response, "data", None)
     ok = status_code is not None and 200 <= status_code < 300

@@ -272,9 +272,7 @@ class GetExecutionStatusTest(SimpleTestCase):
                     "execution_id": EXECUTION_ID,
                     "include_metadata": kwargs.get("include_metadata", False),
                     "include_metrics": kwargs.get("include_metrics", False),
-                    "include_extracted_text": kwargs.get(
-                        "include_extracted_text", False
-                    ),
+                    "include_extracted_text": kwargs.get("include_extracted_text", False),
                 },
             ),
             patch(

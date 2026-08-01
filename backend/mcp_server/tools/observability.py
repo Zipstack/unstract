@@ -14,7 +14,6 @@ enforces this across the whole registry.
 """
 
 import logging
-import re
 from typing import Any
 
 from usage_v2.models import Usage
@@ -24,6 +23,12 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.sanitize import (
+    LIST_LIMIT,
+    redact_secrets,
+    truncation_note,
+    valid_uuid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,102 +36,6 @@ logger = logging.getLogger(__name__)
 # happened" wants the recent tail rather than the archive.
 EXECUTION_LIMIT = 25
 LOG_LIMIT = 100
-
-
-# Error text from a failed execution is one of the few places a secret can
-# reach an agent without any tool asking for it: a connector that fails to
-# connect may report the connection string it tried, and a provider client may
-# echo the key it authenticated with. These patterns catch the common shapes.
-_REDACTED = "[REDACTED]"
-
-# Each entry is (pattern, replacement). The replacement keeps the surrounding
-# context — the key name, the URL prefix — so the message stays diagnosable
-# while the value itself is gone.
-_SECRET_PATTERNS = (
-    # Bearer tokens first: "Authorization: Bearer <token>" would otherwise be
-    # consumed by the key=value rule below, which would mask the word "Bearer"
-    # and leave the token itself in place.
-    (
-        re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._\-]{8,})"),
-        rf"\1{_REDACTED}",
-    ),
-    # key=value / key: value, where the key looks credential-ish. Stops at
-    # whitespace, quote or delimiter so the rest of the message survives.
-    (
-        re.compile(
-            r"(?i)\b(password|passwd|pwd|secret|secret_access_key|access_key|"
-            r"api[_-]?key|token|authorization|credential)"
-            r"(\s*[=:]\s*)"
-            r"([^\s,;'\"&)}\]]+)"
-        ),
-        rf"\1\2{_REDACTED}",
-    ),
-    # Credentials embedded in a URL: scheme://user:secret@host
-    (
-        re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]+:)([^\s@]+)(@)"),
-        rf"\1{_REDACTED}\3",
-    ),
-)
-
-
-def redact_secrets(text: str | None) -> str | None:
-    """Mask credential-shaped substrings in free-form text.
-
-    Applied to the free-form error fields the observability tools read off
-    execution records (``error_message``, ``execution_error``), and — via
-    ``redact_structure`` — to upstream payloads that this app does not itself
-    assemble field by field. Execution errors are one of the few places a
-    secret reaches an agent without any tool asking for it: a connector that
-    fails to connect may report the connection string it tried, and a provider
-    client may echo the key it authenticated with.
-
-    **``MCPToolError`` messages are not automatically redacted.** A raise site
-    interpolating upstream text — ``raise MCPToolError(f"...{error}")`` — must
-    call this itself; the transport returns that message to the agent verbatim.
-
-    This is a safety net, not a guarantee — it cannot recognise a secret that
-    looks like ordinary prose — so it complements the rule that structured
-    fields are named explicitly rather than replacing it.
-    """
-    if not text:
-        return text
-
-    redacted = text
-    for pattern, replacement in _SECRET_PATTERNS:
-        redacted = pattern.sub(replacement, redacted)
-    return redacted
-
-
-def redact_structure(value: Any) -> Any:
-    """Apply ``redact_secrets`` to every string inside a nested structure.
-
-    Most tools serialize named fields, so what they return is known. The ones
-    that **delegate** do not: the Prompt Studio tools, ``executePipeline`` and
-    ``extractDocument`` hand back whatever the view or execution helper produced
-    — ``response.data`` including non-2xx error bodies, and raw execution
-    results — which can carry a failed connector's error text verbatim. Those
-    paths get the same net the error fields get. (``setApiDeploymentActive`` and
-    ``setPipelineActive`` write too, but build named fields, so they do not.)
-
-    Containers are rebuilt rather than mutated, so a caller's queryset row or
-    cached dict is never altered as a side effect of being reported. Sequences
-    come back as plain lists — see the comment below for why the input subclass
-    is deliberately not preserved.
-    """
-    if isinstance(value, str):
-        return redact_secrets(value)
-    if isinstance(value, dict):
-        return {key: redact_structure(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        # Plain containers, deliberately not `type(value)(...)`. Rebuilding the
-        # exact subclass breaks on anything whose __init__ is not "an iterable":
-        # DRF's ReturnList requires a `serializer` kwarg, and a namedtuple takes
-        # positional fields. Either would raise here — on the *return* path of a
-        # billable tool, after the budget was spent and the upstream work paid
-        # for. The result is json.dumps-ed by the transport, so the subclass buys
-        # nothing.
-        return [redact_structure(item) for item in value]
-    return value
 
 
 def _org_workflow_ids(context: PlatformMCPContext) -> list[Any]:
@@ -240,8 +149,6 @@ def get_execution_detail(
     context: PlatformMCPContext, execution_id: str
 ) -> dict[str, Any]:
     """Per-file detail for one execution — which files failed, and why."""
-    from mcp_server.tools.platform import valid_uuid
-
     valid_uuid(execution_id, "execution id", "Call listExecutions for valid ids.")
 
     visible = _org_workflow_ids(context)
@@ -372,8 +279,6 @@ def list_tags(context: PlatformMCPContext) -> dict[str, Any]:
     """List the organization's execution tags."""
     from tags.models import Tag
 
-    from mcp_server.tools.platform import LIST_LIMIT, _truncation_note
-
     queryset = Tag.objects.all().order_by("name")
     total = queryset.count()
     rows = queryset[:LIST_LIMIT]
@@ -386,7 +291,7 @@ def list_tags(context: PlatformMCPContext) -> dict[str, Any]:
         ],
         # Without this a capped listing reads to the agent as the complete set,
         # which is exactly the wrong premise for it to build on.
-        **_truncation_note(len(rows), total),
+        **truncation_note(len(rows), total),
     }
 
 

@@ -86,7 +86,7 @@ class SpendGuardTest(SimpleTestCase):
         assert "3" in message  # the limit is named
 
     def test_peek_does_not_consume(self) -> None:
-        """whoami calls peek; surfacing the budget must not spend it."""
+        """Whoami calls peek; surfacing the budget must not spend it."""
         spend_guard.consume(ORG)
 
         before = spend_guard.peek(ORG)
@@ -167,7 +167,7 @@ class SpendGuardTest(SimpleTestCase):
         assert state.allowed is True
 
     def test_peek_also_fails_open(self) -> None:
-        """whoami reports the budget, so an unreachable cache must not break it."""
+        """Whoami reports the budget, so an unreachable cache must not break it."""
         broken = Mock()
         broken.get.side_effect = redis.ConnectionError("redis down")
         with patch("mcp_server.spend_guard.get_cache", return_value=broken):
@@ -190,7 +190,9 @@ class SpendGuardEnforcementTest(SimpleTestCase):
 
     def test_only_billable_tools_consume_budget(self) -> None:
         for _ in range(5):
-            assert self.view.check_spend_allowed(a_tool(billable=False), context()) is None
+            assert (
+                self.view.check_spend_allowed(a_tool(billable=False), context()) is None
+            )
 
         assert spend_guard.peek(ORG).used == 0
 

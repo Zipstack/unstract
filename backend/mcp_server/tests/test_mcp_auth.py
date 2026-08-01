@@ -65,11 +65,15 @@ class MCPServerAuthTest(TestCase):
         path_key: str | None = None,
     ):
         headers = {"HTTP_AUTHORIZATION": auth} if auth is not None else {}
-        body = payload if payload is not None else {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-        }
+        body = (
+            payload
+            if payload is not None
+            else {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+            }
+        )
         request = self.factory.post(
             f"/deployment/api/{org}/{api_name}/mcp", body, format="json", **headers
         )

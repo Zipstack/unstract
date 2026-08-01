@@ -18,8 +18,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
-from mcp_server.tools.observability import redact_secrets, redact_structure
-from mcp_server.tools.platform import valid_uuid
+from mcp_server.sanitize import redact_secrets, redact_structure, valid_uuid
 
 logger = logging.getLogger(__name__)
 

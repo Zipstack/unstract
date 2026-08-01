@@ -64,9 +64,7 @@ class PlatformTierGuardTest(SimpleTestCase):
         ]
         for tier, method, allowed in cases:
             with self.subTest(f"{tier} -> {method}"):
-                refusal = self.view.check_tool_allowed(
-                    a_tool(method), context_for(tier)
-                )
+                refusal = self.view.check_tool_allowed(a_tool(method), context_for(tier))
                 assert (refusal is None) == allowed, (
                     f"{tier} {method}: expected allowed={allowed}, got {refusal!r}"
                 )
@@ -75,7 +73,9 @@ class PlatformTierGuardTest(SimpleTestCase):
         """The refusal is read by an agent, which should be able to tell its
         operator what to change rather than just retrying.
         """
-        refusal = self.view.check_tool_allowed(a_tool("DELETE"), context_for("read_write"))
+        refusal = self.view.check_tool_allowed(
+            a_tool("DELETE"), context_for("read_write")
+        )
 
         assert "doThing" in refusal
         assert "DELETE" in refusal
@@ -115,7 +115,7 @@ class PlatformTierGuardTest(SimpleTestCase):
         """
         from mcp_server.registry import MCPToolRegistry
 
-        registry = MCPToolRegistry(tier_gated=True)
+        registry = MCPToolRegistry()
 
         with self.assertRaises(ValueError) as caught:
             registry.register(
@@ -130,11 +130,13 @@ class PlatformTierGuardTest(SimpleTestCase):
 
         assert "required_method='GET'" in str(caught.exception)
 
-    def test_the_deployment_registry_is_not_tier_gated(self) -> None:
-        """The deployment server's key has no tiers, so `required_method`
-        carries no authorization weight there — and `extractDocument`
-        legitimately leaves it at the default. Enforcing the invariant on that
-        registry would reject a correct tool.
+    def test_a_truthfully_declared_write_tool_registers(self) -> None:
+        """The invariant is satisfiable, not merely restrictive.
+
+        It applies to both registries. The deployment server has no tiers — it
+        does not override ``check_tool_allowed``, so ``required_method`` is
+        unread there — but declaring it truthfully costs nothing and keeps the
+        check unconditional rather than opt-in.
         """
         from mcp_server.registry import MCPToolRegistry
 
@@ -147,6 +149,7 @@ class PlatformTierGuardTest(SimpleTestCase):
                 input_schema={},
                 handler=lambda context: None,
                 writes=True,
+                required_method="POST",
             )
         )
 

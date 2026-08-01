@@ -23,7 +23,7 @@ from rest_framework.test import APIRequestFactory
 from mcp_server.constants import JSONRPC
 from mcp_server.exceptions import MCPToolError
 from mcp_server.registry import MCPTool, MCPToolRegistry
-from mcp_server.tools.platform import valid_uuid
+from mcp_server.sanitize import valid_uuid
 from mcp_server.transport import BaseMCPView
 
 GOOD_UUID = "88888888-8888-8888-8888-888888888888"
@@ -137,9 +137,7 @@ class TransportEnvelopeGuardTest(SimpleTestCase):
 
     def test_a_scalar_params_is_also_refused(self) -> None:
         response = self._post(
-            json.dumps(
-                {"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": "x"}
-            )
+            json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": "x"})
         )
         body = json.loads(response.content)
 

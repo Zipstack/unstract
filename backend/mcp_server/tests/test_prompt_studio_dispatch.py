@@ -35,9 +35,9 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+from django.http import Http404
 from django.test import SimpleTestCase
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
-from django.http import Http404
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request
@@ -126,10 +126,16 @@ class RecordingView(PromptStudioCoreView):
 
 
 class PromptStudioDispatchTest(SimpleTestCase):
-    def _run(self, tool, **kwargs):
-        """Invoke a tool against the real view, returning what the action saw."""
+    def _run(self, tool, view_class=None, **kwargs):
+        """Invoke a tool against a real view subclass.
+
+        ``view_class`` swaps in a stub whose action raises, for the error-path
+        tests; everything else about the dispatch is unchanged. Returns what the
+        action observed alongside the tool's own result.
+        """
         RecordingView.seen = {}
         request = build_request()
+        self.request = request
 
         context = MagicMock()
         context.request = request
@@ -141,12 +147,12 @@ class PromptStudioDispatchTest(SimpleTestCase):
                 return_value=FakeProject(),
             ),
             patch(
-                "mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView
+                "mcp_server.tools.prompt_studio.PromptStudioCoreView",
+                view_class or RecordingView,
             ),
         ):
             result = tool(context, project_id=PROJECT_ID, **kwargs)
 
-        self.request = request
         return dict(RecordingView.seen), result
 
     def test_index_document_delivers_document_id(self) -> None:
@@ -158,9 +164,7 @@ class PromptStudioDispatchTest(SimpleTestCase):
         assert result["ok"] is True
 
     def test_fetch_response_delivers_prompt_and_document(self) -> None:
-        seen, _ = self._run(
-            fetch_response, document_id=DOCUMENT_ID, prompt_id=PROMPT_ID
-        )
+        seen, _ = self._run(fetch_response, document_id=DOCUMENT_ID, prompt_id=PROMPT_ID)
 
         # The view names this field `id`, not `prompt_id`; the mapping is the
         # kind of thing only an executed test catches.
@@ -229,27 +233,15 @@ class PromptStudioDispatchTest(SimpleTestCase):
 
     def test_dispatch_restores_request_data_after_a_failure(self) -> None:
         """Restoration is in a finally, so a raising view does not leak it."""
-        request = build_request()
-
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
 
         class Exploding(RecordingView):
             def index_document(self, req, pk=None):
                 raise RuntimeError("view exploded")
 
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Exploding),
-        ):
-            with self.assertRaises(RuntimeError):
-                index_document(context, project_id=PROJECT_ID, document_id=DOCUMENT_ID)
+        with self.assertRaises(RuntimeError):
+            self._run(index_document, view_class=Exploding, document_id=DOCUMENT_ID)
 
-        assert request._full_data == ENVELOPE
+        assert self.request._full_data == ENVELOPE
 
     def test_a_view_refusal_is_returned_as_data(self) -> None:
         """Http404/APIException must not escape as a raw exception.
@@ -260,52 +252,26 @@ class PromptStudioDispatchTest(SimpleTestCase):
         so an escaping exception would become an opaque TOOL_EXECUTION_ERROR
         with the budget already spent.
         """
-        request = build_request()
-
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
 
         class Refusing(RecordingView):
             def index_document(self, req, pk=None):
                 raise Http404
 
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Refusing),
-        ):
-            result = index_document(
-                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
-            )
+        _, result = self._run(
+            index_document, view_class=Refusing, document_id=DOCUMENT_ID
+        )
 
         assert result["ok"] is False
         assert result["status"] == 404
 
     def test_a_permission_denial_is_returned_as_data(self) -> None:
         """Same for check_object_permissions' PermissionDenied."""
-        request = build_request()
-
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
 
         class Denying(RecordingView):
             def index_document(self, req, pk=None):
                 raise PermissionDenied("nope")
 
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Denying),
-        ):
-            result = index_document(
-                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
-            )
+        _, result = self._run(index_document, view_class=Denying, document_id=DOCUMENT_ID)
 
         assert result["ok"] is False
         assert result["status"] == 403
@@ -323,9 +289,7 @@ class PromptStudioDispatchTest(SimpleTestCase):
             return_value=FakeProject(),
         ):
             with self.assertRaises(MCPToolError):
-                index_document(
-                    context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
-                )
+                index_document(context, project_id=PROJECT_ID, document_id=DOCUMENT_ID)
 
     def test_a_server_fault_is_logged_and_not_sold_as_an_argument_error(self) -> None:
         """A 5xx from the view must not read to the agent as "your fault".
@@ -338,25 +302,13 @@ class PromptStudioDispatchTest(SimpleTestCase):
         """
         from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
 
-        request = build_request()
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
-
         class Failing(RecordingView):
             def index_document(self, req, pk=None):
                 raise IndexingAPIError("vector store unreachable")
 
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Failing),
-            patch("mcp_server.tools.prompt_studio.logger") as log,
-        ):
-            result = index_document(
-                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+        with patch("mcp_server.tools.prompt_studio.logger") as log:
+            _, result = self._run(
+                index_document, view_class=Failing, document_id=DOCUMENT_ID
             )
 
         assert result["status"] == 500
@@ -370,25 +322,13 @@ class PromptStudioDispatchTest(SimpleTestCase):
         """The distinction has to cut both ways, or it is just a rename."""
         from rest_framework.exceptions import ValidationError
 
-        request = build_request()
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
-
         class Rejecting(RecordingView):
             def index_document(self, req, pk=None):
                 raise ValidationError("document_id is required")
 
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Rejecting),
-            patch("mcp_server.tools.prompt_studio.logger") as log,
-        ):
-            result = index_document(
-                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+        with patch("mcp_server.tools.prompt_studio.logger") as log:
+            _, result = self._run(
+                index_document, view_class=Rejecting, document_id=DOCUMENT_ID
             )
 
         assert result["status"] == 400
@@ -404,68 +344,24 @@ class PromptStudioDispatchTest(SimpleTestCase):
         """
         from mcp_server.exceptions import MCPToolError
 
-        request = build_request()
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
-
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
-        ):
-            with self.assertRaises(MCPToolError) as caught:
-                index_document(
-                    context, project_id=PROJECT_ID, document_id="not-a-uuid"
-                )
+        with self.assertRaises(MCPToolError) as caught:
+            self._run(index_document, document_id="not-a-uuid")
 
         assert "not a valid document id" in str(caught.exception)
 
     def test_a_malformed_prompt_id_is_refused(self) -> None:
         from mcp_server.exceptions import MCPToolError
 
-        request = build_request()
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
-
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
-        ):
-            with self.assertRaises(MCPToolError):
-                fetch_response(
-                    context,
-                    project_id=PROJECT_ID,
-                    document_id=DOCUMENT_ID,
-                    prompt_id="oops",
-                )
+        with self.assertRaises(MCPToolError):
+            self._run(fetch_response, document_id=DOCUMENT_ID, prompt_id="oops")
 
     def test_a_malformed_id_in_prompt_ids_is_refused(self) -> None:
-        """bulkFetchResponse takes a list, so each element needs the guard."""
+        """BulkFetchResponse takes a list, so each element needs the guard."""
         from mcp_server.exceptions import MCPToolError
 
-        request = build_request()
-        context = MagicMock()
-        context.request = request
-        context.org_name = "org-mcp"
-
-        with (
-            patch(
-                "mcp_server.tools.prompt_studio._resolve_project",
-                return_value=FakeProject(),
-            ),
-            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
-        ):
-            with self.assertRaises(MCPToolError):
-                bulk_fetch_response(
-                    context,
-                    project_id=PROJECT_ID,
-                    document_id=DOCUMENT_ID,
-                    prompt_ids=[PROMPT_ID, "not-a-uuid"],
-                )
+        with self.assertRaises(MCPToolError):
+            self._run(
+                bulk_fetch_response,
+                document_id=DOCUMENT_ID,
+                prompt_ids=[PROMPT_ID, "not-a-uuid"],
+            )

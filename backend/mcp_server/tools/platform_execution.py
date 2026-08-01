@@ -32,6 +32,7 @@ from api_v2.models import APIDeployment
 
 from mcp_server.context import MCPContext, PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.sanitize import valid_uuid
 from mcp_server.tools.execution import (
     DEFAULT_TIMEOUT_SEC,
     extract_document,
@@ -213,7 +214,6 @@ def get_platform_execution_status(
 
     from mcp_server.tools.execution import get_execution_status
     from mcp_server.tools.observability import _org_workflow_ids
-    from mcp_server.tools.platform import valid_uuid
 
     valid_uuid(execution_id, "execution id", "Poll only ids returned by extractDocument.")
 
