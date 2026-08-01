@@ -75,6 +75,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
+    "test:ui": "playwright test",
+    "test:ui:install": "playwright install --with-deps chromium",
     "lint": "biome lint src/",
     "lint:fix": "biome lint --write src/",
     "format": "biome format src/",
@@ -99,6 +101,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
+    "@playwright/test": "^1.49.0",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4",

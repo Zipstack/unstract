@@ -19,7 +19,11 @@ from typing import Any, Literal, get_args
 import yaml
 
 Tier = Literal["unit", "integration", "e2e"]
-Runner = Literal["pytest", "hurl"]
+# `vitest` and `playwright` drive the frontend suites, which are Node projects
+# rather than Python ones: their `workdir` is `frontend`, they take no
+# `uv_sync_group`, and both emit real JUnit that `parse_junit` reads directly —
+# so unlike `hurl` they report per-test results, not one synthetic row.
+Runner = Literal["pytest", "hurl", "vitest", "playwright"]
 
 TIERS: tuple[Tier, ...] = get_args(Tier)
 RUNNERS: tuple[Runner, ...] = get_args(Runner)

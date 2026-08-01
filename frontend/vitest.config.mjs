@@ -65,5 +65,11 @@ export default defineConfig({
     // Tailwind v4's `@import "tailwindcss"` / `@plugin` at-rules are not
     // processable by vitest's CSS pipeline; stub CSS imports in tests.
     css: false,
+    /*
+     * `tests/ui` holds Playwright specs (the rig's `ui` group). Vitest's
+     * default glob matches `*.spec.js` anywhere, so without this it would
+     * collect them and fail on `@playwright/test` imports it cannot run.
+     */
+    exclude: ["**/node_modules/**", "**/dist/**", "**/build/**", "tests/ui/**"],
   },
 });
