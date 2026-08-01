@@ -20,7 +20,6 @@ from django.http import JsonResponse
 from rest_framework import status, views
 from rest_framework.exceptions import ParseError
 from rest_framework.request import Request
-from rest_framework.response import Response
 
 from mcp_server.constants import JSONRPC, MCPMethod, MCPServer
 from mcp_server.exceptions import MCPToolError

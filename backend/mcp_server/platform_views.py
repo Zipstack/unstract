@@ -55,12 +55,17 @@ class PlatformMCPServerView(BaseMCPView):
     permission_classes: list = []
 
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
-        """Skip CSRF.
+        """Skip CSRF, but only for a bearer-authenticated request.
 
-        The middleware already marks bearer-authenticated requests CSRF-exempt;
-        this makes the view's behaviour explicit rather than dependent on that.
+        The middleware already marks those CSRF-exempt; this makes the view's
+        behaviour explicit rather than dependent on that. Gating on the key
+        matters because ``CustomAuthMiddleware`` falls through to session auth
+        on this path — exempting unconditionally would let a logged-in browser
+        session reach the organization-wide write and billable surface with
+        CSRF off.
         """
-        request.csrf_processing_done = True
+        if getattr(request, "platform_api_key", None):
+            request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
 
     def auth_failure_message(self) -> str:

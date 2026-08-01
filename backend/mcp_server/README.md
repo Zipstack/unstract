@@ -287,14 +287,10 @@ than at a wall-clock boundary. `cache.add` initialises the counter without
 disturbing an in-flight window, and `cache.incr` is atomic, so concurrent
 requests cannot race past the limit.
 
-`MCP_REDIS_DB` selects the Redis DB and **defaults to `REDIS_DB`**, so out of
-the box MCP state shares the general cache DB and behaves like any other cache
-user — including honouring `override_settings(CACHES=...)` in tests. Set it only
-to move MCP state onto its own DB; the guard then builds a client for that DB,
-preferring a `CACHES["mcp"]` alias if one is configured. The knob exists so that
-move is available later without being a breaking change.
+Budget state lives in the project's shared Django cache, like every other cache
+user here — which also keeps `override_settings(CACHES=...)` working in tests.
 
-Note the consequence of the default: sharing DB 0 means a `FLUSHDB` or a
+Note the consequence: sharing the general cache DB means a `FLUSHDB` or a
 cache-wide eviction resets every organization's window. That is a fail-open
 outcome, consistent with the rest of the guard's design — this is a loop
 bound, not an audited ledger.

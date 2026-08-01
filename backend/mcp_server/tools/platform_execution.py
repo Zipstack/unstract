@@ -213,6 +213,9 @@ def get_platform_execution_status(
 
     from mcp_server.tools.execution import get_execution_status
     from mcp_server.tools.observability import _org_workflow_ids
+    from mcp_server.tools.platform import valid_uuid
+
+    valid_uuid(execution_id, "execution id", "Poll only ids returned by extractDocument.")
 
     visible = _org_workflow_ids(context)
     execution = (

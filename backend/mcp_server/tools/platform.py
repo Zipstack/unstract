@@ -17,6 +17,7 @@ existing permission tier — see ``MCPTool.required_method``.
 """
 
 import logging
+import uuid
 from typing import Any
 
 from api_v2.models import APIDeployment
@@ -48,6 +49,26 @@ _ORG_WIDE_WARNING = (
     "organization, not only those shared with a particular user. Confirm you "
     "have the right target before calling."
 )
+
+
+def valid_uuid(value: str, field: str, hint: str) -> str:
+    """Reject a malformed id before it reaches a UUID-typed ORM filter.
+
+    Filtering a UUID column by an unparseable string raises Django's
+    ``ValidationError`` from the field itself, *before* the ``is None`` check
+    each call site writes — so the agent gets a generic failure instead of the
+    actionable message the site already prepared, and on the preflight path it
+    escaped the JSON-RPC envelope entirely.
+
+    Returns the value unchanged so it can be used inline.
+    """
+    try:
+        uuid.UUID(str(value))
+    except (ValueError, AttributeError, TypeError) as error:
+        raise MCPToolError(
+            f"'{value}' is not a valid {field}. Expected a UUID. {hint}"
+        ) from error
+    return value
 
 
 def _truncation_note(shown: int, total: int) -> dict[str, Any]:

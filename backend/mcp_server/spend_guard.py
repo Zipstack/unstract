@@ -29,10 +29,23 @@ Two properties are deliberate and easy to get backwards:
 import logging
 from dataclasses import dataclass
 
+import redis
 from django.conf import settings
 from django.core.cache import cache as default_cache
 
 logger = logging.getLogger(__name__)
+
+# The failures the guard is willing to fail *open* on: the cache backend being
+# unreachable or misbehaving. Deliberately not bare `Exception` — that also
+# swallows TypeError, AttributeError and any future bug in this module, each of
+# which would silently unbudget every billable call in the deployment with only
+# a log line as signal. A real defect here should surface as a 500, not as an
+# invisibly disabled spend guard.
+#
+# ConnectionError/TimeoutError are the stdlib builtins that django-redis and
+# other backends surface for socket failures; redis.RedisError covers the
+# client's own hierarchy.
+CACHE_ERRORS = (redis.RedisError, ConnectionError, TimeoutError, OSError)
 
 # Key namespace. The window start is not encoded in the key: the TTL is what
 # expires the counter, giving a fixed window that begins at the first billable
@@ -44,60 +57,13 @@ def _key(org_id: str) -> str:
     return f"{_KEY_PREFIX}:{org_id}"
 
 
-def _default_redis_db() -> int:
-    """The DB the project's shared cache is configured to use."""
-    return int(getattr(settings, "REDIS_DB", "") or 0)
-
-
 def get_cache():
     """Return the cache client for MCP budget state.
 
-    ``MCP_REDIS_DB`` defaults to ``REDIS_DB``, so ordinarily this is just the
-    project's shared cache and everything behaves as any other cache user does
-    — including honouring ``override_settings(CACHES=...)`` in tests.
-
-    When the two differ, an operator has deliberately moved MCP state to its
-    own Redis DB. ``django.core.cache`` cannot express that (the DB is fixed by
-    ``CACHES``), so a dedicated client is built for that DB. This mirrors how
-    ``CacheService.clear_cache_optimized`` reaches the workers' DB: use the
-    Django cache by default, drop to a raw client only when a specific DB is
-    required.
+    The project's shared cache, like every other cache user here — which also
+    means ``override_settings(CACHES=...)`` works in tests.
     """
-    configured_db = int(getattr(settings, "MCP_REDIS_DB", _default_redis_db()))
-    if configured_db == _default_redis_db():
-        return default_cache
-
-    return _dedicated_cache(configured_db)
-
-
-def _dedicated_cache(db: int):
-    """Build a cache client pinned to ``db``.
-
-    Deliberately constructed per call rather than cached at import: settings can
-    change under ``override_settings`` in tests, and this path is only taken by
-    installations that opted into a separate DB, where one extra client
-    construction per billable call is immaterial next to the LLM call it guards.
-    """
-    from django.core.cache import caches
-    from django.core.cache.backends.base import InvalidCacheBackendError
-
-    # Prefer an explicitly configured alias if the operator added one; it lets
-    # them control pooling and auth the same way as the default cache.
-    try:
-        return caches["mcp"]
-    except InvalidCacheBackendError:
-        pass
-
-    from django_redis.cache import RedisCache
-
-    base = settings.CACHES["default"]
-    options = dict(base.get("OPTIONS", {}))
-    options["DB"] = db
-    location = base["LOCATION"]
-    if isinstance(location, str) and location.rsplit("/", 1)[-1].isdigit():
-        location = f"{location.rsplit('/', 1)[0]}/{db}"
-
-    return RedisCache(location, {**base, "OPTIONS": options})
+    return default_cache
 
 
 @dataclass(frozen=True)
@@ -145,7 +111,7 @@ def peek(org_id: str) -> BudgetState:
     window = get_window_seconds()
     try:
         used = get_cache().get(_key(org_id)) or 0
-    except Exception as error:
+    except CACHE_ERRORS as error:
         # Reporting the budget must never be the thing that breaks whoami —
         # `consume` fails open for the same reason, and a read is even less
         # load-bearing than a claim.
@@ -180,9 +146,20 @@ def consume(org_id: str) -> BudgetState:
     except ValueError:
         # The key expired between `add` and `incr`. Re-seed and count this call
         # as the first of a fresh window.
-        cache.set(key, 1, timeout=window)
+        try:
+            cache.set(key, 1, timeout=window)
+        except CACHE_ERRORS as error:
+            # Guarded for the same reason the outer handler is: an unguarded
+            # set here would fail *closed* — a 500 on a billable call — which
+            # is the opposite of this function's documented behaviour, and
+            # reachable whenever Redis drops during the add/incr race.
+            logger.error(
+                f"MCP spend guard unavailable for org '{org_id}' while re-seeding, "
+                f"allowing call: {error}"
+            )
+            return BudgetState(allowed=True, used=0, limit=limit, window_seconds=window)
         used = 1
-    except Exception as error:
+    except CACHE_ERRORS as error:
         logger.error(
             f"MCP spend guard unavailable for org '{org_id}', allowing call: {error}"
         )
@@ -194,7 +171,10 @@ def consume(org_id: str) -> BudgetState:
         ttl = None
         try:
             ttl = cache.ttl(key)
-        except Exception:
+        except (*CACHE_ERRORS, AttributeError, NotImplementedError):
+            # Cosmetic only: `ttl` sharpens the retry hint. AttributeError
+            # covers a backend without `.ttl` (LocMemCache in tests), which is
+            # not a fault worth failing a budget check over.
             pass
         logger.warning(
             f"MCP billable budget exhausted for org '{org_id}': {used}/{limit}"

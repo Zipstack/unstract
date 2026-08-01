@@ -201,6 +201,10 @@ def get_execution_detail(
     context: PlatformMCPContext, execution_id: str
 ) -> dict[str, Any]:
     """Per-file detail for one execution — which files failed, and why."""
+    from mcp_server.tools.platform import valid_uuid
+
+    valid_uuid(execution_id, "execution id", "Call listExecutions for valid ids.")
+
     visible = _org_workflow_ids(context)
     execution = WorkflowExecution.objects.filter(
         id=execution_id, workflow_id__in=visible
@@ -329,9 +333,11 @@ def list_tags(context: PlatformMCPContext) -> dict[str, Any]:
     """List the organization's execution tags."""
     from tags.models import Tag
 
+    from mcp_server.tools.platform import LIST_LIMIT, _truncation_note
+
     queryset = Tag.objects.all().order_by("name")
     total = queryset.count()
-    rows = queryset[:100]
+    rows = queryset[:LIST_LIMIT]
 
     return {
         "count": total,
@@ -339,6 +345,9 @@ def list_tags(context: PlatformMCPContext) -> dict[str, Any]:
             {"id": str(row.id), "name": row.name, "description": row.description or None}
             for row in rows
         ],
+        # Without this a capped listing reads to the agent as the complete set,
+        # which is exactly the wrong premise for it to build on.
+        **_truncation_note(len(rows), total),
     }
 
 

@@ -77,13 +77,39 @@ class MCPToolRegistry:
     Ordering is preserved so `tools/list` presents tools in the order they were
     registered; agents weight earlier tools more heavily, and `readMeFirst`
     needs to come first.
+
+    ``tier_gated`` marks a registry whose server re-applies the key's
+    permission tier per tool (``PlatformMCPView.check_tool_allowed``). Only
+    there does ``required_method`` carry authorization weight, so only there is
+    the write/method invariant enforced — the deployment server's key has no
+    tiers, and its ``extractDocument`` legitimately leaves the default.
     """
 
     _tools: dict[str, MCPTool] = field(default_factory=dict)
+    tier_gated: bool = False
 
     def register(self, tool: MCPTool) -> None:
         if tool.name in self._tools:
             raise ValueError(f"Duplicate MCP tool registration: '{tool.name}'")
+        if self.tier_gated and tool.writes and tool.required_method == "GET":
+            # `writes` and `required_method` are independent fields, so
+            # MCPTool(..., writes=True) silently keeps the "GET" default — and
+            # ApiKeyPermission.allows("GET") is true for *every* tier, so
+            # check_tool_allowed would wave the tool through for a read-only
+            # key. The unsafe pairing being the default is the wrong way round
+            # for the invariant the whole tier model rests on.
+            #
+            # Enforced at registration rather than only in a test: a tool
+            # declared wrongly cannot reach a running server, whereas a CI
+            # assertion can be deselected or simply not run on the branch that
+            # adds the tool.
+            raise ValueError(
+                f"MCP tool '{tool.name}' declares writes=True with "
+                "required_method='GET'. Every key tier allows GET, so the tier "
+                "guard would let a read-only key invoke it. Declare the method "
+                "the tool's REST equivalent would use — 'POST' for a mutation, "
+                "'DELETE' for a destructive operation."
+            )
         self._tools[tool.name] = tool
 
     def get(self, name: str) -> MCPTool | None:
@@ -250,7 +276,10 @@ def build_platform_registry() -> MCPToolRegistry:
         single_pass_extraction_schema,
     )
 
-    registry = MCPToolRegistry()
+    # Tier-gated: this server re-applies the platform key's permission tier
+    # per tool, so `required_method` is load-bearing and a write tool left at
+    # the "GET" default is refused at registration.
+    registry = MCPToolRegistry(tier_gated=True)
 
     registry.register(
         MCPTool(

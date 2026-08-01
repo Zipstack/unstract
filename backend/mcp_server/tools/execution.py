@@ -18,6 +18,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
+from mcp_server.tools.platform import valid_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -299,6 +300,10 @@ def get_execution_status(
     # could poll deployment B's execution — and, because a completed status
     # acknowledges the result and drops it from cache, destroy it for the
     # caller it belongs to.
+    # The serializer validates shape, not that the id parses as a UUID; a
+    # malformed one would raise ValidationError from the field below rather
+    # than the actionable message this function already writes.
+    valid_uuid(validated_id, "execution id", "Poll only ids returned by extractDocument.")
     execution = (
         WorkflowExecution.objects.filter(
             id=validated_id, workflow_id=context.api.workflow_id

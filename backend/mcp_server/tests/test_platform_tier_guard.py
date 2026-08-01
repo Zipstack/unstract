@@ -106,6 +106,52 @@ class PlatformTierGuardTest(SimpleTestCase):
             f"'GET', so the tier guard will not protect them: {unguarded}"
         )
 
+    def test_registering_an_unguarded_write_tool_is_refused(self) -> None:
+        """The invariant above is now enforced at registration, not only here.
+
+        A CI assertion can be deselected, or simply not run on the branch that
+        adds the tool; a registration-time refusal means a wrongly declared
+        tool cannot reach a running server at all.
+        """
+        from mcp_server.registry import MCPToolRegistry
+
+        registry = MCPToolRegistry(tier_gated=True)
+
+        with self.assertRaises(ValueError) as caught:
+            registry.register(
+                MCPTool(
+                    name="deleteEverything",
+                    description="",
+                    input_schema={},
+                    handler=lambda context: None,
+                    writes=True,
+                )
+            )
+
+        assert "required_method='GET'" in str(caught.exception)
+
+    def test_the_deployment_registry_is_not_tier_gated(self) -> None:
+        """The deployment server's key has no tiers, so `required_method`
+        carries no authorization weight there — and `extractDocument`
+        legitimately leaves it at the default. Enforcing the invariant on that
+        registry would reject a correct tool.
+        """
+        from mcp_server.registry import MCPToolRegistry
+
+        registry = MCPToolRegistry()
+
+        registry.register(
+            MCPTool(
+                name="extractSomething",
+                description="",
+                input_schema={},
+                handler=lambda context: None,
+                writes=True,
+            )
+        )
+
+        assert registry.get("extractSomething") is not None
+
     def test_no_credential_tools_are_exposed(self) -> None:
         """API key creation and rotation return the secret in their response.
 
