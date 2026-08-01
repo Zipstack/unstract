@@ -56,12 +56,10 @@ _SECRET_PATTERNS = (
     ),
 )
 
-# Every pattern above requires one of these literals to match. Checking for them
-# first lets ordinary text — which is nearly all of it — skip three regex passes
-# that would each rebuild the whole string. This matters because
-# ``redact_structure`` walks every string in an execution result, and with
-# ``include_extracted_text`` that is the raw OCR text of every page, on the
-# return path of a billable call. Measured ~7x faster on a 500KB body.
+# Every pattern above requires one of these literals to match, so text without
+# any of them can skip three regex passes that would each rebuild the whole
+# string. ``redact_structure`` walks every string in an execution result, so on
+# short error messages — the common case — this is most of the work avoided.
 #
 # **The equivalence holds for ASCII text only, and the filter is gated on that.**
 # ``(?i)`` and ``str.lower()`` are different case-folding functions: Python's
@@ -71,6 +69,14 @@ _SECRET_PATTERNS = (
 # For ASCII input the two agree, which is what makes the fast path sound; any
 # non-ASCII string takes the full regex path. ``test_redaction.SecretAnchorTest``
 # pins both halves.
+#
+# Measured on a 500KB body: ~8x faster when pure ASCII, but **~1x as soon as a
+# single non-ASCII character appears anywhere in the string**, since that flips
+# the whole body onto the regex path. That is the honest cost of correctness
+# here: the payload this most wants to help — ``include_extracted_text`` OCR
+# output, which realistically carries accents and curly quotes — is largely the
+# case that does not benefit. The gate stays regardless; a leaked credential is
+# not worth 60ms.
 #
 # ``in`` on a str beats a combined regex alternation here — Python's regex
 # engine does not do multi-literal search well.
