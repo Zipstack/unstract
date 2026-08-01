@@ -17,14 +17,30 @@ describe("antd-compatible leaf shims (P1-06)", () => {
     expect(screen.getByText("beta")).toBeInTheDocument();
   });
 
-  it("maps antd colour tokens onto Badge variants", () => {
-    const { container } = render(<Tag color="success">ok</Tag>);
-    expect(container.firstChild.className).toContain("bg-success");
+  /*
+   * antd's preset tags are TINTED — pale background, saturated text, mid-tone
+   * border — not solid fills. Mapping them onto shadcn Badge variants rendered
+   * `<Tag color="orange">` as white-on-brown, where the reference draws a pale
+   * amber chip. Values below are read off antd's own stylesheet.
+   */
+  it("renders a preset colour as antd's tinted chip, not a solid fill", () => {
+    const { container } = render(<Tag color="orange">Trial</Tag>);
+    const { style } = container.firstChild;
+    expect(style.backgroundColor).toBe("#fff7e6");
+    expect(style.color).toBe("#d46b08");
+    expect(style.borderColor).toBe("#ffd591");
   });
 
-  it("maps error/red onto the destructive variant", () => {
+  it("tints the status aliases the same way", () => {
+    const { container } = render(<Tag color="success">ok</Tag>);
+    expect(container.firstChild.style.backgroundColor).toBe("#f6ffed");
+    expect(container.firstChild.style.color).toBe("#389e0d");
+  });
+
+  it("tints red without the destructive fill", () => {
     const { container } = render(<Tag color="red">bad</Tag>);
-    expect(container.firstChild.className).toContain("destructive");
+    expect(container.firstChild.style.backgroundColor).toBe("#fff1f0");
+    expect(container.firstChild.className).not.toContain("destructive");
   });
 
   // One call-site passes a raw rgb() that antd applied directly — it must not

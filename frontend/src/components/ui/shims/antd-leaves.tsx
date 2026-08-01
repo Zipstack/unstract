@@ -131,24 +131,31 @@ interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 /*
- * antd colour token → Badge variant. Typed as the Badge variant union rather
- * than plain strings, so a token mapped to a variant that does not exist is a
- * compile error here instead of an unstyled tag in the UI.
+ * antd's preset tag colours, read off the reference's own stylesheet.
+ *
+ * These were mapped onto shadcn Badge VARIANTS, which are solid fills — so
+ * `<Tag color="orange">` rendered as white-on-brown where antd draws a pale
+ * amber chip with saturated text. antd's presets are always tinted: a very
+ * light background, a strong foreground, and a mid-tone border. Reproduce the
+ * palette rather than approximating it with three variants.
  */
-const TAG_VARIANT: Record<
-  string,
-  React.ComponentProps<typeof Badge>["variant"]
-> = {
-  success: "success",
-  green: "success",
-  warning: "warning",
-  orange: "warning",
-  gold: "warning",
-  error: "destructive",
-  red: "destructive",
-  processing: "default",
-  blue: "default",
-  default: "secondary",
+const TAG_PRESET: Record<string, { fg: string; bg: string; border: string }> = {
+  red: { fg: "#cf1322", bg: "#fff1f0", border: "#ffa39e" },
+  volcano: { fg: "#d4380d", bg: "#fff2e8", border: "#ffbb96" },
+  orange: { fg: "#d46b08", bg: "#fff7e6", border: "#ffd591" },
+  gold: { fg: "#d48806", bg: "#fffbe6", border: "#ffe58f" },
+  lime: { fg: "#7cb305", bg: "#fcffe6", border: "#eaff8f" },
+  green: { fg: "#389e0d", bg: "#f6ffed", border: "#b7eb8f" },
+  cyan: { fg: "#08979c", bg: "#e6fffb", border: "#87e8de" },
+  blue: { fg: "#0958d9", bg: "#e6f4ff", border: "#91caff" },
+  geekblue: { fg: "#1d39c4", bg: "#f0f5ff", border: "#adc6ff" },
+  purple: { fg: "#531dab", bg: "#f9f0ff", border: "#d3adf7" },
+  magenta: { fg: "#c41d7f", bg: "#fff0f6", border: "#ffadd2" },
+  // antd's status aliases resolve to the same chips.
+  success: { fg: "#389e0d", bg: "#f6ffed", border: "#b7eb8f" },
+  error: { fg: "#cf1322", bg: "#fff1f0", border: "#ffa39e" },
+  warning: { fg: "#d46b08", bg: "#fff7e6", border: "#ffd591" },
+  processing: { fg: "#0958d9", bg: "#e6f4ff", border: "#91caff" },
 };
 
 /** antd `<Tag>`. Custom colours (e.g. `rgb(...)`) fall through to inline style. */
@@ -166,27 +173,34 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(function Tag(
   },
   ref,
 ) {
-  const known = color
-    ? TAG_VARIANT[color as keyof typeof TAG_VARIANT]
+  const preset = color
+    ? TAG_PRESET[color as keyof typeof TAG_PRESET]
     : undefined;
-  const variant = known ?? "secondary";
-  // A raw CSS colour antd would have applied directly.
-  const custom = color && !known ? color : undefined;
+  // A raw CSS colour (e.g. `rgb(...)`) antd would have applied directly as a
+  // solid fill; only presets get the tinted treatment.
+  const custom = color && !preset ? color : undefined;
 
   return (
     <Badge
       ref={ref}
-      variant={variant ?? "secondary"}
-      className={cn("ant-tag gap-1", className)}
+      variant="secondary"
+      className={cn("ant-tag gap-1 border font-normal", className)}
       style={
-        custom
+        preset
           ? {
-              backgroundColor: custom,
-              borderColor: custom,
-              color: "#fff",
+              backgroundColor: preset.bg,
+              borderColor: preset.border,
+              color: preset.fg,
               ...style,
             }
-          : style
+          : custom
+            ? {
+                backgroundColor: custom,
+                borderColor: custom,
+                color: "#fff",
+                ...style,
+              }
+            : style
       }
       {...props}
     >
