@@ -421,8 +421,19 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
     onPointerEnter,
     onPointerLeave,
     onClick,
+    /*
+     * Dropped, never forwarded. A parent Radix primitive sets `data-state` to
+     * its OWN open/closed state, and spreading that onto the child overwrites
+     * whatever the child was using it for. The API Deployments toggle is a
+     * `<Switch>` inside a `<Tooltip>`: it kept `aria-checked="true"` but its
+     * `data-state` became "closed", and since the Switch styles off
+     * `data-state` an enabled deployment rendered as an empty grey pill.
+     */
+    "data-state": _parentState,
     ...rest
-  } = props as React.HTMLAttributes<HTMLElement>;
+  } = props as React.HTMLAttributes<HTMLElement> & {
+    "data-state"?: string;
+  };
   /*
    * Undefined entries are stripped, not spread. `cloneElement` merges by key,
    * so an `onClick: undefined` from a parent that passes no handler OVERWRITES

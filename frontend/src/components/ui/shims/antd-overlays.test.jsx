@@ -170,6 +170,24 @@ describe("antd-compatible overlay shims (P2)", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
+  /*
+   * A parent Radix primitive sets `data-state` to its OWN open/closed state.
+   * Spreading that onto the child overwrote whatever the child used it for:
+   * the API Deployments toggle is a Switch inside a Tooltip, and it kept
+   * `aria-checked="true"` while its `data-state` became "closed" — so an
+   * enabled deployment rendered as an empty grey pill.
+   */
+  it("does not overwrite the child's own data-state", () => {
+    render(
+      <Tooltip title="" data-state="closed">
+        <button type="button" role="switch" aria-checked="true" data-state="checked">
+          toggle
+        </button>
+      </Tooltip>,
+    );
+    expect(screen.getByRole("switch")).toHaveAttribute("data-state", "checked");
+  });
+
   it("forwards a parent primitive's ref to the trigger element", () => {
     const ref = React.createRef();
     render(
