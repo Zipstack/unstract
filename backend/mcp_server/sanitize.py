@@ -61,9 +61,16 @@ _SECRET_PATTERNS = (
 # that would each rebuild the whole string. This matters because
 # ``redact_structure`` walks every string in an execution result, and with
 # ``include_extracted_text`` that is the raw OCR text of every page, on the
-# return path of a billable call. Measured ~7x faster on a 500KB body, and
-# output-identical: a string containing none of these cannot match any pattern.
-# ``test_redaction.SecretAnchorTest`` pins that equivalence.
+# return path of a billable call. Measured ~7x faster on a 500KB body.
+#
+# **The equivalence holds for ASCII text only, and the filter is gated on that.**
+# ``(?i)`` and ``str.lower()`` are different case-folding functions: Python's
+# regex engine folds U+017F (ſ) to "s" and U+212A (K) to "k", while ``.lower()``
+# leaves both unchanged. So ``"paſſword=hunter2"`` matches pattern 2 but contains
+# no anchor once lowercased — skipping the regexes there would leak the secret.
+# For ASCII input the two agree, which is what makes the fast path sound; any
+# non-ASCII string takes the full regex path. ``test_redaction.SecretAnchorTest``
+# pins both halves.
 #
 # ``in`` on a str beats a combined regex alternation here — Python's regex
 # engine does not do multi-literal search well.
@@ -123,10 +130,12 @@ def redact_secrets(text: str | None) -> str | None:
     if not text:
         return text
 
-    # Cheap literal pre-filter; see _SECRET_ANCHORS for why this is safe.
-    lowered = text.lower()
-    if not any(anchor in lowered for anchor in _SECRET_ANCHORS):
-        return text
+    # Cheap literal pre-filter, ASCII-only — see _SECRET_ANCHORS for why the
+    # isascii() gate is load-bearing rather than defensive.
+    if text.isascii():
+        lowered = text.lower()
+        if not any(anchor in lowered for anchor in _SECRET_ANCHORS):
+            return text
 
     redacted = text
     for pattern, replacement in _SECRET_PATTERNS:

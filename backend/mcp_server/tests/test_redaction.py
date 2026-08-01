@@ -123,6 +123,70 @@ class SecretAnchorTest(SimpleTestCase):
 
         assert redact_secrets(text) == self._unfiltered(text) == text
 
+    def test_unicode_case_folding_does_not_slip_past_the_filter(self) -> None:
+        """The pre-filter must not disagree with the regex about case.
+
+        ``(?i)`` and ``str.lower()`` are different functions: the regex engine
+        folds U+017F (ſ) to "s" and U+212A (K) to "k"; ``.lower()`` leaves both
+        alone. So these strings match a pattern while containing no anchor once
+        lowercased. An ASCII-only gate on the fast path is what keeps them
+        going through the regexes — without it, each is a live credential leak.
+        """
+        cases = [
+            "pa\u017f\u017fword=hunter2",
+            "\u017fecret: abc123",
+            "\u017fecret_acce\u017f\u017f_key=AKIA1234",
+            "PA\u017f\u017fWORD=hunter2",
+            "to\u212aen=zzz",
+        ]
+        for text in cases:
+            with self.subTest(text):
+                assert redact_secrets(text) == self._unfiltered(text)
+                assert "[REDACTED]" in redact_secrets(text), (
+                    f"{text!r} matches a secret pattern but was not redacted"
+                )
+
+    def test_the_filter_never_changes_output_over_a_generated_corpus(self) -> None:
+        """The invariant as a property, not a hand-kept list.
+
+        A hand-listed corpus only catches what someone thought to add — which
+        is exactly the step a change that adds a pattern forgets. This builds
+        inputs from the pattern vocabulary itself, including the case-folding
+        characters, so a new pattern without its anchor fails here.
+        """
+        import itertools
+
+        keys = [
+            "password", "passwd", "pwd", "secret", "access_key",
+            "secret_access_key", "apikey", "api_key", "api-key", "token",
+            "authorization", "credential", "bearer",
+        ]
+        # Case variants, including the two characters the regex folds and
+        # str.lower() does not.
+        def variants(word: str):
+            yield word
+            yield word.upper()
+            yield word.replace("s", "\u017f")
+            yield word.replace("k", "\u212a")
+
+        seps = ["=", ": ", " = "]
+        corpus = []
+        for key, sep in itertools.product(
+            (v for k in keys for v in variants(k)), seps
+        ):
+            corpus.append(f"connect failed: {key}{sep}s3cr3t (code 28P01)")
+        corpus += [
+            "postgresql://admin:pw@host:5432/db",
+            "POSTGRESQL://ADMIN:PW@HOST/DB",
+            "ordinary text with no secrets",
+            "invoice-2024.pdf not found",
+            "",
+        ]
+
+        for text in corpus:
+            with self.subTest(text[:48]):
+                assert redact_secrets(text) == self._unfiltered(text)
+
 
 class RedactStructureTest(SimpleTestCase):
     """Redaction of upstream payloads the billable and write tools return.
