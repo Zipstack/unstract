@@ -22,8 +22,12 @@ production: the actions call ``get_object()`` → ``get_queryset()``, which read
 i.e. only by ``as_view()``. Mocking the collaborator whose behaviour is at issue
 is exactly how the bug this file exists to prevent got through a green suite.
 
-``SimpleTestCase``: only the ORM boundary (``get_queryset``) is stubbed, so no
-database is needed while the DRF machinery above it runs for real.
+``SimpleTestCase``: ``get_object`` and the four action bodies are stubbed, so no
+database is needed. What is *not* stubbed is the bare-instance setup itself —
+the stub reads ``self.action`` and ``self.kwargs["pk"]`` exactly as the real
+``get_object`` chain does, which is what makes the missing-attribute regression
+observable. The action bodies are out of scope here; they are the delegated
+view's own responsibility and are covered by its tests.
 """
 
 from __future__ import annotations
@@ -50,6 +54,8 @@ from mcp_server.tools.prompt_studio import (
 PROJECT_ID = "55555555-5555-5555-5555-555555555555"
 DOCUMENT_ID = "66666666-6666-6666-6666-666666666666"
 PROMPT_ID = "77777777-7777-7777-7777-777777777777"
+OTHER_PROMPT_ID = "99999999-9999-9999-9999-999999999999"
+PROFILE_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
 # What a real MCP request carries in request.data: the JSON-RPC envelope, not
 # the tool's arguments. If dispatch regresses, this is what the view sees.
@@ -83,13 +89,15 @@ def build_request(data=None):
 
 
 class RecordingView(PromptStudioCoreView):
-    """The real view, with only the database boundary stubbed.
+    """A real ``PromptStudioCoreView`` subclass with two things stubbed.
 
-    ``get_object`` is overridden because the real one runs `for_user` querysets
-    and DRF filter backends that need a live DB. It deliberately still reads
-    ``self.action`` and ``self.kwargs`` first — the two attributes a bare
-    instance is missing — so this stub fails exactly where production would.
-    Everything else about the view is real.
+    ``get_object`` is overridden because the real one runs ``for_user``
+    querysets and DRF filter backends that need a live DB; the four action
+    bodies are replaced by ``_record`` because their real bodies dispatch Celery
+    work. Neither stub is the point — both deliberately read ``self.action`` and
+    ``self.kwargs["pk"]`` first, the attributes a bare instance is missing, so
+    the setup ``_dispatch`` performs is exercised for real and a regression in
+    it fails here exactly as it would in production.
     """
 
     seen: dict = {}
@@ -163,21 +171,21 @@ class PromptStudioDispatchTest(SimpleTestCase):
             fetch_response,
             document_id=DOCUMENT_ID,
             prompt_id=PROMPT_ID,
-            profile_manager_id="profile-1",
+            profile_manager_id=PROFILE_ID,
         )
 
-        assert seen["payload"]["profile_manager"] == "profile-1"
+        assert seen["payload"]["profile_manager"] == PROFILE_ID
 
     def test_bulk_fetch_response_delivers_prompt_ids(self) -> None:
         seen, _ = self._run(
             bulk_fetch_response,
             document_id=DOCUMENT_ID,
-            prompt_ids=[PROMPT_ID, "other"],
+            prompt_ids=[PROMPT_ID, OTHER_PROMPT_ID],
         )
 
         assert seen["payload"] == {
             "document_id": DOCUMENT_ID,
-            "prompt_ids": [PROMPT_ID, "other"],
+            "prompt_ids": [PROMPT_ID, OTHER_PROMPT_ID],
         }
 
     def test_single_pass_extraction_delivers_document_id(self) -> None:
@@ -317,4 +325,147 @@ class PromptStudioDispatchTest(SimpleTestCase):
             with self.assertRaises(MCPToolError):
                 index_document(
                     context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+                )
+
+    def test_a_server_fault_is_logged_and_not_sold_as_an_argument_error(self) -> None:
+        """A 5xx from the view must not read to the agent as "your fault".
+
+        IndexingAPIError, AnswerFetchError and ExtractionAPIError are
+        APIException subclasses carrying status_code 500. Catching them turned
+        a genuine server fault into an ordinary tool result — with no operator
+        log, and a note telling the agent to fix its arguments and try again on
+        a tool that charges for every attempt.
+        """
+        from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
+
+        request = build_request()
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        class Failing(RecordingView):
+            def index_document(self, req, pk=None):
+                raise IndexingAPIError("vector store unreachable")
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Failing),
+            patch("mcp_server.tools.prompt_studio.logger") as log,
+        ):
+            result = index_document(
+                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+            )
+
+        assert result["status"] == 500
+        assert result["ok"] is False
+        # The operator signal the transport used to provide before this arm.
+        log.exception.assert_called_once()
+        # And the agent is told not to retry-and-pay.
+        assert "not because of your arguments" in result["note"]
+
+    def test_a_4xx_still_reads_as_a_correctable_argument_error(self) -> None:
+        """The distinction has to cut both ways, or it is just a rename."""
+        from rest_framework.exceptions import ValidationError
+
+        request = build_request()
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        class Rejecting(RecordingView):
+            def index_document(self, req, pk=None):
+                raise ValidationError("document_id is required")
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", Rejecting),
+            patch("mcp_server.tools.prompt_studio.logger") as log,
+        ):
+            result = index_document(
+                context, project_id=PROJECT_ID, document_id=DOCUMENT_ID
+            )
+
+        assert result["status"] == 400
+        assert "usually a missing or invalid argument" in result["note"]
+        log.exception.assert_not_called()
+
+    def test_a_malformed_document_id_is_refused_before_the_view(self) -> None:
+        """Sibling ids reach the same UUID lookups the project id does.
+
+        A Django ValidationError from `DocumentManager.objects.get(pk=...)` is
+        neither APIException nor Http404, so it would escape as an opaque
+        failure with the budget already spent.
+        """
+        from mcp_server.exceptions import MCPToolError
+
+        request = build_request()
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
+        ):
+            with self.assertRaises(MCPToolError) as caught:
+                index_document(
+                    context, project_id=PROJECT_ID, document_id="not-a-uuid"
+                )
+
+        assert "not a valid document id" in str(caught.exception)
+
+    def test_a_malformed_prompt_id_is_refused(self) -> None:
+        from mcp_server.exceptions import MCPToolError
+
+        request = build_request()
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
+        ):
+            with self.assertRaises(MCPToolError):
+                fetch_response(
+                    context,
+                    project_id=PROJECT_ID,
+                    document_id=DOCUMENT_ID,
+                    prompt_id="oops",
+                )
+
+    def test_a_malformed_id_in_prompt_ids_is_refused(self) -> None:
+        """bulkFetchResponse takes a list, so each element needs the guard."""
+        from mcp_server.exceptions import MCPToolError
+
+        request = build_request()
+        context = MagicMock()
+        context.request = request
+        context.org_name = "org-mcp"
+
+        with (
+            patch(
+                "mcp_server.tools.prompt_studio._resolve_project",
+                return_value=FakeProject(),
+            ),
+            patch("mcp_server.tools.prompt_studio.PromptStudioCoreView", RecordingView),
+        ):
+            with self.assertRaises(MCPToolError):
+                bulk_fetch_response(
+                    context,
+                    project_id=PROJECT_ID,
+                    document_id=DOCUMENT_ID,
+                    prompt_ids=[PROMPT_ID, "not-a-uuid"],
                 )

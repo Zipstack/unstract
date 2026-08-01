@@ -59,6 +59,25 @@ def _dispatch(context: PlatformMCPContext, action: str, project_id: str, payload
             "Contact your Unstract administrator."
         )
 
+    # The sibling ids travel to the same UUID-typed lookups the project id does
+    # — `DocumentManager.objects.get(pk=...)` in the view — where a malformed
+    # one raises Django ValidationError. That is neither APIException nor
+    # Http404, so it escapes the arm below and reaches the client as an opaque
+    # failure, with the non-refundable budget already claimed. Guarding here
+    # covers every tool rather than repeating it at six call sites.
+    from mcp_server.tools.platform import valid_uuid
+
+    _UUID_FIELDS = {
+        "document_id": ("document id", "Call listPromptStudioDocuments for valid ids."),
+        "id": ("prompt id", "Call listPrompts for valid ids."),
+        "profile_manager": ("profile id", "Omit it to use the project default."),
+    }
+    for field, (label, hint) in _UUID_FIELDS.items():
+        if payload.get(field):
+            valid_uuid(payload[field], label, hint)
+    for prompt_id in payload.get("prompt_ids") or []:
+        valid_uuid(prompt_id, "prompt id", "Call listPrompts for valid ids.")
+
     request = context.request
     # The view reads its inputs from request.data. Replacing it wholesale keeps
     # the JSON-RPC envelope (which carries the MCP method, not the tool's
@@ -105,14 +124,25 @@ def _exception_response(error: Exception):
     headers are irrelevant here because the MCP transport already authenticated
     the caller. What matters is that the view's own refusals stay readable to
     the agent rather than becoming an opaque transport failure.
+
+    A 5xx is logged with its traceback. Several Prompt Studio exceptions —
+    ``IndexingAPIError``, ``AnswerFetchError``, ``ExtractionAPIError`` — are
+    ``APIException`` subclasses carrying ``status_code = 500``, so without this
+    a genuine server fault on a billable path would be converted to an ordinary
+    tool result and leave no operator signal at all. Before this arm existed
+    they reached the transport's own ``logger.exception``.
     """
     from rest_framework.response import Response
 
     if isinstance(error, Http404):
         return Response({"detail": "Not found."}, status=404)
 
+    status_code = getattr(error, "status_code", 500)
+    if status_code >= 500:
+        logger.exception(f"Prompt Studio view failed with {status_code}: {error}")
+
     detail = getattr(error, "detail", str(error))
-    return Response({"detail": detail}, status=getattr(error, "status_code", 500))
+    return Response({"detail": detail}, status=status_code)
 
 
 def _result(response, project: CustomTool) -> dict[str, Any]:
@@ -139,11 +169,22 @@ def _result(response, project: CustomTool) -> dict[str, Any]:
         "result": redact_structure(data),
     }
     if not ok:
-        result["note"] = (
-            "The operation was rejected. Read `result` for the reason — it is "
-            "usually a missing or invalid argument, or a document that has not "
-            "been indexed yet."
-        )
+        # Distinguish "your arguments were wrong" from "the server failed".
+        # These tools are billable and never refunded, so telling an agent a
+        # 500 was probably a bad argument invites it to retry — and pay again —
+        # against a fault no argument of its own can fix.
+        if status_code is not None and status_code >= 500:
+            result["note"] = (
+                "The operation failed on the server, not because of your "
+                "arguments. Retrying is unlikely to help and consumes budget "
+                "each time. Report this to your Unstract administrator."
+            )
+        else:
+            result["note"] = (
+                "The operation was rejected. Read `result` for the reason — it "
+                "is usually a missing or invalid argument, or a document that "
+                "has not been indexed yet."
+            )
     return result
 
 
