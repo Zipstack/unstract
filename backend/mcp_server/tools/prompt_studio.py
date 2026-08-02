@@ -22,7 +22,7 @@ from rest_framework.response import Response
 
 from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
-from mcp_server.sanitize import redact_structure, valid_uuid
+from mcp_server.sanitize import log_exception, redact_structure, valid_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +139,9 @@ def _exception_response(error: Exception):
 
     status_code = getattr(error, "status_code", 500)
     if status_code >= 500:
-        logger.exception(f"Prompt Studio view failed with {status_code}: {error}")
+        # Redacted: the delegated view reaches adapters and vector stores, so
+        # its exceptions can carry a provider key.
+        log_exception(logger, f"Prompt Studio view failed with {status_code}", error)
 
     detail = getattr(error, "detail", str(error))
     return Response({"detail": detail}, status=status_code)

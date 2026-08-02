@@ -269,3 +269,24 @@ def truncation_note(shown: int, total: int) -> dict[str, Any]:
             "Unstract UI to see the rest."
         ),
     }
+
+
+def log_exception(log: logging.Logger, message: str, error: BaseException) -> None:
+    """Log an upstream exception without piping its secrets into the log.
+
+    ``logger.exception(f"...: {error}")`` writes the exception text *and* a
+    traceback, both unredacted. That is a real exposure on these paths: the
+    exceptions being logged come from connectors, provider clients and the
+    execution stack, and a failed connection reports the string it tried. Logs
+    are shipped to aggregation, so a secret there outlives the request and
+    reaches an audience the credential was never scoped to.
+
+    So the message is redacted, and the traceback is deliberately **not**
+    attached: ``redact_secrets`` can only clean the string it is given, while a
+    traceback renders frame locals — the very place a connection string or key
+    sits. Losing the stack is the cost; the exception type and redacted message
+    are kept, which is what identifies the failure. Where a stack is genuinely
+    needed, log it separately from a site that controls what the exception
+    holds.
+    """
+    log.error(f"{message}: {type(error).__name__}: {redact_secrets(str(error))}")

@@ -314,7 +314,11 @@ class PromptStudioDispatchTest(SimpleTestCase):
         assert result["status"] == 500
         assert result["ok"] is False
         # The operator signal the transport used to provide before this arm.
-        log.exception.assert_called_once()
+        # Asserted as "something was logged at error level" rather than naming
+        # logger.exception: the message is routed through log_exception, which
+        # deliberately uses logger.error and omits the traceback so a
+        # credential in the exception text cannot reach log aggregation.
+        log.error.assert_called_once()
         # And the agent is told not to retry-and-pay.
         assert "not because of your arguments" in result["note"]
 
@@ -333,6 +337,7 @@ class PromptStudioDispatchTest(SimpleTestCase):
 
         assert result["status"] == 400
         assert "usually a missing or invalid argument" in result["note"]
+        log.error.assert_not_called()
         log.exception.assert_not_called()
 
     def test_a_malformed_document_id_is_refused_before_the_view(self) -> None:

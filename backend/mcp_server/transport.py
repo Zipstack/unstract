@@ -24,6 +24,7 @@ from rest_framework.request import Request
 from mcp_server.constants import JSONRPC, MCPMethod, MCPServer
 from mcp_server.exceptions import MCPToolError
 from mcp_server.registry import MCPToolRegistry
+from mcp_server.sanitize import log_exception
 
 logger = logging.getLogger(__name__)
 
@@ -359,8 +360,8 @@ class BaseMCPView(views.APIView):
                 # string raises Django ValidationError, which would otherwise
                 # escape post() and reach the client as a bare 500 with no
                 # JSON-RPC envelope at all.
-                logger.exception(
-                    f"MCP tool '{tool_name}' preflight failed unexpectedly: {error}"
+                log_exception(
+                    logger, f"MCP tool '{tool_name}' preflight failed unexpectedly", error
                 )
                 return rpc_error(
                     request_id,
@@ -395,7 +396,10 @@ class BaseMCPView(views.APIView):
                 request_id, JSONRPC.INVALID_PARAMS, "Invalid params", str(error)
             )
         except Exception as error:
-            logger.exception(f"MCP tool '{tool_name}' failed: {error}")
+            # Redacted: this catches *any* tool handler, so the exception can
+            # come from a connector, a provider client or the execution stack —
+            # all of which report credentials in their error text.
+            log_exception(logger, f"MCP tool '{tool_name}' failed", error)
             return rpc_error(
                 request_id,
                 JSONRPC.TOOL_EXECUTION_ERROR,

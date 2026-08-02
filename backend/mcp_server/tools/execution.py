@@ -18,7 +18,12 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
-from mcp_server.sanitize import redact_secrets, redact_structure, valid_uuid
+from mcp_server.sanitize import (
+    log_exception,
+    redact_secrets,
+    redact_structure,
+    valid_uuid,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,8 +224,12 @@ def extract_document(
         ) from error
     except Exception as error:
         APIDeploymentRateLimiter.release_slot(organization, execution_id)
-        logger.exception(
-            f"MCP extractDocument failed for api '{context.api.api_name}': {error}"
+        # Redacted, and without a traceback: this exception comes from the
+        # connector and execution stack, so it can carry a connection string or
+        # a signed URL — and a log line outlives the request and is shipped to
+        # aggregation, reaching an audience the credential was never scoped to.
+        log_exception(
+            logger, f"MCP extractDocument failed for api '{context.api.api_name}'", error
         )
         # Redacted: this interpolates an upstream exception, and a connector
         # that failed to connect reports the connection string it tried. The

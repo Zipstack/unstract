@@ -13,6 +13,7 @@ canary seeded in an execution's ``error_message`` came back through
 from __future__ import annotations
 
 import json
+from unittest.mock import MagicMock
 
 from django.test import SimpleTestCase
 
@@ -528,3 +529,68 @@ class WriteToolRedactionCallSitesTest(SimpleTestCase):
             out = execute_pipeline(context, pipeline_id="p1")
 
         assert "hunter2" not in json.dumps(out, default=str)
+
+
+class LogRedactionTest(SimpleTestCase):
+    """Upstream exceptions must not carry credentials into the logs.
+
+    `logger.exception(f"...: {error}")` writes both the exception text and a
+    traceback, unredacted. On these paths the exception comes from connectors,
+    provider clients and the execution stack — a failed connection reports the
+    string it tried — and a log line outlives the request, reaching log
+    aggregation and an audience the credential was never scoped to.
+    """
+
+    def test_the_message_is_redacted(self) -> None:
+        from mcp_server.sanitize import log_exception
+
+        log = MagicMock()
+        error = RuntimeError("connect failed: password=hunter2")
+
+        log_exception(log, "extraction failed", error)
+
+        log.error.assert_called_once()
+        written = log.error.call_args.args[0]
+        assert "hunter2" not in written
+        assert "[REDACTED]" in written
+
+    def test_the_useful_parts_survive(self) -> None:
+        """Redaction that ate the diagnosis would trade one problem for another
+        — an operator still has to be able to tell what broke.
+        """
+        from mcp_server.sanitize import log_exception
+
+        log = MagicMock()
+        error = ConnectionError("could not reach db.internal:5432, password=x")
+
+        log_exception(log, "MCP extractDocument failed for api 'live-api'", error)
+
+        written = log.error.call_args.args[0]
+        assert "MCP extractDocument failed for api 'live-api'" in written
+        assert "ConnectionError" in written
+        assert "db.internal:5432" in written
+
+    def test_no_traceback_is_attached(self) -> None:
+        """`redact_secrets` can only clean the string it is given; a traceback
+        renders frame locals, which is exactly where a connection string sits.
+        Losing the stack is the deliberate cost.
+        """
+        from mcp_server.sanitize import log_exception
+
+        log = MagicMock()
+
+        log_exception(log, "boom", ValueError("x"))
+
+        log.exception.assert_not_called()
+        assert log.error.call_args.kwargs.get("exc_info") in (None, False)
+
+    def test_a_structured_credential_in_the_message_is_caught_too(self) -> None:
+        """Exception text can carry a serialized dict, not just key=value."""
+        from mcp_server.sanitize import log_exception
+
+        log = MagicMock()
+        error = RuntimeError("upstream rejected Bearer abcdef123456")
+
+        log_exception(log, "failed", error)
+
+        assert "abcdef123456" not in log.error.call_args.args[0]

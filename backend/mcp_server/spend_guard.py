@@ -39,6 +39,8 @@ from django.conf import settings
 from django.core.cache import cache as default_cache
 from django_redis.exceptions import ConnectionInterrupted
 
+from mcp_server.sanitize import log_exception
+
 logger = logging.getLogger(__name__)
 
 # The failures the guard is willing to fail *open* on: the cache backend being
@@ -131,7 +133,9 @@ def peek(org_id: str) -> BudgetState:
         # Reporting the budget must never be the thing that breaks whoami —
         # `consume` fails open for the same reason, and a read is even less
         # load-bearing than a claim.
-        logger.warning(f"MCP spend guard unreadable for org '{org_id}': {error}")
+        # Redacted: a cache error can render the Redis URL, which carries a
+        # password in any deployment that sets one.
+        log_exception(logger, f"MCP spend guard unreadable for org '{org_id}'", error)
         used = 0
     return BudgetState(
         allowed=used < limit, used=used, limit=limit, window_seconds=window

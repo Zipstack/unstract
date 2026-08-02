@@ -25,6 +25,7 @@ from mcp_server.context import PlatformMCPContext
 from mcp_server.exceptions import MCPToolError
 from mcp_server.sanitize import (
     LIST_LIMIT,
+    log_exception,
     redact_secrets,
     truncation_note,
     valid_uuid,
@@ -179,7 +180,9 @@ def get_execution_detail(
         # specific way: an agent asking "which files failed" reads a short or
         # empty list as "none did", which is the opposite of what happened.
         files_complete = False
-        logger.warning(f"Could not load file executions for '{execution_id}': {error}")
+        log_exception(
+            logger, f"Could not load file executions for '{execution_id}'", error
+        )
 
     result = {
         "id": str(execution.id),
