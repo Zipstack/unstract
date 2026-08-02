@@ -294,6 +294,77 @@ class RedactStructureTest(SimpleTestCase):
         assert "sk-abc" not in json.dumps(out, default=str)
 
 
+class SecretKeyNameTest(SimpleTestCase):
+    """A credential-named key with a bare value is redacted.
+
+    The text patterns anchor on a delimiter — `password=x`, `Bearer x`,
+    `scheme://u:p@h` — so `{"api_key": "sk-abc"}` matched none of them and
+    passed through untouched. That is the ordinary shape of serializer output,
+    i.e. exactly what the delegating tools return, so it was the most likely
+    leak rather than an edge case. Found by the write-tool leak sweep.
+    """
+
+    def test_a_credential_named_key_is_redacted(self) -> None:
+        for key in (
+            "password",
+            "api_key",
+            "api-key",
+            "apiKey",
+            "token",
+            "access_token",
+            "client_secret",
+            "private_key",
+            "secret_access_key",
+            "CREDENTIALS",
+        ):
+            with self.subTest(key):
+                out = redact_structure({key: "sk-abc123"})
+                assert out[key] == "[REDACTED]"
+
+    def test_it_reaches_nested_and_listed_values(self) -> None:
+        out = redact_structure(
+            {"profile": {"api_key": "sk-abc"}, "rows": [{"token": "t-1"}]}
+        )
+
+        assert out["profile"]["api_key"] == "[REDACTED]"
+        assert out["rows"][0]["token"] == "[REDACTED]"
+
+    def test_ordinary_fields_are_not_redacted(self) -> None:
+        """The false-positive guard. Over-redacting makes output unusable to an
+        agent without making it safer, so the match is exact rather than a
+        substring test.
+        """
+        payload = {
+            "token_count": 1280,
+            "has_credentials": True,
+            "secret_santa": "Bob",
+            "password_hint": "your usual one",
+            "tokens_used": 42,
+            "authorization_status": "approved",
+        }
+
+        assert redact_structure(payload) == payload
+
+    def test_non_string_values_are_left_alone(self) -> None:
+        """A credential-named key holding a non-string is not a leaked secret,
+        and blanking it would destroy structure an agent reads.
+        """
+        payload = {"token": None, "api_key": 0, "secret": {"nested": "value"}}
+        out = redact_structure(payload)
+
+        assert out["token"] is None
+        assert out["api_key"] == 0
+        assert out["secret"] == {"nested": "value"}
+
+    def test_key_and_text_redaction_compose(self) -> None:
+        out = redact_structure(
+            {"api_key": "sk-abc", "log": "connect failed: password=hunter2"}
+        )
+
+        assert out["api_key"] == "[REDACTED]"
+        assert "hunter2" not in out["log"]
+
+
 class WriteToolRedactionCallSitesTest(SimpleTestCase):
     """The billable and write paths actually apply the net.
 

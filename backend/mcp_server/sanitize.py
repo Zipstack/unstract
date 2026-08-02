@@ -97,6 +97,47 @@ _SECRET_ANCHORS = (
 )
 
 
+# Dict keys whose value is a credential regardless of how it is formatted.
+# Same vocabulary as the key=value pattern above, kept as its own tuple because
+# this matches a whole key rather than a substring of free text: matching
+# loosely here would redact an ordinary field like "token_count".
+_SECRET_KEY_NAMES = frozenset(
+    {
+        "password",
+        "passwd",
+        "pwd",
+        "secret",
+        "secret_key",
+        "secret_access_key",
+        "access_key",
+        "access_key_id",
+        "apikey",
+        # Hyphens are normalised to underscores before lookup, so "api-key"
+        # matches via this entry rather than needing its own.
+        "api_key",
+        "token",
+        "access_token",
+        "refresh_token",
+        "auth_token",
+        "authorization",
+        "credential",
+        "credentials",
+        "private_key",
+        "client_secret",
+    }
+)
+
+
+def _is_secret_key(key: str) -> bool:
+    """True when a dict key names a credential.
+
+    Exact match on a normalised key, not a substring test: ``token_count`` and
+    ``has_credentials`` are ordinary fields an agent needs, and redacting them
+    would make output harder to act on without making it safer.
+    """
+    return key.strip().lower().replace("-", "_") in _SECRET_KEY_NAMES
+
+
 def valid_uuid(value: str, field: str, hint: str) -> str:
     """Reject a malformed id before it reaches a UUID-typed ORM filter.
 
@@ -160,6 +201,13 @@ def redact_structure(value: Any) -> Any:
     paths get the same net the error fields get. (``setApiDeploymentActive`` and
     ``setPipelineActive`` write too, but build named fields, so they do not.)
 
+    Two mechanisms, because upstream payloads carry credentials in two shapes:
+    free text where ``redact_secrets``'s patterns anchor on a delimiter
+    (``"connect failed: password=x"``), and structured fields where the *key*
+    names the secret and the value is bare (``{"api_key": "sk-x"}``). The
+    second is the ordinary shape of serializer output — the exact thing the
+    delegating tools hand back — and text scrubbing alone does not see it.
+
     Containers are rebuilt rather than mutated, so a caller's queryset row or
     cached dict is never altered as a side effect of being reported. Sequences
     come back as plain lists — see the comment below for why the input subclass
@@ -168,7 +216,18 @@ def redact_structure(value: Any) -> Any:
     if isinstance(value, str):
         return redact_secrets(value)
     if isinstance(value, dict):
-        return {key: redact_structure(item) for key, item in value.items()}
+        # A credential-named *key* whose value is a bare secret has no
+        # delimiter for the text patterns to anchor on — `{"api_key": "sk-x"}`
+        # is not the string `api_key=sk-x` — so the key name is what marks it.
+        # This is the ordinary shape of serializer output, which is exactly
+        # what the delegating tools return, so text scrubbing alone left the
+        # most likely case uncovered.
+        return {
+            key: _REDACTED
+            if isinstance(key, str) and _is_secret_key(key) and isinstance(item, str)
+            else redact_structure(item)
+            for key, item in value.items()
+        }
     if isinstance(value, (list, tuple)):
         # Plain containers, deliberately not `type(value)(...)`. Rebuilding the
         # exact subclass breaks on anything whose __init__ is not "an iterable":

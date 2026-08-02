@@ -26,7 +26,7 @@ from account_v2.models import Organization, User
 from adapter_processor_v2.models import AdapterInstance
 from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from platform_api.models import PlatformApiKey
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
@@ -61,6 +61,16 @@ LLM_API_KEY = "LEAKCANARY-openai-api-key-4e8d"
 # by whoami — it is a label the operator chose, not credential material, and
 # treating it as one would make this test object to correct behaviour.
 CANARIES = (DB_PASSWORD, S3_SECRET, LLM_API_KEY)
+
+# Ids for the delegate-stubbed sweep below. Real UUIDs because the tools now
+# validate id shape before doing anything else.
+PROJECT_UUID = "11111111-1111-1111-1111-111111111111"
+DOCUMENT_UUID = "22222222-2222-2222-2222-222222222222"
+PROMPT_UUID = "33333333-3333-3333-3333-333333333333"
+PIPELINE_UUID = "44444444-4444-4444-4444-444444444444"
+WORKFLOW_UUID = "55555555-5555-5555-5555-555555555555"
+EXECUTION_UUID = "66666666-6666-6666-6666-666666666666"
+DOC_URL = "https://b.s3.us-east-1.amazonaws.com/a.pdf?X-Amz-Signature=abc"
 
 
 @override_settings(CACHES=LOCMEM)
@@ -291,4 +301,262 @@ class NoCredentialLeakTest(TestCase):
         assert offenders == [], (
             f"Connector and adapter responses carry decrypted credentials; "
             f"no MCP tool should wrap them: {offenders}"
+        )
+
+
+class WriteToolLeakSweepTest(SimpleTestCase):
+    """The sweep above, extended to the tools it could not invoke.
+
+    ``PlatformToolLeakSweepTest`` skips every ``writes``/``billable`` tool
+    because calling them for real would start executions and spend budget — but
+    those are precisely the tools that return upstream data this app did not
+    assemble field by field, so leaving them uncovered left the guarantee
+    hollow exactly where it mattered most.
+
+    The fix is to stub the delegate rather than skip the tool: each tool is
+    invoked for real, with the boundary it delegates to (a Prompt Studio view
+    action, ``PipelineManager``, ``DeploymentHelper``) returning a canary. What
+    is under test is whether the tool's own return path scrubs what it is
+    handed — which is the same question the read sweep asks, just reachable
+    without live infra.
+
+    Both directions are covered, because they take different code paths: a 2xx
+    body flows through the success branch, a non-2xx body through the
+    error-reporting branch that ``_result`` deliberately returns *as data*.
+
+    ``SimpleTestCase``: no database. The project/pipeline/deployment lookups are
+    the part that would need one, and they are stubbed.
+    """
+
+    def _context(self):
+        context = Mock()
+        context.org_name = ORG_ID
+        context.request = Mock(data={})
+        context.platform_key = Mock(name="k")
+        context.user = Mock(is_service_account=True)
+        return context
+
+    def _assert_clean(self, result, tool_name: str) -> None:
+        blob = json.dumps(result, default=str)
+        for canary in CANARIES:
+            assert canary not in blob, (
+                f"Tool '{tool_name}' leaked a credential ({canary}) from its "
+                "delegate's response. Route the upstream payload through "
+                "redact_structure before returning it."
+            )
+
+    # --- Prompt Studio: the four billable tools share _result ---------------
+
+    def _run_prompt_studio(self, tool, status_code: int, data, **kwargs):
+        """Invoke a Prompt Studio tool with the view action stubbed."""
+        from mcp_server.tools import prompt_studio as ps
+
+        project = Mock(tool_id=PROJECT_UUID, tool_name="Leak Prompts")
+        response = Mock(status_code=status_code, data=data)
+
+        class StubView:
+            def __init__(self) -> None:
+                pass
+
+            def __getattr__(self, item):
+                return lambda request, pk=None: response
+
+        with (
+            patch.object(ps, "_resolve_project", return_value=project),
+            patch.object(ps, "PromptStudioCoreView", StubView),
+        ):
+            return tool(self._context(), project_id=PROJECT_UUID, **kwargs)
+
+    def test_prompt_studio_tools_scrub_a_successful_response(self) -> None:
+        from mcp_server.tools.prompt_studio import (
+            bulk_fetch_response,
+            fetch_response,
+            index_document,
+            single_pass_extraction,
+        )
+
+        # A delegated view returning an indexing summary that happens to embed
+        # the adapter's key — the shape a real failure downstream produces.
+        leaky = {"output": "ok", "profile": {"api_key": LLM_API_KEY}}
+        cases = [
+            (index_document, "indexDocument", {"document_id": DOCUMENT_UUID}),
+            (
+                fetch_response,
+                "fetchResponse",
+                {"document_id": DOCUMENT_UUID, "prompt_id": PROMPT_UUID},
+            ),
+            (
+                bulk_fetch_response,
+                "bulkFetchResponse",
+                {"document_id": DOCUMENT_UUID, "prompt_ids": [PROMPT_UUID]},
+            ),
+            (
+                single_pass_extraction,
+                "singlePassExtraction",
+                {"document_id": DOCUMENT_UUID},
+            ),
+        ]
+        for tool, name, kwargs in cases:
+            with self.subTest(name):
+                result = self._run_prompt_studio(tool, 200, leaky, **kwargs)
+                self._assert_clean(result, name)
+
+    def test_prompt_studio_tools_scrub_an_error_response(self) -> None:
+        """The path that matters more: `_result` returns non-2xx bodies as
+        data, and a delegated view's error text is where a connection string
+        actually surfaces.
+        """
+        from mcp_server.tools.prompt_studio import index_document
+
+        leaky = {"detail": f"could not connect: password={DB_PASSWORD}"}
+
+        result = self._run_prompt_studio(
+            index_document, 500, leaky, document_id=DOCUMENT_UUID
+        )
+
+        self._assert_clean(result, "indexDocument")
+        assert result["ok"] is False
+
+    # --- executePipeline -----------------------------------------------------
+
+    def test_execute_pipeline_scrubs_its_manager_response(self) -> None:
+        from mcp_server.tools import platform as platform_tools
+        from mcp_server.tools.platform import execute_pipeline
+
+        pipeline = Mock(id=PIPELINE_UUID, pipeline_name="Leak Pipeline")
+        for label, status, data in [
+            ("success", 200, {"log": f"connected with password={DB_PASSWORD}"}),
+            ("error", 500, {"detail": f"api_key={LLM_API_KEY} rejected"}),
+        ]:
+            with self.subTest(label):
+                with (
+                    patch.object(
+                        platform_tools, "_resolve_pipeline", return_value=pipeline
+                    ),
+                    patch(
+                        "pipeline_v2.manager.PipelineManager.execute_pipeline",
+                        return_value=Mock(status_code=status, data=data),
+                    ),
+                ):
+                    result = execute_pipeline(
+                        self._context(), pipeline_id=PIPELINE_UUID
+                    )
+                self._assert_clean(result, "executePipeline")
+
+    # --- extractDocument and its poll ---------------------------------------
+
+    def test_extract_document_scrubs_the_execution_response(self) -> None:
+        from mcp_server.tools.execution import extract_document
+
+        context = Mock()
+        context.org_name = ORG_ID
+        context.api = Mock(is_active=True, api_name="leak-api")
+        context.api_key = "k"
+
+        leaky = {
+            "execution_status": "ERROR",
+            "error": f"connector refused: password={DB_PASSWORD}",
+        }
+        with (
+            patch(
+                "mcp_server.tools.execution.ExecutionRequestSerializer.is_valid",
+                return_value=True,
+            ),
+            patch(
+                "mcp_server.tools.execution.ExecutionRequestSerializer.validated_data",
+                {"presigned_urls": [DOC_URL]},
+            ),
+            patch(
+                "mcp_server.tools.execution.APIDeploymentRateLimiter.check_and_acquire",
+                return_value=(True, {}),
+            ),
+            patch("mcp_server.tools.execution.DeploymentHelper.load_presigned_files"),
+            patch(
+                "mcp_server.tools.execution.DeploymentHelper.execute_workflow",
+                return_value=leaky,
+            ),
+        ):
+            result = extract_document(context, document_urls=[DOC_URL])
+
+        self._assert_clean(result, "extractDocument")
+
+    def test_get_execution_status_scrubs_the_polled_result(self) -> None:
+        """The tool the credential-leak sweep originally caught a leak in."""
+        from workflow_manager.workflow_v2.dto import ExecutionResponse
+
+        from mcp_server.tools.execution import get_execution_status
+
+        context = Mock()
+        context.api = Mock(workflow_id=WORKFLOW_UUID)
+
+        response = ExecutionResponse(
+            workflow_id=WORKFLOW_UUID,
+            execution_id=EXECUTION_UUID,
+            execution_status="ERROR",
+            result=[{"file": "a.pdf", "error": f"secret_access_key={S3_SECRET}"}],
+        )
+        with (
+            patch("mcp_server.tools.execution.WorkflowExecution.objects.filter") as f,
+            patch(
+                "mcp_server.tools.execution.ExecutionQuerySerializer.is_valid",
+                return_value=True,
+            ),
+            patch(
+                "mcp_server.tools.execution.ExecutionQuerySerializer.validated_data",
+                {
+                    "execution_id": EXECUTION_UUID,
+                    "include_metadata": False,
+                    "include_metrics": False,
+                    "include_extracted_text": False,
+                },
+            ),
+            patch(
+                "mcp_server.tools.execution.DeploymentHelper.get_execution_status",
+                return_value=response,
+            ),
+            patch(
+                "mcp_server.tools.execution.DeploymentHelper."
+                "process_completed_execution"
+            ),
+        ):
+            f.return_value.only.return_value.first.return_value = object()
+            result = get_execution_status(context, execution_id=EXECUTION_UUID)
+
+        self._assert_clean(result, "getExecutionStatus")
+
+    # --- the guard on the guard ---------------------------------------------
+
+    def test_every_write_and_billable_tool_is_covered_here(self) -> None:
+        """Walks the registry so a *new* write tool cannot be added without
+        either covering it or deliberately exempting it.
+
+        This is the gap the per-call-site tests could not close: they pin the
+        four sites that exist today, and would stay green while a fifth
+        delegating tool shipped with no redaction at all.
+        """
+        covered = {
+            "indexDocument",
+            "fetchResponse",
+            "bulkFetchResponse",
+            "singlePassExtraction",
+            "executePipeline",
+            "extractDocument",
+        }
+        # These write but build their response from named fields, exactly like
+        # the read tools — so they are covered by the read sweep's reasoning
+        # rather than needing a delegate stub. Named explicitly so adding one
+        # is a deliberate act.
+        exempt = {"setApiDeploymentActive", "setPipelineActive"}
+
+        writing = {
+            name
+            for name in PLATFORM_TOOLS.names()
+            if PLATFORM_TOOLS.get(name).writes or PLATFORM_TOOLS.get(name).billable
+        }
+        uncovered = writing - covered - exempt
+
+        assert uncovered == set(), (
+            f"These tools write or spend but no leak test invokes them: "
+            f"{sorted(uncovered)}. Add a delegate-stubbed case above, or add "
+            f"the tool to `exempt` if it returns only named fields."
         )
