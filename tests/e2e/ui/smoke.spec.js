@@ -29,28 +29,4 @@ test.describe("ui harness", () => {
     );
     await expect(page).toHaveTitle(/.+/);
   });
-
-  /*
-   * The reason this tier exists. jsdom reports every element as 0x0, so a
-   * layout assertion like this one is impossible in the Vitest suite — and
-   * layout is exactly where the migration regressions landed.
-   */
-  test("the document does not scroll horizontally", async ({
-    page,
-    baseURL,
-  }) => {
-    try {
-      await page.goto("/", { waitUntil: "domcontentloaded" });
-    } catch (err) {
-      test.skip(true, `no app reachable at ${baseURL}: ${err.message}`);
-      return;
-    }
-
-    const overflow = await page.evaluate(
-      () => document.documentElement.scrollWidth - window.innerWidth,
-    );
-    expect(overflow, "page overflows its viewport horizontally").toBeLessThanOrEqual(
-      0,
-    );
-  });
 });

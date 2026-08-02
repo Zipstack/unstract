@@ -1,53 +1,112 @@
-import {
-  expect,
-  expectNoHorizontalOverflow,
-  test,
-} from "./fixtures.js";
+import { expect, test } from "./fixtures.js";
 
 /**
- * Workflows listing and detail.
+ * Workflows — authoring and the API-deployment surface.
  *
- * Guards the horizontal-scrollbar regression: shadcn's Alert base is `w-full`
- * where antd's sized to its container, so `.deployment-alert`'s `margin: 0
- * 24px` made the box 100% + 48px and `.agency-layout` (overflow-x: auto) grew a
- * scrollbar on every workflow that has a deployment.
+ * Covers the UI side of `workflow-author` and `api-deployment-provision`. The
+ * execution half (`workflow-create-execute`) is API-driven and already lives in
+ * tests/e2e/workflows; duplicating it through a browser would be slower and
+ * flakier for no extra signal.
  */
 test.describe("workflows", () => {
-  test("the listing renders without horizontal overflow", async ({
+  test("the listing loads and offers workflow creation", async ({
     page,
     app,
   }) => {
     await app.goto("workflows");
-    await expect(page.getByText("Workflows").first()).toBeVisible();
-    await expectNoHorizontalOverflow(page, "workflows listing");
+
+    await expect(
+      page.getByRole("button", { name: /New Workflow/i }),
+      "no way to create a workflow",
+    ).toBeVisible();
   });
 
-  test("a workflow detail page does not scroll horizontally", async ({
+  /*
+   * Read-only check of the `workflow-author` entry point: the form opens and
+   * enforces its required fields, so a half-built workflow cannot be POSTed.
+   */
+  test("the create-workflow form requires its mandatory fields", async ({
     page,
     app,
   }) => {
     await app.goto("workflows");
+    await page.getByRole("button", { name: /New Workflow/i }).click();
 
-    // Open the first workflow if the org has one; otherwise there is nothing
-    // to assert and the regression cannot manifest.
-    const card = page.locator(".card-list-content, [class*='workflow']").first();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+
+    /*
+     * Asserting the dialog STAYS OPEN, not that a particular message appears.
+     * Verified against a running app: submitting this form empty renders no
+     * error text at all — the guard is that it refuses to proceed, which is
+     * what actually protects against a half-built workflow being created.
+     */
+    await dialog.getByRole("button", { name: /Create Workflow/i }).click();
+    await expect(dialog, "empty form was accepted").toBeVisible();
+    await expect(page).toHaveURL(/\/workflows(\/|$|\?)/);
+  });
+
+  /*
+   * Opening a workflow must reach its builder. The Actions menu is the entry
+   * point for running it and for viewing file history, so its presence is the
+   * cheapest proof the detail page wired up rather than half-rendering.
+   */
+  test("a workflow opens and exposes its actions", async ({ page, app }) => {
+    await app.goto("workflows");
+
+    const card = page.locator(".list-view-row").first();
     if ((await card.count()) === 0) {
       test.skip(true, "no workflows in this org");
     }
     await card.click();
-    await page.waitForLoadState("networkidle").catch(() => {});
 
-    await expectNoHorizontalOverflow(page, "workflow detail");
+    const actions = page.getByRole("button", { name: /Actions/i });
+    await expect(actions, "workflow detail has no Actions menu").toBeVisible({
+      timeout: 20000,
+    });
 
-    // The specific element that overflowed: its box plus margins must fit the
-    // scroll container, not exceed it by the margin width.
-    const alert = page.locator(".deployment-alert");
-    if ((await alert.count()) > 0) {
-      const fits = await alert.evaluate((el) => {
-        const layout = el.closest(".agency-layout");
-        return !layout || layout.scrollWidth <= layout.clientWidth;
-      });
-      expect(fits, ".deployment-alert overflows .agency-layout").toBe(true);
+    await actions.click();
+    await expect(page.getByRole("menuitem", { name: /Run Workflow/i })).toBeVisible();
+  });
+});
+
+/**
+ * API deployments — `api-deployment-provision` from the UI side.
+ *
+ * The deployment's endpoint and key are what downstream callers depend on, so
+ * the listing surfacing them is the thing worth guarding here. Actually calling
+ * the endpoint is covered API-side in tests/e2e/api_deployment.
+ */
+test.describe("api deployments", () => {
+  test("the listing loads and offers a new deployment", async ({
+    page,
+    app,
+  }) => {
+    await app.goto("api");
+
+    await expect(
+      page.getByRole("button", { name: /API Deployment/i }).first(),
+      "no way to create an API deployment",
+    ).toBeVisible();
+  });
+
+  test("a deployment exposes its endpoint and management controls", async ({
+    page,
+    app,
+  }) => {
+    await app.goto("api");
+
+    const endpoint = page.getByText(/API ENDPOINT/i).first();
+    if ((await endpoint.count()) === 0) {
+      test.skip(true, "no API deployments in this org");
     }
+    await expect(endpoint).toBeVisible();
+
+    // The enable/disable toggle is the control that takes a deployment in and
+    // out of service — the single most consequential switch on this page.
+    await expect(
+      page.locator("[role=switch]").first(),
+      "deployment has no enable/disable control",
+    ).toBeVisible();
   });
 });

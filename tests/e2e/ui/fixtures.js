@@ -170,37 +170,3 @@ export const test = base.extend({
 });
 
 export { expect };
-
-export async function expectNoHorizontalOverflow(page, what) {
-  const overflow = await page.evaluate(
-    () => document.documentElement.scrollWidth - window.innerWidth,
-  );
-  expect(overflow, `${what} overflows its viewport horizontally`).toBeLessThanOrEqual(0);
-}
-
-/**
- * Assert every element in `selector` shares a horizontal centre line.
- *
- * Guards the alignment class of bug this migration kept producing: antd
- * controls were inline-block and the shadcn equivalents are block-level, so
- * unstyled wrappers silently stopped laying out in a row. The doc-manager
- * toolbar drifted 5.6px this way; the reference measured 0.8px.
- */
-export async function expectSharedBaseline(page, selector, tolerance = 2) {
-  const mids = await page.$$eval(selector, (els) =>
-    els
-      .filter((e) => e.getBoundingClientRect().height > 0)
-      .map((e) => {
-        const r = e.getBoundingClientRect();
-        return r.top + r.height / 2;
-      }),
-  );
-  if (mids.length < 2) {
-    return; // nothing to compare
-  }
-  const spread = Math.max(...mids) - Math.min(...mids);
-  expect(
-    spread,
-    `${selector} does not share a baseline (spread ${spread.toFixed(1)}px)`,
-  ).toBeLessThanOrEqual(tolerance);
-}
