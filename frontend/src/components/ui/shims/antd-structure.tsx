@@ -1090,8 +1090,102 @@ function MenuItem({ children }: { children?: React.ReactNode }) {
   return children ?? null;
 }
 
+/**
+ * antd `<Menu.ItemGroup title>` — a labelled group of items.
+ *
+ * Rendered by the verticals Playground plugin. Missing it is the same latent
+ * React #130 that `Skeleton.Button` caused on the Agentic Prompt Studio route:
+ * an undefined element type takes down the whole page, not just the menu.
+ */
+function MenuItemGroup({
+  title,
+  children,
+}: {
+  title?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="ant-menu-item-group">
+      {title ? (
+        <div className="ant-menu-item-group-title px-3 py-1.5 text-xs text-muted-foreground">
+          {title}
+        </div>
+      ) : null}
+      <div className="ant-menu-item-group-list">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * antd's `<Skeleton.Button>` / `<Skeleton.Input>` — single-element placeholders
+ * sized like the control they stand in for, rather than the paragraph block
+ * `<Skeleton>` renders.
+ *
+ * Their absence took down the whole Agentic Prompt Studio project route:
+ * rendering an undefined component is React error #130, which the error
+ * boundary reports as "Couldn't load this page" with no clue which component
+ * was missing.
+ */
+const SKELETON_BLOCK_SIZES = {
+  small: "h-6",
+  default: "h-8",
+  large: "h-10",
+} as const;
+
+interface SkeletonBlockProps extends React.HTMLAttributes<HTMLDivElement> {
+  /** antd sizes these by control height, not by content. */
+  size?: keyof typeof SKELETON_BLOCK_SIZES;
+  /** antd's shimmer toggle; the shadcn primitive always animates. */
+  active?: boolean;
+  block?: boolean;
+  shape?: "circle" | "round" | "square" | "default";
+}
+
+function SkeletonButton({
+  size = "default",
+  active: _active,
+  block,
+  shape,
+  className,
+  ...props
+}: SkeletonBlockProps) {
+  return (
+      <ShadcnSkeleton
+        className={cn(
+          SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
+          block ? "w-full" : "w-16",
+          shape === "circle" ? "rounded-full" : "rounded-md",
+          className,
+        )}
+        {...props}
+      />
+  );
+}
+
+function SkeletonInput({
+  size = "default",
+  active: _active,
+  block,
+  className,
+  ...props
+}: SkeletonBlockProps) {
+  return (
+      <ShadcnSkeleton
+        className={cn(
+          SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
+          // antd's Input skeleton spans its container unless told otherwise;
+          // the call-sites rely on that to fill a panel row.
+          block === false ? "w-40" : "w-full",
+          "rounded-md",
+          className,
+        )}
+        {...props}
+      />
+  );
+}
+
 /** antd `<Skeleton active paragraph />`. */
-const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
+const SkeletonBase = React.forwardRef<HTMLDivElement, SkeletonProps>(
   function Skeleton(
     { active, paragraph, title = true, className, ...props },
     ref,
@@ -1107,6 +1201,16 @@ const Skeleton = React.forwardRef<HTMLDivElement, SkeletonProps>(
     );
   },
 );
+
+/*
+ * Object.assign so the statics stay part of the inferred type — same reason as
+ * Card.Meta and Collapse.Panel. `<Skeleton.Button>` must type-check AND remain
+ * resolvable by value, because the shim-completeness guard reads it that way.
+ */
+const Skeleton = Object.assign(SkeletonBase, {
+  Button: SkeletonButton,
+  Input: SkeletonInput,
+});
 
 /** antd `<Steps current items>`. */
 const Steps = React.forwardRef<HTMLOListElement, StepsProps>(function Steps(
@@ -1625,7 +1729,10 @@ const Layout = Object.assign(LayoutBase, {
   Footer,
 });
 const Upload = Object.assign(UploadBase, { Dragger });
-const Menu = Object.assign(MenuBase, { Item: MenuItem });
+const Menu = Object.assign(MenuBase, {
+  Item: MenuItem,
+  ItemGroup: MenuItemGroup,
+});
 const Descriptions = Object.assign(DescriptionsBase, {
   Item: DescriptionsItem,
 });

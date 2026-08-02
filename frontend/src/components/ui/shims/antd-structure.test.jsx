@@ -12,6 +12,7 @@ import {
   Pagination,
   Result,
   Segmented,
+  Skeleton,
   Statistic,
   Table,
   Tabs,
@@ -156,6 +157,51 @@ describe("antd-compatible structural shims (P4)", () => {
   it("Tabs add no icon gap when an item has none", () => {
     render(<Tabs items={[{ key: "a", label: "Plain", children: "x" }]} />);
     expect(screen.getByRole("tab").className).not.toContain("gap-2");
+  });
+
+  /*
+   * `<Skeleton.Button>` / `<Skeleton.Input>` are rendered by the Agentic Prompt
+   * Studio plugin. They were missing, so opening any project rendered an
+   * undefined component — React error #130, which the error boundary showed as
+   * "Couldn't load this page" with no hint at the cause.
+   *
+   * shim-completeness cannot catch this class on its own: it scans OSS `src/`,
+   * and the plugins that use these live in a gitignored tree that is absent
+   * from an OSS checkout. Assert them by value here instead.
+   */
+  /*
+   * Same class as Skeleton.Button, found by sweeping every `<Foo.Bar>` the
+   * cloud plugins render: the verticals Playground uses <Menu.ItemGroup>, so
+   * its absence was a second #130 waiting on that route.
+   */
+  it("Menu exposes antd's ItemGroup static", () => {
+    expect(Menu.ItemGroup, "Menu.ItemGroup is undefined").toBeDefined();
+  });
+
+  it("Menu.ItemGroup renders its title and children", () => {
+    render(
+      <Menu.ItemGroup title="Endpoints">
+        <span>an endpoint</span>
+      </Menu.ItemGroup>,
+    );
+    expect(screen.getByText("Endpoints")).toBeInTheDocument();
+    expect(screen.getByText("an endpoint")).toBeInTheDocument();
+  });
+
+  it("Skeleton exposes antd's Button and Input statics", () => {
+    expect(Skeleton.Button, "Skeleton.Button is undefined").toBeDefined();
+    expect(Skeleton.Input, "Skeleton.Input is undefined").toBeDefined();
+  });
+
+  it("Skeleton.Button and Skeleton.Input render a placeholder", () => {
+    const { container } = render(
+      <div>
+        <Skeleton.Button active size="small" />
+        <Skeleton.Input active size="large" />
+      </div>,
+    );
+    expect(container.querySelectorAll("div[class*='animate-pulse']").length)
+      .toBeGreaterThanOrEqual(2);
   });
 
   it("Tabs keep the pill look when type='card'", () => {

@@ -9,6 +9,7 @@ import {
   Card,
   Layout,
   List,
+  Skeleton,
   Table,
   Tabs,
 } from "@/components/ui/shims/antd-structure";
@@ -37,6 +38,7 @@ const SHIMS = {
   List,
   Radio,
   Select,
+  Skeleton,
   Table,
   Tabs,
   Typography,
