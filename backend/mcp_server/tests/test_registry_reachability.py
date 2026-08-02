@@ -305,3 +305,94 @@ class PlatformExtractionShapeTest(SimpleTestCase):
         assert PLATFORM_TOOLS.get("extractDocument").billable is True
         assert PLATFORM_TOOLS.get("getExecutionStatus").billable is False
         assert PLATFORM_TOOLS.get("getExecutionStatus").required_method == "GET"
+
+
+class ToolAnnotationsTest(SimpleTestCase):
+    """`tools/list` advertises behaviour hints a host can act on.
+
+    Without these every tool looks equally dangerous, so a host cannot
+    auto-approve `listWorkflows` while prompting on `executePipeline` — which
+    is what makes a 23-tool surface tolerable.
+
+    Spec defaults are the trap (`ToolAnnotations`, rev 2025-06-18):
+    `readOnlyHint` defaults to false and `destructiveHint` defaults to *true*,
+    so silence is the unsafe answer in both directions and every value here is
+    stated explicitly.
+    """
+
+    def test_every_tool_advertises_annotations_and_a_title(self) -> None:
+        for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
+            for schema in registry.list_schemas():
+                with self.subTest(schema["name"]):
+                    assert schema["title"], "a host shows this in its UI"
+                    hints = schema["annotations"]
+                    assert hints["title"] == schema["title"]
+                    assert isinstance(hints["readOnlyHint"], bool)
+                    assert hints["openWorldHint"] is True
+
+    def test_read_tools_are_marked_read_only(self) -> None:
+        """The whole point: a host can auto-approve these."""
+        for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
+            for name in registry.names():
+                tool = registry.get(name)
+                if tool.writes or tool.billable:
+                    continue
+                with self.subTest(name):
+                    assert tool.annotations()["readOnlyHint"] is True
+
+    def test_writing_tools_are_never_marked_read_only(self) -> None:
+        """The inverse, and the one that matters for safety: a tool that
+        spends money or changes state must not be advertised as inert.
+        """
+        for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
+            for name in registry.names():
+                tool = registry.get(name)
+                if not (tool.writes or tool.billable):
+                    continue
+                with self.subTest(name):
+                    assert tool.annotations()["readOnlyHint"] is False
+
+    def test_read_tools_omit_the_write_only_hints(self) -> None:
+        """`destructiveHint`/`idempotentHint` are defined as meaningful only
+        when `readOnlyHint` is false, so emitting them for a read tool would
+        publish a value the client is told to ignore.
+        """
+        tool = PLATFORM_TOOLS.get("listWorkflows")
+        hints = tool.annotations()
+
+        assert "destructiveHint" not in hints
+        assert "idempotentHint" not in hints
+
+    def test_no_tool_is_advertised_as_destructive(self) -> None:
+        """Every write tool here is reversible and none deletes anything —
+        a deliberate property of this surface, stated rather than left to the
+        spec default of true.
+        """
+        for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
+            for name in registry.names():
+                tool = registry.get(name)
+                with self.subTest(name):
+                    assert tool.annotations().get("destructiveHint") is not True
+
+    def test_state_changes_are_idempotent_and_executions_are_not(self) -> None:
+        """The distinction a host needs to decide whether a retry is safe."""
+        for name in ("setApiDeploymentActive", "setPipelineActive"):
+            with self.subTest(name):
+                assert PLATFORM_TOOLS.get(name).annotations()["idempotentHint"] is True
+
+        for name in ("executePipeline", "indexDocument", "singlePassExtraction"):
+            with self.subTest(name):
+                assert PLATFORM_TOOLS.get(name).annotations()["idempotentHint"] is False
+
+    def test_deployment_extract_is_not_advertised_as_repeatable(self) -> None:
+        """The case that broke a derived-from-`billable` implementation.
+
+        Deployment `extractDocument` is not billable — the deployment server
+        has no spend guard, its cost is bounded by the rate limiter — but it
+        still starts a fresh execution per call, so it must not be advertised
+        as safe to repeat.
+        """
+        tool = DEPLOYMENT_TOOLS.get("extractDocument")
+
+        assert tool.billable is False
+        assert tool.annotations()["idempotentHint"] is False

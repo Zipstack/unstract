@@ -23,6 +23,8 @@ class MCPTool:
             it is the only guidance the calling agent gets.
         input_schema: JSON schema for the tool's arguments.
         handler: Callable invoked as ``handler(context, **arguments)``.
+        title: Human-readable name a host shows in its UI, where the camelCase
+            tool name reads poorly. Defaults to the tool name when unset.
         writes: True when the tool has side effects (consumes quota, starts an
             execution). Read-only tools are safe to retry; write tools are not.
         required_method: The HTTP method this tool's REST equivalent would use.
@@ -39,6 +41,17 @@ class MCPTool:
             by ``mcp_server.spend_guard``. Deliberately distinct from
             ``writes``: a tool can mutate cheaply (pausing a schedule) or cost
             money without changing configuration (running an extraction).
+        idempotent: True when repeating the call with the same arguments lands
+            in the same state — activating an already-active deployment, or
+            pausing an already-paused schedule. False when each call creates
+            new work, such as starting an execution. Only meaningful for tools
+            that write; a read tool is idempotent by definition.
+
+            Declared rather than derived from ``billable``: the deployment
+            server's ``extractDocument`` is not billable there (its cost is
+            bounded by the rate limiter rather than the spend guard) but still
+            starts a fresh execution on every call, so deriving would have
+            advertised it as safe to repeat.
         preflight: Optional ``preflight(context, **arguments)`` run *before* the
             billable budget is claimed. It exists because the budget is
             consumed on invocation and never refunded, so a call refused for a
@@ -56,17 +69,66 @@ class MCPTool:
     description: str
     input_schema: dict[str, Any]
     handler: Callable[..., Any]
+    title: str = ""
     writes: bool = False
     required_method: str = "GET"
     billable: bool = False
+    idempotent: bool = False
     preflight: Callable[..., Any] | None = None
+
+    def annotations(self) -> dict[str, Any]:
+        """Behaviour hints for `tools/list`, built from the flags above.
+
+        ``readOnlyHint`` and ``destructiveHint`` are *derived* from
+        ``writes``/``billable``/``required_method`` rather than declared per
+        tool, so a tool cannot advertise something its own flags contradict —
+        the same reason ``required_method`` is enforced at registration instead
+        of being trusted. ``idempotentHint`` is the exception and is declared;
+        see the ``idempotent`` field for why no flag here implies it.
+
+        Spec defaults matter here and are not what you would guess
+        (`ToolAnnotations`, rev 2025-06-18):
+
+        * ``readOnlyHint`` defaults to **false**, so a read tool that stays
+          silent looks like a mutator. Every read tool must say so explicitly.
+        * ``destructiveHint`` defaults to **true**, so a write tool that stays
+          silent looks destructive. Every write tool here is reversible —
+          activating a deployment, pausing a schedule, starting an execution —
+          and none deletes anything, which is a deliberate property of this
+          surface, so it is stated rather than left to the default.
+        * ``destructiveHint`` and ``idempotentHint`` are meaningful only when
+          ``readOnlyHint`` is false, so they are omitted for read tools rather
+          than set to a value a client is told to ignore.
+
+        These are hints, not enforcement: the spec tells clients to distrust
+        annotations from untrusted servers, and the real gate stays
+        ``check_tool_allowed`` plus the spend guard.
+        """
+        read_only = not self.writes and not self.billable
+        hints: dict[str, Any] = {
+            "title": self.title or self.name,
+            "readOnlyHint": read_only,
+            # Every tool here reaches Unstract's own APIs and, for the
+            # extraction paths, the documents and model providers behind them.
+            # That is an open world by the spec's definition.
+            "openWorldHint": True,
+        }
+        if not read_only:
+            # DELETE is the tier reserved for destructive operations; nothing
+            # on this surface declares it today, and the registry refuses a
+            # write tool that leaves required_method at the "GET" default.
+            hints["destructiveHint"] = self.required_method == "DELETE"
+            hints["idempotentHint"] = self.idempotent
+        return hints
 
     def to_mcp_schema(self) -> dict[str, Any]:
         """Serialize to the shape returned by `tools/list`."""
         return {
             "name": self.name,
+            "title": self.title or self.name,
             "description": self.description,
             "inputSchema": self.input_schema,
+            "annotations": self.annotations(),
         }
 
 
@@ -394,8 +456,12 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=set_api_deployment_active_schema(),
             handler=set_api_deployment_active,
+            title="Activate or Deactivate API Deployment",
             writes=True,
             required_method="POST",
+            # Setting active=True on an already-active deployment lands in the
+            # same state; nothing new is created.
+            idempotent=True,
         )
     )
     registry.register(
@@ -409,8 +475,12 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=set_pipeline_active_schema(),
             handler=set_pipeline_active,
+            title="Enable or Pause Pipeline Schedule",
             writes=True,
             required_method="POST",
+            # Pausing an already-paused schedule is a no-op, as is enabling an
+            # enabled one.
+            idempotent=True,
         )
     )
     registry.register(
