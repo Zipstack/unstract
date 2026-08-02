@@ -26,9 +26,3 @@ yarn.lock
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Playwright (`ui` rig group) — run artefacts, never committed.
-/test-results/
-/playwright-report/
-/blob-report/
-/reports/

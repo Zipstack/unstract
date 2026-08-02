@@ -66,10 +66,11 @@ export default defineConfig({
     // processable by vitest's CSS pipeline; stub CSS imports in tests.
     css: false,
     /*
-     * `tests/ui` holds Playwright specs (the rig's `ui` group). Vitest's
-     * default glob matches `*.spec.js` anywhere, so without this it would
-     * collect them and fail on `@playwright/test` imports it cannot run.
+     * The Playwright suite (the rig's `ui` group) lives in `tests/e2e/ui`, out
+     * of this tree entirely, so vitest's default glob no longer reaches it.
+     * `build/` is listed because a production build lands there and its
+     * bundled chunks would otherwise be walked.
      */
-    exclude: ["**/node_modules/**", "**/dist/**", "**/build/**", "tests/ui/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/build/**"],
   },
 });
