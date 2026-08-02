@@ -396,3 +396,56 @@ class ToolAnnotationsTest(SimpleTestCase):
 
         assert tool.billable is False
         assert tool.annotations()["idempotentHint"] is False
+
+
+class ToolCountIsDocumentedTest(SimpleTestCase):
+    """The advertised tool count matches the registry.
+
+    Review found the PR description claiming 19 platform tools against 23
+    registered — the listing had not kept up as tools were added. That is the
+    kind of drift nobody notices, because the docs are read by people and the
+    registry is read by machines.
+
+    This pins the number so adding a tool forces a deliberate decision about
+    where it is announced. If it fails, update the count *and* the tool tables
+    in README.md and the PR description, not just this constant.
+    """
+
+    EXPECTED_PLATFORM_TOOLS = 23
+    EXPECTED_DEPLOYMENT_TOOLS = 4
+
+    def test_platform_tool_count(self) -> None:
+        actual = len(PLATFORM_TOOLS.names())
+
+        assert actual == self.EXPECTED_PLATFORM_TOOLS, (
+            f"Platform registry has {actual} tools, docs say "
+            f"{self.EXPECTED_PLATFORM_TOOLS}. Update README.md's tool tables "
+            "and the PR/release notes, then this constant."
+        )
+
+    def test_deployment_tool_count(self) -> None:
+        actual = len(DEPLOYMENT_TOOLS.names())
+
+        assert actual == self.EXPECTED_DEPLOYMENT_TOOLS, (
+            f"Deployment registry has {actual} tools, docs say "
+            f"{self.EXPECTED_DEPLOYMENT_TOOLS}. Update README.md's tool table, "
+            "then this constant."
+        )
+
+    def test_the_readme_lists_every_platform_tool(self) -> None:
+        """Counting alone would pass if one tool were swapped for another."""
+        from pathlib import Path
+
+        readme = (
+            Path(__file__).resolve().parent.parent / "README.md"
+        ).read_text()
+
+        missing = [
+            name for name in PLATFORM_TOOLS.names() if f"`{name}`" not in readme
+        ]
+
+        assert missing == [], (
+            f"These platform tools are registered but absent from README.md: "
+            f"{missing}. An agent's operator reads that table to know what the "
+            "credential can reach."
+        )

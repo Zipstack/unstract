@@ -172,7 +172,7 @@ Platform API keys are managed at `/api/v1/unstract/<org>/platform-api/keys/`.
 | Tool | Tier | Purpose |
 | --- | --- | --- |
 | `readMeFirst` | read | Orientation, including what this credential can reach. |
-| `whoami` | read | The key's organization, tier, and remaining spend budget. |
+| `whoami` | read | The key's organization, tier, and remaining billable-call budget. |
 | `listApiDeployments` | read | Deployed extraction endpoints, with their `api_name`. |
 | `listWorkflows` | read | The workflows behind them. |
 | `listPipelines` | read | ETL and task pipelines, with schedule and last-run state. |
@@ -240,8 +240,10 @@ schema per tenant, so the check is made here rather than assumed.
 The billable tools drive LLM inference, embedding and vector-store writes. An
 agent looping over a list, or retrying on a misread error, can spend a great
 deal without anyone watching — so they are budgeted per organization over a
-rolling window (`MCP_BILLABLE_CALL_LIMIT`, default 50 per
-`MCP_BILLABLE_WINDOW_SECONDS`, default one hour).
+fixed window (`MCP_BILLABLE_CALL_LIMIT`, default 50 per
+`MCP_BILLABLE_WINDOW_SECONDS`, default one hour). Fixed rather than rolling:
+the counter's TTL expires it, so the window opens at the first billable call and
+closes an hour later regardless of the pattern of calls in between.
 
 **A call that could never have run does not cost a slot.** The budget is
 consumed on invocation and never refunded, which is right for a call that may

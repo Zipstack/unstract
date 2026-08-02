@@ -3,7 +3,12 @@
 Some platform tools cost real money each time they run: they drive LLM
 inference, embedding and vector-store writes. An agent looping over a list, or
 retrying on a misread error, can spend a great deal without anyone watching. So
-billable tools are budgeted per organization over a rolling window.
+billable tools are budgeted per organization over a fixed window.
+
+**Fixed, not rolling.** The counter's TTL is what expires it, so the window
+opens at the first billable call and closes ``MCP_BILLABLE_WINDOW_SECONDS``
+later regardless of what happens in between — it does not slide. An org that
+spends its whole budget in the first minute waits out the rest of the window.
 
 **This is a call budget, not a spend budget.** It counts invocations, not
 tokens or currency. Unstract's open-source backend records usage after the fact

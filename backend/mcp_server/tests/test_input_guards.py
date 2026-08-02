@@ -303,3 +303,80 @@ class PlatformPollDeploymentResolutionTest(SimpleTestCase):
                 )
 
         assert "did not come from an API deployment" in str(caught.exception)
+
+
+class ExecutionDetailDegradationTest(SimpleTestCase):
+    """A partial `files` list must announce itself.
+
+    `getExecutionDetail` answers "which files failed, and why". If the per-file
+    load fails it keeps whatever it got — some detail beats none — but a short
+    or empty list then reads to an agent as "no files failed", which is the
+    opposite of the truth and the exact wrong premise for it to act on.
+    """
+
+    def _execution(self, total_files: int = 3):
+        execution = MagicMock()
+        execution.id = GOOD_UUID
+        execution.workflow_id = "wf"
+        execution.status = "ERROR"
+        execution.total_files = total_files
+        execution.successful_files = 0
+        execution.failed_files = total_files
+        execution.error_message = ""
+        execution.execution_time = 1
+        execution.created_at = "2026-01-01"
+        return execution
+
+    def _run(self, execution):
+        from mcp_server.tools import observability
+
+        context = MagicMock()
+        context.org_name = "org-mcp"
+
+        with (
+            patch.object(observability, "_org_workflow_ids", return_value=["w"]),
+            patch.object(observability.WorkflowExecution.objects, "filter") as f,
+        ):
+            f.return_value.first.return_value = execution
+            return observability.get_execution_detail(context, execution_id=GOOD_UUID)
+
+    def test_a_failed_file_load_is_announced(self) -> None:
+        execution = self._execution()
+        execution.file_executions.all.side_effect = RuntimeError("db gone")
+
+        result = self._run(execution)
+
+        assert result["files_complete"] is False
+        assert "incomplete" in result["files_note"]
+        # The count the agent should trust instead is still present.
+        assert result["failed_files"] == 3
+
+    def test_a_complete_load_says_nothing(self) -> None:
+        """The marker must not appear on the happy path, or it means nothing."""
+        execution = self._execution(total_files=1)
+        row = MagicMock(id="f1", file_name="a.pdf", status="ERROR", execution_error="")
+        execution.file_executions.all.return_value = [row]
+
+        result = self._run(execution)
+
+        assert "files_complete" not in result
+        assert "files_note" not in result
+        assert len(result["files"]) == 1
+
+    def test_a_capped_list_is_also_announced(self) -> None:
+        """Same wrong premise, different cause: hitting LOG_LIMIT truncates
+        silently unless the response says so.
+        """
+        from mcp_server.tools.observability import LOG_LIMIT
+
+        execution = self._execution(total_files=LOG_LIMIT + 5)
+        rows = [
+            MagicMock(id=f"f{i}", file_name=f"{i}.pdf", status="ERROR", execution_error="")
+            for i in range(LOG_LIMIT)
+        ]
+        execution.file_executions.all.return_value = rows
+
+        result = self._run(execution)
+
+        assert result["files_complete"] is False
+        assert str(LOG_LIMIT) in result["files_note"]

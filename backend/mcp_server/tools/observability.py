@@ -162,6 +162,7 @@ def get_execution_detail(
         )
 
     files = []
+    files_complete = True
     try:
         for fe in execution.file_executions.all()[:LOG_LIMIT]:
             files.append(
@@ -173,9 +174,14 @@ def get_execution_detail(
                 }
             )
     except Exception as error:  # pragma: no cover - defensive
+        # Partial results are kept — some detail beats none — but the caller
+        # must be told, because the failure mode here is silent and wrong in a
+        # specific way: an agent asking "which files failed" reads a short or
+        # empty list as "none did", which is the opposite of what happened.
+        files_complete = False
         logger.warning(f"Could not load file executions for '{execution_id}': {error}")
 
-    return {
+    result = {
         "id": str(execution.id),
         "workflow_id": str(execution.workflow_id),
         "status": execution.status,
@@ -187,6 +193,22 @@ def get_execution_detail(
         "created_at": execution.created_at,
         "files": files,
     }
+    if not files_complete:
+        result["files_complete"] = False
+        result["files_note"] = (
+            "Per-file detail could not be fully loaded, so `files` is "
+            "incomplete — do not read it as the full set of failures. "
+            "`failed_files` above is authoritative for the count. Retry, or "
+            "use the Unstract UI."
+        )
+    elif len(files) == LOG_LIMIT and execution.total_files > LOG_LIMIT:
+        # The same wrong premise from a different cause: a capped list also
+        # reads as complete unless it says otherwise.
+        result["files_complete"] = False
+        result["files_note"] = (
+            f"Showing the first {LOG_LIMIT} of {execution.total_files} files."
+        )
+    return result
 
 
 def get_usage_summary_schema() -> dict[str, Any]:
