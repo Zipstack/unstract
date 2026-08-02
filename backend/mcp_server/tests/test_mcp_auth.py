@@ -62,7 +62,6 @@ class MCPServerAuthTest(TestCase):
         auth: str | None,
         org: str = ORG_ID,
         payload: dict | None = None,
-        path_key: str | None = None,
     ):
         headers = {"HTTP_AUTHORIZATION": auth} if auth is not None else {}
         body = (
@@ -77,10 +76,7 @@ class MCPServerAuthTest(TestCase):
         request = self.factory.post(
             f"/deployment/api/{org}/{api_name}/mcp", body, format="json", **headers
         )
-        kwargs = {"org_name": org, "api_name": api_name}
-        if path_key is not None:
-            kwargs["api_key"] = path_key
-        return self.view(request, **kwargs)
+        return self.view(request, org_name=org, api_name=api_name)
 
     @pytest.mark.critical_path("mcp-server-auth")
     @patch("mcp_server.registry.DEPLOYMENT_TOOLS.get")
@@ -127,27 +123,45 @@ class MCPServerAuthTest(TestCase):
         ]
 
     @pytest.mark.critical_path("mcp-server-auth")
-    def test_api_key_in_url_path_authenticates(self) -> None:
-        """The path-key route exists for MCP clients that cannot set headers;
-        it must enforce exactly the same check as the header route.
-        """
-        ok = self._post("live-api", auth=None, path_key=str(self.key.api_key))
-        assert ok.status_code == 200, ok.content
+    def test_no_route_accepts_the_api_key_in_the_url(self) -> None:
+        """The credential travels in a header, never in the path.
 
-        rejected = self._post("live-api", auth=None, path_key=str(uuid.uuid4()))
-        assert rejected.status_code == 401, rejected.content
+        An earlier revision offered `/mcp/<api_key>/` for "clients that cannot
+        set headers". That class does not exist for HTTP transports — the spec
+        requires `Authorization` on every authenticated request and forbids
+        tokens in the URI — while a key in the path reaches access logs, APM
+        traces and intermediaries a header never touches.
+
+        Asserted at the URL layer rather than the view: a route resolving here
+        again is the regression, and it would not be caught by the view alone.
+        """
+        from django.urls import Resolver404, resolve
+
+        base = f"/deployment/api/{ORG_ID}/live-api"
+
+        with self.assertRaises(Resolver404):
+            resolve(f"{base}/mcp/{self.key.api_key}/")
+        with self.assertRaises(Resolver404):
+            resolve(f"{base}/mcp/{uuid.uuid4()}")
+
+        # The header route still works, so this is a narrowing rather than a
+        # break.
+        assert resolve(f"{base}/mcp").url_name == "mcp_server"
 
     @pytest.mark.critical_path("mcp-server-auth")
-    def test_path_key_wins_over_valid_header(self) -> None:
-        """The path key takes precedence, so a bad path key must not be
-        rescued by a good header — otherwise the precedence rule would be a
-        way to smuggle an unchecked credential past the check.
+    def test_a_key_in_the_path_does_not_authenticate(self) -> None:
+        """Belt and braces: even if a route were re-added, the view ignores it.
+
+        `resolve_context` reads the bearer header only, so a caller supplying
+        the key some other way is rejected like any unauthenticated request.
         """
-        response = self._post(
-            "live-api",
-            auth=f"Bearer {self.key.api_key}",
-            path_key=str(uuid.uuid4()),
+        request = self.factory.post(
+            f"/deployment/api/{ORG_ID}/live-api/mcp/{self.key.api_key}/",
+            {"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
+            format="json",
         )
+        response = self.view(request, org_name=ORG_ID, api_name="live-api")
+
         assert response.status_code == 401, response.content
 
     @pytest.mark.critical_path("mcp-server-auth")
@@ -167,9 +181,6 @@ class MCPServerAuthTest(TestCase):
         base = f"/deployment/api/{ORG_ID}/live-api"
 
         assert resolve(f"{base}/mcp").url_name == "mcp_server"
-        assert resolve(f"{base}/mcp/{self.key.api_key}/").url_name == (
-            "mcp_server_with_key"
-        )
         # The execution endpoint must still resolve to execution, not MCP.
         assert resolve(f"{base}/").url_name == "api_deployment_execution"
 

@@ -24,13 +24,17 @@ urlpatterns = [
         mcp_server,
         name="mcp_server",
     ),
-    # API key as a path segment, for MCP clients that cannot attach an
-    # Authorization header to the request. The key is a UUID, so the pattern
-    # cannot collide with the header-authenticated route above.
-    re_path(
-        r"^api/(?P<org_name>[\w-]+)/(?P<api_name>[\w-]+)/mcp/"
-        r"(?P<api_key>[0-9a-fA-F-]{36})/?$",
-        mcp_server,
-        name="mcp_server_with_key",
-    ),
 ]
+
+# There is deliberately no route carrying the API key as a path segment. An
+# earlier revision offered one for "MCP clients that cannot set headers", but
+# that client class does not exist for HTTP transports: the spec requires
+# `Authorization` on every authenticated request ("Authorization MUST be
+# included in every HTTP request from client to server"), and states that
+# access tokens MUST NOT appear in the URI. A key in the path reaches nginx and
+# gunicorn access logs, APM traces, and any intermediary — places a header
+# never goes — and rotating a deployment key is not free.
+#
+# Basic auth would be spec-legal and is supported by MCP clients, but buys
+# nothing here: it is the same `Authorization` header as Bearer, and base64 is
+# encoding rather than encryption. Any client that can send one can send both.

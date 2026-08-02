@@ -54,14 +54,13 @@ credential to mint or revoke.
 Authorization: Bearer <api_key>
 ```
 
-For MCP clients that cannot attach custom headers, the key may instead be given
-as a path segment:
-
-```
-POST /deployment/api/<org_name>/<api_name>/mcp/<api_key>/
-```
-
-The path key takes precedence over the header when both are present.
+That header is the only accepted credential. There is deliberately no route
+carrying the key in the URL: the spec requires `Authorization` on every
+authenticated request and forbids access tokens in the URI, and a key in the
+path reaches nginx and gunicorn access logs, APM traces and any intermediary —
+places a header never goes. `Authorization: Basic` would be spec-legal and is
+supported by MCP clients, but buys nothing over Bearer: same header, and base64
+is encoding rather than encryption.
 
 Both servers speak MCP revision **2025-06-18** (Streamable HTTP), and also
 accept a client that asks for `2024-11-05`: the subset implemented here —

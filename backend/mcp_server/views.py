@@ -26,10 +26,10 @@ logger = logging.getLogger(__name__)
 class MCPServerView(BaseMCPView):
     """MCP JSON-RPC endpoint for a single API deployment.
 
-    Authentication is the deployment's API key, accepted either as a bearer
-    token or — for MCP clients that cannot attach custom headers — as a path
-    segment. This is a public, key-authenticated endpoint like the deployment
-    execution endpoint it sits beside, so session auth does not apply.
+    Authentication is the deployment's API key, accepted only as a bearer
+    token — never from the URL; see ``urls.py``. This is a public,
+    key-authenticated endpoint like the deployment execution endpoint it sits
+    beside, so session auth does not apply.
     """
 
     registry = DEPLOYMENT_TOOLS
@@ -58,7 +58,6 @@ class MCPServerView(BaseMCPView):
         request: Request,
         org_name: str,
         api_name: str,
-        api_key: str | None = None,
         **kwargs: Any,
     ) -> MCPContext | None:
         """Authenticate the key against the named deployment.
@@ -66,13 +65,13 @@ class MCPServerView(BaseMCPView):
         Returns None for every failure mode — unknown deployment, wrong key,
         malformed key — so the caller answers all of them identically and the
         endpoint cannot be used to probe which deployment names exist.
+
+        The bearer header is the only accepted credential. The key is
+        deliberately not read from the URL: see ``urls.py`` for why that route
+        was removed.
         """
-        # `api_key` in the path takes precedence when present; otherwise fall
-        # back to the Authorization header.
-        if not api_key:
-            header = request.headers.get("Authorization", "")
-            if header.startswith("Bearer "):
-                api_key = header.split(" ", 1)[1].strip()
+        header = request.headers.get("Authorization", "")
+        api_key = header.split(" ", 1)[1].strip() if header.startswith("Bearer ") else ""
 
         if not api_key:
             return None
