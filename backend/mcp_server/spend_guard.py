@@ -173,15 +173,19 @@ def consume(org_id: str) -> BudgetState:
             # set here would fail *closed* — a 500 on a billable call — which
             # is the opposite of this function's documented behaviour, and
             # reachable whenever Redis drops during the add/incr race.
-            logger.error(
+            log_exception(
+                logger,
                 f"MCP spend guard unavailable for org '{org_id}' while re-seeding, "
-                f"allowing call: {error}"
+                "allowing call",
+                error,
             )
             return BudgetState(allowed=True, used=0, limit=limit, window_seconds=window)
         used = 1
     except CACHE_ERRORS as error:
-        logger.error(
-            f"MCP spend guard unavailable for org '{org_id}', allowing call: {error}"
+        log_exception(
+            logger,
+            f"MCP spend guard unavailable for org '{org_id}', allowing call",
+            error,
         )
         return BudgetState(allowed=True, used=0, limit=limit, window_seconds=window)
 

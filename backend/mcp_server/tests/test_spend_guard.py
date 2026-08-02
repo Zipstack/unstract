@@ -475,3 +475,84 @@ class PreflightProtectsTheBudgetTest(SimpleTestCase):
             f"arguments: {unguarded}. Give each a preflight that resolves its "
             "target, or state here why it cannot fail cheaply."
         )
+
+
+class CacheErrorLoggingTest(SimpleTestCase):
+    """Cache failures must not write the Redis URL into the logs.
+
+    A django-redis connection error renders the URL it tried, which carries the
+    password in any deployment that sets one. `peek` was converted to
+    `log_exception` first and both `consume` branches were missed — the kind of
+    gap that survives review because the three sites are 50 lines apart and
+    catch the same `CACHE_ERRORS`.
+    """
+
+    URL_ERROR = "Error 111 connecting to redis://:s3cr3tpw@cache.internal:6379/0"
+
+    def _assert_no_secret(self, log) -> None:
+        written = " ".join(
+            str(call.args[0]) for call in log.error.call_args_list + log.warning.call_args_list
+        )
+        assert "s3cr3tpw" not in written, (
+            f"a Redis password reached the logs: {written}"
+        )
+        assert written, "nothing was logged; the failure would be invisible"
+
+    def test_consume_does_not_log_the_redis_url(self) -> None:
+        broken = Mock()
+        broken.add.side_effect = redis.ConnectionError(self.URL_ERROR)
+
+        with (
+            patch("mcp_server.spend_guard.get_cache", return_value=broken),
+            patch("mcp_server.spend_guard.logger") as log,
+        ):
+            state = spend_guard.consume(ORG)
+
+        assert state.allowed is True, "must still fail open"
+        self._assert_no_secret(log)
+
+    def test_the_reseed_branch_does_not_log_the_redis_url(self) -> None:
+        """The add/incr expiry race — a separate handler, missed the first time."""
+        broken = Mock()
+        broken.incr.side_effect = ValueError("key expired")
+        broken.set.side_effect = redis.ConnectionError(self.URL_ERROR)
+
+        with (
+            patch("mcp_server.spend_guard.get_cache", return_value=broken),
+            patch("mcp_server.spend_guard.logger") as log,
+        ):
+            state = spend_guard.consume(ORG)
+
+        assert state.allowed is True
+        self._assert_no_secret(log)
+
+    def test_peek_does_not_log_the_redis_url(self) -> None:
+        broken = Mock()
+        broken.get.side_effect = redis.ConnectionError(self.URL_ERROR)
+
+        with (
+            patch("mcp_server.spend_guard.get_cache", return_value=broken),
+            patch("mcp_server.spend_guard.logger") as log,
+        ):
+            spend_guard.peek(ORG)
+
+        self._assert_no_secret(log)
+
+    def test_no_handler_in_this_module_logs_a_raw_exception(self) -> None:
+        """The invariant, rather than three examples of it.
+
+        Catches a *new* cache handler added with `logger.error(f"...{error}")`,
+        which is how the two `consume` branches came to differ from `peek`.
+        """
+        import inspect
+        import re
+
+        source = inspect.getsource(spend_guard)
+        offenders = re.findall(
+            r"logger\.(?:error|warning|exception)\([^)]*\{error\}", source, re.S
+        )
+
+        assert offenders == [], (
+            "These log calls interpolate a raw exception; route them through "
+            f"sanitize.log_exception so a Redis URL cannot leak: {offenders}"
+        )

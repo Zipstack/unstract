@@ -48,6 +48,36 @@ class RedactSecretsTest(SimpleTestCase):
         assert "db.internal:5432" in out
         assert "admin" in out
 
+    def test_a_url_with_no_username_is_masked(self) -> None:
+        """Redis URLs conventionally omit the username: `redis://:pw@host`.
+
+        The pattern required at least one character before the colon, so the
+        most common credential-bearing URL in this codebase was the one shape
+        it did not match — and a django-redis connection error renders exactly
+        that string.
+        """
+        out = redact_secrets(
+            "Error 111 connecting to redis://:s3cr3tpw@cache.internal:6379/0"
+        )
+
+        assert "s3cr3tpw" not in out
+        assert "[REDACTED]" in out
+        # Still diagnosable: an operator needs to know which host failed.
+        assert "cache.internal:6379" in out
+
+    def test_ordinary_urls_are_not_touched(self) -> None:
+        """Widening the userinfo must not start mangling credential-free URLs,
+        including the pre-signed S3 links these tools legitimately return.
+        """
+        for url in (
+            "https://example.com/a.pdf",
+            "redis://localhost:6379/0",
+            "https://b.s3.us-east-1.amazonaws.com/x.pdf?X-Amz-Signature=abc",
+            "see http://docs.internal/guide#section",
+        ):
+            with self.subTest(url):
+                assert redact_secrets(url) == url
+
     def test_bearer_token_is_masked(self) -> None:
         out = redact_secrets("401 from provider, sent Authorization: Bearer abcdef123456")
 

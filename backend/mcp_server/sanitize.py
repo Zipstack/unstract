@@ -50,8 +50,13 @@ _SECRET_PATTERNS = (
         rf"\1\2{_REDACTED}",
     ),
     # Credentials embedded in a URL: scheme://user:secret@host
+    #
+    # The userinfo is `*` not `+`: Redis URLs conventionally omit the username
+    # entirely — `redis://:password@host:6379/0` — and requiring at least one
+    # character before the colon meant the most common credential-bearing URL
+    # in this codebase was the one shape that did not match.
     (
-        re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]+:)([^\s@]+)(@)"),
+        re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s:/@]*:)([^\s@]+)(@)"),
         rf"\1{_REDACTED}\3",
     ),
 )
