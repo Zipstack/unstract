@@ -133,7 +133,7 @@ class NoCredentialLeakTest(TestCase):
             connector_instance=self.connector,
             configuration={"table": "docs", "password_hint": DB_PASSWORD},
         )
-        APIDeployment.objects.create(
+        self.deployment = APIDeployment.objects.create(
             api_name="leak-api", display_name="Leak API", workflow=self.workflow
         )
         self.project = CustomTool.objects.create(
@@ -163,6 +163,13 @@ class NoCredentialLeakTest(TestCase):
         ):
             self.execution = WorkflowExecution.objects.create(
                 workflow_id=self.workflow.id,
+                # The deployment that ran it. DeploymentHelper sets
+                # `pipeline_id = api.id` on every real API-deployment run, and
+                # getExecutionStatus scopes its poll to exactly that — so an
+                # execution created without it is not a shape production
+                # produces, and leaving it unset made this fixture reject the
+                # tool rather than scan its output.
+                pipeline_id=self.deployment.id,
                 status="ERROR",
                 # Error text is echoed back to the agent, so seed a canary
                 # here too: a stack trace is where a connection string leaks.
