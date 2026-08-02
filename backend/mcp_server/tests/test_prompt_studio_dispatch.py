@@ -370,3 +370,64 @@ class PromptStudioDispatchTest(SimpleTestCase):
                 document_id=DOCUMENT_ID,
                 prompt_ids=[PROMPT_ID, "not-a-uuid"],
             )
+
+    def test_a_missing_document_is_returned_as_data(self) -> None:
+        """A well-formed but unknown id must not escape as an opaque failure.
+
+        The four actions do not resolve their arguments the same way:
+        `bulk_fetch_response` catches `DocumentManager.DoesNotExist` and answers
+        404, but `index_document`, `fetch_response` and `single_pass_extraction`
+        call a bare `.objects.get(pk=...)`. That raises `ObjectDoesNotExist`,
+        which is neither `APIException` nor `Http404` — so without this arm it
+        reached the client as "failed unexpectedly", with the non-refundable
+        billable budget already spent on a call that did no work.
+        """
+        from django.core.exceptions import ObjectDoesNotExist
+
+        class Missing(RecordingView):
+            def index_document(self, req, pk=None):
+                raise ObjectDoesNotExist
+
+        _, result = self._run(
+            index_document, view_class=Missing, document_id=DOCUMENT_ID
+        )
+
+        assert result["ok"] is False
+        assert result["status"] == 404
+        # `str(DoesNotExist())` is empty, so the agent needs to be told what to
+        # do rather than handed a blank detail.
+        assert "listPromptStudioDocuments" in result["result"]["detail"]
+
+    def test_a_missing_object_is_not_logged_as_a_fault(self) -> None:
+        """An agent naming an id that does not exist is ordinary. Logging it at
+        error level would make a caller's typo look like a server problem.
+        """
+        from django.core.exceptions import ObjectDoesNotExist
+
+        class Missing(RecordingView):
+            def index_document(self, req, pk=None):
+                raise ObjectDoesNotExist
+
+        with patch("mcp_server.tools.prompt_studio.logger") as log:
+            self._run(index_document, view_class=Missing, document_id=DOCUMENT_ID)
+
+        log.error.assert_not_called()
+        log.exception.assert_not_called()
+
+    def test_a_model_specific_does_not_exist_is_caught(self) -> None:
+        """The actions raise `DocumentManager.DoesNotExist`, a subclass — the
+        arm must catch the base rather than a specific model's exception.
+        """
+        from prompt_studio.prompt_studio_document_manager_v2.models import (
+            DocumentManager,
+        )
+
+        class Missing(RecordingView):
+            def index_document(self, req, pk=None):
+                raise DocumentManager.DoesNotExist
+
+        _, result = self._run(
+            index_document, view_class=Missing, document_id=DOCUMENT_ID
+        )
+
+        assert result["status"] == 404

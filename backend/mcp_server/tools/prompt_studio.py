@@ -14,6 +14,7 @@ view keeps one code path, and keeps its permission and sharing checks.
 import logging
 from typing import Any
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.http import Http404
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
@@ -107,11 +108,20 @@ def _dispatch(context: PlatformMCPContext, action: str, project_id: str, payload
         # non-refundable budget has already been claimed.
         view_instance.action = action
         response = getattr(view_instance, action)(request, pk=project_id)
-    except (APIException, Http404) as error:
+    except (APIException, Http404, ObjectDoesNotExist) as error:
         # dispatch() would have run these through handle_exception() and
         # returned a non-2xx Response. Bypassing it means get_object()'s Http404
         # and check_object_permissions' PermissionDenied would escape as raw
         # exceptions instead, which _result documents as being returned as data.
+        #
+        # ObjectDoesNotExist is here because the actions do not all resolve
+        # their arguments the same way: `bulk_fetch_response` catches
+        # `DocumentManager.DoesNotExist` and answers 404, but `index_document`,
+        # `fetch_response` and `single_pass_extraction` call a bare
+        # `.objects.get(pk=...)` (views.py:476, 581, 833). That raises
+        # ObjectDoesNotExist, which is neither APIException nor Http404 — so a
+        # well-formed but unknown document_id escaped as an opaque failure,
+        # after the non-refundable budget was already claimed.
         response = _exception_response(error)
     finally:
         request._full_data = original_data
@@ -127,15 +137,33 @@ def _exception_response(error: Exception):
     the caller. What matters is that the view's own refusals stay readable to
     the agent rather than becoming an opaque transport failure.
 
-    A 5xx is logged with its traceback. Several Prompt Studio exceptions —
+    A 5xx is logged — through ``log_exception``, so the message is redacted and
+    no traceback is attached. Several Prompt Studio exceptions —
     ``IndexingAPIError``, ``AnswerFetchError``, ``ExtractionAPIError`` — are
     ``APIException`` subclasses carrying ``status_code = 500``, so without this
     a genuine server fault on a billable path would be converted to an ordinary
-    tool result and leave no operator signal at all. Before this arm existed
-    they reached the transport's own ``logger.exception``.
+    tool result and leave no operator signal at all.
+
+    A missing object is *not* logged: an agent naming an id that does not exist
+    is ordinary, and logging it would make a caller's typo look like a fault.
     """
     if isinstance(error, Http404):
         return Response({"detail": "Not found."}, status=404)
+
+    if isinstance(error, ObjectDoesNotExist):
+        # `str(DocumentManager.DoesNotExist())` is empty, so pass the agent
+        # something it can act on: which id to re-read and from where. A 404
+        # rather than a 500 because nothing failed — the named thing is absent.
+        return Response(
+            {
+                "detail": (
+                    "No such document or prompt in this project. Re-read the "
+                    "ids with listPromptStudioDocuments and listPrompts — an id "
+                    "from another project will not resolve here."
+                )
+            },
+            status=404,
+        )
 
     status_code = getattr(error, "status_code", 500)
     if status_code >= 500:
