@@ -70,8 +70,11 @@ class MCPServerView(BaseMCPView):
         deliberately not read from the URL: see ``urls.py`` for why that route
         was removed.
         """
-        header = request.headers.get("Authorization", "")
-        api_key = header.split(" ", 1)[1].strip() if header.startswith("Bearer ") else ""
+        # The auth scheme is case-insensitive per RFC 9110, and DRF's own
+        # authenticators lowercase it before comparing — so a client sending
+        # `bearer <key>` is conformant and must not be rejected.
+        scheme, _, credentials = request.headers.get("Authorization", "").partition(" ")
+        api_key = credentials.strip() if scheme.lower() == "bearer" else ""
 
         if not api_key:
             return None

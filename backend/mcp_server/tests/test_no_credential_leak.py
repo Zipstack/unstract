@@ -737,6 +737,51 @@ class ReadToolCanaryCoverageTest(SimpleTestCase):
 
         self._assert_clean(result, "listToolInstances")
 
+    def test_every_read_tool_has_non_vacuous_coverage(self) -> None:
+        """Walks the registry so a new read tool cannot be added unnoticed.
+
+        The tests above cover named handlers, and the DB-backed sweep invokes
+        everything — but against fixed fixtures, so a new tool reading a model
+        nobody seeded would be scanned vacuously and pass. This is the guard
+        that makes adding such a tool a deliberate act rather than a silent
+        gap.
+        """
+        # Tools whose response is scanned against a canary that could actually
+        # appear in it — either seeded here, or seeded into the DB fixtures the
+        # other sweep builds.
+        covered_here = {
+            "listWorkflows",
+            "listApiDeployments",
+            "listPipelines",
+            "listPromptStudioProjects",
+            "listToolInstances",
+        }
+        covered_by_db_fixtures = {
+            "getWorkflowEndpoints",
+            "listExecutions",
+            "getExecutionDetail",
+            "getExecutionStatus",
+            "listPrompts",
+            "listPromptStudioDocuments",
+        }
+        # Tools that return no model-derived data at all, so there is nothing
+        # for a canary to hide in. Named explicitly rather than inferred.
+        no_model_data = {"readMeFirst", "whoami", "getUsageSummary", "listTags"}
+
+        read_tools = {
+            name
+            for name in PLATFORM_TOOLS.names()
+            if not (PLATFORM_TOOLS.get(name).writes or PLATFORM_TOOLS.get(name).billable)
+        }
+        uncovered = read_tools - covered_here - covered_by_db_fixtures - no_model_data
+
+        assert uncovered == set(), (
+            f"These read tools are scanned against no canary that could appear "
+            f"in their output, so they pass vacuously: {sorted(uncovered)}. Add "
+            f"a seeded case to ReadToolCanaryCoverageTest, or list the tool in "
+            f"`no_model_data` if it returns nothing model-derived."
+        )
+
     def test_the_seeding_helper_actually_seeds(self) -> None:
         """Guard the guard: if seeding silently wrote nothing, every test above
         would pass vacuously — which is the exact failure this class exists to

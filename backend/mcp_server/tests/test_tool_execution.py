@@ -26,6 +26,9 @@ from mcp_server.tools.execution import extract_document, get_execution_status
 DOC_URL = "https://my-bucket.s3.us-east-1.amazonaws.com/invoice.pdf?X-Amz-Signature=abc"
 EXECUTION_ID = "33333333-3333-3333-3333-333333333333"
 WORKFLOW_ID = "44444444-4444-4444-4444-444444444444"
+# The deployment's own id. Executions record it as `pipeline_id`, and that —
+# not workflow_id — is what scopes a poll to one deployment.
+DEPLOYMENT_ID = "88888888-8888-8888-8888-888888888888"
 
 
 class FakeOrganization:
@@ -37,7 +40,8 @@ class FakeAPI:
     api_name = "live-api"
     is_active = True
     organization = FakeOrganization()
-    # get_execution_status scopes the polled id to this deployment's workflow.
+    # get_execution_status scopes the polled id to this deployment itself.
+    id = DEPLOYMENT_ID
     workflow_id = WORKFLOW_ID
 
 
@@ -323,11 +327,16 @@ class GetExecutionStatusTest(SimpleTestCase):
         process.assert_not_called()
         assert result["execution_status"] == "EXECUTING"
 
-    def test_polled_id_is_scoped_to_this_deployments_workflow(self) -> None:
+    def test_polled_id_is_scoped_to_this_deployment(self) -> None:
         """The scope filter is anchored to the deployment, not just the id.
 
         A filter on ``id`` alone would pass this test's sibling below while
         leaving every execution in the shared schema pollable.
+
+        It must anchor on ``pipeline_id`` (the deployment that started the run)
+        rather than ``workflow_id``: ``APIDeployment.workflow`` is a plain FK
+        with no uniqueness constraint, so two deployments can share a workflow
+        and a workflow-scoped filter would let either poll the other's runs.
         """
         response = ExecutionResponse(
             workflow_id="wf",
@@ -339,7 +348,31 @@ class GetExecutionStatusTest(SimpleTestCase):
         self._run(response)
 
         self.scope_filter.assert_called_once_with(
-            id=EXECUTION_ID, workflow_id=WORKFLOW_ID
+            id=EXECUTION_ID, pipeline_id=DEPLOYMENT_ID
+        )
+
+    def test_two_deployments_sharing_a_workflow_cannot_poll_each_other(self) -> None:
+        """The case a workflow-scoped filter would have missed.
+
+        `APIDeployment.workflow` is a plain FK with `related_name="apis"` and no
+        uniqueness constraint, so two deployments can point at one workflow.
+        Filtering on `workflow_id` would then match both deployments' runs; the
+        filter must name the deployment itself.
+        """
+        response = ExecutionResponse(
+            workflow_id=WORKFLOW_ID,
+            execution_id=EXECUTION_ID,
+            execution_status="EXECUTING",
+            result=None,
+        )
+
+        self._run(response)
+
+        kwargs = self.scope_filter.call_args.kwargs
+        assert kwargs["pipeline_id"] == DEPLOYMENT_ID
+        assert "workflow_id" not in kwargs, (
+            "scoping on workflow_id lets a sibling deployment sharing the same "
+            "workflow poll this deployment's executions"
         )
 
     def test_execution_from_another_deployment_is_refused(self) -> None:

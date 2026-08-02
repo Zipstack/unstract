@@ -128,6 +128,20 @@ _SECRET_KEY_NAMES = frozenset(
 )
 
 
+def _normalise_key(key: str) -> str:
+    """Fold a field name to snake_case for lookup.
+
+    camelCase has to be split *before* lowercasing, or the words run together:
+    ``secretAccessKey`` would become ``secretaccesskey`` and match nothing.
+    That matters because AWS-style credentials arrive camelCased in exactly the
+    upstream JSON these tools pass through — ``secretAccessKey``,
+    ``accessKeyId``, ``clientSecret`` — so the compressed form was the common
+    case rather than an exotic one.
+    """
+    spaced = re.sub(r"(?<=[a-z0-9])(?=[A-Z])", "_", key.strip())
+    return spaced.lower().replace("-", "_").replace(" ", "_")
+
+
 def _is_secret_key(key: str) -> bool:
     """True when a dict key names a credential.
 
@@ -135,7 +149,7 @@ def _is_secret_key(key: str) -> bool:
     ``has_credentials`` are ordinary fields an agent needs, and redacting them
     would make output harder to act on without making it safer.
     """
-    return key.strip().lower().replace("-", "_") in _SECRET_KEY_NAMES
+    return _normalise_key(key) in _SECRET_KEY_NAMES
 
 
 def valid_uuid(value: str, field: str, hint: str) -> str:

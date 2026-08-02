@@ -165,6 +165,28 @@ class MCPServerAuthTest(TestCase):
         assert response.status_code == 401, response.content
 
     @pytest.mark.critical_path("mcp-server-auth")
+    def test_the_bearer_scheme_is_case_insensitive(self) -> None:
+        """RFC 9110 makes the auth scheme case-insensitive, and DRF's own
+        authenticators lowercase it before comparing. A client sending
+        `bearer <key>` is conformant, so rejecting it would be our bug.
+        """
+        for scheme in ("Bearer", "bearer", "BEARER", "BeArEr"):
+            with self.subTest(scheme):
+                response = self._post("live-api", f"{scheme} {self.key.api_key}")
+                assert response.status_code == 200, response.content
+
+    @pytest.mark.critical_path("mcp-server-auth")
+    def test_a_non_bearer_scheme_is_still_refused(self) -> None:
+        """Case-insensitivity must not turn into accepting any scheme."""
+        for header in (
+            f"Basic {self.key.api_key}",
+            f"Token {self.key.api_key}",
+            str(self.key.api_key),
+        ):
+            with self.subTest(header):
+                assert self._post("live-api", header).status_code == 401
+
+    @pytest.mark.critical_path("mcp-server-auth")
     def test_mcp_url_hangs_off_the_execution_url(self) -> None:
         """Pins the endpoint's address and its relationship to the REST one.
 

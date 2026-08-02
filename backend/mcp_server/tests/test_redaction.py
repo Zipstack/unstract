@@ -329,6 +329,30 @@ class SecretKeyNameTest(SimpleTestCase):
         assert out["profile"]["api_key"] == "[REDACTED]"
         assert out["rows"][0]["token"] == "[REDACTED]"
 
+    def test_camel_case_credential_keys_are_redacted(self) -> None:
+        """AWS-style and JS-style names arrive camelCased in upstream JSON.
+
+        `.lower()` alone compresses `secretAccessKey` to `secretaccesskey`,
+        which matches nothing — so the camel boundary has to be split *before*
+        lowercasing. These were live leaks until that was fixed.
+        """
+        for key in (
+            "secretAccessKey",
+            "accessKeyId",
+            "clientSecret",
+            "authToken",
+            "refreshToken",
+            "privateKey",
+            "apiKey",
+        ):
+            with self.subTest(key):
+                assert redact_structure({key: "sk-abc"})[key] == "[REDACTED]"
+
+    def test_mixed_separators_normalise_the_same_way(self) -> None:
+        for key in ("Api-Key", "API_KEY", "Access Key", "refresh-token"):
+            with self.subTest(key):
+                assert redact_structure({key: "sk-abc"})[key] == "[REDACTED]"
+
     def test_ordinary_fields_are_not_redacted(self) -> None:
         """The false-positive guard. Over-redacting makes output unusable to an
         agent without making it safer, so the match is exact rather than a

@@ -296,23 +296,29 @@ def get_execution_status(
     validated = serializer.validated_data
     validated_id = validated.get(ApiExecution.EXECUTION_ID)
 
-    # Scope the id to this deployment's workflow before fetching anything.
+    # Scope the id to this *deployment* before fetching anything.
     # DeploymentHelper.get_execution_status resolves a bare
     # WorkflowExecution.objects.get(id=...) with no tenant or deployment
     # filter, and this deployment runs one shared schema rather than a schema
-    # per tenant. The API key narrows the caller to a *deployment*, not to an
+    # per tenant. The API key narrows the caller to a deployment, not to an
     # execution id within it, so without this check a key for deployment A
     # could poll deployment B's execution — and, because a completed status
     # acknowledges the result and drops it from cache, destroy it for the
     # caller it belongs to.
+    #
+    # Filtered on `pipeline_id`, which holds the APIDeployment that started the
+    # run (`DeploymentHelper` sets `pipeline_id = api.id`), NOT on
+    # `workflow_id`. `APIDeployment.workflow` is a plain FK with no uniqueness
+    # constraint — `related_name="apis"` is plural — so two deployments can
+    # share one workflow, and a workflow-scoped filter would let either poll
+    # the other's executions.
+    #
     # The serializer validates shape, not that the id parses as a UUID; a
     # malformed one would raise ValidationError from the field below rather
     # than the actionable message this function already writes.
     valid_uuid(validated_id, "execution id", "Poll only ids returned by extractDocument.")
     execution = (
-        WorkflowExecution.objects.filter(
-            id=validated_id, workflow_id=context.api.workflow_id
-        )
+        WorkflowExecution.objects.filter(id=validated_id, pipeline_id=context.api.id)
         .only("id")
         .first()
     )
