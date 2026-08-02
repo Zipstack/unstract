@@ -248,8 +248,10 @@ groups:
     # node_modules) must skip, not gate merges.
     tier: e2e
     runner: playwright
-    workdir: frontend
-    paths: [tests/ui]
+    # Self-contained: specs, playwright.config.js and @playwright/test all live
+    # in tests/e2e/ui, colocated with the other e2e suites.
+    workdir: tests/e2e/ui
+    paths: ["."]
     requires_platform: true
     depends_on: [e2e-smoke]
     timeout_seconds: 1800

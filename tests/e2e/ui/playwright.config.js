@@ -27,7 +27,9 @@ const baseURL =
   "http://localhost:3000";
 
 export default defineConfig({
-  testDir: "./tests/ui",
+  // Specs sit beside this config; `@playwright/test` is installed here too, so
+  // the suite is self-contained and resolves without reaching into frontend/.
+  testDir: ".",
   /*
    * `fullyParallel` off by default: these tests drive a shared platform with
    * shared org state, so parallel specs can see each other's writes. Turn it on
