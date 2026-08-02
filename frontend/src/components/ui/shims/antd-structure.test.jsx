@@ -58,17 +58,16 @@ describe("antd-compatible structural shims (P4)", () => {
   });
 
   /*
-   * The doc-manager toolbar centres these tabs against a file name and
-   * buttons. Vertical padding inflates the label's own box (`pb-2` gave 36px,
-   * `py-3` 48px) so the TEXT rides above the centre the row aligns on, ~5.6px
-   * clear of the file name. antd's label box is 22px — the line height alone.
+   * antd pads line-style tabs `12px 0`, giving the 46px nav the reference
+   * shows. `py-0` here made every standalone nav 24px — half height — to suit
+   * the one toolbar that centres its tabs against a file name; that toolbar
+   * now opts out in its own CSS instead.
    */
-  it("Tabs give line-style labels no vertical padding to inflate the box", () => {
+  it("Tabs pad line-style labels to antd's height", () => {
     render(<Tabs items={[{ key: "1", label: "One", children: "x" }]} />);
     const cls = screen.getByRole("tab").className;
-    expect(cls).toContain("py-0");
-    expect(cls).not.toContain("pb-2");
-    expect(cls).not.toContain("py-3");
+    expect(cls).toContain("py-3");
+    expect(cls).not.toContain("py-0");
   });
 
   /*
