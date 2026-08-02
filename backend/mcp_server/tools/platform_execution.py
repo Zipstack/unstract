@@ -220,7 +220,7 @@ def get_platform_execution_status(
     visible = _org_workflow_ids(context)
     execution = (
         WorkflowExecution.objects.filter(id=execution_id, workflow_id__in=visible)
-        .only("id", "workflow_id")
+        .only("id", "pipeline_id")
         .first()
     )
     if execution is None:
@@ -230,9 +230,15 @@ def get_platform_execution_status(
             "or call listExecutions."
         )
 
+    # Resolve by `pipeline_id` — the deployment that actually started this run —
+    # not by the workflow. `APIDeployment.workflow` has no uniqueness
+    # constraint, so a workflow-based lookup returns an arbitrary one of the
+    # deployments sharing it, and `get_execution_status` then scopes its own
+    # check to *that* deployment and rejects an execution the caller legitimately
+    # owns. Going straight to the recorded deployment also drops a hop.
     deployment = (
         APIDeployment.objects.for_user(context.user)
-        .filter(workflow_id=execution.workflow_id)
+        .filter(id=execution.pipeline_id)
         .first()
     )
     if deployment is None:

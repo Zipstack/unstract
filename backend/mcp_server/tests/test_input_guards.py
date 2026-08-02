@@ -223,3 +223,83 @@ class PlatformCsrfGateTest(SimpleTestCase):
         request = self._initialize(with_key=False)
 
         assert getattr(request, "csrf_processing_done", False) is not True
+
+
+class PlatformPollDeploymentResolutionTest(SimpleTestCase):
+    """The platform poll resolves the deployment the execution actually used.
+
+    `get_platform_execution_status` finds the execution, resolves its deployment,
+    then delegates to the deployment-scoped `get_execution_status`. That inner
+    check filters on `pipeline_id`, so if the outer resolution picks a *different*
+    deployment sharing the same workflow, the inner check rejects an execution the
+    caller legitimately owns.
+
+    `APIDeployment.workflow` has no uniqueness constraint (`related_name="apis"`),
+    so "different deployment, same workflow" is a supported configuration rather
+    than a hypothetical.
+    """
+
+    def test_the_deployment_is_resolved_by_pipeline_id(self) -> None:
+        from mcp_server.tools import platform_execution
+
+        execution = MagicMock(pipeline_id="dep-that-ran", workflow_id="shared-wf")
+        context = MagicMock()
+        context.org_name = "org-mcp"
+
+        with (
+            patch(
+                "mcp_server.tools.observability._org_workflow_ids", return_value=["w"]
+            ),
+            patch(
+                "workflow_manager.workflow_v2.models.execution."
+                "WorkflowExecution.objects.filter"
+            ) as exec_filter,
+            patch.object(platform_execution, "APIDeployment") as deployment_model,
+            patch(
+                "mcp_server.tools.execution.get_execution_status",
+                return_value={"ok": True},
+            ),
+        ):
+            exec_filter.return_value.only.return_value.first.return_value = execution
+            resolver = deployment_model.objects.for_user.return_value.filter
+            resolver.return_value.first.return_value = MagicMock()
+
+            platform_execution.get_platform_execution_status(
+                context, execution_id=GOOD_UUID
+            )
+
+        # The lookup must name the recorded deployment, not the workflow: a
+        # workflow filter returns an arbitrary sibling and the delegated check
+        # then refuses the caller's own execution.
+        resolver.assert_called_once_with(id="dep-that-ran")
+
+    def test_a_non_deployment_execution_is_still_refused(self) -> None:
+        """Pipeline and ETL runs have no APIDeployment, and must not resolve to
+        an unrelated one just because they share a workflow.
+        """
+        from mcp_server.tools import platform_execution
+
+        execution = MagicMock(pipeline_id=None, workflow_id="shared-wf")
+        context = MagicMock()
+        context.org_name = "org-mcp"
+
+        with (
+            patch(
+                "mcp_server.tools.observability._org_workflow_ids", return_value=["w"]
+            ),
+            patch(
+                "workflow_manager.workflow_v2.models.execution."
+                "WorkflowExecution.objects.filter"
+            ) as exec_filter,
+            patch.object(platform_execution, "APIDeployment") as deployment_model,
+        ):
+            exec_filter.return_value.only.return_value.first.return_value = execution
+            resolver = deployment_model.objects.for_user.return_value.filter
+            resolver.return_value.first.return_value = None
+
+            with self.assertRaises(MCPToolError) as caught:
+                platform_execution.get_platform_execution_status(
+                    context, execution_id=GOOD_UUID
+                )
+
+        assert "did not come from an API deployment" in str(caught.exception)
