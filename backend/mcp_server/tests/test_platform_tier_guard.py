@@ -14,6 +14,8 @@ from unittest.mock import Mock
 
 from django.test import SimpleTestCase
 
+from platform_api.models import ApiKeyPermission
+
 from mcp_server.context import PlatformMCPContext
 from mcp_server.platform_views import PlatformMCPServerView
 from mcp_server.registry import PLATFORM_TOOLS, MCPTool
@@ -172,3 +174,80 @@ class PlatformTierGuardTest(SimpleTestCase):
         assert offenders == [], (
             f"Platform MCP server must not expose credential tools: {offenders}"
         )
+
+
+class TierGuardIsProspectiveTest(SimpleTestCase):
+    """The per-tool tier guard refuses nothing today — deliberately.
+
+    Raised in review as a design question worth answering explicitly rather
+    than leaving implicit: is the tier model doing what we think it does?
+
+    It is not, *yet*. A `read` key cannot reach the view (the middleware
+    rejects POST on tier before dispatch), and both remaining tiers allow POST
+    while every tool declares GET or POST. So `check_tool_allowed` never
+    refuses a request that reaches it. That is defense-in-depth for the day a
+    DELETE-tier tool is added, or the day the middleware grows an MCP carve-out.
+
+    Pinned here so the fact is a tripwire rather than something a future
+    reader re-derives: when this test starts failing, the guard has begun doing
+    real work and the docstrings claiming otherwise need updating.
+    """
+
+    def test_no_tool_declares_delete_today(self) -> None:
+        methods = {
+            PLATFORM_TOOLS.get(name).required_method for name in PLATFORM_TOOLS.names()
+        }
+
+        assert methods <= {"GET", "POST"}, (
+            f"A tool now declares {sorted(methods - {'GET', 'POST'})}. The tier "
+            "guard has started refusing real calls — update the docstrings in "
+            "platform_views.check_tool_allowed that say it refuses nothing."
+        )
+
+    def test_the_guard_refuses_nothing_for_tiers_that_can_reach_it(self) -> None:
+        """Both halves of the reviewer's trace, asserted rather than argued."""
+        for permission in ApiKeyPermission:
+            if not permission.allows("POST"):
+                # Cannot reach the view at all; the middleware stops it first.
+                continue
+            refused = [
+                name
+                for name in PLATFORM_TOOLS.names()
+                if not permission.allows(PLATFORM_TOOLS.get(name).required_method)
+            ]
+            with self.subTest(permission.value):
+                assert refused == [], (
+                    f"Tier '{permission.value}' now refuses {refused}. The guard "
+                    "is doing real work — see the note above."
+                )
+
+    def test_a_read_key_cannot_reach_the_server_at_all(self) -> None:
+        """The documented minimum tier, pinned to the permission model.
+
+        `whoami` and the README both state `read_write` is required *including*
+        for read tools. That claim is only true while `read` disallows POST.
+        """
+        assert ApiKeyPermission("read").allows("POST") is False
+        assert ApiKeyPermission("read_write").allows("POST") is True
+
+    def test_whoami_states_the_minimum_tier(self) -> None:
+        """An agent holding a read key never reaches whoami, but one holding a
+        read_write key needs to know why its tier is the floor — otherwise
+        `can_use_write_tools: false` reads as "read tools still work", which
+        would be wrong for a read key.
+        """
+        from unittest.mock import Mock, patch
+
+        from mcp_server.tools.platform import whoami
+
+        context = Mock()
+        context.org_name = "org-mcp"
+        context.platform_key = Mock(name="k", permission="read_write")
+        context.user = Mock(is_service_account=True)
+
+        with patch("mcp_server.spend_guard.peek") as peek:
+            peek.return_value = Mock(used=0, limit=50, window_seconds=3600)
+            result = whoami(context)
+
+        assert result["minimum_tier"] == "read_write"
+        assert "read_write" in result["tier_note"]

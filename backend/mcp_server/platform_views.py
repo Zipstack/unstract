@@ -132,6 +132,20 @@ class PlatformMCPServerView(BaseMCPView):
         ``ApiKeyPermission.allows`` rather than inventing a second permission
         scheme, so a tool marked DELETE is full_access-only for exactly the
         same reason a REST DELETE is.
+
+        **This refuses nothing today, and that is expected.** A ``read`` key
+        cannot reach the view at all — the middleware rejects POST on tier
+        before dispatch — and both remaining tiers (``read_write``,
+        ``full_access``) allow POST, while every registered tool declares GET
+        or POST and none declares DELETE. So the check is prospective:
+        defense-in-depth that starts refusing the day a DELETE-tier tool is
+        added, or the day the middleware grows an MCP carve-out that lets a
+        ``read`` key through.
+
+        Its future value rests entirely on ``required_method`` being declared
+        truthfully, which is why ``MCPToolRegistry.register`` refuses a
+        ``writes=True`` tool left at the ``"GET"`` default rather than trusting
+        a reviewer to catch it.
         """
         try:
             permission = ApiKeyPermission(context.platform_key.permission)

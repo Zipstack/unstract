@@ -213,6 +213,14 @@ def whoami(context: PlatformMCPContext) -> dict[str, Any]:
         "organization": context.org_name,
         "key_name": key.name,
         "permission_tier": key.permission,
+        "minimum_tier": "read_write",
+        "tier_note": (
+            "This server requires a `read_write` key at minimum — including "
+            "for the read-only tools. Every JSON-RPC message is an HTTP POST "
+            "and the middleware gates tiers on HTTP method, so a `read` key is "
+            "refused before any tool runs. If you are reading this, your key "
+            "already meets that bar."
+        ),
         "is_service_account": bool(getattr(context.user, "is_service_account", False)),
         "can_use_write_tools": can_write,
         "can_use_destructive_tools": can_delete,
