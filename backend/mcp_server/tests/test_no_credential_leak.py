@@ -72,6 +72,11 @@ WORKFLOW_UUID = "55555555-5555-5555-5555-555555555555"
 EXECUTION_UUID = "66666666-6666-6666-6666-666666666666"
 DOC_URL = "https://b.s3.us-east-1.amazonaws.com/a.pdf?X-Amz-Signature=abc"
 
+# Single marker for the field-seeded sweep. Distinct from the CANARIES above,
+# which are credential-shaped values placed in specific fixtures; this one is
+# written into *every* free-form field, so any wholesale serialization trips it.
+CANARY = "LEAKCANARY-field-seeded-8b2e"
+
 
 @override_settings(CACHES=LOCMEM)
 class NoCredentialLeakTest(TestCase):
@@ -258,6 +263,13 @@ class NoCredentialLeakTest(TestCase):
         # Guard the guard: if the filter above ever matches nothing, this test
         # would pass vacuously.
         assert len(checked) >= 5, f"Expected to check several tools, got {checked}"
+
+        # Note on coverage depth: canaries live in the fixtures above, so a
+        # tool reading a model nobody seeded is invoked and scanned but could
+        # not have failed. `ReadToolCanaryCoverageTest` closes that by seeding
+        # every free-form field of an unsaved instance per tool; this sweep
+        # remains the stronger check for the tools it does cover, because it
+        # runs real managers, `for_user` scoping and decrypting properties.
 
     @pytest.mark.critical_path("mcp-platform-auth")
     def test_workflow_endpoints_omits_connector_configuration(self) -> None:
@@ -560,3 +572,201 @@ class WriteToolLeakSweepTest(SimpleTestCase):
             f"{sorted(uncovered)}. Add a delegate-stubbed case above, or add "
             f"the tool to `exempt` if it returns only named fields."
         )
+
+
+# Fields Django reports as concrete and free-form enough to hold a credential.
+# Seeding is driven off this rather than a hand-kept list, so a model that
+# grows a new text field is canaried without anyone remembering to.
+_SEEDABLE_FIELD_TYPES = ("CharField", "TextField", "JSONField", "URLField", "EmailField")
+
+
+def seed_canaries(instance, canary: str, skip: tuple[str, ...] = ()) -> object:
+    """Write ``canary`` into every free-form field of an unsaved model instance.
+
+    The point is to make the scan non-vacuous *by construction*: rather than
+    guessing which field a leak would come through, every field that could hold
+    one gets a canary, so any tool that serializes wholesale is caught wherever
+    it leaks from.
+
+    ``skip`` is for fields a tool legitimately returns — a workflow's name is
+    not a secret, and the tool is supposed to echo it — so seeding those would
+    assert the opposite of what is intended.
+    """
+    for field in instance._meta.get_fields():
+        if not getattr(field, "concrete", False):
+            continue
+        if field.name in skip or field.primary_key or field.is_relation:
+            continue
+        kind = field.get_internal_type()
+        if kind not in _SEEDABLE_FIELD_TYPES:
+            continue
+        if getattr(field, "choices", None):
+            # A choice field rejects arbitrary text and is not free-form
+            # enough to hide a credential.
+            continue
+        setattr(
+            instance,
+            field.name,
+            {"leak": canary} if kind == "JSONField" else f"{canary}-{field.name}",
+        )
+    return instance
+
+
+class ReadToolCanaryCoverageTest(SimpleTestCase):
+    """Every read tool is scanned against data that *could* leak.
+
+    ``PlatformToolLeakSweepTest`` invokes every read tool, but seeds canaries
+    into only the three fixtures some of them happen to read — so the rest are
+    scanned vacuously and would pass while serializing everything. This closes
+    that by handing each tool a real (unsaved) model instance whose every
+    free-form field carries a canary.
+
+    Real model instances, not Mocks: these tools read named attributes off
+    models, so what is under test is whether the tool names safe fields. A Mock
+    would answer to any attribute and prove nothing about the model; an unsaved
+    instance has exactly the fields Django says it has, and needs no database.
+
+    The DB-backed sweep stays the stronger test — it exercises real managers,
+    ``for_user`` scoping and decrypting property fields. This one is what can
+    run in the unit tier, and it covers the tools that sweep leaves vacuous.
+    """
+
+    def _context(self):
+        context = Mock()
+        context.org_name = ORG_ID
+        context.user = Mock(is_service_account=True)
+        context.platform_key = Mock(name="k")
+        return context
+
+    def _assert_clean(self, result, tool_name: str) -> None:
+        blob = json.dumps(result, default=str)
+        assert CANARY not in blob, (
+            f"Tool '{tool_name}' returned a seeded canary. It is serializing a "
+            "field it does not name explicitly — build the response from named "
+            "fields, never serializer.data, model_to_dict or a ** splat."
+        )
+
+    def test_list_workflows_returns_only_named_fields(self) -> None:
+        from mcp_server.tools.platform import list_workflows
+
+        workflow = seed_canaries(
+            Workflow(is_active=True), CANARY, skip=("workflow_name", "description")
+        )
+        with patch(
+            "mcp_server.tools.platform.Workflow.objects.for_user"
+        ) as for_user:
+            for_user.return_value.order_by.return_value = _FakeRows([workflow])
+            result = list_workflows(self._context())
+
+        self._assert_clean(result, "listWorkflows")
+
+    def test_list_api_deployments_returns_only_named_fields(self) -> None:
+        from mcp_server.tools.platform import list_api_deployments
+
+        deployment = seed_canaries(
+            APIDeployment(is_active=True, workflow=Workflow()),
+            CANARY,
+            skip=("display_name", "api_name", "description"),
+        )
+        with patch(
+            "mcp_server.tools.platform.APIDeployment.objects.for_user"
+        ) as for_user:
+            for_user.return_value.order_by.return_value = _FakeRows([deployment])
+            result = list_api_deployments(self._context())
+
+        self._assert_clean(result, "listApiDeployments")
+
+    def test_list_pipelines_returns_only_named_fields(self) -> None:
+        from pipeline_v2.models import Pipeline
+
+        from mcp_server.tools.platform import list_pipelines
+
+        pipeline = seed_canaries(
+            Pipeline(active=True), CANARY, skip=("pipeline_name",)
+        )
+        with patch("mcp_server.tools.platform.Pipeline.objects.for_user") as for_user:
+            for_user.return_value.order_by.return_value = _FakeRows([pipeline])
+            result = list_pipelines(self._context())
+
+        self._assert_clean(result, "listPipelines")
+
+    def test_list_prompt_studio_projects_returns_only_named_fields(self) -> None:
+        from mcp_server.tools.platform import list_prompt_studio_projects
+
+        project = seed_canaries(
+            CustomTool(), CANARY, skip=("tool_name", "description", "author")
+        )
+        with patch("mcp_server.tools.platform.CustomTool.objects.for_user") as for_user:
+            for_user.return_value.order_by.return_value = _FakeRows([project])
+            result = list_prompt_studio_projects(self._context())
+
+        self._assert_clean(result, "listPromptStudioProjects")
+
+    def test_list_tool_instances_omits_tool_settings(self) -> None:
+        """The highest-risk of these: a tool step's ``metadata`` is free-form
+        JSON that can carry adapter ids and credential-shaped values, and the
+        tool's own docstring says it omits them. This is what proves it.
+        """
+        from tool_instance_v2.models import ToolInstance
+
+        from mcp_server.tools.observability import list_tool_instances
+
+        workflow = Workflow(workflow_name="wf")
+        # `tool_id` is skipped because the tool names it deliberately — it is
+        # the identifier an agent needs to make sense of the step, not a
+        # secret. Everything else, `metadata` above all, is seeded.
+        step = seed_canaries(
+            ToolInstance(workflow=workflow, step=1), CANARY, skip=("tool_id",)
+        )
+        assert CANARY in json.dumps(step.metadata, default=str), (
+            "metadata must carry a canary or this test proves nothing"
+        )
+        with (
+            patch(
+                "mcp_server.tools.observability.Workflow.objects.for_user"
+            ) as for_user,
+            patch(
+                "tool_instance_v2.models.ToolInstance.objects.filter"
+            ) as tool_filter,
+        ):
+            for_user.return_value.filter.return_value.first.return_value = workflow
+            tool_filter.return_value.order_by.return_value = [step]
+            result = list_tool_instances(
+                self._context(), workflow_id=str(workflow.id)
+            )
+
+        self._assert_clean(result, "listToolInstances")
+
+    def test_the_seeding_helper_actually_seeds(self) -> None:
+        """Guard the guard: if seeding silently wrote nothing, every test above
+        would pass vacuously — which is the exact failure this class exists to
+        remove.
+        """
+        workflow = seed_canaries(Workflow(), CANARY)
+
+        assert CANARY in workflow.workflow_name
+        assert CANARY in json.dumps(workflow.source_settings, default=str)
+
+    def test_a_wholesale_serializer_would_be_caught(self) -> None:
+        """Proves the scan can fail. A tool built the unsafe way — dumping the
+        model instead of naming fields — must trip the same assertion.
+        """
+        from django.forms.models import model_to_dict
+
+        workflow = seed_canaries(Workflow(), CANARY)
+        unsafe_result = {"workflows": [model_to_dict(workflow)]}
+
+        with self.assertRaises(AssertionError):
+            self._assert_clean(unsafe_result, "pretendTool")
+
+
+class _FakeRows(list):
+    """A list that answers the two queryset calls the list tools make.
+
+    They do ``queryset.count()`` then slice for the page, so nothing more is
+    needed — and keeping it this thin means the test fails if a tool starts
+    doing something else to the queryset, rather than silently passing.
+    """
+
+    def count(self) -> int:
+        return len(self)
