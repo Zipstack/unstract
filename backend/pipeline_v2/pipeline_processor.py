@@ -45,10 +45,20 @@ class PipelineProcessor:
 
     @classmethod
     def get_active_pipeline(cls, pipeline_id: str) -> Pipeline | None:
-        """Retrieves a list of active pipelines."""
+        """Retrieve a pipeline, requiring it to be active.
+
+        Raises ``InactivePipelineError`` (422) when the row exists but is
+        paused; use :meth:`get_pipeline_by_id` when merely identifying the row.
+
+        A malformed identifier is "not found", not a fault -- see
+        :meth:`get_pipeline_by_id` for why ``ValidationError`` is caught here.
+        This path is reached *unauthenticated*: the public execution endpoint
+        looks the pipeline up before validating the API key, so letting it
+        escape turns any non-UUID path segment into a 500.
+        """
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=True)
-        except Pipeline.DoesNotExist:
+        except (Pipeline.DoesNotExist, ValidationError):
             return None
 
     @classmethod
