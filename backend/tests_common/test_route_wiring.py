@@ -28,9 +28,8 @@ import builtins
 import inspect
 import sys
 
-from django.urls import resolve, reverse
-
 from api_v2.api_key_views import APIKeyViewSet
+from django.urls import resolve, reverse
 from permissions.permission import IsParentDeploymentOwner
 from prompt_studio.permission import IsRegistryToolOwner
 from prompt_studio.prompt_studio_registry_v2.views import PromptStudioRegistryView
@@ -113,11 +112,11 @@ class TestApiKeyRoutesAreWired:
         """
         module = sys.modules[APIKeyViewSet.__module__]
         source = inspect.getsource(module)
-        (func,) = [
+        (func,) = (
             node
             for node in ast.walk(ast.parse(source))
             if isinstance(node, ast.FunctionDef) and node.name == "create"
-        ]
+        )
         loaded = {
             node.id
             for node in ast.walk(func)

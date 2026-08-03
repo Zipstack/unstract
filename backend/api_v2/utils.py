@@ -1,8 +1,12 @@
+import logging
+
 from django.core.exceptions import ValidationError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
 from api_v2.notification import APINotification
+
+logger = logging.getLogger(__name__)
 
 
 class APIDeploymentUtils:
@@ -27,7 +31,13 @@ class APIDeploymentUtils:
         try:
             api_deployment: APIDeployment = APIDeployment.objects.get(pk=api_id)
             return api_deployment
-        except (APIDeployment.DoesNotExist, ValidationError):
+        except APIDeployment.DoesNotExist:
+            return None
+        except ValidationError:
+            # Logged so a malformed identifier stays distinguishable from an
+            # absent row: both answer 404, and without this the difference is
+            # invisible when triaging.
+            logger.debug("Malformed API deployment identifier: %s", api_id)
             return None
 
     @staticmethod

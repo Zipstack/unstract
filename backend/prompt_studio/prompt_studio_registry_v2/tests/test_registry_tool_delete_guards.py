@@ -15,10 +15,9 @@ things gate it, and both are load-bearing:
 
 ``has_object_permission`` is pure logic over collaborators, so these tests stub
 the Django-coupled boundary (``permissions.permission``,
-``OrganizationMemberService``) and exercise the real method body. Django is not
-importable in a plain checkout, so the class body is extracted from source --
-mirroring ``prompt_studio_core_v2/tests/test_build_index_payload.py``. A rename
-fails these tests rather than silently skipping them.
+``OrganizationMemberService``) and exercise the real method body, sliced out of
+the source by ``tests_common.source_extraction``. A rename fails these tests
+rather than silently skipping them.
 
 The in-use check is driven the same way: ``destroy``, ``_refuse_if_in_use`` and
 the shared helpers in ``prompt_studio/tool_usage.py`` are all executed against a
@@ -26,9 +25,24 @@ stubbed ORM. ``destroy`` is included deliberately -- covering only the guard
 left its *call site* unpinned, and deleting that one line made in-use tools
 deletable with the whole suite still green.
 
-What is *not* covered here: route binding and the live permission cycle need a
-database, and ``backend/conftest.py`` auto-marks such tests ``integration`` so
-they run in the rig's integration tier rather than the per-PR unit tier.
+**Known blind spot of this technique.** The bodies are ``exec``-ed out of
+context, so nothing here binds them to the class, the URLconf, or DRF dispatch:
+code that is present but *unreachable* looks identical to code that is wired.
+Deleting the DELETE route outright, or unwiring ``IsRegistryToolOwner`` from
+``destroy``, each left this suite fully green while reopening the hole it exists
+to close. ``tests_common/test_route_wiring.py`` covers binding from the other
+side and fails on both. Two further sharp edges: inserting a decorator above an
+extracted definition silently truncates its slice, so the tests then assert
+against a *different* body than ships; and a cosmetic annotation change can
+break the marker match outright.
+
+Retiring the technique for the conventional import-and-``patch`` pattern is
+deferred to its own change -- it rewrites both suites wholesale. Note the
+premise it was built on does not hold: Django *is* importable in this tier
+(``tests/groups.yaml`` sets ``DJANGO_SETTINGS_MODULE`` for ``unit-backend``),
+``backend/conftest.py`` auto-marks only ``django_db``/``TestCase`` tests as
+``integration``, and ``prompt_studio_core_v2/tests/test_build_index_payload.py``
+already imports its module directly for exactly this reason.
 """
 
 from __future__ import annotations

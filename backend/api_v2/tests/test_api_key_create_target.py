@@ -32,12 +32,17 @@ extracted, mirroring
 source text and so passed against an inverted ``isinstance`` guard and against
 the wrong object being handed to ``check_object_permissions``.
 
-The end-to-end request cycle still needs a database and lives in the
-integration tier; what runs here is the method body, not the routing.
+What runs here is the method body, not the routing -- and that is a real gap,
+not merely a deferral: because the body is ``exec``-ed out of its class, moving
+``create`` into a dead class (reopening the IDOR) or dropping an import it uses
+at request time both leave this suite green. ``tests_common/test_route_wiring.py``
+asserts the binding and fails on either. The live request cycle against a
+database remains integration-tier.
 """
 
 from __future__ import annotations
 
+import logging
 import textwrap
 from pathlib import Path
 from typing import Any
@@ -446,6 +451,41 @@ class TestCreateBodyContract:
         with pytest.raises(_ValidationError):
             view.create(_Req({"api": "api-1"}, OWNER), pipeline_id="pipe-1")
 
+    def test_same_field_naming_a_different_resource_is_refused(self) -> None:
+        """A body naming another API than the path is a contradiction too.
+
+        The cross-type guards above do not catch this: path and body agree on
+        the *field* and disagree on the *value*. Overwriting silently mints a
+        live key for the path's deployment while the caller asked for another.
+        """
+        view = _build_create(
+            apis={"api-1": _Target("api-1", OWNER), "api-2": _Target("api-2", OWNER)}
+        )
+
+        with pytest.raises(_ValidationError):
+            view.create(_Req({"api": "api-2"}, OWNER), api_id="api-1")
+
+    def test_same_pipeline_field_naming_a_different_resource_is_refused(self) -> None:
+        view = _build_create(
+            pipelines={
+                "pipe-1": _Target("pipe-1", OWNER),
+                "pipe-2": _Target("pipe-2", OWNER),
+            }
+        )
+
+        with pytest.raises(_ValidationError):
+            view.create(_Req({"pipeline": "pipe-2"}, OWNER), pipeline_id="pipe-1")
+
+    def test_body_repeating_the_path_target_verbatim_is_accepted(self) -> None:
+        """Agreement is not a contradiction -- the redundant body still works."""
+        target = _Target("api-1", OWNER)
+        view = _build_create(apis={"api-1": target})
+
+        response = view.create(_Req({"api": "api-1"}, OWNER), api_id="api-1")
+
+        assert response.status == 201
+        assert view.checked == [target]
+
     def test_empty_string_body_value_does_not_defeat_the_path(self) -> None:
         """``setdefault`` used to let ``{"api": ""}`` through as a present key."""
         target = _Target("api-1", OWNER)
@@ -524,6 +564,7 @@ class TestLookupHelpersTolerateMalformedIds:
                 "APIDeployment": _APIDeploymentModel,
                 "ValidationError": DjangoValidationError,
                 "Any": Any,
+                "logger": logging.getLogger("test-stub"),
             },
         )
         return namespace["get_api_by_id"]
@@ -546,6 +587,7 @@ class TestLookupHelpersTolerateMalformedIds:
                 "Pipeline": _PipelineModel,
                 "ValidationError": DjangoValidationError,
                 "Any": Any,
+                "logger": logging.getLogger("test-stub"),
             },
         )
         return lambda pipeline_id: namespace["get_pipeline_by_id"](_Cls, pipeline_id)

@@ -52,8 +52,12 @@ class APIKeyViewSet(viewsets.ModelViewSet):
         The path target is authoritative: a body naming the *other* target is
         a contradiction, not an override, and is refused rather than silently
         creating a key for whichever one wins. A body repeating the *same*
-        target is accepted and overwritten -- it agrees with the path, so
-        there is nothing to refuse.
+        target with the *same* value is accepted and overwritten -- it agrees
+        with the path, so there is nothing to refuse. A body naming the same
+        field with a *different* value is refused for the same reason as the
+        cross-type case: silently minting a key for the path's resource while
+        the caller named another one is a wrong-resource credential, not a
+        harmless override.
         """
         # A JSON array (or scalar) body has no `.copy()` returning a mapping;
         # reject it as a 400 rather than letting `AttributeError` become a 500.
@@ -80,6 +84,21 @@ class APIKeyViewSet(viewsets.ModelViewSet):
                     "in the URL; remove `api` from the body."
                 }
             )
+
+        # Same field, different value: the caller named one resource in the
+        # path and another in the body. Overwriting silently would mint a live
+        # key for a resource they did not ask for -- refuse, as for the
+        # cross-type contradictions above. An empty body value is not a
+        # disagreement; it simply does not name anything.
+        for field, path_value in (("api", api_id), ("pipeline", pipeline_id)):
+            body_value = request_data.get(field)
+            if path_value and body_value and str(body_value) != str(path_value):
+                raise serializers.ValidationError(
+                    {
+                        field: f"`{field}` in the body names a different resource "
+                        "than the URL; remove it or make the two agree."
+                    }
+                )
 
         # The path wins where it names a target; otherwise fall back to the
         # body, so the body-only routes resolve to the same guarded path.

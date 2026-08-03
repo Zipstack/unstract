@@ -1,13 +1,29 @@
-"""Run real method bodies in the unit tier, where Django settings are absent.
+"""Run real method bodies against stubbed collaborators, without the class.
 
-Guard logic worth pinning (authorization, in-use refusal) lives in modules that
-import Django at module scope, so the unit tier cannot import them. Rather than
-restate the logic in a test -- which passes no matter what the real code does --
-these helpers slice the definition out of the source file and ``exec`` it
-against stubbed collaborators, so the assertions run against the shipped body.
+These helpers slice a definition out of its source file and ``exec`` it in a
+namespace of stubs, so assertions run against the shipped body rather than a
+restatement of it that would pass no matter what the real code does.
 
-The end-to-end request cycle needs a database and belongs in the integration
-tier; ``backend/conftest.py`` auto-marks those.
+**Prefer importing the module.** Django settings *are* configured in the unit
+tier (``tests/groups.yaml`` sets ``DJANGO_SETTINGS_MODULE`` for
+``unit-backend``), and ``backend/conftest.py`` auto-marks only ``django_db`` and
+``TestCase`` tests as ``integration`` -- so a plain import plus
+``unittest.mock.patch`` runs per-PR and is the established pattern here (see
+``prompt_studio_core_v2/tests/test_build_index_payload.py``). Reach for these
+helpers only where that genuinely will not do.
+
+**Limitations, because they are not obvious:**
+
+* The extracted body is not bound to its class, the URLconf, or DRF dispatch,
+  so a test using it cannot tell wired code from unreachable code. Pair it with
+  an explicit wiring test (``tests_common/test_route_wiring.py``).
+* Names resolve from the supplied namespace, never from the module's own import
+  block -- a deleted or renamed import is invisible here.
+* Slicing stops at the first ``stops`` needle, so inserting a decorator above a
+  definition silently truncates it and the assertions then cover a *different*
+  body than ships.
+* The marker must match the definition line verbatim, so a cosmetic annotation
+  change breaks the match.
 """
 
 from __future__ import annotations

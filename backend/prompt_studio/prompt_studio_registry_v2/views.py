@@ -45,11 +45,12 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
             return [IsRegistryToolOwner()]
         return super().get_permissions()
 
-    def get_queryset(self) -> QuerySet | None:
+    def get_queryset(self) -> QuerySet:
         # Detail routes address a single row by PK; the list filters below are
-        # query-param driven and would resolve to None, breaking get_object().
-        # Keyed off the URL kwarg rather than `self.detail`, which DRF only
-        # populates for router-generated views (it is None under as_view()).
+        # query-param driven and would resolve to an empty queryset, so
+        # get_object() could never find the row. Keyed off the URL kwarg rather
+        # than `self.detail`, which DRF only populates for router-generated
+        # views (it is None under as_view()).
         if self.kwargs.get("pk"):
             return PromptStudioRegistry.objects.all()
 
@@ -58,11 +59,13 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
             PromptStudioRegistryKeys.PROMPT_REGISTRY_ID,
             "custom_tool",
         )
-        queryset = None
-        if filterArgs:
-            queryset = PromptStudioRegistry.objects.filter(**filterArgs)
+        # `none()` rather than None: DRF hands this straight to filter_queryset
+        # and the paginator, neither of which accepts None -- an unfiltered
+        # `list` used to 500 instead of returning nothing.
+        if not filterArgs:
+            return PromptStudioRegistry.objects.none()
 
-        return queryset
+        return PromptStudioRegistry.objects.filter(**filterArgs)
 
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
@@ -126,9 +129,16 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
         """
         types_text = join_deployment_types(deployment_types)
         if not types_text:
+            # No resolved type has two causes: the workflows are genuinely
+            # undeployed, or they belong to another organization -- the
+            # deployment tables are org-scoped while `ToolInstance` is not.
+            # Say so, rather than directing the user to remove usages they may
+            # have no way to see.
             return (
                 "This exported tool is still used by one or more workflows. "
-                "Remove those usages before deleting it."
+                "Remove those usages before deleting it. If you cannot find "
+                "them, they may belong to another organization -- contact an "
+                "administrator."
             )
         return (
             f"This exported tool is still used in {types_text}. "

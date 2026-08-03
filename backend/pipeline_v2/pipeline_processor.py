@@ -58,7 +58,10 @@ class PipelineProcessor:
         """
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=True)
-        except (Pipeline.DoesNotExist, ValidationError):
+        except Pipeline.DoesNotExist:
+            return None
+        except ValidationError:
+            logger.debug("Malformed pipeline identifier: %s", pipeline_id)
             return None
 
     @classmethod
@@ -80,7 +83,13 @@ class PipelineProcessor:
         """
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=False)
-        except (Pipeline.DoesNotExist, ValidationError):
+        except Pipeline.DoesNotExist:
+            return None
+        except ValidationError:
+            # Logged so a malformed identifier stays distinguishable from an
+            # absent row: both answer 404, and without this the difference is
+            # invisible when triaging.
+            logger.debug("Malformed pipeline identifier: %s", pipeline_id)
             return None
 
     @staticmethod
