@@ -98,23 +98,35 @@ class ResourceShareManagementMixin:
 
         resource = self.get_object()  # type: ignore[attr-defined]
         desired = _extract_desired_share_state(request.data)
-        # Only the groups axis is diffed: it is the one that notifies, and
-        # snapshotting ``shared_users`` too would fetch every viewer twice for
-        # nothing. Reads go through ``ResourceGroupShare``, so no refresh is
-        # needed between the two.
-        groups_before = self._read_axis(resource, "shared_groups")
+        before = self.snapshot_share_axes(resource)
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
         # ``_commit`` is the only atomic block on this path, so it has already
-        # committed — the diff reads persisted state and can never announce a
+        # committed — the diffs read persisted state and can never announce a
         # share that rolled back.
         notify_resource_shared_with_group(
             resource=resource,
-            groups=self._read_axis(resource, "shared_groups") - groups_before,
+            # ``.get`` — lookups narrows ``share_axes`` to users only.
+            groups=self._read_axis(resource, "shared_groups")
+            - before.get("shared_groups", set()),
             actor=request.user,
         )
+        self._notify_shared_users(resource, before, request.data, request.user)
         return Response(status=status.HTTP_200_OK)
+
+    def _notify_shared_users(
+        self,
+        instance: Any,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+        /,
+    ) -> None:
+        """Email users newly added to ``shared_users``.
+
+        Positional-only: hosts override with their own resource name and type.
+        """
 
     @action(detail=True, methods=["get"], url_path="effective-members")
     def effective_members(self, request: Request, pk: str | None = None) -> Response:
@@ -132,8 +144,7 @@ class ResourceShareManagementMixin:
     def snapshot_share_axes(self, instance: Model) -> dict[str, set[Any]]:
         """Capture every declared axis's current contents.
 
-        Call BEFORE ``super().partial_update(...)``; pair with
-        :meth:`diff_share_axes` afterward.
+        Call BEFORE the write; pair with :meth:`diff_share_axes` afterward.
         """
         return {axis: self._read_axis(instance, axis) for axis in self.share_axes}
 
