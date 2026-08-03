@@ -37,7 +37,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, NamedTuple
 
 from croniter import croniter
-
 from unstract.core.data_models import TaskPayload
 
 from ..fairness import DEFAULT_PRIORITY
@@ -145,7 +144,7 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
                 f"""
                 SELECT pipeline_id, organization_id, workflow_id, pipeline_name,
                        cron_string, next_run_at
-                FROM {qualified('pg_periodic_schedule')}
+                FROM {qualified("pg_periodic_schedule")}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)
                 """,
