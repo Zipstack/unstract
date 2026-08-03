@@ -27,7 +27,6 @@ from django.utils import timezone
 from django_celery_beat.models import PeriodicTask, PeriodicTasks
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgPeriodicSchedule
-
 from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
@@ -68,8 +67,7 @@ def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> boo
         # edit — warn with traceback rather than logger.exception so a persistently
         # down Flipt doesn't bury real errors as a per-edit Sentry exception.
         logger.warning(
-            "resolve_schedule_owner: Flipt check failed for pipeline %s; "
-            "leaving on Beat",
+            "resolve_schedule_owner: Flipt check failed for pipeline %s; leaving on Beat",
             pipeline_id,
             exc_info=True,
         )

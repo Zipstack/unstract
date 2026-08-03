@@ -7,7 +7,6 @@ from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
-
 from unstract.sdk1.file_storage.constants import FileOperationParams
 
 
@@ -37,8 +36,7 @@ class FileValidator:
         "Allowed extensions are: '%(allowed_extensions)s.'"
     )
     mime_message = _(
-        "MIME type '%(mimetype)s' is not valid. "
-        "Allowed types are: %(allowed_mimetypes)s."
+        "MIME type '%(mimetype)s' is not valid. Allowed types are: %(allowed_mimetypes)s."
     )
     min_size_message = _(
         "The current file %(size)s, which is too small. "

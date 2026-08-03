@@ -189,8 +189,7 @@ def extraction_status(request):
             {
                 "success": False,
                 "error": (
-                    "document_id, profile_manager_id, and x2text_config_hash "
-                    "are required"
+                    "document_id, profile_manager_id, and x2text_config_hash are required"
                 ),
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -403,16 +402,16 @@ def summary_index_key(request):
         )
 
     try:
+        from unstract.sdk1.constants import LogLevel
+        from unstract.sdk1.file_storage.constants import StorageType
+        from unstract.sdk1.file_storage.env_helper import EnvHelper
+        from unstract.sdk1.utils.indexing import IndexingUtils
         from utils.file_storage.constants import FileStorageKeys
 
         from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
             PromptIdeBaseTool,
         )
-        from unstract.sdk1.constants import LogLevel
-        from unstract.sdk1.file_storage.constants import StorageType
-        from unstract.sdk1.file_storage.env_helper import EnvHelper
-        from unstract.sdk1.utils.indexing import IndexingUtils
 
         profile = ProfileManager.objects.get(pk=summary_profile_id)
         fs_instance = EnvHelper.get_storage(

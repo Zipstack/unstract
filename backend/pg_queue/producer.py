@@ -20,7 +20,6 @@ import json
 import logging
 from typing import Any
 
-from pg_queue.models import PgQueueMessage
 from unstract.core.data_models import (
     FAIRNESS_DEFAULT_PRIORITY,
     FAIRNESS_MAX_PRIORITY,
@@ -29,6 +28,8 @@ from unstract.core.data_models import (
     FairnessPayload,
     TaskPayload,
 )
+
+from pg_queue.models import PgQueueMessage
 
 logger = logging.getLogger(__name__)
 
