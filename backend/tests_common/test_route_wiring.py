@@ -27,6 +27,7 @@ import ast
 import builtins
 import inspect
 import sys
+import textwrap
 
 from api_v2.api_key_views import APIKeyViewSet
 from django.urls import resolve, reverse
@@ -65,13 +66,19 @@ class TestRegistryDeleteRouteIsWired:
         )
 
     def test_list_is_not_gated_by_the_owner_permission(self) -> None:
-        """Read visibility is derived by ``list_tools``; only deletes narrow."""
+        """Read visibility is derived by ``list_tools``; only deletes narrow.
+
+        Asserts the *resolution* path ran, not merely that the owner class is
+        absent: an empty permission list would satisfy the negative on its own
+        and prove nothing.
+        """
         view = PromptStudioRegistryView()
         view.action = "list"
 
-        assert not any(
-            isinstance(perm, IsRegistryToolOwner) for perm in view.get_permissions()
-        )
+        permissions = view.get_permissions()
+
+        assert permissions == super(PromptStudioRegistryView, view).get_permissions()
+        assert not any(isinstance(perm, IsRegistryToolOwner) for perm in permissions)
 
 
 class TestApiKeyRoutesAreWired:
@@ -111,12 +118,11 @@ class TestApiKeyRoutesAreWired:
         the module. Resolve each global the body loads instead.
         """
         module = sys.modules[APIKeyViewSet.__module__]
-        source = inspect.getsource(module)
-        (func,) = (
-            node
-            for node in ast.walk(ast.parse(source))
-            if isinstance(node, ast.FunctionDef) and node.name == "create"
-        )
+        # Parse the override itself rather than walking the module for any
+        # ``create``: a second definition anywhere in the file would otherwise
+        # break this with an unpack error naming nothing about the defect.
+        source = textwrap.dedent(inspect.getsource(vars(APIKeyViewSet)["create"]))
+        (func,) = ast.parse(source).body
         loaded = {
             node.id
             for node in ast.walk(func)
