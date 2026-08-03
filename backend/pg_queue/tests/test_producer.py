@@ -5,6 +5,7 @@ the JSON-coercion logic without needing a test database.
 """
 
 import datetime
+import logging
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -106,19 +107,39 @@ class TestEnqueueTask:
         when = model.objects.create.call_args.kwargs["message"]["kwargs"]["when"]
         assert isinstance(when, str) and "2026-06-18" in when
 
-    def test_json_safe_rejects_nan_with_value_error(self):
-        # NaN would slip past the default lenient encoder and only fail at the
-        # jsonb insert (DataError); allow_nan=False surfaces it as a ValueError at
+    @pytest.mark.parametrize(
+        "bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"]
+    )
+    @pytest.mark.parametrize("slot", ["args", "kwargs", "fairness"])
+    def test_json_safe_rejects_non_finite_floats(self, bad, slot, caplog):
+        # A non-finite float slips past the default lenient encoder and only fails at
+        # the jsonb insert (DataError); allow_nan=False surfaces it as a ValueError at
         # the enqueue seam so the notification dispatcher can dead-letter it.
-        # The coercion runs inside the try, so the failure is logged with the
-        # task/queue/org breadcrumb (not dropped silently) and never reaches the
-        # DB insert.
-        nan_kwargs = {"score": float("nan")}
-        with patch(_MODEL) as model, patch.object(producer, "logger") as log:
-            with pytest.raises(ValueError):
-                producer.enqueue_task(task_name="t", queue="celery", kwargs=nan_kwargs)
-        model.objects.create.assert_not_called()
-        log.exception.assert_called_once()
+        #
+        # Every _json_safe-coerced slot is covered, not just kwargs: the scenario this
+        # guard exists for is a webhook BODY carrying a non-finite float, and
+        # notification_dispatch puts the body in args[1]. inf/-inf are rejected by
+        # allow_nan=False exactly like nan.
+        payloads = {
+            "args": {"args": ["url", {"score": bad}]},
+            "kwargs": {"kwargs": {"score": bad}},
+            "fairness": {"fairness": {"org_id": "o", "weight": bad}},
+        }
+        with patch(_MODEL) as model:
+            with caplog.at_level(logging.ERROR, logger=producer.logger.name):
+                with pytest.raises(ValueError):
+                    producer.enqueue_task(
+                        task_name="send_webhook_notification",
+                        queue="notifications",
+                        org_id="org-1",
+                        **payloads[slot],
+                    )
+        model.objects.create.assert_not_called()  # never reaches the DB insert
+        # The breadcrumb is the point of moving coercion inside the try — assert the
+        # rendered record actually carries it, not merely that .exception() was hit.
+        assert "send_webhook_notification" in caplog.text
+        assert "notifications" in caplog.text
+        assert "org-1" in caplog.text
 
     def test_enqueue_failure_logs_and_propagates(self):
         with patch(_MODEL) as model:

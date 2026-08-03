@@ -19,18 +19,24 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+from django.conf import settings
 from notification_v2 import internal_api_views as views
 from notification_v2.enums import BufferStatus
+
+_URL = "https://hook.test"
+_BODY = {"text": "x"}
+_HEADERS = {"Content-Type": "application/json"}
+_BUFFER_IDS = ["b1"]
 
 
 def _send(**overrides):
     kw = {
-        "url": "https://hook.test",
-        "body": {"text": "x"},
-        "headers": {"Content-Type": "application/json"},
+        "url": _URL,
+        "body": _BODY,
+        "headers": _HEADERS,
         "platform": "SLACK",
         "max_retries": 3,
-        "buffer_ids": ["b1"],
+        "buffer_ids": _BUFFER_IDS,
         "org_id": 7,
     }
     kw.update(overrides)
@@ -50,6 +56,13 @@ class TestSendClubbedOrgContract:
         assert call["org_string_id"] == "org-str-id"
         assert call["kwargs"]["organization_id"] == 7
         assert call["queue"] == "notifications"
+        # args carry the full webhook invocation, in order.
+        assert call["args"] == [_URL, _BODY, _HEADERS, settings.NOTIFICATION_TIMEOUT]
+        # buffer_row_ids is what REPLACED the Celery link/link_error callbacks: it is
+        # how the worker knows which rows to mark DISPATCHED / DEAD_LETTER. Drop it
+        # and every row strands in SENDING until the reclaim lease expires — silent,
+        # visible only as a growing SENDING backlog.
+        assert call["kwargs"]["buffer_row_ids"] == _BUFFER_IDS
 
 
 class TestSendClubbedFailureRecovery:
@@ -64,13 +77,30 @@ class TestSendClubbedFailureRecovery:
             patch.object(views, "NotificationBuffer") as buf,
         ):
             _send(buffer_ids=["b1", "b2"])
-        # Guarded on SENDING, reverted to PENDING (attempt refunded).
+        # Guarded on SENDING, reverted to PENDING.
         fkw = buf.objects.filter.call_args.kwargs
         assert fkw["status"] == BufferStatus.SENDING.value
         assert set(fkw["id__in"]) == {"b1", "b2"}
+        # Every claimed row goes back to PENDING for the next tick.
         ukw = buf.objects.filter.return_value.update.call_args.kwargs
-        assert ukw["status"] == BufferStatus.PENDING.value
-        assert ukw["dispatched_at"] is None
+        assert ukw == {
+            "status": BufferStatus.PENDING.value,
+            "dispatched_at": None,
+        }
+        # The refund must be ASSERTED, not merely described in a comment: without it
+        # a transient outage burns no attempt (claim +1, refund -1 = net zero), so
+        # NOTIFICATION_MAX_DISPATCH_ATTEMPTS is unreachable and a permanently
+        # recurring failure re-dispatches every flush tick forever. It is also
+        # BOUNDED — only rows still under the limit are refunded, so a failure that
+        # keeps recurring eventually ages into the cap.
+        refund_qs = buf.objects.filter.return_value.filter
+        assert (
+            refund_qs.call_args.kwargs["dispatch_attempts__lte"]
+            == views.NOTIFICATION_TRANSIENT_REFUND_LIMIT
+        )
+        refund_kw = refund_qs.return_value.update.call_args.kwargs
+        assert set(refund_kw) == {"dispatch_attempts"}
+        assert "dispatch_attempts" in str(refund_kw["dispatch_attempts"])  # F(...) - 1
 
     def test_permanent_pg_error_dead_letters(self):
         # The PG path surfaces a permanent enqueue failure as PermanentDispatchError;

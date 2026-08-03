@@ -204,6 +204,62 @@ def _pipeline_identity(payload: TaskPayload) -> tuple[str | None, str]:
     )
 
 
+# Header/kwarg names whose VALUES are secrets. Substring match on a lowercased key,
+# so ``Authorization``/``X-Api-Key``/``auth_token``/``client_secret`` all match.
+_SECRET_KEY_PARTS = ("authorization", "api-key", "api_key", "apikey", "token", "secret")
+
+# Payload slots that carry customer data rather than routing metadata. Logged as a
+# type+size summary so a drop stays debuggable without dumping document content.
+_BULKY_ARG_INDEX = 1  # args[1] is the webhook body on the notification payload
+
+
+def _redact_secrets(value: Any) -> Any:
+    """Recursively mask secret-valued keys in dicts/lists; other values pass through."""
+    if isinstance(value, dict):
+        return {
+            k: (
+                "***REDACTED***"
+                if isinstance(k, str) and any(p in k.lower() for p in _SECRET_KEY_PARTS)
+                else _redact_secrets(v)
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_secrets(v) for v in value]
+    return value
+
+
+def _redact_payload(payload: dict) -> dict:
+    """A log-safe view of a queue payload.
+
+    Two exposures this closes, both introduced in practice once credential-bearing
+    notification payloads started flowing through the PG consumer:
+
+    * **Secrets** — ``build_webhook_headers`` writes the subscriber's bearer token /
+      API key into the header dict carried in ``args``/``kwargs``. Masked by key name.
+    * **Customer data** — the clubbed webhook body is the pipeline's extracted output.
+      Replaced with a ``<type len=N>`` summary rather than dumped.
+
+    Routing metadata (task_name, queue, task_id, read counts) is preserved verbatim,
+    since that is what a poison drop is actually debugged from.
+    """
+    safe = {k: v for k, v in payload.items() if k not in ("args", "kwargs")}
+    args = payload.get("args")
+    if isinstance(args, list):
+        redacted_args: list[Any] = []
+        for i, a in enumerate(args):
+            if i == _BULKY_ARG_INDEX and isinstance(a, (dict, list, str)):
+                redacted_args.append(f"<{type(a).__name__} len={len(a)}>")
+            else:
+                redacted_args.append(_redact_secrets(a))
+        safe["args"] = redacted_args
+    elif args is not None:
+        safe["args"] = _redact_secrets(args)
+    if payload.get("kwargs") is not None:
+        safe["kwargs"] = _redact_secrets(payload.get("kwargs"))
+    return safe
+
+
 class PgQueueConsumer:
     """Polls one PG queue, runs each claimed task in-process, acks on success."""
 
@@ -505,11 +561,22 @@ class PgQueueConsumer:
             headers = {FAIRNESS_HEADER_NAME: fairness} if fairness else None
             # Renew the short lease while the (possibly long) task runs, so a dead
             # worker's claim expires fast but a live one is never redelivered.
+            #
+            # ``task_id=`` is load-bearing for idempotency: Celery's ``Task.apply``
+            # does ``task_id = task_id or uuid()``, so WITHOUT this the task sees a
+            # FRESH ``self.request.id`` on every delivery. Any guard keyed on it
+            # (fan-out claim rows, ``generation_task_id`` uniqueness, task-complete
+            # markers) would then never collide across a redelivery and dedupe
+            # nothing. The producer already persisted a stable id in the payload —
+            # pass it through so redelivery re-runs with the SAME request id, matching
+            # Celery's own redelivery semantics. Falls back to Celery's uuid() when
+            # absent (never None, which apply() would reject).
             with self._lease_renewal(message.msg_id):
                 eager = task.apply(
                     args=payload.get("args") or [],
                     kwargs=payload.get("kwargs") or {},
                     headers=headers,
+                    task_id=payload.get("task_id") or None,
                     throw=True,
                 )
         except Exception as exc:
@@ -789,18 +856,23 @@ class PgQueueConsumer:
         """
         execution_id, organization_id = _pipeline_identity(payload)
         logger.error(
-            "PG-queue consumer: poison-dropped task %r after %s attempts "
+            "PG-queue consumer: poison-dropped task %r "
             "(msg_id=%s, read_ct=%s, queue=%s, execution_id=%s, org_id=%s) — "
-            "exceeded max_attempts=%s; full payload: %r",
+            "exceeded max_attempts=%s; payload: %r",
             task_name,
-            message.read_ct,
             message.msg_id,
+            # read_ct counts READS, not executions — a lease expiry with no run still
+            # increments it. Logged once, under its own name (an "after N attempts"
+            # phrasing duplicated this same value and misread as execution count).
             message.read_ct,
             payload.get("queue"),
             execution_id,
+            # NB: identifier flavour is payload-dependent — see _pipeline_identity.
             organization_id or None,
             self.max_attempts,
-            payload,
+            # Redacted: payloads carry subscriber credentials (webhook Authorization
+            # / API-key headers) and customer data. Never log them raw.
+            _redact_payload(payload),
         )
         # Failure channel (request-reply / on_error) → surface there, then drop.
         if payload.get("reply_key") or payload.get("on_error"):

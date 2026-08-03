@@ -451,18 +451,18 @@ def load_worker_tasks(worker_type: WorkerType) -> None:
     PACKAGE import that RUNS the plugin's own registration code, e.g.
     ``from . import tasks`` with relative imports such as
     ``from .clients import ...``). That registration's ``@shared_task`` bindings
-    complete when the app FINALIZES, which can be *after* this point — so the
-    tasks are not necessarily bound to the app yet here. The generic file-path
-    load below is SKIPPED for pluggable workers not because they are already
-    bound, but because loading ``tasks.py`` under a bare ``"tasks"`` spec (no
-    parent package) would break the plugin's relative imports ("attempted
-    relative import with no known parent package").
+    are applied when the app FINALIZES — which any read of ``app.tasks`` triggers
+    automatically (``finalize(auto=True)``), so they are in place by the time
+    anything inspects the registry. The generic file-path load below is SKIPPED for
+    pluggable workers because loading ``tasks.py`` under a bare ``"tasks"`` spec (no
+    parent package) would break the plugin's relative imports ("attempted relative
+    import with no known parent package") — not because of any binding-order
+    subtlety.
 
     Non-pluggable (top-level) workers use absolute imports; their ``tasks.py`` is
-    loaded by file path with the worker directory on ``sys.path``. Their tasks
-    bind eagerly here — there is no later finalize step to rescue them — so a
-    missing directory / ``tasks.py`` is a broken deploy and hard-fails rather
-    than booting a no-op worker.
+    loaded by file path with the worker directory on ``sys.path``. Their tasks bind
+    eagerly here, so a missing directory / ``tasks.py`` is a broken deploy and
+    hard-fails rather than booting a no-op worker.
     """
     if worker_type.is_pluggable():
         logger.info(
@@ -496,12 +496,26 @@ def load_worker_tasks(worker_type: WorkerType) -> None:
 load_worker_tasks(worker_type)
 
 # A worker that boots with no registered tasks starts but silently processes
-# nothing (Celery does not error on an empty registry). Surface that misconfig,
-# but split by worker kind: pluggable tasks bind on app finalize (@shared_task /
-# connect_on_app_finalize), which can be after this point, so a raise here would
-# false-positive on a correctly-configured pluggable worker — only WARN. A
-# non-pluggable worker has no later binding step (load_worker_tasks bound its
-# tasks eagerly above), so an empty registry here is terminal — RAISE.
+# nothing (Celery does not error on an empty registry). Surface that misconfig.
+#
+# NB: reading ``app.tasks`` below AUTO-FINALIZES the app (Celery's ``tasks``
+# property calls ``self.finalize(auto=True)``), so every pending ``@shared_task`` /
+# ``connect_on_app_finalize`` registration has already been applied by the time the
+# emptiness test is evaluated. The check is therefore exactly as accurate for
+# pluggable workers as for non-pluggable ones — an earlier version of this comment
+# claimed the opposite ("bind on finalize, which can be after this point") and used
+# it to justify the split; that premise was wrong. Two real consequences: the app is
+# finalized at import rather than at worker start, and an empty registry here is a
+# genuine misconfiguration for BOTH kinds.
+#
+# The split is kept deliberately, on deployment-risk grounds rather than accuracy:
+# a non-pluggable worker's tasks are bound eagerly by ``load_worker_tasks`` in this
+# same module, so an empty registry is unambiguously terminal — RAISE. Pluggable
+# workers register via plugin package import, whose availability is deployment
+# dependent; hard-failing there would turn one absent/misconfigured plugin into a
+# container crash-loop across the fleet, so it stays a loud WARN. Tightening this to
+# a raise is worthwhile but needs a pass confirming every deployed pluggable worker
+# registers at import time — tracked under UN-3445 hardening, not changed blind here.
 if not any(not name.startswith("celery.") for name in app.tasks):
     _empty_registry_msg = (
         f"No non-celery tasks registered for worker '{worker_type.value}' "

@@ -48,6 +48,15 @@ logger = logging.getLogger(__name__)
 # Constants for error messages
 INTERNAL_SERVER_ERROR_MSG = "Internal server error"
 
+# How many early transient-failure cycles get their SENDING claim refunded before the
+# claim starts sticking. Refunding forever makes net attempt progress zero, so
+# ``NOTIFICATION_MAX_DISPATCH_ATTEMPTS`` becomes unreachable and a permanently
+# recurring failure (not just a brief broker blip) re-dispatches every flush tick with
+# no termination condition. Small by design: a genuine blip clears well inside this,
+# and anything still failing after it is treated as repetitive and allowed to age
+# toward the cap.
+NOTIFICATION_TRANSIENT_REFUND_LIMIT = 3
+
 
 def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
     """Best-effort lookup; returns None on missing id or unknown row."""
@@ -581,7 +590,7 @@ def _send_clubbed(
         # org, else Celery (byte-identical to the prior send_task). resolve_transport
         # keys on the org STRING id, but the buffer/worker contract below uses the
         # org pk — hence _org_identifier(org_id) for routing, org_id in kwargs.
-        dispatch_webhook_notification(
+        dispatched = dispatch_webhook_notification(
             celery_app=celery_app,
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
@@ -600,13 +609,18 @@ def _send_clubbed(
             queue="notifications",
             org_string_id=_org_identifier(org_id),
         )
+        # transport= makes the rollout answerable from the logs: during a percentage
+        # ramp the question is "are PG-routed notifications succeeding at the same
+        # rate as Celery-routed ones?", which result=success alone cannot answer.
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
-            "org_id=%s webhook_url_hash=%s rows=%d",
+            "transport=%s org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
             platform,
+            dispatched.transport,
             org_id,
             webhook_url_hash(url),
             len(buffer_ids),
+            dispatched.task_id,
         )
     except PermanentDispatchError:
         # PG-ONLY permanent failure. From this path the only reachable cause is
@@ -635,10 +649,19 @@ def _send_clubbed(
         ).update(status=BufferStatus.DEAD_LETTER.value)
     except Exception:
         # TRANSIENT transport/broker failure — revert to PENDING (outside the
-        # committed txn) so the next flush tick retries; refund the SENDING-claim
-        # attempt since nothing was queued or sent. Guard on SENDING so a row the
-        # worker already marked terminal (broker raised post-delivery) isn't
+        # committed txn) so the next flush tick retries. Guard on SENDING so a row
+        # the worker already marked terminal (broker raised post-delivery) isn't
         # resurrected into a duplicate.
+        #
+        # The refund is BOUNDED, not unconditional: refunding the SENDING claim on
+        # every cycle makes net progress zero, so `NOTIFICATION_MAX_DISPATCH_ATTEMPTS`
+        # can never be reached and a permanently-recurring failure re-renders and
+        # re-dispatches forever (emitting a traceback each tick). Refunding is still
+        # correct for a genuinely transient blip — nothing was queued or sent — so we
+        # keep it while attempts are low and let the cap take over once a failure has
+        # proven itself repetitive. This matters more now that this branch also
+        # catches non-permanent PG enqueue failures (e.g. a DataError that will recur
+        # identically), not just "RabbitMQ is briefly down".
         logger.exception(
             "metric=notification_batch_dispatched_total platform=%s "
             "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
@@ -647,13 +670,20 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-        NotificationBuffer.objects.filter(
+        reverted = NotificationBuffer.objects.filter(
             id__in=buffer_ids,
             status=BufferStatus.SENDING.value,
-        ).update(
+        )
+        # Refund only the early attempts; past the limit the claim stands so the
+        # counter grows and the cap can eventually dead-letter the group.
+        reverted.filter(
+            dispatch_attempts__lte=NOTIFICATION_TRANSIENT_REFUND_LIMIT
+        ).update(dispatch_attempts=F("dispatch_attempts") - 1)
+        # Every claimed row goes back to PENDING for the next flush tick, refunded
+        # or not.
+        reverted.update(
             status=BufferStatus.PENDING.value,
             dispatched_at=None,
-            dispatch_attempts=F("dispatch_attempts") - 1,
         )
 
 

@@ -133,6 +133,33 @@ class TestPollOnce:
         assert kwargs["kwargs"] == {"k": "v"}
         assert kwargs["headers"] == {FAIRNESS_HEADER_NAME: fairness}
 
+    def test_payload_task_id_is_passed_to_apply(self):
+        # Idempotency-critical: Celery's Task.apply does ``task_id = task_id or
+        # uuid()``, so without an explicit task_id the task sees a FRESH request.id
+        # on every delivery and any guard keyed on it (fan-out claims,
+        # generation_task_id uniqueness, task-complete markers) dedupes nothing
+        # across a redelivery. The producer's stable id must reach apply().
+        task = MagicMock()
+        app = MagicMock()
+        app.tasks.get.return_value = task
+        client = MagicMock()
+        client.read.return_value = [
+            _msg(6, {"task_name": "t", "args": [], "kwargs": {}, "task_id": "stable-1"})
+        ]
+        PgQueueConsumer(["q"], client=client, app=app).poll_once()
+        assert task.apply.call_args.kwargs["task_id"] == "stable-1"
+
+    def test_missing_task_id_falls_back_to_celery_uuid(self):
+        # No task_id in the payload -> pass None so Celery mints one, rather than
+        # passing "" (which apply() would take literally as the request id).
+        task = MagicMock()
+        app = MagicMock()
+        app.tasks.get.return_value = task
+        client = MagicMock()
+        client.read.return_value = [_msg(6, {"task_name": "t", "args": [], "kwargs": {}})]
+        PgQueueConsumer(["q"], client=client, app=app).poll_once()
+        assert task.apply.call_args.kwargs["task_id"] is None
+
     def test_ack_finding_no_row_warns(self, caplog):
         client = MagicMock()
         client.delete.return_value = False  # row already gone (vt expired mid-run)
@@ -291,6 +318,47 @@ class TestPoisonDropMarksExecution:
         assert "read_ct=6" in caplog.text
         assert "org_id=org-1" in caplog.text  # org surfaced for the dropped task
         assert "queue=agentic_callback" in caplog.text  # source queue surfaced
+        # read_ct is rendered ONCE (an earlier "after N attempts" phrasing printed
+        # the same value twice under a name that misread as an execution count).
+        assert caplog.text.count("6") >= 1
+        assert "attempts (msg_id" not in caplog.text
+
+    def test_poison_log_redacts_credentials_and_body(self, monkeypatch, caplog):
+        # Security: notification payloads carry the subscriber's Authorization /
+        # API-key headers and the clubbed webhook body (customer extracted data).
+        # A poison drop must not dump either to stdout/Sentry.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: True,
+        )
+        payload = {
+            "task_name": "send_webhook_notification",
+            "queue": "notifications",
+            "args": [
+                "https://hook.test",
+                {"secret_field": "customer extracted data"},
+                {"Authorization": "Bearer super-secret", "X-Api-Key": "ak_live_123"},
+                30,
+            ],
+            "kwargs": {"organization_id": "org-1", "auth_token": "tok_abc"},
+        }
+        client = MagicMock()
+        client.read.return_value = [self._poison(payload=payload, read_ct=6)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(
+                ["q"], client=client, api_client=MagicMock(), max_attempts=5
+            ).poll_once()
+        # No secret value survives, by any route.
+        assert "super-secret" not in caplog.text
+        assert "ak_live_123" not in caplog.text
+        assert "tok_abc" not in caplog.text
+        # Customer body replaced by a type+size summary, not dumped.
+        assert "customer extracted data" not in caplog.text
+        assert "<dict len=1>" in caplog.text
+        # Routing metadata IS preserved — that's what the drop is debugged from.
+        assert "send_webhook_notification" in caplog.text
+        assert "https://hook.test" in caplog.text
+        assert "REDACTED" in caplog.text
 
     def test_positional_orchestration_poison_marks_error(self, monkeypatch):
         # H2 regression: a poisoned async_execute_bin carries execution_id
