@@ -273,6 +273,7 @@ def list_tool_instances(context: PlatformMCPContext, workflow_id: str) -> dict[s
     """
     from tool_instance_v2.models import ToolInstance
 
+    valid_uuid(workflow_id, "workflow id", "Call listWorkflows for valid ids.")
     workflow = Workflow.objects.for_user(context.user).filter(id=workflow_id).first()
     if workflow is None:
         raise MCPToolError(
@@ -344,6 +345,7 @@ def get_workflow_endpoints(
     so only named, non-secret attributes are read here. Do not extend this to
     return ``configuration`` or ``connector_metadata``.
     """
+    valid_uuid(workflow_id, "workflow id", "Call listWorkflows for valid ids.")
     workflow = Workflow.objects.for_user(context.user).filter(id=workflow_id).first()
     if workflow is None:
         raise MCPToolError(

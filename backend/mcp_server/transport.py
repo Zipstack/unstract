@@ -215,12 +215,17 @@ class BaseMCPView(views.APIView):
                 JSONRPC.MSG_INVALID_REQUEST,
                 "Only JSON-RPC 2.0 is supported",
             )
-        if not method:
+        # Type-checked, not just truthiness: JSON permits any type here, and a
+        # non-string reaches `method.startswith(...)` below as an
+        # AttributeError — a Django 500 with no JSON-RPC envelope, which is the
+        # one failure a conformant client cannot parse. Same reasoning as the
+        # `params` check below.
+        if not isinstance(method, str) or not method:
             return rpc_error(
                 request_id,
                 JSONRPC.INVALID_REQUEST,
                 JSONRPC.MSG_INVALID_REQUEST,
-                "Missing method",
+                "Missing method" if not method else "'method' must be a string",
             )
 
         # `params` is optional, but when present JSON-RPC allows an array or an
@@ -364,12 +369,16 @@ class BaseMCPView(views.APIView):
         """Invoke a registered tool and wrap its result in MCP content format."""
         registry = self.get_registry()
         tool_name = params.get("name")
-        if not tool_name:
+        # Type-checked for the same reason `method` is, plus one specific to the
+        # lookup: an unhashable name (a JSON object or array) raises
+        # `TypeError: unhashable type` inside `registry.get()`, which is a dict
+        # lookup — again a 500 with no envelope for the client to read.
+        if not isinstance(tool_name, str) or not tool_name:
             return rpc_error(
                 request_id,
                 JSONRPC.INVALID_PARAMS,
                 JSONRPC.MSG_INVALID_PARAMS,
-                "Missing tool name",
+                "Missing tool name" if not tool_name else "'name' must be a string",
             )
 
         tool = registry.get(tool_name)

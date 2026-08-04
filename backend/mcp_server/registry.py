@@ -52,6 +52,14 @@ class MCPTool:
             bounded by the rate limiter rather than the spend guard) but still
             starts a fresh execution on every call, so deriving would have
             advertised it as safe to repeat.
+        consumes_result: True when *reading* is itself destructive — the result
+            store is one-shot, so a successful read acknowledges the execution
+            and the payload cannot be fetched again. ``getExecutionStatus`` on
+            a COMPLETED execution is the case: it neither writes configuration
+            nor spends money, so ``writes``/``billable`` are both false, but
+            calling it twice loses data. Without this flag the derivation below
+            would advertise ``readOnlyHint: true`` and tell an agent it is safe
+            to poll freely — the opposite of the truth.
         preflight: Optional ``preflight(context, **arguments)`` run *before* the
             billable budget is claimed. It exists because the budget is
             consumed on invocation and never refunded, so a call refused for a
@@ -74,6 +82,7 @@ class MCPTool:
     required_method: str = "GET"
     billable: bool = False
     idempotent: bool = False
+    consumes_result: bool = False
     preflight: Callable[..., Any] | None = None
 
     def annotations(self) -> dict[str, Any]:
@@ -104,7 +113,11 @@ class MCPTool:
         annotations from untrusted servers, and the real gate stays
         ``check_tool_allowed`` plus the spend guard.
         """
-        read_only = not self.writes and not self.billable
+        # ``consumes_result`` participates because a one-shot read is not a
+        # read as far as a client is concerned: the spec's readOnlyHint means
+        # "no modification of its environment", and acknowledging an execution
+        # so its result can never be fetched again plainly modifies it.
+        read_only = not self.writes and not self.billable and not self.consumes_result
         hints: dict[str, Any] = {
             "title": self.title or self.name,
             "readOnlyHint": read_only,
@@ -258,6 +271,11 @@ def build_deployment_registry() -> MCPToolRegistry:
             ),
             input_schema=get_execution_status_schema(),
             handler=get_execution_status,
+            # Reading a COMPLETED execution acknowledges it and the result
+            # store is one-shot, so the payload cannot be fetched again.
+            # Not `writes` (no configuration changes) and not `billable`
+            # (no spend), but emphatically not read-only either.
+            consumes_result=True,
         )
     )
 
@@ -701,6 +719,11 @@ def build_platform_registry() -> MCPToolRegistry:
             ),
             input_schema=platform_execution_status_schema(),
             handler=get_platform_execution_status,
+            # Reading a COMPLETED execution acknowledges it and the result
+            # store is one-shot, so the payload cannot be fetched again.
+            # Not `writes` (no configuration changes) and not `billable`
+            # (no spend), but emphatically not read-only either.
+            consumes_result=True,
         )
     )
 

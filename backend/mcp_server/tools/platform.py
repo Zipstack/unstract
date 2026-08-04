@@ -440,8 +440,18 @@ def preflight_pipeline(
     ``execute_pipeline`` resolves it again inside the handler, but that runs
     after the budget is consumed and the budget is never refunded — so a stale
     id would cost a billable slot for a run that never started.
+
+    Liveness is checked here for the same reason, and it is the sharper case:
+    ``setPipelineActive`` is registered alongside this tool, so an agent can
+    pause a pipeline and then spend the whole organization's billable window
+    retrying against it, with no run ever starting. The row is already fetched.
     """
-    _resolve_pipeline(context, pipeline_id)
+    pipeline = _resolve_pipeline(context, pipeline_id)
+    if not pipeline.active:
+        raise MCPToolError(
+            f"Pipeline '{pipeline.pipeline_name}' is paused. Resume it with "
+            "setPipelineActive before triggering a run."
+        )
 
 
 def execute_pipeline(context: PlatformMCPContext, pipeline_id: str) -> dict[str, Any]:
@@ -505,6 +515,7 @@ def set_pipeline_active(
     context: PlatformMCPContext, pipeline_id: str, active: bool
 ) -> dict[str, Any]:
     """Enable or pause a pipeline's schedule."""
+    valid_uuid(pipeline_id, "pipeline id", "Call listPipelines to see valid ids.")
     pipeline = Pipeline.objects.for_user(context.user).filter(id=pipeline_id).first()
     if pipeline is None:
         raise MCPToolError(

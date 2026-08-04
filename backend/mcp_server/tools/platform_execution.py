@@ -121,8 +121,22 @@ def preflight_extract_document(
     Extra keyword arguments are accepted and ignored so that adding an argument
     to the tool does not require touching this function; the handler is what
     validates the rest.
+
+    Liveness is checked here and not only in the handler. An inactive
+    deployment is refused downstream *after* the budget has been claimed, and
+    the budget is never refunded — so an agent retrying against a deployment it
+    just deactivated via ``setApiDeploymentActive`` (registered alongside this
+    tool) could exhaust ``MCP_BILLABLE_CALL_LIMIT`` and lock the organization
+    out of every billable tool, without a single call reaching an LLM. The row
+    is already fetched, so this meets the "cheap and certain" bar the
+    ``preflight`` field documents.
     """
-    _resolve_deployment(context, api_name)
+    deployment = _resolve_deployment(context, api_name)
+    if not deployment.is_active:
+        raise MCPToolError(
+            f"API deployment '{deployment.display_name}' is not active. "
+            "Activate it in Unstract before extracting."
+        )
 
 
 def platform_extract_document(
