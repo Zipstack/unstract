@@ -20,7 +20,6 @@ from mcp_server.context import MCPContext
 from mcp_server.exceptions import MCPToolError
 from mcp_server.sanitize import (
     log_exception,
-    redact_secrets,
     redact_structure,
     valid_uuid,
 )
@@ -231,10 +230,17 @@ def extract_document(
         log_exception(
             logger, f"MCP extractDocument failed for api '{context.api.api_name}'", error
         )
-        # Redacted: this interpolates an upstream exception, and a connector
-        # that failed to connect reports the connection string it tried. The
-        # transport returns this message to the agent verbatim.
-        raise MCPToolError(f"Extraction failed: {redact_secrets(str(error))}") from error
+        # The upstream exception text is NOT returned to the caller. Redaction
+        # strips the credential shapes it recognises, but an arbitrary exception
+        # from a connector, a provider client or the execution stack also
+        # carries internal hostnames, paths, row ids and stack detail that an
+        # MCP client has no business seeing — and "recognised" is doing a lot of
+        # work in that sentence. The full exception is in the log line above,
+        # where an operator can correlate it by api name and timestamp.
+        raise MCPToolError(
+            "Extraction failed unexpectedly. The failure has been logged; "
+            "contact your Unstract administrator if this persists."
+        ) from error
 
     # Raw upstream response, not assembled field by field here, so it goes
     # through the same redaction net as the error messages.
