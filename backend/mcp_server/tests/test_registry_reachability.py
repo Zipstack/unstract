@@ -136,9 +136,7 @@ class DeploymentRegistryReachabilityTest(SimpleTestCase):
             if argument not in DEPLOYMENT_ID_PRODUCERS
         }
 
-        assert unproducible == {}, (
-            f"Unreachable on the deployment server: {unproducible}"
-        )
+        assert unproducible == {}, f"Unreachable on the deployment server: {unproducible}"
 
 
 class ReadMeFirstMatchesTheRegistryTest(SimpleTestCase):
@@ -335,22 +333,44 @@ class ToolAnnotationsTest(SimpleTestCase):
         for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
             for name in registry.names():
                 tool = registry.get(name)
-                if tool.writes or tool.billable:
+                if tool.writes or tool.billable or tool.consumes_result:
                     continue
                 with self.subTest(name):
                     assert tool.annotations()["readOnlyHint"] is True
 
     def test_writing_tools_are_never_marked_read_only(self) -> None:
         """The inverse, and the one that matters for safety: a tool that
-        spends money or changes state must not be advertised as inert.
+        spends money, changes state, or consumes a one-shot result must not be
+        advertised as inert.
         """
         for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
             for name in registry.names():
                 tool = registry.get(name)
-                if not (tool.writes or tool.billable):
+                if not (tool.writes or tool.billable or tool.consumes_result):
                     continue
                 with self.subTest(name):
                     assert tool.annotations()["readOnlyHint"] is False
+
+    def test_result_consuming_tools_are_not_advertised_as_read_only(self) -> None:
+        """`getExecutionStatus` reads, but reading is destructive.
+
+        The result store is one-shot: a successful read of a COMPLETED
+        execution acknowledges it and the payload cannot be fetched again. It
+        sets neither `writes` nor `billable` — nothing is written, nothing is
+        spent — so without `consumes_result` the derivation would call it
+        read-only and a host would auto-approve it, which is how a result gets
+        silently lost to a polling loop.
+
+        Named explicitly rather than left to the loops above, because it is the
+        only tool on either server in this category and a future refactor that
+        drops the flag would otherwise just make one subtest quietly stop
+        running.
+        """
+        for registry in (DEPLOYMENT_TOOLS, PLATFORM_TOOLS):
+            tool = registry.get("getExecutionStatus")
+            with self.subTest(registry=tool.name):
+                assert tool.consumes_result is True
+                assert tool.annotations()["readOnlyHint"] is False
 
     def test_read_tools_omit_the_write_only_hints(self) -> None:
         """`destructiveHint`/`idempotentHint` are defined as meaningful only
@@ -436,13 +456,9 @@ class ToolCountIsDocumentedTest(SimpleTestCase):
         """Counting alone would pass if one tool were swapped for another."""
         from pathlib import Path
 
-        readme = (
-            Path(__file__).resolve().parent.parent / "README.md"
-        ).read_text()
+        readme = (Path(__file__).resolve().parent.parent / "README.md").read_text()
 
-        missing = [
-            name for name in PLATFORM_TOOLS.names() if f"`{name}`" not in readme
-        ]
+        missing = [name for name in PLATFORM_TOOLS.names() if f"`{name}`" not in readme]
 
         assert missing == [], (
             f"These platform tools are registered but absent from README.md: "
