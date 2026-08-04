@@ -33,7 +33,9 @@ from api_v2.api_key_views import APIKeyViewSet
 from django.urls import resolve, reverse
 from permissions.permission import IsParentDeploymentOwner
 from prompt_studio.permission import IsRegistryToolOwner
+from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.views import PromptStudioRegistryView
+from utils.filters.organization_filter import OrganizationFilterBackend, get_org_path
 
 REGISTRY_URLCONF = "prompt_studio.prompt_studio_registry_v2.urls"
 API_URLCONF = "api_v2.urls"
@@ -79,6 +81,42 @@ class TestRegistryDeleteRouteIsWired:
 
         assert permissions == super(PromptStudioRegistryView, view).get_permissions()
         assert not any(isinstance(perm, IsRegistryToolOwner) for perm in permissions)
+
+
+class TestRegistryDeleteIsOrganizationScoped:
+    """The detail route resolves rows only within the caller's organization.
+
+    Review flagged ``get_queryset`` returning ``objects.all()`` on the detail
+    route as allowing a caller -- or an org admin -- to delete another
+    organization's exported tool by PK. It does not, and these pin the two
+    facts that make it so, because neither is visible at the call site.
+    """
+
+    def test_registry_rows_have_a_discoverable_organization_path(self) -> None:
+        """``OrganizationFilterBackend`` finds the FK path by BFS.
+
+        Without a path it fails closed to ``none()``, so the delete would 404
+        rather than leak -- but the scoping this route relies on would be
+        gone. Pin the path so a model change surfaces here.
+        """
+        assert get_org_path(PromptStudioRegistry) == "organization"
+
+    def test_the_org_filter_runs_before_the_permission_check(self) -> None:
+        """``get_object()`` filters, *then* object-checks -- ordering matters.
+
+        A foreign-org PK is a 404 from ``get_object_or_404`` before
+        ``IsRegistryToolOwner`` is consulted, so the org-admin branch inside it
+        is never reached for another organization's row.
+        """
+        source = inspect.getsource(PromptStudioRegistryView.get_object)
+
+        assert source.index("filter_queryset") < source.index("check_object_permissions")
+
+    def test_the_viewset_does_not_opt_out_of_org_filtering(self) -> None:
+        """``skip_org_filter``/``filter_backends`` overrides would bypass it."""
+        assert getattr(PromptStudioRegistryView, "skip_org_filter", False) is False
+        assert "filter_backends" not in vars(PromptStudioRegistryView)
+        assert OrganizationFilterBackend in PromptStudioRegistryView().filter_backends
 
 
 class TestApiKeyRoutesAreWired:
