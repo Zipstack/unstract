@@ -16,11 +16,11 @@ from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.filters import OrderingFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
+from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
 
 from pipeline_v2.constants import (
@@ -51,7 +51,7 @@ class PipelineViewSet(
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
     pagination_class = CustomPagination
-    filter_backends = [OrderingFilter]
+    filter_backends = [DeterministicOrderingFilter]
     ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
     # Note: Default ordering with nulls_last is applied in get_queryset()
     # DRF's ordering attribute doesn't support nulls_last natively

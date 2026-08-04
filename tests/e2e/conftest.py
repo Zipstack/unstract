@@ -8,9 +8,11 @@ a clear message rather than spuriously failing.
 
 from __future__ import annotations
 
+import importlib
 import os
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import pytest
@@ -20,6 +22,11 @@ from tests.rig.runtime import (
     LLM_MOCK_RESPONSE_ENV,
     PlatformEndpoints,
 )
+
+# A downstream repo (e.g. cloud with an Auth0 login) can supply its own login by
+# pointing this at a "module.func" that takes PlatformEndpoints and returns a
+# logged-in requests.Session. Unset → the OSS form login below.
+LOGIN_PROVIDER_ENV = "UNSTRACT_E2E_LOGIN_PROVIDER"
 
 # Mirrors unstract.core.data_models.ExecutionStatus.terminal_statuses(); kept a
 # local literal because the e2e venv carries only pytest/requests/minio, and
@@ -64,16 +71,40 @@ def platform() -> PlatformEndpoints:
     return PlatformEndpoints.from_env()
 
 
+def _load_login_provider() -> Callable[[PlatformEndpoints], requests.Session]:
+    """Resolve the login callable from LOGIN_PROVIDER_ENV, else the OSS one."""
+    dotted = os.environ.get(LOGIN_PROVIDER_ENV, "").strip()
+    if not dotted:
+        return _oss_form_login
+    module_name, _, func_name = dotted.rpartition(".")
+    if not module_name or not func_name:
+        raise ValueError(
+            f"{LOGIN_PROVIDER_ENV} must be a 'module.func' path, got {dotted!r}"
+        )
+    provider = getattr(importlib.import_module(module_name), func_name)
+    if not callable(provider):
+        raise ValueError(
+            f"{LOGIN_PROVIDER_ENV}={dotted!r} does not resolve to a callable"
+        )
+    return provider
+
+
 @pytest.fixture(scope="session")
 def authed_session(platform: PlatformEndpoints) -> requests.Session:
     """A logged-in session with the active organization set.
 
-    Standardizes the OSS mock-login flow so tests don't re-implement it: form
-    POST to /api/v1/login (302 + sessionid), then the org handshake
-    (GET /organization seeds the csrftoken cookie, POST /organization/{id}/set
-    with X-CSRFToken) so org-scoped endpoints are reachable. Session-scoped:
-    logged in once, reused across tests. Tests that exercise login itself
-    should build their own session instead.
+    Session-scoped: logged in once, reused across tests. Tests that exercise
+    login itself should build their own session instead. The login flow is
+    pluggable via LOGIN_PROVIDER_ENV so a downstream repo can swap in its own
+    (e.g. Auth0) while every non-auth test reuses this one seam unchanged.
+    """
+    return _load_login_provider()(platform)
+
+
+def _oss_form_login(platform: PlatformEndpoints) -> requests.Session:
+    """The OSS mock-login flow: form POST to /api/v1/login (302 + sessionid),
+    then the org handshake (GET /organization seeds the csrftoken cookie, POST
+    /organization/{id}/set with X-CSRFToken) so org-scoped endpoints work.
     """
     base = platform.backend_url.rstrip("/")
     session = CsrfSession()

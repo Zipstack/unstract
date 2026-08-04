@@ -3,6 +3,7 @@ import { Button, Select, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
@@ -61,14 +62,11 @@ function DefaultTriad() {
   };
 
   const fetchData = () => {
-    const requestOptions = {
-      method: "GET",
+    fetchAllPages(axiosPrivate, {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-    };
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setAdapterList(data);
+    })
+      .then((adapters) => {
+        setAdapterList(adapters);
       })
       .catch((err) => {
         setAlertDetails(
