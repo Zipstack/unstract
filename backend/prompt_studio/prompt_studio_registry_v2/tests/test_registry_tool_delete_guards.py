@@ -255,8 +255,10 @@ def _queryset(rows: list[Any], *, required_filters: tuple[str, ...] = ()) -> Any
     return _QS()
 
 
+# Sentinel returned by the stub base ``destroy``, proving the delete ran.
+# A comment rather than an attribute docstring: `check-docstring-first` reads a
+# bare module-level string as a second module docstring and fails the file.
 DELETED = object()
-"""Sentinel returned by the stub base ``destroy``, proving the delete ran."""
 
 
 class _BaseView:
