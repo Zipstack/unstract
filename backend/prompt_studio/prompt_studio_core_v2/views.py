@@ -134,6 +134,9 @@ class PromptStudioCoreView(
 
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["tool_name", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -162,7 +165,8 @@ class PromptStudioCoreView(
             "memberships__user"
         )
         if self.action == "list":
-            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            # Subquery rather than a join-aggregate: Count() over a join would
+            # need a GROUP BY that fights the queryset's distinct()
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -170,20 +174,23 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # modified_at needs no annotation: prompt writes bump the parent
-            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
-            # keeping the plain field orderable. Only prompt writes bump —
-            # profile/document edits and queryset-level prompt writes do not;
-            # any new write path must bump CustomTool itself
+            # modified_at stays a plain orderable field: prompt writes bump the
+            # parent row, so no annotation is needed.
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
             search = self.request.query_params.get("search")
             if search:
-                qs = qs.filter(tool_name__icontains=search)
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too.
-        return qs.order_by("tool_id")
+                from django.db.models import Q
+                from tenant_account_v2.sharing_helpers import (
+                    resources_matching_owner_search,
+                )
+
+                qs = qs.filter(
+                    Q(tool_name__icontains=search)
+                    | Q(pk__in=resources_matching_owner_search(qs.model, search))
+                )
+        return qs
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
@@ -955,8 +962,7 @@ class PromptStudioCoreView(
                 # than a bare 500 that a status-code-keyed client would misread as a
                 # terminal task failure.
                 logger.exception(
-                    "task_status: pg_task_result read failed for %s; treating as "
-                    "pending",
+                    "task_status: pg_task_result read failed for %s; treating as pending",
                     task_id,
                 )
                 row = None
