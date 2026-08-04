@@ -25,7 +25,7 @@ from tenant_account_v2.group_notification_service import (
     send_membership_changed,
     send_resource_shared,
 )
-from tenant_account_v2.share_notifications import MembershipAction
+from tenant_account_v2.share_notifications import MembershipAction, ShareAction
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,10 @@ class ResourceSharedWithGroupSerializer(serializers.Serializer):
     actor_id = serializers.IntegerField()
     resource_kind = serializers.CharField()
     resource_id = serializers.CharField()
+    # Defaulted so messages enqueued before this field existed still validate.
+    share_action = serializers.ChoiceField(
+        choices=[a.value for a in ShareAction], default=ShareAction.SHARED.value
+    )
 
 
 class GroupMembershipChangedSerializer(serializers.Serializer):
@@ -64,7 +68,7 @@ class _GroupNotificationView(APIView):
 
 
 class ResourceSharedWithGroupView(_GroupNotificationView):
-    """Mail every current member of the groups a resource was just shared with."""
+    """Mail every current member of the groups whose resource access just changed."""
 
     def post(self, request: Request) -> Response:
         serializer = ResourceSharedWithGroupSerializer(data=request.data)

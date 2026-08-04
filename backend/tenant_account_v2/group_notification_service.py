@@ -20,7 +20,7 @@ from django.db.models import QuerySet
 from plugins import get_plugin
 
 from tenant_account_v2.models import OrganizationGroup, OrganizationMember
-from tenant_account_v2.share_notifications import MembershipAction
+from tenant_account_v2.share_notifications import MembershipAction, ShareAction
 from tenant_account_v2.shareable_resources import ShareableResource, descriptor_for_kind
 
 if TYPE_CHECKING:
@@ -62,11 +62,12 @@ def send_resource_shared(
     actor_id: int,
     resource_kind: str,
     resource_id: str,
+    share_action: str = ShareAction.SHARED.value,
 ) -> None:
-    """Mail every current member of each group that a resource was shared.
+    """Mail every current member of each group whose resource access changed.
 
     One email per group, so ``group_name`` in the template is always the group
-    the recipient actually belongs to.
+    the recipient actually belongs to. ``share_action`` picks the wording.
     """
     service = _service()
     if service is None:
@@ -90,9 +91,10 @@ def send_resource_shared(
             organization, group.memberships.values_list("user_id", flat=True)
         )
         logger.info(
-            "group-notification: task=%s group_id=%s recipient_count=%d",
+            "group-notification: task=%s group_id=%s action=%s recipient_count=%d",
             "notify_resource_shared_with_group",
             group.pk,
+            share_action,
             len(recipients),
         )
         if not recipients:
@@ -105,6 +107,7 @@ def send_resource_shared(
             shared_by=actor,
             shared_to=recipients,
             resource_instance=resource,
+            share_action=ShareAction(share_action).value,
         )
 
 

@@ -531,8 +531,12 @@ def notify_resource_shared_with_group(
     resource_kind: str,
     resource_id: str,
     organization_id: str,
+    share_action: str = "shared",
 ) -> None:
-    """Email every current member of the groups a resource was shared with."""
+    """Email every current member of the groups whose access just changed.
+
+    ``share_action`` defaults so messages enqueued before it existed still run.
+    """
     _post_group_notification(
         "resource-shared",
         organization_id,
@@ -541,6 +545,7 @@ def notify_resource_shared_with_group(
             "actor_id": actor_id,
             "resource_kind": resource_kind,
             "resource_id": resource_id,
+            "share_action": share_action,
         },
     )
 

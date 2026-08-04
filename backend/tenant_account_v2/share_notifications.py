@@ -1,8 +1,8 @@
 """Enqueue hooks for group-sharing email notifications (UN-3494 / mfbt UNS-848).
 
-Two events earn a group's members an email: a resource shared with the group,
-and a user added to or removed from it. Both are dispatched asynchronously —
-the caller's request returns as soon as the write lands.
+Two events earn a group's members an email: a resource shared with or revoked
+from the group, and a user added to or removed from it. Both are dispatched
+asynchronously — the caller's request returns as soon as the write lands.
 
 The sending itself runs in ``workers/``, which is Django-free, so the worker
 task is a thin HTTP shim back to :mod:`tenant_account_v2.internal_views`; the
@@ -53,14 +53,44 @@ class MembershipAction(StrEnum):
     REMOVED = "removed"
 
 
-def notify_resource_shared_with_group(
-    *, resource: Any, groups: Iterable[OrganizationGroup], actor: User
+class ShareAction(StrEnum):
+    """What happened to a group's access to a resource."""
+
+    SHARED = "shared"
+    REVOKED = "revoked"
+
+
+def notify_resource_group_share_changed(
+    *,
+    resource: Any,
+    added: Iterable[OrganizationGroup],
+    removed: Iterable[OrganizationGroup],
+    actor: User,
 ) -> None:
-    """Queue "a resource was shared with your group" mail for newly added groups.
+    """Queue group mail for a resource just shared with / revoked from groups."""
+    for share_action, groups in (
+        (ShareAction.SHARED, added),
+        (ShareAction.REVOKED, removed),
+    ):
+        _notify_group_share(
+            resource=resource, groups=groups, share_action=share_action, actor=actor
+        )
+
+
+def _notify_group_share(
+    *,
+    resource: Any,
+    groups: Iterable[OrganizationGroup],
+    share_action: ShareAction,
+    actor: User,
+) -> None:
+    """Queue one group-share event.
 
     Recipients are resolved at delivery time rather than frozen here: anyone
     who leaves the org between the click and the send simply isn't in the fresh
-    lookup, so offboarding safety costs nothing.
+    lookup, so offboarding safety costs nothing. Unlike a membership removal,
+    revoking a group's access leaves the group and its members intact, so the
+    fresh lookup still finds everyone who needs telling.
     """
     group_ids = sorted(group.pk for group in groups)
     if not group_ids:
@@ -76,6 +106,7 @@ def notify_resource_shared_with_group(
             "actor_id": actor.pk,
             "resource_kind": kind,
             "resource_id": str(resource.pk),
+            "share_action": str(share_action),
             "organization_id": organization_id,
         },
         organization_id=organization_id,
