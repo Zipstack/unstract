@@ -27,6 +27,13 @@ from mcp_server.sanitize import log_exception, redact_structure, valid_uuid
 
 logger = logging.getLogger(__name__)
 
+# Shared parameter descriptions. Repeated verbatim across tool schemas, so
+# defined once — an edit here must not silently apply to only some tools.
+_PROJECT_ID_DESC = "UUID of the Prompt Studio project."
+_PROJECT_ID_DESC_WITH_HINT = (
+    "UUID of the Prompt Studio project, from listPromptStudioProjects."
+)
+
 # Payload fields that reach a UUID-typed lookup in the delegated view, mapped to
 # the label and next-step hint their refusal should carry. `id` is the view's
 # name for what the tool calls `prompt_id`.
@@ -222,9 +229,7 @@ def index_document_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": (
-                    "UUID of the Prompt Studio project, from listPromptStudioProjects."
-                ),
+                "description": (_PROJECT_ID_DESC_WITH_HINT),
             },
             "document_id": {
                 "type": "string",
@@ -256,7 +261,7 @@ def fetch_response_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": "UUID of the Prompt Studio project.",
+                "description": _PROJECT_ID_DESC,
             },
             "document_id": {
                 "type": "string",
@@ -304,7 +309,7 @@ def bulk_fetch_response_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": "UUID of the Prompt Studio project.",
+                "description": _PROJECT_ID_DESC,
             },
             "document_id": {
                 "type": "string",
@@ -354,7 +359,7 @@ def single_pass_extraction_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": "UUID of the Prompt Studio project.",
+                "description": _PROJECT_ID_DESC,
             },
             "document_id": {
                 "type": "string",
@@ -387,9 +392,7 @@ def list_prompt_studio_documents_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": (
-                    "UUID of the Prompt Studio project, from listPromptStudioProjects."
-                ),
+                "description": (_PROJECT_ID_DESC_WITH_HINT),
             },
         },
         "required": ["project_id"],
@@ -431,9 +434,7 @@ def list_prompts_schema() -> dict[str, Any]:
         "properties": {
             "project_id": {
                 "type": "string",
-                "description": (
-                    "UUID of the Prompt Studio project, from listPromptStudioProjects."
-                ),
+                "description": (_PROJECT_ID_DESC_WITH_HINT),
             },
         },
         "required": ["project_id"],

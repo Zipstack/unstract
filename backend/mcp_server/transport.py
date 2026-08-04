@@ -107,8 +107,9 @@ def tool_content(text: str, is_error: bool = False) -> dict[str, Any]:
 class BaseMCPView(views.APIView):
     """JSON-RPC transport shared by the deployment and platform MCP servers."""
 
-    #: Tools this server exposes. Set by each subclass.
-    registry: MCPToolRegistry = None
+    #: Tools this server exposes. Set by each subclass; None on the base class,
+    #: which is never routed to directly.
+    registry: MCPToolRegistry | None = None
 
     def get_registry(self) -> MCPToolRegistry:
         """Return the registry to dispatch into.
@@ -200,7 +201,7 @@ class BaseMCPView(views.APIView):
             return rpc_error(
                 None,
                 JSONRPC.INVALID_REQUEST,
-                "Invalid Request",
+                JSONRPC.MSG_INVALID_REQUEST,
                 "Expected a single JSON-RPC object",
             )
 
@@ -211,12 +212,15 @@ class BaseMCPView(views.APIView):
             return rpc_error(
                 request_id,
                 JSONRPC.INVALID_REQUEST,
-                "Invalid Request",
+                JSONRPC.MSG_INVALID_REQUEST,
                 "Only JSON-RPC 2.0 is supported",
             )
         if not method:
             return rpc_error(
-                request_id, JSONRPC.INVALID_REQUEST, "Invalid Request", "Missing method"
+                request_id,
+                JSONRPC.INVALID_REQUEST,
+                JSONRPC.MSG_INVALID_REQUEST,
+                "Missing method",
             )
 
         # `params` is optional, but when present JSON-RPC allows an array or an
@@ -228,7 +232,7 @@ class BaseMCPView(views.APIView):
             return rpc_error(
                 request_id,
                 JSONRPC.INVALID_PARAMS,
-                "Invalid params",
+                JSONRPC.MSG_INVALID_PARAMS,
                 "'params' must be an object",
             )
 
@@ -301,6 +305,59 @@ class BaseMCPView(views.APIView):
         """
         return None
 
+    def _run_preflight(
+        self,
+        request_id: Any,
+        tool: Any,
+        tool_name: str,
+        context: Any,
+        arguments: dict[str, Any],
+    ) -> JsonResponse | None:
+        """Validate a billable tool's arguments before any budget is claimed.
+
+        Returns the response to send if preflight rejects the call, or None to
+        continue. Budget is consumed on invocation and never refunded, so
+        without this a caller naming a deployment that does not exist would pay
+        a slot for a call that spent nothing upstream — and an agent guessing at
+        a name could exhaust the window without ever running an extraction.
+
+        Split out of ``_call_tool`` to keep that method's branching readable;
+        the ordering guarantee it provides (validate before charge) is the
+        reason it runs where it does.
+        """
+        if tool.preflight is None:
+            return None
+        try:
+            tool.preflight(context, **arguments)
+        except MCPToolError as error:
+            return rpc_result(request_id, tool_content(str(error), is_error=True))
+        except TypeError as error:
+            logger.warning(
+                f"MCP tool '{tool_name}' preflight rejected arguments: {error}"
+            )
+            return rpc_error(
+                request_id,
+                JSONRPC.INVALID_PARAMS,
+                JSONRPC.MSG_INVALID_PARAMS,
+                str(error),
+            )
+        except Exception as error:
+            # Same catch-all the handler path has, and for the same reason: a
+            # resolver filtering a UUID column by a malformed string raises
+            # Django ValidationError, which would otherwise escape post() and
+            # reach the client as a bare 500 with no JSON-RPC envelope at all.
+            log_exception(
+                logger, f"MCP tool '{tool_name}' preflight failed unexpectedly", error
+            )
+            return rpc_error(
+                request_id,
+                JSONRPC.TOOL_EXECUTION_ERROR,
+                "Tool execution failed",
+                f"Tool '{tool_name}' could not validate its arguments. "
+                "Contact your Unstract administrator if this persists.",
+            )
+        return None
+
     def _call_tool(
         self, request_id: Any, params: dict[str, Any], context: Any
     ) -> JsonResponse:
@@ -309,7 +366,10 @@ class BaseMCPView(views.APIView):
         tool_name = params.get("name")
         if not tool_name:
             return rpc_error(
-                request_id, JSONRPC.INVALID_PARAMS, "Invalid params", "Missing tool name"
+                request_id,
+                JSONRPC.INVALID_PARAMS,
+                JSONRPC.MSG_INVALID_PARAMS,
+                "Missing tool name",
             )
 
         tool = registry.get(tool_name)
@@ -332,44 +392,15 @@ class BaseMCPView(views.APIView):
             return rpc_error(
                 request_id,
                 JSONRPC.INVALID_PARAMS,
-                "Invalid params",
+                JSONRPC.MSG_INVALID_PARAMS,
                 "'arguments' must be an object",
             )
 
-        # Validate the arguments a billable tool was given *before* claiming
-        # budget. The budget is consumed on invocation and never refunded, so
-        # without this a caller naming a deployment that does not exist would
-        # pay a slot for a call that spent nothing upstream — and an agent
-        # guessing at a name could exhaust the window without ever running a
-        # single extraction.
-        if tool.preflight is not None:
-            try:
-                tool.preflight(context, **arguments)
-            except MCPToolError as error:
-                return rpc_result(request_id, tool_content(str(error), is_error=True))
-            except TypeError as error:
-                logger.warning(
-                    f"MCP tool '{tool_name}' preflight rejected arguments: {error}"
-                )
-                return rpc_error(
-                    request_id, JSONRPC.INVALID_PARAMS, "Invalid params", str(error)
-                )
-            except Exception as error:
-                # Same catch-all the handler path below has, and for the same
-                # reason: a resolver filtering a UUID column by a malformed
-                # string raises Django ValidationError, which would otherwise
-                # escape post() and reach the client as a bare 500 with no
-                # JSON-RPC envelope at all.
-                log_exception(
-                    logger, f"MCP tool '{tool_name}' preflight failed unexpectedly", error
-                )
-                return rpc_error(
-                    request_id,
-                    JSONRPC.TOOL_EXECUTION_ERROR,
-                    "Tool execution failed",
-                    f"Tool '{tool_name}' could not validate its arguments. "
-                    "Contact your Unstract administrator if this persists.",
-                )
+        preflight_error = self._run_preflight(
+            request_id, tool, tool_name, context, arguments
+        )
+        if preflight_error is not None:
+            return preflight_error
 
         # Budget is checked after permission and preflight, and before the
         # handler, so neither an unauthorized call nor one that could never
@@ -393,7 +424,7 @@ class BaseMCPView(views.APIView):
             # accept; report it as bad params rather than a server fault.
             logger.warning(f"MCP tool '{tool_name}' called with bad arguments: {error}")
             return rpc_error(
-                request_id, JSONRPC.INVALID_PARAMS, "Invalid params", str(error)
+                request_id, JSONRPC.INVALID_PARAMS, JSONRPC.MSG_INVALID_PARAMS, str(error)
             )
         except Exception as error:
             # Redacted: this catches *any* tool handler, so the exception can

@@ -43,6 +43,15 @@ class JSONRPC:
     UNAUTHORIZED: int = -32001
     TOOL_EXECUTION_ERROR: int = -32002
 
+    # Canonical `message` for each code. The JSON-RPC 2.0 spec fixes these
+    # strings, and a client may match on them, so they are defined once beside
+    # the code they belong to rather than repeated at each raise site.
+    MSG_PARSE_ERROR: str = "Parse error"
+    MSG_INVALID_REQUEST: str = "Invalid Request"
+    MSG_METHOD_NOT_FOUND: str = "Method not found"
+    MSG_INVALID_PARAMS: str = "Invalid params"
+    MSG_INTERNAL_ERROR: str = "Internal error"
+
 
 class MCPMethod:
     """MCP methods handled by this transport."""
