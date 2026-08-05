@@ -23,6 +23,10 @@ from scheduler.tasks import mirror_periodic_schedule_upsert
 
 from pg_queue.models import PgPeriodicSchedule
 
+# Rows per DB round trip; mirrors mirror_pg_periodic_tasks.DEFAULT_BATCH_SIZE and the
+# batch size used by the repo's other bounded loops (workflow_v2 migration 0012).
+DEFAULT_BATCH_SIZE = 1000
+
 # Only the pipeline-trigger PeriodicTasks are scheduled pipelines (other periodic
 # tasks — metrics, audit — are not mirrored).
 _PIPELINE_TASK_PATH = "scheduler.tasks.execute_pipeline_task"
@@ -51,11 +55,25 @@ class Command(BaseCommand):
             action="store_true",
             help="Report what would change without writing.",
         )
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            default=DEFAULT_BATCH_SIZE,
+            metavar="N",
+            help=(
+                f"Rows fetched per DB round trip (default {DEFAULT_BATCH_SIZE}). "
+                "There is one row per scheduled pipeline, so this bounds memory on "
+                "a large installation."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         dry_run = options["dry_run"]
-        backfilled = self._backfill_mirrors(dry_run)
-        reconciled, pg_owned, failed = self._reconcile_all(dry_run)
+        batch_size = options["batch_size"]
+        if batch_size < 1:
+            raise CommandError("--batch-size must be >= 1")
+        backfilled = self._backfill_mirrors(dry_run, batch_size)
+        reconciled, pg_owned, failed = self._reconcile_all(dry_run, batch_size)
 
         prefix = "[dry-run] " if dry_run else ""
         summary = (
@@ -93,15 +111,30 @@ class Command(BaseCommand):
             "pipeline_name": task_args[6] if len(task_args) > 6 else "",
         }
 
-    def _backfill_mirrors(self, dry_run: bool) -> int:
-        """Create a mirror row for every pipeline-trigger PeriodicTask lacking one."""
-        # Pre-fetch the already-mirrored ids in one query (avoid an EXISTS per row).
+    def _backfill_mirrors(self, dry_run: bool, batch_size: int) -> int:
+        """Create a mirror row for every pipeline-trigger PeriodicTask lacking one.
+
+        Both reads are bounded: the already-mirrored ids stream in via ``iterator``
+        rather than materialising the whole table as a Python set, and the
+        PeriodicTask scan is chunked. There is one row per scheduled pipeline, so on
+        a large installation the unbounded version held the entire pipeline
+        population in memory twice.
+        """
+        # Still one query, still an id set (the membership test below needs it), but
+        # streamed and values-only — flat ids, never model instances.
         mirrored = {
             str(pk)
-            for pk in PgPeriodicSchedule.objects.values_list("pipeline_id", flat=True)
+            for pk in PgPeriodicSchedule.objects.values_list(
+                "pipeline_id", flat=True
+            ).iterator(chunk_size=batch_size)
         }
         backfilled = 0
-        for pt in PeriodicTask.objects.filter(task=_PIPELINE_TASK_PATH):
+        periodic_tasks = (
+            PeriodicTask.objects.filter(task=_PIPELINE_TASK_PATH)
+            .select_related("crontab")
+            .order_by("pk")
+        )
+        for pt in periodic_tasks.iterator(chunk_size=batch_size):
             pipeline_id = pt.name  # = str(pipeline.pk)
             if pipeline_id in mirrored:
                 continue
@@ -121,12 +154,18 @@ class Command(BaseCommand):
             backfilled += 1
         return backfilled
 
-    def _reconcile_all(self, dry_run: bool) -> tuple[int, int, int]:
+    def _reconcile_all(self, dry_run: bool, batch_size: int) -> tuple[int, int, int]:
         """Reconcile ownership for every mirror row against the current rollout.
         Returns (reconciled, pg_owned, failed).
+
+        Chunked: this loads full model instances, one per scheduled pipeline, and
+        each iteration does a Flipt evaluation plus a write — so it is the longest
+        loop in the command and the one worth bounding.
         """
         reconciled = pg_owned = failed = 0
-        for row in PgPeriodicSchedule.objects.all():
+        for row in PgPeriodicSchedule.objects.order_by("pk").iterator(
+            chunk_size=batch_size
+        ):
             if dry_run:
                 # Preview only — read the would-be owner (no DB write) so an
                 # operator can see how many a ramp change would hand to PG.

@@ -53,6 +53,7 @@ QUEUE_TABLES = frozenset(
         "pg_orchestration_claim",
         "pg_orchestrator_lock",
         "pg_periodic_schedule",
+        "pg_periodic_task",
     }
 )
 

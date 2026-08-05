@@ -70,7 +70,7 @@ from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
 from .metrics import ReaperMetrics
-from .pg_scheduler import dispatch_due_schedules
+from .pg_scheduler import dispatch_due_periodic_tasks, dispatch_due_schedules
 from .recovery import mark_execution_error
 from .schema import qualified
 
@@ -1259,6 +1259,17 @@ class PgReaper:
         # nothing until rows are pg_owned.
         try:
             dispatch_due_schedules(self._get_sweep_conn())
+        except Exception:
+            self._discard_owned_sweep_conn()
+            raise
+        # ...and the non-pipeline periodics (UN-3796): dashboard_metrics.*,
+        # log-history, audit, anything an operator adds. Separate call because each
+        # row carries its own task/args/queue rather than the pipeline trigger's one
+        # fixed shape; same leader gating, same dark-by-default posture (nothing
+        # fires until a row is pg_owned). Ordered after the pipeline dispatch so a
+        # fault here cannot stop pipelines, which are the customer-visible ones.
+        try:
+            dispatch_due_periodic_tasks(self._get_sweep_conn())
         except Exception:
             self._discard_owned_sweep_conn()
             raise

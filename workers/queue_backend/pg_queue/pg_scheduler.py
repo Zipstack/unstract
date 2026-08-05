@@ -230,3 +230,147 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
         )
 
     return fired
+
+
+class _DuePeriodicTask(NamedTuple):
+    """One row from the generic-periodic due scan (UN-3796).
+
+    Sibling of :class:`_DueSchedule`. Same reason for existing: the field names are
+    bound to the SELECT's column order at exactly one site.
+    """
+
+    name: str
+    task_name: str
+    queue: str
+    task_args: list
+    task_kwargs: dict
+    org_id: str
+    cron_string: str
+    next_run_at: datetime | None
+
+
+def _quiesce_invalid_periodic_cron(conn: PgConnection, row: _DuePeriodicTask) -> None:
+    """Disable a generic periodic whose cron won't parse, so it stops being
+    re-selected (and re-logging a traceback) every tick. Mirrors
+    :func:`_quiesce_invalid_cron` for the pipeline table.
+    """
+    logger.exception(
+        "PG scheduler: invalid cron %r for periodic %r — disabling the row",
+        row.cron_string,
+        row.name,
+    )
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {qualified('pg_periodic_task')} "
+                "SET enabled = FALSE WHERE name = %s",
+                (row.name,),
+            )
+        conn.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            conn.rollback()
+
+
+def dispatch_due_periodic_tasks(conn: PgConnection) -> int:
+    """Fire PG-owned, enabled, due **non-pipeline** periodics; return the count fired.
+
+    The Beat-replacement half for everything that isn't a pipeline trigger
+    (UN-3796): ``dashboard_metrics.*``, log-history, audit, and anything an operator
+    adds. Structurally identical to :func:`dispatch_due_schedules` — leader-gated by
+    the caller, DB clock throughout, per-row transaction, enqueue and ``next_run_at``
+    advance in ONE transaction so a crash between them cannot double-fire, first
+    observation of a freshly-owned row records a baseline without firing.
+
+    The one real difference: each row carries its **own** target queue and its own
+    task/args/kwargs, where the pipeline dispatcher rebuilds one fixed argument list
+    onto one fixed queue. That is the whole reason for the second table.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT now()")
+            base = cur.fetchone()[0]
+            cur.execute(
+                f"""
+                SELECT name, task_name, queue, task_args, task_kwargs, org_id,
+                       cron_string, next_run_at
+                FROM {qualified('pg_periodic_task')}
+                WHERE pg_owned AND enabled
+                  AND (next_run_at IS NULL OR next_run_at <= %s)
+                """,
+                (base,),
+            )
+            due = [_DuePeriodicTask(*row) for row in cur.fetchall()]
+        conn.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            conn.rollback()
+        raise
+
+    fired = 0
+    for row in due:
+        try:
+            nxt = compute_next_run(row.cron_string, base)
+        except Exception:
+            _quiesce_invalid_periodic_cron(conn, row)
+            continue
+
+        try:
+            if row.next_run_at is None:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        f"UPDATE {qualified('pg_periodic_task')} "
+                        "SET next_run_at = %s WHERE name = %s",
+                        (nxt, row.name),
+                    )
+                conn.commit()
+                logger.info(
+                    "PG scheduler: baselined periodic %r (next_run_at=%s, not fired)",
+                    row.name,
+                    nxt,
+                )
+                continue
+
+            payload = to_payload(
+                row.task_name,
+                args=list(row.task_args or []),
+                kwargs=dict(row.task_kwargs or {}),
+                queue=row.queue,
+                fairness=None,
+            )
+            # Enqueue + advance in ONE transaction (see the module docstring).
+            with conn.cursor() as cur:
+                cur.execute(
+                    insert_message_sql(),
+                    (
+                        row.queue,
+                        json.dumps(payload),
+                        row.org_id or "",
+                        DEFAULT_PRIORITY,
+                    ),
+                )
+                cur.execute(
+                    f"UPDATE {qualified('pg_periodic_task')} "
+                    "SET last_run_at = %s, next_run_at = %s WHERE name = %s",
+                    (base, nxt, row.name),
+                )
+            conn.commit()
+        except Exception:
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            logger.exception(
+                "PG scheduler: failed to fire periodic %r — leaving for next tick",
+                row.name,
+            )
+            continue
+
+        fired += 1
+        logger.info(
+            "PG scheduler: fired periodic %r (%s) → %s (next_run_at=%s)",
+            row.name,
+            row.task_name,
+            row.queue,
+            nxt,
+        )
+
+    return fired

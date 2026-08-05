@@ -50,6 +50,7 @@ from queue_backend.pg_queue.schema import qualified
 def stub_scheduler_tick(monkeypatch):
     mock = MagicMock(return_value=0)
     monkeypatch.setattr(reaper_mod, "dispatch_due_schedules", mock)
+    monkeypatch.setattr(reaper_mod, "dispatch_due_periodic_tasks", MagicMock(return_value=0))
     return mock
 
 

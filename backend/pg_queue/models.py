@@ -382,6 +382,84 @@ class PgPeriodicSchedule(models.Model):
         ]
 
 
+class PgPeriodicTask(models.Model):
+    """Generic (non-pipeline) periodic, mirrored from ``django_celery_beat`` (UN-3796).
+
+    The Beat-replacement sibling of :class:`PgPeriodicSchedule`. That table fires
+    **pipeline** triggers: it is keyed on ``pipeline_id`` and its dispatcher rebuilds
+    the fixed ``execute_pipeline_task`` argument list onto one fixed queue. Every
+    other Beat periodic — ``dashboard_metrics.*``, log-history, audit, anything an
+    operator adds — is an arbitrary ``(task, queue, args, kwargs)`` on a cron, which
+    that shape cannot express.
+
+    A **sibling table rather than a widened one**: ``PgPeriodicSchedule`` is live,
+    flag-gated and mid-ramp, and widening it would mean a surrogate PK plus rewriting
+    every existing row to carry columns only the other kind of schedule uses. The two
+    genuinely differ in payload and target queue; they share only the cron mechanics,
+    which live in the dispatcher, not the row.
+
+    Keyed on ``name`` — ``PeriodicTask.name``, the natural mirror key and already
+    unique in Beat, so reconciliation is a plain upsert with no id mapping to keep.
+
+    Ownership and the no-double-fire guarantee are identical to the sibling's and
+    depend on the same discipline: ``pg_owned`` defaults False, so the table is inert
+    until a row is explicitly handed over, and handing one over MUST disable the
+    matching Beat ``PeriodicTask`` in the same breath. A row flipped ``pg_owned=True``
+    while Beat still has it enabled fires twice.
+
+    Managed=True / generated migration, extension-free.
+    """
+
+    # = PeriodicTask.name. Beat's own uniqueness key, so the mirror needs no
+    # surrogate id and reconciliation is an upsert on the same identity Beat uses.
+    name = models.TextField(primary_key=True)
+    # Dotted task path (PeriodicTask.task), e.g. "dashboard_metrics.aggregate_from_sources".
+    task_name = models.TextField()
+    # Target queue (PeriodicTask.queue). Unlike the pipeline scheduler's single
+    # hardcoded queue, each periodic carries its own — dashboard_metrics.* go to
+    # dashboard_metric_events, log-history to celery_periodic_logs, and so on.
+    queue = models.TextField()
+    # PeriodicTask.args / .kwargs, already decoded from Beat's JSON strings. Stored
+    # decoded so the dispatcher builds a TaskPayload without re-parsing per tick, and
+    # so a malformed value fails loudly at reconcile time rather than at fire time.
+    task_args = models.JSONField(default=list)
+    task_kwargs = models.JSONField(default=dict)
+    # Cron for crontab-backed periodics. Beat also supports IntervalSchedule
+    # (every N seconds/minutes); those are mirrored as an equivalent cron where one
+    # exists and skipped with a warning where it does not — sub-minute intervals have
+    # no cron expression, and silently coarsening one to a minute would change
+    # behaviour. See reconcile_pg_schedules.
+    cron_string = models.TextField()
+    # Owning org, "" = none. Global periodics (dashboard_metrics.*) have no org, so
+    # this is empty for every row today and the dispatcher writes it straight through
+    # to the queue message's org_id. It exists now rather than later for one reason:
+    # PgPeriodicSchedule carries organization_id, so without this column a future
+    # unification of the two tables would be a schema redesign instead of a data
+    # migration. Same no-NULL-text convention as elsewhere.
+    org_id = models.TextField(blank=True, default="")
+    # Mirrors PeriodicTask.enabled.
+    enabled = models.BooleanField(default=True)
+    # Per-row rollout switch; see the class docstring. Defaults False → inert.
+    pg_owned = models.BooleanField(default=False)
+    # Owned by the scheduler tick. NULL next_run_at = "record a baseline next time,
+    # don't fire this cycle" — no burst when a row is handed over.
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "pg_periodic_task"
+        indexes = [
+            # Drives the due scan, mirroring pg_periodic_schedule_due_idx:
+            # WHERE pg_owned AND enabled AND (next_run_at IS NULL OR <= now()).
+            models.Index(
+                fields=["pg_owned", "enabled", "next_run_at"],
+                name="pg_periodic_task_due_idx",
+            ),
+        ]
+
+
 class PgTaskResult(models.Model):
     """Request-reply result store for the executor RPC on PG.
 

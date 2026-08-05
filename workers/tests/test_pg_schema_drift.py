@@ -79,6 +79,24 @@ WORKER_SCHEMA_CONTRACT = {
         "created_at",
         "updated_at",
     },
+    # UN-3796 — generic (non-pipeline) Beat periodics. Sibling of the table above;
+    # each row carries its own task/queue/args rather than the pipeline trigger's
+    # one fixed shape.
+    "pg_periodic_task": {
+        "name",
+        "task_name",
+        "queue",
+        "task_args",
+        "task_kwargs",
+        "org_id",
+        "cron_string",
+        "enabled",
+        "pg_owned",
+        "last_run_at",
+        "next_run_at",
+        "created_at",
+        "updated_at",
+    },
 }
 
 
