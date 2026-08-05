@@ -833,9 +833,9 @@ class TestPgBarrierEnqueue:
             cur.execute(
                 "INSERT INTO pg_barrier_state "
                 "(execution_id, organization_id, remaining, results, "
-                " created_at, expires_at) "
+                " created_at, expires_at, last_progress_at) "
                 "VALUES ('exec-R', '', 1, '[1,2]'::jsonb, now(), "
-                "        now() + interval '1h')"
+                "        now() + interval '1h', now())"
             )
         task, _ = _mock_header_task()
         PgBarrier().enqueue(
@@ -874,9 +874,9 @@ class TestPgBarrierEnqueue:
             cur.execute(
                 "INSERT INTO pg_barrier_state "
                 "(execution_id, organization_id, remaining, results, "
-                " created_at, expires_at) "
+                " created_at, expires_at, last_progress_at) "
                 "VALUES ('exec-REORG', 'old-org', 1, '[]'::jsonb, now(), "
-                "        now() + interval '1h')"
+                "        now() + interval '1h', now())"
             )
         PgBarrier().enqueue(
             [_mock_header_task()[0]],
@@ -908,8 +908,8 @@ def _seed(conn, execution_id, remaining, *, results="[]"):
         cur.execute(
             "INSERT INTO pg_barrier_state "
             "(execution_id, organization_id, remaining, results, "
-            " created_at, expires_at) "
-            "VALUES (%s, '', %s, %s::jsonb, now(), now() + interval '1h')",
+            " created_at, expires_at, last_progress_at) "
+            "VALUES (%s, '', %s, %s::jsonb, now(), now() + interval '1h', now())",
             (execution_id, remaining, results),
         )
 
@@ -1265,8 +1265,8 @@ class TestDbConstraint:
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
                     "(execution_id, organization_id, remaining, results, "
-                    " created_at, expires_at) "
-                    "VALUES ('bad', '', 1, '[]'::jsonb, now(), now())"  # expires==created
+                    " created_at, expires_at, last_progress_at) "
+                    "VALUES ('bad', '', 1, '[]'::jsonb, now(), now(), now())"  # expires==created
                 )
 
 
