@@ -13,8 +13,10 @@ cron conversion (where a wrong answer silently changes how often a job runs).
 
 import json
 from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import pytest
+from django.core.management import call_command
 
 from pg_queue.management.commands.mirror_pg_periodic_tasks import (
     cron_from_periodic_task,
@@ -155,3 +157,45 @@ class TestPlanMirror:
         # A row disabled in Beat must mirror as disabled, or adopting it would start
         # running something an operator had deliberately turned off.
         assert plan_mirror(_task(enabled=False)).fields["enabled"] is False
+
+
+class TestBeatReloadSignal:
+    """A hand-over must tell Beat to reload, or the atomicity is worthless.
+
+    `PeriodicTask.objects.filter(...).update(...)` is a bulk update: it bypasses
+    django-celery-beat's post_save signal, so `PeriodicTasks.last_update` never bumps
+    and `DatabaseScheduler` keeps running from its stale in-memory copy. The DB would
+    say "disabled" while Beat carried on firing — a double fire alongside the PG
+    scheduler, which is the exact failure doing both halves in one transaction exists
+    to prevent. `--release` fails the mirror way: Beat never resumes.
+
+    Pinned here because the symptom is invisible in the DB — you only see it in
+    duplicated side effects.
+    """
+
+    _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
+
+    def _run(self, flag):
+        row = SimpleNamespace(name="h", pg_owned=(flag == "--release"), next_run_at=None)
+        with (
+            patch(f"{self._CMD}.PgPeriodicTask") as Model,
+            patch(f"{self._CMD}.PeriodicTask") as Beat,
+            patch(f"{self._CMD}.PeriodicTasks") as BeatSignal,
+            patch(f"{self._CMD}.transaction.atomic"),
+        ):
+            qs = MagicMock()
+            qs.iterator.return_value = [row]
+            qs.values_list.return_value = ["h"]
+            qs.filter.return_value = qs
+            Model.objects.all.return_value.order_by.return_value = qs
+            # No Beat rows to mirror; we only exercise the ownership flip.
+            Beat.objects.exclude.return_value.select_related.return_value.order_by.return_value.iterator.return_value = []
+            row.save = MagicMock()
+            call_command("mirror_pg_periodic_tasks", flag)
+            return Beat, BeatSignal
+
+    @pytest.mark.parametrize("flag", ["--adopt", "--release"])
+    def test_ownership_flip_bumps_the_beat_reload_signal(self, flag):
+        Beat, BeatSignal = self._run(flag)
+        Beat.objects.filter.return_value.update.assert_called_once()
+        BeatSignal.update_changed.assert_called_once()

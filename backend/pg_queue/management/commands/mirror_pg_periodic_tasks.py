@@ -31,7 +31,7 @@ from typing import Any, NamedTuple
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
-from django_celery_beat.models import IntervalSchedule, PeriodicTask
+from django_celery_beat.models import IntervalSchedule, PeriodicTask, PeriodicTasks
 
 from pg_queue.models import PgPeriodicTask
 
@@ -345,5 +345,14 @@ class Command(BaseCommand):
                         row.next_run_at = None
                     row.save(update_fields=["pg_owned", "next_run_at", "updated_at"])
                     PeriodicTask.objects.filter(name=row.name).update(enabled=not to_pg)
+                    # Bulk .update() bypasses django-celery-beat's post_save signal,
+                    # so PeriodicTasks.last_update never bumps and DatabaseScheduler
+                    # never reloads. Without this, --adopt would set pg_owned=True and
+                    # flip the DB row to disabled while Beat kept firing it from its
+                    # stale in-memory copy — a DOUBLE FIRE, precisely what doing both
+                    # halves in one transaction exists to prevent. --release has the
+                    # mirror failure: Beat would never resume. Same fix and same
+                    # reason as scheduler/ownership.py:132 on the pipeline path.
+                    PeriodicTasks.update_changed()
             changed += 1
         return changed
