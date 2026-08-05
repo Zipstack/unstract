@@ -410,6 +410,16 @@ def _restore_current_celery_app():
     """
     from celery._state import default_app
 
+    # Guard against there being no default app at all: a module that imports no
+    # worker app (e.g. a pure-enum test running alone) would otherwise ERROR here on
+    # ``None.finalize()``. That previously forced such modules to call
+    # ``Celery(...).set_default()`` at import time as a workaround, which mutated
+    # process-global state for every later test in the session depending on
+    # collection order. Fix it here instead so leaf tests need no Celery app.
+    if default_app is None:
+        yield
+        return
+
     default_app.finalize()
     default_app.set_current()
     try:

@@ -253,9 +253,15 @@ def send_webhook_notification(
         retry_delay: The delay between retries in seconds
         platform: Platform type from notification config (SLACK, API, etc.)
         raise_on_final_failure: When True, re-raise on retry exhaustion so the
-            task ends in FAILURE and any Celery ``link_error`` callback runs
-            (used by the clubbed/buffered dispatch to dead-letter the rows).
-            When False (default), preserve the legacy "return None" behavior.
+            task ends in FAILURE (a Celery monitoring signal). NOTE: the buffer
+            rows are dead-lettered by ``_mark_buffer_outcome(dispatched=False)``
+            over the internal API *before* this re-raise, on BOTH transports —
+            ``link``/``link_error`` callbacks are no longer wired (they routed to
+            the ``celery`` queue and were dropped as "unregistered task"), so the
+            raise itself dead-letters nothing. When False (default), preserve the
+            legacy "return None" behavior. The PG dispatch seam forces this False
+            (and ``max_retries`` 0) because under the consumer's eager
+            ``task.apply()`` a raise means redelivery, not a FAILURE state.
 
     Returns:
         None (matches original behavior)
