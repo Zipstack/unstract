@@ -82,3 +82,24 @@ class CustomDataError(LegacyExecutorError):
             f"Custom data error for variable '{variable_display}': {reason} {help_text}"
         )
         super().__init__(message=message)
+
+
+class VlmImageAnswerError(LegacyExecutorError):
+    """Raised when an image-mode prompt cannot be answered.
+
+    Image output mode requires the cloud-only "vlm-image-answer" plugin;
+    when it is missing, or the vision path fails in a way the user must
+    act on (non-vision LLM, missing images, page cap), the prompt must
+    fail loudly — never fall through to the text path, which would
+    silently answer against the one-line extraction summary.
+
+    ``error_code`` is a stable machine-readable identifier; it is also
+    prefixed onto the message so it survives the string-only error
+    propagation to Prompt Studio and API deployment responses.
+    """
+
+    code = 400
+
+    def __init__(self, message: str, error_code: str):
+        self.error_code = error_code
+        super().__init__(message=f"{error_code}: {message}")

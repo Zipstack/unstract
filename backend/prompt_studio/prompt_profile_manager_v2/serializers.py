@@ -4,6 +4,7 @@ from adapter_processor_v2.adapter_processor import AdapterProcessor
 
 from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
+from prompt_studio.vlm_utils import get_profile_vision_warning
 
 from .models import ProfileManager
 
@@ -38,4 +39,9 @@ class ProfileManagerSerializer(AuditSerializer):
             rep[ProfileManagerKeys.X2TEXT] = AdapterProcessor.get_adapter_instance_by_id(
                 x2text
             )
+        # Non-blocking image-mode/vision-LLM mismatch warning (cloud-only;
+        # always None in OSS — key omitted).
+        vision_warning = get_profile_vision_warning(instance)
+        if vision_warning:
+            rep["vision_warning"] = vision_warning
         return rep

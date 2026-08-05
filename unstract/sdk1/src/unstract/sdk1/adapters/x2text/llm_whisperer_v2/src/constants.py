@@ -181,10 +181,19 @@ class ImageOutputConfig:
     FILE_NAME_PARAM = "file_name"
 
     # --- Per-page image naming / storage layout ---
-    PAGE_IMAGE_PREFIX = "page_"
-    PAGE_IMAGE_EXTENSION = ".png"
-    PAGE_NUMBER_PADDING = 3
-    PAGES_SUBFOLDER = "pages"
+    # Sourced from the shared x2text surface so the writer (this adapter)
+    # and any page-image reader agree on one storage contract.
+    PAGE_IMAGE_PREFIX = ImageOutputConstants.PAGE_IMAGE_PREFIX
+    PAGE_IMAGE_EXTENSION = ImageOutputConstants.PAGE_IMAGE_EXTENSION
+    PAGE_NUMBER_PADDING = ImageOutputConstants.PAGE_NUMBER_PADDING
+    PAGES_SUBFOLDER = ImageOutputConstants.PAGES_SUBFOLDER
+
+    # ZIP member names as sent by the LLMWhisperer service. Distinct from
+    # the storage contract above (ImageOutputConstants.PAGE_NUMBER_REGEX):
+    # this tolerates service-side naming variations (``page-1.png``) when
+    # ingesting the download; persisted files are always renamed to the
+    # strict ``page_NNN.png`` layout.
+    ZIP_PAGE_MEMBER_REGEX = r"page[_-]?(\d+)\.png$"
 
     # --- PDF-only validation (shared with the backend index-time guard) ---
     PDF_EXTENSION = ImageOutputConstants.PDF_EXTENSION

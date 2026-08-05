@@ -26,6 +26,10 @@ from executor.executors.lookup_enrichment import (
     run_lookup_enrichment,
     run_webhook_postprocessing,
 )
+from executor.executors.vlm_image_answer import (
+    detect_image_mode_config,
+    run_vlm_image_answer,
+)
 
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -1754,10 +1758,16 @@ class LegacyExecutor(BaseExecutor):
             )
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
+        # Image output mode: detected up front (payload stamp fast-path,
+        # platform-service fallback) so retrieval adapters are never
+        # constructed for a prompt that answers from page images.
+        vlm_config = detect_image_mode_config(
+            output=output, shim=shim, usage_kwargs=usage_kwargs
+        )
         llm, embedding, vector_db = self._init_llm_and_retrieval(
             output=output,
             shim=shim,
-            chunk_size=chunk_size,
+            chunk_size=0 if vlm_config is not None else chunk_size,
             llm_cls=llm_cls,
             embedding_compat_cls=embedding_compat_cls,
             vector_db_cls=vector_db_cls,
@@ -1771,7 +1781,26 @@ class LegacyExecutor(BaseExecutor):
             answer = "NA"
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
-            if retrieval_strategy in valid_strategies:
+            if vlm_config is not None:
+                # Image output mode: the document has page images, not
+                # text — the answer comes from a vision LLM (cloud
+                # plugin); RAG retrieval is skipped entirely. The pages
+                # directory keys on the never-rewritten extract path (the
+                # payload FILE_PATH may point at the summarize output or
+                # the original source for smart-table runs).
+                answer = run_vlm_image_answer(
+                    output=output,
+                    shim=shim,
+                    llm=llm,
+                    extract_file_path=(params.get(PSKeys.EXTRACT_FILE_PATH) or file_path),
+                    execution_source=execution_source,
+                    metadata=metadata,
+                    metrics=metrics,
+                    x2text_config=vlm_config,
+                    usage_kwargs=usage_kwargs,
+                )
+                metadata[PSKeys.CONTEXT][prompt_name] = []
+            elif retrieval_strategy in valid_strategies:
                 if chunk_size > 0:
                     shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
@@ -1859,30 +1888,40 @@ class LegacyExecutor(BaseExecutor):
                 shim=shim,
             )
 
-            records.extend(
-                self._run_challenge_if_enabled(
-                    tool_settings=tool_settings,
+            if vlm_config is None:
+                records.extend(
+                    self._run_challenge_if_enabled(
+                        tool_settings=tool_settings,
+                        output=output,
+                        structured_output=structured_output,
+                        context_list=context_list,
+                        llm=llm,
+                        llm_cls=llm_cls,
+                        usage_kwargs=usage_kwargs,
+                        run_id=run_id,
+                        platform_api_key=platform_api_key,
+                        metadata=metadata,
+                        shim=shim,
+                        prompt_name=prompt_name,
+                    )
+                )
+                self._run_evaluation_if_enabled(
                     output=output,
-                    structured_output=structured_output,
                     context_list=context_list,
-                    llm=llm,
-                    llm_cls=llm_cls,
-                    usage_kwargs=usage_kwargs,
-                    run_id=run_id,
+                    structured_output=structured_output,
                     platform_api_key=platform_api_key,
-                    metadata=metadata,
                     shim=shim,
                     prompt_name=prompt_name,
                 )
-            )
-            self._run_evaluation_if_enabled(
-                output=output,
-                context_list=context_list,
-                structured_output=structured_output,
-                platform_api_key=platform_api_key,
-                shim=shim,
-                prompt_name=prompt_name,
-            )
+            else:
+                # Image mode has no retrieval context; challenge and
+                # evaluation verify an answer AGAINST context, so running
+                # them here would bill a doomed second LLM call. A
+                # vision-aware challenge is a later-phase decision.
+                shim.stream_log(
+                    f"Skipped challenge/evaluation for `{prompt_name}` "
+                    "(image output mode has no retrieval context)"
+                )
             shim.stream_log(f"Completed prompt: `{prompt_name}`")
 
             val = structured_output.get(prompt_name)
@@ -2292,6 +2331,32 @@ class LegacyExecutor(BaseExecutor):
 
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.vlm_image_answer import raise_if_image_mode_unsupported
+
+        # Image output mode cannot run single-pass: one combined prompt over
+        # the "full text" would silently answer from the one-line extraction
+        # summary. (The answer_prompt fallback below re-checks per prompt;
+        # this covers the cloud single-pass plugin delegation too.)
+        params = context.executor_params
+        tool_settings = params.get(PSKeys.TOOL_SETTINGS) or {}
+        outputs = params.get(PSKeys.OUTPUTS) or [{}]
+        x2text_instance_id = tool_settings.get(PSKeys.X2TEXT_ADAPTER) or outputs[0].get(
+            PSKeys.X2TEXT_ADAPTER
+        )
+        if x2text_instance_id:
+            raise_if_image_mode_unsupported(
+                operation="Single-pass extraction",
+                adapter_instance_id=str(x2text_instance_id),
+                shim=self._build_shim(
+                    platform_api_key=params.get(PSKeys.PLATFORM_SERVICE_API_KEY, ""),
+                    component=self._log_component,
+                ),
+                scope_id=str(
+                    params.get(PSKeys.EXECUTION_ID) or params.get(PSKeys.RUN_ID) or ""
+                ),
+            )
+
         try:
             from unstract.sdk1.execution.registry import ExecutorRegistry
 

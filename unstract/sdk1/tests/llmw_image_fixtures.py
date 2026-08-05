@@ -110,14 +110,47 @@ class InMemoryFileStorage:
         return len(payload)
 
     def read(
-        self, path: str, mode: str = "rb", encoding: str = "utf-8", **_: object
+        self,
+        path: str,
+        mode: str = "rb",
+        encoding: str = "utf-8",
+        length: int = -1,
+        **_: object,
     ) -> bytes | str:
-        payload = self._files[str(path)]
+        try:
+            payload = self._files[str(path)]
+        except KeyError:
+            # Real backends (fsspec/local) raise FileNotFoundError.
+            raise FileNotFoundError(str(path)) from None
+        if length is not None and length >= 0:
+            payload = payload[:length]
         return payload if "b" in mode else payload.decode(encoding)
 
     def exists(self, path: str) -> bool:
         key = str(path)
-        return key in self._files or key in self._dirs
+        if key in self._files or key in self._dirs:
+            return True
+        # S3-like: a "directory" exists when any object lives under it.
+        prefix = key.rstrip("/") + "/"
+        return any(stored.startswith(prefix) for stored in self._files)
+
+    def size(self, path: str) -> int:
+        """Byte size from 'metadata' (fsspec info-style), like real backends."""
+        try:
+            return len(self._files[str(path)])
+        except KeyError:
+            raise FileNotFoundError(str(path)) from None
+
+    def ls(self, path: str) -> list[str]:
+        """Direct children of ``path`` (full paths), fsspec-style."""
+        from pathlib import PurePosixPath
+
+        parent = str(path).rstrip("/")
+        return sorted(
+            stored
+            for stored in self._files
+            if str(PurePosixPath(stored).parent) == parent
+        )
 
     @property
     def stored_paths(self) -> list[str]:

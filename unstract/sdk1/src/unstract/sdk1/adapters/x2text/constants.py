@@ -35,7 +35,52 @@ class ImageOutputConstants:
         "Please provide a PDF file or select a text output mode."
     )
 
+    # --- Page image storage layout (writer/reader contract) ---
+    # The adapter (writer) persists one PNG per page under a ``pages``
+    # subfolder as ``page_NNN.png`` (zero-padded to PAGE_NUMBER_PADDING
+    # digits; four or more digits appear naturally past page 999). Readers
+    # list the directory and MUST order pages by the integer captured by
+    # PAGE_NUMBER_REGEX — never lexicographically, which silently
+    # misorders once page numbers outgrow the padding.
+    PAGES_SUBFOLDER = "pages"
+    PAGE_IMAGE_PREFIX = "page_"
+    PAGE_IMAGE_EXTENSION = ".png"
+    PAGE_NUMBER_PADDING = 3
+    # First capture group is the numeric page index (as a string, possibly
+    # zero-padded) — cast to int before sorting.
+    PAGE_NUMBER_REGEX = r"page_(\d+)\.png"
+
+    # Leading bytes of every PDF file — the content-based check for inputs
+    # whose storage name carries no extension (workflow executions store the
+    # source file under an extension-less name like ``SOURCE``).
+    PDF_MAGIC_BYTES = b"%PDF-"
+
     @staticmethod
     def is_pdf(file_name: str) -> bool:
         """Return True when ``file_name`` is a PDF (case-insensitive suffix)."""
         return Path(file_name).suffix.lower() == ImageOutputConstants.PDF_EXTENSION
+
+    @staticmethod
+    def is_pdf_bytes(header: bytes) -> bool:
+        """Return True when ``header`` starts with the PDF magic bytes."""
+        return bytes(header).startswith(ImageOutputConstants.PDF_MAGIC_BYTES)
+
+
+def build_page_store_dir(output_file_path: str | None, input_file_path: str) -> str:
+    """Per-document folder for page images: ``{extract_dir}/{stem}/pages``.
+
+    The single canonical derivation shared by the adapter (writer) and any
+    page-image reader, so both sides agree on the location without metadata
+    persistence or a manifest sidecar. Keyed on the document ``stem`` (the
+    same discriminator the extract ``.txt`` files alongside use), not the
+    per-run whisper_hash. This is collision-safe against concurrent documents
+    in the same project, is reconstructible from ``output_file_path`` alone,
+    and — being stable across runs — makes a re-extraction overwrite its own
+    pages instead of orphaning a fresh tree in FileStorage on every run.
+
+    Pure and deterministic: no I/O, no lookups.
+    """
+    reference = output_file_path or input_file_path
+    base_dir = str(Path(reference).parent) if reference else "."
+    stem = Path(reference).stem if reference else "document"
+    return str(Path(base_dir) / stem / ImageOutputConstants.PAGES_SUBFOLDER)

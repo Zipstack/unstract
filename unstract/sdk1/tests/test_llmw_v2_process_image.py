@@ -165,3 +165,36 @@ class TestPdfOnlyValidation:
     def test_validate_pdf_only_rejects_other(self) -> None:
         with pytest.raises(ExtractorError, match="PDF input only"):
             LLMWhispererV2._validate_pdf_only("/tmp/doc.tiff")
+
+    def test_extensionless_pdf_accepted_via_content_sniff(self) -> None:
+        # Workflow executions store inputs under extension-less names
+        # (e.g. SOURCE); the guard must sniff the content, not just the
+        # storage filename, or every deployment input is false-rejected.
+        class _Fs:
+            def read(self, path: str, mode: str = "rb", **_: object) -> bytes:
+                return b"%PDF-1.7 rest-of-file"
+
+        LLMWhispererV2._validate_pdf_only("/exec/data/SOURCE", fs=_Fs())  # no raise
+
+    def test_extensionless_non_pdf_rejected_via_content_sniff(self) -> None:
+        class _Fs:
+            def read(self, path: str, mode: str = "rb", **_: object) -> bytes:
+                return b"PK\x03\x04zipfile"
+
+        with pytest.raises(ExtractorError, match="PDF input only"):
+            LLMWhispererV2._validate_pdf_only("/exec/data/SOURCE", fs=_Fs())
+
+    def test_extensionless_unreadable_rejected_fail_closed(self) -> None:
+        class _Fs:
+            def read(self, path: str, mode: str = "rb", **_: object) -> bytes:
+                raise OSError("storage down")
+
+        with pytest.raises(ExtractorError, match="PDF input only"):
+            LLMWhispererV2._validate_pdf_only("/exec/data/SOURCE", fs=_Fs())
+
+    def test_pdf_extension_skips_content_read(self) -> None:
+        class _Fs:
+            def read(self, path: str, mode: str = "rb", **_: object) -> bytes:
+                raise AssertionError("must not read when the extension is .pdf")
+
+        LLMWhispererV2._validate_pdf_only("/tmp/doc.pdf", fs=_Fs())  # no raise
