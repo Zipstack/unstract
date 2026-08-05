@@ -11,6 +11,7 @@ from uuid import UUID
 
 import requests
 
+from unstract.core.network.ssrf import is_safe_webhook_url
 from unstract.core.notification_enums import AuthorizationType
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,16 @@ def send_webhook_request(
     Raises:
         requests.exceptions.RequestException: If request fails after all retries
     """
+    # Guard at the sink, not at the callers, so no future caller can skip it.
+    if not is_safe_webhook_url(url):
+        logger.error("Refusing webhook to a non-public or ambiguous URL")
+        return {
+            "success": False,
+            "error": "Webhook URL is not an allowed public destination",
+            "attempts": current_retry + 1,
+            "url": url,
+        }
+
     # Serialize payload to handle UUIDs and datetimes
     serialized_payload = serialize_notification_data(payload)
 
@@ -143,7 +154,13 @@ def send_webhook_request(
         logger.debug(f"Sending webhook to {url} (attempt {current_retry + 1})")
 
         response = requests.post(
-            url=url, json=serialized_payload, headers=headers or {}, timeout=timeout
+            url=url,
+            json=serialized_payload,
+            headers=headers or {},
+            timeout=timeout,
+            # A 302 to an internal host would otherwise be followed, and
+            # 302/303 rewrites POST to GET.
+            allow_redirects=False,
         )
 
         # Check response status
