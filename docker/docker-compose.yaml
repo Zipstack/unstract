@@ -732,6 +732,55 @@ services:
     profiles:
       - pg-queue
 
+  # Dashboard-metrics periodics over PG (UN-3796) — the execution half of the Beat
+  # replacement. The PG scheduler fires dashboard_metrics.* onto dashboard_metric_events
+  # and this drains them, replacing the Celery worker-metrics
+  # (-A backend worker -Q dashboard_metric_events).
+  #
+  # A dedicated service rather than another queue on worker-pg-scheduler: the
+  # consumer's health heartbeat is stamped per poll and FROZEN while a task runs, so
+  # HEALTH_STALE doubles as an upper bound on one task's wall clock. The aggregation
+  # runs for minutes; under the scheduler's 240s bound it would trip the liveness
+  # probe, restart the pod, and take in-flight pipeline triggers down with it.
+  #
+  # No rabbitmq dependency — the tasks are thin HTTP proxies to the backend internal
+  # API and dispatch nothing onward. MAX_ATTEMPTS=1 because for a periodic the next
+  # cron tick supersedes a failed run; retrying would let a persistently failing
+  # aggregation stack up in-flight messages.
+  worker-pg-metrics:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-metrics
+    restart: unless-stopped
+    command: ["pg-metrics"]
+    ports:
+      - "8101:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-metrics
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=scheduler
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=dashboard_metric_events
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Sized for a minutes-long aggregation: stale > vt > the task's own ceiling.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_METRICS_VT_SECONDS:-900}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_METRICS_HEALTH_STALE_SECONDS:-960}
+      # One at a time — these are global singletons, not parallel work.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=1
+      - WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS=1
+      # Split the aggregation into slices of N orgs if one run would exceed
+      # gunicorn's 600s request ceiling. 0 = one unsliced call (default).
+      - DASHBOARD_METRICS_ORG_CHUNK_SIZE=${DASHBOARD_METRICS_ORG_CHUNK_SIZE:-0}
+    labels:
+      - traefik.enable=false
+    profiles:
+      - pg-queue
+
   # Executor RPC over PG — runs execute_extraction as a request-reply: claims
   # work from Postgres and writes the ExecutionResult to pg_task_result for the
   # blocking caller. Same heavy executor runtime as worker-executor-v2 (tool

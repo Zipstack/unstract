@@ -7,6 +7,11 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
+# Register the dashboard-metrics proxy tasks on this worker type (UN-3796). Imported
+# purely for the side effect. A BARE module import, not a relative one: worker.py loads
+# this file by path with the worker directory on sys.path, so there is no parent package
+# for `from . import ...` to resolve against.
+import dashboard_metrics_tasks  # noqa: F401, E402  (side-effect import)
 from queue_backend import FairnessKey, QueueBackend, dispatch, worker_task
 from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
