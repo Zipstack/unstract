@@ -117,9 +117,27 @@ class TestStampedDetection:
         resolve.assert_not_called()
 
     def test_unstamped_payload_falls_back_to_platform(self):
+        # Non-IDE (deployment) payloads are built worker-side without
+        # adapter metadata — resolution is legitimate there.
         result, resolve = _detect(output={"x2text_adapter": "uuid-1", "name": "p1"})
         assert result == _IMAGE_CONFIG
         resolve.assert_called_once()
+
+    def test_unstamped_ide_payload_is_text_mode_without_platform_call(self):
+        # IDE payloads are always stamped by the current backend; an
+        # unstamped one is a pre-upgrade in-flight run. It must NOT make
+        # every legacy IDE prompt depend on the platform service.
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            result = detect_image_mode_config(
+                output={"x2text_adapter": "uuid-1", "name": "p1"},
+                shim=MagicMock(),
+                execution_source="ide",
+                usage_kwargs={"run_id": "r1"},
+            )
+        assert result is None
+        resolve.assert_not_called()
 
 
 class TestResolutionCache:
@@ -308,3 +326,28 @@ class TestUnsupportedOperationGuard:
             adapter_instance_id=None,
             shim=MagicMock(),
         )  # no raise, no platform call
+
+    def test_stamped_image_mode_rejected_without_platform_call(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            with pytest.raises(VlmImageAnswerError):
+                raise_if_image_mode_unsupported(
+                    operation="Single-pass extraction",
+                    adapter_instance_id="uuid-1",
+                    shim=MagicMock(),
+                    stamped_mode="image",
+                )
+        resolve.assert_not_called()
+
+    def test_unstamped_ide_single_pass_passes_without_platform_call(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            raise_if_image_mode_unsupported(
+                operation="Single-pass extraction",
+                adapter_instance_id="uuid-1",
+                shim=MagicMock(),
+                execution_source="ide",
+            )  # no raise
+        resolve.assert_not_called()

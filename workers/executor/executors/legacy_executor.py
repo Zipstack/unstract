@@ -1762,7 +1762,10 @@ class LegacyExecutor(BaseExecutor):
         # platform-service fallback) so retrieval adapters are never
         # constructed for a prompt that answers from page images.
         vlm_config = detect_image_mode_config(
-            output=output, shim=shim, usage_kwargs=usage_kwargs
+            output=output,
+            shim=shim,
+            execution_source=str(execution_source or ""),
+            usage_kwargs=usage_kwargs,
         )
         llm, embedding, vector_db = self._init_llm_and_retrieval(
             output=output,
@@ -2345,6 +2348,9 @@ class LegacyExecutor(BaseExecutor):
             PSKeys.X2TEXT_ADAPTER
         )
         if x2text_instance_id:
+            stamped_mode = tool_settings.get(PSKeys.X2TEXT_OUTPUT_MODE)
+            if stamped_mode is None:
+                stamped_mode = outputs[0].get(PSKeys.X2TEXT_OUTPUT_MODE)
             raise_if_image_mode_unsupported(
                 operation="Single-pass extraction",
                 adapter_instance_id=str(x2text_instance_id),
@@ -2355,6 +2361,8 @@ class LegacyExecutor(BaseExecutor):
                 scope_id=str(
                     params.get(PSKeys.EXECUTION_ID) or params.get(PSKeys.RUN_ID) or ""
                 ),
+                stamped_mode=stamped_mode,
+                execution_source=str(params.get(PSKeys.EXECUTION_SOURCE) or ""),
             )
 
         try:

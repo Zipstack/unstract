@@ -98,19 +98,28 @@ def _resolve_image_mode_config(
     return result
 
 
+_IDE_SOURCE = "ide"
+
+
 def detect_image_mode_config(
     *,
     output: dict[str, Any],
     shim: Any,
+    execution_source: str = "",
     usage_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Detect image mode for one prompt; None means normal text path.
 
     Fast path: the backend stamps the adapter's ``x2text_output_mode``
     onto the per-prompt payload (it already holds the decrypted adapter
-    metadata), so text-mode prompts cost nothing here. The platform-
-    service resolution runs only as the fallback for payloads without
-    the stamp (e.g. API deployments, older payloads).
+    metadata), so stamped prompts cost nothing here.
+
+    Unstamped payloads split by source: IDE payloads are always stamped
+    by the current backend, so an unstamped one is a pre-upgrade
+    in-flight run — treated as text mode rather than making every
+    legacy IDE prompt depend on a platform-service call. Deployment
+    payloads are built worker-side without adapter metadata, so they
+    resolve through the platform service (run-scoped cache).
 
     Returns the resolved adapter config for the plugin, or ``{}`` when
     image mode was determined from the stamp alone.
@@ -123,6 +132,9 @@ def detect_image_mode_config(
         stamped_mode = output.get(PSKeys.X2TEXT_OUTPUT_MODE)
         if stamped_mode == ImageOutputConstants.IMAGE_MODE:
             return {}
+        return None
+
+    if execution_source == _IDE_SOURCE:
         return None
 
     usage_kwargs = usage_kwargs or {}
@@ -223,16 +235,25 @@ def raise_if_image_mode_unsupported(
     adapter_instance_id: str | None,
     shim: Any,
     scope_id: str = "",
+    stamped_mode: str | None = None,
+    execution_source: str = "",
 ) -> None:
     """Guard operations that cannot run against image-mode documents.
 
     Single-pass extraction (and any future full-text operation) would
     silently run against the one-line extraction summary — reject it
-    explicitly instead.
+    explicitly instead. Same detection semantics as
+    ``detect_image_mode_config``: stamp first, platform resolution only
+    for non-IDE sources.
     """
     if not adapter_instance_id:
         return
-    config = _resolve_image_mode_config(shim, str(adapter_instance_id), scope_id)
+    if stamped_mode is not None:
+        config = {} if stamped_mode == ImageOutputConstants.IMAGE_MODE else None
+    elif execution_source == _IDE_SOURCE:
+        return
+    else:
+        config = _resolve_image_mode_config(shim, str(adapter_instance_id), scope_id)
     if config is not None:
         raise VlmImageAnswerError(
             f"{operation} is not supported in image output mode. Run "
