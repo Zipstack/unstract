@@ -751,7 +751,13 @@ services:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-metrics
     restart: unless-stopped
-    command: ["pg-metrics"]
+    # The GENERIC consumer command, with identity carried by the env below — the
+    # container entrypoint (run-worker-docker.sh) is env-driven and its `pg-*`
+    # dispatch accepts only pg-queue-consumer / pg-consumer / pg-queue-reaper /
+    # pg-reaper / reaper, rejecting anything else with exit 1. The named
+    # `pg-metrics` role is for the HOST runner (`./run-worker.sh pg-metrics`),
+    # which is a different script and does understand roles.
+    command: ["pg-queue-consumer"]
     ports:
       - "8101:8090"
     env_file:
