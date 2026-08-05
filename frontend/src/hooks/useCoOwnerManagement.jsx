@@ -54,6 +54,8 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     // branch) after the user has moved to a different resource. Mutation
     // callers pass the token captured BEFORE their POSTs so a modal switch
     // during the mutation itself is caught too, not just one mid-refresh.
+    // Returns true when the resource turned out to be gone, so the caller can
+    // leave that alert standing instead of overwriting it with its own.
     async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
@@ -69,7 +71,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
             content:
               "This resource is no longer accessible. It may have been removed or your access has been revoked.",
           });
-          return;
+          return true;
         }
         setAlertDetails(
           handleException(err, "Unable to refresh co-owner data"),
@@ -142,7 +144,12 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       await run(addUsers, (id) => service.addCoOwner(resourceId, id));
       await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
       // Reconverge the modal on true server state regardless of partial outcome.
-      await refreshCoOwnerData(resourceId, requestId);
+      const gone = await refreshCoOwnerData(resourceId, requestId);
+      if (gone) {
+        // The refresh already closed the modal, refreshed the list and raised
+        // its own alert — an apply summary on top of it would only mislead.
+        return true;
+      }
       onListRefresh?.();
       setAlertDetails(
         buildApplyAlert(

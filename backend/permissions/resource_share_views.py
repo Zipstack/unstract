@@ -1,9 +1,9 @@
 """Shared share-management surface for resource ViewSets.
 
-The mixin is **axis-agnostic** — it reads the sharing "axes" named in
-``_SUPPORTED_SHARE_AXES``. ``shared_users`` is the direct-viewer axis, backed by
-VIEWER membership rows, while ``shared_groups`` is stored polymorphically in
-``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers.
+The mixin reads the sharing "axes" named in ``_SUPPORTED_SHARE_AXES``.
+``shared_users`` is the direct-viewer axis, backed by VIEWER membership rows,
+while ``shared_groups`` is stored polymorphically in ``ResourceGroupShare``
+(not an M2M) and routed through the sharing helpers.
 """
 
 import logging
@@ -59,25 +59,6 @@ def _coerce_id_list(axis: str, value: Any) -> list[int]:
     return coerced
 
 
-def _notification_context(view: Any, instance: Any) -> tuple[str, str] | None:
-    """Resolve ``(resource_type, resource_name)`` for the email senders.
-
-    ``None`` when the plugin is absent or the host ViewSet has not opted in by
-    setting ``notification_resource_name_field`` and overriding
-    ``get_notification_resource_type`` (both declared on
-    ``OwnerManagementMixin``, which every share host also mixes in).
-    """
-    name_field = getattr(view, "notification_resource_name_field", None)
-    resolve_type = getattr(view, "get_notification_resource_type", None)
-    if not notification_plugin or not name_field or resolve_type is None:
-        return None
-    resource_type = resolve_type(instance)
-    resource_name = getattr(instance, name_field, None)
-    if resource_type is None or not resource_name:
-        return None
-    return resource_type, resource_name
-
-
 def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
     """Narrow ``users`` to those with no remaining access to ``instance``.
 
@@ -86,6 +67,11 @@ def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
     wrong.
     """
     if not users:
+        return []
+    if getattr(instance, "shared_to_org", False):
+        # Org-wide share still covers everyone — nobody lost access, and
+        # answering it via ``compute_effective_members`` would hydrate every
+        # member of the org to say so.
         return []
     from tenant_account_v2.sharing_helpers import compute_effective_members
 
@@ -180,19 +166,24 @@ class ResourceShareManagementMixin:
         actor: Any,
         /,
     ) -> None:
-        """Email users granted or denied direct access.
+        """Email users granted or denied direct access. Best-effort.
 
         Resource type and name come from the host's ``OwnerManagementMixin``
-        seam, so every share host is covered without an override.
+        seam. The share has already committed by the time this runs, so no
+        failure here — a raising seam, a dropped DB connection — may surface
+        as a 500 on a share that succeeded.
         """
-        context = _notification_context(self, instance)
-        if context is None:
-            return
-        if added:
-            _send_share_notification(instance, context, added, actor)
-        revoked = _users_left_without_access(instance, removed)
-        if revoked:
-            _send_revoke_notification(instance, context, revoked, actor)
+        try:
+            context = self._notification_context(instance)  # type: ignore[attr-defined]
+            if context is None:
+                return
+            if added:
+                _send_share_notification(instance, context, added, actor)
+            revoked = _users_left_without_access(instance, removed)
+            if revoked:
+                _send_revoke_notification(instance, context, revoked, actor)
+        except Exception:
+            logger.exception("Failed to send share notifications for %s", instance.pk)
 
     @action(detail=True, methods=["get"], url_path="effective-members")
     def effective_members(self, request: Request, pk: str | None = None) -> Response:

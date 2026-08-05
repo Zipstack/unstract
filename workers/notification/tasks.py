@@ -489,7 +489,10 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     silently unsent email. On the PG transport the raise also leaves the
     message on the queue for redelivery, bounded by the consumer's attempt cap.
 
-    A 4xx is not retried — a rejected payload will be rejected again.
+    A sub-500 response ends the in-process attempts — a rejected payload will
+    be rejected again. Delivery is at-least-once: a response lost after the
+    backend already sent re-posts the same payload, and the send path writes
+    nothing, so the only effect is a duplicate email.
     """
     base_url = os.getenv("INTERNAL_API_BASE_URL")
     api_key = os.getenv("INTERNAL_SERVICE_API_KEY")
@@ -510,7 +513,7 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
         try:
             with httpx.Client(transport=httpx.HTTPTransport(retries=2)) as client:
                 response = client.post(url, headers=headers, json=payload, timeout=30.0)
-        except Exception as e:  # noqa: BLE001 - transport failure, retry below
+        except Exception as e:  # noqa: BLE001
             last_error = f"exception={e!r}"
         else:
             if response.status_code == 200:

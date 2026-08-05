@@ -6,13 +6,16 @@ asynchronously — the caller's request returns as soon as the write lands.
 
 The sending itself runs in ``workers/``, which is Django-free, so the worker
 task is a thin HTTP shim back to :mod:`tenant_account_v2.internal_views`; the
-backend does the ORM and plugin work. Transport is resolved per-org by the same
-``resolve_transport`` gate the execution path uses — the PG queue where that is
-enabled, Celery otherwise.
+backend does the ORM and plugin work. Transport is resolved per resource/group
+id by the same ``resolve_transport`` gate the execution path uses — the PG
+queue where that is enabled, Celery otherwise.
 
-The whole feature sits behind its own Flipt flag and fails closed everywhere: a
-blind Flipt, a missing org, or any dispatch error means no notification, never
-a broken share.
+The group feature sits behind its own Flipt flag, evaluated once here at
+enqueue: a blind Flipt, a missing org, or any dispatch error means no
+notification, never a broken share. Turning the flag off stops new enqueues; a
+message already queued still delivers. Direct-user share and revoke mail
+(``ResourceShareManagementMixin``) is not on this flag — like the co-owner mail
+it reuses, it is gated only by the cloud ``ENABLE_EMAIL_NOTIFICATIONS`` setting.
 """
 
 from __future__ import annotations
@@ -152,9 +155,14 @@ def _feature_enabled(organization_id: str) -> bool:
     # Parse exactly as FliptClient does (``.lower()``, no ``.strip()``) so the
     # two can never disagree on a value like " true".
     if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
+        logger.warning(
+            "group-notification: FLIPT_SERVICE_AVAILABLE != true (Flipt blind) "
+            "for org %s; skipping",
+            organization_id,
+        )
         return False
     try:
-        return bool(
+        enabled = bool(
             check_feature_flag_status(
                 flag_key=GROUP_NOTIFICATION_FLAG_KEY,
                 entity_id=organization_id,
@@ -168,6 +176,9 @@ def _feature_enabled(organization_id: str) -> bool:
             exc_info=True,
         )
         return False
+    if not enabled:
+        logger.info("group-notification: flag off for org %s; skipping", organization_id)
+    return enabled
 
 
 def _organization_slug(obj: Any) -> str | None:

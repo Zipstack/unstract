@@ -12,6 +12,7 @@ entry point below no-ops cleanly.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from account_v2.models import Organization, User
@@ -55,6 +56,15 @@ class ResourceNotFoundError(Exception):
     """The shared resource no longer exists, or is not in the given org."""
 
 
+@dataclass(frozen=True)
+class _SharedResource:
+    """A resolved resource, reused across every group email in one task."""
+
+    instance: Any
+    name: str
+    type: str | None
+
+
 def send_resource_shared(
     *,
     organization: Organization,
@@ -72,43 +82,30 @@ def send_resource_shared(
     service = _service()
     if service is None:
         return
-    actor = _get_user(actor_id)
-    resource, resource_name, resource_type = _load_resource(
-        organization, resource_kind, resource_id
-    )
-    if actor is None or resource_type is None:
+    actor = _get_user(organization, actor_id)
+    shared = _load_resource(organization, resource_kind, resource_id)
+    if actor is None or shared.type is None:
         logger.info(
             "group-notification: skipping resource share for %s/%s "
             "(actor_found=%s resource_type=%s)",
             resource_kind,
             resource_id,
             actor is not None,
-            resource_type,
+            shared.type,
         )
         return
+    retained = _retained_user_ids(shared.instance, share_action)
     for group in _groups_in_org(organization, group_ids):
-        recipients = _live_member_users(
-            organization, group.memberships.values_list("user_id", flat=True)
-        )
+        recipients = _group_recipients(organization, group, retained)
         logger.info(
-            "group-notification: task=%s group_id=%s action=%s recipient_count=%d",
-            "notify_resource_shared_with_group",
+            "group-notification: task=notify_resource_shared_with_group "
+            "group_id=%s action=%s recipient_count=%d",
             group.pk,
             share_action,
             len(recipients),
         )
-        if not recipients:
-            continue
-        service.send_group_resource_shared_notification(
-            resource_type=resource_type,
-            resource_name=resource_name,
-            resource_id=str(resource.pk),
-            group_name=group.name,
-            shared_by=actor,
-            shared_to=recipients,
-            resource_instance=resource,
-            share_action=ShareAction(share_action).value,
-        )
+        if recipients:
+            _mail_group(service, group, recipients, shared, actor, share_action)
 
 
 def send_membership_changed(
@@ -129,7 +126,7 @@ def send_membership_changed(
     service = _service()
     if service is None:
         return
-    actor = _get_user(actor_id)
+    actor = _get_user(organization, actor_id)
     group = _groups_in_org(organization, [group_id]).first()
     if actor is None or group is None:
         logger.info(
@@ -167,8 +164,67 @@ def _service() -> Any | None:
     return notification_plugin["service_class"]()
 
 
-def _get_user(user_id: int) -> User | None:
-    return User.objects.filter(pk=user_id).first()
+def _get_user(organization: Organization, user_id: int) -> User | None:
+    """The actor, re-validated against the org like every recipient is.
+
+    Service accounts are kept: a share performed by a platform account must
+    still notify the group.
+    """
+    member = (
+        OrganizationMember.objects.filter(organization=organization, user_id=user_id)
+        .select_related("user")
+        .first()
+    )
+    return member.user if member else None
+
+
+def _retained_user_ids(resource: Any, share_action: str) -> set[int]:
+    """Users who still reach ``resource``; empty on the share direction.
+
+    A revoked group's members may keep access through another group, a direct
+    share or an org-wide share — telling them it was removed would be wrong,
+    and the revoke email also repoints their CTA at the dashboard. Owners sit
+    outside ``compute_effective_members`` by design, so add them back: an owner
+    in the revoked group has lost nothing.
+    """
+    if share_action != ShareAction.REVOKED.value:
+        return set()
+    from tenant_account_v2.sharing_helpers import compute_effective_members
+
+    return {member["user_id"] for member in compute_effective_members(resource)} | {
+        owner.pk for owner in resource.owners()
+    }
+
+
+def _group_recipients(
+    organization: Organization, group: OrganizationGroup, retained: set[int]
+) -> list[User]:
+    """Live members of ``group`` who did not keep access via ``retained``."""
+    users = _live_member_users(
+        organization, group.memberships.values_list("user_id", flat=True)
+    )
+    return [user for user in users if user.pk not in retained]
+
+
+def _mail_group(
+    service: Any,
+    group: OrganizationGroup,
+    recipients: list[User],
+    shared: _SharedResource,
+    actor: User,
+    share_action: str,
+) -> None:
+    """Send one group's copy of the resource-share email."""
+    service.send_group_resource_shared_notification(
+        resource_type=shared.type,
+        resource_name=shared.name,
+        resource_id=str(shared.instance.pk),
+        group_name=group.name,
+        shared_by=actor,
+        shared_to=recipients,
+        resource_instance=shared.instance,
+        share_action=ShareAction(share_action).value,
+    )
 
 
 def _groups_in_org(
@@ -185,20 +241,29 @@ def _live_member_users(organization: Organization, user_ids: Iterable[int]) -> l
 
     Service accounts are excluded, matching ``compute_effective_members``.
     """
+    requested = list(user_ids)
     memberships = OrganizationMember.objects.filter(
-        organization=organization, user_id__in=list(user_ids)
+        organization=organization, user_id__in=requested
     ).select_related("user")
-    return [
+    users = [
         m.user
         for m in memberships
         if not getattr(m.user, "is_service_account", False) and m.user.email
     ]
+    if len(users) != len(requested):
+        logger.info(
+            "group-notification: dropped %d of %d recipients "
+            "(left the org / service account / no email)",
+            len(requested) - len(users),
+            len(requested),
+        )
+    return users
 
 
 def _load_resource(
     organization: Organization, kind: str, resource_id: str
-) -> tuple[Any, str, str | None]:
-    """Resolve the shared resource to ``(instance, display name, plugin type)``.
+) -> _SharedResource:
+    """Resolve the shared resource for the email senders.
 
     Raises:
         ResourceNotFoundError: the descriptor, model, or row is missing — the
@@ -220,7 +285,7 @@ def _load_resource(
     if resource is None:
         raise ResourceNotFoundError(f"{kind} {resource_id} not found in organization")
     name = getattr(resource, descriptor.name_field, "") or ""
-    return resource, name, _resource_type_for(descriptor, resource)
+    return _SharedResource(resource, name, _resource_type_for(descriptor, resource))
 
 
 def _resource_type_for(descriptor: ShareableResource, resource: Any) -> str | None:
