@@ -26,6 +26,7 @@ from tenant_account_v2.shareable_resources import ShareableResource, descriptor_
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -73,11 +74,13 @@ def send_resource_shared(
     resource_kind: str,
     resource_id: str,
     share_action: str = ShareAction.SHARED.value,
+    revoked_at: datetime | None = None,
 ) -> None:
     """Mail every current member of each group whose resource access changed.
 
     One email per group, so ``group_name`` in the template is always the group
-    the recipient actually belongs to. ``share_action`` picks the wording.
+    the recipient actually belongs to. ``share_action`` picks the wording, and
+    on a revoke ``revoked_at`` bounds who counts as "current".
     """
     service = _service()
     if service is None:
@@ -96,7 +99,7 @@ def send_resource_shared(
         return
     retained = _retained_user_ids(shared.instance, share_action)
     for group in _groups_in_org(organization, group_ids):
-        recipients = _group_recipients(organization, group, retained)
+        recipients = _group_recipients(organization, group, retained, revoked_at)
         logger.info(
             "group-notification: task=notify_resource_shared_with_group "
             "group_id=%s action=%s recipient_count=%d",
@@ -197,11 +200,22 @@ def _retained_user_ids(resource: Any, share_action: str) -> set[int]:
 
 
 def _group_recipients(
-    organization: Organization, group: OrganizationGroup, retained: set[int]
+    organization: Organization,
+    group: OrganizationGroup,
+    retained: set[int],
+    joined_before: datetime | None = None,
 ) -> list[User]:
-    """Live members of ``group`` who did not keep access via ``retained``."""
+    """Live members of ``group`` who did not keep access via ``retained``.
+
+    ``joined_before`` (a revoke's timestamp) drops anyone who joined after the
+    access was taken away: they never held it through this group, so a
+    revocation notice would be about access they never had.
+    """
+    memberships = group.memberships
+    if joined_before is not None:
+        memberships = memberships.filter(created_at__lte=joined_before)
     users = _live_member_users(
-        organization, group.memberships.values_list("user_id", flat=True)
+        organization, memberships.values_list("user_id", flat=True)
     )
     return [user for user in users if user.pk not in retained]
 

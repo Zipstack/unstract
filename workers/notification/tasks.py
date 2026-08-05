@@ -541,10 +541,12 @@ def notify_resource_shared_with_group(
     resource_id: str,
     organization_id: str,
     share_action: str = "shared",
+    revoked_at: str | None = None,
 ) -> None:
     """Email every current member of the groups whose access just changed.
 
-    ``share_action`` defaults so messages enqueued before it existed still run.
+    ``revoked_at`` is set on a revoke only; the backend uses it to skip members
+    who joined the group after the access was taken away.
     """
     _post_group_notification(
         "resource-shared",
@@ -555,6 +557,7 @@ def notify_resource_shared_with_group(
             "resource_kind": resource_kind,
             "resource_id": resource_id,
             "share_action": share_action,
+            "revoked_at": revoked_at,
         },
     )
 

@@ -37,10 +37,12 @@ class ResourceSharedWithGroupSerializer(serializers.Serializer):
     actor_id = serializers.IntegerField()
     resource_kind = serializers.CharField()
     resource_id = serializers.CharField()
-    # Defaulted so messages enqueued before this field existed still validate.
     share_action = serializers.ChoiceField(
         choices=[a.value for a in ShareAction], default=ShareAction.SHARED.value
     )
+    # Revoke only: members who joined after this are excluded from the mail.
+    # Nullable because the worker sends the key on both directions.
+    revoked_at = serializers.DateTimeField(allow_null=True, default=None)
 
 
 class GroupMembershipChangedSerializer(serializers.Serializer):

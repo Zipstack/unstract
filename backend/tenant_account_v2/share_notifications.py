@@ -26,6 +26,8 @@ from collections.abc import Iterable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
+from django.utils import timezone
+
 from tenant_account_v2.shareable_resources import kind_for_instance
 from unstract.core.data_models import is_pg_transport
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -94,6 +96,12 @@ def _notify_group_share(
     lookup, so offboarding safety costs nothing. Unlike a membership removal,
     revoking a group's access leaves the group and its members intact, so the
     fresh lookup still finds everyone who needs telling.
+
+    A revoke carries ``revoked_at`` so that fresh lookup can still exclude
+    anyone who joined the group *after* the access was taken away — they never
+    held it through this group, and the queue can lag (see the PG rollout
+    ordering note). One timestamp rather than the whole member list, which
+    would grow the payload with the group.
     """
     group_ids = sorted(group.pk for group in groups)
     if not group_ids:
@@ -102,16 +110,19 @@ def _notify_group_share(
     kind = kind_for_instance(resource)
     if not organization_id or kind is None or not _feature_enabled(organization_id):
         return
+    kwargs: dict[str, Any] = {
+        "group_ids": group_ids,
+        "actor_id": actor.pk,
+        "resource_kind": kind,
+        "resource_id": str(resource.pk),
+        "share_action": str(share_action),
+        "organization_id": organization_id,
+    }
+    if share_action is ShareAction.REVOKED:
+        kwargs["revoked_at"] = timezone.now().isoformat()
     _dispatch_quietly(
         task_name=NOTIFY_RESOURCE_SHARED_TASK,
-        kwargs={
-            "group_ids": group_ids,
-            "actor_id": actor.pk,
-            "resource_kind": kind,
-            "resource_id": str(resource.pk),
-            "share_action": str(share_action),
-            "organization_id": organization_id,
-        },
+        kwargs=kwargs,
         organization_id=organization_id,
         entity_id=str(resource.pk),
     )
