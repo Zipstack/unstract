@@ -98,7 +98,7 @@ def send_resource_shared(
         )
         return
     retained = _retained_user_ids(shared.instance, share_action)
-    for group in _groups_in_org(organization, group_ids):
+    for group in _groups_to_mail(organization, group_ids, shared.instance, share_action):
         recipients = _group_recipients(organization, group, retained, revoked_at)
         logger.info(
             "group-notification: task=notify_resource_shared_with_group "
@@ -197,6 +197,29 @@ def _retained_user_ids(resource: Any, share_action: str) -> set[int]:
     return {member["user_id"] for member in compute_effective_members(resource)} | {
         owner.pk for owner in resource.owners()
     }
+
+
+def _groups_to_mail(
+    organization: Organization,
+    group_ids: Iterable[int],
+    resource: Any,
+    share_action: str,
+) -> Iterable[OrganizationGroup]:
+    """Groups from the payload that should still be mailed.
+
+    On a grant, drop any group whose access was revoked between enqueue and
+    delivery: the mail carries the resource name and id, so announcing access
+    the group no longer holds discloses both to members who cannot reach it.
+    The revoke direction needs no such check — its share row is already gone,
+    and ``_retained_user_ids`` covers who kept access another way.
+    """
+    groups = _groups_in_org(organization, group_ids)
+    if share_action != ShareAction.SHARED.value:
+        return groups
+    from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+    live = {group.pk for group in get_resource_share_groups(resource)}
+    return [group for group in groups if group.pk in live]
 
 
 def _group_recipients(
