@@ -180,6 +180,32 @@ class TestPersistence:
         assert "doc/pages" in fs.rm_calls  # cleanup invoked
         assert fs.stored_paths == []  # page 1 removed by the cleanup
 
+    def test_reextraction_with_fewer_pages_prunes_stale_trailing_pages(self) -> None:
+        # The pages dir is a stable path: a re-extraction that yields fewer
+        # pages must not leave the previous run's trailing images behind,
+        # where the reader would serve them as part of the new document.
+        fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b"), (3, b"c")])
+        refs = H.persist_page_images(fs, "doc/pages", [(1, b"x"), (2, b"y")])
+
+        assert [r.page_number for r in refs] == [1, 2]
+        assert sorted(fs.stored_paths) == [
+            "doc/pages/page_001.png",
+            "doc/pages/page_002.png",
+        ]
+        assert fs.read(path="doc/pages/page_001.png", mode="rb") == b"x"
+
+    def test_failed_dir_reset_raises_instead_of_serving_stale_pages(self) -> None:
+        fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
+        H.persist_page_images(fs, "doc/pages", [(1, b"a")])
+
+        def _rm_fails(path: str, recursive: bool = True) -> None:
+            raise OSError("permission denied")
+
+        fs.rm = _rm_fails  # type: ignore[method-assign]
+        with pytest.raises(ExtractorError, match="clear previous page images"):
+            H.persist_page_images(fs, "doc/pages", [(1, b"x")])
+
     def test_local_write_read_round_trip(self, tmp_path) -> None:  # noqa: ANN001
         fs = FileStorage(provider=FileStorageProvider.LOCAL)
         page_dir = H.build_page_store_dir(

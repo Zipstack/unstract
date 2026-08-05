@@ -768,7 +768,23 @@ class LLMWhispererHelper:
         its retries, the pages already written are removed (best-effort) before
         a hard ``ExtractorError`` propagates, so a failed extraction never leaves
         a partial set behind. Works transparently for LOCAL and S3 via ``fs``.
+
+        The directory is reset wholesale first: a re-extraction can produce
+        fewer pages than a previous run left in this stable path, and stale
+        trailing images would otherwise be read back as part of the new set.
+        A failed reset raises rather than risk serving another document's
+        pages to the vision LLM.
         """
+        try:
+            if fs.exists(page_store_dir):
+                fs.rm(page_store_dir, recursive=True)
+        except Exception as e:
+            raise ExtractorError(
+                "Failed to clear previous page images before writing the new "
+                f"set: dir={page_store_dir}, provider={fs.provider.value}",
+                status_code=500,
+                actual_err=e,
+            ) from e
         fs.mkdir(create_parents=True, path=page_store_dir)
 
         write_with_retry = retry_with_exponential_backoff(
