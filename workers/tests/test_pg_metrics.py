@@ -401,6 +401,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()
@@ -414,6 +415,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()
@@ -432,6 +434,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(
                 reaper_mod, "refresh_queue_gauges", side_effect=RuntimeError("db")
             ) as refresh,
@@ -458,6 +461,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()  # becomes leader, refresh #1
@@ -479,6 +483,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()  # becomes leader
@@ -499,6 +504,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()  # first leader tick sweeps immediately
@@ -513,6 +519,7 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()

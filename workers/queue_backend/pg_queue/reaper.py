@@ -339,6 +339,47 @@ def rearm_expired_claims(conn: PgConnection) -> int:
         raise
 
 
+def promote_due_scheduled(conn: PgConnection) -> int:
+    """Make deferred queue messages claimable: ``scheduled`` + due -> ``ready``.
+
+    Delayed visibility (UN-3843, Celery ``countdown``/``eta`` parity). A deferred
+    row is enqueued ``state='scheduled'`` with a future ``available_at`` and is
+    **absent from the claim's partial index**, so consumers cannot see it and it
+    costs the hot claim path nothing while it waits. This sweep is the only thing
+    that promotes it, which makes the reaper part of the delivery path for delayed
+    messages — not just the recovery path. It is already the mandatory singleton for
+    crash redelivery, so no new deployment dependency, but a queue that uses delays
+    inherits its liveness alert.
+
+    Consequence to hold onto: delivery is **"not before ``available_at``"**, never
+    early, with granularity of the reaper tick (default 5s) — not exact ETA. Celery's
+    countdown is likewise approximate, and every consumer of this (staggered sends,
+    retry backoff) needs a floor rather than an instant.
+
+    Cheap and bounded: ``pg_queue_message_scheduled_idx`` (partial, ``scheduled``
+    only, keyed on ``available_at``) means a backlog of far-future rows costs one
+    index seek rather than a scan. Queue-agnostic — one statement promotes every due
+    row across all queues. Idempotent (a promoted row leaves the predicate); rolls
+    back on error. Runs every **leader** tick alongside
+    :func:`rearm_expired_claims`; see :meth:`PgReaper.tick`.
+    """
+    ready = QueueMessageState.READY.value
+    scheduled = QueueMessageState.SCHEDULED.value
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {qualified('pg_queue_message')} "
+                f"SET state = '{ready}' "
+                f"WHERE state = '{scheduled}' AND available_at <= now()"
+            )
+            promoted = cur.rowcount
+        conn.commit()
+        return promoted
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_queue_message")
+        raise
+
+
 def _execution_status(
     api_client: InternalAPIClient, execution_id: str, organization_id: str
 ) -> str | object | None:
@@ -1183,6 +1224,31 @@ class PgReaper:
             logger.exception(
                 "Reaper: re-arm sweep failed — crashed-worker queue redelivery "
                 "is stalled this tick (see pg_reaper_queue_rearm_failures_total)"
+            )
+            self._discard_owned_sweep_conn()
+            raise
+        # Delayed-visibility delivery (UN-3843): promote due 'scheduled' rows so
+        # consumers can claim them. Placed with the re-arm sweep because it shares
+        # its cadence requirement — this is the DELIVERY path for delayed messages,
+        # so a slower interval would directly add latency to every countdown/eta
+        # dispatch. Same failure posture as the re-arm above (dedicated counter,
+        # re-raise, discard the conn): a stalled promotion sweep means delayed
+        # messages silently never fire, which must not be swallowed.
+        try:
+            promoted = promote_due_scheduled(self._get_sweep_conn())
+            if promoted:
+                self._metrics.queue_promoted.inc(promoted)
+                logger.info(
+                    "Reaper: promoted %s due scheduled queue message(s) to 'ready' "
+                    "(delayed-visibility delivery)",
+                    promoted,
+                )
+        except Exception:
+            self._metrics.queue_promote_failures.inc()
+            logger.exception(
+                "Reaper: promotion sweep failed — delayed (countdown/eta) queue "
+                "messages will not become claimable this tick "
+                "(see pg_reaper_queue_promote_failures_total)"
             )
             self._discard_owned_sweep_conn()
             raise

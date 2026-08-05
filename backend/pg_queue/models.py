@@ -8,6 +8,7 @@ from unstract.core.data_models import QueueMessageState
 # shared with the workers' raw SQL (client.py / reaper.py). See QueueMessageState.
 _READY = QueueMessageState.READY.value
 _CLAIMED = QueueMessageState.CLAIMED.value
+_SCHEDULED = QueueMessageState.SCHEDULED.value
 
 
 class PgQueueMessage(models.Model):
@@ -71,6 +72,24 @@ class PgQueueMessage(models.Model):
     # aggressive autovacuum) — kept out of the migration so the schema stays
     # portable across Postgres providers.
     state = models.TextField(default=_READY)
+    # Delayed visibility (UN-3843) — Celery ``countdown``/``eta`` parity. Set to a
+    # FUTURE timestamp only together with ``state='scheduled'``; the pair is what
+    # defers the row. Default now() keeps every pre-existing dispatch byte-identical
+    # (immediate rows are enqueued 'ready' and this column is never read for them).
+    #
+    # Deliberately NOT a claim predicate. The claim's partial index holds only
+    # 'ready' rows, so a scheduled row is physically absent from it and a pending
+    # delay costs the hot path nothing. Adding `available_at <= now()` to the claim
+    # would instead park every not-yet-due row inside the claim index to be walked
+    # and discarded on every claim — reintroducing the O(in-flight) scan-past cost
+    # that the state machine above was introduced to remove. The reaper promotes
+    # 'scheduled' -> 'ready' when due (reaper.promote_due_scheduled), so delivery is
+    # "not before available_at", never early, at reaper-tick granularity.
+    #
+    # Like `vt`, this column is absent from the claim index, so it never burdens the
+    # hot path; unlike `vt` it is written exactly once (at enqueue) and then only
+    # read by the promotion sweep.
+    available_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         db_table = "pg_queue_message"
@@ -82,7 +101,7 @@ class PgQueueMessage(models.Model):
             # Backstop no writer can bypass: state is a closed enum. Values sourced
             # from QueueMessageState (single source of truth; drift-tested).
             models.CheckConstraint(
-                check=models.Q(state__in=[_READY, _CLAIMED]),
+                check=models.Q(state__in=[_READY, _CLAIMED, _SCHEDULED]),
                 name="pg_queue_message_state_valid",
             ),
         ]
@@ -113,6 +132,19 @@ class PgQueueMessage(models.Model):
                 F("msg_id"),
                 condition=models.Q(state=_CLAIMED),
                 name="pg_queue_message_claimed_idx",
+            ),
+            # PROMOTION path (UN-3843) — partial index over ONLY deferred rows. The
+            # reaper's promotion sweep (`WHERE state='scheduled' AND
+            # available_at<=now()`) walks this in due order, so a large backlog of
+            # far-future rows costs one index seek, not a scan. Bounded by pending
+            # delayed messages, which is a small set by construction (a delay is a
+            # stagger or a retry backoff, not a queue). Keyed on `available_at` alone:
+            # the sweep is time-ordered and queue-agnostic — it promotes every due row
+            # in one statement rather than per queue.
+            models.Index(
+                F("available_at"),
+                condition=models.Q(state=_SCHEDULED),
+                name="pg_queue_message_scheduled_idx",
             ),
         ]
 

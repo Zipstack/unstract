@@ -252,6 +252,20 @@ class ReaperMetrics(_Exporter):
             "faults that share pg_reaper_tick_failures_total)",
             registry=self.registry,
         )
+        self.queue_promoted = Counter(
+            "pg_reaper_queue_promoted_total",
+            "Due scheduled queue messages promoted to 'ready' (delayed-visibility "
+            "delivery for countdown/eta dispatches — the reaper is on the DELIVERY "
+            "path for these, not just recovery)",
+            registry=self.registry,
+        )
+        self.queue_promote_failures = Counter(
+            "pg_reaper_queue_promote_failures_total",
+            "Promotion sweep attempts that raised (delayed messages did not become "
+            "claimable this tick; alert on a sustained non-zero rate — the symptom is "
+            "silent non-delivery, not an error at the enqueue site)",
+            registry=self.registry,
+        )
         self.claim_recovered = Counter(
             "pg_reaper_claim_recovered_total",
             "Orphan orchestration claims recovered (crash-window execution "
