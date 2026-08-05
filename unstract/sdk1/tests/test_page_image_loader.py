@@ -258,38 +258,44 @@ class TestByteBudget:
         with pytest.raises(PageImageSetTooLargeError) as excinfo:
             load_page_images(fs, _DIR, max_total_bytes=50)
         err = excinfo.value
-        assert err.total_bytes == 60  # stopped at page 2, not after all reads
+        # Bounded read: page 2 was read with length 21 (remaining + 1), so
+        # the recorded total is budget + 1, and page 3 was never touched.
+        assert err.total_bytes == 51
         assert err.max_total_bytes == 50
         assert "pages to extract" in str(err)
 
-    def test_budget_rejects_from_metadata_before_any_read(self) -> None:
-        # A single pathological object must never be pulled into memory:
-        # the budget is checked from storage size metadata BEFORE reads.
-        fs = _store({1: b"g" * 100})
-        reads: list[str] = []
+    def test_single_oversized_page_reads_are_bounded(self) -> None:
+        # A single pathological object must never be fully allocated: each
+        # read is capped at remaining-budget + 1 bytes regardless of the
+        # object's real size (no size metadata needed).
+        fs = _store({1: b"g" * (10 * 1024 * 1024)})  # 10MB object
+        lengths: list[object] = []
         original_read = fs.read
-        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
+
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            lengths.append(kw.get("length"))
+            return original_read(path, **kw)
+
+        fs.read = recording_read
         with pytest.raises(PageImageSetTooLargeError):
             load_page_images(fs, _DIR, max_total_bytes=50)
-        assert reads == []  # zero bytes entered memory
+        assert lengths == [51]  # only 51 bytes ever entered memory
 
-    def test_budget_enforced_at_read_time_without_size_metadata(self) -> None:
-        # Backends lacking a size() API still get the read-time guard.
-        fs = _store({1: b"a" * 30, 2: b"b" * 30})
+    def test_budget_never_over_allocates_across_pages(self) -> None:
+        # Aggregate guarantee: sum of bytes actually read stays <= budget+1.
+        fs = _store({1: b"a" * 30, 2: b"b" * 30, 3: b"c" * 30})
+        read_bytes: list[int] = []
+        original_read = fs.read
 
-        class NoSizeFs:
-            exists = fs.exists
-            ls = fs.ls
-            read = fs.read
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            data = original_read(path, **kw)
+            read_bytes.append(len(data))
+            return data
 
-        with pytest.raises(PageImageSetTooLargeError):
-            load_page_images(NoSizeFs(), _DIR, max_total_bytes=50)
-
-    def test_unreadable_size_metadata_falls_back_to_read_guard(self) -> None:
-        fs = _store({1: b"a" * 30, 2: b"b" * 30})
-        fs.size = lambda path: (_ for _ in ()).throw(OSError("no stat"))
+        fs.read = recording_read
         with pytest.raises(PageImageSetTooLargeError):
             load_page_images(fs, _DIR, max_total_bytes=50)
+        assert sum(read_bytes) <= 51
 
     def test_within_budget_loads(self) -> None:
         fs = _store({1: b"a" * 10, 2: b"b" * 10})

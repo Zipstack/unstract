@@ -110,13 +110,20 @@ class InMemoryFileStorage:
         return len(payload)
 
     def read(
-        self, path: str, mode: str = "rb", encoding: str = "utf-8", **_: object
+        self,
+        path: str,
+        mode: str = "rb",
+        encoding: str = "utf-8",
+        length: int = -1,
+        **_: object,
     ) -> bytes | str:
         try:
             payload = self._files[str(path)]
         except KeyError:
             # Real backends (fsspec/local) raise FileNotFoundError.
             raise FileNotFoundError(str(path)) from None
+        if length is not None and length >= 0:
+            payload = payload[:length]
         return payload if "b" in mode else payload.decode(encoding)
 
     def exists(self, path: str) -> bool:

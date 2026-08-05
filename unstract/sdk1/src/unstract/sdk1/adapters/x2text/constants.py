@@ -39,14 +39,13 @@ class ImageOutputConstants:
     # The adapter (writer) persists one PNG per page under a ``pages``
     # subfolder as ``page_NNN.png`` (zero-padded to PAGE_NUMBER_PADDING
     # digits; four or more digits appear naturally past page 999). Readers
-    # discover pages with PAGE_GLOB_PATTERN and MUST order them by the
-    # integer captured by PAGE_NUMBER_REGEX — never lexicographically,
-    # which silently misorders once page numbers outgrow the padding.
+    # list the directory and MUST order pages by the integer captured by
+    # PAGE_NUMBER_REGEX — never lexicographically, which silently
+    # misorders once page numbers outgrow the padding.
     PAGES_SUBFOLDER = "pages"
     PAGE_IMAGE_PREFIX = "page_"
     PAGE_IMAGE_EXTENSION = ".png"
     PAGE_NUMBER_PADDING = 3
-    PAGE_GLOB_PATTERN = "page_*.png"
     # First capture group is the numeric page index (as a string, possibly
     # zero-padded) — cast to int before sorting.
     PAGE_NUMBER_REGEX = r"page_(\d+)\.png"

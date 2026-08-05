@@ -7,7 +7,6 @@ naming constants. These tests pin that contract: pure functions and
 constants only — no I/O, no network, no adapter/consumer classes.
 """
 
-import fnmatch
 import re
 
 import pytest
@@ -76,16 +75,6 @@ class TestBuildPageStoreDir:
 
 
 class TestPageNamingConstants:
-    def test_glob_pattern_value(self) -> None:
-        assert ImageOutputConstants.PAGE_GLOB_PATTERN == "page_*.png"
-
-    def test_glob_matches_writer_filenames(self) -> None:
-        for name in ("page_001.png", "page_042.png", "page_100.png", "page_1000.png"):
-            assert fnmatch.fnmatch(name, ImageOutputConstants.PAGE_GLOB_PATTERN)
-        assert not fnmatch.fnmatch(
-            "thumbnail.png", ImageOutputConstants.PAGE_GLOB_PATTERN
-        )
-
     @pytest.mark.parametrize(
         ("filename", "captured"),
         [
@@ -129,16 +118,15 @@ class TestPageNamingConstants:
 
 
 class TestWriterFilenamesMatchReaderContract:
-    def test_writer_filename_matches_glob_and_regex(self) -> None:
+    def test_writer_filename_matches_reader_regex(self) -> None:
         # The writer's filename builder must produce names the reader-side
-        # glob + regex discover and parse — the two halves of the contract.
+        # regex discovers and parses — the two halves of the contract.
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
             LLMWhispererHelper,
         )
 
         for page in (1, 42, 999, 1000):
             name = LLMWhispererHelper._page_image_filename(page)
-            assert fnmatch.fnmatch(name, ImageOutputConstants.PAGE_GLOB_PATTERN)
             match = re.fullmatch(ImageOutputConstants.PAGE_NUMBER_REGEX, name)
             assert match is not None
             assert int(match.group(1)) == page
