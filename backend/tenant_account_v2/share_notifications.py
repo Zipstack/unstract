@@ -106,6 +106,11 @@ def _notify_group_share(
     group_ids = sorted(group.pk for group in groups)
     if not group_ids:
         return
+    # Stamped before the Flipt round-trip below: a member joining inside that
+    # window would be mailed a revocation for access they never held.
+    revoked_at = (
+        timezone.now().isoformat() if share_action is ShareAction.REVOKED else None
+    )
     organization_id = _organization_slug(resource)
     kind = kind_for_instance(resource)
     if not organization_id or kind is None or not _feature_enabled(organization_id):
@@ -118,8 +123,8 @@ def _notify_group_share(
         "share_action": str(share_action),
         "organization_id": organization_id,
     }
-    if share_action is ShareAction.REVOKED:
-        kwargs["revoked_at"] = timezone.now().isoformat()
+    if revoked_at is not None:
+        kwargs["revoked_at"] = revoked_at
     _dispatch_quietly(
         task_name=NOTIFY_RESOURCE_SHARED_TASK,
         kwargs=kwargs,
