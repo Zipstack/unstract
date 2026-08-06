@@ -14,6 +14,7 @@ from rest_framework.exceptions import ValidationError
 from tags.serializers import TagParamsSerializer
 from utils.enums import CeleryTaskState
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from mcp_server.context import MCPContext
@@ -306,6 +307,21 @@ def get_execution_status(
     except ValidationError as error:
         raise MCPToolError(
             f"Invalid arguments: {_format_validation_error(error)}"
+        ) from error
+    except ExecutionDoesNotExistError as error:
+        # `validate_execution_id` raises TWO different types: ValidationError
+        # for a malformed UUID, and this — an APIException, not a
+        # ValidationError — for a well-formed id that matches no execution.
+        # Uncaught it escapes to the transport catch-all, so the agent gets
+        # "Tool execution failed", and the deployment-scoped not-found message
+        # further down is never reached because the serializer runs first.
+        #
+        # Answered with that same wording deliberately: whether an id belongs
+        # to another deployment or to no execution at all is not something a
+        # caller should be able to tell apart, and the next step is identical.
+        raise MCPToolError(
+            f"No execution with id '{execution_id}' for this deployment. "
+            "Poll only ids returned by extractDocument."
         ) from error
 
     validated = serializer.validated_data
