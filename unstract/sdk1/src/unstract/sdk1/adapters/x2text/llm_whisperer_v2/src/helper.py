@@ -785,6 +785,22 @@ class LLMWhispererHelper:
                 status_code=500,
                 actual_err=e,
             ) from e
+        # ``fs.rm`` is not enough on its own: its S3-compatibility fallback
+        # (MissingContentMD5 → per-object deletes) only WARNS on individual
+        # failures, so a "successful" rm can leave survivors behind — which
+        # would silently join the new set as stale trailing pages. Verify the
+        # prefix is actually gone (through a fresh listing, not fsspec's
+        # dircache) and fail loudly otherwise.
+        invalidate = getattr(getattr(fs, "fs", None), "invalidate_cache", None)
+        if callable(invalidate):
+            invalidate(page_store_dir)
+        if fs.exists(page_store_dir):
+            raise ExtractorError(
+                "Previous page images survived the pre-write cleanup (partial "
+                f"delete): dir={page_store_dir}, provider={fs.provider.value}. "
+                "Refusing to write a new page set on top of stale pages.",
+                status_code=500,
+            )
         fs.mkdir(create_parents=True, path=page_store_dir)
 
         write_with_retry = retry_with_exponential_backoff(

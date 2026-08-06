@@ -206,6 +206,26 @@ class TestPersistence:
         with pytest.raises(ExtractorError, match="clear previous page images"):
             H.persist_page_images(fs, "doc/pages", [(1, b"x")])
 
+    def test_silently_partial_delete_raises_instead_of_serving_stale_pages(
+        self,
+    ) -> None:
+        # FileStorage.rm's S3-compatibility fallback deletes objects one at a
+        # time and only WARNS on per-object failures — so rm can "succeed"
+        # while files survive. The writer must detect survivors and refuse to
+        # write, else the stale page joins the new set as a trailing page.
+        fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b"), (3, b"c")])
+
+        real_rm = type(fs).rm
+
+        def _rm_leaves_survivor(path: str, recursive: bool = True) -> None:
+            real_rm(fs, path, recursive)
+            fs._files["doc/pages/page_003.png"] = b"c"  # survived the delete
+
+        fs.rm = _rm_leaves_survivor  # type: ignore[method-assign]
+        with pytest.raises(ExtractorError, match="survived the pre-write cleanup"):
+            H.persist_page_images(fs, "doc/pages", [(1, b"x"), (2, b"y")])
+
     def test_local_write_read_round_trip(self, tmp_path) -> None:  # noqa: ANN001
         fs = FileStorage(provider=FileStorageProvider.LOCAL)
         page_dir = H.build_page_store_dir(

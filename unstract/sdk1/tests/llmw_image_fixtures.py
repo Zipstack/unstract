@@ -92,6 +92,11 @@ class InMemoryFileStorage:
         for key in list(self._files):
             if key == str(path) or key.startswith(prefix):
                 del self._files[key]
+        # Real backends remove the directory itself too (local: rmtree;
+        # S3: the prefix stops existing once its objects are gone).
+        for d in list(self._dirs):
+            if d == str(path) or d.startswith(prefix):
+                self._dirs.discard(d)
 
     def mkdir(self, path: str, create_parents: bool = True) -> None:
         self._dirs.add(str(path))
