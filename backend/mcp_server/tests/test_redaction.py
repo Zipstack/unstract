@@ -113,6 +113,68 @@ class RedactSecretsTest(SimpleTestCase):
             assert f"={leaked}" not in out
         assert out.count("[REDACTED]") == 3
 
+    def test_prefixed_credential_names_are_masked(self) -> None:
+        """The names credentials actually travel under carry a prefix.
+
+        These are the shapes an env dump or a boto/SDK error puts on the wire,
+        and every one of them was missed while the pattern anchored on ``\\b``:
+        underscore is a word character, so there is no boundary inside
+        ``aws_secret_access_key`` for ``\\b`` to find, and the match never
+        started. The bare names below were the only ones ever covered.
+        """
+        cases = {
+            # Deliberately not an AKIA-shaped placeholder: what this case pins
+            # is the *key name's* prefix, and a realistic-looking value only
+            # trips the repo's own secret scanner on the way in.
+            "aws_secret_access_key=notarealsecret9999": "notarealsecret9999",
+            "db_password=hunter2": "hunter2",
+            "x-api-key: sk-abc123": "sk-abc123",
+            "X_API_KEY=sk-live-999": "sk-live-999",
+            "my_token=ghp_aaaaaaaa": "ghp_aaaaaaaa",
+            "client_secret: shhh123": "shhh123",
+            "aws_access_key=AKIA1234": "AKIA1234",
+        }
+        for text, leaked in cases.items():
+            with self.subTest(text):
+                out = redact_secrets(text)
+                assert leaked not in out
+                assert "[REDACTED]" in out
+
+    def test_a_credential_word_inside_a_larger_word_is_not_a_match(self) -> None:
+        """Widening the prefix must not widen it to *any* preceding character.
+
+        A ``_``/``-`` separated prefix names a credential; an alphanumeric one
+        is a different word that merely ends in the same letters.
+        """
+        text = "hastoken=notasecret"
+
+        assert redact_secrets(text) == text
+
+    def test_credential_named_fields_without_a_value_are_untouched(self) -> None:
+        """The delimiter, not the word boundary, is what stops false positives.
+
+        These are ordinary fields an agent needs in order to act, and they stay
+        readable because the keyword is not immediately followed by ``=``/``:``.
+        """
+        for text in ("token_count=5", "has_credentials: true", "the tokenizer failed"):
+            with self.subTest(text):
+                assert redact_secrets(text) == text
+
+    def test_bearer_is_matched_case_insensitively(self) -> None:
+        """The keyword folds case; the token charset is matched as written.
+
+        Pinned because the two were entangled: a pattern-wide ``(?i)`` made the
+        token class ``[A-Za-z...]`` a redundant restatement of itself, and
+        scoping the flag to the keyword is only safe if every spelling of
+        ``Bearer`` still matches.
+        """
+        for word in ("Bearer", "bearer", "BEARER", "BeArEr"):
+            with self.subTest(word):
+                out = redact_secrets(f"sent {word} abcdef123456")
+
+                assert "abcdef123456" not in out
+                assert word in out, "the scheme name itself stays, only the token goes"
+
 
 class SecretAnchorTest(SimpleTestCase):
     """The literal pre-filter must never change what redaction produces.

@@ -35,14 +35,31 @@ _SECRET_PATTERNS = (
     # consumed by the key=value rule below, which would mask the word "Bearer"
     # and leave the token itself in place.
     (
-        re.compile(r"(?i)\b(bearer\s+)([A-Za-z0-9._\-]{8,})"),
+        # The case-insensitivity is scoped to the keyword rather than applied
+        # to the whole pattern. Under a global ``(?i)`` the token class
+        # ``[A-Za-z...]`` is literally the same class written twice, which
+        # reads as "both cases handled" while actually being redundant.
+        re.compile(r"\b((?i:bearer)\s+)([A-Za-z0-9._-]{8,})"),
         rf"\1{_REDACTED}",
     ),
     # key=value / key: value, where the key looks credential-ish. Stops at
     # whitespace, quote or delimiter so the rest of the message survives.
     (
         re.compile(
-            r"(?i)\b(password|passwd|pwd|secret|secret_access_key|access_key|"
+            # Not ``\b``: underscore is a word character, so ``\b`` finds no
+            # boundary inside ``aws_secret_access_key`` and the compound names
+            # that credentials actually travel under — ``aws_secret_access_key``,
+            # ``db_password``, ``x-api-key`` — all failed to match, which is the
+            # opposite of the intended reading of "whole word only".
+            #
+            # The lookbehind keeps that intent where it pays: a match still
+            # cannot start mid-word after an alphanumeric, so ``hastoken`` is
+            # not a hit. What it now permits is a ``_``/``-`` separated prefix.
+            # Guarding against a bare-word false positive is the delimiter's
+            # job anyway — ``token_count=5`` has never matched, because ``token``
+            # is not followed by ``=``.
+            r"(?i)(?<![A-Za-z0-9])"
+            r"(password|passwd|pwd|secret|secret_access_key|access_key|"
             r"api[_-]?key|token|authorization|credential)"
             r"(\s*[=:]\s*)"
             r"([^\s,;'\"&)}\]]+)"
