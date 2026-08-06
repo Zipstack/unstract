@@ -8,7 +8,6 @@ from typing import Any
 
 import magic
 from account_v2.custom_exceptions import DuplicateData
-from api_v2.models import APIDeployment
 from celery import signature
 from celery.result import AsyncResult
 from django.db import IntegrityError
@@ -22,20 +21,17 @@ from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
-from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
@@ -50,7 +46,6 @@ from prompt_studio.prompt_profile_manager_v2.constants import (
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio_core_v2.constants import (
-    DeploymentType,
     FileViewTypes,
     ToolStudioErrors,
     ToolStudioPromptKeys,
@@ -85,6 +80,11 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from prompt_studio.tool_usage import (
+    dependent_workflow_ids,
+    deployment_types_for,
+    join_deployment_types,
+)
 from unstract.core.data_models import PgTaskStatus
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.utils.common import Utils as CommonUtils
@@ -133,6 +133,9 @@ class PromptStudioCoreView(
 
     versioning_class = URLPathVersioning
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["tool_name", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
     notification_resource_name_field = "tool_name"
@@ -161,7 +164,8 @@ class PromptStudioCoreView(
             "memberships__user"
         )
         if self.action == "list":
-            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            # Subquery rather than a join-aggregate: Count() over a join would
+            # need a GROUP BY that fights the queryset's distinct()
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -169,20 +173,23 @@ class PromptStudioCoreView(
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
-            # modified_at needs no annotation: prompt writes bump the parent
-            # row at the source (ToolStudioPrompt.save/delete, sync_prompts),
-            # keeping the plain field orderable. Only prompt writes bump —
-            # profile/document edits and queryset-level prompt writes do not;
-            # any new write path must bump CustomTool itself
+            # modified_at stays a plain orderable field: prompt writes bump the
+            # parent row, so no annotation is needed.
             qs = qs.select_related("created_by").annotate(
                 _prompt_count=Subquery(prompt_count_sq),
             )
             search = self.request.query_params.get("search")
             if search:
-                qs = qs.filter(tool_name__icontains=search)
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too.
-        return qs.order_by("tool_id")
+                from django.db.models import Q
+                from tenant_account_v2.sharing_helpers import (
+                    resources_matching_owner_search,
+                )
+
+                qs = qs.filter(
+                    Q(tool_name__icontains=search)
+                    | Q(pk__in=resources_matching_owner_search(qs.model, search))
+                )
+        return qs
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
@@ -228,82 +235,26 @@ class PromptStudioCoreView(
         instance.delete(organization_id)
 
     def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
-        """Check if a tool is being used in any workflows.
+        """Whether ``instance``'s exported tool is in use, and by which workflows.
 
-        Args:
-            instance: The CustomTool instance to check
-
-        Returns:
-            Tuple of (is_used: bool, dependent_workflows: set)
+        An unexported project has no registry row and so no dependants.
         """
         registry = getattr(instance, "prompt_studio_registries", None)
         if not registry:
             return False, set()
 
-        dependent_wfs = set(
-            ToolInstance.objects.filter(tool_id=registry.pk)
-            .values_list("workflow_id", flat=True)
-            .distinct()
-        )
+        dependent_wfs = dependent_workflow_ids(registry.pk)
         return bool(dependent_wfs), dependent_wfs
 
     def _get_deployment_types(self, workflow_ids: set) -> set:
-        """Get all deployment types where the tool is used.
-
-        Args:
-            workflow_ids: Set of workflow IDs to check
-
-        Returns:
-            Set of deployment type strings
-        """
-        deployment_types: set = set()
-
-        # Check API Deployments (include inactive to prevent drift)
-        if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
-            deployment_types.add(DeploymentType.API_DEPLOYMENT)
-
-        # Check Pipelines using mapping instead of if/elif
-        pipeline_type_mapping = {
-            Pipeline.PipelineType.ETL: DeploymentType.ETL_PIPELINE,
-            Pipeline.PipelineType.TASK: DeploymentType.TASK_PIPELINE,
-        }
-        pipelines = (
-            Pipeline.objects.filter(workflow_id__in=workflow_ids)
-            .values_list("pipeline_type", flat=True)
-            .distinct()
-        )
-        for pipeline_type in pipelines:
-            if pipeline_type in pipeline_type_mapping:
-                deployment_types.add(pipeline_type_mapping[pipeline_type])
-
-        # Check for Manual Review
-        if WorkflowEndpoint.objects.filter(
-            workflow_id__in=workflow_ids,
-            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
-        ).exists():
-            deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
-
-        return deployment_types
+        """Deployment kinds reachable from ``workflow_ids``."""
+        return deployment_types_for(workflow_ids)
 
     def _format_deployment_types_message(self, deployment_types: set) -> str:
-        """Format deployment types into human-readable message.
-
-        Args:
-            deployment_types: Set of deployment type strings
-
-        Returns:
-            Formatted message string or empty string if no types
-        """
-        if not deployment_types:
+        """Render the "re-export needed" notice, or "" when nothing is deployed."""
+        types_text = join_deployment_types(deployment_types)
+        if not types_text:
             return ""
-
-        types_list = sorted(deployment_types)
-        if len(types_list) == 1:
-            types_text = types_list[0]
-        elif len(types_list) == 2:
-            types_text = f"{types_list[0]} or {types_list[1]}"
-        else:
-            types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
 
         return (
             f"You have made changes to this Prompt Studio project. "
@@ -943,8 +894,7 @@ class PromptStudioCoreView(
                 # than a bare 500 that a status-code-keyed client would misread as a
                 # terminal task failure.
                 logger.exception(
-                    "task_status: pg_task_result read failed for %s; treating as "
-                    "pending",
+                    "task_status: pg_task_result read failed for %s; treating as pending",
                     task_id,
                 )
                 row = None
