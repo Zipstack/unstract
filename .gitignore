@@ -717,3 +717,6 @@ AGENTS.md
 # Unstract test rig
 reports/
 .test-selection
+
+# Vitest browser-mode failure screenshots (written on a red layout assertion)
+frontend/src/**/__screenshots__/
