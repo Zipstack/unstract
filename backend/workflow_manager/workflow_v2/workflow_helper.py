@@ -1033,6 +1033,37 @@ class WorkflowHelper:
                 )
             try:
                 workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+                # Single-step is the one entry path that never moved onto PG. Its
+                # only fan-out is the Celery chord in `process_input_files` — the
+                # normal path's PG fan-out lives in the general worker instead, so
+                # nothing here is transport-gated. With the flag on and the Celery
+                # file_processing workers scaled to zero (the epic's acceptance
+                # gate), those batches would sit unconsumed and the execution would
+                # hang in EXECUTING, invisible to the PG reaper. Fail fast instead:
+                # a 500 with a stated cause beats a silent forever-EXECUTING row.
+                #
+                # Unreachable from the UI — the step buttons are gone and both live
+                # call sites pass isStepExecution=false, so `execution_action` is
+                # never sent (frontend Agency.jsx). This guards a direct API call.
+                #
+                # Resolved here rather than in `process_input_files` so the Celery
+                # path stays byte-identical and an already-resolved execution is
+                # never re-resolved. Step executions are created by
+                # `create_and_make_execution_response`, which resolves no transport,
+                # so this is their first and only resolution.
+                transport = resolve_transport(
+                    execution_id=execution_id,
+                    organization_id=workflow.organization.organization_id,
+                    workflow_id=workflow.id,
+                )
+                if is_pg_transport(transport):
+                    raise WorkflowExecutionError(
+                        "Single-step execution is not supported on the Postgres "
+                        "queue transport: it has no PG fan-out, and its Celery "
+                        "batches would never be consumed. Run the full workflow "
+                        "instead, or disable pg_queue_enabled for this "
+                        "organization."
+                    )
                 return WorkflowHelper.run_workflow(
                     workflow=workflow,
                     single_step=True,
