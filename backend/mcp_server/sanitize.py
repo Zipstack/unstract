@@ -35,11 +35,12 @@ _SECRET_PATTERNS = (
     # consumed by the key=value rule below, which would mask the word "Bearer"
     # and leave the token itself in place.
     (
-        # The case-insensitivity is scoped to the keyword rather than applied
-        # to the whole pattern. Under a global ``(?i)`` the token class
-        # ``[A-Za-z...]`` is literally the same class written twice, which
-        # reads as "both cases handled" while actually being redundant.
-        re.compile(r"\b((?i:bearer)\s+)([A-Za-z0-9._-]{8,})"),
+        # ``(?i)`` applies to the whole pattern, so the token class is written
+        # in one case only: spelling it ``[A-Za-z0-9._-]`` here would be the
+        # same class twice over, not "both cases handled". The class is
+        # deliberately ASCII-explicit rather than ``\w`` — ``\w`` is Unicode by
+        # default, which would quietly widen what counts as a token character.
+        re.compile(r"(?i)\b(bearer\s+)([a-z0-9._-]{8,})"),
         rf"\1{_REDACTED}",
     ),
     # key=value / key: value, where the key looks credential-ish. Stops at
