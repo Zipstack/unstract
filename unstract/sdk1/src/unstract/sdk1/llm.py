@@ -333,13 +333,37 @@ class LLM:
     # OpenAI / Azure auto-cache server-side (no marker needed) and other
     # providers don't support it, so we never tag their payloads.
     _PROMPT_CACHE_PROVIDERS = frozenset({"anthropic", "bedrock"})
+    # Bedrock hosts many model families (Anthropic Claude, Amazon Titan/Nova,
+    # Meta Llama, Cohere, Mistral, AI21). Only Anthropic/Claude models on
+    # Bedrock honor ``cache_control``; emitting the blocks for other families
+    # would be ineffective and could produce unsupported message shapes. These
+    # substrings identify the cache-capable Bedrock models by their model id.
+    _BEDROCK_CACHE_MODEL_MARKERS = ("anthropic", "claude")
 
     def _prompt_caching_active(self) -> bool:
         """Whether to emit ``cache_control`` blocks for this call."""
-        return (
-            self._enable_prompt_caching
-            and self.adapter.get_provider() in self._PROMPT_CACHE_PROVIDERS
-        )
+        if not self._enable_prompt_caching:
+            return False
+        provider = self.adapter.get_provider()
+        if provider not in self._PROMPT_CACHE_PROVIDERS:
+            return False
+        if provider == "bedrock":
+            # Gate on the underlying model, not just the provider: only
+            # Anthropic/Claude models on Bedrock support cache_control.
+            model = str(self.kwargs.get("model", "")).lower()
+            return any(m in model for m in self._BEDROCK_CACHE_MODEL_MARKERS)
+        return True
+
+    def is_prompt_caching_active(self) -> bool:
+        """Public: whether ``cache_control`` blocks are emitted for this LLM.
+
+        True only when caching is enabled (adapter flag, constructor arg, or the
+        ``ENABLE_PROMPT_CACHING`` master switch) *and* the provider/model
+        supports it. Callers use this to decide whether reordering a prompt into
+        a cached prefix is worthwhile — reordering for a non-caching provider
+        changes prompt structure with no benefit.
+        """
+        return self._prompt_caching_active()
 
     def _build_messages(
         self, prompt: str, cache_prefix: str | None = None
@@ -844,7 +868,11 @@ class LLM:
         """
         if has_cache_tokens and response is not None:
             try:
-                return litellm.completion_cost(completion_response=response)
+                # Pass ``model`` so cached calls price against the same model as
+                # the ``cost_per_token`` fallback below. Without it,
+                # ``completion_cost`` derives the model from the response and
+                # ignores any ``cost_model`` override.
+                return litellm.completion_cost(completion_response=response, model=model)
             except Exception:
                 logger.debug(
                     "completion_cost() failed for model=%s; "

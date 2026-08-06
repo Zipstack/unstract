@@ -91,5 +91,87 @@ def test_flag_defaults_off_and_reads_env(monkeypatch):
     assert _mod.is_prompt_caching_enabled() is False
 
 
+# --- gate: only reorder into a cached prefix when the LLM actually caches -----
+
+
+class _FakeLLM:
+    """Minimal LLM stub exposing the SDK's caching-capability probe."""
+
+    def __init__(self, active: bool):
+        self._active = active
+
+    def is_prompt_caching_active(self) -> bool:
+        return self._active
+
+
+class _LegacyLLM:
+    """LLM stub without the capability probe (older SDK / mock)."""
+
+
+def test_llm_caches_prompts_probe():
+    assert A._llm_caches_prompts(_FakeLLM(True)) is True
+    assert A._llm_caches_prompts(_FakeLLM(False)) is False
+    # An LLM that doesn't expose the probe must default to "no caching".
+    assert A._llm_caches_prompts(_LegacyLLM()) is False
+
+
+def test_llm_caches_prompts_probe_swallows_errors():
+    class _BoomLLM:
+        def is_prompt_caching_active(self):
+            raise RuntimeError("boom")
+
+    assert A._llm_caches_prompts(_BoomLLM()) is False
+
+
+def _run_and_capture(monkeypatch, llm):
+    """Run construct_and_run_prompt with run_completion stubbed to capture args."""
+    captured: dict = {}
+
+    def _fake_run_completion(**kwargs):
+        captured.update(kwargs)
+        return "answer"
+
+    monkeypatch.setattr(A, "run_completion", staticmethod(_fake_run_completion))
+
+    tool_settings = {
+        _mod.PSKeys.PREAMBLE: "You are an extractor.",
+        _mod.PSKeys.POSTAMBLE: "Answer concisely.",
+        _mod.PSKeys.GRAMMAR: [],
+    }
+    output = {
+        "promptx": "What is the tenant name?",
+        _mod.PSKeys.NAME: "q1",
+        _mod.PSKeys.TYPE: "text",
+    }
+    A.construct_and_run_prompt(
+        tool_settings=tool_settings,
+        output=output,
+        llm=llm,
+        context="UNIT 101 John Smith $1,450",
+        prompt="promptx",
+        metadata={},
+    )
+    return captured, output
+
+
+def test_supported_llm_reorders_and_sends_cache_prefix(monkeypatch):
+    captured, output = _run_and_capture(monkeypatch, _FakeLLM(True))
+    # Cached path: context-first prompt + a cache_prefix that is the context.
+    assert captured["cache_prefix"] is not None
+    assert captured["cache_prefix"].startswith("Context:")
+    combined = output[_mod.PSKeys.COMBINED_PROMPT]
+    assert combined.index("UNIT 101") < combined.index("Question or Instruction")
+
+
+def test_unsupported_llm_keeps_original_order_and_no_cache_prefix(monkeypatch):
+    # Global flag ON, but the LLM's provider/model does not support caching.
+    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "true")
+    captured, output = _run_and_capture(monkeypatch, _FakeLLM(False))
+    # No cache prefix, and the original context-last prompt order is preserved.
+    assert captured["cache_prefix"] is None
+    combined = output[_mod.PSKeys.COMBINED_PROMPT]
+    assert combined.index("Question or Instruction") < combined.index("UNIT 101")
+
+
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))

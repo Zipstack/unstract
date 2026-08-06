@@ -117,6 +117,29 @@ class AnswerPromptService:
         return promptx
 
     @staticmethod
+    def _llm_caches_prompts(llm: Any) -> bool:
+        """Whether reordering into a cached prefix pays off for this LLM.
+
+        True only when the LLM reports prompt caching is active for it — caching
+        enabled (adapter flag / constructor arg / ``ENABLE_PROMPT_CACHING``
+        master switch) AND a supported provider/model. LLM objects that don't
+        expose the capability default to False, so their prompt order is left
+        unchanged.
+        """
+        checker = getattr(llm, "is_prompt_caching_active", None)
+        if not callable(checker):
+            return False
+        try:
+            return bool(checker())
+        except Exception:
+            logger.warning(
+                "Failed to determine prompt-caching support for LLM; "
+                "using original prompt order",
+                exc_info=True,
+            )
+            return False
+
+    @staticmethod
     def construct_and_run_prompt(
         tool_settings: dict[str, Any],
         output: dict[str, Any],
@@ -171,7 +194,12 @@ class AnswerPromptService:
             "prompt_type": prompt_type,
         }
         cache_prefix: str | None = None
-        if is_prompt_caching_enabled():
+        # Only reorder into a cached prefix when this LLM actually caches
+        # (caching enabled AND a supported provider/model). Reordering for an
+        # unsupported provider would change the prompt structure — moving the
+        # document context ahead of the instructions — with no caching benefit,
+        # so those providers keep the original prompt order.
+        if AnswerPromptService._llm_caches_prompts(llm):
             # Reorder so the reused document context becomes a cached prefix.
             # The text the model sees is ``cache_prefix + prompt_str``.
             cache_prefix, prompt_str = AnswerPromptService.construct_cached_prompt(

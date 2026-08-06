@@ -1045,8 +1045,14 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # `cache_control` block on the stable system prompt), not as a LiteLLM
         # completion param, so it is excluded from Pydantic validation and
         # carried through on the validated dict for the LLM layer to read.
-        # Only Anthropic models on Bedrock support prompt caching.
-        enable_prompt_caching = bool(adapter_metadata.get("enable_prompt_caching", False))
+        # Only Anthropic/Claude models on Bedrock support prompt caching, so
+        # don't advertise the flag for other Bedrock families (Titan, Llama,
+        # etc.). The LLM layer enforces the same model gate; this just keeps the
+        # validated metadata honest.
+        bedrock_model_id = str(result_metadata.get("model", "")).lower()
+        enable_prompt_caching = bool(
+            adapter_metadata.get("enable_prompt_caching", False)
+        ) and ("anthropic" in bedrock_model_id or "claude" in bedrock_model_id)
 
         _pack_bedrock_guardrail_config(result_metadata)
 

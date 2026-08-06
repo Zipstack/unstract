@@ -82,17 +82,22 @@ class _StubLLM:
 
     _build_messages = LLM._build_messages
     _prompt_caching_active = LLM._prompt_caching_active
+    is_prompt_caching_active = LLM.is_prompt_caching_active
     _PROMPT_CACHE_PROVIDERS = LLM._PROMPT_CACHE_PROVIDERS
+    _BEDROCK_CACHE_MODEL_MARKERS = LLM._BEDROCK_CACHE_MODEL_MARKERS
 
     def __init__(
         self,
         system_prompt: str,
         enable_prompt_caching: bool,
         provider: str = "anthropic",
+        model: str = "claude-opus-4-8",
     ) -> None:
         self._system_prompt = system_prompt
         self._enable_prompt_caching = enable_prompt_caching
         self.adapter = _StubAdapter(provider)
+        # Only read by the Bedrock model gate; harmless for other providers.
+        self.kwargs = {"model": model}
 
 
 def test_build_messages_plain_string_when_caching_off() -> None:
@@ -169,6 +174,104 @@ def test_build_messages_cache_prefix_preserved_for_unsupported_provider() -> Non
         {"role": "system", "content": "SYSTEM"},
         {"role": "user", "content": "STABLE" + "VOLATILE"},
     ]
+
+
+# ── Bedrock model gate: cache_control only for Anthropic/Claude on Bedrock ───
+
+# Bedrock hosts many families; only Anthropic/Claude honor cache_control.
+_BEDROCK_ANTHROPIC_MODELS = [
+    "bedrock/anthropic.claude-opus-4-8-20260101-v1:0",
+    "bedrock/us.anthropic.claude-sonnet-4-6-20250101-v1:0",
+    "anthropic.claude-3-5-sonnet-20241022-v2:0",
+]
+_BEDROCK_NON_ANTHROPIC_MODELS = [
+    "bedrock/amazon.titan-text-premier-v1:0",
+    "bedrock/meta.llama3-70b-instruct-v1:0",
+    "bedrock/cohere.command-r-plus-v1:0",
+    "bedrock/mistral.mistral-large-2407-v1:0",
+]
+
+
+@pytest.mark.parametrize("model", _BEDROCK_ANTHROPIC_MODELS)
+def test_bedrock_anthropic_model_caches(model: str) -> None:
+    llm = _StubLLM(
+        "SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model
+    )
+    assert llm._prompt_caching_active() is True
+    # cache_control block is emitted on the split user turn.
+    user = llm._build_messages("VOLATILE", cache_prefix="STABLE")[1]
+    assert user["content"][0]["cache_control"] == {"type": "ephemeral"}
+
+
+@pytest.mark.parametrize("model", _BEDROCK_NON_ANTHROPIC_MODELS)
+def test_bedrock_non_anthropic_model_does_not_cache(model: str) -> None:
+    """Titan/Llama/Cohere/Mistral on Bedrock must not get cache_control blocks."""
+    llm = _StubLLM(
+        "SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model
+    )
+    assert llm._prompt_caching_active() is False
+    # Falls back to the plain string form; prefix still preserved as full text.
+    assert llm._build_messages("VOLATILE", cache_prefix="STABLE") == [
+        {"role": "system", "content": "SYSTEM"},
+        {"role": "user", "content": "STABLE" + "VOLATILE"},
+    ]
+
+
+def test_is_prompt_caching_active_matches_private() -> None:
+    """The public probe mirrors the internal gate for callers (e.g. answer_prompt)."""
+    on = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="anthropic")
+    assert on.is_prompt_caching_active() is True
+    off_provider = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="openai")
+    assert off_provider.is_prompt_caching_active() is False
+    off_bedrock = _StubLLM(
+        "SYSTEM",
+        enable_prompt_caching=True,
+        provider="bedrock",
+        model="bedrock/amazon.titan-text-premier-v1:0",
+    )
+    assert off_bedrock.is_prompt_caching_active() is False
+
+
+def test_validate_bedrock_non_anthropic_never_enables_caching() -> None:
+    """base1 keeps the validated flag honest: non-Anthropic Bedrock -> False."""
+    result = AWSBedrockLLMParameters.validate(
+        {
+            "model": "amazon.titan-text-premier-v1:0",
+            "enable_prompt_caching": True,
+            "aws_region_name": "us-east-1",
+        }
+    )
+    assert result["enable_prompt_caching"] is False
+
+
+# ── cost accounting: cached calls price against the cost_model override ──────
+
+
+def test_cost_override_passed_to_completion_cost_on_cached_call(monkeypatch) -> None:
+    """On a cached call, completion_cost must receive model= so the cost_model
+    override is honored (matching the cost_per_token fallback path)."""
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.llm import LLM
+
+    captured: dict[str, Any] = {}
+
+    def _fake_completion_cost(**kwargs: Any) -> float:
+        captured.update(kwargs)
+        return 0.42
+
+    monkeypatch.setattr(llm_mod.litellm, "completion_cost", _fake_completion_cost)
+
+    cost = LLM._compute_call_cost(
+        object(),
+        model="anthropic/claude-opus-4-8",
+        prompt_tokens=100,
+        completion_tokens=10,
+        has_cache_tokens=True,
+        response={"id": "resp"},
+    )
+    assert cost == 0.42
+    assert captured.get("model") == "anthropic/claude-opus-4-8"
+    assert captured.get("completion_response") == {"id": "resp"}
 
 
 # ── constructor / env opt-in (real LLM, no flag in adapter metadata) ────────
