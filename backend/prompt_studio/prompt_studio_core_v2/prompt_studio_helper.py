@@ -1265,6 +1265,10 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+        # Stamp the x2text output mode like every other payload builder — the
+        # executor's single-pass guard trusts the stamp, and an unstamped IDE
+        # payload is treated as pre-upgrade text mode (guard never fires).
+        PromptStudioHelper._stamp_x2text_output_mode(tool_settings, default_profile)
 
         lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
