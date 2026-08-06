@@ -162,6 +162,11 @@ def _call(
             autospec=True,
             side_effect=lambda _doc, _prompt, _org, _user, _tool, output: output,
         ),
+        # The lookups bridge is a no-op in OSS, but cloud CI runs this suite
+        # against the merged tree where it resolves to the real lookups
+        # implementation — which then feeds this test's MagicMock prompt into
+        # an ORM query. Patch it out like every other collaborator.
+        patch.object(psh, "get_lookup_config", autospec=True, return_value=None),
         patch.object(psh, "EnvHelper", MagicMock()),
         patch.object(psh, "PromptIdeBaseTool", MagicMock()),
         patch.object(psh, "IndexingUtils", MagicMock()),
@@ -332,9 +337,7 @@ class TestSynchronousFetchResponse:
                 autospec=True,
                 side_effect=seen.append,
             ),
-            patch.object(
-                helper, "validate_profile_manager_owner_access", autospec=True
-            ),
+            patch.object(helper, "validate_profile_manager_owner_access", autospec=True),
             patch.object(
                 helper, "_resolve_llm_ids", autospec=True, return_value=("m", "c")
             ),
