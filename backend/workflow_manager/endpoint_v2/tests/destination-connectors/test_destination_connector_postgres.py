@@ -30,9 +30,12 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        # Lowercase: the connector quotes the name on CREATE (case-preserved) but
-        # lowercases it when reading information_schema back.
-        self.test_table_name = "output_3"
+        # Per-worker table so parallel xdist workers don't write to one shared
+        # table — a cross-worker row would otherwise win `ORDER BY created_at
+        # DESC LIMIT 1`. Lowercase: the connector quotes the name on CREATE
+        # (case-preserved) but lowercases it when reading information_schema back.
+        worker = os.getenv("PYTEST_XDIST_WORKER", "")
+        self.test_table_name = f"output_3_{worker}" if worker else "output_3"
 
         # Create real PostgreSQL connector instance
         self.postgres_connector = PostgreSQL(settings=self.postgres_config)
