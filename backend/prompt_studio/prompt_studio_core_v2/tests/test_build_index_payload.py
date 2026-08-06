@@ -29,6 +29,10 @@ from prompt_studio.prompt_studio_core_v2 import prompt_studio_helper as _psh_mod
 PromptStudioHelper = _psh_mod.PromptStudioHelper
 IKeys = _psh_mod.IKeys
 
+# Sentinel requester object handed to build_index_payload by every test —
+# distinct from the file-path ``user_id`` ("user-1") by construction.
+_REQUEST_USER = MagicMock(name="request-user")
+
 
 def _make_tool(enable_highlight: bool = False, summarize_context: bool = False):
     tool = MagicMock(name="CustomTool")
@@ -55,6 +59,7 @@ def _dispatch_build(
     read_return: str | Exception,
     tool: Any = None,
     profile: Any = None,
+    validate_owner_mock: Any = None,
 ):
     """Run ``build_index_payload`` with all collaborators patched.
 
@@ -69,6 +74,7 @@ def _dispatch_build(
     """
     tool = tool or _make_tool()
     profile = profile or _make_profile()
+    validate_owner_mock = validate_owner_mock or MagicMock(return_value=None)
 
     fs_instance = MagicMock(name="fs_instance")
     if isinstance(read_return, Exception):
@@ -90,14 +96,22 @@ def _dispatch_build(
                 "get_or_create_prompt_studio_subdirectory",
                 MagicMock(return_value="/prompt-studio/org/user/tool"),
             ),
-            (_psh_mod.ProfileManager, "get_default_llm_profile", MagicMock(return_value=profile)),
+            (
+                _psh_mod.ProfileManager,
+                "get_default_llm_profile",
+                MagicMock(return_value=profile),
+            ),
             (PromptStudioHelper, "validate_adapter_status", MagicMock(return_value=None)),
             (
                 PromptStudioHelper,
                 "validate_profile_manager_owner_access",
-                MagicMock(return_value=None),
+                validate_owner_mock,
             ),
-            (PromptStudioHelper, "_get_platform_api_key", MagicMock(return_value="pk-test")),
+            (
+                PromptStudioHelper,
+                "_get_platform_api_key",
+                MagicMock(return_value="pk-test"),
+            ),
             (
                 PromptStudioHelper,
                 "_build_summarize_params",
@@ -105,7 +119,11 @@ def _dispatch_build(
             ),
             (_psh_mod.EnvHelper, "get_storage", MagicMock(return_value=fs_instance)),
             (_psh_mod.PromptStudioIndexHelper, "check_extraction_status", check_mock),
-            (_psh_mod.IndexingUtils, "generate_index_key", MagicMock(return_value="doc-key-1")),
+            (
+                _psh_mod.IndexingUtils,
+                "generate_index_key",
+                MagicMock(return_value="doc-key-1"),
+            ),
             (_psh_mod, "PromptIdeBaseTool", MagicMock(return_value=MagicMock())),
             (_psh_mod.StateStore, "get", MagicMock(return_value="")),
         ):
@@ -118,6 +136,7 @@ def _dispatch_build(
             user_id="user-1",
             document_id="doc-1",
             run_id="run-1",
+            request_user=_REQUEST_USER,
         )
         return context, cb_kwargs, fs_instance, check_mock
 
@@ -173,3 +192,24 @@ class TestBuildIndexPayloadMarker:
             "falling back to full extraction" in rec.getMessage()
             for rec in caplog.records
         )
+
+
+class TestOwnerAccessPlumbing:
+    """UN-3739: the REQUESTER must reach the owner-access check.
+
+    ``user_id`` in these helpers is the file-path owner (the project
+    creator) — views pass ``tool.created_by.user_id`` there.  The
+    requesting user travels separately as the ``request_user`` object;
+    asserting the sentinel arrives pins that the two identities are never
+    conflated again.
+    """
+
+    def test_owner_access_receives_requesting_user(self) -> None:
+        validate_owner_mock = MagicMock(return_value=None)
+        _dispatch_build(
+            check_return=True,
+            read_return="extracted text",
+            validate_owner_mock=validate_owner_mock,
+        )
+        _args, kwargs = validate_owner_mock.call_args
+        assert kwargs.get("request_user") is _REQUEST_USER

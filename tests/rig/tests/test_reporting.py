@@ -106,6 +106,37 @@ def test_status_icon_round_trips() -> None:
     assert empty_result.status_icon == "⚪"
 
 
+def test_blocked_result_is_never_green() -> None:
+    # A blocked group ran nothing, so its zero counters otherwise read as a
+    # pass and would attest coverage its tests never proved.
+    blocked = GroupResult("g", "e2e", 0, 0, 0, 0, 0, 0.0, blocked_by=("e2e-smoke",))
+    assert blocked.status == "blocked"
+    assert blocked.status_icon == "⏭️"
+
+
+def test_blocked_result_rejects_nonzero_counters() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="never ran"):
+        GroupResult("g", "e2e", 0, 0, 1, 0, 0, 0.0, blocked_by=("e2e-smoke",))
+
+
+def test_blocked_junit_round_trips_through_parse(tmp_path: Path) -> None:
+    # The blocked-by property a synthetic junit carries must survive `rig
+    # report`, which rebuilds results purely from junit on the CI runner.
+    from tests.rig.cli import _write_blocked_junit
+
+    (tmp_path / "g").mkdir()
+    _write_blocked_junit(
+        tmp_path / "g" / "junit.xml", "g", ("e2e-smoke", "e2e-mid")
+    )
+    (tmp_path / "g" / "exit.txt").write_text("0")
+    result = parse_junit("g", "e2e", tmp_path)
+    assert result is not None
+    assert result.status == "blocked"
+    assert result.blocked_by == ("e2e-smoke", "e2e-mid")
+
+
 def test_passed_critical_path_ids_collects_only_passing_marked_tests(
     tmp_path: Path,
 ) -> None:

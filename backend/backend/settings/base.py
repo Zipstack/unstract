@@ -338,6 +338,8 @@ SHARED_APPS = (
     # For the organization model
     "account_v2",
     "account_usage",
+    # PG Queue — extension-free bespoke queue (cross-org infra, shared schema)
+    "pg_queue",
     # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
@@ -390,6 +392,7 @@ SHARED_APPS = (
     "configuration",
     "dashboard_metrics",
     "platform_api",
+    "global_api_deployment_key",
 )
 TENANT_APPS = []
 
@@ -625,7 +628,7 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
-        "rest_framework.filters.OrderingFilter",
+        "utils.filters.ordering_filter.DeterministicOrderingFilter",
     ],
     # For API versioning
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",

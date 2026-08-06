@@ -3732,6 +3732,7 @@ dev = [
     { name = "unstract-workflow-execution" },
 ]
 test = [
+    { name = "jsonschema" },
     { name = "pytest" },
     { name = "pytest-django" },
 ]
@@ -3798,6 +3799,7 @@ dev = [
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
 ]
 test = [
+    { name = "jsonschema", specifier = ">=4.18.6,<5.0" },
     { name = "pytest", specifier = ">=8.0.1" },
     { name = "pytest-django", specifier = ">=4.12.0" },
 ]
@@ -4040,6 +4042,7 @@ dependencies = [
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
     { name = "unstract-flags" },
+    { name = "unstract-sdk1" },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
 ]
@@ -4049,6 +4052,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
     { name = "unstract-flags", editable = "../unstract/flags" },
+    { name = "unstract-sdk1", editable = "../unstract/sdk1" },
     { name = "unstract-tool-registry", editable = "../unstract/tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
 ]

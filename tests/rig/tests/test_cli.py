@@ -216,6 +216,86 @@ def test_optional_group_failure_does_not_block_overall_exit(
     )
 
 
+def _run_empty_group_scenario(
+    tmp_path: Path, monkeypatch, *, extra_args: list[str]
+) -> int:
+    """Drive cmd_run with one non-optional pytest group that collects nothing
+    (exit 5). Returns the overall exit code."""
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    (tmp_path / "groups.yaml").write_text(
+        "version: 1\n"
+        "groups:\n"
+        "  unit-empty:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+    )
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    def fake_execute_group(group, **kwargs):
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=5,  # pytest "no tests collected"
+            passed=0,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 5
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-empty",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(tmp_path / "reports"),
+            "--baseline",
+            str(tmp_path / "reports" / "previous-summary.json"),
+            *extra_args,
+        ]
+    )
+    return cli_mod.cmd_run(args)
+
+
+def test_empty_nonoptional_group_fails_build(tmp_path: Path, monkeypatch) -> None:
+    """A non-optional pytest group that collects zero tests is a broken
+    marker/path, not a pass — it must gate the overall exit."""
+    exit_code = _run_empty_group_scenario(tmp_path, monkeypatch, extra_args=[])
+    assert exit_code != 0, (
+        "a non-optional group that collected nothing must fail the build; "
+        f"got exit_code={exit_code}"
+    )
+
+
+def test_empty_group_with_marker_override_does_not_fail(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A ``--marker`` override may legitimately match nothing; the empty-collect
+    gate must not fire in that case."""
+    exit_code = _run_empty_group_scenario(
+        tmp_path, monkeypatch, extra_args=["--marker", "some_marker"]
+    )
+    assert exit_code == 0, (
+        "an empty result under a marker override must not gate the build; "
+        f"got exit_code={exit_code}"
+    )
+
+
 def _run_gap_scenario(
     tmp_path: Path, monkeypatch, *, covered_by: str, fail_on_gap: bool
 ) -> int:
@@ -589,6 +669,57 @@ def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
     }
 
 
+def test_inject_infra_env_mirrors_postgres_onto_test_db_prefix() -> None:
+    """The workers' real-Postgres fixtures connect via ``TEST_DB_*`` (so a
+    developer run keeps hitting their own compose DB). Without the mirror they
+    fall back to the dev-compose defaults and every such test skips on connect
+    while the provisioned container sits idle.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://tcuser:tcpass@127.0.0.1:49231/testdb"
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env: dict[str, str] = {}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["TEST_DB_HOST"] == "127.0.0.1"
+    assert env["TEST_DB_PORT"] == "49231"
+    assert env["TEST_DB_NAME"] == "testdb"
+    assert env["TEST_DB_USER"] == "tcuser"
+    assert env["TEST_DB_PASSWORD"] == "tcpass"  # NOSONAR - test placeholder
+    # The queue's search_path and the schema migrations land in must agree, and
+    # a provisioned Postgres only has `public`.
+    assert env["DB_SCHEMA"] == "public"
+    assert env["TEST_DB_SCHEMA"] == "public"
+
+
+def test_inject_infra_env_keeps_group_declared_schema() -> None:
+    """A group that declares its own DB_SCHEMA keeps it — on both prefixes."""
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://u:p@127.0.0.1:5432/db"  # NOSONAR
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env = {"DB_SCHEMA": "unstract"}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["DB_SCHEMA"] == "unstract"
+    assert env["TEST_DB_SCHEMA"] == "unstract"
+
+
 def test_inject_infra_env_wires_provisioned_redis() -> None:
     """A group declaring `requires_services: [redis]` must get REDIS_HOST/PORT +
     the Celery broker URL rewritten to the provisioned endpoint — otherwise
@@ -610,3 +741,217 @@ def test_inject_infra_env_wires_provisioned_redis() -> None:
     assert env["REDIS_HOST"] == "redis.internal"
     assert env["REDIS_PORT"] == "49999"
     assert env["CELERY_BROKER_BASE_URL"] == "redis://redis.internal:49999"
+
+
+def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch) -> None:
+    """A red gate skips its dependents (and their dependents), records them as
+    blocked with the right ``blocked_by``, and — all groups optional — leaves
+    the overall exit at 0. Pins the cascade `cmd_run` wires together.
+    """
+    import json
+
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  e2e-smoke:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "  e2e-mid:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-smoke]\n"
+        "  e2e-leaf:\n"
+        "    tier: e2e\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "    depends_on: [e2e-mid]\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    executed: list[str] = []
+
+    def fake_execute_group(group, **kwargs):
+        executed.append(group.name)
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=1,
+            passed=0,
+            failed=1,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 1
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    reports_dir = tmp_path / "reports"
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "e2e-smoke",
+            "e2e-mid",
+            "e2e-leaf",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(reports_dir / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+
+    # Only the gate ran; its dependents were blocked before execution.
+    assert executed == ["e2e-smoke"], executed
+    # All optional, so a red gate never gates the overall exit.
+    assert exit_code == 0, exit_code
+
+    summary = json.loads((reports_dir / "summary.json").read_text())
+    by_name = {g["name"]: g for g in summary["groups"]}
+    assert by_name["e2e-mid"]["status"] == "blocked"
+    assert by_name["e2e-mid"]["blocked_by"] == ["e2e-smoke"]
+    # The intermediate block cascades: leaf names both, proving a blocked group
+    # is itself added to the failed set.
+    assert by_name["e2e-leaf"]["status"] == "blocked"
+    assert by_name["e2e-leaf"]["blocked_by"] == ["e2e-mid", "e2e-smoke"]
+
+    # The blocked groups persisted a junit so CI's `rig report` can render them.
+    assert (reports_dir / "e2e-mid" / "junit.xml").exists()
+    assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
+
+
+def _make_group(name: str, workdir: str):
+    from tests.rig.groups import GroupDefinition
+
+    return GroupDefinition(name=name, tier="unit", workdir=workdir, paths=["tests"])
+
+
+def _pytest_section(path: Path) -> None:
+    path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+
+
+def test_resolve_configfile_skips_pyproject_without_pytest_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pyproject without the pytest table is not a config file to pytest."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "root"\n')
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "pyproject.toml").write_text('[project]\nname = "child"\n')
+
+    assert cli._resolve_pytest_configfile(child) is None
+
+
+def test_resolve_configfile_finds_nearest_ancestor(tmp_path: Path) -> None:
+    from tests.rig import cli
+
+    _pytest_section(tmp_path / "pyproject.toml")
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) == tmp_path / "pyproject.toml"
+
+
+def test_config_isolation_allows_own_config(tmp_path: Path, monkeypatch) -> None:
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+    _pytest_section(workdir / "pyproject.toml")
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_allows_repo_root_config(tmp_path: Path, monkeypatch) -> None:
+    """Inheriting the monorepo-wide config is the normal case, not a defect."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    _pytest_section(tmp_path / "pyproject.toml")
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_rejects_sibling_project_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A nested project inheriting its parent project's config is the bug."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    parent = tmp_path / "workers"
+    nested = parent / "plugins" / "agentic_table"
+    nested.mkdir(parents=True)
+    _pytest_section(parent / "pyproject.toml")
+
+    error = cli._config_isolation_error(_make_group("unit-nested", "x"), nested)
+
+    assert error is not None
+    assert "unit-nested" in error
+    assert str(parent / "pyproject.toml") in error
+
+
+def test_config_isolation_catches_intermediate_nested_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Paths reaching into a nested project pick up that project's config, even
+    when the workdir has its own — pytest starts discovery at the paths' common
+    ancestor, so resolving from the workdir alone would miss it.
+    """
+    from tests.rig import cli
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "workers"
+    nested = workdir / "plugins" / "agentic_table"
+    (nested / "tests").mkdir(parents=True)
+    _pytest_section(workdir / "pyproject.toml")  # workdir's own config
+    _pytest_section(nested / "pyproject.toml")  # the nested project shadows it
+
+    group = GroupDefinition(
+        name="unit-agentic",
+        tier="unit",
+        workdir="workers",
+        paths=["plugins/agentic_table/tests"],
+    )
+    error = cli._config_isolation_error(group, workdir)
+
+    assert error is not None
+    assert str(nested / "pyproject.toml") in error
+
+
+def test_resolve_configfile_ignores_commented_section(tmp_path: Path) -> None:
+    """A commented-out section header is not a real pytest config."""
+    from tests.rig import cli
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "root"\n# [tool.pytest.ini_options] disabled\n'
+    )
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) is None

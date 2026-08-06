@@ -9,6 +9,7 @@ readme = "README.md"
 #
 dependencies = [
     "unstract-core",
+    "unstract-sdk1",
     "unstract-tool-registry",
     "unstract-tool-sandbox",
     "unstract-flags",
@@ -21,6 +22,7 @@ unstract-tool-sandbox = { path = "../tool-sandbox", editable = true }
 unstract-tool-registry = { path = "../tool-registry", editable = true }
 unstract-flags = { path = "../flags", editable = true }
 unstract-core = { path = "../core", editable = true }
+unstract-sdk1 = { path = "../sdk1", editable = true }
 
 # [build-system]
 # requires = ["hatchling"]

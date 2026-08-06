@@ -67,13 +67,6 @@
   width: fit-content;
 }
 
-.listWrapper {
-  height: 92%;
-  overflow: hidden auto;
-  margin-block-start: 12px;
-  margin-inline: 16px;
-}
-
 .listItem {
   display: grid;
   grid-auto-flow: row;
@@ -84,4 +77,10 @@
 .list-of-workflows-body {
   flex: 1;
   overflow-y: auto;
+}
+
+.workflows-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 16px;
 }

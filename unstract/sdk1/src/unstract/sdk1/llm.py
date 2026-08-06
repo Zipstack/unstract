@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
+from functools import lru_cache
 from typing import Any, NoReturn, cast
 
 import litellm
@@ -31,7 +32,6 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
-
 def is_prompt_caching_enabled() -> bool:
     """Whether LLM prompt caching is enabled platform-wide (opt-in, default off).
 
@@ -42,6 +42,30 @@ def is_prompt_caching_enabled() -> bool:
     their own prompt-restructuring on the same flag.
     """
     return os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower() == "true"
+
+
+# Lets tests force a deterministic completion without a provider or a secret.
+# Unset in production, where this is a no-op.
+_MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
+
+
+@lru_cache(maxsize=1)
+def _warn_mock_active() -> None:
+    # Once per process: the hatch is silent otherwise, and a stray env var in
+    # production would fake every completion and its billing.
+    logger.warning(
+        "%s is set — returning canned completions instead of calling the "
+        "provider, with synthetic token usage. Unset it outside tests.",
+        _MOCK_RESPONSE_ENV,
+    )
+
+
+def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
+    mock = os.getenv(_MOCK_RESPONSE_ENV)
+    if not mock or "mock_response" in completion_kwargs:
+        return
+    _warn_mock_active()
+    completion_kwargs["mock_response"] = mock
 
 # Drop unsupported params rather than raising errors.
 # Set once at module level instead of per-call to avoid repeated
@@ -240,6 +264,7 @@ class LLM:
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
             self._cost_model = self.kwargs.pop("cost_model", None)
+            self.kwargs.pop("context_window", None)
             # Opt-in provider prompt caching (Anthropic / Bedrock-Anthropic).
             # Enabled either via adapter metadata (from the stored adapter
             # config) or the explicit constructor arg (for callers that build
@@ -454,8 +479,10 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
+            completion_kwargs.pop("context_window", None)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
             #     completion_kwargs["temperature"] = 0.003
@@ -573,13 +600,14 @@ class LLM:
             litellm.drop_params = True
 
             logger.debug(
-                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
-                f"vision completion API"
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} vision completion API"
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
+            completion_kwargs.pop("context_window", None)
 
             response: dict[str, object] = litellm.completion(
                 messages=messages,
@@ -646,8 +674,10 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
+            completion_kwargs.pop("context_window", None)
 
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
@@ -715,8 +745,10 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
+            completion_kwargs.pop("context_window", None)
 
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
@@ -780,8 +812,21 @@ class LLM:
     ) -> int:
         """Returns the context window size of the LLM."""
         try:
-            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
-            return get_max_tokens(model)
+            validated = adapters[adapter_id][Common.MODULE].validate(
+                dict(adapter_metadata)
+            )
+            context_window = validated.get("context_window")
+            if isinstance(context_window, int):
+                return context_window
+            model = cast("str", validated.get("cost_model") or validated["model"])
+            model_info = litellm.get_model_info(model)
+            context_window = model_info.get("max_input_tokens")
+            if isinstance(context_window, int):
+                return context_window
+            fallback = get_max_tokens(model)
+            if isinstance(fallback, int):
+                return fallback
+            raise ValueError(f"Context window is unavailable for model {model}.")
         except Exception as e:
             logger.warning(f"Failed to get context window size for {adapter_id}: {e}")
             return cls.MAX_TOKENS
@@ -795,10 +840,10 @@ class LLM:
             llm_config = PlatformHelper.get_adapter_config(tool, adapter_instance_id)
             adapter_id = llm_config[Common.ADAPTER_ID]
             adapter_metadata = llm_config[Common.ADAPTER_METADATA]
-
-            model = adapters[adapter_id][Common.MODULE].validate_model(adapter_metadata)
-
-            return get_max_tokens(model) - reserved_for_output
+            return (
+                cls.get_context_window_size(adapter_id, adapter_metadata)
+                - reserved_for_output
+            )
         except Exception as e:
             logger.warning(
                 f"Failed to get context window size for {adapter_instance_id}: {e}"

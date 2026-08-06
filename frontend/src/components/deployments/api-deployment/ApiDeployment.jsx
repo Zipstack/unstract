@@ -3,9 +3,13 @@ import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
@@ -21,6 +25,7 @@ import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { groupsService } from "../../groups/groups-service.js";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
@@ -42,6 +47,8 @@ function ApiDeployment() {
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [selectedRow, setSelectedRow] = useState({});
   const [tableData, setTableData] = useState([]);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
   const [filteredData, setFilteredData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
@@ -50,29 +57,42 @@ function ApiDeployment() {
   const axiosPrivate = useAxiosPrivate();
   const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: apiDeploymentsApiService,
+    setAlertDetails,
+    onListRefresh: () =>
+      getApiDeploymentList(pagination.current, pagination.pageSize, searchTerm),
+  });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
-
-  // Ref to forward the fetch function to hooks (avoids declaration ordering)
-  const fetchListRef = useRef(null);
 
   const {
     pagination,
     setPagination,
     searchTerm,
     setSearchTerm,
+    // The hook owns the fetch ref; assigned below (avoids declaration ordering).
+    fetchRef,
     handlePaginationChange,
     handleSearch,
-  } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
-  });
+  } = usePaginatedList();
 
   const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
     useScrollRestoration({
       location,
       setSearchTerm,
       setPagination,
-      fetchData: (...args) => fetchListRef.current?.(...args),
+      fetchData: (...args) => fetchRef.current?.(...args),
     });
 
   const {
@@ -140,31 +160,43 @@ function ApiDeployment() {
   const getApiDeploymentList = (page = 1, pageSize = 10, search = "") => {
     setIsTableLoading(true);
 
-    apiDeploymentsApiService
+    const seq = ++seqRef.current;
+    return apiDeploymentsApiService
       .getApiDeploymentsList(page, pageSize, search)
       .then((res) => {
-        const data = res?.data;
-        const results = data.results || data;
-        setTableData(results);
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
+        const stepback = applyPagedResponse({
+          data: res?.data,
+          page,
           pageSize,
-          total: data.count ?? data.results?.length ?? data.length,
-        }));
-
-        activateScrollRestore();
+          seq,
+          latestSeqRef: seqRef,
+          setList: setTableData,
+          setPagination,
+          refetchPrevPage: () =>
+            getApiDeploymentList(page - 1, pageSize, search),
+        });
+        if (seq === seqRef.current) {
+          activateScrollRestore();
+        }
+        return stepback;
       })
       .catch((err) => {
+        // A newer request superseded this one — don't surface its error.
+        if (seq !== seqRef.current) {
+          return;
+        }
         setAlertDetails(handleException(err));
         clearPendingScroll();
       })
       .finally(() => {
-        setIsTableLoading(false);
+        // Only the newest request owns the shared loading state.
+        if (seq === seqRef.current) {
+          setIsTableLoading(false);
+        }
       });
   };
 
-  fetchListRef.current = getApiDeploymentList;
+  fetchRef.current = getApiDeploymentList;
 
   const deleteApiDeployment = (item) => {
     const id = item?.id || selectedRow.id;
@@ -249,6 +281,11 @@ function ApiDeployment() {
     downloadPostmanCollection(apiDeploymentsApiService, deployment.id);
   };
 
+  const handleManageCoOwners = (deployment) => {
+    if (!deployment?.id) return;
+    handleCoOwnerAction(deployment.id);
+  };
+
   // Card view configuration
   const apiDeploymentCardConfig = useMemo(
     () =>
@@ -265,6 +302,7 @@ function ApiDeployment() {
         onSetupNotifications: handleSetupNotificationsDeployment,
         onCodeSnippets: handleCodeSnippetsDeployment,
         onDownloadPostman: handleDownloadPostmanDeployment,
+        onManageCoOwners: handleManageCoOwners,
         listContext: {
           page: pagination.current,
           pageSize: pagination.pageSize,
@@ -362,6 +400,18 @@ function ApiDeployment() {
         allGroups={Array.isArray(allGroups) ? allGroups : []}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="API Deployment"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

@@ -147,11 +147,14 @@ class ResourceShareManagementMixin:
     def _read_axis(instance: Model, axis: str) -> set[Any]:
         """Return the current set of related objects on the given axis.
 
-        ``shared_groups`` is stored polymorphically in
-        ``ResourceGroupShare`` rather than as an M2M on the resource model
-        — route reads through the helper. Other axes still live as M2M
-        fields on the resource and use ``getattr`` access.
+        ``shared_users`` is the direct-viewer axis — since UN-2202 Phase 2 it
+        is backed by VIEWER membership rows, not an M2M (all mixin hosts are
+        membership-backed resources). ``shared_groups`` is stored
+        polymorphically in ``ResourceGroupShare`` — route reads through the
+        helper.
         """
+        if axis == "shared_users":
+            return set(instance.viewers())  # type: ignore[attr-defined]
         if axis == "shared_groups":
             # Lazy import — ``tenant_account_v2`` depends on the permissions
             # package being importable during Django app loading.

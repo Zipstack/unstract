@@ -7,6 +7,7 @@ encryption, org-scoped persistence — with only the SDK context-window lookup
 from __future__ import annotations
 
 import secrets
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
@@ -59,3 +60,59 @@ class AdapterRegisterLLMAPITest(TestCase):
         # metadata stored encrypted (binary), decrypts back via .metadata
         assert instance.adapter_metadata_b is not None
         assert instance.metadata["model"] == "gpt-4o-mini"
+
+    @patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
+    def test_list_serves_timestamps_and_rename_bumps_modified(self, _ctx) -> None:
+        """The list endpoint must serve created_at/modified_at, and a
+        rename must advance modified_at while created_at stays stable — the
+        Meta.fields tuple is hand-maintained, so this pins the two lines.
+        """
+        payload = {
+            "adapter_id": "openai|test-llm",
+            "adapter_name": "list-me",
+            "adapter_type": "LLM",
+            "adapter_metadata": {"api_key": "sk-test", "model": "gpt-4o-mini"},
+        }
+        request = APIRequestFactory().post("/api/v1/adapter/", payload, format="json")
+        force_authenticate(request, user=self.user)
+        created = self.create_view(request)
+        assert created.status_code == status.HTTP_201_CREATED, created.data
+        adapter_id = created.data["id"]
+
+        list_view = AdapterInstanceViewSet.as_view({"get": "list"})
+
+        def _list_row():
+            request = APIRequestFactory().get("/api/v1/adapter/")
+            force_authenticate(request, user=self.user)
+            response = list_view(request)
+            assert response.status_code == status.HTTP_200_OK, response.data
+            rows = response.data
+            if isinstance(rows, dict):  # paginated response
+                rows = rows["results"]
+            return next(r for r in rows if str(r["id"]) == str(adapter_id))
+
+        row = _list_row()
+        assert row["created_at"] is not None
+        assert row["modified_at"] is not None
+        created_at_before = row["created_at"]
+
+        # Backdate so the rename's auto_now bump is strictly observable
+        instance = AdapterInstance.objects.get(pk=adapter_id)
+        AdapterInstance.objects.filter(pk=adapter_id).update(
+            modified_at=instance.modified_at - timedelta(hours=1)
+        )
+        modified_at_before = _list_row()["modified_at"]
+
+        update_view = AdapterInstanceViewSet.as_view({"patch": "partial_update"})
+        request = APIRequestFactory().patch(
+            f"/api/v1/adapter/{adapter_id}/",
+            {"adapter_name": "renamed-adapter"},
+            format="json",
+        )
+        force_authenticate(request, user=self.user)
+        updated = update_view(request, pk=adapter_id)
+        assert updated.status_code == status.HTTP_200_OK, updated.data
+
+        row = _list_row()
+        assert row["modified_at"] > modified_at_before, "rename must bump"
+        assert row["created_at"] == created_at_before, "created_at is stable"

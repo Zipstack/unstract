@@ -9,12 +9,14 @@ from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
 
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
+from scheduler.ownership import reconcile_ownership_for
 from scheduler.serializer import AddJobSerializer
 from scheduler.tasks import (
     create_or_update_periodic_task,
     delete_periodic_task,
     disable_task,
     enable_task,
+    mirror_periodic_schedule_upsert,
 )
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,25 @@ class SchedulerHelper:
             ],
             enabled=pipeline.active,
         )
+        # Inert PG mirror (Phase 9, ②a): sourced from the Pipeline object here so
+        # it stores the real pipeline_name + ids (the PeriodicTask args carry the
+        # synthetic "Pipeline job-<id>" label at index 6, not the user name).
+        # Best-effort — never raises, so Beat scheduling is unaffected.
+        mirror_periodic_schedule_upsert(
+            pipeline_id=str(pipeline.pk),
+            organization_id=organization_id or "",
+            workflow_id=str(workflow_id),
+            pipeline_name=pipeline.pipeline_name,
+            cron_string=cron_string,
+            enabled=pipeline.active,
+        )
+        # Ramp control (Phase 9, ②c): align this schedule's firer (Beat vs PG)
+        # with the rollout. Inert until the gate + pg_scheduler_enabled flag are
+        # on (fails closed to Beat), so this is a no-op during normal operation;
+        # when a schedule is owned by PG it disables the Beat PeriodicTask in the
+        # same transaction so the two never both fire. Best-effort (never raises).
+        # organization_id is the org identifier string (what the mirror stores).
+        reconcile_ownership_for(str(pipeline.pk), organization_id, active=pipeline.active)
 
     @staticmethod
     def add_or_update_job(pipeline: Pipeline) -> None:

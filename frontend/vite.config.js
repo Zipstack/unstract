@@ -133,6 +133,12 @@ export default defineConfig(({ mode }) => {
                 target: env.VITE_BACKEND_URL,
                 changeOrigin: true,
                 secure: false,
+                // Forward WebSocket upgrades too — the Socket.IO log/result
+                // channel connects to `/api/v1/socket` with a websocket-only
+                // transport. Without this the upgrade is never proxied to the
+                // backend and Prompt Studio results never stream to the UI in
+                // dev. (Prod is unaffected: Traefik routes /api/v1/socket.)
+                ws: true,
               },
             }
           : undefined,
