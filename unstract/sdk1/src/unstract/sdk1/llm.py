@@ -32,6 +32,7 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
+
 def is_prompt_caching_enabled() -> bool:
     """Whether LLM prompt caching is enabled platform-wide (opt-in, default off).
 
@@ -66,6 +67,7 @@ def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
         return
     _warn_mock_active()
     completion_kwargs["mock_response"] = mock
+
 
 # Drop unsupported params rather than raising errors.
 # Set once at module level instead of per-call to avoid repeated

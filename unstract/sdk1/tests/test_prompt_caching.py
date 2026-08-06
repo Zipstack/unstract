@@ -13,7 +13,6 @@ Covers the two halves of the feature:
 from typing import Any
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import (
     AnthropicLLMParameters,
     AWSBedrockLLMParameters,
@@ -194,9 +193,7 @@ _BEDROCK_NON_ANTHROPIC_MODELS = [
 
 @pytest.mark.parametrize("model", _BEDROCK_ANTHROPIC_MODELS)
 def test_bedrock_anthropic_model_caches(model: str) -> None:
-    llm = _StubLLM(
-        "SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model
-    )
+    llm = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model)
     assert llm._prompt_caching_active() is True
     # cache_control block is emitted on the split user turn.
     user = llm._build_messages("VOLATILE", cache_prefix="STABLE")[1]
@@ -206,9 +203,7 @@ def test_bedrock_anthropic_model_caches(model: str) -> None:
 @pytest.mark.parametrize("model", _BEDROCK_NON_ANTHROPIC_MODELS)
 def test_bedrock_non_anthropic_model_does_not_cache(model: str) -> None:
     """Titan/Llama/Cohere/Mistral on Bedrock must not get cache_control blocks."""
-    llm = _StubLLM(
-        "SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model
-    )
+    llm = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="bedrock", model=model)
     assert llm._prompt_caching_active() is False
     # Falls back to the plain string form; prefix still preserved as full text.
     assert llm._build_messages("VOLATILE", cache_prefix="STABLE") == [
@@ -249,7 +244,8 @@ def test_validate_bedrock_non_anthropic_never_enables_caching() -> None:
 
 def test_cost_override_passed_to_completion_cost_on_cached_call(monkeypatch) -> None:
     """On a cached call, completion_cost must receive model= so the cost_model
-    override is honored (matching the cost_per_token fallback path)."""
+    override is honored (matching the cost_per_token fallback path).
+    """
     import unstract.sdk1.llm as llm_mod
     from unstract.sdk1.llm import LLM
 
