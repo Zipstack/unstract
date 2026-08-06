@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 from django.test import SimpleTestCase
 
-from mcp_server.sanitize import redact_secrets, redact_structure
+from mcp_server.sanitize import _is_secret_key, redact_secrets, redact_structure
 
 
 class RedactSecretsTest(SimpleTestCase):
@@ -139,6 +139,45 @@ class RedactSecretsTest(SimpleTestCase):
                 out = redact_secrets(text)
                 assert leaked not in out
                 assert "[REDACTED]" in out
+
+    def test_the_two_credential_vocabularies_agree(self) -> None:
+        """A name listed in ``_SECRET_KEY_NAMES`` is also matched in free text.
+
+        The two lists claim to share a vocabulary — ``_SECRET_KEY_NAMES``'s own
+        comment says "same vocabulary as the key=value pattern above" — and did
+        not: these four were redacted as a dict key and left in place in free
+        text, which is the same secret reaching an agent by a different route.
+
+        ``private_key`` additionally needed an entry in ``_SECRET_ANCHORS``: the
+        literal pre-filter short-circuits before the regexes run, so a keyword
+        that appears in no anchor is matchable in principle and unreachable in
+        practice.
+        """
+        cases = {
+            "secret_key=sk_live_51": "sk_live_51",
+            "private_key=-----BEGINRSA": "BEGINRSA",
+            "access_key_id=AKIA9999": "AKIA9999",
+            "client_secret=GOCSPX-x": "GOCSPX-x",
+        }
+        for text, leaked in cases.items():
+            with self.subTest(text):
+                out = redact_secrets(text)
+                assert leaked not in out
+                assert "[REDACTED]" in out
+
+    def test_the_plural_credentials_is_deliberately_not_matched(self) -> None:
+        """``has_credentials: true`` is an ordinary field and must survive.
+
+        Adding a ``credentials?`` alternative would redact it, because the
+        lookbehind permits the ``has_`` prefix and only the trailing ``s``
+        currently stops the delimiter lining up. This pattern also runs over
+        extracted document output via ``redact_structure``, where a false
+        positive destroys real data rather than merely being noisy — so the
+        plural is left to ``_is_secret_key``, which can demand a whole-key
+        match.
+        """
+        assert redact_secrets("has_credentials: true") == "has_credentials: true"
+        assert _is_secret_key("credentials")
 
     def test_a_credential_word_inside_a_larger_word_is_not_a_match(self) -> None:
         """Widening the prefix must not widen it to *any* preceding character.

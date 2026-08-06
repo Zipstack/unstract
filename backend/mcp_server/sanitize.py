@@ -60,8 +60,29 @@ _SECRET_PATTERNS = (
             # job anyway — ``token_count=5`` has never matched, because ``token``
             # is not followed by ``=``.
             r"(?i)(?<![A-Za-z0-9])"
-            r"(password|passwd|pwd|secret|secret_access_key|access_key|"
-            r"api[_-]?key|token|authorization|credential)"
+            # Kept deliberately in step with ``_SECRET_KEY_NAMES`` below, whose
+            # comment already claims they share a vocabulary. They did not:
+            # ``secret_key``, ``private_key``, ``access_key_id`` and the plural
+            # ``credentials`` were listed there as credentials and were not
+            # matchable here, so the same name was redacted as a dict key and
+            # left in place in free text.
+            #
+            # There is no bare ``key`` alternative on purpose — ``prompt_key``
+            # and ``foreign_key`` are ordinary field names on these paths, and
+            # this pattern also runs over *extracted document output* via
+            # ``redact_structure``, where a false positive destroys real data
+            # rather than merely being noisy.
+            r"(password|passwd|pwd|"
+            r"secret[_-]?access[_-]?key|access[_-]?key[_-]?id|access[_-]?key|"
+            r"secret[_-]?key|private[_-]?key|api[_-]?key|"
+            # `credential` and not `credentials?`: the plural would match
+            # inside `has_credentials: true`, an ordinary boolean field on
+            # these paths, because the lookbehind allows a `_` prefix and the
+            # trailing `s` is what currently stops the delimiter from lining
+            # up. The dict-key form is covered exactly by `_is_secret_key`,
+            # which is where the plural belongs — it can require a whole-key
+            # match, and free text cannot.
+            r"secret|token|authorization|credential)"
             r"(\s*[=:]\s*)"
             r"([^\s,;'\"&)}\]]+)"
         ),
@@ -113,6 +134,14 @@ _SECRET_ANCHORS = (
     "apikey",
     "api_key",
     "api-key",
+    # Every spelling the `private[_-]?key` alternative accepts. An anchor that
+    # is not a substring of the text short-circuits the whole regex pass, so a
+    # pattern whose keyword appears in no anchor is dead code — `private_key`
+    # was exactly that, matchable in principle and never reached in practice.
+    # `SecretAnchorTest` is what keeps this list honest.
+    "privatekey",
+    "private_key",
+    "private-key",
     "token",
     "authorization",
     "credential",
