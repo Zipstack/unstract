@@ -669,6 +669,57 @@ def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
     }
 
 
+def test_inject_infra_env_mirrors_postgres_onto_test_db_prefix() -> None:
+    """The workers' real-Postgres fixtures connect via ``TEST_DB_*`` (so a
+    developer run keeps hitting their own compose DB). Without the mirror they
+    fall back to the dev-compose defaults and every such test skips on connect
+    while the provisioned container sits idle.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://tcuser:tcpass@127.0.0.1:49231/testdb"
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env: dict[str, str] = {}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["TEST_DB_HOST"] == "127.0.0.1"
+    assert env["TEST_DB_PORT"] == "49231"
+    assert env["TEST_DB_NAME"] == "testdb"
+    assert env["TEST_DB_USER"] == "tcuser"
+    assert env["TEST_DB_PASSWORD"] == "tcpass"  # NOSONAR - test placeholder
+    # The queue's search_path and the schema migrations land in must agree, and
+    # a provisioned Postgres only has `public`.
+    assert env["DB_SCHEMA"] == "public"
+    assert env["TEST_DB_SCHEMA"] == "public"
+
+
+def test_inject_infra_env_keeps_group_declared_schema() -> None:
+    """A group that declares its own DB_SCHEMA keeps it — on both prefixes."""
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://u:p@127.0.0.1:5432/db"  # NOSONAR
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env = {"DB_SCHEMA": "unstract"}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["DB_SCHEMA"] == "unstract"
+    assert env["TEST_DB_SCHEMA"] == "unstract"
+
+
 def test_inject_infra_env_wires_provisioned_redis() -> None:
     """A group declaring `requires_services: [redis]` must get REDIS_HOST/PORT +
     the Celery broker URL rewritten to the provisioned endpoint — otherwise
@@ -785,3 +836,122 @@ def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch)
     # The blocked groups persisted a junit so CI's `rig report` can render them.
     assert (reports_dir / "e2e-mid" / "junit.xml").exists()
     assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
+
+
+def _make_group(name: str, workdir: str):
+    from tests.rig.groups import GroupDefinition
+
+    return GroupDefinition(name=name, tier="unit", workdir=workdir, paths=["tests"])
+
+
+def _pytest_section(path: Path) -> None:
+    path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+
+
+def test_resolve_configfile_skips_pyproject_without_pytest_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pyproject without the pytest table is not a config file to pytest."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "root"\n')
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "pyproject.toml").write_text('[project]\nname = "child"\n')
+
+    assert cli._resolve_pytest_configfile(child) is None
+
+
+def test_resolve_configfile_finds_nearest_ancestor(tmp_path: Path) -> None:
+    from tests.rig import cli
+
+    _pytest_section(tmp_path / "pyproject.toml")
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) == tmp_path / "pyproject.toml"
+
+
+def test_config_isolation_allows_own_config(tmp_path: Path, monkeypatch) -> None:
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+    _pytest_section(workdir / "pyproject.toml")
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_allows_repo_root_config(tmp_path: Path, monkeypatch) -> None:
+    """Inheriting the monorepo-wide config is the normal case, not a defect."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    _pytest_section(tmp_path / "pyproject.toml")
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_rejects_sibling_project_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A nested project inheriting its parent project's config is the bug."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    parent = tmp_path / "workers"
+    nested = parent / "plugins" / "agentic_table"
+    nested.mkdir(parents=True)
+    _pytest_section(parent / "pyproject.toml")
+
+    error = cli._config_isolation_error(_make_group("unit-nested", "x"), nested)
+
+    assert error is not None
+    assert "unit-nested" in error
+    assert str(parent / "pyproject.toml") in error
+
+
+def test_config_isolation_catches_intermediate_nested_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Paths reaching into a nested project pick up that project's config, even
+    when the workdir has its own — pytest starts discovery at the paths' common
+    ancestor, so resolving from the workdir alone would miss it.
+    """
+    from tests.rig import cli
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "workers"
+    nested = workdir / "plugins" / "agentic_table"
+    (nested / "tests").mkdir(parents=True)
+    _pytest_section(workdir / "pyproject.toml")  # workdir's own config
+    _pytest_section(nested / "pyproject.toml")  # the nested project shadows it
+
+    group = GroupDefinition(
+        name="unit-agentic",
+        tier="unit",
+        workdir="workers",
+        paths=["plugins/agentic_table/tests"],
+    )
+    error = cli._config_isolation_error(group, workdir)
+
+    assert error is not None
+    assert str(nested / "pyproject.toml") in error
+
+
+def test_resolve_configfile_ignores_commented_section(tmp_path: Path) -> None:
+    """A commented-out section header is not a real pytest config."""
+    from tests.rig import cli
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "root"\n# [tool.pytest.ini_options] disabled\n'
+    )
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) is None
