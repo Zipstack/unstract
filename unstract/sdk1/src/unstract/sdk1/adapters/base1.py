@@ -1144,10 +1144,15 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # don't advertise the flag for other Bedrock families (Titan, Llama,
         # etc.). The LLM layer enforces the same model gate; this just keeps the
         # validated metadata honest.
-        bedrock_model_id = str(result_metadata.get("model", "")).lower()
+        # Check both ``model`` and ``model_id`` so callers routing through a
+        # Bedrock Application Inference Profile (opaque ARN in ``model``, Claude
+        # id in ``model_id``) still qualify.
+        bedrock_model_ids = " ".join(
+            str(result_metadata.get(field, "")) for field in _MODEL_ID_FIELDS
+        ).lower()
         enable_prompt_caching = bool(
             adapter_metadata.get("enable_prompt_caching", False)
-        ) and ("anthropic" in bedrock_model_id or "claude" in bedrock_model_id)
+        ) and ("anthropic" in bedrock_model_ids or "claude" in bedrock_model_ids)
 
         _pack_bedrock_guardrail_config(result_metadata)
 

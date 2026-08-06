@@ -376,9 +376,15 @@ class LLM:
             return False
         if provider == "bedrock":
             # Gate on the underlying model, not just the provider: only
-            # Anthropic/Claude models on Bedrock support cache_control.
-            model = str(self.kwargs.get("model", "")).lower()
-            return any(m in model for m in self._BEDROCK_CACHE_MODEL_MARKERS)
+            # Anthropic/Claude models on Bedrock support cache_control. Check
+            # both ``model`` and ``model_id`` — when a caller routes through a
+            # Bedrock Application Inference Profile, the ARN in ``model`` is
+            # opaque and the Claude id appears only in ``model_id``.
+            return any(
+                marker in str(self.kwargs.get(field, "")).lower()
+                for field in ("model", "model_id")
+                for marker in self._BEDROCK_CACHE_MODEL_MARKERS
+            )
         return True
 
     def is_prompt_caching_active(self) -> bool:
@@ -402,15 +408,18 @@ class LLM:
         prefix caching (Anthropic, Bedrock-Anthropic) reuse it across calls.
         LiteLLM forwards ``cache_control`` blocks to the provider unchanged.
 
-        - ``cache_prefix`` given: the user turn is split into a cached stable
-          prefix block followed by the per-request volatile block. The text the
-          model sees is ``cache_prefix + prompt`` — identical to passing the
-          concatenation as a single prompt, so no prompt semantics change.
+        - non-empty ``cache_prefix`` given: the user turn is split into a cached
+          stable prefix block followed by the per-request volatile block. The
+          text the model sees is ``cache_prefix + prompt`` — identical to
+          passing the concatenation as a single prompt, so no prompt semantics
+          change.
         - otherwise: the stable system prompt is cached.
 
         Only the stable portion is tagged; per-request content is never cached.
+        An empty ``cache_prefix`` is treated as absent — Anthropic rejects empty
+        text content blocks, and an empty prefix carries no caching benefit.
         """
-        if self._prompt_caching_active() and cache_prefix is not None:
+        if self._prompt_caching_active() and cache_prefix:
             return [
                 {"role": "system", "content": self._system_prompt},
                 {
@@ -443,7 +452,7 @@ class LLM:
         # cache_control, but if the caller split the prompt into
         # (cache_prefix, prompt) the model must still see the full text —
         # concatenate rather than drop the prefix.
-        user_content = cache_prefix + prompt if cache_prefix is not None else prompt
+        user_content = cache_prefix + prompt if cache_prefix else prompt
         return [
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": user_content},

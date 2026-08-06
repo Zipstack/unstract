@@ -91,12 +91,15 @@ class _StubLLM:
         enable_prompt_caching: bool,
         provider: str = "anthropic",
         model: str = "claude-opus-4-8",
+        model_id: str | None = None,
     ) -> None:
         self._system_prompt = system_prompt
         self._enable_prompt_caching = enable_prompt_caching
         self.adapter = _StubAdapter(provider)
         # Only read by the Bedrock model gate; harmless for other providers.
         self.kwargs = {"model": model}
+        if model_id is not None:
+            self.kwargs["model_id"] = model_id
 
 
 def test_build_messages_plain_string_when_caching_off() -> None:
@@ -150,6 +153,28 @@ def test_build_messages_cache_prefix_splits_user_turn() -> None:
     # Text-equivalence invariant: the model sees prefix + prompt, unchanged.
     seen = "".join(block["text"] for block in user["content"])
     assert seen == "STABLE" + "VOLATILE"
+
+
+def test_build_messages_empty_cache_prefix_treated_as_absent() -> None:
+    """An empty cache_prefix must NOT create an empty (Anthropic-rejected) block.
+
+    Caching is active, but ``cache_prefix=""`` should fall back to the plain
+    single-block user turn rather than emitting ``{"type": "text", "text": ""}``.
+    """
+    llm = _StubLLM("SYSTEM", enable_prompt_caching=True)
+    assert llm._build_messages("VOLATILE", cache_prefix="") == [
+        {
+            "role": "system",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "SYSTEM",
+                    "cache_control": {"type": "ephemeral"},
+                }
+            ],
+        },
+        {"role": "user", "content": "VOLATILE"},
+    ]
 
 
 def test_build_messages_cache_prefix_preserved_when_caching_off() -> None:
@@ -212,6 +237,29 @@ def test_bedrock_non_anthropic_model_does_not_cache(model: str) -> None:
     ]
 
 
+def test_bedrock_opaque_inference_profile_uses_model_id() -> None:
+    """AIP ARN in ``model`` is opaque; the Claude id in ``model_id`` still caches."""
+    llm = _StubLLM(
+        "SYSTEM",
+        enable_prompt_caching=True,
+        provider="bedrock",
+        model="arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abcd1234",
+        model_id="anthropic.claude-opus-4-8-20260101-v1:0",
+    )
+    assert llm._prompt_caching_active() is True
+
+
+def test_bedrock_opaque_profile_without_claude_id_does_not_cache() -> None:
+    """No Anthropic id in either field -> can't confirm Claude -> no caching."""
+    llm = _StubLLM(
+        "SYSTEM",
+        enable_prompt_caching=True,
+        provider="bedrock",
+        model="arn:aws:bedrock:us-east-1:123456789012:application-inference-profile/abcd1234",
+    )
+    assert llm._prompt_caching_active() is False
+
+
 def test_is_prompt_caching_active_matches_private() -> None:
     """The public probe mirrors the internal gate for callers (e.g. answer_prompt)."""
     on = _StubLLM("SYSTEM", enable_prompt_caching=True, provider="anthropic")
@@ -242,23 +290,31 @@ def test_validate_bedrock_non_anthropic_never_enables_caching() -> None:
 # ── cost accounting: cached calls price against the cost_model override ──────
 
 
-def test_cost_override_passed_to_completion_cost_on_cached_call(monkeypatch) -> None:
-    """On a cached call, completion_cost must receive model= so the cost_model
-    override is honored (matching the cost_per_token fallback path).
+def test_cost_override_passed_to_completion_cost_on_cached_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Cached calls price against the ``cost_model`` override.
+
+    ``completion_cost`` must receive ``model=`` so cached and non-cached calls
+    price against the same model, matching the ``cost_per_token`` fallback path.
     """
+    import types
+
     import unstract.sdk1.llm as llm_mod
     from unstract.sdk1.llm import LLM
 
     captured: dict[str, Any] = {}
 
-    def _fake_completion_cost(**kwargs: Any) -> float:
+    def _fake_completion_cost(**kwargs: object) -> float:
         captured.update(kwargs)
         return 0.42
 
     monkeypatch.setattr(llm_mod.litellm, "completion_cost", _fake_completion_cost)
 
+    # Minimal stub instance for ``self`` so a future ``self.`` reference fails
+    # loudly instead of silently working (unlike a bare ``object()``).
     cost = LLM._compute_call_cost(
-        object(),
+        types.SimpleNamespace(),
         model="anthropic/claude-opus-4-8",
         prompt_tokens=100,
         completion_tokens=10,
@@ -275,7 +331,9 @@ def test_cost_override_passed_to_completion_cost_on_cached_call(monkeypatch) -> 
 _ANTHROPIC_ADAPTER_ID = "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203"
 
 
-def test_constructor_flag_forces_caching_without_metadata(monkeypatch) -> None:
+def test_constructor_flag_forces_caching_without_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """A caller that builds by adapter without the stored flag can still opt in."""
     monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
     from unstract.sdk1.llm import LLM
@@ -293,7 +351,7 @@ def test_constructor_flag_forces_caching_without_metadata(monkeypatch) -> None:
     assert messages[1]["content"][0]["cache_control"] == {"type": "ephemeral"}
 
 
-def test_constructor_flag_defaults_off(monkeypatch) -> None:
+def test_constructor_flag_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
     from unstract.sdk1.llm import LLM
 
@@ -302,7 +360,7 @@ def test_constructor_flag_defaults_off(monkeypatch) -> None:
     assert llm._enable_prompt_caching is False
 
 
-def test_env_var_enables_caching_platform_wide(monkeypatch) -> None:
+def test_env_var_enables_caching_platform_wide(monkeypatch: pytest.MonkeyPatch) -> None:
     """The ENABLE_PROMPT_CACHING master switch turns caching on with no per-call flag."""
     monkeypatch.setenv("ENABLE_PROMPT_CACHING", "true")
     from unstract.sdk1.llm import LLM, is_prompt_caching_enabled
