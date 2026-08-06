@@ -21,6 +21,15 @@ Failure modes are typed so callers can surface distinct, actionable errors:
   (post-write loss). Distinct from "not found" so remediation can differ.
 - ``PageCapExceededError`` — document larger than the page cap; callers
   must fail explicitly rather than silently truncate.
+
+Concurrency contract (designed, accepted): the writer resets and rewrites
+the stable pages directory on re-extraction, so a read that overlaps a
+same-document re-extraction may observe a missing or incomplete set. That
+surfaces as the typed errors above — a loud, retryable failure — by
+deliberate choice: silently mixing old and new pages into one answer is
+the worse outcome, and atomic directory replacement does not exist on
+object storage. See ``LLMWhispererHelper.persist_page_images`` for the
+full rationale.
 """
 
 import base64

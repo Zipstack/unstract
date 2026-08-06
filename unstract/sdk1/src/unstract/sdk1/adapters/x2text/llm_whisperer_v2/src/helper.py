@@ -774,6 +774,21 @@ class LLMWhispererHelper:
         trailing images would otherwise be read back as part of the new set.
         A failed reset raises rather than risk serving another document's
         pages to the vision LLM.
+
+        Concurrency — a DESIGNED, ACCEPTED limitation, not an oversight: a
+        prompt execution that reads this directory while a re-extraction of
+        the same document is rewriting it observes a missing or incomplete
+        set and fails with a *typed, retryable* error
+        (``PageImagesNotFoundError`` / ``PageImageSetIncompleteError``, both
+        surfaced to the user as ``IMAGE_OUTPUT_MISSING``). This loud
+        transient failure is deliberately preferred over the alternatives:
+        in-place overwrites can silently mix old and new pages into one
+        answer, and atomic directory replacement does not exist on the
+        object-storage backends ``FileStorage`` targets (S3 has no atomic
+        rename). A generation-versioned directory scheme with a pointer
+        object was considered and rejected as out of scope (PR #2210
+        review); revisit only if same-document re-extract-while-answering
+        becomes a real workflow.
         """
         try:
             if fs.exists(page_store_dir):
