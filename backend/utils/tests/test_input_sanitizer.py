@@ -1,7 +1,11 @@
 import pytest
 from rest_framework.serializers import ValidationError
 
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import (
+    validate_name_field,
+    validate_no_html_tags,
+    validate_safe_text,
+)
 
 
 class TestValidateNoHtmlTags:
@@ -148,3 +152,46 @@ class TestValidateNameField:
     def test_custom_field_name_in_error(self):
         with pytest.raises(ValidationError, match="Tool name"):
             validate_name_field("   ", field_name="Tool name")
+
+class TestValidateSafeText:
+    """The strict allow-list used for key names/descriptions.
+
+    Unlike its block-listing siblings above, anything outside
+    ``SAFE_TEXT_PATTERN`` is rejected — so these cases pin what the allow-list
+    actually permits, including the apostrophe it deliberately keeps.
+    """
+
+    def test_clean_text_passes(self):
+        assert validate_safe_text("Prod deployment key") == "Prod deployment key"
+
+    def test_strips_whitespace(self):
+        assert validate_safe_text("  x  ") == "x"
+
+    def test_rejects_whitespace_only(self):
+        with pytest.raises(ValidationError, match="cannot be empty"):
+            validate_safe_text("   ")
+
+    def test_rejects_html_tags(self):
+        with pytest.raises(ValidationError, match="Only alphanumeric characters"):
+            validate_safe_text("<script>alert(1)</script>")
+
+    def test_rejects_ampersand(self):
+        with pytest.raises(ValidationError, match="Only alphanumeric characters"):
+            validate_safe_text("Billing & Ops")
+
+    def test_rejects_double_quote(self):
+        with pytest.raises(ValidationError, match="Only alphanumeric characters"):
+            validate_safe_text('Say "hi"')
+
+    def test_rejects_backtick(self):
+        with pytest.raises(ValidationError, match="Only alphanumeric characters"):
+            validate_safe_text("`whoami`")
+
+    def test_allows_apostrophe(self):
+        # Documented carve-out: real names contain it, so single-quoted HTML
+        # attribute contexts must escape at render time (see module comment).
+        assert validate_safe_text("Client's Prod Key") == "Client's Prod Key"
+
+    def test_allows_punctuation_subset(self):
+        value = "Key-1_v2 (prod), region: us/west."
+        assert validate_safe_text(value) == value
