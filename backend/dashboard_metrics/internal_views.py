@@ -34,8 +34,6 @@ from utils.constants import Account
 from utils.local_context import StateStore
 
 from dashboard_metrics.tasks import (
-    _active_org_ids,
-    _run_aggregation,
     aggregate_metrics_from_sources,
     cleanup_daily_metrics,
     cleanup_hourly_metrics,
@@ -48,11 +46,6 @@ logger = logging.getLogger(__name__)
 # them gets the same retention the Celery path applies.
 DEFAULT_HOURLY_RETENTION_DAYS = 30
 DEFAULT_DAILY_RETENTION_DAYS = 365
-
-# Window used to decide which orgs are "active" — must match the daily window
-# _run_aggregation uses, or the chunked path would process a different set than the
-# in-process one.
-ACTIVE_ORG_WINDOW_DAYS = 7
 
 
 def _clear_org_context() -> None:
@@ -96,45 +89,12 @@ class _MetricsTaskAPIView(APIView):
 class AggregateMetricsAPIView(_MetricsTaskAPIView):
     """Run the metrics aggregation.
 
-    With no body this is the whole job, lock included — byte-identical to what the
-    Celery task does. With ``{"org_ids": [...]}`` it runs only that slice and skips the
-    lock: the caller is splitting one logical run across several requests, and the lock
-    is a load guard rather than a correctness one (the upserts overwrite with recomputed
-    values, so slices cannot double-count).
+    Calls the Celery task body verbatim, Redis lock included — this endpoint exists
+    only because the PG consumer has no Django, not to change what the job does.
     """
 
     def post(self, request: Request) -> Response:
-        org_ids = request.data.get("org_ids") if isinstance(request.data, dict) else None
-        if org_ids is None:
-            return self._run(aggregate_metrics_from_sources)
-        if not isinstance(org_ids, list):
-            return Response(
-                {"error": f"org_ids must be a list, got {type(org_ids).__name__}"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        return self._run(_run_aggregation, org_ids=org_ids)
-
-
-class ActiveOrgsAPIView(_MetricsTaskAPIView):
-    """List the orgs an aggregation would process — the chunking seam.
-
-    A caller fetches this, splits it, and posts each slice to ``aggregate/``.
-    """
-
-    def get(self, request: Request) -> Response:
-        _clear_org_context()
-        try:
-            from datetime import timedelta
-
-            from django.utils import timezone
-
-            since = timezone.now() - timedelta(days=ACTIVE_ORG_WINDOW_DAYS)
-            return Response({"org_ids": sorted(str(x) for x in _active_org_ids(since))})
-        except Exception as exc:
-            logger.error("dashboard-metrics active-orgs failed: %s", exc, exc_info=True)
-            return Response(
-                {"error": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        return self._run(aggregate_metrics_from_sources)
 
 
 class CleanupHourlyMetricsAPIView(_MetricsTaskAPIView):

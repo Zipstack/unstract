@@ -39,27 +39,9 @@ logger = WorkerLogger.get_logger(__name__)
 # and read as a network fault while the server kept working.
 DEFAULT_HTTP_TIMEOUT_SECONDS = 630.0
 
-# Optional chunking (default off). When > 0 the aggregation is split into slices of
-# this many orgs, each its own request — the escape hatch for installations where one
-# aggregation would exceed gunicorn's 600s request ceiling. Off by default because
-# splitting costs extra round trips and most installations do not need it.
-_ORG_CHUNK_SIZE_ENV = "DASHBOARD_METRICS_ORG_CHUNK_SIZE"
-
 _AGGREGATE_PATH = "v1/dashboard-metrics/aggregate/"
-_ACTIVE_ORGS_PATH = "v1/dashboard-metrics/aggregate/orgs/"
 _CLEANUP_HOURLY_PATH = "v1/dashboard-metrics/cleanup/hourly/"
 _CLEANUP_DAILY_PATH = "v1/dashboard-metrics/cleanup/daily/"
-
-
-def _org_chunk_size() -> int:
-    raw = os.getenv(_ORG_CHUNK_SIZE_ENV, "0")
-    try:
-        return max(0, int(raw))
-    except ValueError:
-        logger.warning(
-            "%s=%r is not an integer; chunking disabled", _ORG_CHUNK_SIZE_ENV, raw
-        )
-        return 0
 
 
 def _call_internal(
@@ -125,41 +107,9 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
 def dashboard_metrics_aggregate() -> dict[str, Any]:
     """Aggregate source tables into the hourly/daily/monthly metrics tables."""
-    chunk_size = _org_chunk_size()
-    if not chunk_size:
-        result = _call_internal(_AGGREGATE_PATH)
-        _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
-        return result
-
-    org_ids = _call_internal(_ACTIVE_ORGS_PATH, method="GET", timeout=60.0)["org_ids"]
-    if not org_ids:
-        logger.info("dashboard_metrics: no active orgs; nothing to aggregate")
-        return {"success": True, "organizations_processed": 0, "chunks": 0}
-
-    chunks = [org_ids[i : i + chunk_size] for i in range(0, len(org_ids), chunk_size)]
-    processed = failures = 0
-    for index, chunk in enumerate(chunks, start=1):
-        try:
-            _call_internal(_AGGREGATE_PATH, body={"org_ids": chunk})
-            processed += len(chunk)
-        except Exception:
-            # One bad slice must not lose the rest — the whole point of chunking is
-            # that a run is made of independent, idempotent pieces.
-            failures += 1
-            logger.exception(
-                "dashboard_metrics: chunk %s/%s failed (%s orgs)",
-                index,
-                len(chunks),
-                len(chunk),
-            )
-    if failures == len(chunks):
-        raise RuntimeError(f"dashboard_metrics: all {len(chunks)} chunks failed")
-    return {
-        "success": failures == 0,
-        "organizations_processed": processed,
-        "chunks": len(chunks),
-        "failed_chunks": failures,
-    }
+    result = _call_internal(_AGGREGATE_PATH)
+    _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
+    return result
 
 
 @worker_task(name="dashboard_metrics.cleanup_hourly_data")

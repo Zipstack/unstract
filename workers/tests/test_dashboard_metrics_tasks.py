@@ -32,7 +32,6 @@ _ENV = {
 def _env(monkeypatch):
     for k, v in _ENV.items():
         monkeypatch.setenv(k, v)
-    monkeypatch.delenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", raising=False)
 
 
 class TestRegistration:
@@ -136,74 +135,3 @@ class TestInternalCall:
         monkeypatch.delenv(missing)
         with pytest.raises(RuntimeError, match=missing):
             dmt._call_internal("v1/x/")
-
-
-class TestChunking:
-    """Off by default; the escape hatch for installations where one aggregation would
-    exceed gunicorn's 600s request ceiling.
-    """
-
-    def test_disabled_by_default_makes_one_unsliced_call(self):
-        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
-            dmt.dashboard_metrics_aggregate()
-        assert call.call_count == 1
-        assert call.call_args.kwargs.get("body") is None
-
-    def test_slices_cover_every_org_exactly_once(self, monkeypatch):
-        monkeypatch.setenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", "2")
-        orgs = ["a", "b", "c", "d", "e"]
-        calls = []
-
-        def fake(path, **kw):
-            if path.endswith("orgs/"):
-                return {"org_ids": orgs}
-            calls.append(kw["body"]["org_ids"])
-            return {"success": True}
-
-        with patch.object(dmt, "_call_internal", side_effect=fake):
-            result = dmt.dashboard_metrics_aggregate()
-
-        assert len(calls) == 3  # 2 + 2 + 1
-        assert [o for c in calls for o in c] == orgs  # disjoint, complete, in order
-        assert result["organizations_processed"] == 5
-
-    def test_one_failing_slice_does_not_abort_the_rest(self, monkeypatch):
-        monkeypatch.setenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", "1")
-
-        def fake(path, **kw):
-            if path.endswith("orgs/"):
-                return {"org_ids": ["a", "b", "c"]}
-            if kw["body"]["org_ids"] == ["b"]:
-                raise RuntimeError("chunk blew up")
-            return {"success": True}
-
-        with patch.object(dmt, "_call_internal", side_effect=fake):
-            result = dmt.dashboard_metrics_aggregate()
-
-        assert result["failed_chunks"] == 1
-        assert result["organizations_processed"] == 2
-        assert result["success"] is False
-
-    def test_all_slices_failing_raises(self, monkeypatch):
-        monkeypatch.setenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", "1")
-
-        def fake(path, **kw):
-            if path.endswith("orgs/"):
-                return {"org_ids": ["a", "b"]}
-            raise RuntimeError("down")
-
-        with patch.object(dmt, "_call_internal", side_effect=fake):
-            with pytest.raises(RuntimeError, match="all 2 chunks failed"):
-                dmt.dashboard_metrics_aggregate()
-
-    def test_no_active_orgs_is_a_clean_no_op(self, monkeypatch):
-        monkeypatch.setenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", "10")
-        with patch.object(dmt, "_call_internal", return_value={"org_ids": []}):
-            result = dmt.dashboard_metrics_aggregate()
-        assert result == {"success": True, "organizations_processed": 0, "chunks": 0}
-
-    def test_garbage_chunk_size_disables_chunking_rather_than_crashing(self, monkeypatch):
-        monkeypatch.setenv("DASHBOARD_METRICS_ORG_CHUNK_SIZE", "not-a-number")
-        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
-            dmt.dashboard_metrics_aggregate()
-        assert call.call_count == 1

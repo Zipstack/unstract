@@ -779,9 +779,6 @@ services:
       # One at a time — these are global singletons, not parallel work.
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=1
       - WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS=1
-      # Split the aggregation into slices of N orgs if one run would exceed
-      # gunicorn's 600s request ceiling. 0 = one unsliced call (default).
-      - DASHBOARD_METRICS_ORG_CHUNK_SIZE=${DASHBOARD_METRICS_ORG_CHUNK_SIZE:-0}
     labels:
       - traefik.enable=false
     profiles:

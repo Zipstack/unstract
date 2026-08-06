@@ -17,11 +17,6 @@ urlpatterns = [
         name="aggregate_metrics",
     ),
     path(
-        "aggregate/orgs/",
-        internal_views.ActiveOrgsAPIView.as_view(),
-        name="aggregate_active_orgs",
-    ),
-    path(
         "cleanup/hourly/",
         internal_views.CleanupHourlyMetricsAPIView.as_view(),
         name="cleanup_hourly_metrics",

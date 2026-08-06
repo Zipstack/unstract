@@ -395,39 +395,10 @@ def _aggregate_llm_combined(
             _upsert_agg(monthly_agg, key, metric_type, value)
 
 
-def _active_org_ids(since: datetime) -> set[str]:
-    """Org ids with workflow activity since ``since``.
-
-    Pre-filter to orgs with recent activity to reduce DB load. Uses the 7-day daily
-    window rather than the 2-month monthly one because hourly/daily queries only need
-    recent data, and monthly totals for dormant orgs were already written when the org
-    was active — re-running just overwrites the same values. Avoids 28 queries per
-    dormant org that had activity 2-8 weeks ago.
-
-    Extracted so the PG path can fetch the work list up front and process it in
-    chunks (UN-3796); the in-process caller below is unchanged.
-    """
-    return set(
-        WorkflowExecution.objects.filter(created_at__gte=since)
-        .values_list("workflow__organization_id", flat=True)
-        .distinct()
-    )
-
-
-def _run_aggregation(org_ids: list[str] | None = None) -> dict[str, Any]:
+def _run_aggregation() -> dict[str, Any]:
     """Execute the actual aggregation logic.
 
     Separated from the task function to keep the lock management clean.
-
-    ``org_ids`` restricts the run to a caller-supplied slice instead of discovering
-    active orgs itself (UN-3796). That lets the PG path split one aggregation across
-    several bounded calls, which matters because gunicorn caps a request at 600s while
-    this task declares ``time_limit=660``. Passing ``None`` — every existing caller —
-    behaves exactly as before.
-
-    Chunking needs no cross-call lock: the upserts below are
-    ``INSERT … ON CONFLICT DO UPDATE SET``, i.e. they overwrite with recomputed values
-    rather than incrementing, so slices cannot double-count.
     """
     end_date = timezone.now()
 
@@ -488,19 +459,25 @@ def _run_aggregation(org_ids: list[str] | None = None) -> dict[str, Any]:
         "orgs_processed": 0,
     }
 
-    # A caller-supplied slice skips discovery entirely (see the docstring); otherwise
-    # pre-filter to orgs with recent activity to reduce DB load.
-    if org_ids is not None:
-        active_org_ids = set(org_ids)
-        logger.info("Aggregation: %d org(s) supplied by caller", len(active_org_ids))
-    else:
-        active_org_ids = _active_org_ids(daily_start)
-        total_orgs = Organization.objects.count()
-        logger.info(
-            "Aggregation: %d active orgs out of %d total",
-            len(active_org_ids),
-            total_orgs,
+    # Pre-filter to orgs with recent activity to reduce DB load.
+    # Uses daily_start (7 days) instead of monthly_start (2 months) because:
+    # - Hourly/daily queries only need recent data (24h / 7d windows)
+    # - Monthly totals for dormant orgs were already written by previous
+    #   runs when the org was active — re-running just overwrites same values
+    # - This avoids 28 queries per dormant org that had activity 2-8 weeks ago
+    active_org_ids = set(
+        WorkflowExecution.objects.filter(
+            created_at__gte=daily_start,
         )
+        .values_list("workflow__organization_id", flat=True)
+        .distinct()
+    )
+    total_orgs = Organization.objects.count()
+    logger.info(
+        "Aggregation: %d active orgs out of %d total",
+        len(active_org_ids),
+        total_orgs,
+    )
 
     if not active_org_ids:
         return {
