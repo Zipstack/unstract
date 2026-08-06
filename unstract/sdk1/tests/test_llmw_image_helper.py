@@ -226,6 +226,18 @@ class TestPersistence:
         with pytest.raises(ExtractorError, match="survived the pre-write cleanup"):
             H.persist_page_images(fs, "doc/pages", [(1, b"x"), (2, b"y")])
 
+    def test_noop_rm_is_detected_and_write_rejected(self) -> None:
+        # Degenerate variant of the above: rm succeeds as a complete no-op
+        # (nothing deleted at all). The post-reset verification must reject
+        # the write outright — nothing may be written over the old set.
+        fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")])
+
+        fs.rm = lambda path, recursive=True: None  # type: ignore[method-assign]
+        with pytest.raises(ExtractorError, match="survived the pre-write cleanup"):
+            H.persist_page_images(fs, "doc/pages", [(1, b"x")])
+        assert fs.read(path="doc/pages/page_001.png", mode="rb") == b"a"  # untouched
+
     def test_local_write_read_round_trip(self, tmp_path) -> None:  # noqa: ANN001
         fs = FileStorage(provider=FileStorageProvider.LOCAL)
         page_dir = H.build_page_store_dir(
