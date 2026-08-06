@@ -84,14 +84,24 @@ class TestTaskStatusFlagOff:
     def test_celery_completed_never_queries_pg(self):
         # flag off (also the Flipt-error fail-closed path): Celery + PG untouched.
         p_pg, pg = _stub_pg({"status": "completed"})  # would resolve, if queried
-        with _org(), _flag(False), p_pg, patch(f"{_VIEWS}.AsyncResult", _async(ready=True)):
+        with (
+            _org(),
+            _flag(False),
+            p_pg,
+            patch(f"{_VIEWS}.AsyncResult", _async(ready=True)),
+        ):
             resp = _view().task_status(MagicMock(), task_id=_TID)
         assert resp.data == {"task_id": _TID, "status": "completed"}
         pg.objects.filter.assert_not_called()  # default path never touches PG
 
     def test_celery_failed(self):
-        with _org(), _flag(False), patch(
-            f"{_VIEWS}.AsyncResult", _async(ready=True, successful=False, result="celery boom")
+        with (
+            _org(),
+            _flag(False),
+            patch(
+                f"{_VIEWS}.AsyncResult",
+                _async(ready=True, successful=False, result="celery boom"),
+            ),
         ):
             resp = _view().task_status(MagicMock(), task_id=_TID)
         assert resp.data["status"] == "failed"
