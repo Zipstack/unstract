@@ -484,6 +484,26 @@ class PromptStudioRegistryHelper:
             tool_metadata[JsonSchemaKey.FUNCTION_NAME] = prompts.get(
                 JsonSchemaKey.PROMPT_REGISTRY_ID
             )
+            # Back-reference to the Prompt Studio project that produced this
+            # entry. `function_name` is the registry UUID, so without this the
+            # only correlator left is `name`, which is ambiguous when two
+            # projects share one.
+            #
+            # Read from the `custom_tool` FK column and published as
+            # `prompt_studio_tool_id`. Not `tool_id`: consumers of this listing
+            # also POST to `tool_instance/`, where `tool_id` means the tool's
+            # *function name* (`ToolInstance.tool_id`), so that key already has
+            # an incompatible meaning in the same call path.
+            #
+            # Stringified so the value does not depend on DRF's renderer to
+            # leave this dict, and so it compares like-for-like against
+            # `function_name`, which DRF's UUIDField already renders as a str.
+            # `fetch_tools_descriptions` emits no such key at all, so consumers
+            # must treat a missing key and `None` alike.
+            custom_tool_id = prompts.get(JsonSchemaKey.CUSTOM_TOOL)
+            tool_metadata[JsonSchemaKey.PROMPT_STUDIO_TOOL_ID] = (
+                str(custom_tool_id) if custom_tool_id is not None else None
+            )
             tool_list.append(tool_metadata)
             tool_metadata = {}
         return tool_list

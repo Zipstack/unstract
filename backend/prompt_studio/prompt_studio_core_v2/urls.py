@@ -30,9 +30,6 @@ prompt_studio_profilemanager = PromptStudioCoreView.as_view(
 
 prompt_studio_prompt_index = PromptStudioCoreView.as_view({"post": "index_document"})
 prompt_studio_prompt_response = PromptStudioCoreView.as_view({"post": "fetch_response"})
-prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
-    {"get": "get_adapter_choices"}
-)
 prompt_studio_bulk_fetch_response = PromptStudioCoreView.as_view(
     {"post": "bulk_fetch_response"}
 )
@@ -124,11 +121,6 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/bulk_fetch_response/<uuid:pk>",
             prompt_studio_bulk_fetch_response,
             name="prompt-studio-bulk-fetch-response",
-        ),
-        path(
-            "prompt-studio/adapter-choices/",
-            prompt_studio_adapter_choices,
-            name="prompt-studio-adapter-choices",
         ),
         path(
             "prompt-studio/single-pass-extraction/<uuid:pk>",
