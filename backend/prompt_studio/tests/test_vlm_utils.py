@@ -19,6 +19,11 @@ class TestOssNoOps:
     def test_cloud_package_absent_in_oss(self) -> None:
         assert vlm_utils.VLM_IMAGE_ANSWER_AVAILABLE is False
 
+    def test_hooks_not_marked_broken_in_oss(self) -> None:
+        # Package absent is the expected OSS state — it must not be
+        # conflated with the fail-closed "installed but broken" state.
+        assert vlm_utils.VLM_HOOKS_BROKEN is False
+
     def test_vision_warning_is_none(self) -> None:
         assert vlm_utils.get_profile_vision_warning(SimpleNamespace()) is None
 

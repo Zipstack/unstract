@@ -27,6 +27,7 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.local_context import StateStore
 
 from backend.celery_service import app as celery_app
+from prompt_studio import vlm_utils
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -1452,6 +1453,10 @@ class PromptStudioHelper:
         ``output_mode`` is user-editable adapter metadata, so keying on it alone
         would make any future x2text adapter that adopts the same key inherit a
         PDF-only rejection it never asked for.
+
+        Also rejects image-mode extraction outright when the cloud plugin
+        package is present but its backend hooks are broken
+        (``vlm_utils.VLM_HOOKS_BROKEN``) — see the inline comment below.
         """
         x2text = profile_manager.x2text
         if x2text is None:
@@ -1465,6 +1470,21 @@ class PromptStudioHelper:
             != ImageOutputConstants.IMAGE_MODE
         ):
             return
+        # Fail-closed on a half-broken cloud install: with the plugin package
+        # present but its backend hooks unimportable, a re-extraction would
+        # rewrite the page images while the answers stored against the old
+        # pages are never invalidated. Blocking image-mode extraction here
+        # (same choke point) is the only safe behavior.
+        if vlm_utils.VLM_HOOKS_BROKEN:
+            raise IndexingAPIError(
+                detail=(
+                    "Image output mode is unavailable: the VLM consumer "
+                    "plugin is installed but failed to load. Contact your "
+                    "administrator, or switch the profile's text extractor "
+                    "to a text output mode."
+                ),
+                status_code=500,
+            )
         if not ImageOutputConstants.is_pdf(file_name):
             raise IndexingAPIError(
                 detail=ImageOutputConstants.PDF_ONLY_ERROR,

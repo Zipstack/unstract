@@ -18,23 +18,28 @@ try:
     from plugins.vlm_image_answer import backend_hooks as _hooks
 
     VLM_IMAGE_ANSWER_AVAILABLE = True
+    VLM_HOOKS_BROKEN = False
 except ImportError:
     _hooks = None
     VLM_IMAGE_ANSWER_AVAILABLE = False
     # Distinguish "running OSS" (package absent — expected, silent) from
     # "cloud hooks are broken" (package present but backend_hooks failed
-    # to import): in the latter case the adapter gating still enables
-    # image output mode while these hooks quietly stop existing.
+    # to import). The broken state is exported so the consumers of image
+    # mode fail closed instead of quietly degrading: the adapter gating
+    # disables the mode and ``dynamic_extractor`` rejects image-mode
+    # extraction — otherwise a re-extraction would rewrite the page
+    # images while the stored answers derived from the old pages are
+    # never invalidated.
     try:
         import plugins.vlm_image_answer  # noqa: F401
     except ImportError:
-        pass
+        VLM_HOOKS_BROKEN = False
     else:
-        logger.warning(
+        VLM_HOOKS_BROKEN = True
+        logger.error(
             "plugins.vlm_image_answer is present but backend_hooks failed "
-            "to import — VLM profile warnings, deploy-time validation and "
-            "re-extraction invalidation are disabled while image output "
-            "mode remains enabled"
+            "to import — image output mode is disabled (new saves rejected, "
+            "image-mode extraction blocked) until the install is repaired"
         )
 
 

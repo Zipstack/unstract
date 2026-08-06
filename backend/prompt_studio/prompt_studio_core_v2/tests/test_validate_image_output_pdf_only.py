@@ -79,6 +79,34 @@ class TestGateConditions:
         PromptStudioHelper._validate_image_output_pdf_only(profile, "statement.docx")
 
 
+class TestBrokenHooksBlockImageMode:
+    """Half-broken cloud install (package present, hooks unimportable) →
+    image-mode extraction is rejected outright, so a re-extraction can
+    never rewrite pages while stale stored answers survive.
+    """
+
+    def test_broken_hooks_reject_image_mode_even_for_pdf(self, monkeypatch) -> None:  # noqa: ANN001
+        monkeypatch.setattr(_psh_mod.vlm_utils, "VLM_HOOKS_BROKEN", True)
+        with pytest.raises(IndexingAPIError) as exc_info:
+            PromptStudioHelper._validate_image_output_pdf_only(
+                _profile({"output_mode": "image"}), "statement.pdf"
+            )
+        assert exc_info.value.status_code == 500
+        assert "failed to load" in str(exc_info.value.detail)
+
+    def test_broken_hooks_do_not_affect_text_mode(self, monkeypatch) -> None:  # noqa: ANN001
+        monkeypatch.setattr(_psh_mod.vlm_utils, "VLM_HOOKS_BROKEN", True)
+        PromptStudioHelper._validate_image_output_pdf_only(
+            _profile({"output_mode": "text"}), "statement.docx"
+        )
+
+    def test_healthy_state_passes_image_mode_pdf(self, monkeypatch) -> None:  # noqa: ANN001
+        monkeypatch.setattr(_psh_mod.vlm_utils, "VLM_HOOKS_BROKEN", False)
+        PromptStudioHelper._validate_image_output_pdf_only(
+            _profile({"output_mode": "image"}), "statement.pdf"
+        )
+
+
 class TestGuardIsWiredIntoDynamicExtractor:
     """The guard must run from dynamic_extractor (the single extract path)."""
 

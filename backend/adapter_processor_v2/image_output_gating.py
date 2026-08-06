@@ -24,9 +24,24 @@ IMAGE_OUTPUT_REQUIRES_CLOUD = (
 
 
 def _consumer_plugin_available() -> bool:
+    """True only when the package AND its backend hooks import.
+
+    A half-broken install (package present, ``backend_hooks`` failing to
+    import) must gate image mode off — fail-closed — rather than leave
+    the mode enabled while the re-extraction invalidation and deploy
+    validation hooks quietly stop existing.
+    """
     try:
         import plugins.vlm_image_answer  # noqa: F401
     except ImportError:
+        return False
+    try:
+        import plugins.vlm_image_answer.backend_hooks  # noqa: F401
+    except ImportError:
+        logger.error(
+            "plugins.vlm_image_answer is installed but backend_hooks "
+            "failed to import; disabling image output mode (fail-closed)"
+        )
         return False
     return True
 

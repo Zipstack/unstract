@@ -108,3 +108,44 @@ class TestSaveTimeValidation:
     def test_empty_metadata_allowed(self, consumer_absent) -> None:
         validate_image_output_allowed(None, _LLMW_ADAPTER_ID)
         validate_image_output_allowed({}, _LLMW_ADAPTER_ID)
+
+
+class TestConsumerProbe:
+    """The availability probe must fail closed on a half-broken install."""
+
+    def test_absent_package_is_unavailable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # OSS baseline: no plugins.vlm_image_answer package at all. A None
+        # sys.modules entry forces ImportError regardless of whether the
+        # local environment has the cloud plugin overlaid.
+        import sys
+
+        monkeypatch.setitem(sys.modules, "plugins.vlm_image_answer", None)
+        assert gating._consumer_plugin_available() is False
+
+    def test_package_without_hooks_is_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Package present but backend_hooks unimportable (broken install):
+        # the mode must gate off rather than stay enabled with dead hooks.
+        import sys
+        from types import ModuleType
+
+        pkg = ModuleType("plugins.vlm_image_answer")
+        monkeypatch.setitem(sys.modules, "plugins", ModuleType("plugins"))
+        monkeypatch.setitem(sys.modules, "plugins.vlm_image_answer", pkg)
+        monkeypatch.setitem(sys.modules, "plugins.vlm_image_answer.backend_hooks", None)
+        assert gating._consumer_plugin_available() is False
+
+    def test_package_with_hooks_is_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import sys
+        from types import ModuleType
+
+        hooks = ModuleType("plugins.vlm_image_answer.backend_hooks")
+        pkg = ModuleType("plugins.vlm_image_answer")
+        pkg.backend_hooks = hooks
+        monkeypatch.setitem(sys.modules, "plugins", ModuleType("plugins"))
+        monkeypatch.setitem(sys.modules, "plugins.vlm_image_answer", pkg)
+        monkeypatch.setitem(sys.modules, "plugins.vlm_image_answer.backend_hooks", hooks)
+        assert gating._consumer_plugin_available() is True
