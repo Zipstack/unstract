@@ -39,6 +39,23 @@ class PromptStudioRegistryHelper:
     """
 
     @staticmethod
+    def _resolve_challenge_llm_id(tool: CustomTool) -> str:
+        """Resolve the adapter ID to seed as challenge_llm's spec default.
+
+        Mirrors the precedence frame_export_json already uses: the tool's own
+        challenge_llm FK, else the project default profile's LLM.
+
+        Args:
+            tool (CustomTool): Saved tool data
+
+        Returns:
+            str: Adapter instance ID of the challenger LLM
+        """
+        if tool.challenge_llm:
+            return str(tool.challenge_llm.id)
+        return str(ProfileManager.get_default_llm_profile(tool).llm.id)
+
+    @staticmethod
     def frame_spec(tool: CustomTool) -> Spec:
         """Method to return spec of the Custom tool.
 
@@ -48,14 +65,31 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
+        # A "type": "string" property with no spec default is seeded into tool
+        # instance metadata as "" (ToolUtils.get_default_settings). Because
+        # challenge_llm declares adapterType, the instance schema carries an
+        # enum of real adapter IDs, which "" can never satisfy - so deployment
+        # validation rejected the freshly seeded instance, regardless of whether
+        # LLMChallenge was enabled (the seeding never consulted that flag).
+        #
+        # Seed the resolved LLM instead of leaving it empty. adapterType stays
+        # declared unconditionally: it is the sole discriminator in
+        # Spec.get_adapter_properties() (tool-registry dto.py), so dropping it
+        # would take challenge_llm out of every adapter-aware path - the
+        # challenge_llm_adapter_id writes that runtime actually reads
+        # (structure_tool_task.py), the settings-form adapter dropdown, and the
+        # lazy adapter-id migration check.
+        challenge_llm_property: dict[str, Any] = {
+            "type": "string",
+            "title": "Challenger LLM",
+            "adapterType": "LLM",
+            "description": "LLM to use for LLMChallenge",
+            "adapterIdKey": "challenge_llm_adapter_id",
+            "default": PromptStudioRegistryHelper._resolve_challenge_llm_id(tool),
+        }
+
         properties = {
-            "challenge_llm": {
-                "type": "string",
-                "title": "Challenger LLM",
-                "adapterType": "LLM",
-                "description": "LLM to use for LLMChallenge",
-                "adapterIdKey": "challenge_llm_adapter_id",
-            },
+            "challenge_llm": challenge_llm_property,
             "enable_challenge": {
                 "type": "boolean",
                 "title": "Enable LLMChallenge",
