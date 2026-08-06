@@ -117,15 +117,18 @@ class AnswerPromptService:
         checker = getattr(llm, "is_prompt_caching_active", None)
         if not callable(checker):
             return False
+        # Fail closed: if the probe raises, keep the original (context-last)
+        # prompt order rather than risk a reorder for an LLM whose caching
+        # support is unknown. Hence the deliberately broad excepts below.
         try:
             return bool(checker())
-        except Exception:
+        except Exception:  # noqa: BLE001 - fail closed, see comment above
             provider = getattr(getattr(llm, "adapter", None), "get_provider", None)
             provider_name = None
             if callable(provider):
                 try:
                     provider_name = provider()
-                except Exception:
+                except Exception:  # noqa: BLE001 - provider is best-effort log context
                     provider_name = None
             logger.warning(
                 "Failed to determine prompt-caching support for LLM "
