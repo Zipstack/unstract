@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import lru_cache
+from functools import cache, lru_cache
 from typing import Any, NoReturn, cast
 
 import litellm
@@ -33,6 +33,23 @@ from unstract.sdk1.utils.retry_utils import (
 logger = logging.getLogger(__name__)
 
 
+# Truthy-looking values that people commonly set expecting a boolean flag to
+# turn on — but only "true" enables caching. We warn (once each) so a stray
+# ENABLE_PROMPT_CACHING=1 doesn't leave caching silently off.
+_PROMPT_CACHING_TRUTHY_LOOKALIKES = frozenset(
+    {"1", "yes", "y", "on", "t", "enable", "enabled"}
+)
+
+
+@cache
+def _warn_prompt_caching_lookalike(value: str) -> None:
+    logger.warning(
+        "ENABLE_PROMPT_CACHING=%r is not recognized as enabled; only 'true' "
+        "(case-insensitive) turns prompt caching on — caching stays OFF.",
+        value,
+    )
+
+
 def is_prompt_caching_enabled() -> bool:
     """Whether LLM prompt caching is enabled platform-wide (opt-in, default off).
 
@@ -41,8 +58,16 @@ def is_prompt_caching_enabled() -> bool:
     don't each have to pass ``enable_prompt_caching``. Consumers still decide
     *what* to cache by passing ``cache_prefix``. Exposed for consumers that gate
     their own prompt-restructuring on the same flag.
+
+    Only ``"true"`` (case-insensitive) enables it; a truthy-looking value like
+    ``"1"``/``"yes"``/``"on"`` logs a one-time warning and stays off.
     """
-    return os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower() == "true"
+    raw = os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower()
+    if raw == "true":
+        return True
+    if raw in _PROMPT_CACHING_TRUTHY_LOOKALIKES:
+        _warn_prompt_caching_lookalike(raw)
+    return False
 
 
 # Lets tests force a deterministic completion without a provider or a secret.
@@ -380,11 +405,24 @@ class LLM:
             # both ``model`` and ``model_id`` — when a caller routes through a
             # Bedrock Application Inference Profile, the ARN in ``model`` is
             # opaque and the Claude id appears only in ``model_id``.
-            return any(
+            recognized = any(
                 marker in str(self.kwargs.get(field, "")).lower()
                 for field in ("model", "model_id")
                 for marker in self._BEDROCK_CACHE_MODEL_MARKERS
             )
+            if not recognized:
+                # Enabled but the model can't be confirmed as Anthropic/Claude
+                # (e.g. a fully opaque Application Inference Profile ARN with no
+                # Claude id in model/model_id). Skipping is safe; leave a
+                # breadcrumb so operators can diagnose a Claude-on-Bedrock call
+                # that unexpectedly isn't caching.
+                logger.debug(
+                    "Prompt caching enabled but skipped for Bedrock: "
+                    "model=%r model_id=%r not recognized as Anthropic/Claude",
+                    self.kwargs.get("model"),
+                    self.kwargs.get("model_id"),
+                )
+            return recognized
         return True
 
     def is_prompt_caching_active(self) -> bool:
@@ -747,10 +785,20 @@ class LLM:
                 message=error_msg, status_code=status_code, actual_err=e
             ) from e
 
-    async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
-        """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
+    async def acomplete(
+        self,
+        prompt: str,
+        cache_prefix: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Asynchronous chat completion (wrapper around ``litellm.acompletion``).
+
+        ``cache_prefix`` mirrors :meth:`complete` / :meth:`stream_complete`: when
+        prompt caching is active it is emitted as a cached stable prefix ahead of
+        ``prompt``; otherwise it is concatenated so the model sees the same text.
+        """
         try:
-            messages = self._build_messages(prompt)
+            messages = self._build_messages(prompt, cache_prefix=cache_prefix)
             logger.debug(
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
             )
@@ -930,9 +978,14 @@ class LLM:
                 # ignores any ``cost_model`` override.
                 return litellm.completion_cost(completion_response=response, model=model)
             except Exception:
-                logger.debug(
-                    "completion_cost() failed for model=%s; "
-                    "falling back to cost_per_token",
+                # Warn (not debug): the cost_per_token fallback prices every
+                # prompt token at the full input rate, so it over-reports cost
+                # by up to ~10x on cache hits. Operators watching spend need to
+                # see that a recorded cost may be inflated.
+                logger.warning(
+                    "completion_cost() failed for model=%s; falling back to "
+                    "cost_per_token — recorded cost may be OVER-reported for "
+                    "this cached call",
                     model,
                     exc_info=True,
                 )

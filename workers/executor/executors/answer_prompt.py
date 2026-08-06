@@ -23,18 +23,6 @@ from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 logger = logging.getLogger(__name__)
 
 
-def is_prompt_caching_enabled() -> bool:
-    """Whether LLM prompt caching is enabled for extraction (opt-in, default off).
-
-    When enabled, the extraction prompt is reordered so the reused document
-    context becomes a cached prefix (see ``construct_cached_prompt``) and the
-    extraction ``LLM`` is built with provider caching on. Gated by the
-    ``ENABLE_PROMPT_CACHING`` env var so the reorder + caching can be rolled out
-    and A/B-evaluated before it is on everywhere.
-    """
-    return os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower() == "true"
-
-
 def _resolve_host_addresses(host: str) -> set[str]:
     """Resolve a hostname or IP string to a set of IP address strings."""
     try:
@@ -132,9 +120,18 @@ class AnswerPromptService:
         try:
             return bool(checker())
         except Exception:
+            provider = getattr(getattr(llm, "adapter", None), "get_provider", None)
+            provider_name = None
+            if callable(provider):
+                try:
+                    provider_name = provider()
+                except Exception:
+                    provider_name = None
             logger.warning(
-                "Failed to determine prompt-caching support for LLM; "
-                "using original prompt order",
+                "Failed to determine prompt-caching support for LLM "
+                "(type=%s, provider=%s); using original prompt order",
+                type(llm).__name__,
+                provider_name,
                 exc_info=True,
             )
             return False
@@ -241,6 +238,31 @@ class AnswerPromptService:
         return notes
 
     @staticmethod
+    def _prepare_postambles(
+        postamble: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str,
+    ) -> tuple[str, str]:
+        """Apply JSON + platform/word-confidence formatting to the postambles.
+
+        Shared by :meth:`construct_prompt` and :meth:`construct_cached_prompt` so
+        the cached and non-cached prompts stay byte-identical apart from the
+        context/question ordering. Returns the ``(postamble, platform_postamble)``
+        pair to interpolate.
+        """
+        if prompt_type == PSKeys.JSON:
+            json_postamble = os.environ.get(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
+        if platform_postamble:
+            platform_postamble += "\n\n"
+            if word_confidence_postamble:
+                platform_postamble += f"{word_confidence_postamble}\n\n"
+        return postamble, platform_postamble
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -254,15 +276,9 @@ class AnswerPromptService:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         prompt += AnswerPromptService._build_grammar_notes(grammar_list)
-        if prompt_type == PSKeys.JSON:
-            json_postamble = os.environ.get(
-                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
-            )
-            postamble += f"\n{json_postamble}"
-        if platform_postamble:
-            platform_postamble += "\n\n"
-            if word_confidence_postamble:
-                platform_postamble += f"{word_confidence_postamble}\n\n"
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
         prompt += (
             f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
@@ -289,15 +305,9 @@ class AnswerPromptService:
         volatile``. This reorders the prompt (context before question instead of
         after), which is why it is flag-gated and A/B-evaluated.
         """
-        if prompt_type == PSKeys.JSON:
-            json_postamble = os.environ.get(
-                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
-            )
-            postamble += f"\n{json_postamble}"
-        if platform_postamble:
-            platform_postamble += "\n\n"
-            if word_confidence_postamble:
-                platform_postamble += f"{word_confidence_postamble}\n\n"
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
         cache_prefix = f"Context:\n---------------\n{context}\n-----------------\n\n"
         volatile = (
             f"{preamble}\n\nQuestion or Instruction: {prompt}"

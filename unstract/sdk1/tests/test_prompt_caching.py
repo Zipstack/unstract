@@ -326,6 +326,161 @@ def test_cost_override_passed_to_completion_cost_on_cached_call(
     assert captured.get("completion_response") == {"id": "resp"}
 
 
+def test_compute_cost_falls_back_when_completion_cost_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """completion_cost failure on a cached call falls back to cost_per_token."""
+    import types
+
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.llm import LLM
+
+    def _boom(**kwargs: object) -> float:
+        raise RuntimeError("no price map")
+
+    monkeypatch.setattr(llm_mod.litellm, "completion_cost", _boom)
+    monkeypatch.setattr(llm_mod.litellm, "cost_per_token", lambda **k: (0.1, 0.2))
+
+    cost = LLM._compute_call_cost(
+        types.SimpleNamespace(),
+        model="m",
+        prompt_tokens=100,
+        completion_tokens=10,
+        has_cache_tokens=True,
+        response={"id": "r"},
+    )
+    assert cost == pytest.approx(0.3)
+
+
+def test_compute_cost_returns_zero_when_both_paths_fail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If both completion_cost and cost_per_token fail, cost is recorded as 0.0."""
+    import types
+
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.llm import LLM
+
+    def _boom(**kwargs: object) -> float:
+        raise RuntimeError("nope")
+
+    monkeypatch.setattr(llm_mod.litellm, "completion_cost", _boom)
+    monkeypatch.setattr(llm_mod.litellm, "cost_per_token", _boom)
+
+    cost = LLM._compute_call_cost(
+        types.SimpleNamespace(),
+        model="m",
+        prompt_tokens=1,
+        completion_tokens=1,
+        has_cache_tokens=True,
+        response={"id": "r"},
+    )
+    assert cost == 0.0
+
+
+def test_compute_cost_skips_completion_cost_when_response_is_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """has_cache_tokens True but no response -> skip completion_cost, use per-token."""
+    import types
+
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.llm import LLM
+
+    called = {"completion_cost": False}
+
+    def _cc(**kwargs: object) -> float:
+        called["completion_cost"] = True
+        return 9.9
+
+    monkeypatch.setattr(llm_mod.litellm, "completion_cost", _cc)
+    monkeypatch.setattr(llm_mod.litellm, "cost_per_token", lambda **k: (0.4, 0.6))
+
+    cost = LLM._compute_call_cost(
+        types.SimpleNamespace(),
+        model="m",
+        prompt_tokens=1,
+        completion_tokens=1,
+        has_cache_tokens=True,
+        response=None,
+    )
+    assert called["completion_cost"] is False
+    assert cost == pytest.approx(1.0)
+
+
+# ── control flags never leak into the litellm completion payload ─────────────
+
+
+def test_control_flags_not_forwarded_to_litellm_completion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """enable_prompt_caching / cost_model / context_window never reach litellm.
+
+    They are applied on our side (cache_control blocks, cost accounting) and must
+    be popped before ``litellm.completion``; otherwise litellm's Pydantic
+    validation rejects the unknown params.
+    """
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.exceptions import LLMError
+    from unstract.sdk1.llm import LLM
+
+    captured: dict[str, Any] = {}
+
+    def _capture_completion(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        raise RuntimeError("stop after capture")
+
+    monkeypatch.setattr(llm_mod.litellm, "completion", _capture_completion)
+    monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
+
+    meta = {
+        "model": "claude-opus-4-8",
+        "api_key": "sk-test",
+        "enable_prompt_caching": True,
+    }
+    llm = LLM(adapter_id=_ANTHROPIC_ADAPTER_ID, adapter_metadata=meta, system_prompt="S")
+    with pytest.raises(LLMError):
+        llm.complete("hi")
+
+    assert captured.get("messages"), "payload should have been built and forwarded"
+    assert "enable_prompt_caching" not in captured
+    assert "cost_model" not in captured
+    assert "context_window" not in captured
+
+
+def test_control_flags_not_forwarded_to_litellm_acompletion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Same strip guarantee on the async surface (regression for acomplete)."""
+    import asyncio
+
+    import unstract.sdk1.llm as llm_mod
+    from unstract.sdk1.exceptions import LLMError
+    from unstract.sdk1.llm import LLM
+
+    captured: dict[str, Any] = {}
+
+    async def _capture_acompletion(**kwargs: object) -> dict[str, object]:
+        captured.update(kwargs)
+        raise RuntimeError("stop after capture")
+
+    monkeypatch.setattr(llm_mod.litellm, "acompletion", _capture_acompletion)
+    monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
+
+    meta = {
+        "model": "claude-opus-4-8",
+        "api_key": "sk-test",
+        "enable_prompt_caching": True,
+    }
+    llm = LLM(adapter_id=_ANTHROPIC_ADAPTER_ID, adapter_metadata=meta, system_prompt="S")
+    with pytest.raises(LLMError):
+        asyncio.run(llm.acomplete("hi", cache_prefix="STABLE"))
+
+    assert captured.get("messages"), "async payload should have been forwarded"
+    assert "enable_prompt_caching" not in captured
+    assert "cost_model" not in captured
+
+
 # ── constructor / env opt-in (real LLM, no flag in adapter metadata) ────────
 
 _ANTHROPIC_ADAPTER_ID = "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203"
@@ -369,3 +524,28 @@ def test_env_var_enables_caching_platform_wide(monkeypatch: pytest.MonkeyPatch) 
     meta = {"model": "claude-opus-4-8", "api_key": "sk-test"}
     llm = LLM(adapter_id=_ANTHROPIC_ADAPTER_ID, adapter_metadata=meta, system_prompt="S")
     assert llm._enable_prompt_caching is True
+
+
+def test_env_var_true_is_case_insensitive(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "TRUE")
+    from unstract.sdk1.llm import is_prompt_caching_enabled
+
+    assert is_prompt_caching_enabled() is True
+
+
+def test_env_var_truthy_lookalike_stays_off_and_warns(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A value like '1'/'yes'/'on' does NOT enable caching, but warns once."""
+    import logging
+
+    from unstract.sdk1.llm import (
+        _warn_prompt_caching_lookalike,
+        is_prompt_caching_enabled,
+    )
+
+    _warn_prompt_caching_lookalike.cache_clear()
+    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "1")
+    with caplog.at_level(logging.WARNING):
+        assert is_prompt_caching_enabled() is False
+    assert any("not recognized as enabled" in r.message for r in caplog.records)

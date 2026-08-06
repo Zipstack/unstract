@@ -9,7 +9,8 @@ first) instead of a suffix (context last). These tests lock in that:
   is preserved, only the context moves to the front,
 - ``cache_prefix`` is exactly the context block (no per-prompt question), so
   it repeats byte-for-byte across prompts on the same document,
-- the flag reads the env var and defaults off.
+- the reorder only happens when the selected LLM actually caches
+  (``is_prompt_caching_active()``); unsupported LLMs keep the original order.
 
 The executor package's ``__init__`` pulls the full celery stack, so we load the
 module with stubbed parent packages — the methods under test are pure strings.
@@ -26,12 +27,31 @@ _WORKERS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _load_answer_prompt():
-    for pkg, rel in [("executor", "executor"), ("executor.executors", "executor/executors")]:
+    """Import answer_prompt without triggering the executor package's celery stack.
+
+    The real ``executor`` / ``executor.executors`` package ``__init__``s pull the
+    full celery worker stack, so we temporarily register lightweight namespace
+    stubs pointing at the real source dirs, import the module, then remove any
+    stub we added. The imported module (and its already-resolved ``constants`` /
+    ``exceptions`` imports) stay cached under their own names, so the stubs are
+    unneeded afterwards — and removing them keeps ``sys.modules`` clean for other
+    tests in the same process instead of leaving synthetic packages behind.
+    """
+    injected = []
+    for pkg, rel in [
+        ("executor", "executor"),
+        ("executor.executors", "executor/executors"),
+    ]:
         if pkg not in sys.modules:
             mod = types.ModuleType(pkg)
             mod.__path__ = [os.path.join(_WORKERS, rel)]
             sys.modules[pkg] = mod
-    return importlib.import_module("executor.executors.answer_prompt")
+            injected.append(pkg)
+    try:
+        return importlib.import_module("executor.executors.answer_prompt")
+    finally:
+        for pkg in injected:
+            sys.modules.pop(pkg, None)
 
 
 _mod = _load_answer_prompt()
@@ -82,13 +102,51 @@ def test_cached_variant_is_a_pure_reorder_no_content_lost():
         assert piece in full, f"missing from cached prompt: {piece!r}"
 
 
-def test_flag_defaults_off_and_reads_env(monkeypatch):
-    monkeypatch.delenv("ENABLE_PROMPT_CACHING", raising=False)
-    assert _mod.is_prompt_caching_enabled() is False
-    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "true")
-    assert _mod.is_prompt_caching_enabled() is True
-    monkeypatch.setenv("ENABLE_PROMPT_CACHING", "false")
-    assert _mod.is_prompt_caching_enabled() is False
+# --- shared postamble formatting (cached and uncached must not diverge) ------
+
+
+def test_prepare_postambles_applies_json_and_platform_formatting():
+    json_postamble = os.environ.get(
+        _mod.PSKeys.JSON_POSTAMBLE, _mod.PSKeys.DEFAULT_JSON_POSTAMBLE
+    )
+    post, plat = A._prepare_postambles("BASE", "PLATFORM", "WORDCONF", _mod.PSKeys.JSON)
+    assert post == f"BASE\n{json_postamble}"
+    assert plat == "PLATFORM\n\nWORDCONF\n\n"
+
+
+def test_prepare_postambles_noop_for_text_without_platform():
+    post, plat = A._prepare_postambles("BASE", "", "", "text")
+    assert post == "BASE"
+    assert plat == ""
+
+
+def test_cached_and_uncached_share_postamble_formatting():
+    """Both builders route postambles through the shared helper, so a JSON +
+    platform postamble is formatted identically — guards against silent
+    divergence between cached and non-cached prompts (breaks A/B comparison)."""
+    args = dict(_ARGS)
+    args.update(
+        prompt_type=_mod.PSKeys.JSON,
+        postamble="BASE_POST",
+        platform_postamble="PLATFORM",
+        word_confidence_postamble="WORDCONF",
+    )
+    flat = A.construct_prompt(**args)
+    prefix, volatile = A.construct_cached_prompt(**args)
+    cached = prefix + volatile
+    json_postamble = os.environ.get(
+        _mod.PSKeys.JSON_POSTAMBLE, _mod.PSKeys.DEFAULT_JSON_POSTAMBLE
+    )
+    for piece in ("BASE_POST", "PLATFORM", "WORDCONF", json_postamble):
+        assert piece in flat, f"missing from construct_prompt: {piece!r}"
+        assert piece in cached, f"missing from construct_cached_prompt: {piece!r}"
+
+
+# NOTE: the ENABLE_PROMPT_CACHING env-var master switch is owned by the SDK
+# (``unstract.sdk1.llm.is_prompt_caching_enabled``) and covered by its tests;
+# answer_prompt gates purely on the LLM's ``is_prompt_caching_active()`` probe
+# (see ``_llm_caches_prompts`` tests below), so there is no local env flag to
+# test here.
 
 
 # --- gate: only reorder into a cached prefix when the LLM actually caches -----
