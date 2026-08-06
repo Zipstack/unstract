@@ -119,9 +119,20 @@ API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
 
+# Organization-scoped MCP server, mounted at /api/v1/unstract/<org>/mcp/.
+# OFF by default: only the deployment-scoped server is required for the initial
+# release, so this ships disabled rather than removed — enabling it is a
+# settings change, not a revert. Its 23 tools reach the whole organization, so
+# it should stay off until the tier model behind it is settled (a `read` key
+# cannot use it at all today, because every MCP call is an HTTP POST).
+MCP_PLATFORM_SERVER_ENABLED = (
+    os.environ.get("MCP_PLATFORM_SERVER_ENABLED", "false").strip().lower() == "true"
+)
+
 # Budget for billable MCP tool calls (LLM inference, indexing, pipeline runs),
 # counted per organization over a rolling window. Bounds how often an agent can
 # trigger paid work; it counts calls, not tokens — see mcp_server/spend_guard.py.
+# Applies to whichever servers are enabled above.
 MCP_BILLABLE_CALL_LIMIT = int(os.environ.get("MCP_BILLABLE_CALL_LIMIT", 50))
 MCP_BILLABLE_WINDOW_SECONDS = int(os.environ.get("MCP_BILLABLE_WINDOW_SECONDS", 3600))
 
