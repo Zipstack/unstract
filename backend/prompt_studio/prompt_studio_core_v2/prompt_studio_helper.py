@@ -2657,6 +2657,18 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
+
+        # A fresh (non-cache-hit) extraction rewrote any persisted page
+        # images — notify the VLM answer-invalidation hook (no-op in OSS)
+        # BEFORE committing the extraction-success marker: if a hook ever
+        # fails, the marker stays unset and a retry re-runs extraction and
+        # invalidation, instead of cache-hitting past a stale-answer state.
+        invalidate_vlm_answers_on_reextraction(
+            document_id=str(document_id),
+            profile_manager=profile_manager,
+            extract_file_path=extract_file_path,
+        )
+
         success = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
@@ -2668,15 +2680,6 @@ class PromptStudioHelper:
                 f"Failed to mark extraction success for document {document_id}. "
                 f"Extraction completed but status not saved."
             )
-
-        # A fresh (non-cache-hit) extraction rewrote any persisted page
-        # images — stored VLM answers for this document are stale.
-        # No-op in OSS (cloud-only hook).
-        invalidate_vlm_answers_on_reextraction(
-            document_id=str(document_id),
-            profile_manager=profile_manager,
-            extract_file_path=extract_file_path,
-        )
 
         return extracted_text
 

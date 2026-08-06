@@ -62,9 +62,7 @@ class TestCloudDelegation:
         with pytest.raises(ValueError):
             vlm_utils.validate_workflow_for_deployment(SimpleNamespace())
 
-    def test_invalidation_delegates_and_swallows_failure(
-        self, cloud_hooks: MagicMock
-    ) -> None:
+    def test_invalidation_delegates(self, cloud_hooks: MagicMock) -> None:
         profile = SimpleNamespace()
         vlm_utils.invalidate_vlm_answers_on_reextraction(
             document_id="d1", profile_manager=profile, extract_file_path="/e.txt"
@@ -72,8 +70,15 @@ class TestCloudDelegation:
         cloud_hooks.invalidate_vlm_answers_on_reextraction.assert_called_once_with(
             document_id="d1", profile_manager=profile, extract_file_path="/e.txt"
         )
-        # Invalidation failure must not fail the extraction it rides on.
+
+    def test_invalidation_failure_propagates(self, cloud_hooks: MagicMock) -> None:
+        # The hook owns its error policy; a raised error must fail the
+        # re-extraction loudly (before the success marker commits) rather
+        # than silently leave stored answers stale against rewritten pages.
         cloud_hooks.invalidate_vlm_answers_on_reextraction.side_effect = RuntimeError
-        vlm_utils.invalidate_vlm_answers_on_reextraction(
-            document_id="d1", profile_manager=profile, extract_file_path="/e.txt"
-        )  # no raise
+        with pytest.raises(RuntimeError):
+            vlm_utils.invalidate_vlm_answers_on_reextraction(
+                document_id="d1",
+                profile_manager=SimpleNamespace(),
+                extract_file_path="/e.txt",
+            )

@@ -75,17 +75,22 @@ def invalidate_vlm_answers_on_reextraction(
 ) -> None:
     """Invalidate stored VLM answers after a re-extraction rewrote pages/.
 
-    Called from the extraction choke point right after a successful
-    (non-cache-hit) extraction. Never raises — invalidation failure must
-    not fail the extraction itself; the cloud hook logs and degrades.
+    Called from the extraction choke point after a successful
+    (non-cache-hit) extraction, BEFORE the extraction-success marker is
+    committed. Exceptions propagate — the hook owns its error policy.
+    The current cloud hook is purely informational (Prompt Studio has no
+    read-side answer cache; output rows are overwritten per run, the
+    same semantics text-mode re-extraction has always had) and never
+    raises. A future hook that performs real invalidation must either
+    handle its own failures or let them fail the re-extraction loudly:
+    because the failure lands before the marker commits, a retry re-runs
+    extraction and invalidation instead of cache-hitting past a
+    stale-answer state.
     """
     if not VLM_IMAGE_ANSWER_AVAILABLE:
         return
-    try:
-        _hooks.invalidate_vlm_answers_on_reextraction(
-            document_id=document_id,
-            profile_manager=profile_manager,
-            extract_file_path=extract_file_path,
-        )
-    except Exception:
-        logger.exception("VLM answer invalidation failed after re-extraction")
+    _hooks.invalidate_vlm_answers_on_reextraction(
+        document_id=document_id,
+        profile_manager=profile_manager,
+        extract_file_path=extract_file_path,
+    )
