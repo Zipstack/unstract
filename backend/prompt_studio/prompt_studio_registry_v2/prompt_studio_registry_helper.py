@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any
 
 from account_v2.models import User
@@ -142,6 +143,49 @@ class PromptStudioRegistryHelper:
             image_name=settings.STRUCTURE_TOOL_IMAGE_NAME,
             image_tag=settings.STRUCTURE_TOOL_IMAGE_TAG,
         )
+
+    @staticmethod
+    def get_resolved_settings(prompt_registry_id: str) -> dict[str, Any]:
+        """Return the settings export already resolved for this exported tool.
+
+        ``frame_export_json`` resolves adapter-valued settings at export time -
+        notably ``challenge_llm``, which falls back to the default profile's LLM
+        when the project set none - and stores them under
+        ``tool_metadata[tool_settings]``. ``Tool`` (built from ``tool_spec`` /
+        ``tool_property``) does not carry them, so callers that only have a
+        ``Tool`` cannot see the resolved values.
+
+        Returns an empty dict when the registry row is missing or carries no
+        settings, so callers can treat "no resolved settings" as a no-op.
+        """
+        # `ToolInstance.tool_id` is a free-form CharField and registry tools use
+        # slugs ("classify", "text_extractor"), which a UUID pk lookup would
+        # reject. Screening them out here keeps this a silent no-op for every
+        # non-Prompt-Studio tool instead of logging on a fully normal path.
+        # Checked inline rather than via `ToolInstanceHelper.is_uuid_format`:
+        # `tool_instance_v2.tool_processor` already imports this module at
+        # module level, so importing back into `tool_instance_v2` would cycle.
+        try:
+            uuid.UUID(str(prompt_registry_id))
+        except ValueError:
+            return {}
+        try:
+            # Only `tool_metadata` is needed, and it is the largest column on the
+            # row - the full JSONB blob of every prompt and output. Fetching just
+            # that column avoids pulling the rest a second time, since the caller
+            # has already loaded this row to build the `Tool`.
+            metadata = PromptStudioRegistry.objects.values_list(
+                "tool_metadata", flat=True
+            ).get(pk=prompt_registry_id)
+        except PromptStudioRegistry.DoesNotExist:
+            # A UUID-shaped tool_id with no registry row - e.g. an agentic tool
+            # in cloud. Expected, so this stays at debug.
+            logger.debug(
+                f"No prompt studio registry entry for {prompt_registry_id}; "
+                "no resolved settings to apply"
+            )
+            return {}
+        return (metadata or {}).get(JsonSchemaKey.TOOL_SETTINGS, {}) or {}
 
     @staticmethod
     def update_or_create_psr_tool(
