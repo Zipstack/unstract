@@ -12,6 +12,7 @@ import {
   getLLMModelNamesForProfiles,
   promptType,
 } from "../../../helpers/GetStaticData";
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -146,8 +147,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         url = publicAdapterApi(id, "LLM");
       }
       try {
-        const res = await axiosPrivate.get(url);
-        const adapterList = res?.data;
+        const adapterList = await fetchAllPages(axiosPrivate, { url });
         setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
       } catch (err) {
         setAlertDetails(
