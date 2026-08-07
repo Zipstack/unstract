@@ -318,11 +318,15 @@ def _render_markdown(
 
     if critical_statuses:
         regressions = [s for s in critical_statuses if s.state == "regression"]
-        all_gaps = [s for s in critical_statuses if s.state == "gap"]
-        # A path whose covering groups exist but sat out this build is not
-        # "not yet covered" — reporting it as such reads as missing tests.
-        unexercised = [s for s in all_gaps if not s.in_scope and s.path.covered_by]
-        gaps = [s for s in all_gaps if s not in unexercised]
+        # A path whose covering groups exist but reported nothing is not "not yet
+        # covered" — listing it as such reads as missing tests.
+        unexercised: list[CriticalPathStatus] = []
+        gaps: list[CriticalPathStatus] = []
+        for s in critical_statuses:
+            if s.state != "gap":
+                continue
+            target = unexercised if not s.in_scope and s.path.covered_by else gaps
+            target.append(s)
         covered = [s for s in critical_statuses if s.state == "covered"]
 
         lines.append("## Critical paths")
@@ -353,7 +357,7 @@ def _render_markdown(
                 covers = ", ".join(s.path.covered_by)
                 lines.append(
                     f"- **{s.path.id}** — {s.path.description} "
-                    f"(covered by {covers}; that tier did not run here)"
+                    f"(covered by {covers}; no result reported in this build)"
                 )
             lines.append("")
             lines.append("</details>")

@@ -226,6 +226,10 @@ def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -
     treated as empty: silently dropping previously-covered paths would erase
     the other tier's contribution and turn the next build into a regression
     festival. CI should delete the cache and retry on this exception.
+
+    Ids absent from the registry are pruned. The union alone never forgets, so a
+    deliberately retired path would otherwise sit in the cache forever; pruning
+    makes editing ``critical_paths.yaml`` the way to accept a removal.
     """
     existing: set[str] = set()
     if destination.exists():
@@ -238,7 +242,8 @@ def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -
                 "Delete the cache entry and re-run."
             ) from exc
     fresh = {s.path.id for s in statuses if s.state == "covered"}
-    payload = {"covered_paths": sorted(existing | fresh)}
+    known = {s.path.id for s in statuses}
+    payload = {"covered_paths": sorted((existing | fresh) & known)}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2))
 

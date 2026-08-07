@@ -963,6 +963,7 @@ def _drive_cmd_report(
     *,
     reporting_groups: dict[str, int],
     baseline_blob: str = '{"covered_paths": ["int-path"]}',
+    optional: bool = False,
 ) -> tuple[int, dict[str, str]]:
     """Drive ``cmd_report`` over one integration group covering ``int-path``.
 
@@ -982,6 +983,7 @@ def _drive_cmd_report(
         "    tier: integration\n"
         f"    workdir: {test_dir}\n"
         "    paths: [.]\n"
+        f"    optional: {str(optional).lower()}\n"
     )
     (tmp_path / "groups.yaml").write_text(manifest_yaml)
     (tmp_path / "critical_paths.yaml").write_text(
@@ -1075,6 +1077,24 @@ def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> N
     assert exit_code == 1, (
         "a regression must fail the report job, not just print into the comment"
     )
+
+
+def test_cmd_report_does_not_gate_on_an_optional_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``optional`` groups are documented as non-blocking, and ``cmd_run`` honours
+    that. A red optional group must not reach the gate here through a regression,
+    or the two commands disagree about the same result.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path, monkeypatch, reporting_groups={"int-g": 1}, optional=True
+    )
+
+    assert states["int-path"] == "gap", (
+        f"an optional group's red result must not read as a regression; "
+        f"got {states['int-path']}"
+    )
+    assert exit_code == 0
 
 
 def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> None:

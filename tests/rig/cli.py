@@ -374,7 +374,10 @@ def cmd_report(args: argparse.Namespace) -> int:
     # A skipped tier emits no junit, so scoping to the groups that reported keeps
     # its paths as gaps rather than regressions — nothing regressed, it never ran.
     # A group that ran and went red still reports, so real regressions survive.
-    scope_groups = [r.name for r in group_results]
+    # `optional` groups are excluded: they are documented as non-blocking, and
+    # leaving them in scope would let a red one gate the build through a
+    # regression instead.
+    scope_groups = [r.name for r in group_results if not manifest.get(r.name).optional]
     statuses = cp.evaluate(
         registry,
         groups_run_green=green,
@@ -399,11 +402,37 @@ def cmd_report(args: argparse.Namespace) -> int:
     # cmd_run gates on the regressions it can see, but only within its own tier.
     # This is the only cross-tier evaluation, so it is the only place a regression
     # spanning tiers can be gated on.
-    regressions = [s for s in statuses if s.state == "regression"]
-    if regressions:
-        ids = ", ".join(s.path.id for s in regressions)
+    # A covering group that ran green without attesting means its marked test
+    # was skipped or unmarked; a group that went red means the test failed. The
+    # remedies differ, so the two are reported apart rather than as one count.
+    unproven: list[cp.CriticalPathStatus] = []
+    uncovered: list[cp.CriticalPathStatus] = []
+    for s in statuses:
+        if s.state != "regression":
+            continue
+        target = unproven if any(g in green for g in s.path.covered_by) else uncovered
+        target.append(s)
+    regressions = unproven + uncovered
+    if uncovered:
+        ids = ", ".join(s.path.id for s in uncovered)
         print(
-            f"\n[rig] ❌ {len(regressions)} critical-path regression(s) detected: {ids}",
+            f"\n[rig] ❌ {len(uncovered)} critical-path regression(s) — no covering "
+            f"group ran green: {ids}",
+            file=sys.stderr,
+        )
+    if unproven:
+        ids = ", ".join(s.path.id for s in unproven)
+        print(
+            f"\n[rig] ❌ {len(unproven)} critical-path regression(s) — covering group "
+            f"ran green but no passing @pytest.mark.critical_path test attested "
+            f"them (skipped or unmarked?): {ids}",
+            file=sys.stderr,
+        )
+    if regressions:
+        print(
+            "[rig] to accept a deliberate removal, drop or re-point the path in "
+            "tests/critical_paths.yaml in the same PR — the baseline is keyed off "
+            "that registry.",
             file=sys.stderr,
         )
     if args.update_baseline:

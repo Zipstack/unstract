@@ -59,22 +59,48 @@ def test_regression_when_baseline_covered_but_now_not() -> None:
 
 
 def test_baseline_merge_unions_with_existing(tmp_path: Path) -> None:
-    """Two tier runs in sequence must both contribute to the baseline."""
+    """Two tier runs in sequence must both contribute to the baseline.
+
+    Every invocation reads the same registry and differs only in which groups
+    ran, so each one sees the other tier's paths as uncovered — the union is
+    what stops the second run erasing the first.
+    """
     baseline = tmp_path / "previous-summary.json"
-    registry_a = _registry(("p1", ("g1",)))
-    statuses_a = evaluate(
-        registry_a, groups_run_green={"g1"}, baseline=None
-    )
+    registry = _registry(("p1", ("g1",)), ("p2", ("g2",)))
+
+    statuses_a = evaluate(registry, groups_run_green={"g1"}, baseline=None)
     merge_into_baseline(statuses_a, baseline)
 
-    registry_b = _registry(("p2", ("g2",)))
     statuses_b = evaluate(
-        registry_b, groups_run_green={"g2"}, baseline=load_baseline(baseline)
+        registry, groups_run_green={"g2"}, baseline=load_baseline(baseline)
     )
     merge_into_baseline(statuses_b, baseline)
 
     final = load_baseline(baseline) or {}
     assert sorted(final["covered_paths"]) == ["p1", "p2"]
+
+
+def test_baseline_merge_prunes_paths_dropped_from_the_registry(tmp_path: Path) -> None:
+    """Retiring a path must be able to clear it from the baseline.
+
+    The union never forgets on its own, so without pruning a deliberately
+    removed path stays cached forever and there is no in-repo way to accept the
+    removal.
+    """
+    baseline = tmp_path / "previous-summary.json"
+    before = _registry(("p1", ("g1",)), ("p2", ("g2",)))
+    merge_into_baseline(
+        evaluate(before, groups_run_green={"g1", "g2"}, baseline=None), baseline
+    )
+    assert sorted((load_baseline(baseline) or {})["covered_paths"]) == ["p1", "p2"]
+
+    after = _registry(("p1", ("g1",)))
+    merge_into_baseline(
+        evaluate(after, groups_run_green={"g1"}, baseline=load_baseline(baseline)),
+        baseline,
+    )
+
+    assert (load_baseline(baseline) or {})["covered_paths"] == ["p1"]
 
 
 def test_by_id_lookup_caches() -> None:

@@ -14,10 +14,6 @@ PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
 SESSION_COOKIE_SECURE = False
 CSRF_COOKIE_SECURE = False
 
-# Env-driven, so unset under test: without it internal-API requests fail as
-# "not configured" rather than on their own merits.
-INTERNAL_SERVICE_API_KEY = "test-internal-service-key"
-
 # Ships disabled, but its tests drive the full URL stack to exercise the auth
 # middleware — an unmounted route would 404 and pass them vacuously.
 MCP_PLATFORM_SERVER_ENABLED = True
