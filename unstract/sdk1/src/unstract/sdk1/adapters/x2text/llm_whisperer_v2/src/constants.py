@@ -1,6 +1,8 @@
 import os
 from enum import Enum
 
+from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+
 
 class Modes(Enum):
     NATIVE_TEXT = "native_text"
@@ -12,6 +14,7 @@ class Modes(Enum):
 class OutputModes(Enum):
     LAYOUT_PRESERVING = "layout_preserving"
     TEXT = "text"
+    IMAGE = ImageOutputConstants.IMAGE_MODE
 
 
 class HTTPMethod(Enum):
@@ -31,6 +34,12 @@ class WhispererEndpoint:
     STATUS = "whisper-status"
     RETRIEVE = "whisper-retrieve"
     HIGHLIGHTS = "highlights"
+    # Image output mode (pdf-to-images) endpoints. Not exposed by the
+    # llmwhisperer-client package, so the adapter calls them via raw requests;
+    # see ImageOutputConfig for the wire contract.
+    PDF_TO_IMAGES = "pdf-to-images"
+    PDF_TO_IMAGES_STATUS = "pdf-to-images-status"
+    PDF_TO_IMAGES_RETRIEVE = "pdf-to-images-retrieve"
 
 
 class WhispererEnv:
@@ -47,6 +56,16 @@ class WhispererEnv:
     MAX_RETRIES = "ADAPTER_LLMW_MAX_RETRIES"
     RETRY_MIN_WAIT = "ADAPTER_LLMW_RETRY_MIN_WAIT"
     RETRY_MAX_WAIT = "ADAPTER_LLMW_RETRY_MAX_WAIT"
+    # Max retry attempts for per-page FileStorage writes when persisting page
+    # images (image output mode). Applies to Unstract-side storage writes only,
+    # not to calls made to the LLMWhisperer service.
+    PAGE_STORE_MAX_RETRIES = "ADAPTER_LLMW_PAGE_STORE_MAX_RETRIES"
+    # Image output mode HTTP tuning. Submit/status calls use a short timeout;
+    # the ZIP download uses a distinct, longer timeout (large multi-page PDFs).
+    IMAGE_REQUEST_TIMEOUT = "ADAPTER_LLMW_IMAGE_REQUEST_TIMEOUT"
+    IMAGE_DOWNLOAD_TIMEOUT = "ADAPTER_LLMW_IMAGE_DOWNLOAD_TIMEOUT"
+    IMAGE_POLL_INTERVAL = "ADAPTER_LLMW_IMAGE_POLL_INTERVAL"
+    IMAGE_POLL_MAX_ATTEMPTS = "ADAPTER_LLMW_IMAGE_POLL_MAX_ATTEMPTS"
     LOG_LEVEL = "LOG_LEVEL"
 
 
@@ -55,7 +74,7 @@ class WhispererConfig:
 
     URL = "url"
     MODE = "mode"
-    OUTPUT_MODE = "output_mode"
+    OUTPUT_MODE = ImageOutputConstants.OUTPUT_MODE
     UNSTRACT_KEY = "unstract_key"
     MEDIAN_FILTER_SIZE = "median_filter_size"
     GAUSSIAN_BLUR_RADIUS = "gaussian_blur_radius"
@@ -114,3 +133,69 @@ class WhispererDefaults:
     MAX_RETRIES = int(os.getenv(WhispererEnv.MAX_RETRIES, 3))
     RETRY_MIN_WAIT = float(os.getenv(WhispererEnv.RETRY_MIN_WAIT, 1.0))
     RETRY_MAX_WAIT = float(os.getenv(WhispererEnv.RETRY_MAX_WAIT, 60.0))
+    PAGE_STORE_MAX_RETRIES = int(os.getenv(WhispererEnv.PAGE_STORE_MAX_RETRIES, 3))
+    IMAGE_REQUEST_TIMEOUT = int(os.getenv(WhispererEnv.IMAGE_REQUEST_TIMEOUT, 30))
+    IMAGE_DOWNLOAD_TIMEOUT = int(os.getenv(WhispererEnv.IMAGE_DOWNLOAD_TIMEOUT, 300))
+    IMAGE_POLL_INTERVAL = float(os.getenv(WhispererEnv.IMAGE_POLL_INTERVAL, 3.0))
+    IMAGE_POLL_MAX_ATTEMPTS = int(os.getenv(WhispererEnv.IMAGE_POLL_MAX_ATTEMPTS, 100))
+
+
+class ImageOutputConfig:
+    """Config and service contract for LLMWhisperer image output mode.
+
+    The pdf-to-images endpoints are not exposed by the installed
+    ``llmwhisperer-client``, so the adapter calls them directly via raw
+    ``requests``. The wire shape the adapter depends on is centralised here.
+
+    Flow (base = ``{url}/api/v2``):
+
+    - Submit:   ``POST {base}/pdf-to-images?format=png`` with the PDF bytes
+                -> JSON ``{"message": "...", "status": "processing",
+                           "whisper_hash": "<run_id>|<data_hash>"}`` (HTTP 202)
+    - Status:   ``GET  {base}/pdf-to-images-status?whisper_hash=<id>``
+                -> JSON ``{"status": "accepted|processing|processed|...",
+                           "message": "..."}``. NOTE: no page count is exposed
+                           (page count is billing-internal only).
+    - Retrieve: ``GET  {base}/pdf-to-images-retrieve?whisper_hash=<id>``
+                -> ``application/zip`` stream of ``page_001.png``, ...
+                ONE-TIME by default: the service flips status to ``RETRIEVED``
+                before streaming and rejects a second retrieve unless the
+                deployment sets ``RESULT_PERSISTENCE=true``. Hence the adapter
+                downloads exactly once and never retries the retrieve.
+    """
+
+    # --- Response field names ---
+    STATUS = "status"
+    MESSAGE = "message"
+
+    # Poll control. Success == ready-to-retrieve; only these intermediate states
+    # keep the poll loop going. Any other value — a failure state, an unknown
+    # status, or an empty/non-JSON body — is treated as terminal and raises, so
+    # the loop fails fast instead of polling to the budget on a stuck job.
+    STATUS_SUCCESS = frozenset({"processed"})
+    STATUS_INTERMEDIATE = frozenset({"accepted", "processing", "queued"})
+
+    # --- Submit query params ---
+    IMAGE_FORMAT_PARAM = "format"
+    DEFAULT_IMAGE_FORMAT = "png"
+    FILE_NAME_PARAM = "file_name"
+
+    # --- Per-page image naming / storage layout ---
+    # Sourced from the shared x2text surface so the writer (this adapter)
+    # and any page-image reader agree on one storage contract.
+    PAGE_IMAGE_PREFIX = ImageOutputConstants.PAGE_IMAGE_PREFIX
+    PAGE_IMAGE_EXTENSION = ImageOutputConstants.PAGE_IMAGE_EXTENSION
+    PAGE_NUMBER_PADDING = ImageOutputConstants.PAGE_NUMBER_PADDING
+    PAGES_SUBFOLDER = ImageOutputConstants.PAGES_SUBFOLDER
+
+    # ZIP member names as sent by the LLMWhisperer service. Distinct from
+    # the storage contract above (ImageOutputConstants.PAGE_NUMBER_REGEX):
+    # this tolerates service-side naming variations (``page-1.png``) when
+    # ingesting the download; persisted files are always renamed to the
+    # strict ``page_NNN.png`` layout.
+    ZIP_PAGE_MEMBER_REGEX = r"page[_-]?(\d+)\.png$"
+
+    # --- PDF-only validation (shared with the backend index-time guard) ---
+    PDF_EXTENSION = ImageOutputConstants.PDF_EXTENSION
+    PDF_ONLY_ERROR = ImageOutputConstants.PDF_ONLY_ERROR
+    is_pdf = staticmethod(ImageOutputConstants.is_pdf)
