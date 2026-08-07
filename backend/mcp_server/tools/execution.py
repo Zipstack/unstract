@@ -73,9 +73,12 @@ def extract_document_schema() -> dict[str, Any]:
                 "minItems": 1,
                 "maxItems": MAX_DOCUMENTS,
                 "description": (
-                    "S3 pre-signed URLs of the documents to extract. Unstract "
-                    "fetches these server-side. Only S3 pre-signed URLs are "
-                    "accepted — an ordinary public http(s) link is rejected."
+                    "HTTPS URLs of the documents to extract, which Unstract "
+                    "fetches server-side. The host must be an AWS S3 endpoint "
+                    "(*.amazonaws.com); links to any other host are rejected. "
+                    "For a private object, pass a pre-signed URL — that is the "
+                    "usual case. An object that is already publicly readable "
+                    "needs no signature."
                 ),
             },
             "timeout": {

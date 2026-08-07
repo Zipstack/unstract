@@ -54,9 +54,11 @@ def read_me_first(context: MCPContext) -> dict[str, Any]:
             "few seconds between polls.",
         ],
         "notes": [
-            "Documents are fetched server-side from the URLs you provide, and "
-            "only S3 pre-signed URLs are accepted — an ordinary public link "
-            "is rejected. Upload to S3 and pre-sign it first if needed.",
+            "Documents are fetched server-side from the URLs you provide. The "
+            "URL must be HTTPS on an AWS S3 host; any other host is rejected. "
+            "Pass a pre-signed URL for a private object — the usual case — or "
+            "a plain URL if the object is already publicly readable. Upload to "
+            "S3 first if the document is not there yet.",
             "extractDocument consumes the organization's extraction quota. "
             "Never call it speculatively, and never retry a call that already "
             "returned an execution_id — poll instead.",
