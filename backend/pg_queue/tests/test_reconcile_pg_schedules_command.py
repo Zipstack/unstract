@@ -85,6 +85,25 @@ class TestReconcileCommand:
         assert upsert.call_args.kwargs["pipeline_id"] == "pid-new"
         assert reconcile.call_count == 2  # both rows reconciled
 
+    def test_mirror_only_backfills_but_never_reconciles(self):
+        """--mirror-only is what deploy automation runs, so it must be safe at ANY
+        flag state. The reconcile it skips is the step that disables Beat rows once
+        the rollout is on — an unattended job must never make that change."""
+        pt_new = _pt("pid-new", args='["wf", "org", "", "", "pid-new", false, "n"]')
+        with (
+            patch(f"{_CMD}.PeriodicTask") as PT,
+            patch(f"{_CMD}.PgPeriodicSchedule") as Sched,
+            patch(f"{_CMD}.mirror_periodic_schedule_upsert") as upsert,
+            patch(f"{_CMD}.reconcile_ownership_for") as reconcile,
+        ):
+            PT.objects.filter.return_value = _periodic_tasks([pt_new])
+            Sched.objects.values_list.return_value = _sched_ids([])
+            Sched.objects.order_by.return_value = _sched_rows([_row("pid-new")])
+            call_command("reconcile_pg_schedules", "--mirror-only")
+
+        upsert.assert_called_once()  # the backfill still happens
+        reconcile.assert_not_called()  # the ownership flip does not
+
     def test_malformed_args_skipped_not_fatal(self):
         bad = _pt("pid-bad", args="{ this is not json")
         good = _pt("pid-good", args='["wf", "org", "", "", "pid-good", false, "n"]')

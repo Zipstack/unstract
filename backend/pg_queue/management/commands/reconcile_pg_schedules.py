@@ -66,20 +66,42 @@ class Command(BaseCommand):
                 "a large installation."
             ),
         )
+        parser.add_argument(
+            "--mirror-only",
+            action="store_true",
+            help=(
+                "Backfill missing mirror rows and skip the ownership reconcile. "
+                "Purely additive: touches only pg_periodic_schedule, never a Beat "
+                "PeriodicTask. This is the mode automation runs — see handle()."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         dry_run = options["dry_run"]
         batch_size = options["batch_size"]
+        mirror_only = options["mirror_only"]
         if batch_size < 1:
             raise CommandError("--batch-size must be >= 1")
         backfilled = self._backfill_mirrors(dry_run, batch_size)
-        reconciled, pg_owned, failed = self._reconcile_all(dry_run, batch_size)
+
+        # --mirror-only exists because the deploy-time automation must be safe to run
+        # at ANY flag state. The reconcile below is fail-closed (rollout off → every
+        # schedule stays on Beat, nothing written), but with the rollout ON it flips
+        # ownership *and disables the matching Beat PeriodicTask* — a behaviour change
+        # no unattended job should make on its own. Backfilling is inert at every flag
+        # state, so that is what automation runs; ownership stays an operator action.
+        if mirror_only:
+            reconciled, pg_owned, failed = 0, 0, 0
+        else:
+            reconciled, pg_owned, failed = self._reconcile_all(dry_run, batch_size)
 
         prefix = "[dry-run] " if dry_run else ""
         summary = (
             f"{prefix}backfilled={backfilled} reconciled={reconciled} "
             f"pg_owned={pg_owned} failed={failed}"
         )
+        if mirror_only:
+            summary = f"{summary} (mirror-only: ownership reconcile skipped)"
         if failed:
             # Surface failures where the operator looks (and to automation).
             self.stderr.write(self.style.ERROR(summary))
