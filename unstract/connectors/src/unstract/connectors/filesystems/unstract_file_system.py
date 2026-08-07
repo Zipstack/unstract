@@ -44,7 +44,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
 
     @staticmethod
     def get_doc_url() -> str:
-        # ponytail: connectors without a dedicated page fall back to the category index
+        # Connectors without a dedicated page fall back to the category index
         return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/index/"
 
     @staticmethod
