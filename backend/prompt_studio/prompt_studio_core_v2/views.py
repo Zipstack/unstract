@@ -279,54 +279,6 @@ class PromptStudioCoreView(
             )
         return super().destroy(request, *args, **kwargs)
 
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        custom_tool = self.get_object()
-        before = self.snapshot_share_axes(custom_tool)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200:
-            self._notify_shared_users(custom_tool, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        custom_tool: CustomTool,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        notification_plugin = get_plugin("notification")
-        if not notification_plugin:
-            return
-        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-
-        from plugins.notification.constants import ResourceType
-
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                resource_name=custom_tool.tool_name,
-                resource_id=str(custom_tool.tool_id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=custom_tool,
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification for custom tool %s: %s",
-                custom_tool.tool_id,
-                str(e),
-            )
-
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
         """Method to return all static dropdown field values.

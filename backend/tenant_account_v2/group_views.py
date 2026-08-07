@@ -26,6 +26,10 @@ from tenant_account_v2.models import (
     GroupMembership,
     OrganizationGroup,
 )
+from tenant_account_v2.share_notifications import (
+    MembershipAction,
+    notify_group_membership_changed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -155,6 +159,14 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
             [GroupMembership(group=group, user_id=uid) for uid in user_ids_to_add],
             ignore_conflicts=True,
         )
+        # The serializer already subtracts existing members, so nobody gets a
+        # second "you've been added" mail for a group they were already in.
+        notify_group_membership_changed(
+            group=group,
+            action=MembershipAction.ADDED,
+            user_ids=user_ids_to_add,
+            actor=request.user,
+        )
         return Response(
             {"added_user_ids": user_ids_to_add},
             status=status.HTTP_201_CREATED,
@@ -178,6 +190,12 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         deleted, _ = group.memberships.filter(user_id=user_id_int).delete()
         if not deleted:
             raise NotFound("User is not a member of this group.")
+        notify_group_membership_changed(
+            group=group,
+            action=MembershipAction.REMOVED,
+            user_ids=[user_id_int],
+            actor=request.user,
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # --- resources shared with this group ------------------------------------

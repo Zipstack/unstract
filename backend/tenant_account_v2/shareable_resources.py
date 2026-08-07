@@ -9,6 +9,7 @@ given deployment (e.g. the cloud-only agentic app in pure OSS).
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -49,3 +50,26 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "id",
     ),
 )
+
+
+def descriptor_for_kind(kind: str) -> ShareableResource | None:
+    """Look up a descriptor by its ``kind`` key."""
+    return next((r for r in SHAREABLE_RESOURCES if r.kind == kind), None)
+
+
+def kind_for_instance(instance: Any) -> str | None:
+    """Reverse lookup: the ``kind`` of a resource instance, ``None`` if unlisted.
+
+    Matches on the model's app label + class name so callers holding an
+    instance (e.g. the share endpoint) don't hardcode a type check per
+    resource.
+    """
+    meta = instance._meta
+    return next(
+        (
+            r.kind
+            for r in SHAREABLE_RESOURCES
+            if r.app_label == meta.app_label and r.model_name == meta.object_name
+        ),
+        None,
+    )
