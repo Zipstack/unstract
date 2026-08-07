@@ -784,6 +784,41 @@ services:
     profiles:
       - pg-queue
 
+  # Log streaming without Celery (UN-3755) — the flag-on replacement for
+  # worker-log-consumer-v2. Note the transport here is a REDIS LIST, not
+  # pg_queue_message: the log consumer's own sinks are already Redis (log_history_queue
+  # + the Socket.IO emit), so routing through Postgres would detour a lossy, high-rate
+  # stream through the platform's most contended resource to buy durability that logs
+  # explicitly discard at their 10k cap. It sits in the pg-queue profile because it is
+  # part of the same flag-on fleet, not because it speaks to Postgres.
+  #
+  # LOG_TRANSPORT must be set to "redis" on every PUBLISHER too (backend, workers,
+  # runner) or this drains an empty list while logs keep going to RabbitMQ.
+  worker-log-stream-consumer:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-log-stream-consumer
+    restart: unless-stopped
+    command: ["log-stream-consumer"]
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-log-stream-consumer
+      - WORKER_TYPE=log_consumer
+      - WORKER_NAME=log-stream-consumer
+      - LOG_TRANSPORT=redis
+      - LOG_STREAM_QUEUE_NAME=${LOG_STREAM_QUEUE_NAME:-log_stream_queue}
+      # Downstream sinks are unchanged — same durable buffer the Celery worker wrote to.
+      - LOG_HISTORY_QUEUE_NAME=${LOG_HISTORY_QUEUE_NAME:-log_history_queue}
+      - ENABLE_LOG_HISTORY=${ENABLE_LOG_HISTORY:-true}
+    labels:
+      - traefik.enable=false
+    profiles:
+      - pg-queue
+
   # Executor RPC over PG — runs execute_extraction as a request-reply: claims
   # work from Postgres and writes the ExecutionResult to pg_task_result for the
   # blocking caller. Same heavy executor runtime as worker-executor-v2 (tool
