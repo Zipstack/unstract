@@ -39,6 +39,10 @@ class UnstructuredEnterprise(X2TextAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/UnstructuredIO.png"
 
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/text_extractors/unstructured_io_enterprise_text_extractor/"
+
     def process(
         self,
         input_file_path: str,
