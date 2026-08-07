@@ -247,13 +247,13 @@ function ResourceTable({
       <button
         type="button"
         className="resource-table-owner-btn"
-        aria-label={`Manage co-owners for ${item?.[titleProp]}`}
         onClick={(event) => {
           event.stopPropagation();
           handleCoOwner(event, item);
         }}
       >
         {cell}
+        <span className="resource-table-sr-only">Manage co-owners</span>
       </button>
     );
   };
