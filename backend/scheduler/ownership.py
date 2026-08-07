@@ -11,10 +11,17 @@ Doing both in one transaction is what makes "never double-fires" real (it was
 *conditional* on this slice): a ``pg_owned`` row always has its Beat
 ``PeriodicTask`` disabled, so the two can't both fire.
 
-Inert by default: ``resolve_schedule_owner`` fails closed to Beat
-(``pg_owned=False``) until ops ramps the single ``pg_queue_enabled`` Flipt flag — so
-reconciling on every schedule edit is a no-op (everything stays Beat-owned) until the
-rollout starts.
+**Two gates, and both must be on.** ``PG_SCHEDULER_ENABLED`` (env, default off) comes
+first; the ``pg_queue_enabled`` Flipt flag then decides per schedule, failing closed to
+Beat on a blind Flipt or any error.
+
+They are separate because Beat stays the **sole scheduler for the whole PG rollout**:
+pipelines already reach PG without this module (``execute_pipeline_task_v2`` →
+``complete_execution`` → ``execute_workflow_async`` → ``resolve_transport``), so the PG
+scheduler exists only to retire the Beat *deployment* — a later, deliberate step. While
+the env gate is off this module writes **nothing at all**, so Beat's tables are untouched
+for the entire rollout and turning the flag off again is a pure Flipt flip with nothing
+to restore.
 """
 
 from __future__ import annotations
@@ -37,6 +44,34 @@ logger = logging.getLogger(__name__)
 # buckets the %-rollout on pipeline_id (each subsystem keys on its own entity).
 
 
+# Second gate, ahead of the Flipt flag: hand-over to the PG scheduler happens only
+# when this is explicitly on. Referenced as "pg_scheduler_enabled" by this module's
+# callers' comments (scheduler/helper.py, reconcile_pg_schedules) since the ramp was
+# designed, but never actually implemented — resolve_schedule_owner gated on
+# pg_queue_enabled alone, so the two flips were welded together.
+#
+# They must be separable, because Beat stays the SOLE scheduler for the whole PG
+# rollout: pipelines already reach PG without it (execute_pipeline_task_v2 →
+# complete_execution → execute_workflow_async → resolve_transport), so the PG
+# scheduler exists only to retire the Beat *deployment* — a later, deliberate step.
+#
+# Without this gate, turning pg_queue_enabled on would hand schedules to a PG
+# scheduler that is not running: reconcile_ownership_for disables the Beat
+# PeriodicTask, nothing polls the PG side, and the pipeline has no firer at all. It
+# runs in the backend on every schedule save, so scaling Beat to zero does not avoid
+# it and no ramp command is needed to trigger it — a user saving a schedule suffices.
+_PG_SCHEDULER_ENABLED_ENV = "PG_SCHEDULER_ENABLED"
+
+
+def pg_scheduler_enabled() -> bool:
+    """Whether schedule hand-over to the PG scheduler is switched on at all.
+
+    Defaults **off**. Flip it only alongside deploying the PG scheduler worker, as
+    part of retiring Celery Beat.
+    """
+    return os.environ.get(_PG_SCHEDULER_ENABLED_ENV, "false").strip().lower() == "true"
+
+
 def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
     """True → the PG scheduler owns this schedule; False → Celery Beat does.
 
@@ -44,7 +79,13 @@ def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> boo
     flag, keyed on ``pipeline_id`` for a stable percentage bucket. **Fails closed to
     Beat** on a blind Flipt or any error — so a schedule never silently loses its
     firer.
+
+    Requires ``PG_SCHEDULER_ENABLED`` **as well as** the flag: during the PG rollout
+    the flag is on while the PG scheduler is still dark, and a schedule handed to a
+    scheduler that is not running would simply stop firing.
     """
+    if not pg_scheduler_enabled():
+        return False
     if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
         logger.warning(
             "resolve_schedule_owner: FLIPT_SERVICE_AVAILABLE != true "
@@ -94,7 +135,16 @@ def reconcile_ownership_for(
     Best-effort: a DB failure is logged and swallowed so it can never break the
     caller. Returns the resolved ``pg_owned`` on success, or **None** if the
     transaction failed (so the ramp command can tally + surface failures).
+
+    **No-op while ``PG_SCHEDULER_ENABLED`` is off** — writing NEITHER table. Returning
+    early rather than relying on ``resolve_schedule_owner`` returning False matters:
+    that path would still issue ``PeriodicTask.update(enabled=active)`` and bump
+    ``PeriodicTasks.update_changed()`` on every schedule save, forcing a Beat reload
+    to write back a value Beat already had. Beat's tables stay untouched for the whole
+    rollout, so flag-off is a pure Flipt flip with nothing to restore.
     """
+    if not pg_scheduler_enabled():
+        return False
     pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
     try:
         with transaction.atomic():

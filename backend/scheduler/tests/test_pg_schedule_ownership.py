@@ -18,6 +18,16 @@ _ORG = "org_abc"
 
 
 class TestResolveScheduleOwner:
+    @pytest.fixture(autouse=True)
+    def _scheduler_gate_on(self, monkeypatch):
+        """These pin the FINAL-phase behaviour, when hand-over is switched on.
+
+        PG_SCHEDULER_ENABLED defaults off for the whole rollout (Beat stays the sole
+        scheduler), so without this every case below would short-circuit to Beat and
+        assert nothing about the logic it was written for.
+        """
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
+
     def test_flipt_unavailable_is_beat(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
         with patch("scheduler.ownership.check_feature_flag_status") as flag:
@@ -52,6 +62,16 @@ class TestResolveScheduleOwner:
 
 
 class TestReconcileOwnership:
+    @pytest.fixture(autouse=True)
+    def _scheduler_gate_on(self, monkeypatch):
+        """These pin the FINAL-phase behaviour, when hand-over is switched on.
+
+        PG_SCHEDULER_ENABLED defaults off for the whole rollout (Beat stays the sole
+        scheduler), so without this every case below would short-circuit to Beat and
+        assert nothing about the logic it was written for.
+        """
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
+
     @pytest.fixture(autouse=True)
     def _mock_periodic_tasks(self):
         # reconcile now bumps PeriodicTasks.last_update after the bulk .update();
@@ -165,6 +185,61 @@ class TestReconcileOwnership:
             Sched.objects.filter.return_value.update.return_value = 0
             ownership.reconcile_ownership_for(_PID, _ORG, active=True)
         _mock_periodic_tasks.update_changed.assert_not_called()
+
+
+class TestPgSchedulerGate:
+    """The gate that keeps Beat the sole scheduler for the whole PG rollout.
+
+    Pipelines already reach PG without the PG scheduler (execute_pipeline_task_v2 →
+    complete_execution → execute_workflow_async → resolve_transport), so the PG
+    scheduler exists only to retire the Beat *deployment* — a later, deliberate step.
+    Handing a schedule over before then leaves it with NO firer: Beat's PeriodicTask
+    disabled, nothing polling the PG side.
+    """
+
+    def test_defaults_off(self, monkeypatch):
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        assert ownership.pg_scheduler_enabled() is False
+
+    @pytest.mark.parametrize("value", ["false", "False", "0", "", "yes", "TRUE "])
+    def test_only_an_exact_true_opts_in(self, monkeypatch, value):
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", value)
+        assert ownership.pg_scheduler_enabled() is (value.strip().lower() == "true")
+
+    def test_owner_stays_beat_even_with_the_flag_on(self, monkeypatch):
+        """The rollout state: pg_queue_enabled on, PG scheduler still dark."""
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        with patch(
+            "scheduler.ownership.check_feature_flag_status", return_value=True
+        ) as flag:
+            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
+            # Short-circuits before Flipt — no evaluation on every schedule save.
+            flag.assert_not_called()
+
+    def test_reconcile_writes_NEITHER_beat_table(self, monkeypatch):
+        """The regression this gate exists to prevent.
+
+        Returning early matters over merely resolving to Beat: that path would still
+        issue PeriodicTask.update(enabled=active) and bump PeriodicTasks.update_changed()
+        on every schedule save — writing back a value Beat already had and forcing a
+        reload, on a table we promised not to touch.
+        """
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        with (
+            patch("scheduler.ownership.PeriodicTask") as PT,
+            patch("scheduler.ownership.PeriodicTasks") as PTs,
+            patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
+            patch("scheduler.ownership.check_feature_flag_status", return_value=True),
+        ):
+            assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is False
+
+        PT.objects.filter.assert_not_called()
+        PTs.update_changed.assert_not_called()
+        # pg_owned is not set either — otherwise switching the PG scheduler on later
+        # would fire every already-owned schedule while Beat is still firing it too.
+        Sched.objects.filter.assert_not_called()
 
 
 class TestReconcileAtomicityRealDB:
