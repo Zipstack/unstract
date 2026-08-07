@@ -33,11 +33,15 @@ def setup_logging(log_level: int):
             "disable_existing_loggers": False,
             "formatters": {
                 "default": {
+                    # Canonical format shared with the Django backend (``enriched``),
+                    # the workers (``WorkerLogger``) and the x2text-service so a single
+                    # gcloud query parses request_id/trace_id/span_id uniformly.
                     "format": (
                         "%(levelname)s : [%(asctime)s]"
-                        "{pid:%(process)d tid:%(thread)d request_id:%(request_id)s "
-                        + "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s "
-                        + "%(name)s}:- %(message)s"
+                        "{module:%(module)s process:%(process)d thread:%(thread)d "
+                        "request_id:%(request_id)s "
+                        "trace_id:%(otelTraceID)s span_id:%(otelSpanID)s}"
+                        " :- %(message)s"
                     ),
                 },
             },
