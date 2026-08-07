@@ -18,6 +18,7 @@ import uuid
 
 import pytest
 from account_v2.models import Organization, User
+from django.conf import settings
 from django.test import Client, TestCase
 from platform_api.models import PlatformApiKey
 from tenant_account_v2.models import OrganizationMember
@@ -49,8 +50,61 @@ def make_org_with_key(org_id: str, permission: str = "read_write"):
     return org, user, key
 
 
+def assert_server_is_wired_up() -> None:
+    """Fail if the org-scoped server is enabled but not actually reachable.
+
+    Only called when ``MCP_PLATFORM_SERVER_ENABLED`` is on, which makes these
+    assertions rather than skips deliberate: with the flag set, a missing route
+    or missing auth middleware is a regression, and swallowing it would be the
+    very thing this suite exists to prevent. The flag is the statement of
+    intent; these two are whether the intent was carried out.
+    """
+    from django.urls import Resolver404, resolve
+
+    # The org segment is stripped from `path_info` by tenant middleware before
+    # URL resolution, so the mounted pattern carries no org — resolving the URL
+    # these tests request would 404 even where they pass.
+    mounted_path = f"/{settings.TENANT_SUBFOLDER_PREFIX}/mcp/"
+    try:
+        resolve(mounted_path)
+    except Resolver404:
+        raise AssertionError(
+            f"MCP_PLATFORM_SERVER_ENABLED is on but {mounted_path} does not "
+            f"resolve in {settings.ROOT_URLCONF}. Every request here would 404 "
+            "— and a 404 satisfies the rejection assertions below just as well "
+            "as the 401 they mean to check, so this must fail rather than pass."
+        ) from None
+
+    assert settings.CUSTOM_AUTH_MIDDLEWARE in settings.MIDDLEWARE, (
+        f"MCP_PLATFORM_SERVER_ENABLED is on but "
+        f"{settings.CUSTOM_AUTH_MIDDLEWARE} is not in MIDDLEWARE. This view "
+        "carries `permission_classes = []` and does not re-authenticate, so "
+        "the endpoint would be reachable with no credential at all."
+    )
+
+
 class PlatformMCPAuthTest(TestCase):
     def setUp(self) -> None:
+        # Gated on the flag, not on whether the route happens to resolve.
+        #
+        # Skipping on a 404 would have been wrong in the direction that matters:
+        # where the server is meant to be on, an unmounted route is a
+        # regression, and this suite would have gone quiet exactly when it
+        # should have shouted. So the flag decides whether the server is
+        # expected here, and `assert_server_is_wired_up` then insists it really
+        # is — see that function for what "wired up" means.
+        #
+        # Where the flag is off the server is deliberately absent (Unstract
+        # Cloud ships it that way), and there is nothing to assert about an
+        # endpoint that is not supposed to exist.
+        if not settings.MCP_PLATFORM_SERVER_ENABLED:
+            self.skipTest(
+                "MCP_PLATFORM_SERVER_ENABLED is off, so the organization-scoped "
+                "MCP server is not mounted here and there is nothing to "
+                "authenticate. Enable it to run these."
+            )
+        assert_server_is_wired_up()
+
         self.org, self.user, self.key = make_org_with_key(ORG_ID)
         _, _, self.other_key = make_org_with_key(OTHER_ORG_ID)
         UserContext.set_organization_identifier(ORG_ID)
@@ -59,11 +113,15 @@ class PlatformMCPAuthTest(TestCase):
 
     def _post(self, auth: str | None = None, body: dict | None = None, url: str = None):
         """POST through the full URL stack so the auth middleware runs."""
-        payload = body if body is not None else {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-        }
+        payload = (
+            body
+            if body is not None
+            else {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/list",
+            }
+        )
         headers = {"HTTP_AUTHORIZATION": auth} if auth else {}
         return self.client.post(
             url or self.url,
@@ -90,9 +148,10 @@ class PlatformMCPAuthTest(TestCase):
         for label, auth in cases:
             with self.subTest(label):
                 response = self._post(auth)
-                assert response.status_code in (401, 403), (
-                    f"{label}: got {response.status_code}, body={response.content[:200]}"
-                )
+                assert response.status_code in (
+                    401,
+                    403,
+                ), f"{label}: got {response.status_code}, body={response.content[:200]}"
 
     @pytest.mark.critical_path("mcp-platform-auth")
     def test_inactive_key_is_rejected(self) -> None:

@@ -13,6 +13,7 @@ class AdapterKeys:
     NAME = "name"
     DESCRIPTION = "description"
     ICON = "icon"
+    DOC_URL = "doc_url"
     ADAPTER_ID = "adapter_id"
     ADAPTER_METADATA = "adapter_metadata"
     ADAPTER_METADATA_B = "adapter_metadata_b"

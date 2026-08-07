@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
-from unstract.sdk1.adapters.constants import Common
+from unstract.sdk1.adapters.constants import AdapterDocs, Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
@@ -240,6 +240,10 @@ class BaseAdapter(ABC):
     @abstractmethod
     def get_icon() -> str:
         pass
+
+    @classmethod
+    def get_doc_url(cls) -> str:
+        return AdapterDocs.type_index_url(cls.get_adapter_type())
 
     @classmethod
     def get_json_schema(cls) -> str:
