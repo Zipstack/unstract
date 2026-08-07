@@ -398,9 +398,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"(not in tests/critical_paths.yaml)",
             file=sys.stderr,
         )
-    # This is the only cross-tier evaluation, so it is also the only place a
-    # regression can be gated on. cmd_run deliberately doesn't: a single tier
-    # can't tell "another tier's path went red" from "another tier didn't run".
+    # cmd_run gates on the regressions it can see, but only within its own tier.
+    # This is the only cross-tier evaluation, so it is the only place a regression
+    # spanning tiers can be gated on.
     regressions = [s for s in statuses if s.state == "regression"]
     if regressions:
         ids = ", ".join(s.path.id for s in regressions)
@@ -424,7 +424,10 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 1 if unknown_marker_ids or regressions else 0
+    # A corrupt baseline empties previously_covered, so no path can reach
+    # "regression" and the gate above silently passes. Fail on it directly
+    # rather than leaving a required check green behind an advisory banner.
+    return 1 if unknown_marker_ids or regressions or baseline_corrupt else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:

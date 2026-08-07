@@ -962,13 +962,15 @@ def _drive_cmd_report(
     monkeypatch,
     *,
     reporting_groups: dict[str, int],
+    baseline_blob: str = '{"covered_paths": ["int-path"]}',
 ) -> tuple[int, dict[str, str]]:
     """Drive ``cmd_report`` over one integration group covering ``int-path``.
 
     ``reporting_groups`` maps group name -> failure count for the groups that
     emitted junit this build. A group absent from it emitted nothing, standing
-    in for a tier the CI path filter skipped. Returns the exit code and each
-    path's final state.
+    in for a tier the CI path filter skipped. ``baseline_blob`` is written as the
+    cached baseline verbatim, so a caller can hand over an unparseable one.
+    Returns the exit code and each path's final state.
     """
     from tests.rig.reporting import GroupResult
 
@@ -1030,9 +1032,7 @@ def _drive_cmd_report(
     reports_dir.mkdir()
     # Baseline says the path was green on main, which is what makes the
     # not-covered-now decision a regression-or-gap question at all.
-    (reports_dir / "previous-summary.json").write_text(
-        '{"covered_paths": ["int-path"]}'
-    )
+    (reports_dir / "previous-summary.json").write_text(baseline_blob)
 
     args = cli_mod._build_parser().parse_args(
         [
@@ -1077,3 +1077,23 @@ def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> N
     assert exit_code == 1, (
         "a regression must fail the report job, not just print into the comment"
     )
+
+
+def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> None:
+    """An unreadable baseline leaves ``previously_covered`` empty, so no path can
+    ever be classified as a regression and the gate above passes vacuously. The
+    corruption itself has to fail the job, or a required check stays green while
+    regression detection is off.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path,
+        monkeypatch,
+        reporting_groups={"int-g": 1},
+        baseline_blob='{"covered_paths": ["int-pat',
+    )
+
+    assert states["int-path"] == "gap", (
+        "without a baseline the regression classification is unreachable, which "
+        "is exactly why the corrupt flag must gate on its own"
+    )
+    assert exit_code == 1
