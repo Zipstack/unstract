@@ -7,14 +7,15 @@ from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
-from permissions.permission import IsOwner
 from rest_framework import status, viewsets
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.pagination import CustomPagination
 
 from workflow_manager.workflow_v2.filters import ExecutionLogFilter
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionLogSerializer
 
@@ -28,7 +29,7 @@ MAX_SYNC_EXPORT_ROWS = 50_000
 
 class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated]
     serializer_class = WorkflowExecutionLogSerializer
     pagination_class = CustomPagination
     ordering_fields = ["event_time"]
@@ -37,6 +38,16 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self) -> QuerySet:
         execution_id = self.kwargs.get("pk")
+
+        # The URL's execution id is all that addresses these logs, so it is what
+        # gets authorized (UN-2651). Unknown ids are denied like inaccessible ones
+        # so the response does not reveal which ids exist.
+        if (
+            not WorkflowExecution.objects.for_user(self.request.user)
+            .filter(pk=execution_id)
+            .exists()
+        ):
+            raise PermissionDenied("You do not have access to logs for this execution.")
 
         # Query by execution_id for backward compatibility
         # Remove filter after execution_id is removed
