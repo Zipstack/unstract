@@ -371,8 +371,18 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
+    # A tier the path filter skipped emits no junit, so its groups are absent
+    # here. Scoping to the groups that actually reported keeps their paths as
+    # gaps rather than regressions — nothing regressed, the tier never ran. A
+    # group that ran and went red still reports, so it stays in scope and a
+    # genuine regression is still caught.
+    scope_groups = [r.name for r in group_results]
     statuses = cp.evaluate(
-        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+        registry,
+        groups_run_green=green,
+        baseline=baseline,
+        scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -386,6 +396,16 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"[rig] ❌ @pytest.mark.critical_path references unknown path "
             f"id(s): {', '.join(unknown_marker_ids)} "
             f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+    # This is the only cross-tier evaluation, so it is also the only place a
+    # regression can be gated on. cmd_run deliberately doesn't: a single tier
+    # can't tell "another tier's path went red" from "another tier didn't run".
+    regressions = [s for s in statuses if s.state == "regression"]
+    if regressions:
+        ids = ", ".join(s.path.id for s in regressions)
+        print(
+            f"\n[rig] ❌ {len(regressions)} critical-path regression(s) detected: {ids}",
             file=sys.stderr,
         )
     if args.update_baseline:
@@ -404,7 +424,7 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 1 if unknown_marker_ids else 0
+    return 1 if unknown_marker_ids or regressions else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
