@@ -27,4 +27,8 @@ app = Celery("backend")
 app.config_from_object("backend.celery_config.CeleryConfig")
 app.autodiscover_tasks()
 
+# Register signal handlers (e.g. request_id propagation onto published tasks).
+# Importing the module connects the @before_task_publish handler.
+import backend.celery_signals  # noqa: E402, F401
+
 logger.debug(f"Celery Configuration:\n {pformat(app.conf.table(with_defaults=True))}")
