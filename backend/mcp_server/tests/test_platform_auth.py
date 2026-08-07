@@ -50,64 +50,60 @@ def make_org_with_key(org_id: str, permission: str = "read_write"):
     return org, user, key
 
 
-def unmet_precondition() -> str | None:
-    """Why this suite cannot run here, or None when it can.
+def assert_server_is_wired_up() -> None:
+    """Fail if the org-scoped server is enabled but not actually reachable.
 
-    These tests assert that a credential is *rejected*. That only means
-    anything if the endpoint exists and something is there to reject it — and
-    neither is guaranteed outside the OSS tree, because both are settings-
-    dependent and the settings differ downstream.
-
-    Unstract Cloud is the live example of both halves. ``copy_cloud_deps``
-    overwrites the OSS ``settings/test.py`` with a redirect to ``test_cloud``,
-    which derives from ``settings/cloud`` — so this module's
-    ``MCP_PLATFORM_SERVER_ENABLED = True`` never reaches it and ``urls_v2``
-    leaves the route unmounted. That same file also drops
-    ``CUSTOM_AUTH_MIDDLEWARE`` from the default test ``MIDDLEWARE``, and this
-    view has ``permission_classes = []`` and deliberately does not
-    re-authenticate — so without the middleware the endpoint is reachable with
-    no credential at all.
-
-    Checked as two explicit preconditions rather than by reading
-    ``MCP_PLATFORM_SERVER_ENABLED``: the flag is what *causes* the mount in the
-    OSS URLconf, but it is not what these tests need. They need the route and
-    the middleware, and asking directly stays correct for any tree that mounts
-    the server some other way.
+    Only called when ``MCP_PLATFORM_SERVER_ENABLED`` is on, which makes these
+    assertions rather than skips deliberate: with the flag set, a missing route
+    or missing auth middleware is a regression, and swallowing it would be the
+    very thing this suite exists to prevent. The flag is the statement of
+    intent; these two are whether the intent was carried out.
     """
     from django.urls import Resolver404, resolve
 
     # The org segment is stripped from `path_info` by tenant middleware before
     # URL resolution, so the mounted pattern carries no org — resolving the URL
-    # these tests request would 404 even on OSS, where they pass.
+    # these tests request would 404 even where they pass.
+    mounted_path = f"/{settings.TENANT_SUBFOLDER_PREFIX}/mcp/"
     try:
-        resolve(f"/{settings.TENANT_SUBFOLDER_PREFIX}/mcp/")
+        resolve(mounted_path)
     except Resolver404:
-        return (
-            f"the platform MCP route is not mounted in {settings.ROOT_URLCONF} "
-            "(MCP_PLATFORM_SERVER_ENABLED is off, or this URLconf does not "
-            "carry the mount), so every request here would 404"
-        )
+        raise AssertionError(
+            f"MCP_PLATFORM_SERVER_ENABLED is on but {mounted_path} does not "
+            f"resolve in {settings.ROOT_URLCONF}. Every request here would 404 "
+            "— and a 404 satisfies the rejection assertions below just as well "
+            "as the 401 they mean to check, so this must fail rather than pass."
+        ) from None
 
-    if settings.CUSTOM_AUTH_MIDDLEWARE not in settings.MIDDLEWARE:
-        return (
-            f"{settings.CUSTOM_AUTH_MIDDLEWARE} is not in MIDDLEWARE, and this "
-            "endpoint is authenticated by that middleware rather than by the "
-            "view — every request would arrive unauthenticated"
-        )
-
-    return None
+    assert settings.CUSTOM_AUTH_MIDDLEWARE in settings.MIDDLEWARE, (
+        f"MCP_PLATFORM_SERVER_ENABLED is on but "
+        f"{settings.CUSTOM_AUTH_MIDDLEWARE} is not in MIDDLEWARE. This view "
+        "carries `permission_classes = []` and does not re-authenticate, so "
+        "the endpoint would be reachable with no credential at all."
+    )
 
 
 class PlatformMCPAuthTest(TestCase):
     def setUp(self) -> None:
-        # Skipped loudly rather than left to fail, because the failure mode is
-        # worse than a red test: with the route unmounted every request 404s,
-        # and a 404 satisfies "this request is refused" just as well as the 401
-        # being asserted. `test_bad_credentials_are_rejected` passed that way on
-        # cloud — green for auth that was never reached. A skip names the gap.
-        reason = unmet_precondition()
-        if reason:
-            self.skipTest(f"{reason}. See this module's docstring for why.")
+        # Gated on the flag, not on whether the route happens to resolve.
+        #
+        # Skipping on a 404 would have been wrong in the direction that matters:
+        # where the server is meant to be on, an unmounted route is a
+        # regression, and this suite would have gone quiet exactly when it
+        # should have shouted. So the flag decides whether the server is
+        # expected here, and `assert_server_is_wired_up` then insists it really
+        # is — see that function for what "wired up" means.
+        #
+        # Where the flag is off the server is deliberately absent (Unstract
+        # Cloud ships it that way), and there is nothing to assert about an
+        # endpoint that is not supposed to exist.
+        if not settings.MCP_PLATFORM_SERVER_ENABLED:
+            self.skipTest(
+                "MCP_PLATFORM_SERVER_ENABLED is off, so the organization-scoped "
+                "MCP server is not mounted here and there is nothing to "
+                "authenticate. Enable it to run these."
+            )
+        assert_server_is_wired_up()
 
         self.org, self.user, self.key = make_org_with_key(ORG_ID)
         _, _, self.other_key = make_org_with_key(OTHER_ORG_ID)
