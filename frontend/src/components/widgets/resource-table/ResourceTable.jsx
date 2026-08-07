@@ -253,7 +253,9 @@ function ResourceTable({
         }}
       >
         {cell}
-        <span className="resource-table-sr-only">Manage co-owners</span>
+        <span className="resource-table-sr-only">
+          Manage co-owners{item?.[titleProp] ? ` for ${item[titleProp]}` : ""}
+        </span>
       </button>
     );
   };
