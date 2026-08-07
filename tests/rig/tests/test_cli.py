@@ -1050,10 +1050,8 @@ def _drive_cmd_report(
 def test_cmd_report_skipped_tier_is_a_gap_not_a_regression(
     tmp_path: Path, monkeypatch
 ) -> None:
-    """A frontend-only PR skips the integration tier, so its groups emit no
-    junit. Those paths must degrade to ``gap`` — nothing regressed, the tier
-    never ran. Without ``scope_groups`` every baseline path in a skipped tier
-    is reported as regressed on every such PR.
+    """A path filter can skip a whole tier, whose groups then emit no junit. Its
+    paths must degrade to ``gap``: nothing regressed, the tier never ran.
     """
     exit_code, states = _drive_cmd_report(tmp_path, monkeypatch, reporting_groups={})
 
@@ -1066,8 +1064,8 @@ def test_cmd_report_skipped_tier_is_a_gap_not_a_regression(
 
 def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> None:
     """The covering group ran and went red, so the path really did regress.
-    ``cmd_report`` is the only cross-tier evaluation, so it must gate on this —
-    it previously reported regressions in the PR comment while exiting 0.
+    Being the only cross-tier evaluation, ``cmd_report`` has to gate on it rather
+    than just render it into the comment.
     """
     exit_code, states = _drive_cmd_report(
         tmp_path, monkeypatch, reporting_groups={"int-g": 1}
@@ -1080,10 +1078,9 @@ def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> N
 
 
 def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> None:
-    """An unreadable baseline leaves ``previously_covered`` empty, so no path can
-    ever be classified as a regression and the gate above passes vacuously. The
-    corruption itself has to fail the job, or a required check stays green while
-    regression detection is off.
+    """An unreadable baseline leaves ``previously_covered`` empty, making the
+    regression state unreachable. Without gating on the corruption itself, the
+    job goes green with regression detection silently off.
     """
     exit_code, states = _drive_cmd_report(
         tmp_path,
@@ -1093,7 +1090,7 @@ def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> 
     )
 
     assert states["int-path"] == "gap", (
-        "without a baseline the regression classification is unreachable, which "
-        "is exactly why the corrupt flag must gate on its own"
+        "with no usable baseline the regression state is unreachable, which is "
+        "why the corrupt flag must gate on its own"
     )
     assert exit_code == 1

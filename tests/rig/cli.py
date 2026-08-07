@@ -371,11 +371,9 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
-    # A tier the path filter skipped emits no junit, so its groups are absent
-    # here. Scoping to the groups that actually reported keeps their paths as
-    # gaps rather than regressions — nothing regressed, the tier never ran. A
-    # group that ran and went red still reports, so it stays in scope and a
-    # genuine regression is still caught.
+    # A skipped tier emits no junit, so scoping to the groups that reported keeps
+    # its paths as gaps rather than regressions — nothing regressed, it never ran.
+    # A group that ran and went red still reports, so real regressions survive.
     scope_groups = [r.name for r in group_results]
     statuses = cp.evaluate(
         registry,
@@ -424,9 +422,8 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    # A corrupt baseline empties previously_covered, so no path can reach
-    # "regression" and the gate above silently passes. Fail on it directly
-    # rather than leaving a required check green behind an advisory banner.
+    # A corrupt baseline makes "regression" unreachable, so the gate above would
+    # pass vacuously; it has to fail on its own.
     return 1 if unknown_marker_ids or regressions or baseline_corrupt else 0
 
 
