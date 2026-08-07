@@ -143,6 +143,27 @@ def test_load_baseline_raises_on_corrupt_file(tmp_path: Path) -> None:
         load_baseline(baseline)
 
 
+@pytest.mark.parametrize(
+    "blob", ["[]", '{"covered_paths": 1}', '{"covered_paths": ["ok", 2]}']
+)
+def test_baseline_of_the_wrong_shape_is_corrupt(tmp_path: Path, blob: str) -> None:
+    """Parseable JSON of the wrong shape is as unusable as a truncated file.
+
+    Left unchecked it surfaces as an ``AttributeError``/``TypeError`` from
+    whichever caller touched it first, rather than the handled corrupt path.
+    """
+    baseline = tmp_path / "previous-summary.json"
+    baseline.write_text(blob)
+    registry = _registry(("p1", ("g1",)))
+
+    with pytest.raises(BaselineCorruptError):
+        load_baseline(baseline)
+    with pytest.raises(BaselineCorruptError):
+        merge_into_baseline(
+            evaluate(registry, groups_run_green={"g1"}, baseline=None), baseline
+        )
+
+
 def test_merge_raises_on_corrupt_existing_baseline(tmp_path: Path) -> None:
     """merge_into_baseline must not silently overwrite a corrupt file — that
     would erase the other tier's previously-covered paths.
