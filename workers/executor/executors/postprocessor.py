@@ -9,6 +9,8 @@ from typing import Any
 
 import requests
 
+from unstract.core.network.ssrf import is_safe_webhook_url
+
 logger = logging.getLogger(__name__)
 
 
@@ -57,6 +59,12 @@ def _make_webhook_request(
     webhook_url: str, payload: dict, timeout: float
 ) -> tuple[dict[str, Any], list | None] | None:
     """Make webhook request and return processed response or None on failure."""
+    # Guard at the sink so it cannot be skipped by a caller. This path has
+    # always required TLS, so keep it to https.
+    if not is_safe_webhook_url(webhook_url, allowed_schemes=("https",)):
+        logger.warning("Postprocessing webhook URL is not allowed; skipping.")
+        return None
+
     try:
         response = requests.post(
             webhook_url,
