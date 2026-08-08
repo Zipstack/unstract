@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -189,6 +190,31 @@ CACHE_TTL_SEC = os.environ.get("CACHE_TTL_SEC", 10800)
 
 DEFAULT_AUTH_USERNAME = os.environ.get("DEFAULT_AUTH_USERNAME", "unstract")
 DEFAULT_AUTH_PASSWORD = os.environ.get("DEFAULT_AUTH_PASSWORD", "unstract")
+# Name/id of the default organization created for the open-source (single-tenant)
+# deployment. This value is the organization's persisted identifier *and* the org
+# segment of every tenant URL (e.g. /mock_org/tools), so it must be a single
+# URL-safe path segment. Defaults to "mock_org" for backward compatibility.
+#
+# WARNING: Set this ONCE at initial deployment and keep the frontend
+# VITE_DEFAULT_ORG_NAME in sync. Changing it on an existing deployment points the
+# app at a new, empty organization and strands the data (workflows, adapters,
+# pipelines, etc.) that belongs to the previous name; migrating existing records
+# to a new organization identifier must be done manually.
+# A blank value falls back to "mock_org" so the backend and frontend defaults
+# stay in lockstep (the frontend also defaults to "mock_org").
+DEFAULT_ORGANIZATION_NAME = (
+    os.environ.get("DEFAULT_ORGANIZATION_NAME", "").strip() or "mock_org"
+)
+# Reject values that are not a single URL-safe segment: the name is used verbatim
+# as the org path segment, which the middleware matches as a single "[^/]+" group
+# and the frontend consumes as a raw route segment. Anything containing "/",
+# whitespace or other delimiters would resolve under the wrong organization or 404.
+if not re.fullmatch(r"[A-Za-z0-9_-]+", DEFAULT_ORGANIZATION_NAME):
+    raise ValueError(
+        "DEFAULT_ORGANIZATION_NAME must be a single URL-safe path segment "
+        "(letters, digits, '_' or '-', no '/' or whitespace); "
+        f"got {DEFAULT_ORGANIZATION_NAME!r}"
+    )
 SYSTEM_ADMIN_USERNAME = get_required_setting("SYSTEM_ADMIN_USERNAME")
 SYSTEM_ADMIN_PASSWORD = get_required_setting("SYSTEM_ADMIN_PASSWORD")
 SYSTEM_ADMIN_EMAIL = get_required_setting("SYSTEM_ADMIN_EMAIL")
