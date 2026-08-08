@@ -109,12 +109,15 @@ class PromptStudioIndexHelper:
 
                 # Lock the row (or create an empty one) so concurrent callers
                 # merge into the same dict rather than clobbering each other.
-                index_manager, created = (
-                    IndexManager.objects.select_for_update().get_or_create(
-                        document_manager=document,
-                        profile_manager=profile_manager,
-                        defaults={"extraction_status": {}},
-                    )
+                # of=("self",) because the org-scoped manager joins through
+                # DocumentManager and CustomTool; without it Postgres locks
+                # rows in those tables too.
+                index_manager, created = IndexManager.objects.select_for_update(
+                    of=("self",)
+                ).get_or_create(
+                    document_manager=document,
+                    profile_manager=profile_manager,
+                    defaults={"extraction_status": {}},
                 )
 
                 # Merge in place — update_or_create(defaults=...) would replace

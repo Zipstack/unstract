@@ -3,12 +3,17 @@ import uuid
 from account_v2.models import User
 from django.db import models
 from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 
 
 class DocumentManager(BaseModel):
     """Model to store the document details."""
+
+    # Org scoping lives here because custom @action methods never call
+    # filter_queryset(), so OrganizationFilterBackend does not run on them.
+    objects = OrgAwareManager()
 
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 

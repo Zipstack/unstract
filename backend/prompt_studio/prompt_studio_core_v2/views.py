@@ -10,9 +10,10 @@ import magic
 from account_v2.custom_exceptions import DuplicateData
 from celery import signature
 from celery.result import AsyncResult
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
@@ -389,13 +390,24 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
-        ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-            is_default=False
+        # Resolve the target before clearing anything: the id comes straight
+        # from the request body, and clearing first would leave the tool with no
+        # default at all when it does not match. Scoped to the same tool the
+        # caller already passed authz on, so another tool's id is a 404.
+        profile_manager = get_object_or_404(
+            ProfileManager,
+            pk=request.data["default_profile"],
+            prompt_studio_tool=prompt_tool,
         )
 
-        profile_manager = ProfileManager.objects.get(pk=request.data["default_profile"])
-        profile_manager.is_default = True
-        profile_manager.save()
+        # Both writes in one transaction so a failure between them cannot leave
+        # the tool with zero defaults or two.
+        with transaction.atomic():
+            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                is_default=False
+            )
+            profile_manager.is_default = True
+            profile_manager.save()
 
         return Response(
             status=status.HTTP_200_OK,
@@ -1130,7 +1142,13 @@ class PromptStudioCoreView(
         document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        # Scope to the tool the caller already passed authz on — tighter than
+        # org scope, and this action never runs filter_queryset().
+        # get_object_or_404 keeps a non-matching id a 404 rather than an
+        # unhandled DoesNotExist, which the DRF handler turns into a 500.
+        document: DocumentManager = get_object_or_404(
+            DocumentManager, pk=document_id, tool=custom_tool
+        )
 
         try:
             # Delete indexed flags in redis
