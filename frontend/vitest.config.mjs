@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import react from "@vitejs/plugin-react";
 import { transformWithEsbuild } from "vite";
@@ -35,10 +36,47 @@ function jsxInJs() {
   };
 }
 
+/*
+ * Mirror of optionalPluginImports() in vite.config.js — the same asymmetry the
+ * note above warns about, in a second place.
+ *
+ * `src/helpers/GetStaticData.js` does `try { await import("../plugins/...") }`,
+ * which the build resolves to an empty module when the cloud plugin tree is
+ * absent. Vitest does not read vite.config.js, so in the OSS-only checkout any
+ * test importing a component that reaches GetStaticData failed to COLLECT —
+ * reported as a failed file, not a failed assertion, and easy to read as
+ * unrelated infrastructure noise.
+ */
+function optionalPluginImports() {
+  return {
+    name: "optional-plugin-imports",
+    resolveId(source, importer) {
+      if (!importer || !source.startsWith(".")) {
+        return null;
+      }
+      const sourcePath = source.split("?")[0].split("#")[0];
+      const resolved = path.resolve(path.dirname(importer), sourcePath);
+      if (!resolved.includes("/plugins/")) {
+        return null;
+      }
+      const exists = ["", ".js", ".jsx", ".ts", ".tsx"].some(
+        (ext) =>
+          fs.existsSync(resolved + ext) ||
+          fs.existsSync(path.join(resolved, `index${ext || ".js"}`)),
+      );
+      return exists ? null : `\0optional-plugin:${resolved}`;
+    },
+    load(id) {
+      return id.startsWith("\0optional-plugin:") ? "export default {};" : null;
+    },
+  };
+}
+
 export default defineConfig({
   plugins: [
     // Must precede react(), as in vite.config.js.
     jsxInJs(),
+    optionalPluginImports(),
     react({
       include: "**/*.{jsx,js,tsx,ts}",
     }),

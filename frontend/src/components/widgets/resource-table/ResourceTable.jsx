@@ -367,8 +367,16 @@ function ResourceTable({
       render: (_, item) => {
         const iso = item?.[modifiedProp];
         const rel = timeAgo(iso);
+        // The <span> is load-bearing: Tooltip renders a Radix trigger with
+        // `asChild`, which slots onto a single ELEMENT child. `timeAgo` returns
+        // a string, and slotting onto text throws "Primitive.button failed to
+        // slot onto its children" — taking down every route that renders this
+        // table with at least one row. antd's Tooltip accepted a bare string
+        // here, so the shape survived the conversion unnoticed.
         return rel ? (
-          <Tooltip title={formattedDateTime(iso)}>{rel}</Tooltip>
+          <Tooltip title={formattedDateTime(iso)}>
+            <span>{rel}</span>
+          </Tooltip>
         ) : (
           "-"
         );
