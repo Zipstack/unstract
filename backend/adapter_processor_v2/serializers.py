@@ -207,10 +207,14 @@ class AdapterListSerializer(BaseAdapterSerializer):
         if model:
             rep["model"] = model
 
+        # Frictionless (Unstract-provisioned) adapters mask the owner org-wide;
+        # mask owner_emails too, else the Owned By column leaks the real owner.
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"
+            rep["owner_emails"] = ["Unstract"]
         else:
             rep["created_by_email"] = instance.created_by.email
+            rep["owner_emails"] = instance.owner_emails()
 
         request = self.context.get("request")
         rep["is_owner"] = instance.is_owner(request.user) if request else False

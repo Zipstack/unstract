@@ -30,6 +30,7 @@ from tests.rig.groups import (
     REPO_ROOT,
     TIERS,
     GroupDefinition,
+    MigrateSpec,
     load_groups,
 )
 from tests.rig.reporting import (
@@ -63,6 +64,10 @@ _PYTEST_PLUGIN_DIR = REPO_ROOT / "tests" / "rig" / "pytest_plugin"
 
 # saxutils.escape leaves quotes alone, which is wrong inside an attribute.
 _XML_ATTR_ESCAPES = {'"': "&quot;"}
+
+# Runs outside any group's timeout budget, so a wedged connection would
+# otherwise hang the job to the CI ceiling.
+_MIGRATE_TIMEOUT_SECONDS = 300
 
 
 @lru_cache(maxsize=1)
@@ -296,6 +301,17 @@ def cmd_validate(_args: argparse.Namespace) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
     errors = cp.validate_registry_against_manifest(registry, manifest)
+    # Config-isolation is filesystem-dependent, so it lives here rather than in
+    # the pure loader — but running it at validate time catches a misconfigured
+    # group in review instead of mid-run, after infra/dep bring-up.
+    for name in manifest.names():
+        group = manifest.get(name)
+        # Optional groups may be placeholders whose paths don't exist yet.
+        if group.optional:
+            continue
+        isolation_error = _config_isolation_error(group, group.absolute_workdir())
+        if isolation_error is not None:
+            errors.append(isolation_error)
     for err in errors:
         print(f"ERROR: {err}", file=sys.stderr)
     if errors:
@@ -355,8 +371,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
+    # A skipped tier emits no junit, so scoping to the groups that reported keeps
+    # its paths as gaps rather than regressions — nothing regressed, it never ran.
+    # A group that ran and went red still reports, so real regressions survive.
+    # `optional` groups are excluded: they are documented as non-blocking, and
+    # leaving them in scope would let a red one gate the build through a
+    # regression instead.
+    scope_groups = [r.name for r in group_results if not manifest.get(r.name).optional]
     statuses = cp.evaluate(
-        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+        registry,
+        groups_run_green=green,
+        baseline=baseline,
+        scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -370,6 +397,42 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"[rig] ❌ @pytest.mark.critical_path references unknown path "
             f"id(s): {', '.join(unknown_marker_ids)} "
             f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+    # cmd_run gates on the regressions it can see, but only within its own tier.
+    # This is the only cross-tier evaluation, so it is the only place a regression
+    # spanning tiers can be gated on.
+    # A covering group that ran green without attesting means its marked test
+    # was skipped or unmarked; a group that went red means the test failed. The
+    # remedies differ, so the two are reported apart rather than as one count.
+    unproven: list[cp.CriticalPathStatus] = []
+    uncovered: list[cp.CriticalPathStatus] = []
+    for s in statuses:
+        if s.state != "regression":
+            continue
+        target = unproven if any(g in green for g in s.path.covered_by) else uncovered
+        target.append(s)
+    regressions = unproven + uncovered
+    if uncovered:
+        ids = ", ".join(s.path.id for s in uncovered)
+        print(
+            f"\n[rig] ❌ {len(uncovered)} critical-path regression(s) — no covering "
+            f"group ran green: {ids}",
+            file=sys.stderr,
+        )
+    if unproven:
+        ids = ", ".join(s.path.id for s in unproven)
+        print(
+            f"\n[rig] ❌ {len(unproven)} critical-path regression(s) — covering group "
+            f"ran green but no passing @pytest.mark.critical_path test attested "
+            f"them (skipped or unmarked?): {ids}",
+            file=sys.stderr,
+        )
+    if regressions:
+        print(
+            "[rig] to accept a deliberate removal, drop or re-point the path in "
+            "tests/critical_paths.yaml in the same PR — the baseline is keyed off "
+            "that registry.",
             file=sys.stderr,
         )
     if args.update_baseline:
@@ -388,7 +451,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 1 if unknown_marker_ids else 0
+    # A corrupt baseline makes "regression" unreachable, so the gate above would
+    # pass vacuously; it has to fail on its own.
+    return 1 if unknown_marker_ids or regressions or baseline_corrupt else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -455,15 +520,37 @@ def cmd_run(args: argparse.Namespace) -> int:
             # in the finally, cleaning up any partial stack.
             endpoints = runtime.up()
         elif needs_services and not args.dry_run:
-            # Infra-only: testcontainers Postgres/Redis/etc., no platform
-            # services. ponytail: up() starts the full infra set even if a run
-            # only needs Postgres; trim to the requested services if startup
-            # cost ever matters.
+            # Infra-only: testcontainers Postgres/Redis/etc., no platform.
             runtime = TestcontainersRuntime()
             print(
                 f"[rig] bringing infra up via runtime={runtime.name} (requires_services)"
             )
             endpoints = runtime.up()
+
+        # Guarded on `postgres_url` so it only fires for a rig-owned container
+        # (under compose the platform migrates its own database on startup), and
+        # on a runnable group actually needing Postgres, since `up()` provisions
+        # the full infra set even for a run that only wants another service.
+        needs_postgres = any(
+            "postgres" in manifest.get(n).requires_services for n in runnable
+        )
+        if (
+            endpoints is not None
+            and manifest.postgres_migrate is not None
+            and needs_postgres
+        ):
+            postgres_url = endpoints.infra.postgres_url
+            if postgres_url:
+                migrate_exit = _run_migrations(
+                    manifest.postgres_migrate, postgres_url=postgres_url
+                )
+                if migrate_exit != 0:
+                    # Every DB-backed test would skip on a missing table, which
+                    # reads as "nothing to run" rather than a broken database.
+                    raise RuntimeError(
+                        f"migrations failed against the provisioned database "
+                        f"(exit {migrate_exit}); aborting before any group runs"
+                    )
 
         # Groups run in topo order, so a dependency's result is always known by
         # the time its dependents come up. A red dep means the precondition it
@@ -730,7 +817,17 @@ def _inject_infra_env(
         return
     infra = endpoints.infra
     if "postgres" in group.requires_services and infra.postgres_url:
-        env.update(_db_env_from_postgres_url(infra.postgres_url))
+        db_env = _db_env_from_postgres_url(infra.postgres_url)
+        env.update(db_env)
+        # A bare Postgres only has `public`; groups needing another declare it.
+        env.setdefault("DB_SCHEMA", "public")
+        db_env["DB_SCHEMA"] = env["DB_SCHEMA"]
+        # Fixtures read TEST_DB_* so a developer run keeps pointing at their own
+        # compose DB. Mirror onto that prefix or those tests connect to the
+        # dev-compose defaults instead of the provisioned container. setdefault so
+        # a group can still override with its own TEST_DB_* escape hatch.
+        for key, value in db_env.items():
+            env.setdefault(f"TEST_{key}", value)
     if "minio" in group.requires_services and infra.minio_endpoint:
         # http: this is a local, throwaway testcontainers MinIO with no TLS.
         env.setdefault(
@@ -840,16 +937,7 @@ def _execute_group(
     if group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
-        # Match the exit.txt write's defensive handling: a read-only reports
-        # dir or full disk shouldn't abort the whole run and orphan completed
-        # groups before the summary renders.
-        try:
-            _write_synthetic_junit(junit, group.name, exit_code)
-        except OSError as err:
-            print(
-                f"[rig] could not write synthetic junit for {group.name}: {err}",
-                file=sys.stderr,
-            )
+        _write_synthetic_junit_safe(junit, group.name, exit_code)
     elif group.runner in ("vitest", "playwright"):
         # Playwright's JUnit path comes from its config, not a flag; the config
         # reads this. Harmless for vitest, which takes --outputFile.
@@ -862,13 +950,12 @@ def _execute_group(
         # `parse_junit` reports as a missing group rather than a failure — so
         # backfill one to keep a red run visible in the summary.
         if not junit.exists():
-            try:
-                _write_synthetic_junit(junit, group.name, exit_code)
-            except OSError as err:
-                print(
-                    f"[rig] could not write synthetic junit for {group.name}: {err}",
-                    file=sys.stderr,
-                )
+            _write_synthetic_junit_safe(junit, group.name, exit_code)
+    elif (isolation_error := _config_isolation_error(group, workdir)) is not None:
+        print(isolation_error, file=sys.stderr)
+        # 4 is pytest's usage-error code, so this gates like any hard failure.
+        exit_code = 4
+        _write_synthetic_junit_safe(junit, group.name, exit_code)
     else:
         cmd = _pytest_command(
             group,
@@ -938,6 +1025,50 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
     # That avoids losing them on the next `uv run` (which re-syncs the venv).
 
 
+def _run_migrations(spec: MigrateSpec, *, postgres_url: str) -> int:
+    """Apply Django migrations to the rig-provisioned database.
+
+    Runs once, right after the container is up and before any group, because the
+    schema is a property of the database rather than of a group. Only the
+    migrating project's own Django settings are layered over the connection env
+    — a group's environment is irrelevant here and may not even exist yet.
+    """
+    env = {
+        **os.environ,
+        # spec.env carries Django settings (e.g. schema); the provisioned
+        # connection is layered on top so a stray DB_HOST/DB_NAME in spec.env
+        # can't silently redirect migrations away from the container the groups
+        # then test against.
+        **spec.env,
+        **_db_env_from_postgres_url(postgres_url),
+        # A rig-provisioned Postgres is bare; `public` is the only schema it has,
+        # unless the spec deliberately migrates into another.
+        "DB_SCHEMA": spec.env.get("DB_SCHEMA", "public"),
+    }
+    workdir = spec.absolute_workdir()
+    base = ["uv", "run", "python"] if shutil.which("uv") else [sys.executable]
+    cmd = [*base, "manage.py", "migrate", *spec.apps, "--noinput"]
+    print(
+        f"[rig] migrating provisioned database via {spec.workdir}: "
+        f"{' '.join(spec.apps) or 'all apps'}"
+    )
+    return _spawn(cmd, env=env, cwd=workdir, timeout=_MIGRATE_TIMEOUT_SECONDS)
+
+
+def _write_synthetic_junit_safe(path: Path, group_name: str, exit_code: int) -> None:
+    """Mirror the exit.txt write's defensive handling: a read-only reports dir
+    or full disk shouldn't abort the whole run and orphan completed groups
+    before the summary renders.
+    """
+    try:
+        _write_synthetic_junit(path, group_name, exit_code)
+    except OSError as err:
+        print(
+            f"[rig] could not write synthetic junit for {group_name}: {err}",
+            file=sys.stderr,
+        )
+
+
 def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
     if not shutil.which("uv"):
         return [sys.executable, "-m", "pytest"]
@@ -950,6 +1081,76 @@ def _pytest_base_cmd(group: GroupDefinition, workdir: Path) -> list[str]:
     if group.install_editable:
         with_args += ["--with-editable", str(workdir)]
     return ["uv", "run", *with_args, "pytest"]
+
+
+# Order matters: pytest picks the first of these it finds walking upward.
+_PYTEST_CONFIG_FILES = (
+    ("pytest.ini", None),
+    (".pytest.ini", None),
+    ("pyproject.toml", "[tool.pytest.ini_options]"),
+    ("tox.ini", "[pytest]"),
+    ("setup.cfg", "[tool:pytest]"),
+)
+
+
+def _resolve_pytest_configfile(workdir: Path) -> Path | None:
+    """Find the config file pytest would adopt when invoked from `workdir`.
+
+    Mirrors pytest's upward search. `pytest.ini` counts even when empty; the
+    shared files only count when they carry a pytest section.
+    """
+    for directory in [workdir, *workdir.parents]:
+        for name, required_section in _PYTEST_CONFIG_FILES:
+            candidate = directory / name
+            if not candidate.is_file():
+                continue
+            if required_section is None:
+                return candidate
+            try:
+                lines = candidate.read_text(encoding="utf-8").splitlines()
+            except OSError:
+                continue
+            # Match the section header on its own line, as the TOML/INI parsers
+            # do — a commented-out or docstring mention is not a real config.
+            if any(line.strip() == required_section for line in lines):
+                return candidate
+        if directory == REPO_ROOT:
+            break
+    return None
+
+
+def _config_isolation_error(group: GroupDefinition, workdir: Path) -> str | None:
+    """Reject a group that would silently inherit an unrelated project's config.
+
+    `cd workdir && pytest <paths>` does not pin config to workdir — pytest walks
+    up from the common ancestor of its path args. A nested project without its
+    own config therefore adopts its parent's `addopts` (coverage targets,
+    --strict-config), which fails in ways that have nothing to do with the
+    group's tests. Inheriting the repo-root config is the normal monorepo case
+    and stays allowed; inheriting some *other* project's config never is.
+    """
+    # Match pytest: ini discovery starts at the common ancestor of the path args
+    # (the rig always passes paths), not the workdir — they differ whenever paths
+    # reach into a subdirectory that is itself a nested project.
+    paths = [str(workdir / p) for p in group.paths]
+    start = Path(os.path.commonpath(paths)) if paths else workdir
+    configfile = _resolve_pytest_configfile(start)
+    if configfile is None or configfile.parent in (workdir, REPO_ROOT):
+        return None
+    # An empty pytest.ini is the lightest fix for a workdir with no pyproject.
+    fix_target = (
+        workdir / "pyproject.toml"
+        if (workdir / "pyproject.toml").is_file()
+        else workdir / "pytest.ini"
+    )
+    return (
+        f"[rig] group '{group.name}' would run under {configfile}, which belongs "
+        f"to neither its workdir ({workdir}) nor the repo root.\n"
+        f"[rig] pytest resolves config by walking up from the tests' common "
+        f"ancestor, so this group inherits that project's addopts.\n"
+        f"[rig] fix: give the group its own pytest config, e.g. add a "
+        f"[tool.pytest.ini_options] section to or create {fix_target}."
+    )
 
 
 def _pytest_command(
@@ -1074,7 +1275,8 @@ def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:
 
 
 def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
-    """Synthesise a JUnit XML for hurl runs.
+    """Synthesise a JUnit XML for a group pytest never wrote one for (hurl runs,
+    or a group rejected by the config-isolation guardrail).
 
     Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
     hurl group would show ⚪ via :class:`GroupResult` while also being counted

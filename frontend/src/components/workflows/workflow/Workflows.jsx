@@ -2,14 +2,18 @@
 
 import { Plus, User as UserIcon } from "lucide-react";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Pagination } from "@/components/ui/shims/antd-structure";
 import { Text } from "@/components/ui/shims/antd-typography";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import {
+  applyPagedResponse,
+  buildPagedParams,
+  usePaginatedList,
+} from "../../../hooks/usePaginatedList";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
   useInitialFetchCount,
@@ -21,13 +25,13 @@ import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
-import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
+import { CoOwnerModal } from "../../widgets/co-owner-management/CoOwnerModal.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { ResourceTable } from "../../widgets/resource-table/ResourceTable.jsx";
 import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
@@ -51,11 +55,16 @@ function Workflows() {
   );
 
   const [projectList, setProjectList] = useState();
+  // Fetch failure (vs. genuinely empty) — drives a retryable error state.
+  const [loadError, setLoadError] = useState(false);
   const [editingProject, setEditProject] = useState();
   const [loading, setLoading] = useState(false);
+  // Modal-local save spinner — kept off the shared list-loading so an edit can't
+  // race the post-edit refetch for the list's loading state.
+  const [editLoading, setEditLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
-  // Ref forwards the fetch fn to the pagination hook (avoids declaration ordering)
-  const fetchListRef = useRef(null);
+  // Monotonic request token so a stale response can't overwrite a newer one.
+  const seqRef = useRef(0);
   const [backendErrors, setBackendErrors] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState();
@@ -70,34 +79,21 @@ function Workflows() {
     pagination,
     setPagination,
     searchTerm,
+    sort,
+    userSorted,
+    fetchRef,
+    requestList,
+    syncRequested,
     handlePaginationChange,
     handleSearch,
+    handleSortChange,
+    handleListRefresh,
   } = usePaginatedList({
-    fetchData: (...args) => fetchListRef.current?.(...args),
     defaultPageSize: DEFAULT_PAGE_SIZE,
+    defaultSortBy: "modified_at",
+    defaultOrder: "desc",
   });
-
-  // Refresh the current page (preserves page + active search) after mutations
-  const handleListRefresh = useCallback(
-    () =>
-      fetchListRef.current?.(
-        pagination.current,
-        pagination.pageSize,
-        searchTerm,
-      ),
-    [pagination.current, pagination.pageSize, searchTerm],
-  );
-  const {
-    coOwnerOpen,
-    setCoOwnerOpen,
-    coOwnerData,
-    coOwnerLoading,
-    coOwnerAllUsers,
-    coOwnerResourceId,
-    handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
-  } = useCoOwnerManagement({
+  const coOwner = useCoOwnerManagement({
     service: projectApiService,
     setAlertDetails,
     onListRefresh: handleListRefresh,
@@ -108,7 +104,7 @@ function Workflows() {
 
   useEffect(() => {
     if (location.pathname === `/${orgName}/workflows`) {
-      getProjectList();
+      requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
     }
   }, [location.pathname]);
 
@@ -116,46 +112,53 @@ function Workflows() {
     page = 1,
     pageSize = DEFAULT_PAGE_SIZE,
     search = "",
+    sortBy = "",
+    order = "asc",
   ) => {
+    const params = buildPagedParams({ page, pageSize, search, sortBy, order });
+    const seq = ++seqRef.current;
+    setLoadError(false);
     setLoading(true);
-    const params = { page, page_size: pageSize };
-    if (search) {
-      params.search = search;
-    }
-    projectApiService
+    return projectApiService
       .getProjectList(params)
-      .then((res) => {
-        const data = res?.data;
-        // Endpoint is opt-in paginated: envelope when we send ?page, else a
-        // bare array. Handle both so nothing breaks if the opt-in is dropped.
-        const results = data?.results ?? data ?? [];
-        const total = data?.count ?? results.length;
-        // Deleting the last row on a page leaves it empty; step back a page.
-        if (results.length === 0 && page > 1 && total > 0) {
-          getProjectList(page - 1, pageSize, search);
+      .then((res) =>
+        applyPagedResponse({
+          data: res?.data,
+          page,
+          pageSize,
+          seq,
+          latestSeqRef: seqRef,
+          setList: setProjectList,
+          setPagination,
+          refetchPrevPage: () =>
+            requestList(page - 1, pageSize, search, sortBy, order),
+        }),
+      )
+      .catch((err) => {
+        // A newer request superseded this one — don't surface its error.
+        if (seq !== seqRef.current) {
           return;
         }
-        setProjectList(results);
-        setPagination((prev) => ({
-          ...prev,
-          current: page,
-          pageSize,
-          total,
-        }));
-      })
-      .catch(() => {
-        console.error("Unable to get project list");
-        // Avoid an indefinite spinner when the first fetch fails.
-        setProjectList((prev) => prev ?? []);
+        setAlertDetails(handleException(err, "Unable to load workflows"));
+        // Surface a retryable error instead of a misleading empty state.
+        setLoadError(true);
+        // Failed request — realign requestedRef with the still-shown view.
+        syncRequested();
       })
       .finally(() => {
-        setLoading(false);
+        // Only the newest request owns the shared loading state.
+        if (seq === seqRef.current) {
+          setLoading(false);
+        }
       });
   };
-  fetchListRef.current = getProjectList;
+  fetchRef.current = getProjectList;
 
   function editProject(name, description) {
-    setLoading(true);
+    // Drive the modal-local editLoading, not the shared list-loading: on success
+    // the edit path's handleListRefresh owns the list spinner (new path navigates
+    // away), so editProject can't clear a pending refetch's loading.
+    setEditLoading(true);
     projectApiService
       .editProject(name, description, editingProject?.id)
       .then((res) => {
@@ -179,7 +182,7 @@ function Workflows() {
         );
       })
       .finally(() => {
-        setLoading(false);
+        setEditLoading(false);
       });
   }
 
@@ -361,7 +364,7 @@ function Workflows() {
 
   const handleCoOwner = (event, workflow) => {
     event.stopPropagation();
-    handleCoOwnerAction(workflow.id);
+    coOwner.handleCoOwner(workflow.id);
   };
 
   const handleNewWorkflowBtnClick = () => {
@@ -402,13 +405,21 @@ function Workflows() {
       <ToolNavBar
         title="Workflows"
         enableSearch
+        searchPlaceholder="Search by name or owner"
         customButtons={newWorkflowButton}
         onSearch={(value) => handleSearch(value)}
       />
       <div className="workflows-pg-layout">
         <div className="workflows-pg-body">
-          {projectList === undefined && <SpinnerLoader />}
-          {projectList?.length === 0 && !searchTerm && (
+          {loadError && (
+            <EmptyState
+              text="Couldn't load. Please try again."
+              btnText="Retry"
+              handleClick={handleListRefresh}
+            />
+          )}
+          {!loadError && projectList === undefined && <SpinnerLoader />}
+          {!loadError && projectList?.length === 0 && !searchTerm && (
             <div className="list-of-workflows-body">
               <EmptyState
                 text="No Workflow available"
@@ -420,37 +431,31 @@ function Workflows() {
               />
             </div>
           )}
-          {projectList?.length === 0 && searchTerm && (
+          {!loadError && projectList?.length === 0 && searchTerm && (
             <EmptyState text="No results found for this search" />
           )}
-          {projectList?.length > 0 && (
-            <>
-              <ViewTools
-                isLoading={loading}
-                isEmpty={false}
-                listOfTools={projectList}
-                setOpenAddTool={toggleModal}
-                handleEdit={updateProject}
-                handleDelete={deleteProject}
-                handleShare={handleShare}
-                handleCoOwner={handleCoOwner}
-                titleProp="workflow_name"
-                descriptionProp="description"
-                idProp="id"
-                type="Workflow"
-              />
-              {pagination.total > pagination.pageSize && (
-                <div className="workflows-pagination">
-                  <Pagination
-                    current={pagination.current}
-                    pageSize={pagination.pageSize}
-                    total={pagination.total}
-                    onChange={handlePaginationChange}
-                    showSizeChanger={false}
-                  />
-                </div>
-              )}
-            </>
+          {!loadError && projectList?.length > 0 && (
+            <ResourceTable
+              dataSource={projectList}
+              loading={loading}
+              pagination={pagination}
+              sort={sort}
+              userSorted={userSorted}
+              onPaginationChange={handlePaginationChange}
+              onSortChange={handleSortChange}
+              titleProp="workflow_name"
+              descriptionProp="description"
+              idProp="id"
+              dateProp="created_at"
+              handleEdit={updateProject}
+              handleShare={handleShare}
+              handleDelete={deleteProject}
+              handleCoOwner={handleCoOwner}
+              sessionDetails={sessionDetails}
+              showOwner
+              isClickable
+              type="Workflow"
+            />
           )}
           {editingProject && (
             <LazyLoader
@@ -460,7 +465,7 @@ function Workflows() {
               description={editingProject.description}
               onDone={editProject}
               onClose={closeNewProject}
-              loading={loading}
+              loading={editLoading}
               toggleModal={toggleModal}
               openModal={openModal}
               backendErrors={backendErrors}
@@ -480,19 +485,8 @@ function Workflows() {
               isSharableToOrg={true}
             />
           )}
-          {coOwnerOpen && (
-            <CoOwnerManagement
-              open={coOwnerOpen}
-              setOpen={setCoOwnerOpen}
-              resourceId={coOwnerResourceId}
-              resourceType="Workflow"
-              allUsers={coOwnerAllUsers}
-              coOwners={coOwnerData.coOwners}
-              createdBy={coOwnerData.createdBy}
-              loading={coOwnerLoading}
-              onAddCoOwner={onAddCoOwner}
-              onRemoveCoOwner={onRemoveCoOwner}
-            />
+          {coOwner.coOwnerOpen && (
+            <CoOwnerModal coOwner={coOwner} resourceType="Workflow" />
           )}
         </div>
       </div>

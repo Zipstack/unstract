@@ -289,3 +289,43 @@ describe("Form.Item accepts antd's array NamePath", () => {
     });
   });
 });
+
+describe("Form.useWatch", () => {
+  // GlobalApiDeploymentKeys drives a whole fieldset off this: an "allow all
+  // deployments" checkbox disables the deployment picker and drops its
+  // required-rule. If useWatch never re-renders, the picker stays enabled and
+  // the user can submit an incoherent scoped/unscoped pair.
+  function WatchHarness() {
+    const [form] = Form.useForm();
+    // The instance is held HERE and the <Form> renders below, so there is no
+    // FormProvider above this component — the arrangement every call-site uses.
+    const allowAll = Form.useWatch("allowAll", form, false);
+    return (
+      <Form form={form} layout="vertical">
+        <Form.Item name="allowAll" valuePropName="checked" initialValue={false}>
+          <input type="checkbox" aria-label="Allow all" />
+        </Form.Item>
+        <span data-testid="watched">{String(allowAll)}</span>
+      </Form>
+    );
+  }
+
+  it("re-renders the watcher when the watched field changes", async () => {
+    render(<WatchHarness />);
+    expect(screen.getByTestId("watched")).toHaveTextContent("false");
+
+    await userEvent.click(screen.getByLabelText("Allow all"));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("watched")).toHaveTextContent("true"),
+    );
+  });
+
+  it("returns undefined outside a Form instead of throwing", () => {
+    function Bare() {
+      return <span data-testid="bare">{String(Form.useWatch("nope"))}</span>;
+    }
+    render(<Bare />);
+    expect(screen.getByTestId("bare")).toHaveTextContent("undefined");
+  });
+});

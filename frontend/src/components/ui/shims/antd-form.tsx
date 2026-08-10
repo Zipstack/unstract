@@ -5,6 +5,7 @@ import {
   type UseFormReturn,
   useForm,
   useFormContext,
+  useWatch,
 } from "react-hook-form";
 
 import { Label } from "@/components/ui/label";
@@ -107,6 +108,12 @@ interface FormItemProps
   required?: boolean;
   /** `checked` for switches and checkboxes, `value` otherwise. */
   valuePropName?: string;
+  /**
+   * antd's per-item seed, the sibling of `<Form initialValues>`. Distinct from
+   * "no value": a checkbox seeded `false` must read as `false`, because
+   * call-sites branch on `=== false` to tell "unchecked" from "not yet loaded".
+   */
+  initialValue?: unknown;
   /** antd's server-error channel, paired with `help`. */
   validateStatus?: "error" | "warning" | "success" | "validating";
   help?: React.ReactNode;
@@ -354,6 +361,7 @@ function FormItem({
   rules,
   required,
   valuePropName = "value",
+  initialValue,
   /*
    * antd's server-error channel. The call-sites do NOT validate on the client
    * before submitting — they post, catch the 400, and feed the response into
@@ -399,6 +407,10 @@ function FormItem({
     <Controller
       name={name}
       control={methods.control}
+      // Only pass it through when the item actually declares one: RHF treats
+      // an explicit `undefined` as "seed this field to undefined", which would
+      // clobber a value already set via <Form initialValues> or setFieldsValue.
+      {...(initialValue !== undefined ? { defaultValue: initialValue } : {})}
       rules={toRules(rules, label)}
       render={({ field, fieldState }) => {
         // The child is the control being wired. Narrowed to an element
@@ -491,11 +503,53 @@ function FormItem({
   );
 }
 
+/**
+ * antd's `Form.useWatch(name, form)` — subscribe to one field's value and
+ * re-render on change.
+ *
+ * antd accepts the form instance as the second argument or, inside a Form,
+ * omits it and reads context. Both are supported: the explicit instance wins,
+ * context is the fallback, matching antd's own resolution order.
+ *
+ * The `control` is passed explicitly rather than relying on react-hook-form's
+ * own context lookup, because the instance from `useForm()` is frequently held
+ * by a parent that renders the `<Form>` further down the tree — there is no
+ * FormProvider above the caller in that arrangement.
+ *
+ * `defaultValue` covers the first render specifically. A watcher above the
+ * `<Form>` runs BEFORE the child `Form.Item`'s Controller registers, so a
+ * per-item `initialValue` is not yet readable and the field would come back
+ * `undefined` for one render. Call-sites that distinguish `=== false` from
+ * "not set" (an unchecked box vs an unloaded form) take the wrong branch on
+ * that render, so pass the item's own seed here as well.
+ */
+function useAntdWatch(
+  name: NamePath,
+  form?: FormInstance,
+  defaultValue?: unknown,
+): unknown {
+  const context = useFormContext();
+  const control = form?.__methods?.control ?? context?.control;
+  // A private throwaway control keeps the hook call unconditional when there is
+  // no form to read (a watcher rendered outside any Form). `disabled` is not
+  // enough on its own: useWatch dereferences `control._getWatch` while mounting,
+  // before it consults the flag, so a null control throws.
+  const fallback = useForm();
+  const watched = useWatch({
+    control: control ?? fallback.control,
+    name: toFieldName(name) as string,
+    disabled: !control,
+    defaultValue,
+  });
+  return control ? watched : undefined;
+}
+
 /** Namespace object, so `<Form.Item>` type-checks and shim-completeness
  * still finds the statics by value. */
 const Form = Object.assign(FormBase, {
   Item: FormItem,
   useForm: useAntdForm,
+  useWatch: useAntdWatch,
   List: function FormList({ children }: { children?: React.ReactNode }) {
     return children;
   },

@@ -669,6 +669,57 @@ def test_db_env_from_postgres_url_maps_discrete_vars() -> None:
     }
 
 
+def test_inject_infra_env_mirrors_postgres_onto_test_db_prefix() -> None:
+    """The workers' real-Postgres fixtures connect via ``TEST_DB_*`` (so a
+    developer run keeps hitting their own compose DB). Without the mirror they
+    fall back to the dev-compose defaults and every such test skips on connect
+    while the provisioned container sits idle.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://tcuser:tcpass@127.0.0.1:49231/testdb"
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env: dict[str, str] = {}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["TEST_DB_HOST"] == "127.0.0.1"
+    assert env["TEST_DB_PORT"] == "49231"
+    assert env["TEST_DB_NAME"] == "testdb"
+    assert env["TEST_DB_USER"] == "tcuser"
+    assert env["TEST_DB_PASSWORD"] == "tcpass"  # NOSONAR - test placeholder
+    # The queue's search_path and the schema migrations land in must agree, and
+    # a provisioned Postgres only has `public`.
+    assert env["DB_SCHEMA"] == "public"
+    assert env["TEST_DB_SCHEMA"] == "public"
+
+
+def test_inject_infra_env_keeps_group_declared_schema() -> None:
+    """A group that declares its own DB_SCHEMA keeps it — on both prefixes."""
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+    from tests.rig.runtime import InfraEndpoints, PlatformEndpoints
+
+    endpoints = PlatformEndpoints.from_env(
+        infra=InfraEndpoints(
+            postgres_url="postgresql+psycopg2://u:p@127.0.0.1:5432/db"  # NOSONAR
+        )
+    )
+    group = GroupDefinition(
+        name="g", tier="integration", paths=("tests",), requires_services=("postgres",)
+    )
+    env = {"DB_SCHEMA": "unstract"}
+    cli_mod._inject_infra_env(env, group, endpoints)
+    assert env["DB_SCHEMA"] == "unstract"
+    assert env["TEST_DB_SCHEMA"] == "unstract"
+
+
 def test_inject_infra_env_wires_provisioned_redis() -> None:
     """A group declaring `requires_services: [redis]` must get REDIS_HOST/PORT +
     the Celery broker URL rewritten to the provisioned endpoint — otherwise
@@ -843,3 +894,281 @@ def test_node_command_without_npx_collects_nothing(
     assert cli_mod._node_command(group, junit=tmp_path / "junit.xml") == [
         "sh", "-c", "exit 5",
     ]
+
+
+def _make_group(name: str, workdir: str):
+    from tests.rig.groups import GroupDefinition
+
+    return GroupDefinition(name=name, tier="unit", workdir=workdir, paths=["tests"])
+
+
+def _pytest_section(path: Path) -> None:
+    path.write_text('[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+
+
+def test_resolve_configfile_skips_pyproject_without_pytest_section(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pyproject without the pytest table is not a config file to pytest."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "root"\n')
+    child = tmp_path / "child"
+    child.mkdir()
+    (child / "pyproject.toml").write_text('[project]\nname = "child"\n')
+
+    assert cli._resolve_pytest_configfile(child) is None
+
+
+def test_resolve_configfile_finds_nearest_ancestor(tmp_path: Path) -> None:
+    from tests.rig import cli
+
+    _pytest_section(tmp_path / "pyproject.toml")
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) == tmp_path / "pyproject.toml"
+
+
+def test_config_isolation_allows_own_config(tmp_path: Path, monkeypatch) -> None:
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+    _pytest_section(workdir / "pyproject.toml")
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_allows_repo_root_config(tmp_path: Path, monkeypatch) -> None:
+    """Inheriting the monorepo-wide config is the normal case, not a defect."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    _pytest_section(tmp_path / "pyproject.toml")
+    workdir = tmp_path / "pkg"
+    workdir.mkdir()
+
+    assert cli._config_isolation_error(_make_group("g", "pkg"), workdir) is None
+
+
+def test_config_isolation_rejects_sibling_project_config(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A nested project inheriting its parent project's config is the bug."""
+    from tests.rig import cli
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    parent = tmp_path / "workers"
+    nested = parent / "plugins" / "agentic_table"
+    nested.mkdir(parents=True)
+    _pytest_section(parent / "pyproject.toml")
+
+    error = cli._config_isolation_error(_make_group("unit-nested", "x"), nested)
+
+    assert error is not None
+    assert "unit-nested" in error
+    assert str(parent / "pyproject.toml") in error
+
+
+def test_config_isolation_catches_intermediate_nested_project(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """Paths reaching into a nested project pick up that project's config, even
+    when the workdir has its own — pytest starts discovery at the paths' common
+    ancestor, so resolving from the workdir alone would miss it.
+    """
+    from tests.rig import cli
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(cli, "REPO_ROOT", tmp_path)
+    workdir = tmp_path / "workers"
+    nested = workdir / "plugins" / "agentic_table"
+    (nested / "tests").mkdir(parents=True)
+    _pytest_section(workdir / "pyproject.toml")  # workdir's own config
+    _pytest_section(nested / "pyproject.toml")  # the nested project shadows it
+
+    group = GroupDefinition(
+        name="unit-agentic",
+        tier="unit",
+        workdir="workers",
+        paths=["plugins/agentic_table/tests"],
+    )
+    error = cli._config_isolation_error(group, workdir)
+
+    assert error is not None
+    assert str(nested / "pyproject.toml") in error
+
+
+def test_resolve_configfile_ignores_commented_section(tmp_path: Path) -> None:
+    """A commented-out section header is not a real pytest config."""
+    from tests.rig import cli
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "root"\n# [tool.pytest.ini_options] disabled\n'
+    )
+    child = tmp_path / "child"
+    child.mkdir()
+
+    assert cli._resolve_pytest_configfile(child) is None
+
+
+def _drive_cmd_report(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    reporting_groups: dict[str, int],
+    baseline_blob: str = '{"covered_paths": ["int-path"]}',
+    optional: bool = False,
+) -> tuple[int, dict[str, str]]:
+    """Drive ``cmd_report`` over one integration group covering ``int-path``.
+
+    ``reporting_groups`` maps group name -> failure count for the groups that
+    emitted junit this build. A group absent from it emitted nothing, standing
+    in for a tier the CI path filter skipped. ``baseline_blob`` is written as the
+    cached baseline verbatim, so a caller can hand over an unparseable one.
+    Returns the exit code and each path's final state.
+    """
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  int-g:\n"
+        "    tier: integration\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        f"    optional: {str(optional).lower()}\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text(
+        "version: 1\n"
+        "paths:\n"
+        "  - id: int-path\n"
+        "    description: covered only by the integration tier\n"
+        "    covered_by: [int-g]\n"
+    )
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+    # Coverage combining needs real .coverage files and is not under test here.
+    monkeypatch.setattr(cli_mod, "combine_and_report", lambda reports_dir: None)
+
+    def fake_parse_junit(name, tier, reports_dir):
+        if name not in reporting_groups:
+            return None
+        failed = reporting_groups[name]
+        return GroupResult(
+            name=name,
+            tier=tier,
+            exit_code=1 if failed else 0,
+            passed=0 if failed else 1,
+            failed=failed,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+
+    monkeypatch.setattr(cli_mod, "parse_junit", fake_parse_junit)
+
+    states: dict[str, str] = {}
+    real_evaluate = cp_mod.evaluate
+
+    def spy_evaluate(*args, **kwargs):
+        statuses = real_evaluate(*args, **kwargs)
+        states.update({s.path.id: s.state for s in statuses})
+        return statuses
+
+    monkeypatch.setattr(cli_mod.cp, "evaluate", spy_evaluate)
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    # Baseline says the path was green on main, which is what makes the
+    # not-covered-now decision a regression-or-gap question at all.
+    (reports_dir / "previous-summary.json").write_text(baseline_blob)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "report",
+            "combine",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(reports_dir / "previous-summary.json"),
+        ]
+    )
+    return cli_mod.cmd_report(args), states
+
+
+def test_cmd_report_skipped_tier_is_a_gap_not_a_regression(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A path filter can skip a whole tier, whose groups then emit no junit. Its
+    paths must degrade to ``gap``: nothing regressed, the tier never ran.
+    """
+    exit_code, states = _drive_cmd_report(tmp_path, monkeypatch, reporting_groups={})
+
+    assert states["int-path"] == "gap", (
+        "a path whose tier did not run must not be called a regression; "
+        f"got {states['int-path']}"
+    )
+    assert exit_code == 0
+
+
+def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> None:
+    """The covering group ran and went red, so the path really did regress.
+    Being the only cross-tier evaluation, ``cmd_report`` has to gate on it rather
+    than just render it into the comment.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path, monkeypatch, reporting_groups={"int-g": 1}
+    )
+
+    assert states["int-path"] == "regression"
+    assert exit_code == 1, (
+        "a regression must fail the report job, not just print into the comment"
+    )
+
+
+def test_cmd_report_does_not_gate_on_an_optional_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``optional`` groups are documented as non-blocking, and ``cmd_run`` honours
+    that. A red optional group must not reach the gate here through a regression,
+    or the two commands disagree about the same result.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path, monkeypatch, reporting_groups={"int-g": 1}, optional=True
+    )
+
+    assert states["int-path"] == "gap", (
+        f"an optional group's red result must not read as a regression; "
+        f"got {states['int-path']}"
+    )
+    assert exit_code == 0
+
+
+def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> None:
+    """An unreadable baseline leaves ``previously_covered`` empty, making the
+    regression state unreachable. Without gating on the corruption itself, the
+    job goes green with regression detection silently off.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path,
+        monkeypatch,
+        reporting_groups={"int-g": 1},
+        baseline_blob='{"covered_paths": ["int-pat',
+    )
+
+    assert states["int-path"] == "gap", (
+        "with no usable baseline the regression state is unreachable, which is "
+        "why the corrupt flag must gate on its own"
+    )
+    assert exit_code == 1
