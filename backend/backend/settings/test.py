@@ -1,8 +1,8 @@
+"""OSS test settings: the production base plus the shared test-only deltas.
+
+The deltas live in `test_base` rather than here because `copy_cloud_deps`
+replaces this file on a cloud build.
+"""
+
 from backend.settings.base import *  # noqa: F401, F403
-
-DEBUG = True
-
-# Django's default PBKDF2 hasher is deliberately slow; suites that seed several
-# users per test spend most of their time there. Test fixtures need speed, not
-# resistance to offline cracking.
-PASSWORD_HASHERS = ["django.contrib.auth.hashers.MD5PasswordHasher"]
+from backend.settings.test_base import *  # noqa: F401, F403

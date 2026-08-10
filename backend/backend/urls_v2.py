@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.conf.urls import *  # noqa: F401, F403
 from django.urls import include, path
 
@@ -67,3 +68,17 @@ urlpatterns = [
     path("platform-api/", include("platform_api.urls")),
     path("global-api-deployment/", include("global_api_deployment_key.urls")),
 ]
+
+# Organization-scoped MCP server — OFF by default.
+#
+# Only the deployment-scoped server (mounted in api_v2/execution_urls.py) is
+# required for the initial release, so this one ships disabled rather than
+# removed: the code is reviewed and tested, and turning it on is a settings
+# change rather than a revert.
+#
+# When enabled it must stay on this tenant path and never under the deployment
+# prefix — that prefix is in WHITELISTED_PATHS, so CustomAuthMiddleware skips
+# it, and this server has no in-view authentication of its own. Mounting it
+# there would expose 23 organization-scoped tools with no auth at all.
+if settings.MCP_PLATFORM_SERVER_ENABLED:
+    urlpatterns += [path("mcp/", include("mcp_server.platform_urls"))]

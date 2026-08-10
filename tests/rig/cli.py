@@ -371,8 +371,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
+    # A skipped tier emits no junit, so scoping to the groups that reported keeps
+    # its paths as gaps rather than regressions — nothing regressed, it never ran.
+    # A group that ran and went red still reports, so real regressions survive.
+    # `optional` groups are excluded: they are documented as non-blocking, and
+    # leaving them in scope would let a red one gate the build through a
+    # regression instead.
+    scope_groups = [r.name for r in group_results if not manifest.get(r.name).optional]
     statuses = cp.evaluate(
-        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+        registry,
+        groups_run_green=green,
+        baseline=baseline,
+        scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -386,6 +397,42 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"[rig] ❌ @pytest.mark.critical_path references unknown path "
             f"id(s): {', '.join(unknown_marker_ids)} "
             f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+    # cmd_run gates on the regressions it can see, but only within its own tier.
+    # This is the only cross-tier evaluation, so it is the only place a regression
+    # spanning tiers can be gated on.
+    # A covering group that ran green without attesting means its marked test
+    # was skipped or unmarked; a group that went red means the test failed. The
+    # remedies differ, so the two are reported apart rather than as one count.
+    unproven: list[cp.CriticalPathStatus] = []
+    uncovered: list[cp.CriticalPathStatus] = []
+    for s in statuses:
+        if s.state != "regression":
+            continue
+        target = unproven if any(g in green for g in s.path.covered_by) else uncovered
+        target.append(s)
+    regressions = unproven + uncovered
+    if uncovered:
+        ids = ", ".join(s.path.id for s in uncovered)
+        print(
+            f"\n[rig] ❌ {len(uncovered)} critical-path regression(s) — no covering "
+            f"group ran green: {ids}",
+            file=sys.stderr,
+        )
+    if unproven:
+        ids = ", ".join(s.path.id for s in unproven)
+        print(
+            f"\n[rig] ❌ {len(unproven)} critical-path regression(s) — covering group "
+            f"ran green but no passing @pytest.mark.critical_path test attested "
+            f"them (skipped or unmarked?): {ids}",
+            file=sys.stderr,
+        )
+    if regressions:
+        print(
+            "[rig] to accept a deliberate removal, drop or re-point the path in "
+            "tests/critical_paths.yaml in the same PR — the baseline is keyed off "
+            "that registry.",
             file=sys.stderr,
         )
     if args.update_baseline:
@@ -404,7 +451,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 1 if unknown_marker_ids else 0
+    # A corrupt baseline makes "regression" unreachable, so the gate above would
+    # pass vacuously; it has to fail on its own.
+    return 1 if unknown_marker_ids or regressions or baseline_corrupt else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
