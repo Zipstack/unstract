@@ -3,6 +3,7 @@ to — memberships, group shares and ``shared_to_org`` (UN-2651).
 """
 
 import secrets
+import uuid
 from unittest.mock import patch
 
 from api_v2.models import APIDeployment
@@ -99,6 +100,12 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         execution = self._execution(self._api_deployment())
         with self.assertRaises(PermissionDenied):
             self._log_queryset(self.outsider, execution.id)
+
+    def test_logs_denied_when_the_execution_is_unknown(self) -> None:
+        # Same denial as an inaccessible execution — the response must not
+        # reveal which execution ids exist.
+        with self.assertRaises(PermissionDenied):
+            self._log_queryset(self.outsider, uuid.uuid4())
 
     def test_logs_readable_once_the_deployment_is_shared(self) -> None:
         execution = self._execution(self._api_deployment(shared_to_org=True))
