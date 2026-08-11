@@ -13,7 +13,7 @@ import logging
 import uuid
 from logging.config import dictConfig
 
-from flask import Flask, g, request
+from flask import Flask, g, has_request_context, request
 
 # Canonical log format shared with the Django backend (``enriched``) and the
 # workers (``WorkerLogger``). Keep these in sync.
@@ -29,7 +29,11 @@ class RequestIDFilter(logging.Filter):
     """Inject the current request's ``request_id`` into log records."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = getattr(g, "request_id", "-") if g else "-"
+        # Only touch the request-scoped ``g`` inside an active request context;
+        # outside one (e.g. gunicorn startup logs) fall back to the placeholder.
+        record.request_id = (
+            getattr(g, "request_id", "-") if has_request_context() else "-"
+        )
         return True
 
 
