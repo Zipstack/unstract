@@ -76,21 +76,28 @@ class OutputManagerHelper:
             the instance.
             """
             try:
-                prompt_output, success = PromptStudioOutputManager.objects.get_or_create(
-                    document_manager=document_manager,
-                    tool_id=tool,
-                    profile_manager=profile_manager,
-                    prompt_id=prompt,
-                    is_single_pass_extract=is_single_pass_extract,
-                    defaults={
-                        "output": output,
-                        "eval_metrics": eval_metrics,
-                        "context": context,
-                        "challenge_data": challenge_data,
-                        "highlight_data": highlight_data,
-                        "confidence_data": confidence_data,
-                        "word_confidence_data": word_confidence_data,
-                    },
+                # _base_manager, not objects: the manager filter applies to the
+                # get half of get_or_create but not the create half, so a row
+                # the org scope hides makes get miss and create collide with
+                # unique_prompt_output_index. `tool` and `document_manager` are
+                # already org-verified by the caller.
+                prompt_output, success = (
+                    PromptStudioOutputManager._base_manager.get_or_create(
+                        document_manager=document_manager,
+                        tool_id=tool,
+                        profile_manager=profile_manager,
+                        prompt_id=prompt,
+                        is_single_pass_extract=is_single_pass_extract,
+                        defaults={
+                            "output": output,
+                            "eval_metrics": eval_metrics,
+                            "context": context,
+                            "challenge_data": challenge_data,
+                            "highlight_data": highlight_data,
+                            "confidence_data": confidence_data,
+                            "word_confidence_data": word_confidence_data,
+                        },
+                    )
                 )
 
                 if success:

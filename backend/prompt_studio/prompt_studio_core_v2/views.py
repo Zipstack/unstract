@@ -27,6 +27,7 @@ from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -446,24 +447,39 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
+        # Validate before looking anything up. A missing key raised KeyError
+        # and a non-UUID value raised Django's ValidationError; neither is
+        # mapped by drf_standardized_errors, so both surfaced as 500s next to
+        # the 404 this action already returns for a valid-but-unmatched id.
+        default_profile = request.data.get("default_profile")
+        if not default_profile:
+            raise ValidationError(detail="'default_profile' is required.")
+        try:
+            default_profile = uuid.UUID(str(default_profile))
+        except (ValueError, AttributeError, TypeError):
+            raise ValidationError(detail="'default_profile' must be a valid UUID.")
+
         # Resolve the target before clearing anything: the id comes straight
         # from the request body, and clearing first would leave the tool with no
         # default at all when it does not match. Scoped to the same tool the
         # caller already passed authz on, so another tool's id is a 404.
         profile_manager = get_object_or_404(
             ProfileManager,
-            pk=request.data["default_profile"],
+            pk=default_profile,
             prompt_studio_tool=prompt_tool,
         )
 
         # Both writes in one transaction so a failure between them cannot leave
-        # the tool with zero defaults or two.
+        # the tool with zero defaults or two. update_fields so the second write
+        # touches one column: profile_manager was read before the transaction
+        # opened, and a bare save() would write every column from that snapshot
+        # back over any concurrent edit.
         with transaction.atomic():
             ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
                 is_default=False
             )
             profile_manager.is_default = True
-            profile_manager.save()
+            profile_manager.save(update_fields=["is_default"])
 
         return Response(
             status=status.HTTP_200_OK,
@@ -1199,7 +1215,8 @@ class PromptStudioCoreView(
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
         # Scope to the tool the caller already passed authz on — tighter than
-        # org scope, and this action never runs filter_queryset().
+        # org scope. self.get_object() above is filtered by the backend, but
+        # this lookup is a raw .objects query and would not be.
         # get_object_or_404 keeps a non-matching id a 404 rather than an
         # unhandled DoesNotExist, which the DRF handler turns into a 500.
         document: DocumentManager = get_object_or_404(
@@ -1209,6 +1226,18 @@ class PromptStudioCoreView(
         try:
             # Delete indexed flags in redis
             index_managers = IndexManager.objects.filter(document_manager=document_id)
+            if not index_managers.exists():
+                # Empty means either "never indexed" or "the org filter hid the
+                # rows". In the second case the Redis indexing flags outlive the
+                # document, and a re-upload of the same file is treated as
+                # already indexed — with a 200 telling the user it all worked.
+                logger.warning(
+                    "No index managers visible for document %s (tool %s, org %s); "
+                    "deleting without clearing Redis indexing flags.",
+                    document_id,
+                    custom_tool.tool_id,
+                    org_id,
+                )
             for index_manager in index_managers:
                 raw_index_id = index_manager.raw_index_id
                 DocumentIndexingService.remove_document_indexing(
@@ -1229,7 +1258,20 @@ class PromptStudioCoreView(
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:
-            logger.error("Exception thrown from file deletion, error: %s", exc)
+            # Deliberately broad. Three subsystems are in play — Redis via
+            # DocumentIndexingService, the object store via
+            # PromptStudioFileHelper, and the database — and their failures do
+            # not share a base class, so narrowing to any list turns a
+            # reachable outage in whichever one was missed into a 500. The
+            # diagnosability problem was the log line, not the catch: it now
+            # carries the exception type, the document and a stack.
+            logger.error(
+                "File deletion failed for document %s (tool %s): %s",
+                document_id,
+                custom_tool.tool_id,
+                exc,
+                exc_info=True,
+            )
             return Response(
                 {"data": "File deletion failed."},
                 status=status.HTTP_400_BAD_REQUEST,

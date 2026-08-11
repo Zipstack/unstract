@@ -1,10 +1,11 @@
 """Organization isolation for the prompt-studio child models.
 
-Custom DRF ``@action`` methods never call ``filter_queryset()``, so
-``OrganizationFilterBackend`` does not run on them and a raw
-``.objects.get()/filter()`` inside one is not org-scoped. These tests pin the
-controls that cover that gap: org scoping on the managers, plus explicit
-scoping where an id arrives directly from the request.
+``OrganizationFilterBackend`` only scopes querysets routed through
+``filter_queryset()``. A raw ``.objects.get()/filter()`` written inside a view
+bypasses it — including inside a custom DRF ``@action``, where
+``self.get_object()`` *is* filtered but the hand-written queries beside it are
+not. These tests pin the controls that cover that gap: org scoping on the
+managers, plus explicit scoping where an id arrives directly from the request.
 
 Shape of each case: act as org A, pass an org B id, assert the call is
 refused and org B's row is untouched.
@@ -15,12 +16,17 @@ import secrets
 import pytest
 from account_v2.models import Organization, User
 from adapter_processor_v2.models import AdapterInstance
+from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from django.urls import NoReverseMatch, reverse
+from permissions.roles import ResourceRole
+from rest_framework.test import APIRequestFactory, force_authenticate
+from tenant_account_v2.models import ResourceMembership
 from utils.user_context import UserContext
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
 from prompt_studio.prompt_studio_output_manager_v2.models import (
@@ -175,25 +181,6 @@ class CrossOrgIsolationTest(TestCase):
                 pk=self.a.document.document_id, tool=sibling
             )
 
-    def test_rejected_default_leaves_the_existing_default_intact(self):
-        """A non-matching id must not clear the tool's current default.
-
-        The de-dup update runs against every profile on the tool, so resolving
-        the target after it would leave the tool with no default at all when the
-        id turns out to be someone else's.
-        """
-        assert ProfileManager.objects.get(pk=self.a.profile.profile_id).is_default
-
-        with self.assertRaises(ProfileManager.DoesNotExist):
-            ProfileManager.objects.get(
-                pk=self.b.profile.profile_id, prompt_studio_tool=self.a.tool
-            )
-
-        self.a.profile.refresh_from_db()
-        assert self.a.profile.is_default, (
-            "the tool lost its default profile while rejecting another org's id"
-        )
-
     def test_make_profile_default_lookup_is_tool_scoped(self):
         """This lookup runs after ``get_object()`` has already passed authz on
         the caller's own tool, so org scope alone does not constrain it."""
@@ -204,6 +191,90 @@ class CrossOrgIsolationTest(TestCase):
         # Victim's default flag untouched.
         UserContext.set_organization_identifier(self.b.org.organization_id)
         assert ProfileManager.objects.get(pk=self.b.profile.profile_id).is_default
+
+    # --- the ordering fix, driven through the view ------------------------
+
+    def _make_profile_default(self, tool, profile_id):
+        """PATCH make_profile_default as the owner of ``tool``.
+
+        ``CustomTool.objects.for_user`` resolves visibility through
+        ResourceMembership, which the create *view* writes — the fixture builds
+        rows directly, so the OWNER row has to be added here or get_object()
+        404s before the code under test runs.
+        """
+        ResourceMembership.objects.get_or_create(
+            user=self.a.user,
+            role=ResourceRole.OWNER,
+            content_type=ContentType.objects.get_for_model(CustomTool),
+            object_id=str(tool.tool_id),
+        )
+        view = PromptStudioCoreView.as_view({"patch": "make_profile_default"})
+        request = APIRequestFactory().patch(
+            f"/prompt-studio/{tool.tool_id}/make_profile_default",
+            {"default_profile": str(profile_id)},
+            format="json",
+        )
+        force_authenticate(request, user=self.a.user)
+        return view(request, pk=str(tool.tool_id))
+
+    def _second_profile_on_tool_a(self):
+        return ProfileManager.objects.create(
+            profile_name="profile-a-second",
+            vector_store=self.a.profile.vector_store,
+            embedding_model=self.a.profile.embedding_model,
+            llm=self.a.profile.llm,
+            x2text=self.a.profile.x2text,
+            chunk_size=0,
+            chunk_overlap=0,
+            section="Default",
+            retrieval_strategy="simple",
+            similarity_top_k=3,
+            prompt_studio_tool=self.a.tool,
+            is_default=False,
+            created_by=self.a.user,
+        )
+
+    def test_make_profile_default_switches_the_default(self):
+        """The allow path: the old default is cleared and the new one set."""
+        second = self._second_profile_on_tool_a()
+
+        response = self._make_profile_default(self.a.tool, second.profile_id)
+
+        assert response.status_code == 200, response.data
+        self.a.profile.refresh_from_db()
+        second.refresh_from_db()
+        assert second.is_default
+        assert not self.a.profile.is_default
+
+    def test_rejected_default_leaves_the_existing_default_intact(self):
+        """A non-matching id must not clear the tool's current default.
+
+        Driven through the view on purpose: the de-dup update runs against
+        every profile on the tool, and an ORM-only test never executes it, so
+        it cannot observe this property at all.
+
+        What actually guards the invariant is resolving and clearing under one
+        of two conditions — resolve first, or clear first but inside the
+        transaction, where the 404 rolls the clear back. Mutation-tested: this
+        fails (0 defaults left) only on clear-first *without* the transaction,
+        which is what the code did before. Reverting just the ordering, with
+        ``transaction.atomic()`` still in place, is genuinely safe and does not
+        fail here.
+        """
+        self._second_profile_on_tool_a()
+        assert ProfileManager.objects.get(pk=self.a.profile.profile_id).is_default
+
+        response = self._make_profile_default(self.a.tool, self.b.profile.profile_id)
+
+        assert response.status_code == 404, response.data
+        assert (
+            ProfileManager.objects.filter(
+                prompt_studio_tool=self.a.tool, is_default=True
+            ).count()
+            == 1
+        ), "the tool lost (or duplicated) its default while rejecting another org's id"
+        self.a.profile.refresh_from_db()
+        assert self.a.profile.is_default
 
     # --- A-4: the dead, state-changing-over-GET route is gone -------------
 

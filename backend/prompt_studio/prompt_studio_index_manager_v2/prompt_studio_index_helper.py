@@ -1,7 +1,8 @@
 import json
 import logging
 
-from django.db import transaction
+from django.core.exceptions import ImproperlyConfigured
+from django.db import DatabaseError, transaction
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
@@ -109,10 +110,16 @@ class PromptStudioIndexHelper:
 
                 # Lock the row (or create an empty one) so concurrent callers
                 # merge into the same dict rather than clobbering each other.
-                # of=("self",) because the org-scoped manager joins through
-                # DocumentManager and CustomTool; without it Postgres locks
-                # rows in those tables too.
-                index_manager, created = IndexManager.objects.select_for_update(
+                # of=("self",) keeps the lock on index_manager rows only.
+                #
+                # _base_manager, not objects: Django applies a manager's filter
+                # to the get half of get_or_create but not to the create half.
+                # Through the org-scoped manager, a row the filter hides makes
+                # get miss and create insert, which violates
+                # unique_document_manager_profile_manager_index. The document
+                # above was already fetched org-scoped, so the scope is checked
+                # either way and this only removes the failure mode.
+                index_manager, created = IndexManager._base_manager.select_for_update(
                     of=("self",)
                 ).get_or_create(
                     document_manager=document,
@@ -153,12 +160,24 @@ class PromptStudioIndexHelper:
             return True
 
         except DocumentManager.DoesNotExist:
-            logger.error(f"Document with ID {document_id} does not exist.")
+            # Now reachable two ways: the row is genuinely gone, or the
+            # org-scoped manager hid it from this caller. Both mean the status
+            # was not written, which is what the caller has to act on.
+            logger.error(
+                "Document %s not found or not visible in the current "
+                "organization; extraction status not recorded.",
+                document_id,
+            )
             return False
 
-        except Exception as e:
+        except (DatabaseError, TypeError, ImproperlyConfigured):
+            # DatabaseError covers IntegrityError/OperationalError, TypeError a
+            # malformed extraction_status payload, ImproperlyConfigured a bad
+            # org path pin. Narrowed from a bare `except Exception` so an
+            # unexpected type propagates instead of being reported as "no such
+            # document".
             logger.exception(
-                f"Unexpected error marking extraction status for document {document_id}: {e}"
+                "Failed to mark extraction status for document %s", document_id
             )
             return False
 

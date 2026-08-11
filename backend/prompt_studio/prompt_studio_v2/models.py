@@ -16,8 +16,7 @@ class ToolStudioPrompt(BaseModel):
     It has Many to one relation with CustomTool for ToolStudio.
     """
 
-    # See DocumentManager.objects — custom @action methods bypass the
-    # OrganizationFilterBackend, so scoping has to be at the manager.
+    # See DocumentManager.objects for why scoping lives at the manager.
     # tool_id is nullable, so prompts orphaned from their tool are excluded.
     objects = OrgAwareManager()
 

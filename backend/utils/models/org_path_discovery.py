@@ -26,9 +26,22 @@ _FK_TYPES = (models.ForeignKey, models.OneToOneField)
 # Reordering two fields can therefore swap in a different path of the same
 # length, and if that path runs through a nullable FK the resulting INNER JOIN
 # silently drops every row with a NULL — data loss that reads as "missing
-# records", not as an error. Pinning freezes the path for both consumers
-# (OrgAwareManager and OrganizationFilterBackend); test_org_path_discovery
-# asserts each pin still matches BFS and traverses only non-nullable FKs.
+# records", not as an error. Pinning freezes the path against that.
+#
+# What test_org_path_discovery actually asserts: each pin still matches what
+# BFS would pick, and every hop on it is non-nullable *unless* listed in that
+# module's KNOWN_NULLABLE_HOPS with a reason. Several pins are on that list —
+# including every terminal `organization` FK, which DefaultOrganizationMixin
+# declares null=True — so "pinned" does not mean "cannot drop rows", it means
+# "the rows it drops are known and written down".
+#
+# Precedence, for the two consumers:
+#   - OrgAwareManager always uses the pin.
+#   - OrganizationFilterBackend checks a viewset's `org_filter_paths` FIRST and
+#     only falls back to the pin. A viewset that sets it therefore scopes that
+#     model through a different join than its pin. Prefer the pin; reach for
+#     `org_filter_paths` only when a model needs OR across several nullable
+#     paths, which is why notification_v2 has it.
 ORG_PATH_OVERRIDES: dict[str, str] = {
     "prompt_studio_document_manager_v2.DocumentManager": "tool__organization",
     "prompt_studio_index_manager_v2.IndexManager": (

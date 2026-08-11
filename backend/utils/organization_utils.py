@@ -74,11 +74,18 @@ def get_organization_context(organization: Organization) -> dict[str, Any]:
 def filter_queryset_by_organization(queryset, request, organization_field="organization"):
     """Filter a Django queryset by the request's organization context.
 
-    Fails closed. Six internal viewsets set ``skip_org_filter = True``, which
-    disables OrganizationFilterBackend, leaving this function as their only
-    tenant boundary — so returning the queryset unfiltered when there is no
-    organization context hands back every organization's rows. A scoping helper
-    returns nothing when it cannot scope, never everything.
+    Fails closed. For every caller, this function is the only tenant boundary
+    in the request: the viewsets that reach it set ``skip_org_filter = True``,
+    which disables OrganizationFilterBackend, and the function-based
+    ``@api_view`` handlers that reach it have no filter backend at all.
+    Returning the queryset unfiltered when there is no organization context
+    would hand back every organization's rows.
+
+    Scope note: this policy is local to this helper. ``OrgAwareManager``
+    deliberately fails *open* when there is no request context, so Celery
+    tasks, management commands and the shell keep full access to the models it
+    scopes — see the comment on its ``get_queryset``. The two are not in
+    conflict; they guard different callers.
 
     The absent-header case is not exotic: ``InternalAPIAuthMiddleware`` logs a
     warning and continues when ``X-Organization-ID`` is missing, so any caller

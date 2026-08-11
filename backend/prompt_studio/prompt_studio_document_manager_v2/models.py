@@ -11,8 +11,11 @@ from prompt_studio.prompt_studio_core_v2.models import CustomTool
 class DocumentManager(BaseModel):
     """Model to store the document details."""
 
-    # Org scoping lives here because custom @action methods never call
-    # filter_queryset(), so OrganizationFilterBackend does not run on them.
+    # Org scoping lives at the manager because OrganizationFilterBackend only
+    # scopes querysets routed through filter_queryset(). A raw Model.objects
+    # lookup inside a view bypasses it — including inside a custom @action,
+    # whose own self.get_object() *is* filtered but whose hand-written queries
+    # are not.
     objects = OrgAwareManager()
 
     document_id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

@@ -1,11 +1,12 @@
 """``filter_queryset_by_organization`` must fail closed.
 
-Six internal viewsets set ``skip_org_filter = True``, which disables
-OrganizationFilterBackend and leaves this helper as their only tenant
-boundary. Returning the queryset unfiltered when there is no organization
-context therefore returns every organization's rows, and the absent-header
-case is reachable — the internal auth middleware warns and continues rather
-than rejecting.
+Every caller reaches it with OrganizationFilterBackend either disabled
+(``skip_org_filter = True``) or absent — the function-based internal handlers
+have no filter backend at all — so this helper is their only tenant boundary.
+Returning the queryset unfiltered when there is no organization context
+therefore returns every organization's rows, and the absent-header case is
+reachable: the internal auth middleware warns and continues rather than
+rejecting.
 """
 
 import secrets

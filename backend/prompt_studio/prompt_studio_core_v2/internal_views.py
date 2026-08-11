@@ -211,7 +211,26 @@ def extraction_status(request):
             extracted=extracted,
             error_message=error_message,
         )
-        return JsonResponse({"success": success})
+        if not success:
+            # A 200 here is indistinguishable from a write that landed: the
+            # worker only wraps this call in try/except and never reads the
+            # body, so the status would be silently dropped and every later
+            # Answer Prompt would re-run the full extraction. Non-2xx makes
+            # the worker's existing handler log it.
+            logger.error(
+                "extraction_status not recorded for document %s profile %s",
+                document_id,
+                profile_manager_id,
+            )
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Extraction status could not be recorded",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return JsonResponse({"success": True})
 
     except Exception as e:
         logger.exception("extraction_status internal API failed")

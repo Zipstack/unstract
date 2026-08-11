@@ -66,9 +66,29 @@ class SummarizeMigrationUtils:
                         of=("self",)
                     ).get(prompt_studio_tool=tool_instance, is_summarize_llm=True)
                 except ObjectDoesNotExist:
-                    logger.info(
-                        f"No summarize profile found for tool {tool_instance.tool_id}, skipping migration"
-                    )
+                    # Two different situations reach here now that
+                    # ProfileManager.objects is scoped through
+                    # vector_store__organization: the profile genuinely does
+                    # not exist, or it exists and the org filter hid it. The
+                    # second is a misconfiguration that never self-heals — this
+                    # lazy migration re-runs and re-skips on every invocation —
+                    # so it must not share an INFO line with the first.
+                    exists_unscoped = ProfileManager._base_manager.filter(
+                        prompt_studio_tool=tool_instance, is_summarize_llm=True
+                    ).exists()
+                    if exists_unscoped:
+                        logger.error(
+                            "Summarize profile for tool %s exists but is not "
+                            "visible in the current organization context; "
+                            "migration skipped and will keep being skipped.",
+                            tool_instance.tool_id,
+                        )
+                    else:
+                        logger.info(
+                            "No summarize profile found for tool %s, skipping "
+                            "migration",
+                            tool_instance.tool_id,
+                        )
                     return False
 
                 # Check if profile has an LLM adapter

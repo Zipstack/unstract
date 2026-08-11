@@ -1,10 +1,11 @@
 import logging
+import uuid
 from typing import Any
 
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
@@ -26,6 +27,42 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from .models import PromptStudioOutputManager
 
 logger = logging.getLogger(__name__)
+
+
+def _validated_tool_id(raw: Any) -> uuid.UUID:
+    """A query-string ``tool_id`` as a UUID, or a 400.
+
+    ``CustomTool.tool_id`` is a UUID primary key, so a non-UUID value makes
+    ``filter()`` raise Django's ``ValidationError`` while the query is being
+    *built*. drf_standardized_errors maps only ``Http404`` and Django's
+    ``PermissionDenied``, so that surfaced as a 500 rather than a 400.
+    """
+    try:
+        return uuid.UUID(str(raw))
+    except (ValueError, AttributeError, TypeError):
+        raise ValidationError(detail="'tool_id' must be a valid UUID.")
+
+
+def _required_organization(tool_id: Any) -> Any:
+    """The request's organization, refusing to proceed without one.
+
+    ``UserContext.get_organization()`` returns None on both
+    ``Organization.DoesNotExist`` and ``ProgrammingError``, neither logged. A
+    None here compiles to ``organization_id IS NULL``, which matches nothing
+    whatever the tool id — downstream every output renders as ``""`` and the
+    user sees a blank project that has real persisted outputs, with nothing to
+    correlate in logs. These endpoints are only routed under
+    ``/api/v1/unstract/<org>/``, so a null org is a bug, not a state to serve.
+    """
+    organization = UserContext.get_organization()
+    if organization is None:
+        logger.error(
+            "No organization in context while reading prompt-studio outputs "
+            "(tool %s); refusing to serve an unscoped empty result.",
+            tool_id,
+        )
+        raise APIException(detail="Organization context is unavailable.")
+    return organization
 
 
 class PromptStudioOutputView(viewsets.ModelViewSet):
@@ -77,9 +114,11 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
-        # Custom actions skip filter_queryset(), so OrganizationFilterBackend
-        # never runs — scope explicitly to prevent cross-tenant reads.
-        organization = UserContext.get_organization()
+        tool_id = _validated_tool_id(tool_id)
+
+        # A raw .objects query is not routed through filter_queryset(), so
+        # OrganizationFilterBackend does not see it — scope explicitly.
+        organization = _required_organization(tool_id)
         prompt_id_to_key = dict(
             ToolStudioPrompt.objects.filter(
                 tool_id=tool_id,
@@ -121,18 +160,21 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not tool_id:
             raise ValidationError(detail=tool_validation_message)
 
+        tool_id = _validated_tool_id(tool_id)
+        organization = _required_organization(tool_id)
+
         # Fetch ToolStudioPrompt records based on tool_id.
-        # Custom actions skip filter_queryset(), so OrganizationFilterBackend
-        # never runs — scope explicitly to prevent cross-tenant reads.
+        # A raw .objects query is not routed through filter_queryset(), so
+        # OrganizationFilterBackend does not see it — scope explicitly.
         #
-        # No exception handling here: filter() does not raise for a missing or
-        # out-of-org tool, it returns empty. Empty is also the correct result
-        # for a tool that simply has no prompts yet, which is the normal state
-        # of a newly created project — so this stays a 200 with an empty body
-        # rather than a validation error.
+        # No exception handling below: for a valid UUID that matches no row, or
+        # a tool in another organization, filter() returns empty rather than
+        # raising. Empty is also the correct result for a tool that simply has
+        # no prompts yet, the normal state of a newly created project — so that
+        # case stays a 200 with an empty body.
         tool_studio_prompts = ToolStudioPrompt.objects.filter(
             tool_id=tool_id,
-            tool_id__organization=UserContext.get_organization(),
+            tool_id__organization=organization,
         ).order_by("sequence_number")
 
         # Invoke helper method to frame and fetch default response.

@@ -22,8 +22,7 @@ logger = logging.getLogger(__name__)
 class IndexManager(BaseModel):
     """Model to store the index details."""
 
-    # See DocumentManager.objects — custom @action methods bypass the
-    # OrganizationFilterBackend, so scoping has to be at the manager.
+    # See DocumentManager.objects for why scoping lives at the manager.
     objects = OrgAwareManager()
 
     index_manager_id = models.UUIDField(

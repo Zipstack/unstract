@@ -17,8 +17,7 @@ class PromptStudioOutputManager(BaseModel):
     By default the tools will be added to private tool hub.
     """
 
-    # See DocumentManager.objects — custom @action methods bypass the
-    # OrganizationFilterBackend, so scoping has to be at the manager.
+    # See DocumentManager.objects for why scoping lives at the manager.
     objects = OrgAwareManager()
 
     prompt_output_id = models.UUIDField(
