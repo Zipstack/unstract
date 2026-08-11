@@ -57,7 +57,7 @@ const LogsTable = ({
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
-          {record.executedAt}
+          <span>{record.executedAt}</span>
         </Tooltip>
       ),
     },

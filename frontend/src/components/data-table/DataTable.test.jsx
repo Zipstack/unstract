@@ -153,3 +153,69 @@ describe("DataTable pagination", () => {
     expect(screen.getByText("Row 25")).toBeInTheDocument();
   });
 });
+
+/*
+ * Two antd Table props this wrapper claims to support and silently did not.
+ * Both failed the same way: undeclared, they fell into `...props` and were
+ * spread onto the wrapper <div>, where React drops an unknown attribute without
+ * a word. Nothing threw, nothing logged, and the existing tests — which assert
+ * what RENDERS — passed against a table that had quietly stopped responding to
+ * clicks. Prompt Studio and Workflows became unopenable that way.
+ */
+describe("DataTable antd row/layout props", () => {
+  it("calls onRow and wires the returned handlers to the row", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        onRow={(record) => ({ onClick: () => onClick(record) })}
+      />,
+    );
+
+    await user.click(screen.getByText("Row 2"));
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    // The record, not TanStack's row wrapper — call-sites read `record.id`.
+    expect(onClick.mock.calls[0][0]).toMatchObject({ id: 2, name: "Row 2" });
+  });
+
+  it("passes the record's index to onRow as antd does", () => {
+    const onRow = vi.fn(() => ({}));
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        onRow={onRow}
+      />,
+    );
+    expect(onRow.mock.calls.map((c) => c[1])).toEqual([0, 1]);
+  });
+
+  it("applies tableLayout to the table element", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        tableLayout="fixed"
+      />,
+    );
+    // Without this the column `width`s are only hints, and one long cell
+    // stretches its column until the trailing ones leave the viewport.
+    expect(container.querySelector("table")).toHaveStyle({
+      tableLayout: "fixed",
+    });
+  });
+
+  it("leaves the table layout alone when the prop is absent", () => {
+    const { container } = render(
+      <DataTable columns={columns} dataSource={rowsFor(1)} rowKey="id" />,
+    );
+    expect(container.querySelector("table").style.tableLayout).toBe("");
+  });
+});

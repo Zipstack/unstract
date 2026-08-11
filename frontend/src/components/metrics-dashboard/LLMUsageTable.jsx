@@ -52,7 +52,7 @@ const columns = [
     defaultSortOrder: "descend",
     render: (value) => (
       <Tooltip title={(value || 0).toLocaleString()}>
-        {formatCompactNumber(value)}
+        <span>{formatCompactNumber(value)}</span>
       </Tooltip>
     ),
     width: 120,

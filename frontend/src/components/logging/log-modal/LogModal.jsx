@@ -179,7 +179,7 @@ function LogModal({
       width: 200,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
-          {record.eventTime}
+          <span>{record.eventTime}</span>
         </Tooltip>
       ),
     },

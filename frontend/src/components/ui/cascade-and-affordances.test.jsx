@@ -343,4 +343,77 @@ describe("cascade and affordance guards", () => {
       "React 19 ignores defaultProps on function components — use default parameters instead",
     ).toEqual([]);
   });
+
+  /*
+   * antd's Tooltip accepts any child, including a bare string. Ours renders a
+   * Radix TooltipTrigger with `asChild`, which slots onto a single ELEMENT and
+   * throws "Primitive.button failed to slot onto its children" on text — the
+   * route-level error boundary then turns that into "Couldn't load this page".
+   *
+   * A source scan, not a render test, because these live inside table column
+   * `render()` callbacks: they only execute when a row exists, so an
+   * empty-list smoke test walks straight past them. That is exactly how one
+   * shipped in ResourceTable and another in LogsTable.
+   */
+  it("no <Tooltip> wraps a bare value instead of an element", () => {
+    const SRC = path.join(process.cwd(), "src");
+    const offenders = [];
+    /*
+     * `[^>]*` for the attributes would be wrong: `title={a > b}` and any
+     * multi-line prop containing `>` (a `.map()` arrow, a comparison) end the
+     * match early and make the REST of the attribute list look like the child.
+     * Match balanced braces instead, so the open tag ends at the real `>`.
+     */
+    const TOOLTIP =
+      /<Tooltip\b(?:[^>{]|\{(?:[^{}]|\{[^{}]*\})*\})*>\s*([\s\S]*?)\s*<\/Tooltip>/g;
+
+    const walk = (dir) => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (entry.name !== "node_modules") {
+            walk(full);
+          }
+          continue;
+        }
+        if (!/\.[jt]sx$/.test(entry.name) || entry.name.includes(".test.")) {
+          continue;
+        }
+        const src = fs.readFileSync(full, "utf8");
+        for (const m of src.matchAll(TOOLTIP)) {
+          const child = m[1].trim();
+          // An element child is fine; so is a comment (the JSX below it is the
+          // real child) and a conditional whose branches render elements.
+          if (child.startsWith("<") || child.startsWith("{/*")) {
+            continue;
+          }
+          // `{cond && <El/>}` / `{cond ? <El/> : <El/>}` — the value that
+          // reaches Radix is still an element.
+          if (/[&?]{1,2}\s*\(?\s*</.test(child)) {
+            continue;
+          }
+          // `{content}` where the same file does `const content = (<span…`.
+          // Narrow on purpose: only a local binding whose initialiser is
+          // literal JSX counts, so an imported or computed value still fails.
+          const ident = child.match(/^\{\s*([A-Za-z_$][\w$]*)\s*\}$/)?.[1];
+          if (
+            ident &&
+            new RegExp(`const\\s+${ident}\\s*=\\s*\\(?\\s*<`).test(src)
+          ) {
+            continue;
+          }
+          const line = src.slice(0, m.index).split("\n").length;
+          offenders.push(
+            `${path.relative(SRC, full)}:${line} → ${child.slice(0, 60)}`,
+          );
+        }
+      }
+    };
+    walk(SRC);
+
+    expect(
+      offenders,
+      "Radix slots onto a single element child — wrap the value in a <span>",
+    ).toEqual([]);
+  });
 });

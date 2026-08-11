@@ -130,7 +130,30 @@ function DataTable({
   pagination,
   loading,
   size,
+  /**
+   * antd's `tableLayout`, forwarded to CSS `table-layout`.
+   *
+   * Also load-bearing, and also silently dropped before: column `width` is
+   * rendered onto the <th> only, and under the browser's default AUTO layout a
+   * width is a hint, not a bound. One long unbroken description in
+   * ResourceTable's Name column therefore stretched that column and pushed the
+   * Actions column off the right edge. With "fixed" the declared widths win and
+   * the cell's own ellipsis can finally take effect.
+   */
+  tableLayout,
   rowClassName,
+  /**
+   * antd's per-row event hook: `onRow(record, index)` returns props (usually
+   * `{ onClick }`) that get spread onto the row.
+   *
+   * Declaring it is load-bearing. Undeclared, it fell into `...props` and was
+   * spread onto the wrapper <div>, where React silently ignores an unknown
+   * `onRow` attribute — so ResourceTable's rows carried
+   * `rowClassName="…-clickable"` (cursor: pointer) while the click handler was
+   * never wired, and Prompt Studio and Workflows became unopenable with no
+   * console error to show for it.
+   */
+  onRow,
   className,
   emptyText = "No data",
   ...props
@@ -205,7 +228,10 @@ function DataTable({
     // otherwise match nothing.
     <div className={cn("ant-table-wrapper w-full", className)} {...props}>
       <div className="ant-table ant-table-container">
-        <Table className={cn(size === "small" && "text-sm")}>
+        <Table
+          className={cn(size === "small" && "text-sm")}
+          style={tableLayout ? { tableLayout } : undefined}
+        >
           <TableHeader className="ant-table-thead">
             {table.getHeaderGroups().map((hg) => (
               /*
@@ -281,6 +307,7 @@ function DataTable({
                       ? rowClassName(row.original, row.index)
                       : rowClassName
                   }
+                  {...(onRow ? onRow(row.original, row.index) : {})}
                 >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell
