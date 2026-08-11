@@ -200,7 +200,7 @@ class LLMWhispererHelper:
                 WhispererConfig.MARK_HORIZONTAL_LINES,
                 WhispererDefaults.MARK_HORIZONTAL_LINES,
             ),
-            WhispererConfig.PAGE_SEPARATOR: config.get(
+            WhispererConfig.PAGE_SEPARATOR_PARAM: config.get(
                 WhispererConfig.PAGE_SEPARATOR,
                 WhispererDefaults.PAGE_SEPARATOR,
             ),
