@@ -80,6 +80,7 @@ class WhispererConfig:
     INCLUDE_LINE_CONFIDENCE = "include_line_confidence"
     EXTRACT_ALL_LINES = "extract_all_lines"
     LINES = "lines"
+    FILE_NAME = "file_name"
 
 
 class WhisperStatus:

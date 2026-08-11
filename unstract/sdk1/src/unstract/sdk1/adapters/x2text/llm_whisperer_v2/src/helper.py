@@ -260,6 +260,8 @@ class LLMWhispererHelper:
         params = LLMWhispererHelper.get_whisperer_params(
             config=config, extra_params=extra_params
         )
+        # Recorded against the extraction for cross referencing in usage reports
+        params[WhispererConfig.FILE_NAME] = Path(input_file_path).name
         response: requests.Response
         try:
             input_file_data = BytesIO(fs.read(path=input_file_path, mode="rb"))
