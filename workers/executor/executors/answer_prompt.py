@@ -17,8 +17,6 @@ from typing import Any
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
-from unstract.core.network.ssrf import is_safe_webhook_url
-
 logger = logging.getLogger(__name__)
 
 
@@ -238,9 +236,9 @@ class AnswerPromptService:
         if not webhook_url:
             logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
             return parsed_data, None
-        if not is_safe_webhook_url(webhook_url, allowed_schemes=("https",)):
-            logger.warning("Postprocessing webhook URL is not allowed; skipping.")
-            return parsed_data, None
+        # No URL check here: _make_webhook_request applies the identical guard
+        # at the sink. Duplicating it only bought a second blocking getaddrinfo
+        # per prompt per document.
         try:
             return postprocess_data(
                 parsed_data,

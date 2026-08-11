@@ -14,7 +14,15 @@ from unittest.mock import patch
 
 import pytest
 
-from unstract.core.network.ssrf import _normalize_host, is_safe_webhook_url
+from unstract.core.network.ssrf import (
+    REFUSED_INTERNAL_LITERAL,
+    REFUSED_NON_PUBLIC,
+    REFUSED_SCHEME,
+    UNRESOLVABLE,
+    _normalize_host,
+    is_safe_webhook_url,
+    webhook_url_refusal,
+)
 from unstract.core.notification_utils import send_webhook_request
 
 _REAL_GETADDRINFO = socket.getaddrinfo
@@ -26,6 +34,11 @@ _FAKE_DNS = {
     "internal.corp": {"10.0.0.5"},
     "rebind.test": {"93.184.216.34", "127.0.0.1"},
     "xn--e1afmkfd.xn--p1ai": {"93.184.216.34"},
+    # UTS-46 forms of faß.de and σόλος.gr. The stdlib "idna" codec maps these
+    # to fass.de and xn--wxaikc6b.gr instead, which is the bug the
+    # normalization test below pins.
+    "xn--fa-hia.de": {"93.184.216.34"},
+    "xn--wxaijb9b.gr": {"93.184.216.34"},
 }
 
 
@@ -185,10 +198,76 @@ def test_http_is_allowed_by_default_but_not_for_tls_only_callers():
         ("EXAMPLE.com.", "example.com"),
         ("пример.рф", "xn--e1afmkfd.xn--p1ai"),
         (None, ""),
+        # UTS-46, matching urllib3. The stdlib "idna" codec is IDNA-2003 and
+        # would give "fass.de" and "xn--wxaikc6b.gr" — a host the transport
+        # never dials, so the parser-agreement check would refuse both.
+        ("faß.de", "xn--fa-hia.de"),
+        ("σόλος.gr", "xn--wxaijb9b.gr"),
     ],
 )
 def test_normalize_host(raw, expected):
     assert _normalize_host(raw) == expected
+
+
+@pytest.mark.parametrize("host", ["faß.de", "σόλος.gr", "пример.рф"])
+def test_normalization_agrees_with_the_transport(host):
+    """The two parsers must reduce a host the same way, or every IDN is refused.
+
+    Pinned against urllib3 itself rather than a hardcoded expectation, so this
+    fails if either encoder moves.
+    """
+    from urllib3.util import parse_url
+
+    assert _normalize_host(host) == _normalize_host(parse_url(f"https://{host}/").host)
+    assert is_safe_webhook_url(f"https://{host}/hook") is True
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://2130706433/hook",  # decimal
+        "https://0177.0.0.1/hook",  # octal dotted
+        "https://127.1/hook",  # short form
+        "https://localhost/hook",  # RFC 6761, no lookup needed
+    ],
+)
+def test_legacy_loopback_encodings_are_refused_without_dns(url):
+    """All of these are 127.0.0.1 to the resolver.
+
+    ``ipaddress.ip_address`` parses none of the numeric forms, so on the
+    no-resolve path they would otherwise be accepted as if they were
+    hostnames — exactly the encodings used to slip a literal past a check.
+    """
+    assert is_safe_webhook_url(url, resolve=False) is False
+    assert is_safe_webhook_url(url) is False
+
+
+class TestRefusalReason:
+    """Each sink needs the reason, not just the boolean.
+
+    Without it a resolver outage and a genuinely internal target produce the
+    same log line and the same error, and the delivery task cannot tell which
+    of the two is worth retrying.
+    """
+
+    def test_public_url_has_no_reason(self):
+        assert webhook_url_refusal("https://example.com/hook") is None
+
+    def test_resolver_failure_is_reported_as_transient(self):
+        assert webhook_url_refusal("https://nowhere.invalid/hook") == UNRESOLVABLE
+
+    def test_internal_target_is_not_transient(self):
+        assert webhook_url_refusal("https://internal.corp/hook") == REFUSED_NON_PUBLIC
+        assert (
+            webhook_url_refusal("https://127.0.0.1/hook", resolve=False)
+            == REFUSED_INTERNAL_LITERAL
+        )
+
+    def test_reason_distinguishes_the_syntactic_checks(self):
+        assert (
+            webhook_url_refusal("http://example.com/hook", allowed_schemes=("https",))
+            == REFUSED_SCHEME
+        )
 
 
 class TestNotificationSink:
@@ -228,3 +307,24 @@ class TestNotificationSink:
 
         post.assert_called_once()
         assert result["success"] is True
+
+    def test_a_refused_url_is_marked_not_retryable(self):
+        """The retry loop cannot change the answer, so it must not run.
+
+        Every attempt would re-issue getaddrinfo for a tenant-supplied
+        hostname and delay dead-lettering by up to max_retries × retry_delay.
+        """
+        with patch("unstract.core.notification_utils.requests.post"):
+            result = send_webhook_request(url="https://internal.corp/hook", payload={})
+
+        assert result["success"] is False
+        assert result["retryable"] is False
+
+    def test_a_resolver_outage_stays_retryable(self):
+        """A blip is not a security refusal, and must not be reported as one."""
+        with patch("unstract.core.notification_utils.requests.post"):
+            result = send_webhook_request(url="https://nowhere.invalid/hook", payload={})
+
+        assert result["success"] is False
+        assert result["retryable"] is True
+        assert result["refusal_reason"] == UNRESOLVABLE

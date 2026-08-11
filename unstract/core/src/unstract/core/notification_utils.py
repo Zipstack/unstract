@@ -7,11 +7,12 @@ backend Django services and worker processes for consistent notification handlin
 import logging
 from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 from uuid import UUID
 
 import requests
 
-from unstract.core.network.ssrf import is_safe_webhook_url
+from unstract.core.network.ssrf import UNRESOLVABLE, webhook_url_refusal
 from unstract.core.notification_enums import AuthorizationType
 
 logger = logging.getLogger(__name__)
@@ -138,11 +139,28 @@ def send_webhook_request(
         requests.exceptions.RequestException: If request fails after all retries
     """
     # Guard at the sink, not at the callers, so no future caller can skip it.
-    if not is_safe_webhook_url(url):
-        logger.error("Refusing webhook to a non-public or ambiguous URL")
+    refusal = webhook_url_refusal(url)
+    if refusal is not None:
+        # A resolver outage clears on its own, so that one stays retryable.
+        # Every other reason is a property of the URL and cannot change between
+        # attempts — retrying it only re-runs getaddrinfo on a tenant-supplied
+        # hostname and delays dead-lettering.
+        retryable = refusal == UNRESOLVABLE
+        logger.error(
+            "Refusing webhook: %s (host=%s, retryable=%s)",
+            refusal,
+            urlparse(url or "").hostname or "<none>",
+            retryable,
+        )
         return {
             "success": False,
-            "error": "Webhook URL is not an allowed public destination",
+            "error": (
+                "Webhook URL could not be resolved"
+                if retryable
+                else "Webhook URL is not an allowed public destination"
+            ),
+            "refusal_reason": refusal,
+            "retryable": retryable,
             "attempts": current_retry + 1,
             "url": url,
         }

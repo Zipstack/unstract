@@ -305,8 +305,21 @@ def send_webhook_notification(
             _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=True)
             return None  # Success - matches original behavior
         else:
-            # Failed delivery - raise exception for retry handling
             error_message = result.get("message", "Unknown webhook delivery error")
+
+            # A refusal the sink marked non-retryable is a property of the URL
+            # itself, so no attempt can change it. Dead-letter now instead of
+            # re-resolving a tenant-supplied hostname up to max_retries times.
+            if result.get("details", {}).get("retryable") is False:
+                logger.error(
+                    f"Webhook to {url} refused and not retryable: {error_message}"
+                )
+                _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
+                if raise_on_final_failure:
+                    raise Exception(error_message)
+                return None
+
+            # Failed delivery - raise exception for retry handling
             raise Exception(error_message)
 
     except (ValidationError, DeliveryError) as e:

@@ -9,6 +9,7 @@ the internal webhook-test endpoint, which used to return the response body.
 from unittest.mock import Mock, patch
 
 import pytest
+import requests
 from django.test import SimpleTestCase
 from notification_v2.internal_views import WebhookTestAPIView
 from notification_v2.serializers import NotificationSerializer
@@ -61,6 +62,41 @@ class NotificationSerializerUrlTest(SimpleTestCase):
         data = _notification_data("https://example.com/hook")
         assert NotificationSerializer().validate(data) == data
 
+    def test_webhook_create_without_a_url_is_rejected(self):
+        """``url`` is null=True on the model, so DRF makes it optional.
+
+        Without this check a webhook notification persists with no destination
+        and returns 201; at dispatch the user is told the URL "is not an
+        allowed public destination" for a URL that was never set.
+        """
+        for data in (
+            # omitted entirely
+            {
+                "pipeline": Mock(),
+                "authorization_type": "NONE",
+                "notification_type": "WEBHOOK",
+            },
+            # explicitly null
+            {
+                "pipeline": Mock(),
+                "authorization_type": "NONE",
+                "notification_type": "WEBHOOK",
+                "url": None,
+            },
+        ):
+            with self.subTest(data=sorted(data)):
+                with self.assertRaises(ValidationError) as caught:
+                    NotificationSerializer().validate(data)
+                assert "url" in caught.exception.detail
+
+    def test_webhook_patch_that_omits_url_keeps_the_stored_one(self):
+        """The create check must not break the documented PATCH case."""
+        instance = Mock(api=None, notification_type="WEBHOOK", url="https://a.example")
+        serializer = NotificationSerializer(instance=instance, partial=True)
+
+        data = {"pipeline": Mock(), "authorization_type": "NONE", "max_retries": 2}
+        assert serializer.validate(data) == data
+
     def test_patch_that_omits_url_is_not_revalidated(self):
         """A PATCH touching other fields must not re-resolve the stored URL.
 
@@ -111,6 +147,36 @@ class WebhookTestEndpointTest(SimpleTestCase):
         # request headers — those carry the Authorization value we built.
         for leaked in ("response_body", "response_headers", "request_headers"):
             assert leaked not in response.data, f"{leaked} is echoed to the caller"
+
+    def test_transport_failure_does_not_echo_the_authorization_header(self):
+        """The error branch is the common path, and it built the credential.
+
+        A public host that simply does not answer never reaches the guard, so
+        this is reachable for any well-formed URL. The success-branch test
+        above cannot catch it: it only stubs a 200.
+        """
+        request = Request(
+            APIRequestFactory().post(
+                "/internal/webhook/test/",
+                {
+                    "url": "https://example.com/hook",
+                    "payload": {},
+                    "authorization_type": "BEARER",
+                    "authorization_key": "super-secret-token",
+                },
+                format="json",
+            ),
+            parsers=[JSONParser()],
+        )
+        with patch("requests.post") as post:
+            post.side_effect = requests.exceptions.ConnectTimeout("timed out")
+            response = WebhookTestAPIView().post(request)
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert response.data["success"] is False
+        for leaked in ("request_headers", "request_payload"):
+            assert leaked not in response.data, f"{leaked} is echoed to the caller"
+        assert "super-secret-token" not in str(response.data)
 
     def test_redirect_is_not_reported_as_success(self):
         """Redirects are not followed, so a 3xx means the payload never landed."""

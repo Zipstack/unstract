@@ -40,27 +40,55 @@ class NotificationSerializer(serializers.ModelSerializer):
         return data
 
     def _validate_url(self, data):
-        """Reject internal webhook targets when a URL is supplied.
+        """Reject webhook targets written as an internal address literal.
 
-        URLField only checks the shape, so an internal address would be stored
-        and only refused later at the sink, silently and out of the user's
-        sight. Fail here instead; the sink guard stays as the real control.
+        This is a convenience check, not the control. URLField only checks the
+        shape, so ``http://169.254.169.254/`` would otherwise save cleanly and
+        fail much later at the sink, out of the user's sight. Catching the
+        literal forms here turns the common mistake into a 400 at save time.
+
+        What it deliberately does not catch: ``resolve=False`` skips DNS, so a
+        *hostname* that points at an internal address — the majority of URLs —
+        is accepted here and refused at the sink. That is the intended split.
+        getaddrinfo honours no timeout, so resolving on the request thread
+        would let a slow or hostile resolver stall the worker serving it. The
+        sink resolves, and the sink is the real control.
 
         Only checks a URL the caller actually sent. Re-resolving the stored one
         would make an unrelated PATCH fail whenever DNS is briefly unavailable
         or a legacy record predates this check.
-
-        resolve=False keeps DNS off the request thread — getaddrinfo honours no
-        timeout, so a slow resolver here would stall the worker serving the
-        request. Literal internal addresses are still refused; a hostname
-        pointing inward is caught at the sink, which is the real control.
         """
+        notification_type = data.get(
+            "notification_type", getattr(self.instance, "notification_type", None)
+        )
+        is_webhook = notification_type == NotificationType.WEBHOOK.value
+
         if "url" not in data:
+            # A PATCH that does not touch the URL leaves the stored one alone.
+            # A create has nothing to leave alone: url is null=True on the
+            # model, so DRF makes it optional and a webhook would otherwise
+            # persist with no destination at all.
+            if (
+                is_webhook
+                and not self.partial
+                and not getattr(self.instance, "url", None)
+            ):
+                raise serializers.ValidationError(
+                    {"url": "A webhook notification requires a URL."}
+                )
             return
+
         url = data["url"]
-        if url and not is_safe_webhook_url(url, resolve=False):
+        if not url:
+            if is_webhook:
+                raise serializers.ValidationError(
+                    {"url": "A webhook notification requires a URL."}
+                )
+            return
+
+        if not is_safe_webhook_url(url, resolve=False):
             raise serializers.ValidationError(
-                {"url": "URL must resolve to a public address."}
+                {"url": "URL must not be an internal or ambiguous address."}
             )
 
     def _validate_api_or_pipeline(self, data):

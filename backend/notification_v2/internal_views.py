@@ -376,12 +376,14 @@ class WebhookTestAPIView(APIView):
                 return Response(test_result)
 
             except requests.exceptions.RequestException as e:
+                # Same rule as the success branch above: the echoed
+                # request_headers carried back the Authorization value built
+                # from authorization_key, and a target that times out or
+                # refuses the connection is the most common way to get here.
                 test_result = {
                     "success": False,
                     "error": str(e),
                     "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
                 }
 
                 return Response(test_result, status=status.HTTP_400_BAD_REQUEST)
