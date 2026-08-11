@@ -135,8 +135,7 @@ class TestAtLeastOnceDelivery:
         redis.lrem.side_effect = lambda *a: order.append("lrem")
         consumer._test_logs_consumer.side_effect = lambda **_: order.append("handled")
 
-        with patch.object(consumer, "RedisQueueClient") as rq:
-            rq.from_env.return_value.redis_client = redis
+        with patch.object(consumer, "create_redis_client", return_value=redis):
             consumer.run()
 
         # Order is the whole point: lrem before the handler would lose the envelope on
@@ -147,10 +146,67 @@ class TestAtLeastOnceDelivery:
     def test_a_poison_envelope_is_dropped_not_replayed_forever(self, consumer):
         raw = b"not-json"
         redis = self._one_shot_redis(consumer, raw)
-        with patch.object(consumer, "RedisQueueClient") as rq:
-            rq.from_env.return_value.redis_client = redis
+        with patch.object(consumer, "create_redis_client", return_value=redis):
             consumer.run()
 
         # Still removed from the processing list — otherwise startup recovery would
         # re-queue it on every restart and the loop would never drain.
         redis.lrem.assert_called_once_with("log_stream_queue:processing:pod-abc", 1, raw)
+
+
+class TestSocketTimeoutOutlivesTheBlock:
+    """redis-py applies ``socket_timeout`` to the BLMOVE read itself.
+
+    Shipped equal to the block (both 5s) and the socket won the race in integration:
+    ``redis.exceptions.TimeoutError: Timeout reading from socket`` every ~5.01s while
+    idle, each one tearing down the connection. The quiet part is worse — BLMOVE is
+    atomic server-side, so an envelope could be moved onto the processing list and its
+    reply then lost with the socket, stranding that log until the pod restarted.
+    """
+
+    def test_socket_timeout_strictly_exceeds_the_block_timeout(self, consumer):
+        assert consumer._SOCKET_TIMEOUT_SECONDS > consumer._BLOCK_TIMEOUT_SECONDS
+
+    def test_the_margin_holds_when_the_block_is_tuned_up(self, monkeypatch):
+        # The two must stay related by construction, not by both happening to be
+        # defaults — a deployment raising the block alone would resurrect the bug.
+        monkeypatch.setenv("LOG_STREAM_BLOCK_TIMEOUT", "45")
+        mod = _load(monkeypatch)
+        assert mod._BLOCK_TIMEOUT_SECONDS == 45
+        assert mod._SOCKET_TIMEOUT_SECONDS > 45
+
+    def test_the_client_is_actually_built_with_that_timeout(self, consumer):
+        """The constant is inert unless it reaches ``create_redis_client``."""
+        redis = MagicMock()
+        redis.lmove.return_value = None
+
+        def _blmove(*_a, **_k):
+            consumer._shutdown = True
+            return None
+
+        redis.blmove.side_effect = _blmove
+
+        with patch.object(
+            consumer, "create_redis_client", return_value=redis
+        ) as factory:
+            consumer.run()
+
+        assert factory.call_args.kwargs["socket_timeout"] == (
+            consumer._SOCKET_TIMEOUT_SECONDS
+        )
+
+    def test_blmove_is_called_with_the_block_timeout(self, consumer):
+        """Pins the other half of the pair the invariant is about."""
+        redis = MagicMock()
+        redis.lmove.return_value = None
+
+        def _blmove(*_a, **_k):
+            consumer._shutdown = True
+            return None
+
+        redis.blmove.side_effect = _blmove
+
+        with patch.object(consumer, "create_redis_client", return_value=redis):
+            consumer.run()
+
+        assert redis.blmove.call_args[0][2] == consumer._BLOCK_TIMEOUT_SECONDS

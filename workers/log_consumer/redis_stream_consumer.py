@@ -38,7 +38,7 @@ from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.logging import WorkerLogger
 
-from unstract.core.cache.redis_queue_client import RedisQueueClient
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogProcessingTask
 
 logger = WorkerLogger.setup(WorkerType.LOG_CONSUMER)
@@ -53,6 +53,15 @@ _QUEUE_NAME = os.getenv("LOG_STREAM_QUEUE_NAME", "log_stream_queue")
 # BLMOVE blocks up to this long before returning None, which is the loop's only chance to
 # notice a shutdown signal. Keep it well under the pod's terminationGracePeriodSeconds.
 _BLOCK_TIMEOUT_SECONDS = int(os.getenv("LOG_STREAM_BLOCK_TIMEOUT", "5"))
+# redis-py enforces ``socket_timeout`` on the BLMOVE read itself, so it MUST exceed the
+# server-side block or every call aborts mid-block with ``redis.TimeoutError``.
+# ``create_redis_client`` defaults it to 5s — exactly ``_BLOCK_TIMEOUT_SECONDS`` — and the
+# socket won that race in integration: a traceback every ~5.01s while idle, plus a
+# disconnect/reconnect each time. Worse, an envelope BLMOVE had already moved to the
+# processing list was stranded there until this pod restarted, because the reply never
+# reached the client. Identical trap to the one documented at
+# ``workers/queue_backend/pg_queue/result_backend.py:152``.
+_SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
 
 _shutdown = False
 
@@ -105,7 +114,13 @@ def run() -> int:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    redis_client = RedisQueueClient.from_env().redis_client
+    # Not ``RedisQueueClient.from_env()``: that hard-codes the 5s socket timeout, which
+    # cannot outlive this loop's block. Built directly so the two stay related by
+    # construction — see _SOCKET_TIMEOUT_SECONDS.
+    redis_client = create_redis_client(
+        decode_responses=True,
+        socket_timeout=_SOCKET_TIMEOUT_SECONDS,
+    )
     processing = _processing_list_name()
     logger.info(
         "Log stream consumer starting: queue='%s' processing='%s'",
