@@ -3,6 +3,7 @@ from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
 from utils.pagination import CustomPagination
 
+from workflow_manager.execution.access import assert_execution_accessible
 from workflow_manager.file_execution.filter import FileExecutionFilter
 from workflow_manager.file_execution.models import (
     WorkflowFileExecution as FileExecution,
@@ -21,6 +22,11 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         execution_id = self.kwargs.get("pk")
+
+        # Same execution id, same screen, same gate as ``<pk>/logs/`` (UN-2651).
+        # ``status_msg`` resolves to the latest ``ExecutionLog.data["log"]``, so
+        # this response carries log text as well as file names and errors.
+        assert_execution_accessible(self.request.user, execution_id)
 
         # Subquery to get latest non-DEBUG/WARN log data per file execution
         # Avoids N+1 queries when serializing status_msg

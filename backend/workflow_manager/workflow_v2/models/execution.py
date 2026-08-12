@@ -55,22 +55,17 @@ class WorkflowExecutionManager(BaseModelManager):
             QuerySet of executions that the user has permission to access
         """
         if getattr(user, "is_service_account", False):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("service account", user)
 
         if OrganizationMemberService.is_user_organization_admin(user):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("org admin", user)
 
         # Defer to each resource's own ``for_user`` so execution visibility matches
         # the resource list: memberships, group shares and ``shared_to_org``
         # (UN-2651). Those managers org-scope themselves via ``UserContext``, so
-        # this is correct on request paths only — a worker or management command
-        # with no org context gets an empty queryset (fail-closed).
+        # this is meaningful on request paths only. Off the request path they
+        # resolve to ``organization_id IS NULL`` rather than to nothing, which
+        # matches orphan rows — call ``for_user`` from a request, not a worker.
         workflow_filter = Q(workflow_id__in=Workflow.objects.for_user(user).values("pk"))
 
         # Filter for API deployments the user can access
@@ -88,6 +83,25 @@ class WorkflowExecutionManager(BaseModelManager):
         final_filter = (workflow_filter & Q(pipeline_id__isnull=True)) | deployment_filter
 
         return self.filter(final_filter).distinct()
+
+    def _org_scoped(self, actor: str, user) -> QuerySet:
+        """Every execution in the current organization, for the bypass roles.
+
+        Fails closed when there is no organization in context. This used to be
+        ``self.all()`` — every execution in every tenant — which is unreachable
+        from the three request-path callers but is a bad default for a manager
+        the view now trusts as its only tenant boundary.
+        """
+        org = UserContext.get_organization()
+        if org:
+            return self.filter(workflow__organization=org)
+        logger.warning(
+            "for_user called with no organization in context (%s, user=%s); "
+            "returning no executions",
+            actor,
+            getattr(user, "id", None),
+        )
+        return self.none()
 
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.

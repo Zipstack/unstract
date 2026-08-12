@@ -8,14 +8,13 @@ from django.db.models.query import QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.pagination import CustomPagination
 
+from workflow_manager.execution.access import assert_execution_accessible
 from workflow_manager.workflow_v2.filters import ExecutionLogFilter
-from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionLogSerializer
 
@@ -28,9 +27,12 @@ MAX_SYNC_EXPORT_ROWS = 50_000
 
 
 class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
-    # Read-only on purpose: the access gate lives in ``get_queryset``, which write
-    # handlers never call. ``ExecutionLog`` rows are written by workers and their
-    # fields are ``editable=False``, so there is nothing to expose.
+    # Read-only on purpose. ``create`` is the one write handler that never calls
+    # ``get_queryset``, so it would sit outside the gate below entirely; the rest
+    # would run the gate but have nothing legitimate to do. ``ExecutionLog`` rows
+    # are written by the ``consume_log_history`` Celery task, and the serializer
+    # is ``fields = "__all__"`` — ``data`` and ``event_time`` are not
+    # ``editable=False``, so a write verb would expose both.
     versioning_class = URLPathVersioning
     permission_classes = [IsAuthenticated]
     serializer_class = WorkflowExecutionLogSerializer
@@ -43,17 +45,15 @@ class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
         execution_id = self.kwargs.get("pk")
 
         # The URL's execution id is all that addresses these logs, so it is what
-        # gets authorized (UN-2651). Unknown ids are denied like inaccessible ones
-        # so the response does not reveal which ids exist.
-        if (
-            not WorkflowExecution.objects.for_user(self.request.user)
-            .filter(pk=execution_id)
-            .exists()
-        ):
-            raise PermissionDenied("You do not have access to logs for this execution.")
+        # gets authorized — same gate as ``<pk>/files/`` (UN-2651).
+        assert_execution_accessible(self.request.user, execution_id)
 
-        # Query by execution_id for backward compatibility
-        # Remove filter after execution_id is removed
+        # ``execution_id`` is the deprecated pre-``wf_execution`` column, kept for
+        # rows written before the FK existed. In request context it matches
+        # nothing: ``OrgAwareManager`` joins the org through ``wf_execution``, so
+        # the legacy-only rows this branch targets are dropped before the OR is
+        # evaluated. It stays for the unscoped contexts (Celery, shell) and goes
+        # when those rows are rotated out.
         return ExecutionLog.objects.filter(
             Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )

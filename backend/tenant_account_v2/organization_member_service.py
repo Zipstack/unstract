@@ -2,15 +2,17 @@ import logging
 from typing import Any
 
 from utils.cache_service import CacheService
+from utils.user_context import UserContext
 
 from tenant_account_v2.models import OrganizationMember
 
 logger = logging.getLogger(__name__)
 
-# Memo attribute for the admin predicate, set on the ``User`` instance. Django
-# rebuilds that instance per request, so the memo lives exactly one request —
-# the same lifetime as the ``request``-keyed cache in ``permissions.permission``,
-# which the model managers cannot reach.
+# Memo for the admin predicate, set on the ``User`` instance as
+# ``(organization_identifier, is_admin)``. The answer is a function of the user
+# *and* the current org — ``OrganizationMember.objects`` is org-scoped — and
+# ``set_user_organization`` can move a live ``request.user`` between orgs, so the
+# org id is part of the key rather than an assumption about instance lifetime.
 _ADMIN_MEMO_ATTR = "_unstract_is_org_admin"
 
 
@@ -30,7 +32,7 @@ class OrganizationMemberService:
         path in the relevant permissions / managers. Returns False on any
         lookup failure (anonymous user, no membership row, DB unavailable).
 
-        The result is memoized on ``user`` for the life of that instance:
+        The result is memoized on ``user``, keyed by the current organization:
         ``WorkflowExecutionManager.for_user`` resolves this predicate and then
         delegates to three resource managers that each re-resolve it, which was
         four uncached membership lookups per call on a polled endpoint.
@@ -39,9 +41,10 @@ class OrganizationMemberService:
             return False
         if getattr(user, "is_service_account", False):
             return False
+        org_id = UserContext.get_organization_identifier()
         memo = getattr(user, _ADMIN_MEMO_ATTR, None)
-        if memo is not None:
-            return memo
+        if memo is not None and memo[0] == org_id:
+            return memo[1]
         try:
             member = OrganizationMember.objects.get(user=user.id)  # type: ignore
         except OrganizationMember.DoesNotExist:
@@ -59,10 +62,7 @@ class OrganizationMemberService:
         is_admin = AuthenticationController().is_admin_by_role(member.role)
         # Failure paths above deliberately stay uncached — a transient DB error
         # must not pin this user to "not an admin" for the rest of the request.
-        try:
-            setattr(user, _ADMIN_MEMO_ATTR, is_admin)
-        except AttributeError:
-            pass  # Immutable user object (e.g. AnonymousUser subclass) — skip the memo.
+        setattr(user, _ADMIN_MEMO_ATTR, (org_id, is_admin))
         return is_admin
 
     @staticmethod
