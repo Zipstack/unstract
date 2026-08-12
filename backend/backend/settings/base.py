@@ -653,6 +653,27 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
     "VERSION_PARAM": "version",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# Read only while generating the API deployment OpenAPI spec
+# (``manage.py generate_docstudio_spec``); no effect at request time.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Unstract Document Studio",
+    "VERSION": "v1",
+    "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Group descriptions clients show in their help; without this the spec has
+    # no root `tags` array and the text has nowhere to live.
+    "TAGS": [
+        {
+            "name": "deployment",
+            "description": (
+                "Run an API deployment against one or more documents and poll "
+                "the result."
+            ),
+        }
+    ],
 }
 
 # These paths will work without authentication

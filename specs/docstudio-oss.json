@@ -1,0 +1,442 @@
+{
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "properties": {
+          "message": {
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ExecuteRequest": {
+        "description": "Subclasses the real serializer so every backend param arrives free.",
+        "properties": {
+          "custom_data": {
+            "nullable": true
+          },
+          "files": {
+            "items": {
+              "format": "binary",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hitl_packet_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "hitl_queue_name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "include_extracted_text": {
+            "default": false,
+            "type": "boolean"
+          },
+          "include_metadata": {
+            "default": false,
+            "type": "boolean"
+          },
+          "include_metrics": {
+            "default": false,
+            "type": "boolean"
+          },
+          "llm_profile_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "presigned_urls": {
+            "items": {
+              "format": "uri",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "default": "",
+            "description": "Comma-separated list of tag names (EX:'tag1,tag2-name,tag3_name')",
+            "type": "string"
+          },
+          "timeout": {
+            "default": -1,
+            "maximum": 300,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "use_file_history": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ExecuteResponse": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/ExecutionMessage"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "ExecutionMessage": {
+        "properties": {
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execution_id": {
+            "type": "string"
+          },
+          "execution_status": {
+            "type": "string"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/FileResult"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "status_api": {
+            "nullable": true,
+            "type": "string"
+          },
+          "workflow_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_status"
+        ],
+        "type": "object"
+      },
+      "FileResult": {
+        "properties": {
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "file_execution_id": {
+            "type": "string"
+          },
+          "metadata": {},
+          "metrics": {},
+          "result": {},
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "StatusResponse": {
+        "properties": {
+          "message": {
+            "items": {
+              "$ref": "#/components/schemas/FileResult"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "basicAuth": {
+        "scheme": "basic",
+        "type": "http"
+      },
+      "cookieAuth": {
+        "in": "cookie",
+        "name": "sessionid",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "title": "Unstract Document Studio",
+    "version": "v1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/deployment/api/{org_name}/{api_name}/": {
+      "get": {
+        "description": "Poll the status of a previously started execution.",
+        "operationId": "status",
+        "parameters": [
+          {
+            "description": "API deployment name.",
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_extracted_text",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_metadata",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_metrics",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Organization identifier.",
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "406": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "basicAuth": []
+          }
+        ],
+        "tags": [
+          "deployment"
+        ]
+      },
+      "post": {
+        "description": "Execute an API deployment against one or more files.",
+        "operationId": "execute",
+        "parameters": [
+          {
+            "description": "API deployment name.",
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Organization identifier.",
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "cookieAuth": []
+          },
+          {
+            "basicAuth": []
+          }
+        ],
+        "tags": [
+          "deployment"
+        ]
+      }
+    },
+    "/deployment/api/{org_name}/{api_name}/mcp/": {
+      "get": {
+        "description": "Refuse the SSE stream, but say who is here.\n\nUnder Streamable HTTP a client issues GET to open a server-to-client\nSSE stream, and a server that offers none must answer 405 (spec rev\n2025-06-18). Nothing here pushes messages \u2014 every tool call is\nrequest/response \u2014 so 405 is the honest answer, and returning\n``200 application/json`` instead would leave a conformant client\nparsing an identity document as an event stream.\n\nThe body is kept anyway: uptime checks and humans with curl probe this\npath, and a 405 may carry one. It stays deliberately free of tenant\ndetail \u2014 it reveals only that an MCP server is mounted here.\n\n``JsonResponse``, not DRF's ``Response``, for the same reason ``post``\nuses it: a DRF response runs content negotiation, so a client sending\n``Accept: text/html`` would be handed the browsable-API renderer.\n\nNo ``Allow`` header is set here. RFC 9110 asks for one on a 405, but a\nhandler cannot control it and pretending otherwise misleads a reader:\nDRF's ``finalize_response`` overwrites any handler-set value with\n``self.allowed_methods`` (``GET, POST, HEAD, OPTIONS``, since this view\ndefines both verbs), and ``RemoveAllowHeaderMiddleware`` \u2014 global in\n``MIDDLEWARE`` \u2014 then pops the header from every response before it\nleaves the process. So a client sees no ``Allow`` at all; a test driving\nthe view through ``APIRequestFactory`` bypasses that middleware and sees\nDRF's value.",
+        "operationId": "mcp_retrieve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "tags": [
+          "mcp"
+        ]
+      },
+      "post": {
+        "description": "Handle a single JSON-RPC request.",
+        "operationId": "mcp_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "No response body"
+          }
+        },
+        "tags": [
+          "mcp"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Run an API deployment against one or more documents and poll the result.",
+      "name": "deployment"
+    }
+  ]
+}

@@ -27,6 +27,7 @@ dependencies = [
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
+    "drf-spectacular>=0.28.0", # For the generated API deployment OpenAPI spec
     "drf-yasg>=1.21.8", # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.2.2",

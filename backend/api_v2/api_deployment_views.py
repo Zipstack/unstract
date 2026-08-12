@@ -5,6 +5,13 @@ from typing import Any
 
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_field,
+    extend_schema_view,
+)
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
@@ -50,6 +57,97 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class UploadField(serializers.FileField):
+    """A bare ``FileField`` maps to ``format: uri`` — correct on output, wrong
+    for a multipart upload, and generators emit ``str`` for it.
+    """
+
+
+class ExecuteRequest(ExecutionRequestSerializer):
+    """Subclasses the real serializer so every backend param arrives free."""
+
+    # ``files`` arrives via ``request.FILES``, so no serializer declares it.
+    files = serializers.ListField(child=UploadField(), required=False)
+
+
+class FileResult(serializers.Serializer):
+    file = serializers.CharField()
+    file_execution_id = serializers.CharField(required=False)
+    status = serializers.CharField(required=False)
+    result = serializers.JSONField(required=False)
+    metadata = serializers.JSONField(required=False)
+    metrics = serializers.JSONField(required=False)
+    error = serializers.CharField(required=False, allow_null=True)
+
+
+class ExecutionMessage(serializers.Serializer):
+    execution_status = serializers.CharField()
+    execution_id = serializers.CharField(required=False)
+    workflow_id = serializers.CharField(required=False)
+    status_api = serializers.CharField(required=False, allow_null=True)
+    error = serializers.CharField(required=False, allow_null=True)
+    # The backend sends `result: null` while pending; without allow_null the
+    # generated deserialiser iterates None and crashes.
+    result = FileResult(many=True, required=False, allow_null=True)
+
+
+class ExecuteResponse(serializers.Serializer):
+    message = ExecutionMessage()
+
+
+class StatusResponse(serializers.Serializer):
+    status = serializers.CharField()
+    message = FileResult(many=True, required=False, allow_null=True)
+
+
+class ErrorResponse(serializers.Serializer):
+    status = serializers.CharField(required=False)
+    message = serializers.JSONField(required=False, allow_null=True)
+
+
+DEPLOYMENT_PATH_PARAMETERS = [
+    OpenApiParameter(
+        "org_name",
+        str,
+        OpenApiParameter.PATH,
+        description="Organization identifier.",
+    ),
+    OpenApiParameter(
+        "api_name", str, OpenApiParameter.PATH, description="API deployment name."
+    ),
+]
+
+
+# The generated clients take their command names, module paths and request
+# shapes from here, so this block is part of the public API surface.
+@extend_schema_view(
+    post=extend_schema(
+        operation_id="execute",
+        tags=["deployment"],
+        parameters=DEPLOYMENT_PATH_PARAMETERS,
+        request={"multipart/form-data": ExecuteRequest},
+        responses={
+            200: ExecuteResponse,
+            422: ExecuteResponse,
+            500: ErrorResponse,
+        },
+        description="Execute an API deployment against one or more files.",
+    ),
+    get=extend_schema(
+        operation_id="status",
+        tags=["deployment"],
+        parameters=DEPLOYMENT_PATH_PARAMETERS + [ExecutionQuerySerializer],
+        # 406 means the result was already consumed — this GET is one-shot.
+        responses={
+            200: StatusResponse,
+            406: ErrorResponse,
+            422: StatusResponse,
+            500: ErrorResponse,
+        },
+        description="Poll the status of a previously started execution.",
+    ),
+)
 class DeploymentExecution(views.APIView):
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
