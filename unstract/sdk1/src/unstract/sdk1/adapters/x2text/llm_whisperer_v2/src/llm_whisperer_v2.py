@@ -54,6 +54,10 @@ class LLMWhispererV2(X2TextAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/LLMWhispererV2.png"
 
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/text_extractors/llm_whisperer_text_extractor_v2/"
+
     def test_connection(self) -> bool:
         LLMWhispererHelper.test_connection_request(
             config=self.config,

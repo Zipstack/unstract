@@ -50,8 +50,15 @@ def _json_safe(value: Any) -> Any:
     ``PgQueueMessage.message`` is a plain ``JSONField`` (no Django encoder), and
     the worker consumer already receives string ids on the existing PG dispatch
     path, so coercing here keeps both transports consistent.
+
+    ``allow_nan=False`` rejects ``NaN``/``Infinity`` here with a ``ValueError``
+    rather than letting Python's default lenient encoder emit the non-standard
+    ``NaN``/``Infinity`` tokens: Postgres ``jsonb`` rejects those at insert with a
+    ``django.db.DataError`` (a permanent failure the notification dispatcher's
+    ``(ValueError, TypeError)`` seam would otherwise miss, looping the row). Fail
+    at the intended seam instead.
     """
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(json.dumps(value, default=str, allow_nan=False))
 
 
 def enqueue_task(
@@ -97,33 +104,37 @@ def enqueue_task(
             f"[{FAIRNESS_MIN_PRIORITY}, {FAIRNESS_MAX_PRIORITY}]: {priority!r}"
         )
     pg_queue = queue or DEFAULT_GENERAL_QUEUE
-    message: TaskPayload = {
-        "task_name": task_name,
-        "args": _json_safe(list(args) if args is not None else []),
-        "kwargs": _json_safe(dict(kwargs) if kwargs is not None else {}),
-        "queue": pg_queue,
-        # Coerce like args/kwargs/on_success/on_error: FairnessPayload may carry a
-        # UUID/enum/datetime that a plain JSONField insert can't serialise, which
-        # would raise at enqueue and drop the task on the PG path only.
-        "fairness": _json_safe(fairness) if fairness is not None else fairness,
-    }
-    # Each optional key is set only when present — keeps fire-and-forget rows
-    # byte-identical to before these fields existed.
-    if reply_key is not None:
-        message["reply_key"] = reply_key
-    # Continuation specs carry a nested callback ``kwargs`` dict that may hold a
-    # UUID/datetime — coerce like ``args``/``kwargs`` above, else the JSONField
-    # insert raises at dispatch time (caller-visible).
-    if on_success is not None:
-        message["on_success"] = _json_safe(on_success)
-    if on_error is not None:
-        message["on_error"] = _json_safe(on_error)
-    if task_id is not None:
-        message["task_id"] = task_id
     # Mirror the worker _enqueue_pg path: log the failure with breadcrumbs before
     # it propagates, so a DB/constraint/serialization error isn't mislabeled by
-    # the caller's broad handler.
+    # the caller's broad handler. Message construction (the _json_safe coercions)
+    # lives inside the try because serialization failures surface there — e.g. a
+    # NaN/Infinity float raises ValueError under allow_nan=False — and on the
+    # orchestrator path (no silent fallback) would otherwise drop the task with no
+    # task/queue/org breadcrumb for on-call.
     try:
+        message: TaskPayload = {
+            "task_name": task_name,
+            "args": _json_safe(list(args) if args is not None else []),
+            "kwargs": _json_safe(dict(kwargs) if kwargs is not None else {}),
+            "queue": pg_queue,
+            # Coerce like args/kwargs/on_success/on_error: FairnessPayload may carry
+            # a UUID/enum/datetime that a plain JSONField insert can't serialise,
+            # which would raise at enqueue and drop the task on the PG path only.
+            "fairness": _json_safe(fairness) if fairness is not None else fairness,
+        }
+        # Each optional key is set only when present — keeps fire-and-forget rows
+        # byte-identical to before these fields existed.
+        if reply_key is not None:
+            message["reply_key"] = reply_key
+        # Continuation specs carry a nested callback ``kwargs`` dict that may hold a
+        # UUID/datetime — coerce like ``args``/``kwargs`` above, else the JSONField
+        # insert raises at dispatch time (caller-visible).
+        if on_success is not None:
+            message["on_success"] = _json_safe(on_success)
+        if on_error is not None:
+            message["on_error"] = _json_safe(on_error)
+        if task_id is not None:
+            message["task_id"] = task_id
         row = PgQueueMessage.objects.create(
             queue_name=pg_queue,
             message=message,

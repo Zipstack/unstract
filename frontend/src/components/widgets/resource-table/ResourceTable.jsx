@@ -209,12 +209,6 @@ function ResourceTable({
       item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
     const initials = (email || name).slice(0, 2).toUpperCase();
     const swatch = colorForSeed(email || name);
-    // With co-owners, name only the primary inline (+N); the tooltip lists all
-    // owners so search hitting a hidden co-owner is still explainable.
-    const ownerTooltip =
-      Array.isArray(ownerEmails) && ownerEmails.length > 1
-        ? ownerEmails.join(", ")
-        : `${name}${extra}`;
 
     const cell = (
       <Space size={10} className="resource-table-owner">
@@ -228,7 +222,7 @@ function ResourceTable({
         <div className="resource-table-owner-text">
           <Typography.Text
             className="resource-table-owner-name"
-            ellipsis={{ tooltip: ownerTooltip }}
+            ellipsis={{ tooltip: `${name}${extra}` }}
           >
             {name}
             {extra}
@@ -250,18 +244,19 @@ function ResourceTable({
       return cell;
     }
     return (
-      <Tooltip title="Manage Co-Owners">
-        <button
-          type="button"
-          className="resource-table-owner-btn"
-          onClick={(event) => {
-            event.stopPropagation();
-            handleCoOwner(event, item);
-          }}
-        >
-          {cell}
-        </button>
-      </Tooltip>
+      <button
+        type="button"
+        className="resource-table-owner-btn"
+        onClick={(event) => {
+          event.stopPropagation();
+          handleCoOwner(event, item);
+        }}
+      >
+        {cell}
+        <span className="resource-table-sr-only">
+          Manage co-owners{item?.[titleProp] ? ` for ${item[titleProp]}` : ""}
+        </span>
+      </button>
     );
   };
 

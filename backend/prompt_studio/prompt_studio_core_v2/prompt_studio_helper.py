@@ -714,6 +714,36 @@ class PromptStudioHelper:
         return context, cb_kwargs
 
     @staticmethod
+    def _resolve_profile_manager(
+        tool: Any, prompt: Any = None, profile_manager_id: str | None = None
+    ) -> Any:
+        """Resolve the profile a run executes under.
+
+        The ladder, in order: an explicitly passed ``profile_manager_id``, then
+        the prompt's own FK, then the project default. A prompt need not carry
+        its own FK - falling back to the project default matches what
+        index_document and single-pass extraction already do.
+
+        ``get_default_llm_profile`` raises ``DefaultProfileError`` when no
+        project default exists, so this never returns a falsy value.
+
+        Args:
+            tool (CustomTool): Prompt Studio project the prompt belongs to
+            prompt (ToolStudioPrompt | None): Prompt whose FK to consult, if any
+            profile_manager_id (str | None): Explicitly requested profile
+
+        Returns:
+            ProfileManager: The resolved profile
+        """
+        if profile_manager_id:
+            return ProfileManagerHelper.get_profile_manager(
+                profile_manager_id=profile_manager_id
+            )
+        if prompt is not None and prompt.profile_manager:
+            return prompt.profile_manager
+        return ProfileManager.get_default_llm_profile(tool)
+
+    @staticmethod
     def _resolve_llm_ids(tool: Any) -> tuple[str, str]:
         """Resolve monitor_llm and challenge_llm IDs for the tool."""
         monitor_llm_instance = tool.monitor_llm
@@ -766,14 +796,9 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
@@ -960,7 +985,11 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(prompt.prompt_id)],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None) argument.
+            # The callback otherwise re-resolves the project default, so a
+            # default change mid-run would book output against a different
+            # profile than the one that produced it.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -989,15 +1018,10 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = (
-            ProfileManagerHelper.get_profile_manager(profile_manager_id)
-            if profile_manager_id
-            else None
+        # No single prompt to consult here, so the FK rung is skipped.
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, profile_manager_id=profile_manager_id
         )
-        if not profile_manager:
-            profile_manager = ProfileManager.get_default_llm_profile(tool)
-        if not profile_manager:
-            raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -1154,7 +1178,9 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None)
+            # argument - same reason as build_fetch_response_payload above.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -1701,13 +1727,26 @@ class PromptStudioHelper:
                     user_id=user_id,
                     request_user=request_user,
                 )
+            # Book the output against the profile the run actually used, the
+            # same ladder _fetch_response applies. Forwarding the raw (possibly
+            # None) argument makes _handle_response re-resolve the project
+            # default, so a prompt carrying its own FK would run under that FK
+            # but have its output stored under the project default.
+            resolved_profile_id = str(
+                PromptStudioHelper._resolve_profile_manager(
+                    tool=tool,
+                    prompt=prompt_instance,
+                    profile_manager_id=profile_manager_id,
+                ).profile_id
+            )
+
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,
                 prompts=prompts,
                 document_id=document_id,
                 is_single_pass=False,
-                profile_manager_id=profile_manager_id,
+                profile_manager_id=resolved_profile_id,
             )
         except APIException:
             # Validation responses are user-facing; DRF renders them as-is.
@@ -1880,14 +1919,9 @@ class PromptStudioHelper:
             Any: Output from LLM
         """
         # Fetch the ProfileManager instance using the profile_manager_id if provided
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
         monitor_llm: str | None = None
