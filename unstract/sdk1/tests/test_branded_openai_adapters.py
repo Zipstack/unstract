@@ -186,10 +186,26 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
         )
 
 
-def test_minimax_m2_defaults_to_adaptive_thinking() -> None:
+def test_minimax_m2_uses_always_on_thinking_without_request_parameter() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
-    assert validated["thinking"] == {"type": "adaptive"}
+    assert validated["thinking"] is None
+
+    explicitly_enabled = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": True}
+    )
+    assert explicitly_enabled["thinking"] is None
+
+
+def test_minimax_m2_rejects_configurable_thinking_payload() -> None:
+    with pytest.raises(ValueError, match="uses always-on thinking"):
+        MiniMaxLLMParameters.validate(
+            {
+                "model": "MiniMax-M2.7",
+                "api_key": "k",
+                "thinking": {"type": "adaptive"},
+            }
+        )
 
 
 def test_minimax_m2_thinking_rules_require_model_family_boundary() -> None:
@@ -309,6 +325,8 @@ def test_branded_llm_schema_exposes_api_base_with_default(
 
 
 def test_minimax_schema_covers_models_thinking_and_regions() -> None:
+    from jsonschema import Draft202012Validator
+
     schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
 
     assert schema["properties"]["model"]["examples"] == [
@@ -321,6 +339,15 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
         "standard",
         "priority",
     ]
+    assert schema["allOf"][0]["then"]["properties"]["enable_thinking"] == {"const": True}
+    validator = Draft202012Validator(schema)
+    m2_config = {
+        "adapter_name": "m2",
+        "api_key": "k",
+        "model": "MiniMax-M2.7",
+    }
+    assert not list(validator.iter_errors({**m2_config, "enable_thinking": True}))
+    assert list(validator.iter_errors({**m2_config, "enable_thinking": False}))
     assert "reasoning_effort" not in json.dumps(schema)
 
 

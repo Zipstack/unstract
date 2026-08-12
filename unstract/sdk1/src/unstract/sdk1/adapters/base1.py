@@ -565,6 +565,36 @@ def _minimax_context_window(model_id: str) -> int | None:
     return None
 
 
+def _normalize_minimax_thinking(
+    adapter_metadata: dict[str, "Any"], model_id: str
+) -> None:
+    if "enable_thinking" in adapter_metadata:
+        enable_thinking = adapter_metadata.pop("enable_thinking")
+        if not isinstance(enable_thinking, bool):
+            raise ValueError("enable_thinking must be a boolean.")
+        if _is_minimax_m2_model(model_id):
+            if not enable_thinking:
+                raise ValueError(f"{model_id} does not support disabling thinking.")
+        else:
+            adapter_metadata["thinking"] = {
+                "type": "adaptive" if enable_thinking else "disabled"
+            }
+
+    thinking = adapter_metadata.get("thinking")
+    if thinking is None:
+        return
+    if _is_minimax_m2_model(model_id):
+        raise ValueError(
+            f"{model_id} uses always-on thinking and does not accept "
+            "thinking configuration."
+        )
+    if not isinstance(thinking, dict) or thinking.get("type") not in {
+        "adaptive",
+        "disabled",
+    }:
+        raise ValueError("thinking.type must be adaptive or disabled.")
+
+
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
     """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
 
@@ -601,26 +631,7 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
         if service_tier not in {None, "standard", "priority"}:
             raise ValueError("service_tier must be standard or priority.")
 
-        if "enable_thinking" in adapter_metadata:
-            enable_thinking = adapter_metadata.pop("enable_thinking")
-            if not isinstance(enable_thinking, bool):
-                raise ValueError("enable_thinking must be a boolean.")
-            adapter_metadata["thinking"] = {
-                "type": "adaptive" if enable_thinking else "disabled"
-            }
-
-        thinking = adapter_metadata.get("thinking")
-        if thinking is None and _is_minimax_m2_model(model_id):
-            thinking = {"type": "adaptive"}
-            adapter_metadata["thinking"] = thinking
-        if thinking is not None:
-            if not isinstance(thinking, dict) or thinking.get("type") not in {
-                "adaptive",
-                "disabled",
-            }:
-                raise ValueError("thinking.type must be adaptive or disabled.")
-            if _is_minimax_m2_model(model_id) and thinking["type"] == "disabled":
-                raise ValueError(f"{model_id} does not support disabling thinking.")
+        _normalize_minimax_thinking(adapter_metadata, model_id)
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
