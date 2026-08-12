@@ -2,13 +2,21 @@ import logging
 import uuid
 from typing import Any
 
+from account_v2.models import User
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
-from prompt_studio.prompt_studio_registry_v2.constants import PromptStudioRegistryKeys
+from prompt_studio.prompt_studio_registry_v2.constants import (
+    JsonSchemaKey,
+    PromptStudioRegistryKeys,
+)
+from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
+    PromptStudioRegistryHelper,
+)
 from rest_framework.serializers import ListField, Serializer, UUIDField, ValidationError
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
 from tool_instance_v2.constants import ToolKey
@@ -148,6 +156,104 @@ class ToolInstanceSerializer(AuditSerializer):
             logger.error(f"Error transforming adapter IDs to names: {e}", exc_info=True)
         return display_metadata
 
+    @staticmethod
+    def _overlay_resolved_challenge_llm(
+        tool: Tool,
+        tool_settings: dict[str, Any],
+        tool_uid: str,
+        user: User | None,
+    ) -> None:
+        """Seed `challenge_llm` from the value the export already resolved.
+
+        `get_default_settings` walks the spec, and an adapter-valued property
+        with no `default` is seeded "". `challenge_llm` has none, so the
+        instance would store "" - and because the property declares
+        `adapterType: "LLM"`, an enum of real adapter IDs is injected into the
+        tool-instance schema, which "" then fails at deployment validation.
+
+        The export resolved a real adapter ID for this setting (falling back to
+        the default profile's LLM when the project set none), so prefer it.
+
+        Only seed a value this user can actually use. The enum injected at
+        deployment is built per-user, and an exported tool can be shared, so the
+        exporter's adapter may be invisible to whoever creates the instance -
+        and it may since have been deleted. Seeding such an id would trade the
+        "" enum violation for an equally opaque one naming a real UUID. Leaving
+        the key empty instead lets `update_metadata_with_default_adapter` fill
+        in this user's default LLM, which is what happened before the export
+        value was available at all.
+
+        Deliberately scoped to `challenge_llm` alone. The export's
+        `tool_settings` overlaps the spec on four other keys
+        (`enable_challenge`, `summarize_as_source`, `enable_highlight`,
+        `enable_word_confidence`); overlaying those would change whether
+        challenge, summarization and highlighting actually *run* on new
+        instances - a cost-, latency- and output-affecting change, and a
+        separate decision from fixing this validation failure.
+
+        Tools whose spec has no `challenge_llm` return before any query; a
+        Prompt-Studio-shaped tool with no registry row resolves to {}.
+        """
+        challenge_llm_key = JsonSchemaKey.CHALLENGE_LLM
+        if challenge_llm_key not in tool_settings:
+            return
+
+        resolved_settings = PromptStudioRegistryHelper.get_resolved_settings(
+            prompt_registry_id=tool_uid
+        )
+        resolved_challenge_llm = resolved_settings.get(challenge_llm_key)
+        if not resolved_challenge_llm:
+            logger.debug(
+                "Export for tool %s resolved no challenge_llm; leaving the "
+                "spec-seeded default in place",
+                tool_uid,
+            )
+            return
+
+        if not ToolInstanceSerializer._is_adapter_usable_by(resolved_challenge_llm, user):
+            logger.warning(
+                "Resolved challenge_llm %s for tool %s is not accessible to the "
+                "creating user; falling back to their default LLM adapter",
+                resolved_challenge_llm,
+                tool_uid,
+            )
+            return
+
+        tool_settings[challenge_llm_key] = resolved_challenge_llm
+        # Write the companion ID key alongside, the shape every other writer
+        # emits (see `ToolInstanceHelper.update_metadata_with_default_adapter`).
+        adapter_property = tool.spec.properties.get(challenge_llm_key, {})
+        adapter_id_key = ToolInstanceHelper.get_adapter_id_key(adapter_property)
+        tool_settings[adapter_id_key] = resolved_challenge_llm
+
+    @staticmethod
+    def _is_adapter_usable_by(adapter_id: str, user: User | None) -> bool:
+        """Whether `adapter_id` is an LLM adapter visible to `user`.
+
+        Mirrors `AdapterProcessor.get_adapters_by_type` exactly - same
+        `for_user` scoping, same `adapter_type` predicate - because that builds
+        the enum this value is validated against at deploy time, and any
+        divergence lets a value through here that the enum then rejects. The
+        type predicate is load-bearing: `CustomTool.challenge_llm` is an
+        unconstrained FK whose serializer has no `validate_challenge_llm`,
+        unlike its `summarize_llm_adapter` sibling, so a non-LLM adapter can
+        reach it.
+
+        Without a user there is no scope to check against, and answering "yes"
+        would seed on mere existence - passing another user's private adapter.
+        Refuse instead: the caller then leaves the key empty and the default
+        adapter fills it, which is safe in every case. Unreachable today, since
+        every site that constructs this serializer to write goes through
+        `get_serializer`, which supplies the request.
+        """
+        if user is None:
+            return False
+        return (
+            AdapterInstance.objects.for_user(user)
+            .filter(id=adapter_id, adapter_type=AdapterTypes.LLM.value)
+            .exists()
+        )
+
     def create(self, validated_data: dict[str, Any]) -> Any:
         workflow_id = validated_data.pop(WorkflowKey.WF_ID)
         try:
@@ -170,11 +276,19 @@ class ToolInstanceSerializer(AuditSerializer):
         validated_data[TIKey.PK] = uuid.uuid4()
         # TODO: Use version from tool props
         validated_data[TIKey.VERSION] = ""
+        tool_settings = ToolProcessor.get_default_settings(tool)
+        request = self.context.get(RequestKey.REQUEST)
+        self._overlay_resolved_challenge_llm(
+            tool,
+            tool_settings,
+            str(tool_uid),
+            getattr(request, "user", None),
+        )
         validated_data[TIKey.METADATA] = {
             # TODO: Review and remove tool instance ID
             WorkflowKey.WF_TOOL_INSTANCE_ID: str(validated_data[TIKey.PK]),
             PromptStudioRegistryKeys.PROMPT_REGISTRY_ID: str(tool_uid),
-            **ToolProcessor.get_default_settings(tool),
+            **tool_settings,
         }
         if TIKey.STEP not in validated_data:
             validated_data[TIKey.STEP] = workflow.tool_instances.count() + 1

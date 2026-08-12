@@ -36,5 +36,9 @@ class AnthropicLLMAdapter(AnthropicLLMParameters, BaseAdapter):
         return "/icons/adapter-icons/Anthropic.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/llms/anthropic_llm/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM
