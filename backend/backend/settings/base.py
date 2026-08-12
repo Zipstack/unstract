@@ -656,13 +656,27 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
-# Read only while generating the API deployment OpenAPI spec
-# (``manage.py generate_docstudio_spec``); no effect at request time.
+# Read while generating the API deployment OpenAPI spec
+# (``manage.py generate_docstudio_spec``). ``DEFAULT_SCHEMA_CLASS`` above is a
+# project-wide DRF default, but DRF dereferences it only when a schema is
+# generated, so neither has an effect at request time.
 SPECTACULAR_SETTINGS = {
     "TITLE": "Unstract Document Studio",
     "VERSION": "v1",
     "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
     "SERVE_INCLUDE_SCHEMA": False,
+    # DRF's unset ``DEFAULT_AUTHENTICATION_CLASSES`` would otherwise be
+    # introspected as a decision and publish session and basic auth, which
+    # these endpoints do not accept.
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "deploymentKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "The API deployment's own key.",
+            }
+        }
+    },
     # Group descriptions clients show in their help; without this the spec has
     # no root `tags` array and the text has nowhere to live.
     "TAGS": [

@@ -14,6 +14,7 @@ import logging
 from typing import Any
 
 from api_v2.deployment_helper import DeploymentHelper
+from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 
 from mcp_server.context import MCPContext
@@ -23,6 +24,10 @@ from mcp_server.transport import BaseMCPView
 logger = logging.getLogger(__name__)
 
 
+# MCP speaks JSON-RPC over one POST, so it has no REST surface worth
+# describing; leaving it in would publish guessed request and response shapes
+# to every client generated from the spec.
+@extend_schema(exclude=True)
 class MCPServerView(BaseMCPView):
     """MCP JSON-RPC endpoint for a single API deployment.
 

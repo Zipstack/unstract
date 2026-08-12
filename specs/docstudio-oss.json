@@ -13,7 +13,7 @@
         "type": "object"
       },
       "ExecuteRequest": {
-        "description": "Subclasses the real serializer so every backend param arrives free.",
+        "description": "The documents to run, and the options that shape the result.\n\nSupply `files`, `presigned_urls`, or both.",
         "properties": {
           "custom_data": {
             "nullable": true
@@ -86,9 +86,9 @@
         "type": "object"
       },
       "ExecutionMessage": {
+        "description": "The execution's identity and, once it has finished, its per-file\nresults.",
         "properties": {
           "error": {
-            "nullable": true,
             "type": "string"
           },
           "execution_id": {
@@ -105,15 +105,14 @@
             "type": "array"
           },
           "status_api": {
-            "nullable": true,
-            "type": "string"
-          },
-          "workflow_id": {
             "type": "string"
           }
         },
         "required": [
-          "execution_status"
+          "error",
+          "execution_id",
+          "execution_status",
+          "status_api"
         ],
         "type": "object"
       },
@@ -161,14 +160,10 @@
       }
     },
     "securitySchemes": {
-      "basicAuth": {
-        "scheme": "basic",
+      "deploymentKey": {
+        "description": "The API deployment's own key.",
+        "scheme": "bearer",
         "type": "http"
-      },
-      "cookieAuth": {
-        "in": "cookie",
-        "name": "sessionid",
-        "type": "apiKey"
       }
     }
   },
@@ -180,7 +175,7 @@
   "paths": {
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
-        "description": "Poll the status of a previously started execution.",
+        "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.",
         "operationId": "status",
         "parameters": [
           {
@@ -189,6 +184,7 @@
             "name": "api_name",
             "required": true,
             "schema": {
+              "pattern": "^[\\w-]+$",
               "type": "string"
             }
           },
@@ -231,6 +227,7 @@
             "name": "org_name",
             "required": true,
             "schema": {
+              "pattern": "^[\\w-]+$",
               "type": "string"
             }
           }
@@ -246,6 +243,46 @@
             },
             "description": ""
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The API key is not valid."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No API key was supplied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such active deployment."
+          },
           "406": {
             "content": {
               "application/json": {
@@ -254,7 +291,7 @@
                 }
               }
             },
-            "description": ""
+            "description": "The result was already consumed by an earlier call."
           },
           "422": {
             "content": {
@@ -265,6 +302,16 @@
               }
             },
             "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many concurrent executions; retry later."
           },
           "500": {
             "content": {
@@ -279,10 +326,7 @@
         },
         "security": [
           {
-            "cookieAuth": []
-          },
-          {
-            "basicAuth": []
+            "deploymentKey": []
           }
         ],
         "tags": [
@@ -290,7 +334,7 @@
         ]
       },
       "post": {
-        "description": "Execute an API deployment against one or more files.",
+        "description": "Execute an API deployment against one or more documents.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
         "operationId": "execute",
         "parameters": [
           {
@@ -299,6 +343,7 @@
             "name": "api_name",
             "required": true,
             "schema": {
+              "pattern": "^[\\w-]+$",
               "type": "string"
             }
           },
@@ -308,6 +353,7 @@
             "name": "org_name",
             "required": true,
             "schema": {
+              "pattern": "^[\\w-]+$",
               "type": "string"
             }
           }
@@ -332,6 +378,56 @@
             },
             "description": ""
           },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The API key is not valid."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No API key was supplied."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No such active deployment."
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The deployment has no active API key."
+          },
           "422": {
             "content": {
               "application/json": {
@@ -341,6 +437,16 @@
               }
             },
             "description": ""
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many concurrent executions; retry later."
           },
           "500": {
             "content": {
@@ -355,80 +461,11 @@
         },
         "security": [
           {
-            "cookieAuth": []
-          },
-          {
-            "basicAuth": []
+            "deploymentKey": []
           }
         ],
         "tags": [
           "deployment"
-        ]
-      }
-    },
-    "/deployment/api/{org_name}/{api_name}/mcp/": {
-      "get": {
-        "description": "Refuse the SSE stream, but say who is here.\n\nUnder Streamable HTTP a client issues GET to open a server-to-client\nSSE stream, and a server that offers none must answer 405 (spec rev\n2025-06-18). Nothing here pushes messages \u2014 every tool call is\nrequest/response \u2014 so 405 is the honest answer, and returning\n``200 application/json`` instead would leave a conformant client\nparsing an identity document as an event stream.\n\nThe body is kept anyway: uptime checks and humans with curl probe this\npath, and a 405 may carry one. It stays deliberately free of tenant\ndetail \u2014 it reveals only that an MCP server is mounted here.\n\n``JsonResponse``, not DRF's ``Response``, for the same reason ``post``\nuses it: a DRF response runs content negotiation, so a client sending\n``Accept: text/html`` would be handed the browsable-API renderer.\n\nNo ``Allow`` header is set here. RFC 9110 asks for one on a 405, but a\nhandler cannot control it and pretending otherwise misleads a reader:\nDRF's ``finalize_response`` overwrites any handler-set value with\n``self.allowed_methods`` (``GET, POST, HEAD, OPTIONS``, since this view\ndefines both verbs), and ``RemoveAllowHeaderMiddleware`` \u2014 global in\n``MIDDLEWARE`` \u2014 then pops the header from every response before it\nleaves the process. So a client sees no ``Allow`` at all; a test driving\nthe view through ``APIRequestFactory`` bypasses that middleware and sees\nDRF's value.",
-        "operationId": "mcp_retrieve",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "api_name",
-            "required": true,
-            "schema": {
-              "pattern": "^[\\w-]+$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "org_name",
-            "required": true,
-            "schema": {
-              "pattern": "^[\\w-]+$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "No response body"
-          }
-        },
-        "tags": [
-          "mcp"
-        ]
-      },
-      "post": {
-        "description": "Handle a single JSON-RPC request.",
-        "operationId": "mcp_create",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "api_name",
-            "required": true,
-            "schema": {
-              "pattern": "^[\\w-]+$",
-              "type": "string"
-            }
-          },
-          {
-            "in": "path",
-            "name": "org_name",
-            "required": true,
-            "schema": {
-              "pattern": "^[\\w-]+$",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "No response body"
-          }
-        },
-        "tags": [
-          "mcp"
         ]
       }
     }

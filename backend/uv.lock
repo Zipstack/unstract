@@ -3773,7 +3773,7 @@ requires-dist = [
     { name = "django-redis", specifier = "==5.4.0" },
     { name = "django-tenants", specifier = "==3.5.0" },
     { name = "djangorestframework", specifier = "==3.17.1" },
-    { name = "drf-spectacular", specifier = ">=0.28.0" },
+    { name = "drf-spectacular", specifier = "==0.30.0" },
     { name = "drf-standardized-errors", specifier = ">=0.12.6" },
     { name = "drf-yasg", specifier = ">=1.21.8" },
     { name = "google-cloud-recaptcha-enterprise", specifier = ">=1.28.2" },
