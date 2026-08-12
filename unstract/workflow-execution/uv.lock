@@ -1861,6 +1861,7 @@ version = "0.0.1"
 source = { editable = "../core" }
 dependencies = [
     { name = "httpx" },
+    { name = "idna" },
     { name = "kombu" },
     { name = "redis" },
     { name = "requests" },
@@ -1870,6 +1871,7 @@ dependencies = [
 requires-dist = [
     { name = "flask", marker = "extra == 'flask'", specifier = "~=3.1.3" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "idna", specifier = ">=3.0" },
     { name = "kombu", specifier = "~=5.5.3" },
     { name = "redis", specifier = "~=5.2.1" },
     { name = "requests", specifier = "==2.33.0" },
@@ -2025,6 +2027,7 @@ dependencies = [
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
     { name = "unstract-flags" },
+    { name = "unstract-sdk1" },
     { name = "unstract-tool-registry" },
     { name = "unstract-tool-sandbox" },
 ]
@@ -2034,6 +2037,7 @@ requires-dist = [
     { name = "unstract-core", editable = "../core" },
     { name = "unstract-filesystem", editable = "../filesystem" },
     { name = "unstract-flags", editable = "../flags" },
+    { name = "unstract-sdk1", editable = "../sdk1" },
     { name = "unstract-tool-registry", editable = "../tool-registry" },
     { name = "unstract-tool-sandbox", editable = "../tool-sandbox" },
 ]
