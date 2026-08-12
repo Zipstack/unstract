@@ -97,6 +97,25 @@ class NotificationSerializerUrlTest(SimpleTestCase):
         data = {"pipeline": Mock(), "authorization_type": "NONE", "max_retries": 2}
         assert serializer.validate(data) == data
 
+    def test_patch_switching_a_url_less_record_to_webhook_is_rejected(self):
+        """``self.partial`` alone is the wrong gate for the required-URL check.
+
+        Turning an existing URL-less notification into a WEBHOOK creates a
+        destination-less webhook just as surely as a create does, so the type
+        change has to be checked as well as ``partial``.
+        """
+        instance = Mock(api=None, notification_type="EMAIL", url=None)
+        serializer = NotificationSerializer(instance=instance, partial=True)
+
+        data = {
+            "pipeline": Mock(),
+            "authorization_type": "NONE",
+            "notification_type": "WEBHOOK",
+        }
+        with self.assertRaises(ValidationError) as caught:
+            serializer.validate(data)
+        assert "url" in caught.exception.detail
+
     def test_patch_that_omits_url_is_not_revalidated(self):
         """A PATCH touching other fields must not re-resolve the stored URL.
 
