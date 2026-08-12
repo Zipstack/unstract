@@ -189,12 +189,13 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
 def test_minimax_m2_uses_always_on_thinking_without_request_parameter() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
-    assert validated["thinking"] is None
+    assert "thinking" not in validated
+    assert "thinking" not in MiniMaxLLMParameters.validate(dict(validated))
 
     explicitly_enabled = MiniMaxLLMParameters.validate(
         {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": True}
     )
-    assert explicitly_enabled["thinking"] is None
+    assert "thinking" not in explicitly_enabled
 
 
 def test_minimax_m2_rejects_configurable_thinking_payload() -> None:
@@ -341,13 +342,25 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
     ]
     assert schema["allOf"][0]["then"]["properties"]["enable_thinking"] == {"const": True}
     validator = Draft202012Validator(schema)
-    m2_config = {
+    config = {
         "adapter_name": "m2",
         "api_key": "k",
-        "model": "MiniMax-M2.7",
     }
-    assert not list(validator.iter_errors({**m2_config, "enable_thinking": True}))
-    assert list(validator.iter_errors({**m2_config, "enable_thinking": False}))
+    for model in (
+        "MiniMax-M2.7",
+        "minimax-m2.7",
+        "minimax/MiniMax-M2.7",
+        "anthropic/minimax-m2.7",
+    ):
+        m2_config = {**config, "model": model}
+        assert not list(validator.iter_errors({**m2_config, "enable_thinking": True}))
+        assert list(validator.iter_errors({**m2_config, "enable_thinking": False}))
+
+    assert not list(
+        validator.iter_errors(
+            {**config, "model": "MiniMax-M20", "enable_thinking": False}
+        )
+    )
     assert "reasoning_effort" not in json.dumps(schema)
 
 

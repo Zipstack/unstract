@@ -81,7 +81,7 @@
       "if": {
         "properties": {
           "model": {
-            "pattern": "^MiniMax-M2(?:$|[.-])"
+            "pattern": "^(?:(?:minimax|anthropic)/)?[Mm][Ii][Nn][Ii][Mm][Aa][Xx]-[Mm]2(?:$|[.-])"
           }
         },
         "required": [

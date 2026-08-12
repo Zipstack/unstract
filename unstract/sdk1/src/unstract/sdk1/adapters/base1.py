@@ -568,14 +568,14 @@ def _minimax_context_window(model_id: str) -> int | None:
 def _normalize_minimax_thinking(
     adapter_metadata: dict[str, "Any"], model_id: str
 ) -> None:
+    is_m2_model = _is_minimax_m2_model(model_id)
     if "enable_thinking" in adapter_metadata:
         enable_thinking = adapter_metadata.pop("enable_thinking")
         if not isinstance(enable_thinking, bool):
             raise ValueError("enable_thinking must be a boolean.")
-        if _is_minimax_m2_model(model_id):
-            if not enable_thinking:
-                raise ValueError(f"{model_id} does not support disabling thinking.")
-        else:
+        if is_m2_model and not enable_thinking:
+            raise ValueError(f"{model_id} does not support disabling thinking.")
+        if not is_m2_model:
             adapter_metadata["thinking"] = {
                 "type": "adaptive" if enable_thinking else "disabled"
             }
@@ -583,7 +583,7 @@ def _normalize_minimax_thinking(
     thinking = adapter_metadata.get("thinking")
     if thinking is None:
         return
-    if _is_minimax_m2_model(model_id):
+    if is_m2_model:
         raise ValueError(
             f"{model_id} uses always-on thinking and does not accept "
             "thinking configuration."
@@ -634,6 +634,8 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
         _normalize_minimax_thinking(adapter_metadata, model_id)
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
+        if _is_minimax_m2_model(model_id):
+            validated.pop("thinking", None)
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
         if context_window := _minimax_context_window(model_id):
             validated["context_window"] = context_window
