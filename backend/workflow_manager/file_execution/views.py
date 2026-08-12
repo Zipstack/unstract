@@ -23,9 +23,8 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         execution_id = self.kwargs.get("pk")
 
-        # Same execution id, same screen, same gate as ``<pk>/logs/`` (UN-2651).
-        # ``status_msg`` resolves to the latest ``ExecutionLog.data["log"]``, so
-        # this response carries log text as well as file names and errors.
+        # Same id and same data class as ``<pk>/logs/`` — ``status_msg`` carries
+        # log text — so the same gate applies (UN-2651).
         assert_execution_accessible(self.request.user, execution_id)
 
         # Subquery to get latest non-DEBUG/WARN log data per file execution

@@ -34,8 +34,7 @@ _ADMIN_PREDICATE = (
 
 class SharedExecutionAccessTests(GroupSharingTestBase):
     """``self.member`` belongs to ``self.group``; ``self.outsider`` is an org
-    member with no share of any kind. ``self.owner`` owns every fixture in org A
-    (the cross-org test builds its own, deliberately unowned).
+    member with no share of any kind. ``self.owner`` owns the org A fixtures.
     """
 
     def setUp(self) -> None:
@@ -54,8 +53,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
             created_by=self.owner,
             shared_to_org=shared_to_org,
         )
-        # Creator access flows through an OWNER row, not ``created_by`` (UN-2202);
-        # mirrors what ``APIDeploymentViewSet.create`` does after ``perform_create``.
+        # Creator access flows through an OWNER row, not ``created_by`` (UN-2202).
         deployment.memberships.create(user=self.owner, role=ResourceRole.OWNER)
         return deployment
 
@@ -98,7 +96,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         )
 
     def _log_queryset(self, user, execution_id):
-        """Run the log viewset's queryset build for ``user`` — the access gate."""
+        """Run the log viewset's queryset build for ``user``."""
         request = APIRequestFactory().get("/")
         request.user = user
         view = WorkflowExecutionLogViewSet()
@@ -117,9 +115,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
 
     def test_unshared_deployment_is_visible_only_to_its_owner(self) -> None:
         execution = self._execution(self._api_deployment())
-        # The owner assertion is what makes the denial below a real control:
-        # without the OWNER membership row the deployment would be visible to
-        # nobody, and the denial would pass with the sharing filter deleted.
+        # Positive control: without it the denial passes even with no filter.
         self.assertTrue(self._visible_to(self.owner, execution))
         self.assertFalse(self._visible_to(self.outsider, execution))
 
@@ -164,11 +160,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         self.assertTrue(self._visible_to(self.outsider, shared))
 
     def test_workflow_share_does_not_expose_unshared_deployment_runs(self) -> None:
-        """Pins the ``pipeline_id__isnull=True`` conjunct on the workflow branch.
-
-        Workflow access must not leak into runs of a deployment that was
-        deliberately not shared — the "every path has to be revoked" behaviour.
-        """
+        """Workflow access must not leak into runs of an unshared deployment."""
         deployment = self._api_deployment()  # shared with nobody
         execution = self._execution(deployment)
         self._share_with_group(self.workflow)
@@ -177,18 +169,15 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         self.assertFalse(self._visible_to(self.member, execution))
 
     def test_deployment_share_does_not_expose_workflow_level_runs(self) -> None:
-        """The other half: a deployment share says nothing about the workflow's
-        own runs, which is why the two branches are not symmetric.
+        """The other direction: a deployment share says nothing about the
+        workflow's own runs.
         """
         deployment = self._api_deployment(shared_to_org=True)
         self.assertTrue(self._visible_to(self.outsider, self._execution(deployment)))
         self.assertFalse(self._visible_to(self.outsider, self._execution()))
 
     def test_org_wide_share_does_not_cross_organizations(self) -> None:
-        """``shared_to_org`` means *this* org — the tenant boundary for
-        ``/execution/`` is the manager, since the view drops the org filter
-        backend.
-        """
+        """``shared_to_org`` means *this* org."""
         other_org = Organization.objects.create(
             name="org-b", display_name="Org B", organization_id="org-b"
         )
@@ -211,8 +200,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
             status=ExecutionStatus.COMPLETED,
         )
 
-        # Control: the same shape inside org A *is* visible, so the denial below
-        # is about the org boundary and not about the fixture being malformed.
+        # Control: the same shape inside org A is visible.
         local = self._execution(self._api_deployment(shared_to_org=True))
         self.assertTrue(self._visible_to(self.outsider, local))
 
@@ -282,8 +270,8 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         return view(request, pk=str(execution_id))
 
     def test_file_executions_follow_the_same_gate_as_the_logs(self) -> None:
-        """``<id>/files/`` carries file names, per-file errors and the latest log
-        line for the same id — 403 on logs and 200 here would defeat the point.
+        """``<id>/files/`` carries log text for the same id, so it must not
+        answer 200 where the logs answer 403.
         """
         execution = self._execution(self._api_deployment())
         self.assertEqual(self._call_files(self.outsider, execution.id).status_code, 403)
@@ -292,7 +280,7 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         self.assertEqual(self._call_files(self.outsider, shared.id).status_code, 200)
 
     def test_workflow_execution_list_is_scoped_to_accessible_workflows(self) -> None:
-        """``/workflow/<id>/execution/`` had the same dead ``IsOwner`` gate."""
+        """The execution list is scoped the same way as the logs."""
         execution = self._execution()  # workflow-level, owner-only
 
         view = WorkflowExecutionViewSet.as_view({"get": "list"})
@@ -308,12 +296,10 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
 class ExecutionBypassRoleTests(GroupSharingTestBase):
     """The two branches that skip sharing entirely.
 
-    The admin predicate is patched to a deterministic one — only ``self.admin``
-    — rather than left to resolve for real: the admin *role string* belongs to
-    the active authentication plugin (OSS reads ``"admin"``, the auth0 plugin
-    reads ``"unstract_admin"``), so a test that depended on it would pass in OSS
-    CI and fail on any checkout carrying the plugin. What is under test here is
-    what ``for_user`` does once the predicate is True.
+    The admin predicate is patched rather than resolved for real: the admin role
+    string comes from the active authentication plugin, so resolving it makes
+    the result depend on which plugins are installed. Under test is what
+    ``for_user`` does once the predicate is True.
     """
 
     def setUp(self) -> None:
@@ -348,9 +334,7 @@ class ExecutionBypassRoleTests(GroupSharingTestBase):
         self.assertTrue(self._visible_to(service, self._execution()))
 
     def test_bypass_roles_stay_inside_the_current_organization(self) -> None:
-        """The org filter in ``_org_scoped`` is the only tenant boundary these
-        two branches have — the view drops ``OrganizationFilterBackend``.
-        """
+        """The org filter is the only tenant boundary these two branches have."""
         other_org = Organization.objects.create(
             name="org-c", display_name="Org C", organization_id="org-c"
         )

@@ -27,12 +27,8 @@ MAX_SYNC_EXPORT_ROWS = 50_000
 
 
 class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
-    # Read-only on purpose. ``create`` is the one write handler that never calls
-    # ``get_queryset``, so it would sit outside the gate below entirely; the rest
-    # would run the gate but have nothing legitimate to do. ``ExecutionLog`` rows
-    # are written by the ``consume_log_history`` Celery task, and the serializer
-    # is ``fields = "__all__"`` — ``data`` and ``event_time`` are not
-    # ``editable=False``, so a write verb would expose both.
+    # Read-only: rows are written by the log-consumer task, and ``create`` is the
+    # one handler that would skip the gate in ``get_queryset``.
     versioning_class = URLPathVersioning
     permission_classes = [IsAuthenticated]
     serializer_class = WorkflowExecutionLogSerializer
@@ -44,16 +40,12 @@ class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self) -> QuerySet:
         execution_id = self.kwargs.get("pk")
 
-        # The URL's execution id is all that addresses these logs, so it is what
-        # gets authorized — same gate as ``<pk>/files/`` (UN-2651).
+        # The execution id in the URL is all that addresses these logs (UN-2651).
         assert_execution_accessible(self.request.user, execution_id)
 
-        # ``execution_id`` is the deprecated pre-``wf_execution`` column, kept for
-        # rows written before the FK existed. In request context it matches
-        # nothing: ``OrgAwareManager`` joins the org through ``wf_execution``, so
-        # the legacy-only rows this branch targets are dropped before the OR is
-        # evaluated. It stays for the unscoped contexts (Celery, shell) and goes
-        # when those rows are rotated out.
+        # ``execution_id`` is the deprecated pre-``wf_execution`` column. Org
+        # scoping joins through ``wf_execution``, so this term matches nothing in
+        # request context; it stays until those rows are rotated out.
         return ExecutionLog.objects.filter(
             Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )

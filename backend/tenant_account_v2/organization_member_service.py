@@ -9,10 +9,8 @@ from tenant_account_v2.models import OrganizationMember
 logger = logging.getLogger(__name__)
 
 # Memo for the admin predicate, set on the ``User`` instance as
-# ``(organization_identifier, is_admin)``. The answer is a function of the user
-# *and* the current org — ``OrganizationMember.objects`` is org-scoped — and
-# ``set_user_organization`` can move a live ``request.user`` between orgs, so the
-# org id is part of the key rather than an assumption about instance lifetime.
+# ``(organization_identifier, is_admin)``. The answer depends on the org, and a
+# live user can be moved between orgs, so the org id is part of the key.
 _ADMIN_MEMO_ATTR = "_unstract_is_org_admin"
 
 
@@ -32,10 +30,9 @@ class OrganizationMemberService:
         path in the relevant permissions / managers. Returns False on any
         lookup failure (anonymous user, no membership row, DB unavailable).
 
-        The result is memoized on ``user``, keyed by the current organization:
-        ``WorkflowExecutionManager.for_user`` resolves this predicate and then
-        delegates to three resource managers that each re-resolve it, which was
-        four uncached membership lookups per call on a polled endpoint.
+        The result is memoized on ``user``, keyed by the current organization —
+        execution filtering resolves this predicate four times per call
+        otherwise, on a polled endpoint.
         """
         if not user or not getattr(user, "is_authenticated", False):
             return False

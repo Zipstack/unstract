@@ -44,9 +44,8 @@ class WorkflowExecutionManager(BaseModelManager):
         4. Neither shared -> User cannot see executions
 
         Service accounts and org admins see every execution in the current
-        organization. That org scoping is enforced here, not by the view:
-        ``ExecutionViewSet`` replaces ``filter_backends``, which drops
-        ``OrganizationFilterBackend``.
+        organization. This manager is the only org scoping on that path — the
+        view drops the organization filter backend.
 
         Args:
             user: The user to filter executions for
@@ -61,11 +60,8 @@ class WorkflowExecutionManager(BaseModelManager):
             return self._org_scoped("org admin", user)
 
         # Defer to each resource's own ``for_user`` so execution visibility matches
-        # the resource list: memberships, group shares and ``shared_to_org``
-        # (UN-2651). Those managers org-scope themselves via ``UserContext``, so
-        # this is meaningful on request paths only. Off the request path they
-        # resolve to ``organization_id IS NULL`` rather than to nothing, which
-        # matches orphan rows — call ``for_user`` from a request, not a worker.
+        # the resource lists (UN-2651). Those managers scope by the org in
+        # context, so call this from a request, not a worker.
         workflow_filter = Q(workflow_id__in=Workflow.objects.for_user(user).values("pk"))
 
         # Filter for API deployments the user can access
@@ -87,10 +83,8 @@ class WorkflowExecutionManager(BaseModelManager):
     def _org_scoped(self, actor: str, user) -> QuerySet:
         """Every execution in the current organization, for the bypass roles.
 
-        Fails closed when there is no organization in context. This used to be
-        ``self.all()`` — every execution in every tenant — which is unreachable
-        from the three request-path callers but is a bad default for a manager
-        the view now trusts as its only tenant boundary.
+        Fails closed with no organization in context, rather than returning
+        every tenant's executions.
         """
         org = UserContext.get_organization()
         if org:

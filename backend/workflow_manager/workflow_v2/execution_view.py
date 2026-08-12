@@ -20,11 +20,8 @@ class WorkflowExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         # Get the uuid:pk from the URL path
         workflow_id = self.kwargs.get("pk")
-        # ``IsOwner`` used to stand here, but it only implements
-        # ``has_object_permission``, which DRF never invokes on ``list`` — the
-        # same dead gate this PR removes from the log viewset. ``for_user`` is
-        # the real one: without it any org member could enumerate every
-        # execution of a workflow never shared with them (UN-2651).
+        # ``for_user`` is the gate — an object-level permission class does not
+        # run on ``list`` (UN-2651).
         queryset = (
             WorkflowExecution.objects.for_user(self.request.user)
             .filter(workflow_id=workflow_id)
