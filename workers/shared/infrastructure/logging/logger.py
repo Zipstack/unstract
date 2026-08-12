@@ -33,6 +33,12 @@ class LogContext:
     organization_id: str | None = None
     correlation_id: str | None = None
     request_id: str | None = None
+    # True only when request_id came from an upstream message header (a genuine
+    # cross-service correlation id), not a locally-derived payload id or the
+    # task_id fallback. Gates worker->worker re-propagation so a fallback id is
+    # never stamped onto child tasks (which would override their own
+    # file_execution_id correlation).
+    request_id_propagatable: bool = False
 
 
 class RequestIDFilter(logging.Filter):
@@ -728,40 +734,55 @@ def _bind_task_context(task_id, task, args, kwargs, **_):
     """Celery ``task_prerun`` handler: bind request_id onto the log context.
 
     Resolution order: an explicit request_id propagated on the message headers
-    (cross-service correlation), then a payload-derived id
-    (``_extract_request_id``), then the Celery ``task_id``.
+    (genuine cross-service correlation), then a payload-derived id
+    (``_extract_request_id``), then the Celery ``task_id``. Only the first
+    (header) source is marked propagatable, so a locally-derived fallback is
+    never re-stamped onto child tasks.
 
-    Catches any extraction failure so a malformed payload can never leave
-    the previous task's id bound on the thread.
+    The whole resolution runs inside the ``try`` so a malformed payload -- or a
+    surprising ``task.request`` -- can never raise and leave the previous task's
+    id bound on the thread.
     """
-    request_id = _request_id_from_message(task)
-    if not request_id:
-        try:
+    propagatable = False
+    try:
+        request_id = _request_id_from_message(task)
+        if request_id:
+            propagatable = True
+        else:
             request_id = _extract_request_id(args or (), kwargs or {}, task)
-        except Exception:
-            logging.getLogger(__name__).debug(
-                "request_id extraction failed for task %s; falling back to task_id",
-                task_id,
-                exc_info=True,
-            )
-            request_id = None
+    except Exception:
+        logging.getLogger(__name__).debug(
+            "request_id extraction failed for task %s; falling back to task_id",
+            task_id,
+            exc_info=True,
+        )
+        request_id = None
     request_id = request_id or task_id
-    WorkerLogger.update_context(request_id=request_id, task_id=task_id)
+    WorkerLogger.update_context(
+        request_id=request_id,
+        task_id=task_id,
+        request_id_propagatable=propagatable,
+    )
 
 
 def _propagate_request_id_on_publish(headers=None, **_):
     """Celery ``before_task_publish`` handler (worker side): forward the current
     request_id onto tasks this worker publishes.
 
-    Keeps the correlation id flowing across worker->worker task chains (e.g. a
-    file-processing task enqueuing a callback). Reads the request_id bound onto
-    the thread-local log context by ``_bind_task_context``; no-ops when absent
-    or when the caller already set the header.
+    Keeps a genuine cross-service correlation id flowing across worker->worker
+    task chains (e.g. a file-processing task enqueuing a callback). Only
+    propagates when the current id came from an upstream header
+    (``request_id_propagatable``) -- never a locally-derived payload id or the
+    ``task_id`` fallback, which would otherwise override the child task's own
+    ``file_execution_id`` correlation (e.g. for beat/scheduler-originated
+    pipelines). No-ops when absent or when the caller already set the header.
     """
     if headers is None or headers.get("request_id"):
         return
     ctx = WorkerLogger.get_context()
-    request_id = _coerce_id(getattr(ctx, "request_id", None)) if ctx else None
+    if not ctx or not getattr(ctx, "request_id_propagatable", False):
+        return
+    request_id = _coerce_id(getattr(ctx, "request_id", None))
     if request_id:
         headers["request_id"] = request_id
 
@@ -773,7 +794,9 @@ def _clear_task_context(**_):
     ``WorkerLogger.configure()``; only nulls out the per-task fields bound
     in ``_bind_task_context``.
     """
-    WorkerLogger.update_context(request_id=None, task_id=None)
+    WorkerLogger.update_context(
+        request_id=None, task_id=None, request_id_propagatable=False
+    )
 
 
 @functools.lru_cache(maxsize=1)

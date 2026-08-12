@@ -276,7 +276,11 @@ CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
 CORS_ALLOW_ALL_ORIGINS = False
 
 # Request ID middleware settings
-LOG_REQUEST_ID_HEADER = "X-Request-ID"
+# django-log-request-id resolves this via request.META.get(...), where WSGI exposes
+# the incoming "X-Request-ID" header as the HTTP_-prefixed key HTTP_X_REQUEST_ID.
+# It MUST be the META key, not the raw header name, or the incoming id is never read
+# and a fresh one is minted on every request (breaking client/worker correlation).
+LOG_REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
 GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
 NO_REQUEST_ID = "-"

@@ -94,3 +94,12 @@ def register_request_id_middleware(app: Flask) -> None:
     @app.before_request
     def _assign_request_id() -> None:
         g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+
+    @app.after_request
+    def _echo_request_id(response):
+        # Echo the id back so a caller that did not supply one can learn the
+        # value this service minted (mirrors the backend's response header).
+        request_id = getattr(g, "request_id", None)
+        if request_id:
+            response.headers["X-Request-ID"] = request_id
+        return response
