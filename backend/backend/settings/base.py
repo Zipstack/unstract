@@ -661,7 +661,7 @@ REST_FRAMEWORK = {
 # project-wide DRF default, but DRF dereferences it only when a schema is
 # generated, so neither has an effect at request time.
 SPECTACULAR_SETTINGS = {
-    "TITLE": "Unstract Document Studio",
+    "TITLE": "Unstract API",
     "VERSION": "v1",
     "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
     "SERVE_INCLUDE_SCHEMA": False,

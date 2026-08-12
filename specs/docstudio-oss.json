@@ -168,7 +168,7 @@
     }
   },
   "info": {
-    "title": "Unstract Document Studio",
+    "title": "Unstract API",
     "version": "v1"
   },
   "openapi": "3.0.3",
