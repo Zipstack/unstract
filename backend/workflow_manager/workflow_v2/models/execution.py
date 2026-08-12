@@ -43,7 +43,10 @@ class WorkflowExecutionManager(BaseModelManager):
         3. Both shared -> User can see all executions
         4. Neither shared -> User cannot see executions
 
-        Service accounts see all executions (org-scoped by view).
+        Service accounts and org admins see every execution in the current
+        organization. That org scoping is enforced here, not by the view:
+        ``ExecutionViewSet`` replaces ``filter_backends``, which drops
+        ``OrganizationFilterBackend``.
 
         Args:
             user: The user to filter executions for
@@ -65,7 +68,9 @@ class WorkflowExecutionManager(BaseModelManager):
 
         # Defer to each resource's own ``for_user`` so execution visibility matches
         # the resource list: memberships, group shares and ``shared_to_org``
-        # (UN-2651). Those managers are org-scoped, so no explicit org arg.
+        # (UN-2651). Those managers org-scope themselves via ``UserContext``, so
+        # this is correct on request paths only — a worker or management command
+        # with no org context gets an empty queryset (fail-closed).
         workflow_filter = Q(workflow_id__in=Workflow.objects.for_user(user).values("pk"))
 
         # Filter for API deployments the user can access

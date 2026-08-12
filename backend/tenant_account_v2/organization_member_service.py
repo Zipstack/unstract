@@ -7,6 +7,12 @@ from tenant_account_v2.models import OrganizationMember
 
 logger = logging.getLogger(__name__)
 
+# Memo attribute for the admin predicate, set on the ``User`` instance. Django
+# rebuilds that instance per request, so the memo lives exactly one request —
+# the same lifetime as the ``request``-keyed cache in ``permissions.permission``,
+# which the model managers cannot reach.
+_ADMIN_MEMO_ATTR = "_unstract_is_org_admin"
+
 
 class OrganizationMemberService:
     @staticmethod
@@ -23,11 +29,19 @@ class OrganizationMemberService:
         Service accounts are not org admins — they have their own bypass
         path in the relevant permissions / managers. Returns False on any
         lookup failure (anonymous user, no membership row, DB unavailable).
+
+        The result is memoized on ``user`` for the life of that instance:
+        ``WorkflowExecutionManager.for_user`` resolves this predicate and then
+        delegates to three resource managers that each re-resolve it, which was
+        four uncached membership lookups per call on a polled endpoint.
         """
         if not user or not getattr(user, "is_authenticated", False):
             return False
         if getattr(user, "is_service_account", False):
             return False
+        memo = getattr(user, _ADMIN_MEMO_ATTR, None)
+        if memo is not None:
+            return memo
         try:
             member = OrganizationMember.objects.get(user=user.id)  # type: ignore
         except OrganizationMember.DoesNotExist:
@@ -42,7 +56,14 @@ class OrganizationMemberService:
         # Delegate so admin-role string handling matches the active auth plugin.
         from account_v2.authentication_controller import AuthenticationController
 
-        return AuthenticationController().is_admin_by_role(member.role)
+        is_admin = AuthenticationController().is_admin_by_role(member.role)
+        # Failure paths above deliberately stay uncached — a transient DB error
+        # must not pin this user to "not an admin" for the rest of the request.
+        try:
+            setattr(user, _ADMIN_MEMO_ATTR, is_admin)
+        except AttributeError:
+            pass  # Immutable user object (e.g. AnonymousUser subclass) — skip the memo.
+        return is_admin
 
     @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:

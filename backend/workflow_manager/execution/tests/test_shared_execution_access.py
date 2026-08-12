@@ -6,18 +6,22 @@ import secrets
 import uuid
 from unittest.mock import patch
 
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from permissions.roles import ResourceRole
+from pipeline_v2.models import Pipeline
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.test import APIRequestFactory
+from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import ResourceGroupShare
-from tenant_account_v2.tests import GroupSharingTestBase
+from tenant_account_v2.tests import GroupSharingTestBase, _add_viewers
 
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution_log_view import WorkflowExecutionLogViewSet
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 _ADMIN_PREDICATE = (
     "tenant_account_v2.organization_member_service."
@@ -27,7 +31,7 @@ _ADMIN_PREDICATE = (
 
 class SharedExecutionAccessTests(GroupSharingTestBase):
     """``self.member`` belongs to ``self.group``; ``self.outsider`` is an org
-    member with no share of any kind. Neither owns anything here.
+    member with no share of any kind. ``self.owner`` owns every fixture here.
     """
 
     def setUp(self) -> None:
@@ -39,29 +43,48 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
 
     def _api_deployment(self, *, shared_to_org: bool = False) -> APIDeployment:
         # api_name must be short — it defaults to a UUID longer than the column.
-        return APIDeployment.objects.create(
+        deployment = APIDeployment.objects.create(
             api_name=f"api-{secrets.token_hex(4)}",
             workflow=self.workflow,
             organization=self.org,
             created_by=self.owner,
             shared_to_org=shared_to_org,
         )
+        # Creator access flows through an OWNER row, not ``created_by`` (UN-2202);
+        # mirrors what ``APIDeploymentViewSet.perform_create`` does.
+        deployment.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        return deployment
 
-    def _execution(self, deployment: APIDeployment) -> WorkflowExecution:
+    def _pipeline(self, *, shared_to_org: bool = False) -> Pipeline:
+        pipeline = Pipeline.objects.create(
+            pipeline_name=f"pipe-{secrets.token_hex(4)}",
+            workflow=self.workflow,
+            organization=self.org,
+            created_by=self.owner,
+            shared_to_org=shared_to_org,
+        )
+        pipeline.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        return pipeline
+
+    def _execution(self, resource=None) -> WorkflowExecution:
+        """``resource=None`` builds a workflow-level execution (``pipeline_id``
+        NULL), which is the only shape that exercises the workflow branch of
+        ``for_user``.
+        """
         return WorkflowExecution.objects.create(
             workflow=self.workflow,
-            pipeline_id=deployment.id,
+            pipeline_id=resource.id if resource else None,
             execution_mode=WorkflowExecution.Mode.INSTANT,
             execution_method=WorkflowExecution.Method.DIRECT,
             execution_type=WorkflowExecution.Type.COMPLETE,
             status=ExecutionStatus.COMPLETED,
         )
 
-    def _share_with_group(self, deployment: APIDeployment) -> None:
+    def _share_with_group(self, resource) -> None:
         ResourceGroupShare.objects.create(
             group=self.group,
-            content_type=ContentType.objects.get_for_model(APIDeployment),
-            object_id=str(deployment.id),
+            content_type=ContentType.objects.get_for_model(type(resource)),
+            object_id=str(resource.pk),
             organization=self.org,
         )
 
@@ -79,6 +102,33 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         view.kwargs = {"pk": str(execution_id)}
         return view.get_queryset()
 
+    def _call(self, action: str, user, execution_id, **query):
+        """Drive the real endpoint, so ``dispatch`` translates the gate to HTTP."""
+        view = WorkflowExecutionLogViewSet.as_view({"get": action})
+        request = APIRequestFactory().get("/", query)
+        force_authenticate(request, user=user)
+        return view(request, pk=str(execution_id))
+
+    # --- visibility: who sees which executions ---------------------------------
+
+    def test_unshared_deployment_is_visible_only_to_its_owner(self) -> None:
+        execution = self._execution(self._api_deployment())
+        # The owner assertion is what makes the denial below a real control:
+        # without the OWNER membership row the deployment would be visible to
+        # nobody, and the denial would pass with the sharing filter deleted.
+        self.assertTrue(self._visible_to(self.owner, execution))
+        self.assertFalse(self._visible_to(self.outsider, execution))
+
+    def test_direct_viewer_sees_the_deployment_executions(self) -> None:
+        deployment = self._api_deployment()
+        _add_viewers(deployment, self.outsider)
+        self.assertTrue(self._visible_to(self.outsider, self._execution(deployment)))
+
+    def test_co_owner_sees_the_deployment_executions(self) -> None:
+        deployment = self._api_deployment()
+        deployment.memberships.create(user=self.member, role=ResourceRole.OWNER)
+        self.assertTrue(self._visible_to(self.member, self._execution(deployment)))
+
     def test_org_wide_share_exposes_the_deployment_executions(self) -> None:
         execution = self._execution(self._api_deployment(shared_to_org=True))
         self.assertTrue(self._visible_to(self.outsider, execution))
@@ -92,20 +142,61 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
         # Same org, not in the group — still nothing.
         self.assertFalse(self._visible_to(self.outsider, execution))
 
-    def test_unshared_deployment_stays_invisible(self) -> None:
-        execution = self._execution(self._api_deployment())
+    def test_workflow_level_execution_follows_the_workflow_share(self) -> None:
+        execution = self._execution()  # pipeline_id NULL
+        self.assertTrue(self._visible_to(self.owner, execution))
+        self.assertFalse(self._visible_to(self.member, execution))
+
+        self._share_with_group(self.workflow)
+        self.assertTrue(self._visible_to(self.member, execution))
         self.assertFalse(self._visible_to(self.outsider, execution))
+
+    def test_pipeline_execution_follows_the_pipeline_share(self) -> None:
+        private = self._execution(self._pipeline())
+        self.assertTrue(self._visible_to(self.owner, private))
+        self.assertFalse(self._visible_to(self.outsider, private))
+
+        shared = self._execution(self._pipeline(shared_to_org=True))
+        self.assertTrue(self._visible_to(self.outsider, shared))
+
+    def test_org_wide_share_does_not_cross_organizations(self) -> None:
+        """``shared_to_org`` means *this* org — the tenant boundary for
+        ``/execution/`` is the manager, since the view drops the org filter
+        backend.
+        """
+        other_org = Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
+        )
+        other_workflow = Workflow.objects.create(
+            workflow_name="wf-b", organization=other_org, created_by=self.owner
+        )
+        foreign = APIDeployment.objects.create(
+            api_name=f"api-{secrets.token_hex(4)}",
+            workflow=other_workflow,
+            organization=other_org,
+            created_by=self.owner,
+            shared_to_org=True,
+        )
+        execution = WorkflowExecution.objects.create(
+            workflow=other_workflow,
+            pipeline_id=foreign.id,
+            execution_mode=WorkflowExecution.Mode.INSTANT,
+            execution_method=WorkflowExecution.Method.DIRECT,
+            execution_type=WorkflowExecution.Type.COMPLETE,
+            status=ExecutionStatus.COMPLETED,
+        )
+
+        # UserContext still points at org A throughout.
+        self.assertFalse(self._visible_to(self.outsider, execution))
+        with self.assertRaises(PermissionDenied):
+            self._log_queryset(self.outsider, execution.id)
+
+    # --- the log endpoints ------------------------------------------------------
 
     def test_logs_denied_when_the_execution_is_not_accessible(self) -> None:
         execution = self._execution(self._api_deployment())
         with self.assertRaises(PermissionDenied):
             self._log_queryset(self.outsider, execution.id)
-
-    def test_logs_denied_when_the_execution_is_unknown(self) -> None:
-        # Same denial as an inaccessible execution — the response must not
-        # reveal which execution ids exist.
-        with self.assertRaises(PermissionDenied):
-            self._log_queryset(self.outsider, uuid.uuid4())
 
     def test_logs_readable_once_the_deployment_is_shared(self) -> None:
         execution = self._execution(self._api_deployment(shared_to_org=True))
@@ -113,3 +204,41 @@ class SharedExecutionAccessTests(GroupSharingTestBase):
             wf_execution=execution, data={"log": "hello"}, event_time=timezone.now()
         )
         self.assertIn(log, list(self._log_queryset(self.outsider, execution.id)))
+
+    def test_both_endpoints_return_403_for_an_inaccessible_execution(self) -> None:
+        execution = self._execution(self._api_deployment())
+        for action in ("list", "export"):
+            with self.subTest(action=action):
+                response = self._call(action, self.outsider, execution.id)
+                self.assertEqual(response.status_code, 403)
+
+    def test_both_endpoints_serve_a_shared_execution(self) -> None:
+        execution = self._execution(self._api_deployment(shared_to_org=True))
+        ExecutionLog.objects.create(
+            wf_execution=execution, data={"log": "hello"}, event_time=timezone.now()
+        )
+
+        listed = self._call("list", self.outsider, execution.id)
+        self.assertEqual(listed.status_code, 200)
+        listed.render()
+        self.assertIn(b"hello", listed.content)
+
+        exported = self._call(
+            "export", self.outsider, execution.id, file_format="csv"
+        )
+        self.assertEqual(exported.status_code, 200)
+        self.assertIn(b"hello", exported.content)
+
+    def test_unknown_execution_is_indistinguishable_from_an_inaccessible_one(
+        self,
+    ) -> None:
+        """An enumerator observes the response, not the exception — so the
+        status and body must match, not merely the exception type.
+        """
+        inaccessible = self._execution(self._api_deployment())
+        denied = self._call("list", self.outsider, inaccessible.id)
+        unknown = self._call("list", self.outsider, uuid.uuid4())
+
+        self.assertEqual(denied.status_code, 403)
+        self.assertEqual(unknown.status_code, denied.status_code)
+        self.assertEqual(unknown.data, denied.data)

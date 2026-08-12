@@ -27,7 +27,10 @@ logger = logging.getLogger(__name__)
 MAX_SYNC_EXPORT_ROWS = 50_000
 
 
-class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
+class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only on purpose: the access gate lives in ``get_queryset``, which write
+    # handlers never call. ``ExecutionLog`` rows are written by workers and their
+    # fields are ``editable=False``, so there is nothing to expose.
     versioning_class = URLPathVersioning
     permission_classes = [IsAuthenticated]
     serializer_class = WorkflowExecutionLogSerializer
