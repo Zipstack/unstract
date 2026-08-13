@@ -9,33 +9,39 @@ from .models import ProfileManager
 
 logger = logging.getLogger(__name__)
 
+# Adapter FK -> label shown on the Prompt Studio output tiles.
+ADAPTER_LABELS = (
+    (ProfileManagerKeys.LLM, "LLM"),
+    (ProfileManagerKeys.EMBEDDING_MODEL, "Embedding Model"),
+    (ProfileManagerKeys.VECTOR_STORE, "Vector Store"),
+    (ProfileManagerKeys.X2TEXT, "Text Extractor"),
+)
+
 
 class ProfileManagerSerializer(AuditSerializer):
     class Meta:
         model = ProfileManager
         fields = "__all__"
-        # View owns uniqueness (IntegrityError->DuplicateData on create); drop
-        # the DRF auto-validator that 400s on re-save / PUT before the view runs.
+        # Uniqueness is enforced by the view; the auto-validator 400s on re-save.
         validators = []
 
     def to_representation(self, instance):  # type: ignore
+        """Resolve the adapter FKs to the name, model and icon the UI renders.
+
+        Not filtered by adapter access - display data only, no credentials.
+        """
         rep: dict[str, str] = super().to_representation(instance)
-        llm = rep[ProfileManagerKeys.LLM]
-        embedding = rep[ProfileManagerKeys.EMBEDDING_MODEL]
-        vector_db = rep[ProfileManagerKeys.VECTOR_STORE]
-        x2text = rep[ProfileManagerKeys.X2TEXT]
-        if llm:
-            rep[ProfileManagerKeys.LLM] = AdapterProcessor.get_adapter_instance_by_id(llm)
-        if embedding:
-            rep[ProfileManagerKeys.EMBEDDING_MODEL] = (
-                AdapterProcessor.get_adapter_instance_by_id(embedding)
-            )
-        if vector_db:
-            rep[ProfileManagerKeys.VECTOR_STORE] = (
-                AdapterProcessor.get_adapter_instance_by_id(vector_db)
-            )
-        if x2text:
-            rep[ProfileManagerKeys.X2TEXT] = AdapterProcessor.get_adapter_instance_by_id(
-                x2text
-            )
+        conf: dict[str, str] = {}
+        for field, label in ADAPTER_LABELS:
+            adapter = getattr(instance, field, None)
+            if not adapter:
+                continue
+            icon, model = AdapterProcessor.get_display_info(adapter)
+            rep[field] = adapter.adapter_name
+            conf[label] = model
+            if field == ProfileManagerKeys.LLM:
+                rep["icon"] = icon
+        if conf:
+            conf["Profile Name"] = instance.profile_name
+        rep["conf"] = conf
         return rep

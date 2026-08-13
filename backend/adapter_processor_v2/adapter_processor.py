@@ -20,6 +20,7 @@ from unstract.sdk1.adapters.adapterkit import Adapterkit
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.constants import Common as common
 from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.llm import LLM
@@ -27,6 +28,8 @@ from unstract.sdk1.llm import LLM
 from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
+
+UNAVAILABLE_ADAPTER_ICON = "⚠️"
 
 try:
     from plugins.subscription.time_trials.subscription_adapter import add_unstract_key
@@ -108,6 +111,28 @@ class AdapterProcessor:
             )
             raise InValidAdapterId()
         return updated_adapters[0].get(key_value)
+
+    @staticmethod
+    def get_display_info(adapter: AdapterInstance) -> tuple[str, str]:
+        """Icon and model label for an adapter, as (icon, model).
+
+        Display data only, no credentials. Never raises - falls back to the
+        warning icon and the adapter id's provider prefix.
+        """
+        icon = UNAVAILABLE_ADAPTER_ICON
+        if adapter.is_available:
+            try:
+                icon = AdapterProcessor.get_adapter_data_with_key(
+                    adapter.adapter_id, common.ICON
+                )
+            except Exception as e:
+                logger.warning(f"No icon for adapter {adapter.adapter_id}: {e}")
+        try:
+            model = adapter.metadata.get("model")
+        except Exception as e:
+            logger.warning(f"No metadata for adapter {adapter.adapter_id}: {e}")
+            model = None
+        return icon, model or adapter.adapter_id.split("|")[0]
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
@@ -213,27 +238,6 @@ class AdapterProcessor:
                 raise e
             else:
                 raise InternalServiceError()
-
-    @staticmethod
-    def get_adapter_instance_by_id(adapter_instance_id: str) -> Adapter:
-        """Get the adapter instance by its ID.
-
-        Parameters:
-        - adapter_instance_id (str): The ID of the adapter instance.
-
-        Returns:
-        - Adapter: The adapter instance with the specified ID.
-
-        Raises:
-        - Exception: If there is an error while fetching the adapter instance.
-        """
-        try:
-            adapter = AdapterInstance.objects.get(id=adapter_instance_id)
-        except Exception as e:
-            logger.error(f"Unable to fetch adapter: {e}")
-        if not adapter:
-            logger.error("Unable to fetch adapter")
-        return adapter.adapter_name
 
     @staticmethod
     def get_adapters_by_type(

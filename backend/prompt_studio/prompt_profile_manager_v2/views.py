@@ -36,7 +36,10 @@ class ProfileManagerView(viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = ProfileManager.objects.for_user(self.request.user)
+        # Serializer reads all four adapters per profile for the display info
+        queryset = ProfileManager.objects.for_user(self.request.user).select_related(
+            "llm", "embedding_model", "vector_store", "x2text"
+        )
         filter_args = FilterHelper.build_filter_args(
             self.request,
             ProfileManagerKeys.CREATED_BY,
