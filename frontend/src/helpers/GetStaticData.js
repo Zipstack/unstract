@@ -476,6 +476,12 @@ const isNonNegativeNumber = (value) => {
   return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
+// Icons are image URLs, except the emoji fallbacks used for unavailable
+// adapters. Detect the URL rather than the emoji - compound (ZWJ) emoji break
+// length heuristics.
+const isImageUrl = (value) =>
+  typeof value === "string" && /^(https?:\/\/|\/|data:image\/)/.test(value);
+
 // Default token usage object with all counts initialized to 0
 const defaultTokenUsage = {
   embedding_tokens: 0,
@@ -780,7 +786,6 @@ export {
   formatSecondsToHMS,
   formatTimeDisplay,
   formattedDateTime,
-  timeAgo,
   formattedDateTimeWithSeconds,
   generateApiRunStatusId,
   generateCoverageKey,
@@ -797,6 +802,7 @@ export {
   getSequenceNumber,
   getTimeForLogs,
   homePagePath,
+  isImageUrl,
   isJson,
   isNonNegativeNumber,
   isValidJsonKey,
@@ -817,6 +823,7 @@ export {
   sourceTypes,
   THEME,
   TRIAL_PLAN,
+  timeAgo,
   titleCase,
   toolIdeOutput,
   UNSTRACT_ADMIN,

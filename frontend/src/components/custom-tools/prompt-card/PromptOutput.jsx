@@ -21,6 +21,7 @@ import { useState } from "react";
 import {
   displayPromptResult,
   generateApiRunStatusId,
+  isImageUrl,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
@@ -355,13 +356,19 @@ function PromptOutput({
                 >
                   <div className="llm-info">
                     <div className="llm-info-left">
-                      <Image
-                        src={profile?.icon}
-                        width={15}
-                        height={15}
-                        preview={false}
-                        className="prompt-card-llm-icon"
-                      />
+                      {isImageUrl(profile?.icon) ? (
+                        <Image
+                          src={profile?.icon}
+                          width={15}
+                          height={15}
+                          preview={false}
+                          className="prompt-card-llm-icon"
+                        />
+                      ) : (
+                        <span className="prompt-card-llm-icon">
+                          {profile?.icon}
+                        </span>
+                      )}
                       <Typography.Text
                         className="prompt-card-llm-title"
                         ellipsis={{ tooltip: profile?.conf?.LLM }}
