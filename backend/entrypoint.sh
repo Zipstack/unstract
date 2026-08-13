@@ -29,12 +29,18 @@ if [ "$migrate" = true ]; then
     .venv/bin/python manage.py migrate
 fi
 
-# Configure Gunicorn based on --dev flag
+# Configure Gunicorn based on --dev flag.
+# Threads must exceed the number of concurrently connected browser tabs: the
+# Socket.IO WSGI app runs with async_mode="threading", so each open WebSocket
+# holds one gthread pool thread for that connection's lifetime, not just for a
+# request. The pool spawns threads lazily, so a high ceiling is free at idle.
 gunicorn_args=(
     --bind 0.0.0.0:8000
-    --workers 2
-    --threads 2
-    --log-level debug
+    --workers "${GUNICORN_WORKERS:-2}"
+    --threads "${GUNICORN_THREADS:-512}"
+    --worker-class gthread
+    --worker-connections "${GUNICORN_WORKER_CONNECTIONS:-1000}"
+    --log-level "${DEFAULT_LOG_LEVEL:-INFO}"
     --timeout 600
     --access-logfile -
 )
