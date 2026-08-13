@@ -7,7 +7,7 @@ than in a client repo.
 
 import json
 
-from django.urls import reverse
+from django.urls import resolve, reverse
 from drf_spectacular.drainage import GENERATOR_STATS
 
 from api_v2.management.commands.generate_docstudio_spec import (
@@ -17,8 +17,27 @@ from api_v2.management.commands.generate_docstudio_spec import (
 )
 
 
+#: Keys under a path item that are operations. The rest -- `parameters`,
+#: `summary`, vendor extensions -- describe the path, not a call.
+_METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
+
+
 def _committed() -> dict:
     return json.loads(DEFAULT_OUT.read_text())
+
+
+def _operations(spec: dict) -> list[tuple[str, str, dict]]:
+    """Every (path, method, operation) the spec documents.
+
+    The spec grows an endpoint at a time, and a check written against exactly
+    one of them fails on the next addition without anything being wrong.
+    """
+    return [
+        (path, method, operation)
+        for path, path_item in spec["paths"].items()
+        for method, operation in path_item.items()
+        if method in _METHODS
+    ]
 
 
 def test_committed_spec_matches_the_code() -> None:
@@ -44,20 +63,22 @@ def test_spec_paths_are_the_urls_the_server_serves() -> None:
         "api_deployment_execution", kwargs={"org_name": "ORG", "api_name": "API"}
     )
     documented = [
-        path.replace("{org_name}", "ORG").replace("{api_name}", "API").rstrip("/")
+        path.replace("{org_name}", "ORG").replace("{api_name}", "API")
         for path in _committed()["paths"]
     ]
 
-    assert documented == [served.rstrip("/")]
+    assert served.rstrip("/") in [path.rstrip("/") for path in documented]
+    for path in documented:
+        # Raises Resolver404 if the spec documents a URL nothing answers.
+        resolve(path if path.endswith("/") else f"{path}/")
 
 
 def test_spec_documents_the_deployment_operations() -> None:
     spec = _committed()
-    (operations,) = spec["paths"].values()
+    documented = {operation["operationId"] for _, _, operation in _operations(spec)}
 
-    assert operations["post"]["operationId"] == "execute"
-    assert operations["get"]["operationId"] == "status"
-    assert [tag["name"] for tag in spec["tags"]] == ["deployment"]
+    assert {"execute", "status"} <= documented
+    assert "deployment" in [tag["name"] for tag in spec["tags"]]
 
 
 def test_operations_require_the_deployment_key() -> None:
@@ -67,21 +88,27 @@ def test_operations_require_the_deployment_key() -> None:
     scheme = spec["components"]["securitySchemes"]["deploymentKey"]
 
     assert (scheme["type"], scheme["scheme"]) == ("http", "bearer")
-    for operation in spec["paths"].values():
-        for method in ("get", "post"):
-            assert operation[method]["security"] == [{"deploymentKey": []}]
+    for path, method, operation in _operations(spec):
+        assert operation["security"] == [{"deploymentKey": []}], f"{method} {path}"
 
 
 def test_clients_can_branch_on_every_failure_they_will_see() -> None:
-    for method in ("get", "post"):
-        (operation,) = (ops[method] for ops in _committed()["paths"].values())
-        assert {"400", "401", "403", "404", "429", "500"} <= set(operation["responses"])
+    for path, method, operation in _operations(_committed()):
+        assert {"400", "401", "403", "404", "429", "500"} <= set(
+            operation["responses"]
+        ), f"{method} {path}"
 
 
 def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
     """The semantics that a status read destroys the result must reach the
     generated client, not live in a source comment."""
-    (status_op,) = (ops["get"] for ops in _committed()["paths"].values())
+    reads = [
+        operation
+        for _, _, operation in _operations(_committed())
+        if operation["operationId"] == "status"
+    ]
 
-    assert "one-shot" in status_op["description"]
-    assert status_op["responses"]["406"]["description"].strip()
+    assert reads
+    for status_op in reads:
+        assert "one-shot" in status_op["description"]
+        assert status_op["responses"]["406"]["description"].strip()
