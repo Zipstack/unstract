@@ -122,8 +122,11 @@ class AdapterProcessor:
         icon = UNAVAILABLE_ADAPTER_ICON
         if adapter.is_available:
             try:
-                icon = AdapterProcessor.get_adapter_data_with_key(
-                    adapter.adapter_id, common.ICON
+                icon = (
+                    AdapterProcessor.get_adapter_data_with_key(
+                        adapter.adapter_id, common.ICON
+                    )
+                    or UNAVAILABLE_ADAPTER_ICON
                 )
             except Exception as e:
                 logger.warning(f"No icon for adapter {adapter.adapter_id}: {e}")
