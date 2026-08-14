@@ -1,0 +1,112 @@
+{
+  "title": "OrcaRouter",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: orcarouter-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your OrcaRouter API key from [orcarouter.ai](https://www.orcarouter.ai). Keys begin with `sk-orca-`."
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "description": "The model slug as listed on [orcarouter.ai/models](https://www.orcarouter.ai/models). Examples: openai/gpt-5.5, anthropic/claude-opus-4.8, deepseek/deepseek-v4-flash"
+    },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://api.orcarouter.ai/v1",
+      "description": "OrcaRouter endpoint. Pre-filled with the default; change only if OrcaRouter moves the base URL."
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "default": 4096,
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default. Sent as `max_completion_tokens` when Enable Reasoning is on."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds."
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Toggle on for reasoning models to drop `temperature` and send `max_completion_tokens` and `reasoning_effort` via `extra_body` so the upstream API accepts them."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Sets the reasoning strength when Enable Reasoning is on."
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
+}
