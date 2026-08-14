@@ -955,3 +955,162 @@ def test_resolve_configfile_ignores_commented_section(tmp_path: Path) -> None:
     child.mkdir()
 
     assert cli._resolve_pytest_configfile(child) is None
+
+
+def _drive_cmd_report(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    reporting_groups: dict[str, int],
+    baseline_blob: str = '{"covered_paths": ["int-path"]}',
+    optional: bool = False,
+) -> tuple[int, dict[str, str]]:
+    """Drive ``cmd_report`` over one integration group covering ``int-path``.
+
+    ``reporting_groups`` maps group name -> failure count for the groups that
+    emitted junit this build. A group absent from it emitted nothing, standing
+    in for a tier the CI path filter skipped. ``baseline_blob`` is written as the
+    cached baseline verbatim, so a caller can hand over an unparseable one.
+    Returns the exit code and each path's final state.
+    """
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  int-g:\n"
+        "    tier: integration\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        f"    optional: {str(optional).lower()}\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text(
+        "version: 1\n"
+        "paths:\n"
+        "  - id: int-path\n"
+        "    description: covered only by the integration tier\n"
+        "    covered_by: [int-g]\n"
+    )
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+    # Coverage combining needs real .coverage files and is not under test here.
+    monkeypatch.setattr(cli_mod, "combine_and_report", lambda reports_dir: None)
+
+    def fake_parse_junit(name, tier, reports_dir):
+        if name not in reporting_groups:
+            return None
+        failed = reporting_groups[name]
+        return GroupResult(
+            name=name,
+            tier=tier,
+            exit_code=1 if failed else 0,
+            passed=0 if failed else 1,
+            failed=failed,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+
+    monkeypatch.setattr(cli_mod, "parse_junit", fake_parse_junit)
+
+    states: dict[str, str] = {}
+    real_evaluate = cp_mod.evaluate
+
+    def spy_evaluate(*args, **kwargs):
+        statuses = real_evaluate(*args, **kwargs)
+        states.update({s.path.id: s.state for s in statuses})
+        return statuses
+
+    monkeypatch.setattr(cli_mod.cp, "evaluate", spy_evaluate)
+
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    # Baseline says the path was green on main, which is what makes the
+    # not-covered-now decision a regression-or-gap question at all.
+    (reports_dir / "previous-summary.json").write_text(baseline_blob)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "report",
+            "combine",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(reports_dir / "previous-summary.json"),
+        ]
+    )
+    return cli_mod.cmd_report(args), states
+
+
+def test_cmd_report_skipped_tier_is_a_gap_not_a_regression(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A path filter can skip a whole tier, whose groups then emit no junit. Its
+    paths must degrade to ``gap``: nothing regressed, the tier never ran.
+    """
+    exit_code, states = _drive_cmd_report(tmp_path, monkeypatch, reporting_groups={})
+
+    assert states["int-path"] == "gap", (
+        "a path whose tier did not run must not be called a regression; "
+        f"got {states['int-path']}"
+    )
+    assert exit_code == 0
+
+
+def test_cmd_report_gates_on_a_real_regression(tmp_path: Path, monkeypatch) -> None:
+    """The covering group ran and went red, so the path really did regress.
+    Being the only cross-tier evaluation, ``cmd_report`` has to gate on it rather
+    than just render it into the comment.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path, monkeypatch, reporting_groups={"int-g": 1}
+    )
+
+    assert states["int-path"] == "regression"
+    assert exit_code == 1, (
+        "a regression must fail the report job, not just print into the comment"
+    )
+
+
+def test_cmd_report_does_not_gate_on_an_optional_group(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``optional`` groups are documented as non-blocking, and ``cmd_run`` honours
+    that. A red optional group must not reach the gate here through a regression,
+    or the two commands disagree about the same result.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path, monkeypatch, reporting_groups={"int-g": 1}, optional=True
+    )
+
+    assert states["int-path"] == "gap", (
+        f"an optional group's red result must not read as a regression; "
+        f"got {states['int-path']}"
+    )
+    assert exit_code == 0
+
+
+def test_cmd_report_gates_on_a_corrupt_baseline(tmp_path: Path, monkeypatch) -> None:
+    """An unreadable baseline leaves ``previously_covered`` empty, making the
+    regression state unreachable. Without gating on the corruption itself, the
+    job goes green with regression detection silently off.
+    """
+    exit_code, states = _drive_cmd_report(
+        tmp_path,
+        monkeypatch,
+        reporting_groups={"int-g": 1},
+        baseline_blob='{"covered_paths": ["int-pat',
+    )
+
+    assert states["int-path"] == "gap", (
+        "with no usable baseline the regression state is unreachable, which is "
+        "why the corrupt flag must gate on its own"
+    )
+    assert exit_code == 1
