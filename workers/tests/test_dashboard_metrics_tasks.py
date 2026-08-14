@@ -14,13 +14,23 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-# worker.py puts the worker directory on sys.path and loads tasks.py by file path, so
-# the module is importable by bare name at runtime. Mirror that here.
-_SCHEDULER_DIR = Path(__file__).resolve().parent.parent / "scheduler"
-if str(_SCHEDULER_DIR) not in sys.path:
-    sys.path.insert(0, str(_SCHEDULER_DIR))
+# Import via the PACKAGE, matching `scheduler/tasks.py`'s
+# `from scheduler import dashboard_metrics_tasks` (OSS 6397dd578) — which is the form
+# BOTH runtime mechanisms converge on: worker.py's by-path load of tasks.py still
+# resolves that import against /app, so `scheduler.dashboard_metrics_tasks` is the
+# single module object either way.
+#
+# The bare `import dashboard_metrics_tasks` used here previously mirrored only the
+# by-path load, and once tasks.py started importing the package form the two coexisted
+# as SEPARATE module objects with separate Celery registrations. Patching one left the
+# other live, so a test that believed it had mocked the HTTP client made a REAL request
+# and failed on DNS — but only when some earlier test in the run had already imported
+# `scheduler.tasks`, which is why it looked like flakiness rather than a wiring bug.
+_WORKERS_ROOT = Path(__file__).resolve().parent.parent
+if str(_WORKERS_ROOT) not in sys.path:
+    sys.path.insert(0, str(_WORKERS_ROOT))
 
-import dashboard_metrics_tasks as dmt  # noqa: E402
+from scheduler import dashboard_metrics_tasks as dmt  # noqa: E402
 
 _ENV = {
     "INTERNAL_API_BASE_URL": "http://backend:8000/internal",
