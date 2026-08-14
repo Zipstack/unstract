@@ -336,3 +336,48 @@ class TestDeleteMirror:
             pt.objects.get.return_value = MagicMock()
             sched.objects.filter.return_value.delete.side_effect = RuntimeError("db down")
             tasks.delete_periodic_task(_PIPELINE_ID)  # must not raise
+
+
+class TestResumeBaselinesInsteadOfCatchingUp:
+    """Re-enabling a paused schedule must resume at the next cron match, not fire now.
+
+    While a schedule is paused its `next_run_at` keeps drifting into the past, so the
+    PG tick's `next_run_at <= now()` matches on the very next pass and the pipeline runs
+    IMMEDIATELY on resume — the longer the pause, the more certain. NULL is the guard:
+    "record a baseline next tick, don't fire this cycle" (pg_queue/models.py:366).
+
+    Beat parity, not a new rule — DatabaseScheduler keeps no persisted next_run_at and
+    recomputes due-ness from the crontab each tick, so resume never produced a catch-up
+    run there. Observed on integration 2026-08-14: gallh_load_test fired ~2s after being
+    re-enabled, against a next_run_at two days old, on top of the operator's manual run.
+    """
+
+    def _run(self, fn):
+        with (
+            patch("scheduler.tasks.PeriodicTask") as pt,
+            patch("scheduler.tasks.PeriodicTasks"),
+            patch("scheduler.tasks.PipelineProcessor"),
+            patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+            patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
+        ):
+            pt.objects.get.return_value = MagicMock()
+            (
+                sched.objects.select_for_update.return_value.filter.return_value
+                .values_list.return_value.first.return_value
+            ) = False
+            sched.objects.filter.return_value.update.return_value = 1
+            fn(_PIPELINE_ID)
+            return sched.objects.filter.return_value.update.call_args.kwargs
+
+    def test_resume_clears_next_run_at(self):
+        kwargs = self._run(tasks.enable_task)
+        assert kwargs["enabled"] is True
+        assert kwargs["next_run_at"] is None
+
+    def test_pause_leaves_next_run_at_alone(self):
+        """Nothing fires while disabled, so there is nothing to guard against — and
+        clearing here would discard the value resume needs to baseline against.
+        """
+        kwargs = self._run(tasks.disable_task)
+        assert kwargs["enabled"] is False
+        assert "next_run_at" not in kwargs

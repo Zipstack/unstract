@@ -123,8 +123,27 @@ def _mirror_periodic_schedule_set_enabled(pipeline_id: str, enabled: bool) -> No
         # Bump updated_at explicitly: queryset .update() does NOT trigger the
         # field's auto_now, so without this a pause/resume would change enabled
         # without advancing the "last changed" timestamp.
+        updates: dict = {"enabled": enabled, "updated_at": timezone.now()}
+        if enabled:
+            # Resume → baseline instead of firing a stale next_run_at. While the
+            # schedule was paused its next_run_at kept drifting into the past, so the
+            # PG tick's `next_run_at <= now()` matches on the very next pass and the
+            # pipeline runs IMMEDIATELY on resume — the longer the pause, the more
+            # certain. NULL means "record a baseline next tick, don't fire this cycle"
+            # (pg_queue/models.py:366), which resumes at the next cron match instead.
+            #
+            # This is Beat parity, not a new rule: DatabaseScheduler holds no persisted
+            # next_run_at and recomputes due-ness from the crontab each tick, so
+            # re-enabling never produced a catch-up run there. Observed on integration
+            # 2026-08-14: gallh_load_test fired ~2s after being re-enabled, against a
+            # next_run_at two days old.
+            #
+            # Safe to do unconditionally here: this helper is reached only from
+            # enable_task/disable_task (an explicit pause/resume), never from the
+            # per-save path — so it cannot re-baseline mid-cycle and skip a fire.
+            updates["next_run_at"] = None
         matched = PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(
-            enabled=enabled, updated_at=timezone.now()
+            **updates
         )
         if matched == 0:
             # No mirror row — e.g. a pipeline scheduled before this shipped, or

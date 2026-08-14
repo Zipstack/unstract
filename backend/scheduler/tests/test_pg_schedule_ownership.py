@@ -124,18 +124,26 @@ class TestReconcileOwnership:
             PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
         )
 
-    def test_pg_owned_does_not_clear_next_run(self):
+    def test_an_ALREADY_pg_owned_schedule_does_not_clear_next_run(self):
+        """Narrowed: this is the True→True case, not "adopt never clears".
+
+        Hand-over now DOES baseline (see TestNextRunBaselineOnTransition) — a
+        next_run_at surviving adoption fires the pipeline immediately. What must not
+        happen is re-baselining a schedule that was already PG-owned: reconcile runs on
+        every pipeline save, so a save at 12:07:59 would push a 12:08 next_run_at out to
+        13:08 and skip that fire.
+
+        `was_pg_owned` is set explicitly — a bare MagicMock is truthy, so this would
+        otherwise pass for the wrong reason and keep passing if the scoping regressed.
+        """
         sched, pt, resolve, txn = self._patches(owner=True)
         with sched as Sched, pt, resolve, txn:
-            Sched.objects.filter.return_value.update.return_value = 1
+            qs = Sched.objects.filter.return_value
+            qs.values_list.return_value.first.return_value = True
+            qs.update.return_value = 1
             ownership.reconcile_ownership_for(_PID, _ORG, active=True)
 
-        # An active PG-owned schedule must NOT have its next_run_at reset (that
-        # would re-baseline and skip a fire).
-        assert (
-            "next_run_at"
-            not in Sched.objects.filter.return_value.update.call_args.kwargs
-        )
+        assert "next_run_at" not in qs.update.call_args.kwargs
 
     def test_paused_pipeline_keeps_beat_disabled_even_if_not_pg_owned(self):
         sched, pt, resolve, txn = self._patches(owner=False)
@@ -401,3 +409,61 @@ class TestReconcileAtomicityRealDB:
         finally:
             RealPeriodicTask.objects.filter(name=pid).delete()
             PgPeriodicSchedule.objects.filter(pipeline_id=pid).delete()
+
+
+class TestNextRunBaselineOnTransition:
+    """An ownership or on/off change must never cause an immediate unscheduled run.
+
+    The PG tick selects `WHERE pg_owned AND enabled AND (next_run_at IS NULL OR
+    next_run_at <= now())`. A next_run_at left over from an earlier PG-ownership period
+    is already in the past, so the row fires on the very next pass. NULL is the guard —
+    "record a baseline next tick, don't fire this cycle" (pg_queue/models.py:366).
+
+    Observed on integration 2026-08-14: gallh_load_test carried
+    next_run_at=2026-08-12 06:08 and fired ~2s after being re-enabled — two days late,
+    on top of the operator's own manual run. Beat never did this: DatabaseScheduler
+    keeps no persisted next_run_at and recomputes due-ness from the crontab each tick,
+    so this is a PG-path regression against it, not a cosmetic difference.
+    """
+
+    def _reconcile(self, monkeypatch, *, was_pg_owned, now_pg_owned):
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        with (
+            patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
+            patch("scheduler.ownership.PeriodicTask"),
+            patch("scheduler.ownership.PeriodicTasks"),
+            patch(
+                "scheduler.ownership.transaction.atomic",
+                return_value=contextlib.nullcontext(),
+            ),
+            patch(
+                "scheduler.ownership.check_feature_flag_status",
+                return_value=now_pg_owned,
+            ),
+        ):
+            qs = Sched.objects.filter.return_value
+            qs.values_list.return_value.first.return_value = was_pg_owned
+            qs.update.return_value = 1
+            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+            return qs.update.call_args.kwargs
+
+    def test_handing_over_to_pg_baselines(self, monkeypatch):
+        # The bug: a stale next_run_at surviving adoption fires the pipeline at once.
+        updates = self._reconcile(monkeypatch, was_pg_owned=False, now_pg_owned=True)
+        assert updates["pg_owned"] is True
+        assert updates["next_run_at"] is None
+
+    def test_releasing_to_beat_still_baselines(self, monkeypatch):
+        updates = self._reconcile(monkeypatch, was_pg_owned=True, now_pg_owned=False)
+        assert updates["next_run_at"] is None
+
+    def test_an_unchanged_owner_is_NOT_re_baselined(self, monkeypatch):
+        """The reason this is scoped to the transition.
+
+        reconcile runs on every pipeline save. Clearing unconditionally would let a
+        save at 12:07:59 re-baseline a 12:08 next_run_at to 13:08 — silently skipping
+        that fire. Idempotent re-runs (every deploy) must leave the schedule alone.
+        """
+        updates = self._reconcile(monkeypatch, was_pg_owned=True, now_pg_owned=True)
+        assert "next_run_at" not in updates

@@ -199,12 +199,30 @@ def reconcile_ownership_for(
         pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
     try:
         with transaction.atomic():
+            was_pg_owned = (
+                PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id)
+                .values_list("pg_owned", flat=True)
+                .first()
+            )
             # queryset .update() doesn't fire auto_now, so bump updated_at
             # explicitly (mirrors _mirror_periodic_schedule_set_enabled).
             updates: dict = {"pg_owned": pg_owned, "updated_at": timezone.now()}
-            if not pg_owned:
-                # Back on Beat → clear the PG next-run so a future re-hand-over
-                # baselines instead of firing immediately on a stale timestamp.
+            # Baseline on an ownership CHANGE, in either direction. NULL means
+            # "record a baseline next tick, don't fire this cycle"
+            # (pg_queue/models.py:366), and that is the only thing standing between a
+            # hand-over and an immediate unscheduled run: the tick selects
+            # `WHERE pg_owned AND enabled AND (next_run_at IS NULL OR <= now())`, so a
+            # next_run_at left over from an earlier PG-ownership period is already in
+            # the past and fires at once. Observed on integration 2026-08-14 —
+            # gallh_load_test carried next_run_at=2026-08-12 06:08 from a stale row and
+            # fired ~2s after being re-enabled, two days late, alongside the operator's
+            # manual run.
+            #
+            # Scoped to the TRANSITION, not every call: this runs on every pipeline
+            # save, and clearing unconditionally would re-baseline mid-cycle — a save at
+            # 12:07:59 against a 12:08 next_run_at would skip that fire entirely.
+            handing_over_to_pg = pg_owned and not was_pg_owned
+            if not pg_owned or handing_over_to_pg:
                 updates["next_run_at"] = None
             # The mirror row exists from the dual-write / backfill; guard
             # anyway — a missing row means nothing to own yet.
