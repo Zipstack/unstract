@@ -233,13 +233,112 @@ class TestPgSchedulerGate:
             patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
             patch("scheduler.ownership.check_feature_flag_status", return_value=True),
         ):
+            # A CLEAN row: not pg_owned, so there is nothing to repair and the
+            # write-free path must be taken. Must be set explicitly — a bare
+            # MagicMock's .exists() is truthy, which would look like a stale row.
+            Sched.objects.filter.return_value.exists.return_value = False
             assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is False
 
         PT.objects.filter.assert_not_called()
         PTs.update_changed.assert_not_called()
-        # pg_owned is not set either — otherwise switching the PG scheduler on later
-        # would fire every already-owned schedule while Beat is still firing it too.
-        Sched.objects.filter.assert_not_called()
+        # pg_owned is not WRITTEN either — otherwise switching the PG scheduler on
+        # later would fire every already-owned schedule while Beat still fires it too.
+        # (.filter() is now called once, for the read-only staleness check.)
+        Sched.objects.filter.return_value.update.assert_not_called()
+
+
+class TestStalePgOwnershipIsReleased:
+    """A row left ``pg_owned`` by a build predating the gate must be repairable.
+
+    Reproduced on integration 2026-08-12: `snapshot.993`'s backend came from OSS
+    `main`, where ``resolve_schedule_owner`` keys on the ``pg_queue_enabled`` Flipt
+    flag ALONE. Turning the flag on handed one pipeline to PG. Rolling forward onto
+    the gate then STRANDED it: the gate-off path wrote nothing, so nothing —
+    including ``reconcile_pg_schedules``, which routes back through here — could
+    clear it. Beat and the PG scheduler both fired that pipeline 2.4s apart; only
+    one execution resulted because the Celery consumers happened to be at zero.
+
+    Reachable in production without a mis-built image: deploy this branch, roll back
+    to a pre-gate build while the flag is on, roll forward.
+    """
+
+    def _mocks(self, stale: bool):
+        sched = patch("scheduler.ownership.PgPeriodicSchedule").start()
+        sched.objects.filter.return_value.exists.return_value = stale
+        sched.objects.filter.return_value.update.return_value = 1
+        # These tests are DB-free, but the repair path (unlike the write-free one)
+        # enters the real transaction.atomic() — same no-op stand-in as above.
+        patch(
+            "scheduler.ownership.transaction.atomic",
+            return_value=contextlib.nullcontext(),
+        ).start()
+        return sched
+
+    def teardown_method(self):
+        patch.stopall()
+
+    def test_a_stale_row_is_handed_back_to_beat(self, monkeypatch):
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        sched = self._mocks(stale=True)
+        with (
+            patch("scheduler.ownership.PeriodicTask") as PT,
+            patch("scheduler.ownership.PeriodicTasks") as PTs,
+        ):
+            assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is False
+
+        # pg_owned cleared, and next_run_at reset so a later re-hand-over baselines
+        # instead of firing immediately on a stale timestamp.
+        updates = sched.objects.filter.return_value.update.call_args.kwargs
+        assert updates["pg_owned"] is False
+        assert updates["next_run_at"] is None
+        # Beat re-enabled in the same breath — releasing pg_owned without this would
+        # leave the schedule with NO firer at all.
+        PT.objects.filter.return_value.update.assert_called_once_with(enabled=True)
+        # ...and Beat told to reload, else it keeps its stale in-memory copy.
+        PTs.update_changed.assert_called_once()
+
+    def test_a_paused_pipeline_is_not_resurrected_by_the_repair(self, monkeypatch):
+        """Repair restores the FIRER, never the on/off state the user chose."""
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        self._mocks(stale=True)
+        with (
+            patch("scheduler.ownership.PeriodicTask") as PT,
+            patch("scheduler.ownership.PeriodicTasks"),
+        ):
+            ownership.reconcile_ownership_for(_PID, _ORG, active=False)
+        PT.objects.filter.return_value.update.assert_called_once_with(enabled=False)
+
+    def test_flipt_is_never_consulted_while_the_gate_is_off(self, monkeypatch):
+        """The repair resolves to Beat unconditionally.
+
+        Asking Flipt could return True and re-hand the schedule to a PG scheduler
+        that is not running — turning a double-fire into no firer at all.
+        """
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        self._mocks(stale=True)
+        with (
+            patch("scheduler.ownership.PeriodicTask"),
+            patch("scheduler.ownership.PeriodicTasks"),
+            patch(
+                "scheduler.ownership.check_feature_flag_status", return_value=True
+            ) as flag,
+        ):
+            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+        flag.assert_not_called()
+
+    def test_a_db_error_on_the_check_falls_back_to_writing_nothing(self, monkeypatch):
+        """A repair that cannot confirm it is needed must not run."""
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        sched = patch("scheduler.ownership.PgPeriodicSchedule").start()
+        sched.objects.filter.side_effect = Exception("db down")
+        with (
+            patch("scheduler.ownership.PeriodicTask") as PT,
+            patch("scheduler.ownership.PeriodicTasks") as PTs,
+        ):
+            assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is False
+        PT.objects.filter.assert_not_called()
+        PTs.update_changed.assert_not_called()
 
 
 class TestReconcileAtomicityRealDB:

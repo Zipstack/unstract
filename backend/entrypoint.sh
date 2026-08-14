@@ -43,9 +43,25 @@ if [ "$migrate" = true ]; then
     #
     # Best-effort by design: a mirror failure must never stop the backend from
     # starting. Beat keeps firing everything in that case, which is the safe state.
-    echo "PG schedule mirror backfill initiated"
-    .venv/bin/python manage.py reconcile_pg_schedules --mirror-only \
-        || echo "WARNING: PG schedule mirror backfill failed; continuing startup (schedules stay on Beat)"
+    # Converge schedule ownership to whatever PG_SCHEDULER_ENABLED declares — adopt
+    # when on, release back to Beat when off. Running it on every start is what makes
+    # the ROLLBACK real: flipping the env var back is enough, with no operator
+    # remembering a management command in every environment (on-prem included, where
+    # `manage.py` is not something a deploy can reach). Idempotent both ways.
+    #
+    # PG_SCHEDULER_ADOPT_PERIODICS additionally moves the dashboard_metrics.* rows;
+    # it is separate because adopting them needs workerPgMetrics deployed.
+    #
+    # Best-effort by design: a convergence failure must never stop the backend from
+    # starting. Whatever fired the schedules before keeps firing them in that case.
+    PERIODICS_FLAG=""
+    if [ "$(printf '%s' "${PG_SCHEDULER_ADOPT_PERIODICS:-}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
+        PERIODICS_FLAG="--periodics"
+    fi
+    echo "PG schedule ownership convergence initiated"
+    # shellcheck disable=SC2086  # intentional word-splitting: empty = flag absent
+    .venv/bin/python manage.py converge_pg_scheduler $PERIODICS_FLAG \
+        || echo "WARNING: PG schedule convergence failed; continuing startup (schedules keep their current firer)"
 fi
 
 # Configure Gunicorn based on --dev flag

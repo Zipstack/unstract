@@ -18,7 +18,11 @@ from typing import Any
 
 from django.core.management.base import BaseCommand, CommandError
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
-from scheduler.ownership import reconcile_ownership_for, resolve_schedule_owner
+from scheduler.ownership import (
+    pg_scheduler_enabled,
+    reconcile_ownership_for,
+    resolve_schedule_owner,
+)
 from scheduler.tasks import mirror_periodic_schedule_upsert
 
 from pg_queue.models import PgPeriodicSchedule
@@ -75,6 +79,17 @@ class Command(BaseCommand):
                 "PeriodicTask. This is the mode automation runs — see handle()."
             ),
         )
+        parser.add_argument(
+            "--release-stale",
+            action="store_true",
+            help=(
+                "Release schedules marked pg_owned while PG_SCHEDULER_ENABLED is "
+                "off, handing them back to Beat. Safe for unattended automation at "
+                "any flag state: with the gate ON it is a no-op, and with it off it "
+                "only ever moves a schedule TO Beat — the fail-safe direction. "
+                "Composes with --mirror-only."
+            ),
+        )
 
     def handle(self, *args: Any, **options: Any) -> None:
         dry_run = options["dry_run"]
@@ -95,10 +110,15 @@ class Command(BaseCommand):
         else:
             reconciled, pg_owned, failed = self._reconcile_all(dry_run, batch_size)
 
+        released = 0
+        if options["release_stale"]:
+            released, release_failed = self._release_stale(dry_run, batch_size)
+            failed += release_failed
+
         prefix = "[dry-run] " if dry_run else ""
         summary = (
             f"{prefix}backfilled={backfilled} reconciled={reconciled} "
-            f"pg_owned={pg_owned} failed={failed}"
+            f"pg_owned={pg_owned} released={released} failed={failed}"
         )
         if mirror_only:
             summary = f"{summary} (mirror-only: ownership reconcile skipped)"
@@ -175,6 +195,48 @@ class Command(BaseCommand):
                 )
             backfilled += 1
         return backfilled
+
+    def _release_stale(self, dry_run: bool, batch_size: int) -> tuple[int, int]:
+        """Hand every stale pg_owned row back to Beat. Returns (released, failed).
+
+        Scoped to ``pg_owned=True`` rows so a clean installation does no work at all,
+        and gated on the env switch being OFF: with the ramp ON, a pg_owned row is
+        legitimate and releasing it would silently undo the rollout.
+
+        Unlike :meth:`_reconcile_all` this IS safe to run unattended, because its only
+        possible effect is moving a schedule to Beat — the same direction the system
+        already fails to. That is what lets the deploy run it; see entrypoint.sh.
+        """
+        if pg_scheduler_enabled():
+            self.stdout.write(
+                "--release-stale: PG_SCHEDULER_ENABLED is on; pg_owned rows are "
+                "legitimate here, nothing released."
+            )
+            return 0, 0
+
+        released = failed = 0
+        for row in (
+            PgPeriodicSchedule.objects.filter(pg_owned=True)
+            .order_by("pk")
+            .iterator(chunk_size=batch_size)
+        ):
+            if dry_run:
+                released += 1
+                self.stdout.write(
+                    f"[dry-run] would release pipeline {row.pipeline_id} "
+                    f"({row.pipeline_name or 'unnamed'}) back to Beat"
+                )
+                continue
+            # Routes through the same transaction the gate-off repair path uses, so
+            # Beat's PeriodicTask is re-enabled and next_run_at cleared in step.
+            result = reconcile_ownership_for(
+                str(row.pipeline_id), row.organization_id, active=row.enabled
+            )
+            if result is None:  # transaction failed (already logged)
+                failed += 1
+                continue
+            released += 1
+        return released, failed
 
     def _reconcile_all(self, dry_run: bool, batch_size: int) -> tuple[int, int, int]:
         """Reconcile ownership for every mirror row against the current rollout.

@@ -302,9 +302,18 @@ class Command(BaseCommand):
                 f"enabled={plan.fields['enabled']}"
             )
             if not dry_run:
-                PgPeriodicTask.objects.update_or_create(
-                    name=plan.name, defaults=plan.fields
-                )
+                fields = dict(plan.fields)
+                # `enabled` is the ONE mirrored field that stops tracking Beat once a
+                # row is adopted: after --adopt Beat's copy is False by definition, so
+                # re-mirroring would copy that back and leave pg_owned=True with
+                # enabled=False — matching NEITHER firer (the PG tick selects
+                # `WHERE pg_owned AND enabled`, Beat's row is disabled). The periodic
+                # would stop silently, and the pre-migration value needed to release it
+                # would be gone. Cron/args/queue still track Beat, so a schedule edit
+                # made while PG owns the row is still picked up.
+                if PgPeriodicTask.objects.filter(name=plan.name, pg_owned=True).exists():
+                    fields.pop("enabled", None)
+                PgPeriodicTask.objects.update_or_create(name=plan.name, defaults=fields)
             mirrored += 1
         return mirrored, skipped
 
@@ -333,8 +342,16 @@ class Command(BaseCommand):
         for row in rows.iterator(chunk_size=batch_size):
             if row.pg_owned == to_pg:
                 continue
+            # RESTORE, don't blanket-enable. On release this used to write
+            # `enabled=True` unconditionally, which RESURRECTS a periodic an operator
+            # had deliberately switched off in Beat before the migration — a rollback
+            # is supposed to restore the previous state, not invent a new one.
+            # `row.enabled` is Beat's own value, captured by the mirror (plan_mirror
+            # copies task.enabled), so a row that was off mirrors off, is adopted off,
+            # and is released off. On adopt the answer is always False: PG owns it.
+            beat_enabled = False if to_pg else row.enabled
             verb = "adopt" if to_pg else "release"
-            self.stdout.write(f"{verb} {row.name!r} (beat enabled -> {not to_pg})")
+            self.stdout.write(f"{verb} {row.name!r} (beat enabled -> {beat_enabled})")
             if not dry_run:
                 with transaction.atomic():
                     row.pg_owned = to_pg
@@ -344,7 +361,9 @@ class Command(BaseCommand):
                     if not to_pg:
                         row.next_run_at = None
                     row.save(update_fields=["pg_owned", "next_run_at", "updated_at"])
-                    PeriodicTask.objects.filter(name=row.name).update(enabled=not to_pg)
+                    PeriodicTask.objects.filter(name=row.name).update(
+                        enabled=beat_enabled
+                    )
                     # Bulk .update() bypasses django-celery-beat's post_save signal,
                     # so PeriodicTasks.last_update never bumps and DatabaseScheduler
                     # never reloads. Without this, --adopt would set pg_owned=True and

@@ -118,6 +118,27 @@ def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> boo
     return bool(owned)
 
 
+def _has_stale_pg_ownership(pipeline_id: str) -> bool:
+    """True if this row claims PG ownership while the gate is off — i.e. it needs
+    releasing back to Beat.
+
+    **Fails closed to today's behaviour**: on any DB error this returns False, so the
+    caller takes the historical `return False` path and writes nothing. A repair that
+    cannot confirm it is needed must not run.
+    """
+    try:
+        return PgPeriodicSchedule.objects.filter(
+            pipeline_id=pipeline_id, pg_owned=True
+        ).exists()
+    except Exception:
+        logger.exception(
+            "reconcile_ownership_for: could not check stale PG ownership for "
+            "pipeline %s; leaving the schedule on its current firer",
+            pipeline_id,
+        )
+        return False
+
+
 def reconcile_ownership_for(
     pipeline_id: str, organization_id: str | None, *, active: bool
 ) -> bool | None:
@@ -136,16 +157,46 @@ def reconcile_ownership_for(
     caller. Returns the resolved ``pg_owned`` on success, or **None** if the
     transaction failed (so the ramp command can tally + surface failures).
 
-    **No-op while ``PG_SCHEDULER_ENABLED`` is off** — writing NEITHER table. Returning
-    early rather than relying on ``resolve_schedule_owner`` returning False matters:
-    that path would still issue ``PeriodicTask.update(enabled=active)`` and bump
-    ``PeriodicTasks.update_changed()`` on every schedule save, forcing a Beat reload
-    to write back a value Beat already had. Beat's tables stay untouched for the whole
-    rollout, so flag-off is a pure Flipt flip with nothing to restore.
+    **No-op while ``PG_SCHEDULER_ENABLED`` is off** — writing NEITHER table, *unless*
+    the row contradicts the gate (see below). Returning early rather than relying on
+    ``resolve_schedule_owner`` returning False matters: that path would still issue
+    ``PeriodicTask.update(enabled=active)`` and bump ``PeriodicTasks.update_changed()``
+    on every schedule save, forcing a Beat reload to write back a value Beat already
+    had. Beat's tables stay untouched for the whole rollout, so flag-off is a pure
+    Flipt flip with nothing to restore.
     """
     if not pg_scheduler_enabled():
-        return False
-    pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
+        # Gate off ⇒ Beat owns everything. ASSERT that instead of assuming it.
+        #
+        # The original blanket `return False` assumed pg_owned could never be True
+        # while the gate is off. An image predating this gate breaks that assumption:
+        # there, resolve_schedule_owner keys on the Flipt flag ALONE, so flipping
+        # pg_queue_enabled hands schedules to PG. Roll forward onto this gate and the
+        # row is stranded — writing nothing can never correct it, and NO code path
+        # (not even `reconcile_pg_schedules` without --mirror-only, which routes back
+        # through here) can clear it. Only hand-written SQL could, which is not a
+        # deploy procedure. Observed on integration 2026-08-12: Beat and the PG
+        # scheduler both fired one pipeline 2.4s apart; a single execution resulted
+        # only because the Celery consumers happened to be scaled to zero.
+        #
+        # This is reachable in production WITHOUT a mis-built image: deploy this
+        # branch, roll back to a pre-gate build while the flag is on, roll forward.
+        # Rollback is precisely when a stranded scheduler is least affordable.
+        #
+        # Cost in the normal case is one indexed existence check and still zero
+        # writes, so the "Beat's tables stay untouched" guarantee holds for every
+        # environment that never had a contradictory row.
+        if not _has_stale_pg_ownership(pipeline_id):
+            return False
+        logger.warning(
+            "reconcile_ownership_for: pipeline %s is pg_owned while "
+            "PG_SCHEDULER_ENABLED is off (stale hand-over from a pre-gate build); "
+            "releasing it back to Beat",
+            pipeline_id,
+        )
+        pg_owned = False
+    else:
+        pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
     try:
         with transaction.atomic():
             # queryset .update() doesn't fire auto_now, so bump updated_at

@@ -176,7 +176,11 @@ class TestBeatReloadSignal:
     _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
 
     def _run(self, flag):
-        row = SimpleNamespace(name="h", pg_owned=(flag == "--release"), next_run_at=None)
+        # `enabled` mirrors Beat's value and is what --release restores; a real
+        # PgPeriodicTask always has it, so the stand-in must too.
+        row = SimpleNamespace(
+            name="h", pg_owned=(flag == "--release"), next_run_at=None, enabled=True
+        )
         with (
             patch(f"{self._CMD}.PgPeriodicTask") as Model,
             patch(f"{self._CMD}.PeriodicTask") as Beat,
@@ -199,3 +203,81 @@ class TestBeatReloadSignal:
         Beat, BeatSignal = self._run(flag)
         Beat.objects.filter.return_value.update.assert_called_once()
         BeatSignal.update_changed.assert_called_once()
+
+
+class TestReleaseRestoresRatherThanResurrects:
+    """A rollback restores the previous state; it must not invent a new one.
+
+    `--release` wrote `enabled=True` unconditionally, so a periodic an operator had
+    deliberately switched OFF in Beat before the migration came back **on** after a
+    rollback — silently re-arming a job someone had stopped on purpose. The
+    pre-migration value is already recorded: `plan_mirror` copies `task.enabled` into
+    the mirror row, so `row.enabled` is Beat's own value.
+    """
+
+    _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
+
+    def _release(self, mirrored_enabled: bool):
+        row = SimpleNamespace(
+            name="h", pg_owned=True, next_run_at=None, enabled=mirrored_enabled
+        )
+        with (
+            patch(f"{self._CMD}.PgPeriodicTask") as Model,
+            patch(f"{self._CMD}.PeriodicTask") as Beat,
+            patch(f"{self._CMD}.PeriodicTasks"),
+            patch(f"{self._CMD}.transaction.atomic"),
+        ):
+            qs = MagicMock()
+            qs.iterator.return_value = [row]
+            qs.values_list.return_value = ["h"]
+            qs.filter.return_value = qs
+            Model.objects.all.return_value.order_by.return_value = qs
+            Beat.objects.exclude.return_value.select_related.return_value.order_by.return_value.iterator.return_value = []
+            row.save = MagicMock()
+            call_command("mirror_pg_periodic_tasks", "--release")
+            return Beat.objects.filter.return_value.update.call_args.kwargs
+
+    def test_a_row_that_was_enabled_is_restored_enabled(self):
+        assert self._release(mirrored_enabled=True) == {"enabled": True}
+
+    def test_a_row_that_was_DISABLED_stays_disabled(self):
+        # The regression: blanket `enabled=True` re-armed a job someone stopped.
+        assert self._release(mirrored_enabled=False) == {"enabled": False}
+
+
+class TestMirrorDoesNotClobberAnAdoptedRow:
+    """Re-mirroring after adoption must not strand the row with no firer.
+
+    `enabled` is the one mirrored field that stops tracking Beat once PG owns the row:
+    after `--adopt`, Beat's copy is False *by definition*. Copying that back leaves
+    `pg_owned=True, enabled=False`, which matches NEITHER firer — the PG tick selects
+    `WHERE pg_owned AND enabled`, and Beat's row is disabled. The periodic stops
+    silently, and the value needed to release it correctly is gone.
+    """
+
+    _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
+
+    def _mirror_with(self, already_adopted: bool):
+        beat_row = _task(name="h", enabled=False, crontab=_crontab())
+        with (
+            patch(f"{self._CMD}.PgPeriodicTask") as Model,
+            patch(f"{self._CMD}.PeriodicTask") as Beat,
+            patch(f"{self._CMD}.PeriodicTasks"),
+        ):
+            Beat.objects.exclude.return_value.select_related.return_value.order_by.return_value.iterator.return_value = [
+                beat_row
+            ]
+            Model.objects.filter.return_value.exists.return_value = already_adopted
+            call_command("mirror_pg_periodic_tasks")
+            return Model.objects.update_or_create.call_args.kwargs["defaults"]
+
+    def test_an_adopted_row_keeps_its_own_enabled(self):
+        assert "enabled" not in self._mirror_with(already_adopted=True)
+
+    def test_a_beat_owned_row_still_tracks_beat(self):
+        # The normal path must keep mirroring enabled, or a pause in Beat is missed.
+        assert self._mirror_with(already_adopted=False)["enabled"] is False
+
+    def test_cron_still_tracks_beat_even_when_adopted(self):
+        # Only `enabled` diverges — a schedule edit made while PG owns it must land.
+        assert "cron_string" in self._mirror_with(already_adopted=True)
