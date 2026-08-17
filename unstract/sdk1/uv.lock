@@ -1407,15 +1407,15 @@ wheels = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.6.2"
+version = "2.8.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/38/44/18d4158618ebbd76ceb8e43b8deb77f4983e6f1ccff2dffd73d6f3fb1628/llmwhisperer_client-2.6.2.tar.gz", hash = "sha256:ce846af62e7e7337dfcfe2960ec72de2989457b717ab7b9dd4110ee82c002ed0", size = 3268197, upload-time = "2026-02-23T10:52:17.634Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/f6/3ced310f070e2a2eacccaf2a7ea0d4248db3097d3a8ca8e6f2eb89fc094b/llmwhisperer_client-2.8.0.tar.gz", hash = "sha256:bf724e3a47e6faaab962869c8e9cbb9a5b6a42016e23adb111aa71ada40b31d7", size = 3270703, upload-time = "2026-08-12T11:42:24.003Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/27/eb/0f9edd21302eddc6020a1b43a78e27f361e8b6b8af7611134a58487f7d8a/llmwhisperer_client-2.6.2-py3-none-any.whl", hash = "sha256:7226344506bc85a663e4d4f8feb763f853ec9bcb6cea9bd9cf170ba135c50cdd", size = 10857, upload-time = "2026-02-23T10:52:16.325Z" },
+    { url = "https://files.pythonhosted.org/packages/62/23/7fcd079081b5a9882daafee55a3bcd8ee755147ed2563ef50634f32ec482/llmwhisperer_client-2.8.0-py3-none-any.whl", hash = "sha256:d526274884c682912059d6cd7bc7e3e42214ea47e25ff3b4613aef055de19110", size = 12026, upload-time = "2026-08-12T11:42:22.722Z" },
 ]
 
 [[package]]
@@ -2793,7 +2793,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-qdrant", specifier = ">=0.9.1" },
     { name = "llama-index-vector-stores-weaviate", specifier = ">=1.4.1" },
     { name = "llama-parse", specifier = ">=0.6.0" },
-    { name = "llmwhisperer-client", specifier = ">=2.6.2" },
+    { name = "llmwhisperer-client", specifier = ">=2.8.0" },
     { name = "pdfplumber", specifier = ">=0.11.2" },
     { name = "python-dotenv", specifier = "==1.2.2" },
     { name = "python-magic", specifier = "~=0.4.27" },

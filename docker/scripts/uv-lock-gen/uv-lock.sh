@@ -107,6 +107,9 @@ directories=(
     "unstract/core"
     "unstract/flags"
     "unstract/connectors"
+    "unstract/sdk1"
+    "unstract/tool-registry"
+    "unstract/workflow-execution"
     "workers"
 )
 
