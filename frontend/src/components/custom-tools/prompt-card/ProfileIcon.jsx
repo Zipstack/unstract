@@ -3,7 +3,6 @@ import PropTypes from "prop-types";
 
 import { isImageUrl } from "../../../helpers/GetStaticData";
 
-// Adapter icons are image paths; unresolved ones fall back to an emoji.
 function ProfileIcon({ icon }) {
   if (!isImageUrl(icon)) {
     return <span className="prompt-card-llm-icon">{icon || "⚠️"}</span>;

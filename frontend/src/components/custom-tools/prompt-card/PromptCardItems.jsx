@@ -147,8 +147,7 @@ function PromptCardItems({
     if (isSimplePromptStudio) {
       return;
     }
-    // conf/icon come off the profile payload; the viewer may not have
-    // access to the project's adapters.
+    // conf and icon come from the profile payload, not the viewer's adapters.
     setLlmProfileDetails(
       (llmProfiles || [])
         .map((profile) => ({

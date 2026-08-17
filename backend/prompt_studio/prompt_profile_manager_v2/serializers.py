@@ -23,8 +23,7 @@ class ProfileManagerSerializer(AuditSerializer):
     class Meta:
         model = ProfileManager
         fields = "__all__"
-        # Drop DRF's auto unique-together validator so a duplicate create
-        # surfaces the view's DuplicateData instead of DRF's generic message.
+        # Dropped so a duplicate create surfaces the view's DuplicateData.
         validators = []
 
     def to_representation(self, instance):  # type: ignore
@@ -38,6 +37,8 @@ class ProfileManagerSerializer(AuditSerializer):
             adapter = getattr(instance, field)
             if not adapter:
                 continue
+            # Keep the id for adapters the viewer cannot access.
+            rep[f"{field}_id"] = str(rep[field])
             rep[field] = adapter.adapter_name
             conf[label] = AdapterProcessor.get_model_label(adapter)
             if field == ProfileManagerKeys.LLM:

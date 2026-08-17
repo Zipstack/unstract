@@ -476,9 +476,8 @@ const isNonNegativeNumber = (value) => {
   return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
-// Icons are image URLs, except the emoji fallback used when an adapter icon
-// cannot be resolved. Detect the URL rather than the emoji - compound (ZWJ)
-// emoji break length heuristics.
+// Icons are image URLs; an unresolved adapter falls back to an emoji.
+// Detect the URL - compound (ZWJ) emoji break length heuristics.
 const isImageUrl = (value) =>
   typeof value === "string" && /^(https?:\/\/|\/|data:image\/)/.test(value);
 

@@ -89,8 +89,7 @@ function OutputForDocModal({
   ]);
 
   useEffect(() => {
-    // Model names come off the profile payload; the viewer may not have
-    // access to the project's adapters.
+    // Model name comes from the profile payload, not the viewer's adapters.
     setAdapterData(
       (llmProfiles || []).map((profile) => ({
         profile_name: profile?.profile_name,
