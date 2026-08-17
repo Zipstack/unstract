@@ -38,7 +38,6 @@ gunicorn_args=(
     --workers "${GUNICORN_WORKERS:-2}"
     --threads "${GUNICORN_THREADS:-512}"
     --worker-class gthread
-    --worker-connections "${GUNICORN_WORKER_CONNECTIONS:-1000}"
     --log-level debug
     --timeout 600
     --access-logfile -
