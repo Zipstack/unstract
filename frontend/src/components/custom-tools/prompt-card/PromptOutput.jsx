@@ -4,16 +4,7 @@ import {
   PlayCircleFilled,
   PlayCircleOutlined,
 } from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Divider,
-  Image,
-  Radio,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Col, Divider, Radio, Space, Tooltip, Typography } from "antd";
 import { AnimatePresence, motion } from "framer-motion";
 import PropTypes from "prop-types";
 import { useState } from "react";
@@ -21,7 +12,6 @@ import { useState } from "react";
 import {
   displayPromptResult,
   generateApiRunStatusId,
-  isImageUrl,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
@@ -33,6 +23,7 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { ProfileIcon } from "./ProfileIcon";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
 import { PromptRunTimer } from "./PromptRunTimer";
@@ -131,7 +122,7 @@ function PromptOutput({
   const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
-      {Object.entries(adapterConf)?.map(([key, value]) => (
+      {Object.entries(adapterConf || {}).map(([key, value]) => (
         <div key={key}>
           <strong>{key}:</strong> {value}
         </div>
@@ -356,19 +347,7 @@ function PromptOutput({
                 >
                   <div className="llm-info">
                     <div className="llm-info-left">
-                      {isImageUrl(profile?.icon) ? (
-                        <Image
-                          src={profile?.icon}
-                          width={15}
-                          height={15}
-                          preview={false}
-                          className="prompt-card-llm-icon"
-                        />
-                      ) : (
-                        <span className="prompt-card-llm-icon">
-                          {profile?.icon}
-                        </span>
-                      )}
+                      <ProfileIcon icon={profile?.icon} />
                       <Typography.Text
                         className="prompt-card-llm-title"
                         ellipsis={{ tooltip: profile?.conf?.LLM }}

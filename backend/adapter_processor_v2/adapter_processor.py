@@ -20,7 +20,6 @@ from unstract.sdk1.adapters.adapterkit import Adapterkit
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.constants import AdapterTypes
-from unstract.sdk1.constants import Common as common
 from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.llm import LLM
@@ -113,29 +112,35 @@ class AdapterProcessor:
         return updated_adapters[0].get(key_value)
 
     @staticmethod
-    def get_display_info(adapter: AdapterInstance) -> tuple[str, str]:
-        """Icon and model label for an adapter, as (icon, model).
+    def get_icon(adapter: AdapterInstance) -> str:
+        """Registry icon for an adapter, or the warning icon if unresolvable."""
+        if not adapter.is_available:
+            return UNAVAILABLE_ADAPTER_ICON
+        try:
+            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                adapter.adapter_id
+            )
+        except Exception as e:
+            logger.warning(
+                "Adapter %s is not in the SDK registry: %s", adapter.adapter_id, e
+            )
+            return UNAVAILABLE_ADAPTER_ICON
+        return adapter_class.get_icon() or UNAVAILABLE_ADAPTER_ICON
 
-        Display data only, no credentials. Never raises - falls back to the
-        warning icon and the adapter id's provider prefix.
+    @staticmethod
+    def get_model_label(adapter: AdapterInstance) -> str:
+        """Model name from the adapter metadata.
+
+        Adapters without a model use the adapter id's provider prefix.
         """
-        icon = UNAVAILABLE_ADAPTER_ICON
-        if adapter.is_available:
-            try:
-                icon = (
-                    AdapterProcessor.get_adapter_data_with_key(
-                        adapter.adapter_id, common.ICON
-                    )
-                    or UNAVAILABLE_ADAPTER_ICON
-                )
-            except Exception as e:
-                logger.warning(f"No icon for adapter {adapter.adapter_id}: {e}")
         try:
             model = adapter.metadata.get("model")
         except Exception as e:
-            logger.warning(f"No metadata for adapter {adapter.adapter_id}: {e}")
+            logger.error(
+                "Could not read metadata for adapter %s: %s", adapter.adapter_id, e
+            )
             model = None
-        return icon, model or adapter.adapter_id.split("|")[0]
+        return model or adapter.adapter_id.split("|")[0]
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:

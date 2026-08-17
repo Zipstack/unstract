@@ -23,8 +23,13 @@ def _represent(instance: SimpleNamespace, base_rep: dict) -> dict:
         patch.object(AuditSerializer, "to_representation", return_value=base_rep),
         patch(
             "prompt_studio.prompt_profile_manager_v2.serializers."
-            "AdapterProcessor.get_display_info",
-            side_effect=lambda adapter: ("openai.png", adapter.model),
+            "AdapterProcessor.get_model_label",
+            side_effect=lambda adapter: adapter.model,
+        ),
+        patch(
+            "prompt_studio.prompt_profile_manager_v2.serializers."
+            "AdapterProcessor.get_icon",
+            return_value="/icons/adapter-icons/OpenAI.png",
         ),
     ):
         return ProfileManagerSerializer().to_representation(instance)
@@ -57,7 +62,7 @@ class ProfileDisplayInfoTests(unittest.TestCase):
             },
         )
         # Only the LLM contributes the tile icon.
-        self.assertEqual(rep["icon"], "openai.png")
+        self.assertEqual(rep["icon"], "/icons/adapter-icons/OpenAI.png")
         # FK ids are replaced by the adapter names.
         self.assertEqual(rep["llm"], "Shared GPT")
 

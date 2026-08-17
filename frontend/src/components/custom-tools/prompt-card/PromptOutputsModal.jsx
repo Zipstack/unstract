@@ -1,11 +1,11 @@
-import { Col, Image, Modal, Row, Typography } from "antd";
+import { Col, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
-import { isImageUrl } from "../../../helpers/GetStaticData";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { ProfileIcon } from "./ProfileIcon";
 
 let TableOutput;
 try {
@@ -69,19 +69,7 @@ function PromptOutputsModal({
                   <div>
                     {displayLlmProfile && (
                       <div className="prompt-output-llm-bg">
-                        {isImageUrl(profile?.icon) ? (
-                          <Image
-                            src={profile?.icon}
-                            width={15}
-                            height={15}
-                            preview={false}
-                            className="prompt-card-llm-icon"
-                          />
-                        ) : (
-                          <span className="prompt-card-llm-icon">
-                            {profile?.icon}
-                          </span>
-                        )}
+                        <ProfileIcon icon={profile?.icon} />
                         <Typography.Text className="prompt-card-llm-title">
                           {profile?.conf?.LLM}
                         </Typography.Text>

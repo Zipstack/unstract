@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 
@@ -9,7 +10,7 @@ from .models import ProfileManager
 
 logger = logging.getLogger(__name__)
 
-# Adapter FK -> label shown on the Prompt Studio output tiles.
+# Adapter FK -> "conf" response key read by the UI.
 ADAPTER_LABELS = (
     (ProfileManagerKeys.LLM, "LLM"),
     (ProfileManagerKeys.EMBEDDING_MODEL, "Embedding Model"),
@@ -22,7 +23,8 @@ class ProfileManagerSerializer(AuditSerializer):
     class Meta:
         model = ProfileManager
         fields = "__all__"
-        # Uniqueness is enforced by the view; the auto-validator 400s on re-save.
+        # Drop DRF's auto unique-together validator so a duplicate create
+        # surfaces the view's DuplicateData instead of DRF's generic message.
         validators = []
 
     def to_representation(self, instance):  # type: ignore
@@ -30,17 +32,16 @@ class ProfileManagerSerializer(AuditSerializer):
 
         Not filtered by adapter access - display data only, no credentials.
         """
-        rep: dict[str, str] = super().to_representation(instance)
+        rep: dict[str, Any] = super().to_representation(instance)
         conf: dict[str, str] = {}
         for field, label in ADAPTER_LABELS:
-            adapter = getattr(instance, field, None)
+            adapter = getattr(instance, field)
             if not adapter:
                 continue
-            icon, model = AdapterProcessor.get_display_info(adapter)
             rep[field] = adapter.adapter_name
-            conf[label] = model
+            conf[label] = AdapterProcessor.get_model_label(adapter)
             if field == ProfileManagerKeys.LLM:
-                rep["icon"] = icon
+                rep["icon"] = AdapterProcessor.get_icon(adapter)
         if conf:
             conf["Profile Name"] = instance.profile_name
         rep["conf"] = conf

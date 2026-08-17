@@ -9,10 +9,8 @@ import { useParams } from "react-router-dom";
 
 import {
   displayPromptResult,
-  getLLMModelNamesForProfiles,
   promptType,
 } from "../../../helpers/GetStaticData";
-import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -35,14 +33,12 @@ try {
 }
 
 let publicOutputsApi;
-let publicAdapterApi;
 let publicDefaultOutputApi;
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
   );
   publicOutputsApi = mod.publicOutputsApi;
-  publicAdapterApi = mod.publicAdapterApi;
   publicDefaultOutputApi = mod.publicDefaultOutputApi;
 } catch {
   // The component will remain null if it is not available
@@ -141,22 +137,16 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
       return;
     }
 
-    const fetchAdapterInfo = async () => {
-      let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
-      if (isPublicSource) {
-        url = publicAdapterApi(id, "LLM");
-      }
-      try {
-        const adapterList = await fetchAllPages(axiosPrivate, { url });
-        setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-      } catch (err) {
-        setAlertDetails(
-          handleException(err, "Failed to fetch adapter information"),
-        );
-      }
-    };
-    fetchAdapterInfo();
-  }, []);
+    // Model names come off the profile payload; the viewer may not have
+    // access to the project's adapters.
+    setAdapterData(
+      (llmProfiles || []).map((profile) => ({
+        profile_name: profile?.profile_name,
+        llm_model: profile?.conf?.LLM,
+        profile_id: profile?.profile_id,
+      })),
+    );
+  }, [llmProfiles, isSimplePromptStudio]);
 
   useEffect(() => {
     const key = singlePassExtractMode ? defaultLlmProfile : "0";

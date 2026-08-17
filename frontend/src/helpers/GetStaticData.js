@@ -476,9 +476,9 @@ const isNonNegativeNumber = (value) => {
   return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
-// Icons are image URLs, except the emoji fallbacks used for unavailable
-// adapters. Detect the URL rather than the emoji - compound (ZWJ) emoji break
-// length heuristics.
+// Icons are image URLs, except the emoji fallback used when an adapter icon
+// cannot be resolved. Detect the URL rather than the emoji - compound (ZWJ)
+// emoji break length heuristics.
 const isImageUrl = (value) =>
   typeof value === "string" && /^(https?:\/\/|\/|data:image\/)/.test(value);
 
@@ -495,23 +495,6 @@ const generateUUID = () => {
   const uuid = uuidv4();
   return uuid;
 };
-
-function getLLMModelNamesForProfiles(profiles, adapters) {
-  // Create a mapping of adapter_ids to model names
-  const adapterMap = adapters.reduce((map, adapter) => {
-    map[adapter?.adapter_name] = adapter?.model;
-    return map;
-  }, {});
-
-  // Map through profiles and find corresponding model names using the adapterMap
-  return profiles.map((profile) => {
-    return {
-      profile_name: profile?.profile_name,
-      llm_model: adapterMap[profile?.llm],
-      profile_id: profile?.profile_id,
-    };
-  });
-}
 
 function getFormattedTotalCost(tokenUsageDetails) {
   const value = tokenUsageDetails?.cost_in_dollars ?? 0;
@@ -795,7 +778,6 @@ export {
   getDateTimeString,
   getDocIdFromKey,
   getFormattedTotalCost,
-  getLLMModelNamesForProfiles,
   getMenuItem,
   getOrgNameFromPathname,
   getReadableDateAndTime,

@@ -36,7 +36,7 @@ class ProfileManagerView(viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        # Serializer reads all four adapters per profile for the display info
+        # Serializer reads all four adapters for the display info
         queryset = ProfileManager.objects.for_user(self.request.user).select_related(
             "llm", "embedding_model", "vector_store", "x2text"
         )
