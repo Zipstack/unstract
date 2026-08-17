@@ -5,7 +5,7 @@ import { isImageUrl } from "../../../helpers/GetStaticData";
 
 function ProfileIcon({ icon }) {
   if (!isImageUrl(icon)) {
-    return <span className="prompt-card-llm-icon">{icon || "⚠️"}</span>;
+    return <span className="prompt-card-llm-icon">{icon}</span>;
   }
   return (
     <Image
