@@ -125,7 +125,7 @@ class AdapterProcessor:
                 "Adapter %s is not in the SDK registry: %s", adapter.adapter_id, e
             )
             return UNAVAILABLE_ADAPTER_ICON
-        return adapter_class.get_icon() or UNAVAILABLE_ADAPTER_ICON
+        return adapter_class.get_icon()
 
     @staticmethod
     def get_model_label(adapter: AdapterInstance) -> str:
