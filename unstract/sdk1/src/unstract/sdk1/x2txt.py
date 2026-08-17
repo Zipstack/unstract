@@ -9,7 +9,7 @@ from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import Common as SdkCommon
-from unstract.sdk1.constants import LogLevel, MimeType, ToolEnv
+from unstract.sdk1.constants import LogLevel, MimeType, ToolEnv, UsageKwargs
 from unstract.sdk1.exceptions import X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
@@ -95,6 +95,16 @@ class X2Text:
                 f"Error getting text extractor '{adapter_info}': {e}"
             ) from e
 
+    def _source_file_name(self) -> str | None:
+        """Name of the document as the user knows it.
+
+        Execution copies the input to an internal file (``INFILE``), so the path
+        reaching the adapter carries no usable name. The original is tracked in
+        ``usage_kwargs``, which every caller already populates for usage
+        auditing.
+        """
+        return self._usage_kwargs.get(UsageKwargs.FILE_NAME)
+
     def process(
         self,
         input_file_path: str,
@@ -104,6 +114,7 @@ class X2Text:
     ) -> TextExtractionResult:
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
+        kwargs.setdefault(X2TextConstants.FILE_NAME, self._source_file_name())
         mime_type = fs.mime_type(input_file_path)
         text_extraction_result: TextExtractionResult = None
         if mime_type == MimeType.TEXT:

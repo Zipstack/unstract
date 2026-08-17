@@ -68,6 +68,7 @@ class WhispererConfig:
     PAGE_SEPARATOR = "page_seperator"
     URL_IN_POST = "url_in_post"
     TAG = "tag"
+    FILENAME = "filename"
     USE_WEBHOOK = "use_webhook"
     WEBHOOK_METADATA = "webhook_metadata"
     TEXT_ONLY = "text_only"
@@ -107,6 +108,7 @@ class WhispererDefaults:
     MARK_HORIZONTAL_LINES = False
     URL_IN_POST = False
     TAG = "default"
+    FILENAME = ""
     TEXT_ONLY = False
     WAIT_TIMEOUT = int(os.getenv(WhispererEnv.WAIT_TIMEOUT, 900))
     WAIT_FOR_COMPLETION = True
