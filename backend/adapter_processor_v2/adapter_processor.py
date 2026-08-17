@@ -28,8 +28,6 @@ from .models import AdapterInstance, UserDefaultAdapter
 
 logger = logging.getLogger(__name__)
 
-UNAVAILABLE_ADAPTER_ICON = "⚠️"
-
 try:
     from plugins.subscription.time_trials.subscription_adapter import add_unstract_key
 except ImportError:
@@ -115,7 +113,7 @@ class AdapterProcessor:
     def get_icon(adapter: AdapterInstance) -> str:
         """Registry icon for an adapter, or the warning icon if unresolvable."""
         if not adapter.is_available:
-            return UNAVAILABLE_ADAPTER_ICON
+            return AdapterKeys.UNAVAILABLE_ICON
         try:
             adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
                 adapter.adapter_id
@@ -124,8 +122,8 @@ class AdapterProcessor:
             logger.warning(
                 "Adapter %s is not in the SDK registry: %s", adapter.adapter_id, e
             )
-            return UNAVAILABLE_ADAPTER_ICON
-        return adapter_class.get_icon()
+            return AdapterKeys.UNAVAILABLE_ICON
+        return adapter_class.get_icon() or AdapterKeys.UNAVAILABLE_ICON
 
     @staticmethod
     def get_model_label(adapter: AdapterInstance) -> str:
