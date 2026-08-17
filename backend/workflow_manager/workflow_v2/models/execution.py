@@ -9,7 +9,6 @@ from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from tenant_account_v2.organization_member_service import OrganizationMemberService
-from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
@@ -35,8 +34,8 @@ class WorkflowExecutionManager(BaseModelManager):
         """Filter user's workflow executions with proper access control.
 
         Returns executions where the user has access to:
-        - The workflow (created by user OR shared with user) AND/OR
-        - The pipeline/API deployment (created by user OR shared with user)
+        - The workflow AND/OR
+        - The pipeline/API deployment
 
         This handles independent sharing scenarios:
         1. Workflow shared but not API deployment -> User can see workflow-only executions
@@ -44,7 +43,9 @@ class WorkflowExecutionManager(BaseModelManager):
         3. Both shared -> User can see all executions
         4. Neither shared -> User cannot see executions
 
-        Service accounts see all executions (org-scoped by view).
+        Service accounts and org admins see every execution in the current
+        organization. This manager is the only org scoping on that path — the
+        view drops the organization filter backend.
 
         Args:
             user: The user to filter executions for
@@ -53,34 +54,21 @@ class WorkflowExecutionManager(BaseModelManager):
             QuerySet of executions that the user has permission to access
         """
         if getattr(user, "is_service_account", False):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("service account", user)
 
         if OrganizationMemberService.is_user_organization_admin(user):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("org admin", user)
 
-        # Filter for workflow access (owner or direct viewer via membership).
-        # ``created_by`` is audit-only (UN-2202); VIEWER rows replaced shared_users.
-        # ``object_id`` is varchar, so resolve the ids via the cast helper rather
-        # than a ``memberships`` JOIN (Postgres refuses ``uuid = varchar``).
-        workflow_filter = Q(
-            workflow_id__in=resources_visible_via_memberships(Workflow, user)
-        )
+        # Defer to each resource's own ``for_user`` so execution visibility matches
+        # the resource lists (UN-2651). Those managers scope by the org in
+        # context, so call this from a request, not a worker.
+        workflow_filter = Q(workflow_id__in=Workflow.objects.for_user(user).values("pk"))
 
         # Filter for API deployments the user can access
-        api_filter = Q(
-            pipeline_id__in=resources_visible_via_memberships(APIDeployment, user)
-        )
+        api_filter = Q(pipeline_id__in=APIDeployment.objects.for_user(user).values("pk"))
 
         # Filter for Pipelines the user can access
-        pipeline_filter = Q(
-            pipeline_id__in=resources_visible_via_memberships(Pipeline, user)
-        )
+        pipeline_filter = Q(pipeline_id__in=Pipeline.objects.for_user(user).values("pk"))
 
         # Combine deployment filters
         deployment_filter = api_filter | pipeline_filter
@@ -91,6 +79,23 @@ class WorkflowExecutionManager(BaseModelManager):
         final_filter = (workflow_filter & Q(pipeline_id__isnull=True)) | deployment_filter
 
         return self.filter(final_filter).distinct()
+
+    def _org_scoped(self, actor: str, user) -> QuerySet:
+        """Every execution in the current organization, for the bypass roles.
+
+        Fails closed with no organization in context, rather than returning
+        every tenant's executions.
+        """
+        org = UserContext.get_organization()
+        if org:
+            return self.filter(workflow__organization=org)
+        logger.warning(
+            "for_user called with no organization in context (%s, user=%s); "
+            "returning no executions",
+            actor,
+            getattr(user, "id", None),
+        )
+        return self.none()
 
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.
