@@ -14,6 +14,12 @@ class OutputModes(Enum):
     TEXT = "text"
 
 
+class LineSplitterStrategies(Enum):
+    LEFT_PRIORITY = "left-priority"
+    MID_PRIORITY = "mid-priority"
+    RIGHT_PRIORITY = "right-priority"
+
+
 class HTTPMethod(Enum):
     GET = "GET"
     POST = "POST"
