@@ -1,5 +1,6 @@
 import { usePostHog } from "posthog-js/react";
 
+import { isSaasProdDeployment } from "../helpers/PostHogDeployment";
 import { useSessionStore } from "../store/session-store";
 
 const usePostHogEvents = () => {
@@ -57,27 +58,50 @@ const usePostHogEvents = () => {
   };
 
   const setPostHogIdentity = () => {
-    const distinctId = `${sessionDetails?.orgId}:${sessionDetails?.orgName}`;
-    const orgName = sessionDetails?.orgName;
-    const isOpenSource = orgName === "mock_org";
+    try {
+      const orgId = sessionDetails?.orgId;
+      const orgName = sessionDetails?.orgName;
+      const isOpenSource = orgName === "mock_org";
+      const software = isOpenSource ? "OSS" : "SAAS";
+      const email = sessionDetails?.email;
+      const userId = sessionDetails?.id;
 
-    const name = `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`;
-    const optionalParams = {
-      name,
-      org: orgName,
-      software: isOpenSource ? "OSS" : "SAAS",
-    };
+      // PII (email, name) may only leave Unstract-managed SaaS; self-hosted
+      // and OSS installs identify with an anonymous org-scoped id instead.
+      // Email as distinct_id since bare user ids collide across
+      // regions/self-hosts — every deployment reports to one PostHog project
+      const canSendPii = isSaasProdDeployment() && !isOpenSource;
+      const fallbackId = orgId ? `${orgId}:${userId}` : userId?.toString();
+      const distinctId = canSendPii && email ? email : fallbackId;
 
-    const email = sessionDetails?.email;
-    const userId = sessionDetails?.id;
+      const personProperties = {
+        org: orgName,
+        software,
+      };
 
-    if (email) {
-      optionalParams["email"] = email;
-    } else {
-      optionalParams["userId"] = userId;
+      if (canSendPii) {
+        personProperties.name =
+          `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`.trim();
+        if (email) {
+          personProperties.email = email;
+        }
+      }
+      if (userId) {
+        personProperties.userId = userId;
+      }
+
+      posthog.identify(distinctId, personProperties);
+
+      // Super-properties ride on every captured event, enabling org-level
+      // breakdowns without the group analytics add-on
+      posthog.register({
+        org_id: orgId,
+        org_name: orgName,
+        software,
+      });
+    } catch (error) {
+      console.error("PostHog identify failed:", error);
     }
-
-    posthog.identify(distinctId, optionalParams);
   };
 
   const setPostHogCustomEvent = (eventName, properties) => {

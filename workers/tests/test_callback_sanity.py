@@ -142,10 +142,16 @@ class TestEagerHealthcheckRoundTrip:
     """
 
     def test_eager_healthcheck_round_trip(self, eager_app):
-        # Find the healthcheck task; its module-qualified name varies.
+        # Find the callback worker's healthcheck task specifically.
+        # ``eager_app.tasks`` is a SHARED celery registry: every worker
+        # module that registers a ``healthcheck`` (executor,
+        # file_processing, log_consumer, ...) lands in the same dict.
+        # A bare ``endswith(".healthcheck")`` match returns whichever
+        # was inserted first, which depends on pytest collection /
+        # import order and produces flaky cross-worker results.
         healthcheck = next(
             t for name, t in eager_app.tasks.items()
-            if name.endswith(".healthcheck") or name == "healthcheck"
+            if name == "callback.worker.healthcheck"
         )
 
         result = healthcheck.apply()
@@ -163,7 +169,7 @@ class TestEagerHealthcheckRoundTrip:
 
         healthcheck = next(
             t for name, t in eager_app.tasks.items()
-            if name.endswith(".healthcheck") or name == "healthcheck"
+            if name == "callback.worker.healthcheck"
         )
 
         result = healthcheck.apply()

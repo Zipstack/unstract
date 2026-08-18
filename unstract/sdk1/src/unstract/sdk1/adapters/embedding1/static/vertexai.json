@@ -38,13 +38,6 @@
         "default": "global",
         "description": "The Google Cloud region for the Vertex AI endpoint (e.g., us-central1, global). If left empty, defaults to us-central1."
       },
-      "embed_batch_size": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "title": "Embedding Batch Size",
-      "default": 10
-      },
       "embed_mode": {
         "type": "string",
         "title": "Embed Mode",

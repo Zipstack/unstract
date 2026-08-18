@@ -18,6 +18,9 @@ class UserContext:
     @staticmethod
     def get_organization() -> Organization | None:
         organization_id = StateStore.get(Account.ORGANIZATION_ID)
+        # Skip the query so this stays evaluable on a DB-less/unmigrated setup.
+        if not organization_id:
+            return None
         try:
             organization: Organization = Organization.objects.get(
                 organization_id=organization_id

@@ -22,7 +22,7 @@
     },
     "unstract_key": {
       "type": "string",
-      "title": "Unstract Key",
+      "title": "LLMWhisperer Key",
       "format": "password",
       "description": "API key obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)"
     },

@@ -1,0 +1,13 @@
+.groups-bg-col {
+  background-color: var(--page-bg-2);
+  height: 100%;
+}
+
+.groups-table {
+  padding: 15px;
+  overflow-y: auto;
+}
+
+.groups-reload-button {
+  font-size: 16px;
+}

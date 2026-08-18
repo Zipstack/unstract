@@ -19,6 +19,13 @@
   margin: 0;
 }
 
+/* Span wrapper lets the tooltip fire over the disabled upload button,
+   which otherwise swallows hover events */
+.manage-docs-upload-tooltip-wrap {
+  display: inline-block;
+  width: 100%;
+}
+
 .summarization-status-circle {
   width: 8px;
   height: 8px;

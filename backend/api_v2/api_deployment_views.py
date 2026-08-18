@@ -5,7 +5,10 @@ from typing import Any
 
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -73,7 +76,12 @@ class DeploymentExecution(views.APIView):
         organization = api.organization
 
         serializer = ExecutionRequestSerializer(
-            data=request.data, context={"api": api, "api_key": api_key}
+            data=request.data,
+            context={
+                "api": api,
+                "api_key": api_key,
+                "is_global_key": deployment_execution_dto.is_global_key,
+            },
         )
         serializer.is_valid(raise_exception=True)
         file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA, [])
@@ -81,6 +89,9 @@ class DeploymentExecution(views.APIView):
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
@@ -117,6 +128,7 @@ class DeploymentExecution(views.APIView):
                 timeout=timeout,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
                 use_file_history=use_file_history,
                 tag_names=tag_names,
                 llm_profile_id=llm_profile_id,
@@ -171,6 +183,9 @@ class DeploymentExecution(views.APIView):
         execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
 
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
@@ -218,6 +233,7 @@ class DeploymentExecution(views.APIView):
                 deployment_execution_dto=deployment_execution_dto,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
             )
         return Response(
             data={
@@ -228,11 +244,25 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(viewsets.ModelViewSet):
+class APIDeploymentViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     pagination_class = CustomPagination
+    notification_resource_name_field = "display_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -244,8 +274,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             .values("created_at")[:1]
         )
 
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             APIDeployment.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
             .annotate(last_run_time_annotated=Subquery(last_run_subquery))
             .order_by(F("last_run_time_annotated").desc(nulls_last=True))
         )
@@ -259,6 +292,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(display_name__icontains=search)
+
+        # Exact-match lookup (distinct from the icontains search above).
+        api_name = self.request.query_params.get("api_name")
+        if api_name:
+            queryset = queryset.filter(api_name=api_name)
 
         return queryset
 
@@ -283,6 +321,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
@@ -323,9 +366,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             )
             workflow_ids = tool_instances.values_list("workflow_id", flat=True).distinct()
 
-            # Get API deployments for these workflows
-            deployments = APIDeployment.objects.filter(
-                workflow_id__in=workflow_ids, created_by=request.user
+            # Get API deployments for these workflows the user can access —
+            # ``created_by`` is audit-only; access flows through memberships,
+            # sharing, and the admin/SA bypasses (UN-2202).
+            deployments = APIDeployment.objects.for_user(request.user).filter(
+                workflow_id__in=workflow_ids
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)
@@ -362,46 +407,52 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         )
         return response
 
-    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
-        """List users who have access to this API deployment."""
+        """List users who have access to this API deployment.
+
+        Viewer-tier by design (``get_permissions`` →
+        ``IsOwnerOrSharedUserOrSharedToOrg``): a shared user may open the owner
+        popup (co-owners spec §10). ``get_permissions`` ignores any
+        ``permission_classes`` set on the decorator, so none is set here.
+        """
         instance = self.get_object()
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)
 
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override partial_update to handle sharing notifications."""
-        # Get current instance and shared users
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
-
-        # If successful and shared_users changed, send notifications
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and notification_plugin
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    # Get notification service from plugin
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    notification_service.send_sharing_notification(
-                        resource_type=ResourceType.API_DEPLOYMENT.value,
-                        resource_name=instance.display_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
-            except Exception as e:
-                logger.exception(f"Failed to send sharing notification: {e}")
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        instance: APIDeployment,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.API_DEPLOYMENT.value,
+                resource_name=instance.display_name,
+                resource_id=str(instance.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+        except Exception as e:
+            logger.exception("Failed to send sharing notification: %s", e)

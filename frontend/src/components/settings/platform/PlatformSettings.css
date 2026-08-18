@@ -2,7 +2,7 @@
 
 .plt-set-layout {
   height: calc(100vh - 60px);
-  background-color: #ffffff;
+  background-color: var(--page-bg-3);
 }
 
 .plt-set-layout-2 {
@@ -10,9 +10,10 @@
 }
 
 .plt-set-head {
-  background-color: #f5f7f9;
+  background-color: var(--white);
   padding: 14px;
   height: 60px;
+  border-bottom: 1px solid var(--border-color-1);
 }
 
 .plt-set-head-typo {
@@ -20,14 +21,56 @@
   font-weight: 600;
 }
 
+.plt-set-section {
+  margin-bottom: 16px;
+}
+
+.plt-set-section > .ant-typography {
+  margin-top: 0;
+}
+
+.plt-set-section-subtitle {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.plt-set-inner-card {
+  background-color: #f5f7f9;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
 .plt-set-key-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
 }
 
-.plt-set-key-head-col-1 {
-  padding-right: 16px;
+.plt-set-key-pill-clickable {
+  cursor: pointer;
 }
 
 .plt-set-key-display {
   width: 300px;
+}
+
+.plt-set-notif-field-label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.plt-set-notif-field-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.plt-set-notif-helper {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
 }

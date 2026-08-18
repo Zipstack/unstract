@@ -84,7 +84,7 @@ function RecentActivity({ data, loading }) {
     }
     const typeConfig = TYPE_CONFIG[item.type] || TYPE_CONFIG.workflow;
     navigate(`/${orgName}/logs/${typeConfig.logType}/${item.execution_id}`, {
-      state: { from: "dashboard" },
+      state: { from: `/${orgName}/dashboard` },
     });
   };
 

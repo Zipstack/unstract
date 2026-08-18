@@ -15,6 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import current_app as app
+from queue_backend import worker_task
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
 
 logger = logging.getLogger(__name__)
@@ -93,8 +94,20 @@ def _emit_event(
     )
 
 
-def _get_task_error(failed_task_id: str, default: str) -> str:
-    """Retrieve the error message from a failed Celery task's result backend."""
+def _get_task_error(
+    failed_task_id: str, default: str, explicit: str | None = None
+) -> str:
+    """Resolve the error text for a failed-task callback.
+
+    Prefers an ``explicit`` error when the caller already has it: the PG
+    self-chained path carries the real error via ``callback_kwargs['error']``
+    because the executor ran eagerly (``task.apply``) and never wrote a Celery
+    result backend under ``failed_task_id`` — so the ``AsyncResult`` lookup below
+    is empty there. The Celery ``link_error`` path passes no explicit error and
+    falls back to the result backend, then the ``default``.
+    """
+    if explicit is not None:
+        return explicit
     try:
         from celery.result import AsyncResult
 
@@ -140,7 +153,7 @@ def _track_subscription_usage(org_id: str, run_id: str) -> None:
 # ------------------------------------------------------------------
 
 
-@app.task(name="ide_index_complete")
+@worker_task(name="ide_index_complete")
 def ide_index_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -299,7 +312,7 @@ def ide_index_complete(
         raise
 
 
-@app.task(name="ide_index_error")
+@worker_task(name="ide_index_error")
 def ide_index_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
@@ -320,7 +333,9 @@ def ide_index_error(
     api = _get_api_client()
 
     try:
-        error_msg = _get_task_error(failed_task_id, default="Indexing failed")
+        error_msg = _get_task_error(
+            failed_task_id, default="Indexing failed", explicit=cb.get("error")
+        )
 
         # Clean up the indexing-in-progress flag
         if doc_id_key:
@@ -345,7 +360,7 @@ def ide_index_error(
         logger.exception("ide_index_error callback failed")
 
 
-@app.task(name="ide_prompt_complete")
+@worker_task(name="ide_prompt_complete")
 def ide_prompt_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -480,7 +495,7 @@ def ide_prompt_complete(
         raise
 
 
-@app.task(name="ide_prompt_error")
+@worker_task(name="ide_prompt_error")
 def ide_prompt_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
@@ -498,7 +513,9 @@ def ide_prompt_error(
     api = _get_api_client()
 
     try:
-        error_msg = _get_task_error(failed_task_id, default="Prompt execution failed")
+        error_msg = _get_task_error(
+            failed_task_id, default="Prompt execution failed", explicit=cb.get("error")
+        )
 
         _emit_event(
             api,
@@ -533,7 +550,7 @@ def _get_extraction_client():
     return ExtractionAPIClient()
 
 
-@app.task(name="extraction_complete")
+@worker_task(name="extraction_complete")
 def extraction_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -625,7 +642,7 @@ def extraction_complete(
             raise
 
 
-@app.task(name="extraction_error")
+@worker_task(name="extraction_error")
 def extraction_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
@@ -641,7 +658,11 @@ def extraction_error(
     # Context-manage clients to avoid per-task session leaks.
     with _get_extraction_client() as api, _get_api_client() as ps_api:
         try:
-            error_msg = _get_task_error(failed_task_id, default="Text extraction failed")
+            error_msg = _get_task_error(
+                failed_task_id,
+                default="Text extraction failed",
+                explicit=cb.get("error"),
+            )
 
             api.mark_extraction_error(
                 source=source,

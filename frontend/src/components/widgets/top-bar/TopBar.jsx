@@ -10,6 +10,8 @@ function TopBar({
   enableSearch,
   searchData,
   setFilteredUserList,
+  searchKey = "email",
+  searchPlaceholder = "Search Users",
   children,
 }) {
   const navigate = useNavigate();
@@ -23,10 +25,10 @@ function TopBar({
       return;
     }
 
-    const filteredList = [...searchData].filter((user) => {
-      const username = user?.email?.toLowerCase();
-      const searchTextLowerCase = searchText.toLowerCase();
-      return username.includes(searchTextLowerCase);
+    const searchTextLowerCase = searchText.toLowerCase();
+    const filteredList = [...searchData].filter((item) => {
+      const value = item?.[searchKey]?.toLowerCase() ?? "";
+      return value.includes(searchTextLowerCase);
     });
     setFilteredUserList(filteredList);
   };
@@ -39,7 +41,10 @@ function TopBar({
       <Col>
         <div className="invite-user-search">
           {enableSearch && (
-            <Input placeholder="Search Users" onChange={onSearchDebounce} />
+            <Input
+              placeholder={searchPlaceholder}
+              onChange={onSearchDebounce}
+            />
           )}
           {children}
         </div>
@@ -53,6 +58,8 @@ TopBar.propTypes = {
   enableSearch: PropTypes.bool.isRequired,
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
+  searchKey: PropTypes.string,
+  searchPlaceholder: PropTypes.string,
   children: PropTypes.element,
 };
 

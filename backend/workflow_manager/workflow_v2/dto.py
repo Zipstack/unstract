@@ -129,6 +129,30 @@ class ExecutionResponse:
             if isinstance(result, dict):
                 result.pop("metadata", None)
 
+    def promote_extracted_text(self) -> None:
+        """Copies extracted_text from metadata to the top level of each file
+        result item. This allows extracted_text to be returned independently
+        of include_metadata.
+
+        After promotion, the extracted_text appears as:
+            result[i]["extracted_text"] = "..."
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                continue
+
+            result = item.get("result")
+            if not isinstance(result, dict):
+                continue
+
+            metadata = result.get("metadata", {})
+            extracted_text = metadata.get("extracted_text")
+            if extracted_text is not None:
+                item["extracted_text"] = extracted_text
+
     def remove_result_metrics(self) -> None:
         """Removes the 'metrics' key from the 'result' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance.

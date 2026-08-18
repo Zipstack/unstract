@@ -8,7 +8,6 @@ from typing import Any
 
 import magic
 from account_v2.custom_exceptions import DuplicateData
-from api_v2.models import APIDeployment
 from celery import signature
 from celery.result import AsyncResult
 from django.db import IntegrityError
@@ -17,20 +16,22 @@ from django.http import HttpRequest, HttpResponse
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
-from pipeline_v2.models import Pipeline
+from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.hubspot_notify import notify_hubspot_event
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
@@ -45,7 +46,6 @@ from prompt_studio.prompt_profile_manager_v2.constants import (
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio_core_v2.constants import (
-    DeploymentType,
     FileViewTypes,
     ToolStudioErrors,
     ToolStudioPromptKeys,
@@ -80,6 +80,13 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
+from prompt_studio.tool_usage import (
+    dependent_workflow_ids,
+    deployment_types_for,
+    join_deployment_types,
+)
+from unstract.core.data_models import PgTaskStatus
+from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -119,12 +126,26 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["tool_name", "created_at", "modified_at"]
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            return None
+        return ResourceType.TEXT_EXTRACTOR.value
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -132,15 +153,19 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action == "destroy":
+        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "memberships__user"
+        )
         if self.action == "list":
-            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            # Subquery rather than a join-aggregate: Count() over a join would
+            # need a GROUP BY that fights the queryset's distinct()
             prompt_count_sq = (
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
@@ -148,9 +173,22 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 .annotate(cnt=Count("prompt_id"))
                 .values("cnt")
             )
+            # modified_at stays a plain orderable field: prompt writes bump the
+            # parent row, so no annotation is needed.
             qs = qs.select_related("created_by").annotate(
-                _prompt_count=Subquery(prompt_count_sq)
+                _prompt_count=Subquery(prompt_count_sq),
             )
+            search = self.request.query_params.get("search")
+            if search:
+                from django.db.models import Q
+                from tenant_account_v2.sharing_helpers import (
+                    resources_matching_owner_search,
+                )
+
+                qs = qs.filter(
+                    Q(tool_name__icontains=search)
+                    | Q(pk__in=resources_matching_owner_search(qs.model, search))
+                )
         return qs
 
     def get_object(self):
@@ -172,6 +210,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
@@ -192,82 +235,26 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         instance.delete(organization_id)
 
     def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
-        """Check if a tool is being used in any workflows.
+        """Whether ``instance``'s exported tool is in use, and by which workflows.
 
-        Args:
-            instance: The CustomTool instance to check
-
-        Returns:
-            Tuple of (is_used: bool, dependent_workflows: set)
+        An unexported project has no registry row and so no dependants.
         """
         registry = getattr(instance, "prompt_studio_registries", None)
         if not registry:
             return False, set()
 
-        dependent_wfs = set(
-            ToolInstance.objects.filter(tool_id=registry.pk)
-            .values_list("workflow_id", flat=True)
-            .distinct()
-        )
+        dependent_wfs = dependent_workflow_ids(registry.pk)
         return bool(dependent_wfs), dependent_wfs
 
     def _get_deployment_types(self, workflow_ids: set) -> set:
-        """Get all deployment types where the tool is used.
-
-        Args:
-            workflow_ids: Set of workflow IDs to check
-
-        Returns:
-            Set of deployment type strings
-        """
-        deployment_types: set = set()
-
-        # Check API Deployments (include inactive to prevent drift)
-        if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
-            deployment_types.add(DeploymentType.API_DEPLOYMENT)
-
-        # Check Pipelines using mapping instead of if/elif
-        pipeline_type_mapping = {
-            Pipeline.PipelineType.ETL: DeploymentType.ETL_PIPELINE,
-            Pipeline.PipelineType.TASK: DeploymentType.TASK_PIPELINE,
-        }
-        pipelines = (
-            Pipeline.objects.filter(workflow_id__in=workflow_ids)
-            .values_list("pipeline_type", flat=True)
-            .distinct()
-        )
-        for pipeline_type in pipelines:
-            if pipeline_type in pipeline_type_mapping:
-                deployment_types.add(pipeline_type_mapping[pipeline_type])
-
-        # Check for Manual Review
-        if WorkflowEndpoint.objects.filter(
-            workflow_id__in=workflow_ids,
-            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
-        ).exists():
-            deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
-
-        return deployment_types
+        """Deployment kinds reachable from ``workflow_ids``."""
+        return deployment_types_for(workflow_ids)
 
     def _format_deployment_types_message(self, deployment_types: set) -> str:
-        """Format deployment types into human-readable message.
-
-        Args:
-            deployment_types: Set of deployment type strings
-
-        Returns:
-            Formatted message string or empty string if no types
-        """
-        if not deployment_types:
+        """Render the "re-export needed" notice, or "" when nothing is deployed."""
+        types_text = join_deployment_types(deployment_types)
+        if not types_text:
             return ""
-
-        types_list = sorted(deployment_types)
-        if len(types_list) == 1:
-            types_text = types_list[0]
-        elif len(types_list) == 2:
-            types_text = f"{types_list[0]} or {types_list[1]}"
-        else:
-            types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
 
         return (
             f"You have made changes to this Prompt Studio project. "
@@ -295,48 +282,50 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update for email notifications
         custom_tool = self.get_object()
-        current_shared_users = set(custom_tool.shared_users.all())
+        before = self.snapshot_share_axes(custom_tool)
 
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
-
-        # Send email notifications to newly shared users
-        if response.status_code == 200 and "shared_users" in request.data:
-            from plugins import get_plugin
-
-            notification_plugin = get_plugin("notification")
-            if notification_plugin:
-                from plugins.notification.constants import ResourceType
-
-                # Refresh the object to get updated shared_users
-                custom_tool.refresh_from_db()
-                updated_shared_users = set(custom_tool.shared_users.all())
-
-                # Find newly added users (not previously shared)
-                newly_shared_users = updated_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    try:
-                        notification_service.send_sharing_notification(
-                            resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                            resource_name=custom_tool.tool_name,
-                            resource_id=str(custom_tool.tool_id),
-                            shared_by=request.user,
-                            shared_to=list(newly_shared_users),
-                            resource_instance=custom_tool,
-                        )
-                    except Exception as e:
-                        # Log error but don't fail the request
-                        logger.exception(
-                            f"Failed to send sharing notification for "
-                            f"custom tool {custom_tool.tool_id}: {str(e)}"
-                        )
-
+        if response.status_code == 200:
+            self._notify_shared_users(custom_tool, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        custom_tool: CustomTool,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        notification_plugin = get_plugin("notification")
+        if not notification_plugin:
+            return
+        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+
+        from plugins.notification.constants import ResourceType
+
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.TEXT_EXTRACTOR.value,
+                resource_name=custom_tool.tool_name,
+                resource_id=str(custom_tool.tool_id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=custom_tool,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification for custom tool %s: %s",
+                custom_tool.tool_id,
+                str(e),
+            )
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
@@ -443,9 +432,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
+            # user_id is the file-path owner (project creator);
+            # request_user is who triggered the action (UN-3739)
             user_id=tool.created_by.user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -604,6 +596,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         # If document is being indexed, return pending status
@@ -716,6 +709,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
             profile_manager_id=profile_manager_id,
+            request_user=request.user,
         )
 
         if context is None:
@@ -822,6 +816,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=user_id,
             document_id=document_id,
             run_id=run_id,
+            request_user=request.user,
         )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
@@ -869,6 +864,50 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()
+
+        # Gate on the same per-org ``pg_queue_enabled`` flag the executor dispatch
+        # uses (``resolve_pg_transport`` — bucketed per org): flag ON → the task rode
+        # PG, which records its terminal state in ``pg_task_result`` (the eager PG
+        # executor never writes a Celery result backend, so ``AsyncResult`` alone
+        # would poll "processing" forever — UN-3693); flag OFF (default) → Celery,
+        # unchanged, and PG is not touched. ``entity_id``/``context`` match
+        # ``resolve_pg_transport`` so the per-org bucket agrees with the dispatch.
+        # No wrapper: ``check_feature_flag_status`` already fails closed to ``False``
+        # (its own try/except + warning) on any Flipt error → reads as "off" → Celery.
+        org_id = str(UserSessionUtils.get_organization_id(request) or "")
+        pg_enabled = check_feature_flag_status(
+            flag_key=PG_QUEUE_FLAG_KEY,
+            entity_id=org_id or "default",
+            context={"organization_id": org_id},
+        )
+        if pg_enabled:
+            from pg_queue.models import PgTaskResult
+
+            try:
+                row = (
+                    PgTaskResult.objects.filter(task_id=task_id)
+                    .values("status", "error")
+                    .first()
+                )
+            except Exception:
+                # A transient DB blip degrades to "processing" (a poll retries) rather
+                # than a bare 500 that a status-code-keyed client would misread as a
+                # terminal task failure.
+                logger.exception(
+                    "task_status: pg_task_result read failed for %s; treating as pending",
+                    task_id,
+                )
+                row = None
+            # No row → not finished yet (there is no "pending" row). Status compared
+            # against PgTaskStatus (the writer's source of truth), not a bare literal.
+            if row is None:
+                return Response({"task_id": task_id, "status": "processing"})
+            if row["status"] == PgTaskStatus.COMPLETED.value:
+                return Response({"task_id": task_id, "status": "completed"})
+            return Response(
+                {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         result = AsyncResult(task_id, app=celery_app)
         if not result.ready():

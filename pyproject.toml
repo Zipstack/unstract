@@ -12,7 +12,7 @@ dev = [
     "pre-commit~=3.6.2",
     "yamllint>=1.35.1",
     "ruff<1.0.0,>=0.2.2",
-    "pytest>=8.0.1",
+    "pytest>=9.0.3",
     "pycln>=2.6.0",
     "types-PyMySQL~=1.1.0.1",
     "types-pyOpenSSL~=24.0.0.20240311",
@@ -26,28 +26,19 @@ workers = [
     "unstract-workers",
 ]
 
-hook-check-django-migrations = [
-    "celery>=5.3.4",
-    "cron-descriptor==1.4.0",
-    "django==4.2.1",
-    "djangorestframework==3.14.0",
-    # Pinning django-celery-beat to avoid build issues
-    "django-celery-beat==2.5.0",
-    "django-cors-headers>=4.3.1",
-    "django-redis==5.4.0",
-    "django-tenants==3.5.0",
-    "drf-yasg==1.21.7",
-    "social-auth-app-django==5.3.0",
-    "psycopg2-binary==2.9.9",
-    "python-dotenv==1.0.1",
-    "python-magic==0.4.27",
-    "unstract-connectors",
-    "unstract-core",
-    "unstract-flags",
-    "unstract-tool-registry",
-    "unstract-tool-sandbox",
-    "unstract-workflow-execution",
-    "unstract-filesystem",
+test-rig = [
+    # Test runner foundation. Installed by tox into the rig env.
+    "pytest>=8.0.1",
+    "pytest-xdist>=3.5.0",
+    "pytest-cov>=4.1.0",
+    "pytest-md-report>=0.6.2",
+    "pytest-mock>=3.12.0",
+    "pytest-timeout>=2.3.1",
+    "pytest-django>=4.8.0",
+    "coverage[toml]>=7.4.0",
+    "pyyaml>=6.0.1",
+    "testcontainers[postgres,redis,minio,rabbitmq]>=4.7.0",
+    "requests>=2.31.0",
 ]
 
 [tool.uv.sources]
@@ -187,12 +178,49 @@ keep-dict-typing = true
 
 [tool.pytest.ini_options]
 python_files = ["tests.py", "test_*.py", "*_tests.py"]
-DJANGO_SETTINGS_MODULE = "backend.settings.test_cases"
 testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit (no external services required)",
+    "e2e: marks tests as end-to-end (require full platform stack)",
+    "critical: marks tests covering a critical path (see tests/critical_paths.yaml)",
+    "critical_path(path_id): attests coverage of the named critical path(s) when this test passes",
 ]
+
+[tool.coverage.run]
+branch = false
+relative_files = true
+omit = [
+    # Test modules shouldn't count themselves as covered code; that inflates
+    # the percentage and hides real gaps in the modules under test.
+    # Keep the patterns narrow: target test FILES, not "anything in a tests/
+    # directory" (which would exclude tests/rig/*.py — those ARE the
+    # production modules for the unit-rig group).
+    "**/test_*.py",
+    "**/*_tests.py",
+    "**/tests.py",
+]
+
+[tool.coverage.paths]
+# Each group runs pytest from its own workdir, so per-group .coverage files
+# store paths anchored at that workdir (e.g. "src/unstract/sdk1/foo.py" from
+# unstract/sdk1/; "shared/foo.py" from workers/). `coverage combine` uses
+# these mappings to fold parallel workdir paths back onto a single
+# repo-relative path, otherwise xml/html show duplicate or orphaned files.
+sdk1 = ["unstract/sdk1/src/unstract/sdk1", "*/unstract/sdk1/src/unstract/sdk1"]
+runner = ["runner/src/unstract/runner", "*/runner/src/unstract/runner"]
+prompt_service = [
+    "prompt-service/src/unstract/prompt_service",
+    "*/prompt-service/src/unstract/prompt_service",
+]
+platform_service = ["platform-service/src", "*/platform-service/src"]
+workers = ["workers/shared", "*/workers/shared"]
+connectors = ["unstract/connectors/src", "*/unstract/connectors/src"]
+core = ["unstract/core/src", "*/unstract/core/src"]
+tool_registry = ["unstract/tool-registry/src", "*/unstract/tool-registry/src"]
+backend = ["backend", "*/backend"]
+rig = ["tests/rig", "*/tests/rig"]
 
 [tool.mypy]
 python_version = "3.12"

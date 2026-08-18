@@ -56,6 +56,41 @@ class AnswerPromptService:
         return promptx
 
     @staticmethod
+    def _llm_caches_prompts(llm: Any) -> bool:
+        """Whether reordering into a cached prefix pays off for this LLM.
+
+        True only when the LLM reports prompt caching is active for it — caching
+        enabled (adapter flag / constructor arg / ``ENABLE_PROMPT_CACHING``
+        master switch) AND a supported provider/model. LLM objects that don't
+        expose the capability default to False, so their prompt order is left
+        unchanged.
+        """
+        checker = getattr(llm, "is_prompt_caching_active", None)
+        if not callable(checker):
+            return False
+        # Fail closed: if the probe raises, keep the original (context-last)
+        # prompt order rather than risk a reorder for an LLM whose caching
+        # support is unknown. Hence the deliberately broad excepts below.
+        try:
+            return bool(checker())
+        except Exception:  # noqa: BLE001 - fail closed, see comment above
+            provider = getattr(getattr(llm, "adapter", None), "get_provider", None)
+            provider_name = None
+            if callable(provider):
+                try:
+                    provider_name = provider()
+                except Exception:  # noqa: BLE001 - provider is best-effort log context
+                    provider_name = None
+            logger.warning(
+                "Failed to determine prompt-caching support for LLM "
+                "(type=%s, provider=%s); using original prompt order",
+                type(llm).__name__,
+                provider_name,
+                exc_info=True,
+            )
+            return False
+
+    @staticmethod
     def construct_and_run_prompt(
         tool_settings: dict[str, Any],
         output: dict[str, Any],
@@ -99,21 +134,37 @@ class AnswerPromptService:
         if not enable_word_confidence or summarize_as_source:
             word_confidence_postamble = ""
 
-        prompt = AnswerPromptService.construct_prompt(
-            preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-            prompt=output[prompt],
-            postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-            grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-            context=context,
-            platform_postamble=platform_postamble,
-            word_confidence_postamble=word_confidence_postamble,
-            prompt_type=prompt_type,
-            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
-        )
-        output[PSKeys.COMBINED_PROMPT] = prompt
+        prompt_args = {
+            "preamble": tool_settings.get(PSKeys.PREAMBLE, ""),
+            "prompt": output[prompt],
+            "postamble": tool_settings.get(PSKeys.POSTAMBLE, ""),
+            "grammar_list": tool_settings.get(PSKeys.GRAMMAR, []),
+            "context": context,
+            "platform_postamble": platform_postamble,
+            "word_confidence_postamble": word_confidence_postamble,
+            "prompt_type": prompt_type,
+            "signature_metadata": tool_settings.get(PSKeys.SIGNATURE_METADATA),
+        }
+        cache_prefix: str | None = None
+        # Only reorder into a cached prefix when this LLM actually caches
+        # (caching enabled AND a supported provider/model). Reordering for an
+        # unsupported provider would change the prompt structure — moving the
+        # document context ahead of the instructions — with no caching benefit,
+        # so those providers keep the original prompt order.
+        if AnswerPromptService._llm_caches_prompts(llm):
+            # Reorder so the reused document context becomes a cached prefix.
+            # The text the model sees is ``cache_prefix + prompt_str``.
+            cache_prefix, prompt_str = AnswerPromptService.construct_cached_prompt(
+                **prompt_args
+            )
+            output[PSKeys.COMBINED_PROMPT] = cache_prefix + prompt_str
+        else:
+            prompt_str = AnswerPromptService.construct_prompt(**prompt_args)
+            output[PSKeys.COMBINED_PROMPT] = prompt_str
         answer = AnswerPromptService.run_completion(
             llm=llm,
-            prompt=prompt,
+            prompt=prompt_str,
+            cache_prefix=cache_prefix,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
             prompt_type=prompt_type,
@@ -161,8 +212,7 @@ class AnswerPromptService:
         answer references a known signer or signatures generally.
 
         Delegates the matching logic to
-        ``unstract.sdk1.utils.signature_highlights`` so workers and
-        prompt-service stay in sync.
+        ``unstract.sdk1.utils.signature_highlights`` (shared SDK helper).
         """
         if metadata is None or not prompt_key:
             return
@@ -187,6 +237,56 @@ class AnswerPromptService:
         )
 
     @staticmethod
+    def _prepare_postambles(
+        postamble: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str,
+    ) -> tuple[str, str]:
+        """Apply JSON + platform/word-confidence formatting to the postambles.
+
+        Shared by :meth:`construct_prompt` and :meth:`construct_cached_prompt` so
+        the cached and non-cached prompts stay byte-identical apart from the
+        context/question ordering. Returns the ``(postamble, platform_postamble)``
+        pair to interpolate.
+        """
+        if prompt_type == PSKeys.JSON:
+            json_postamble = os.environ.get(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
+        if platform_postamble:
+            platform_postamble += "\n\n"
+            if word_confidence_postamble:
+                platform_postamble += f"{word_confidence_postamble}\n\n"
+        return postamble, platform_postamble
+
+    @staticmethod
+    def _build_signature_context(
+        signature_metadata: dict[str, list[Any]] | None,
+    ) -> str:
+        """Format LLMWhisperer ``document_insights`` signature metadata as an
+        extra context block, or return ``""`` when there is none.
+
+        Shared by :meth:`construct_prompt` and :meth:`construct_cached_prompt`
+        so the signature block lands in the same place (appended to the
+        document context) regardless of prompt-caching reordering.
+        """
+        if not signature_metadata:
+            return ""
+        logger.info(
+            "DOC_INSIGHTS construct_prompt: injecting signature context "
+            "for %d page(s)",
+            len(signature_metadata),
+        )
+        signature_context = format_signature_metadata_context(signature_metadata)
+        logger.debug(
+            "DOC_INSIGHTS construct_prompt: signature_context=%s",
+            signature_context[:200] if signature_context else "empty",
+        )
+        return signature_context
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -201,28 +301,13 @@ class AnswerPromptService:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         prompt += AnswerPromptService._build_grammar_notes(grammar_list)
-        if prompt_type == PSKeys.JSON:
-            json_postamble = os.environ.get(
-                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
-            )
-            postamble += f"\n{json_postamble}"
-        if platform_postamble:
-            platform_postamble += "\n\n"
-            if word_confidence_postamble:
-                platform_postamble += f"{word_confidence_postamble}\n\n"
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
         # Append signature metadata to context if present
-        signature_context = ""
-        if signature_metadata:
-            logger.info(
-                "DOC_INSIGHTS construct_prompt: injecting signature context "
-                "for %d page(s)",
-                len(signature_metadata),
-            )
-            signature_context = format_signature_metadata_context(signature_metadata)
-            logger.debug(
-                "DOC_INSIGHTS construct_prompt: signature_context=%s",
-                signature_context[:200] if signature_context else "empty",
-            )
+        signature_context = AnswerPromptService._build_signature_context(
+            signature_metadata
+        )
         prompt += (
             f"\n\n{postamble}\n\nContext:\n---------------\n{context}"
             f"{signature_context}\n"
@@ -231,9 +316,50 @@ class AnswerPromptService:
         return prompt
 
     @staticmethod
+    def construct_cached_prompt(
+        preamble: str,
+        prompt: str,
+        postamble: str,
+        grammar_list: list[dict[str, Any]],
+        context: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str = "text",
+        signature_metadata: dict[str, list[Any]] | None = None,
+    ) -> tuple[str, str]:
+        """Build ``(cache_prefix, volatile)`` with the document context first.
+
+        Same content as :meth:`construct_prompt`, but the reused ``context`` is
+        moved to the front so it forms a cacheable prefix that repeats across
+        every prompt run against the same document, while the per-prompt
+        question is the volatile suffix. The model sees ``cache_prefix +
+        volatile``. This reorders the prompt (context before question instead of
+        after), which is why it is flag-gated and A/B-evaluated.
+        """
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
+        # Signature metadata is per-document, so it belongs in the stable
+        # (cached) prefix alongside the extracted context.
+        signature_context = AnswerPromptService._build_signature_context(
+            signature_metadata
+        )
+        cache_prefix = (
+            f"Context:\n---------------\n{context}{signature_context}\n"
+            f"-----------------\n\n"
+        )
+        volatile = (
+            f"{preamble}\n\nQuestion or Instruction: {prompt}"
+            + AnswerPromptService._build_grammar_notes(grammar_list)
+            + f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+        )
+        return cache_prefix, volatile
+
+    @staticmethod
     def run_completion(
         llm: Any,
         prompt: str,
+        cache_prefix: str | None = None,
         metadata: dict[str, str] | None = None,
         prompt_key: str | None = None,
         prompt_type: str | None = "text",
@@ -261,6 +387,7 @@ class AnswerPromptService:
         try:
             completion = llm.complete(
                 prompt=prompt,
+                cache_prefix=cache_prefix,
                 process_text=process_text,
                 extract_json=prompt_type.lower() != PSKeys.TEXT,
             )

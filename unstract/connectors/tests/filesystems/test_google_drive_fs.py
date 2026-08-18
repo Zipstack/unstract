@@ -1,9 +1,19 @@
+import os
 import unittest
 
+import pytest
 from unstract.connectors.filesystems.google_drive.google_drive import GoogleDriveFS
+
+# Whole module needs live infra/credentials — integration tier only.
+pytestmark = pytest.mark.integration
 
 
 class TestGoogleDriveFS(unittest.TestCase):
+    @unittest.skipUnless(
+        os.environ.get("GDRIVE_GOOGLE_SERVICE_ACCOUNT")
+        and os.environ.get("GDRIVE_GOOGLE_PROJECT_ID"),
+        "Integration test requires GDRIVE_GOOGLE_SERVICE_ACCOUNT and GDRIVE_GOOGLE_PROJECT_ID",
+    )
     def test_basic(self):
         self.assertEqual(GoogleDriveFS.requires_oauth(), True)
         drive = GoogleDriveFS(
@@ -14,7 +24,7 @@ class TestGoogleDriveFS(unittest.TestCase):
             }
         )
 
-        print(drive.get_fsspec_fs().ls(""))
+        self.assertIsNotNone(drive.get_fsspec_fs().ls(""))
 
 
 if __name__ == "__main__":

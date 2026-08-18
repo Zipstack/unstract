@@ -44,6 +44,18 @@ def check_feature_flag_status(
 
         return bool(result)
     except Exception:
+        # A genuine evaluation failure (Flipt unreachable, renamed/deleted flag,
+        # wrong namespace) otherwise collapses into the same False as a healthy
+        # "flag off" — log it so a real outage is visible at the decision layer
+        # rather than silent. Callers fail closed on False either way. warning +
+        # exc_info (not logger.exception) so a persistently-down Flipt doesn't
+        # bury every call as a Sentry error.
+        logger.warning(
+            "check_feature_flag_status: evaluation failed for flag %r; "
+            "treating as disabled",
+            flag_key,
+            exc_info=True,
+        )
         return False
 
 
@@ -136,4 +148,12 @@ def check_feature_flag_variant(
 
         return result
     except Exception:
+        # Same rationale as check_feature_flag_status — surface a genuine
+        # evaluation failure instead of silently returning the disabled default.
+        logger.warning(
+            "check_feature_flag_variant: evaluation failed for flag %r; "
+            "returning disabled default",
+            flag_key,
+            exc_info=True,
+        )
         return default_result

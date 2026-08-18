@@ -6,6 +6,10 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -25,9 +29,20 @@ class TestAdapterSerializer(serializers.Serializer):
 
 
 class BaseAdapterSerializer(AuditSerializer):
+    # ``shared_groups`` is no longer an M2M on AdapterInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /adapter/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData); drop the DRF
+        # auto-validator that 400s on re-save before the view can handle it.
+        validators = []
+        extra_kwargs = {
+            "shared_to_org": {"read_only": True},
+        }
 
     def validate(self, data):
         data = super().validate(data)
@@ -155,6 +170,8 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "created_at",
+            "modified_at",
             "description",
         )  # type: ignore
 
@@ -190,10 +207,18 @@ class AdapterListSerializer(BaseAdapterSerializer):
         if model:
             rep["model"] = model
 
+        # Frictionless (Unstract-provisioned) adapters mask the owner org-wide;
+        # mask owner_emails too, else the Owned By column leaks the real owner.
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"
+            rep["owner_emails"] = ["Unstract"]
         else:
             rep["created_by_email"] = instance.created_by.email
+            rep["owner_emails"] = instance.owner_emails()
+
+        request = self.context.get("request")
+        rep["is_owner"] = instance.is_owner(request.user) if request else False
+        rep["co_owners_count"] = instance.co_owners_count()
 
         return rep
 
@@ -205,6 +230,8 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     """
 
     shared_users = serializers.SerializerMethodField()
+    shared_groups = serializers.SerializerMethodField()
+    co_owners = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -217,12 +244,19 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "created_by",
             "shared_users",
             "shared_to_org",
+            "shared_groups",
+            "co_owners",
         )  # type: ignore
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        viewers = [u for u in obj.viewers() if not u.is_service_account]
+        return UserSerializer(viewers, many=True).data
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

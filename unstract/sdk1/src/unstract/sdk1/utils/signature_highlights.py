@@ -1,10 +1,9 @@
 """Shared helpers for surfacing LLMWhisperer signature page highlights.
 
-The workers executor and the prompt-service answer-prompt service both
-need to post-process LLM answers against the signature metadata that
-LLMWhisperer V2's ``document_insights`` mode produces. This module owns
-the matching logic so both services stay in lock-step without copy-paste
-drift.
+The workers executor post-processes LLM answers against the signature
+metadata that LLMWhisperer V2's ``document_insights`` mode produces. This
+module owns the matching logic so any consumer (workers today, other
+services later) shares one implementation without copy-paste drift.
 """
 
 from __future__ import annotations

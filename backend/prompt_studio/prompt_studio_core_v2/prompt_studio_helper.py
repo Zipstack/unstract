@@ -8,14 +8,20 @@ from typing import Any, NamedTuple
 
 from account_v2.constants import Common
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.models import AdapterInstance
+from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
-from django.db.models.manager import BaseManager
+from django.utils import timezone
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
@@ -74,7 +80,6 @@ from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
 from unstract.sdk1.utils.indexing import IndexingUtils
@@ -83,7 +88,6 @@ from unstract.sdk1.utils.tool import ToolUtils
 logger = logging.getLogger(__name__)
 
 CHOICES_JSON = "/static/select_choices.json"
-ERROR_MSG = "User %s doesn't have access to adapter %s"
 
 
 class ExtractResult(NamedTuple):
@@ -101,6 +105,20 @@ class ExtractResult(NamedTuple):
     signature_page_references: dict[str, Any] | None = None
 
 
+def _adapter_accessible_by(adapter: AdapterInstance, user: User) -> bool:
+    """Whether ``user`` may use ``adapter`` (owner, direct viewer, org, or group).
+
+    ``created_by`` is audit-only since UN-2202 — access is owner/viewer role
+    based via the membership bridges.
+    """
+    return (
+        adapter.shared_to_org
+        or _is_resource_owner(user, adapter)
+        or _is_resource_viewer(user, adapter)
+        or has_group_access(user, adapter)
+    )
+
+
 class PromptStudioHelper:
     """Helper class for Custom tool operations."""
 
@@ -108,57 +126,67 @@ class PromptStudioHelper:
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
         """Create a default profile manager for a given user and tool.
 
-        Args:
-            user (User): The user for whom the default profile manager is
-            created.
-            tool_id (uuid): The ID of the tool for which the default profile
-            manager is created.
-
-        Raises:
-            AdapterInstance.DoesNotExist: If no suitable adapter instance is
-            found for creating the default profile manager.
+        Builds the profile from the creator's default-set adapters
+        (UserDefaultAdapter). In cloud these are the frictionless adapters
+        seeded at onboarding; in OSS/on-prem they are auto-set as the user
+        adds the first adapter of each type. Skips silently when a usable
+        default is missing for any of the four types, so a project can still
+        be created before adapters are configured.
 
         Returns:
             None
         """
+        organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+        if not organization_member:
+            logger.info(
+                "Skipping default profile creation: user has no organization membership"
+            )
+            return
+
+        default_adapter = UserDefaultAdapter.objects.filter(
+            organization_member=organization_member
+        ).first()
+        if not default_adapter:
+            logger.info("Skipping default profile creation: no default adapters set")
+            return
+
+        adapters = {
+            "llm": default_adapter.default_llm_adapter,
+            "embedding_model": default_adapter.default_embedding_adapter,
+            "vector_store": default_adapter.default_vector_db_adapter,
+            "x2text": default_adapter.default_x2text_adapter,
+        }
+        # A valid profile needs a usable default for every adapter type
+        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+            logger.info(
+                "Skipping default profile creation: "
+                "incomplete or unusable default adapters"
+            )
+            return
+
+        # Best-effort: a profile creation hiccup must never break project creation.
+        # The savepoint keeps a DB error from poisoning the request's outer
+        # transaction when ATOMIC_REQUESTS is enabled.
         try:
-            AdapterInstance.objects.get(
-                is_friction_less=True,
-                is_usable=True,
-                adapter_type=AdapterKeys.LLM,
+            with transaction.atomic():
+                ProfileManager.objects.create(
+                    prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+                    is_default=True,
+                    created_by=user,
+                    modified_by=user,
+                    profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
+                    chunk_size=0,
+                    chunk_overlap=0,
+                    section="Default",
+                    retrieval_strategy="simple",
+                    similarity_top_k=3,
+                    **adapters,
+                )
+        except Exception:
+            logger.warning(
+                "Skipping default profile creation: failed to create profile",
+                exc_info=True,
             )
-
-            default_adapters: BaseManager[AdapterInstance] = (
-                AdapterInstance.objects.filter(is_friction_less=True)
-            )
-
-            profile_manager = ProfileManager(
-                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
-                is_default=True,
-                created_by=user,
-                modified_by=user,
-                chunk_size=0,
-                profile_name="sample profile",
-                chunk_overlap=0,
-                section="Default",
-                retrieval_strategy="simple",
-                similarity_top_k=3,
-            )
-
-            for adapter in default_adapters:
-                if adapter.adapter_type == AdapterKeys.LLM:
-                    profile_manager.llm = adapter
-                elif adapter.adapter_type == AdapterKeys.VECTOR_DB:
-                    profile_manager.vector_store = adapter
-                elif adapter.adapter_type == AdapterKeys.X2TEXT:
-                    profile_manager.x2text = adapter
-                elif adapter.adapter_type == AdapterKeys.EMBEDDING:
-                    profile_manager.embedding_model = adapter
-
-            profile_manager.save()
-
-        except AdapterInstance.DoesNotExist:
-            logger.info("skipping default profile creation")
 
     @staticmethod
     def validate_adapter_status(
@@ -189,96 +217,115 @@ class PromptStudioHelper:
     @staticmethod
     def validate_profile_manager_owner_access(
         profile_manager: ProfileManager,
+        request_user: User | None = None,
     ) -> None:
-        """Helper method to validate the owner's access to the profile manager.
+        """Validate adapter access for a profile before using its adapters.
+
+        This is a revocation guard on the profile *creator*, not a
+        requester ACL: users with project access deliberately piggyback on
+        the creator's adapter access. Bypasses (UN-3739): an org-admin
+        requester (implicit access to all adapters); a None creator —
+        profiles whose creating user was deleted, which includes
+        platform-API users removed on key deletion since ``created_by``
+        is SET_NULL; a service-account creator (platform-API profiles
+        hold no adapter shares by design); and an org-admin creator.
 
         Args:
-            profile_manager (ProfileManager): The profile manager instance to
-              validate.
+            profile_manager: The profile whose adapters will be used.
+            request_user: The user triggering the action. Defaults to None
+              only for the legacy, currently-uncalled ``index_document`` /
+              ``prompt_responder`` chain (UN-3756); all live callers pass
+              a requester.
 
         Raises:
-            PermissionError: If the owner does not have permission to perform
-              the action.
+            PermissionError: If the profile creator no longer has access to
+              one or more adapters and no bypass applies.
         """
-        profile_manager_owner = profile_manager.created_by
-        if profile_manager_owner is None:
-            # No owner on this profile manager — skip ownership validation
+        if OrganizationMemberService.is_user_organization_admin(request_user):
             return
 
-        is_llm_owned = (
-            profile_manager.llm.shared_to_org
-            or profile_manager.llm.created_by == profile_manager_owner
-            or profile_manager.llm.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-        )
-        is_vector_store_owned = (
-            profile_manager.vector_store.shared_to_org
-            or profile_manager.vector_store.created_by == profile_manager_owner
-            or profile_manager.vector_store.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-        )
-        is_embedding_model_owned = (
-            profile_manager.embedding_model.shared_to_org
-            or profile_manager.embedding_model.created_by == profile_manager_owner
-            or profile_manager.embedding_model.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
-        )
-        is_x2text_owned = (
-            profile_manager.x2text.shared_to_org
-            or profile_manager.x2text.created_by == profile_manager_owner
-            or profile_manager.x2text.shared_users.filter(
-                pk=profile_manager_owner.pk
-            ).exists()
+        owner = profile_manager.created_by
+        if owner is None:
+            return
+
+        if getattr(owner, "is_service_account", False):
+            return
+
+        if OrganizationMemberService.is_user_organization_admin(owner):
+            return
+
+        adapters = [
+            profile_manager.llm,
+            profile_manager.vector_store,
+            profile_manager.embedding_model,
+            profile_manager.x2text,
+        ]
+        # Access = org share, owner/viewer role, or group (UN-2202);
+        # see _adapter_accessible_by.
+        denied = [
+            adapter for adapter in adapters if not _adapter_accessible_by(adapter, owner)
+        ]
+        if not denied:
+            return
+
+        logger.error(
+            "Adapter access denied for profile '%s': creator %s lacks access"
+            " to adapters %s, requester %s",
+            profile_manager.profile_name,
+            owner.user_id,
+            [str(adapter.id) for adapter in denied],
+            getattr(request_user, "user_id", None),
         )
 
-        if not (
-            is_llm_owned
-            and is_vector_store_owned
-            and is_embedding_model_owned
-            and is_x2text_owned
-        ):
-            adapter_names = set()
-            if not is_llm_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.llm.id,
-                )
-                adapter_names.add(profile_manager.llm.adapter_name)
-            if not is_vector_store_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.vector_store.id,
-                )
-                adapter_names.add(profile_manager.vector_store.adapter_name)
-            if not is_embedding_model_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.embedding_model.id,
-                )
-                adapter_names.add(profile_manager.embedding_model.adapter_name)
-            if not is_x2text_owned:
-                logger.error(
-                    ERROR_MSG,
-                    profile_manager_owner.user_id,
-                    profile_manager.x2text.id,
-                )
-                adapter_names.add(profile_manager.x2text.adapter_name)
-            if len(adapter_names) > 1:
-                error_msg = (
-                    f"Multiple permission errors were encountered with {', '.join(adapter_names)}",  # noqa: E501
-                )
-            else:
-                error_msg = (
-                    f"Permission Error: You do not have access to {adapter_names.pop()}",  # noqa: E501
-                )
-
+        # Third-party identity stays in server logs only — user-facing text
+        # carries no PII.
+        denied_names = ", ".join(
+            dict.fromkeys(adapter.adapter_name for adapter in denied)
+        )
+        if request_user is not None and owner.pk == request_user.pk:
+            # The requester IS the creator — "created by another user"
+            # would be false, and they can be addressed directly.
+            adapter_ref = (
+                f"the adapter '{denied_names}', which you no longer have" f" access to"
+                if len(denied) == 1
+                else f"adapters you no longer have access to: {denied_names}"
+            )
+            error_msg = (
+                f"Permission Error: This project's LLM profile"
+                f" '{profile_manager.profile_name}' uses {adapter_ref}."
+                f" Ask an org admin to re-share access with you or share with"
+                f" everyone, or recreate the profile with adapters you can"
+                f" access."
+            )
             raise PermissionError(error_msg)
+
+        profile_ref = (
+            f"This project's LLM profile '{profile_manager.profile_name}' was"
+            f" created by another user"
+        )
+        if not OrganizationMemberService.get_user_by_id(owner.id):
+            error_msg = (
+                f"Permission Error: {profile_ref} who is no longer a member of"
+                f" this organization. Ask an org admin to recreate the default"
+                f" profile, or to share these adapters with everyone:"
+                f" {denied_names}."
+            )
+        elif len(denied) > 1:
+            error_msg = (
+                f"Permission Error: {profile_ref} who no longer has access to"
+                f" these adapters: {denied_names}. Ask an org admin to re-share"
+                f" them with the profile's creator, share them with everyone,"
+                f" or recreate the profile."
+            )
+        else:
+            error_msg = (
+                f"Permission Error: {profile_ref} who no longer has access to"
+                f" the adapter '{denied_names}'. Ask an org admin to re-share"
+                f" it with the profile's creator, share it with everyone, or"
+                f" recreate the profile."
+            )
+
+        raise PermissionError(error_msg)
 
     @staticmethod
     def _publish_log(
@@ -290,9 +337,18 @@ class PromptStudioHelper:
         )
 
     @staticmethod
-    def _get_dispatcher() -> ExecutionDispatcher:
-        """Get an ExecutionDispatcher for the executor worker."""
-        return ExecutionDispatcher(celery_app=celery_app)
+    def _get_dispatcher():
+        """Executor dispatcher for the executor worker.
+
+        Gate-routed: when ``pg_queue_enabled`` is on the blocking
+        ``dispatch()`` rides the PG request-reply transport; otherwise — and for
+        all async/callback dispatches — it is the unchanged Celery
+        ``ExecutionDispatcher``. The decision is read per dispatch, so flipping
+        the flag is an instant, no-redeploy rollout/rollback.
+        """
+        from pg_queue.executor_rpc import get_executor_dispatcher
+
+        return get_executor_dispatcher(celery_app=celery_app)
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
@@ -318,6 +374,8 @@ class PromptStudioHelper:
         stem: str,
         extract_file_path: str,
         platform_api_key: str,
+        *,
+        request_user: User | None,
     ) -> tuple[dict[str, Any] | None, str, "ProfileManager"]:
         """Build summarize_params dict if summarization is enabled.
 
@@ -341,7 +399,9 @@ class PromptStudioHelper:
 
         if summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
-            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                summary_profile, request_user=request_user
+            )
 
         llm_adapter_id = (
             str(tool.summarize_llm_adapter.id)
@@ -484,6 +544,8 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext, dict[str, Any]]:
         """Build ide_index ExecutionContext for fire-and-forget dispatch.
 
@@ -505,7 +567,9 @@ class PromptStudioHelper:
             raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(default_profile)
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user=request_user
+        )
 
         # Common path decomposition used by extract, summarize, and index
         directory, filename = os.path.split(file_path)
@@ -522,6 +586,7 @@ class PromptStudioHelper:
                 stem,
                 extract_file_path,
                 platform_api_key,
+                request_user=request_user,
             )
         )
 
@@ -662,6 +727,36 @@ class PromptStudioHelper:
         return context, cb_kwargs
 
     @staticmethod
+    def _resolve_profile_manager(
+        tool: Any, prompt: Any = None, profile_manager_id: str | None = None
+    ) -> Any:
+        """Resolve the profile a run executes under.
+
+        The ladder, in order: an explicitly passed ``profile_manager_id``, then
+        the prompt's own FK, then the project default. A prompt need not carry
+        its own FK - falling back to the project default matches what
+        index_document and single-pass extraction already do.
+
+        ``get_default_llm_profile`` raises ``DefaultProfileError`` when no
+        project default exists, so this never returns a falsy value.
+
+        Args:
+            tool (CustomTool): Prompt Studio project the prompt belongs to
+            prompt (ToolStudioPrompt | None): Prompt whose FK to consult, if any
+            profile_manager_id (str | None): Explicitly requested profile
+
+        Returns:
+            ProfileManager: The resolved profile
+        """
+        if profile_manager_id:
+            return ProfileManagerHelper.get_profile_manager(
+                profile_manager_id=profile_manager_id
+            )
+        if prompt is not None and prompt.profile_manager:
+            return prompt.profile_manager
+        return ProfileManager.get_default_llm_profile(tool)
+
+    @staticmethod
     def _resolve_llm_ids(tool: Any) -> tuple[str, str]:
         """Resolve monitor_llm and challenge_llm IDs for the tool."""
         monitor_llm_instance = tool.monitor_llm
@@ -703,6 +798,8 @@ class PromptStudioHelper:
         document_id: str,
         run_id: str,
         profile_manager_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext | None, dict[str, Any]]:
         """Build answer_prompt ExecutionContext for fire-and-forget dispatch.
 
@@ -712,19 +809,16 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user=request_user
+        )
 
         vector_db = str(profile_manager.vector_store.id)
         embedding_model = str(profile_manager.embedding_model.id)
@@ -908,7 +1002,11 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(prompt.prompt_id)],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None) argument.
+            # The callback otherwise re-resolves the project default, so a
+            # default change mid-run would book output against a different
+            # profile than the one that produced it.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -925,6 +1023,8 @@ class PromptStudioHelper:
         document_id: str,
         run_id: str,
         profile_manager_id: str | None = None,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext | None, dict[str, Any]]:
         """Build answer_prompt payload for multiple prompts in one task.
 
@@ -935,18 +1035,15 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = (
-            ProfileManagerHelper.get_profile_manager(profile_manager_id)
-            if profile_manager_id
-            else None
+        # No single prompt to consult here, so the FK rung is skipped.
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, profile_manager_id=profile_manager_id
         )
-        if not profile_manager:
-            profile_manager = ProfileManager.get_default_llm_profile(tool)
-        if not profile_manager:
-            raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user=request_user
+        )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
@@ -1102,7 +1199,9 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None)
+            # argument - same reason as build_fetch_response_payload above.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -1118,6 +1217,8 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str,
+        *,
+        request_user: User | None,
     ) -> tuple[ExecutionContext, dict[str, Any]]:
         """Build single_pass_extraction ExecutionContext.
 
@@ -1141,7 +1242,9 @@ class PromptStudioHelper:
             challenge_llm = str(default_profile.llm.id)
 
         PromptStudioHelper.validate_adapter_status(default_profile)
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user=request_user
+        )
         default_profile.chunk_size = 0
 
         if prompt_grammar:
@@ -1325,6 +1428,7 @@ class PromptStudioHelper:
         user_id: str,
         document_id: str,
         run_id: str = None,
+        request_user: User | None = None,
     ) -> Any:
         """Method to index a document.
 
@@ -1381,12 +1485,16 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(default_profile)
         # Need to check the user who created profile manager
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user=request_user
+        )
 
         # Also validate summary profile if it's different from default
         if tool.summarize_context and summary_profile != default_profile:
             PromptStudioHelper.validate_adapter_status(summary_profile)
-            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(
+                summary_profile, request_user=request_user
+            )
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -1515,6 +1623,7 @@ class PromptStudioHelper:
         id: str | None = None,
         run_id: str = None,
         profile_manager_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         """Execute chain/single run of the prompts. Makes a call to prompt
         service and returns the dict of response.
@@ -1550,6 +1659,7 @@ class PromptStudioHelper:
                 document_id=document_id,
                 run_id=run_id,
                 profile_manager_id=profile_manager_id,
+                request_user=request_user,
             )
         else:
             return PromptStudioHelper._execute_prompts_in_single_pass(
@@ -1559,6 +1669,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
+                request_user=request_user,
             )
 
     @staticmethod
@@ -1572,6 +1683,7 @@ class PromptStudioHelper:
         document_id,
         run_id,
         profile_manager_id,
+        request_user: User | None = None,
     ):
         prompt_instance = PromptStudioHelper._fetch_prompt_from_id(id)
 
@@ -1638,14 +1750,28 @@ class PromptStudioHelper:
                     run_id=run_id,
                     profile_manager_id=profile_manager_id,
                     user_id=user_id,
+                    request_user=request_user,
                 )
+            # Book the output against the profile the run actually used, the
+            # same ladder _fetch_response applies. Forwarding the raw (possibly
+            # None) argument makes _handle_response re-resolve the project
+            # default, so a prompt carrying its own FK would run under that FK
+            # but have its output stored under the project default.
+            resolved_profile_id = str(
+                PromptStudioHelper._resolve_profile_manager(
+                    tool=tool,
+                    prompt=prompt_instance,
+                    profile_manager_id=profile_manager_id,
+                ).profile_id
+            )
+
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,
                 prompts=prompts,
                 document_id=document_id,
                 is_single_pass=False,
-                profile_manager_id=profile_manager_id,
+                profile_manager_id=resolved_profile_id,
             )
         except APIException:
             # Validation responses are user-facing; DRF renders them as-is.
@@ -1677,6 +1803,7 @@ class PromptStudioHelper:
         org_id,
         document_id,
         run_id,
+        request_user: User | None = None,
     ):
         prompts = PromptStudioHelper.fetch_prompt_from_tool(tool_id)
         prompts = [
@@ -1707,6 +1834,7 @@ class PromptStudioHelper:
                 org_id=org_id,
                 document_id=document_id,
                 run_id=run_id,
+                request_user=request_user,
             )
             return PromptStudioHelper._handle_response(
                 response=response,
@@ -1793,6 +1921,7 @@ class PromptStudioHelper:
         run_id: str,
         user_id: str,
         profile_manager_id: str | None = None,
+        request_user: User | None = None,
     ) -> Any:
         """Utility function to invoke prompt service. Used internally.
 
@@ -1815,14 +1944,9 @@ class PromptStudioHelper:
             Any: Output from LLM
         """
         # Fetch the ProfileManager instance using the profile_manager_id if provided
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
         monitor_llm: str | None = None
@@ -1846,7 +1970,9 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(profile_manager)
         # Need to check the user who created profile manager
         # has access to adapters
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            profile_manager, request_user=request_user
+        )
         # Not checking reindex here as there might be
         # change in Profile Manager
         vector_db = str(profile_manager.vector_store.id)
@@ -2231,6 +2357,7 @@ class PromptStudioHelper:
         org_id: str,
         document_id: str,
         run_id: str = None,
+        request_user: User | None = None,
     ) -> Any:
         tool_id: str = str(tool.tool_id)
         outputs: list[dict[str, Any]] = []
@@ -2250,7 +2377,9 @@ class PromptStudioHelper:
         # Need to check the user who created profile manager
         PromptStudioHelper.validate_adapter_status(default_profile)
         # has access to adapters configured in profile manager
-        PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
+        PromptStudioHelper.validate_profile_manager_owner_access(
+            default_profile, request_user=request_user
+        )
         default_profile.chunk_size = 0  # To retrive full context
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
@@ -2694,10 +2823,17 @@ class PromptStudioHelper:
             list[dict]: List of prompt configurations
         """
         prompts = PromptStudioHelper.fetch_prompt_from_tool(str(tool.tool_id))
-        return [PromptStudioHelper._export_single_prompt(prompt) for prompt in prompts]
+        # Resolve the plugin once for the whole export, not per prompt.
+        payload_modifier_plugin = get_plugin("payload_modifier")
+        return [
+            PromptStudioHelper._export_single_prompt(prompt, payload_modifier_plugin)
+            for prompt in prompts
+        ]
 
     @staticmethod
-    def _export_single_prompt(prompt: ToolStudioPrompt) -> dict:
+    def _export_single_prompt(
+        prompt: ToolStudioPrompt, payload_modifier_plugin: dict | None = None
+    ) -> dict:
         """Export a single prompt configuration.
 
         Args:
@@ -2706,7 +2842,7 @@ class PromptStudioHelper:
         Returns:
             dict: Prompt configuration
         """
-        return {
+        d = {
             "prompt_key": prompt.prompt_key,
             "prompt": prompt.prompt,
             "active": prompt.active,
@@ -2727,6 +2863,22 @@ class PromptStudioHelper:
             "enable_postprocessing_webhook": prompt.enable_postprocessing_webhook,
             "postprocessing_webhook_url": prompt.postprocessing_webhook_url,
         }
+
+        # Enrich with cloud-only per-prompt settings (table / agentic-table)
+        # via the payload_modifier plugin. Pure-OSS (no plugin) is a no-op.
+        try:
+            if payload_modifier_plugin:
+                settings = payload_modifier_plugin[
+                    "service_class"
+                ]().export_prompt_settings(prompt)
+                if settings:
+                    d["settings"] = settings
+        except Exception as e:
+            logger.warning(
+                f"Failed to export settings for prompt {prompt.prompt_id}: {e}"
+            )
+
+        return d
 
     @staticmethod
     def _export_metadata(tool: CustomTool) -> dict:
@@ -2852,29 +3004,9 @@ class PromptStudioHelper:
             organization=organization,
         )
 
-        # When a service account creates a tool, add the API key owner
-        # as a shared user so they can see it in the UI.
-        if getattr(user, "is_service_account", False):
-            from platform_api.models import PlatformApiKey
-
-            try:
-                key = PlatformApiKey.objects.get(api_user=user)
-                if key.created_by:
-                    tool.shared_users.add(key.created_by)
-                else:
-                    logger.warning(
-                        "PlatformApiKey for service account %s has no "
-                        "created_by while creating tool %s",
-                        user.id,
-                        tool.tool_id,
-                    )
-            except PlatformApiKey.DoesNotExist:
-                logger.warning(
-                    "No PlatformApiKey found for service account %s "
-                    "while creating tool %s",
-                    user.id,
-                    tool.tool_id,
-                )
+        # created_by is audit-only; grant the creator an OWNER membership row so
+        # access/ownership flows through it (UN-2202), as the viewset create does.
+        tool.memberships.get_or_create(user=user, defaults={"role": ResourceRole.OWNER})
 
         return tool
 
@@ -3000,8 +3132,10 @@ class PromptStudioHelper:
             prompt_studio_tool=new_tool, is_default=True
         ).first()
 
+        payload_modifier_plugin = get_plugin("payload_modifier")
+
         for prompt_data in prompts_data:
-            ToolStudioPrompt.objects.create(
+            created = ToolStudioPrompt.objects.create(
                 prompt_key=prompt_data["prompt_key"],
                 prompt=prompt_data["prompt"],
                 active=prompt_data.get("active", DefaultValues.DEFAULT_ACTIVE),
@@ -3045,6 +3179,21 @@ class PromptStudioHelper:
                 created_by=user,
                 modified_by=user,
             )
+
+            # Restore cloud-only per-prompt settings carried in the blob via
+            # the payload_modifier plugin. Backward-compatible: blobs without
+            # a "settings" key (old exports / pure-OSS) are a no-op.
+            settings = prompt_data.get("settings")
+            if settings and payload_modifier_plugin:
+                try:
+                    payload_modifier_plugin["service_class"]().import_prompt_settings(
+                        created, settings
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to import settings for prompt "
+                        f"{created.prompt_id}: {e}"
+                    )
 
     @staticmethod
     def validate_adapter_configuration(
@@ -3121,8 +3270,18 @@ class PromptStudioHelper:
             )
 
         with transaction.atomic():
-            # Delete all existing prompts
-            deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            # Delete all existing prompts. QuerySet.delete() returns the
+            # cascade total (outputs ride along via CASCADE) — report only
+            # the prompt rows to the API client
+            _, per_model = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+            deleted_count = per_model.get(ToolStudioPrompt._meta.label, 0)
+            if deleted_count:
+                # QuerySet.delete() bypasses ToolStudioPrompt.delete(), so
+                # bump the parent explicitly — clearing prompts is still a
+                # modification (_base_manager: see ToolStudioPrompt._touch_tool)
+                CustomTool._base_manager.filter(pk=tool.tool_id).update(
+                    modified_at=timezone.now()
+                )
 
             # Create new prompts from export data
             PromptStudioHelper.import_prompts(prompts_data, tool, user)

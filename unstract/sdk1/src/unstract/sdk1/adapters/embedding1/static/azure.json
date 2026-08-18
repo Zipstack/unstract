@@ -54,13 +54,6 @@
       "title": "Dimensions",
       "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions."
     },
-    "embed_batch_size": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "title": "Embedding Batch Size",
-      "default": 5
-    },
     "max_retries": {
       "type": "number",
       "minimum": 0,

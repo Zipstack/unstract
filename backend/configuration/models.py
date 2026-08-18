@@ -27,7 +27,11 @@ class Configuration(BaseModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
-        Organization, on_delete=models.CASCADE, related_name="organization_configuration"
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="organization_configuration",
+        # Server-managed; never accepted as client input.
+        editable=False,
     )
     key = models.CharField(
         max_length=100,

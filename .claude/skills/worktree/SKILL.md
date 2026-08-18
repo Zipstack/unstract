@@ -26,7 +26,10 @@ Create isolated worktrees for parallel development. Ends by providing commands t
    ```bash
    git fetch origin main
    mkdir -p "$(dirname "$WORKTREE_PATH")"
-   git worktree add -b "{branch}" "$WORKTREE_PATH" origin/main
+   # --no-track: do NOT set the new branch's upstream to origin/main.
+   # Without it, a later `git push -u origin {branch}` can be reported by
+   # the server as also fast-forwarding main, landing commits on main.
+   git worktree add --no-track -b "{branch}" "$WORKTREE_PATH" origin/main
    ```
 
 4. **Copy config files**

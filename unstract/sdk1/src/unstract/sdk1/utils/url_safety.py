@@ -1,8 +1,7 @@
 """URL safety helpers (SSRF protection).
 
-Shared between the workers executor and the prompt-service answer-prompt
-service because both need to validate webhook URLs before issuing
-postprocessing callbacks.
+Lives in the SDK so every service that issues postprocessing webhook
+callbacks (the workers executor today) validates URLs the same way.
 """
 
 from __future__ import annotations

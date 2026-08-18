@@ -1,0 +1,268 @@
+import {
+  DeleteOutlined,
+  EditOutlined,
+  EllipsisOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  TeamOutlined,
+} from "@ant-design/icons";
+import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
+import { useEffect, useState } from "react";
+
+import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
+import { IslandLayout } from "../../layouts/island-layout/IslandLayout.jsx";
+import { useAlertStore } from "../../store/alert-store";
+import { CustomButton } from "../widgets/custom-button/CustomButton.jsx";
+import { SpinnerLoader } from "../widgets/spinner-loader/SpinnerLoader.jsx";
+import { TopBar } from "../widgets/top-bar/TopBar.jsx";
+
+import { GroupCreateEditModal } from "./GroupCreateEditModal.jsx";
+import { GroupMemberManager } from "./GroupMemberManager.jsx";
+import { groupsService } from "./groups-service.js";
+import "./Groups.css";
+
+const getDeleteImpactText = (deleteImpact, memberCount) => {
+  if (deleteImpact.loading) {
+    return "Checking affected resources…";
+  }
+  if (deleteImpact.resourceCount === null) {
+    return "Members will lose access to any resources currently shared with this group (unless they have direct or org-wide access).";
+  }
+  const resources = `${deleteImpact.resourceCount} resource${
+    deleteImpact.resourceCount === 1 ? "" : "s"
+  }`;
+  const members = `${memberCount} member${memberCount === 1 ? "" : "s"}`;
+  return `Deleting will revoke access to ${resources} for ${members} (unless they have direct or org-wide access).`;
+};
+
+function Groups() {
+  const service = groupsService();
+  const handleException = useExceptionHandler();
+  const { setAlertDetails } = useAlertStore();
+
+  const [groupList, setGroupList] = useState([]);
+  const [filteredGroupList, setFilteredGroupList] = useState([]);
+  const [isTableLoading, setIsTableLoading] = useState(false);
+  const [selectedGroup, setSelectedGroup] = useState(null);
+
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState("create");
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
+  const [deleteImpact, setDeleteImpact] = useState({
+    loading: false,
+    resourceCount: null,
+  });
+
+  const refresh = () => {
+    setIsTableLoading(true);
+    service
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setGroupList(
+          items.map((g) => ({
+            key: g.id,
+            id: g.id,
+            name: g.name,
+            description: g.description,
+            member_count: g.member_count ?? 0,
+          })),
+        );
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to load groups"));
+      })
+      .finally(() => setIsTableLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  useEffect(() => {
+    setFilteredGroupList(groupList);
+  }, [groupList]);
+
+  const handleCreate = () => {
+    setSelectedGroup(null);
+    setEditorMode("create");
+    setEditorOpen(true);
+  };
+
+  const handleEdit = (record) => {
+    setSelectedGroup(record);
+    setEditorMode("edit");
+    setEditorOpen(true);
+  };
+
+  const handleManageMembers = (record) => {
+    setSelectedGroup(record);
+    setMembersOpen(true);
+  };
+
+  const handleDeleteClick = (record) => {
+    setSelectedGroup(record);
+    setDeleteOpen(true);
+    setDeleteImpact({ loading: true, resourceCount: null });
+    service
+      .listGroupResources(record.id)
+      .then((res) => {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setDeleteImpact({ loading: false, resourceCount: rows.length });
+      })
+      .catch(() => {
+        // Non-blocking: fall back to a generic warning if the impact lookup
+        // fails. The deletion itself doesn't depend on this fetch.
+        setDeleteImpact({ loading: false, resourceCount: null });
+      });
+  };
+
+  const confirmDelete = () => {
+    if (!selectedGroup) {
+      return;
+    }
+    setConfirmDeleteLoading(true);
+    service
+      .deleteGroup(selectedGroup.id)
+      .then(() => {
+        setAlertDetails({ type: "success", content: "Group deleted" });
+        setDeleteOpen(false);
+        refresh();
+      })
+      .catch((err) =>
+        setAlertDetails(handleException(err, "Failed to delete group")),
+      )
+      .finally(() => setConfirmDeleteLoading(false));
+  };
+
+  const buildActionItems = (record) => [
+    {
+      key: "members",
+      label: (
+        <Space onClick={() => handleManageMembers(record)}>
+          <TeamOutlined />
+          <span>Manage members</span>
+        </Space>
+      ),
+    },
+    {
+      key: "edit",
+      label: (
+        <Space onClick={() => handleEdit(record)}>
+          <EditOutlined />
+          <span>Edit</span>
+        </Space>
+      ),
+    },
+    {
+      key: "delete",
+      label: (
+        <Space onClick={() => handleDeleteClick(record)}>
+          <DeleteOutlined />
+          <span>Delete</span>
+        </Space>
+      ),
+    },
+  ];
+
+  const columns = [
+    {
+      title: "Name",
+      dataIndex: "name",
+      render: (name) => <span>{name}</span>,
+    },
+    { title: "Description", dataIndex: "description" },
+    { title: "Members", dataIndex: "member_count", align: "center" },
+    {
+      title: "Actions",
+      align: "center",
+      render: (_, record) => (
+        <Dropdown
+          menu={{ items: buildActionItems(record) }}
+          trigger={["click"]}
+          placement="bottomLeft"
+        >
+          <EllipsisOutlined rotate={90} style={{ cursor: "pointer" }} />
+        </Dropdown>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <TopBar
+        enableSearch={true}
+        title="Manage Groups"
+        searchData={groupList}
+        setFilteredUserList={setFilteredGroupList}
+        searchKey="name"
+        searchPlaceholder="Search Groups"
+      >
+        <CustomButton
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={handleCreate}
+        >
+          New Group
+        </CustomButton>
+        <Button
+          shape="circle"
+          icon={<ReloadOutlined />}
+          onClick={refresh}
+          className="groups-reload-button"
+        />
+      </TopBar>
+      <div className="groups-bg-col">
+        <IslandLayout>
+          <div className="groups-table">
+            <Table
+              columns={columns}
+              dataSource={filteredGroupList}
+              size="small"
+              loading={{
+                indicator: <SpinnerLoader />,
+                spinning: isTableLoading,
+              }}
+            />
+          </div>
+        </IslandLayout>
+      </div>
+      <GroupCreateEditModal
+        open={editorOpen}
+        mode={editorMode}
+        group={selectedGroup}
+        onClose={() => setEditorOpen(false)}
+        onSaved={() => {
+          setEditorOpen(false);
+          refresh();
+        }}
+      />
+      <GroupMemberManager
+        open={membersOpen}
+        group={selectedGroup}
+        onClose={() => {
+          setMembersOpen(false);
+          refresh();
+        }}
+      />
+      <Modal
+        title="Delete group"
+        open={deleteOpen}
+        onOk={confirmDelete}
+        confirmLoading={confirmDeleteLoading}
+        onCancel={() => setDeleteOpen(false)}
+        centered
+      >
+        <Typography>Delete group</Typography>
+        <Typography.Text strong>{selectedGroup?.name}</Typography.Text>
+        <Typography style={{ marginTop: 12 }}>
+          {getDeleteImpactText(deleteImpact, selectedGroup?.member_count ?? 0)}
+        </Typography>
+      </Modal>
+    </>
+  );
+}
+
+export { Groups };
