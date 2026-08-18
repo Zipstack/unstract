@@ -16,6 +16,10 @@ from adapter_processor_v2.exceptions import (
     InValidAdapterId,
     TestAdapterError,
 )
+from adapter_processor_v2.image_output_gating import (
+    filter_image_output_mode,
+    validate_image_output_allowed,
+)
 from unstract.sdk1.adapters.adapterkit import Adapterkit
 from unstract.sdk1.adapters.base import Adapter
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -43,8 +47,9 @@ class AdapterProcessor:
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            schema_details[AdapterKeys.JSON_SCHEMA] = filter_image_output_mode(
+                adapter_id,
+                json.loads(updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)),
             )
         else:
             logger.error(f"Invalid adapter Id : {adapter_id} while fetching JSON Schema")
@@ -111,6 +116,7 @@ class AdapterProcessor:
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
+        validate_image_output_allowed(adapter_metadata, adapter_id)
         try:
             adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
 

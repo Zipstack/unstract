@@ -1,0 +1,353 @@
+"""Tests for the OSS vlm_image_answer bridge (detection + dispatch).
+
+Detection must prefer the backend's per-prompt output-mode stamp (zero
+platform calls for text mode), fall back to run-scoped platform
+resolution, and never cache without a scope id. Dispatch must raise a
+structured plugin-absent error instead of falling through to the text
+path, key the pages directory on the never-rewritten extract path, and
+map sdk1 loader errors to stable error codes.
+"""
+
+import sys
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+from executor.executors.exceptions import VlmImageAnswerError  # noqa: E402
+from executor.executors.vlm_image_answer import (  # noqa: E402
+    _MODE_CACHE,
+    IMAGE_OUTPUT_MISSING,
+    IMAGE_OUTPUT_REQUIRES_CLOUD,
+    IMAGE_OUTPUT_UNSUPPORTED_OPERATION,
+    IMAGE_PAGE_CAP_EXCEEDED,
+    IMAGE_PAGES_TOO_LARGE,
+    detect_image_mode_config,
+    raise_if_image_mode_unsupported,
+    run_vlm_image_answer,
+)
+
+from unstract.sdk1.adapters.x2text.page_image_loader import (  # noqa: E402
+    PageCapExceededError,
+    PageImageSetTooLargeError,
+    PageImagesNotFoundError,
+)
+
+_IMAGE_CONFIG = {
+    "adapter_id": "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e",
+    "adapter_metadata": {"output_mode": "image", "url": "http://svc"},
+}
+_TEXT_CONFIG = {
+    "adapter_id": "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e",
+    "adapter_metadata": {"output_mode": "layout_preserving"},
+}
+_OTHER_ADAPTER_CONFIG = {
+    "adapter_id": "someocr|123",
+    "adapter_metadata": {"output_mode": "image"},
+}
+
+
+@pytest.fixture(autouse=True)
+def _clear_cache():
+    _MODE_CACHE.clear()
+    yield
+    _MODE_CACHE.clear()
+
+
+def _detect(output=None, adapter_config=_IMAGE_CONFIG, usage_kwargs=None):
+    output = output or {"x2text_adapter": "uuid-1", "name": "p1"}
+    with patch(
+        "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        return_value=adapter_config,
+    ) as resolve:
+        result = detect_image_mode_config(
+            output=output,
+            shim=MagicMock(),
+            usage_kwargs=usage_kwargs or {"execution_id": "e1"},
+        )
+    return result, resolve
+
+
+class TestDetection:
+    def test_image_mode_returns_config(self):
+        result, _ = _detect()
+        assert result == _IMAGE_CONFIG
+
+    def test_non_image_mode_returns_none(self):
+        result, _ = _detect(adapter_config=_TEXT_CONFIG)
+        assert result is None
+
+    def test_non_llmwhisperer_adapter_returns_none(self):
+        # Another adapter with a coincidental output_mode key is not gated.
+        result, _ = _detect(adapter_config=_OTHER_ADAPTER_CONFIG)
+        assert result is None
+
+    def test_missing_adapter_id_returns_none_without_platform_call(self):
+        result, resolve = _detect(output={"name": "p1"})
+        assert result is None
+        resolve.assert_not_called()
+
+
+class TestStampedDetection:
+    """The backend stamp is the fast path — zero platform calls."""
+
+    def test_stamped_image_mode_detected_without_platform_call(self):
+        result, resolve = _detect(
+            output={
+                "x2text_adapter": "uuid-1",
+                "name": "p1",
+                "x2text_output_mode": "image",
+            }
+        )
+        assert result == {}
+        resolve.assert_not_called()
+
+    @pytest.mark.parametrize("mode", ["layout_preserving", "text", None])
+    def test_stamped_non_image_mode_skips_platform_call(self, mode):
+        result, resolve = _detect(
+            output={
+                "x2text_adapter": "uuid-1",
+                "name": "p1",
+                "x2text_output_mode": mode,
+            }
+        )
+        assert result is None
+        resolve.assert_not_called()
+
+    def test_unstamped_payload_falls_back_to_platform(self):
+        # Non-IDE (deployment) payloads are built worker-side without
+        # adapter metadata — resolution is legitimate there.
+        result, resolve = _detect(output={"x2text_adapter": "uuid-1", "name": "p1"})
+        assert result == _IMAGE_CONFIG
+        resolve.assert_called_once()
+
+    def test_unstamped_ide_payload_is_text_mode_without_platform_call(self):
+        # IDE payloads are always stamped by the current backend; an
+        # unstamped one is a pre-upgrade in-flight run. It must NOT make
+        # every legacy IDE prompt depend on the platform service.
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            result = detect_image_mode_config(
+                output={"x2text_adapter": "uuid-1", "name": "p1"},
+                shim=MagicMock(),
+                execution_source="ide",
+                usage_kwargs={"run_id": "r1"},
+            )
+        assert result is None
+        resolve.assert_not_called()
+
+
+class TestResolutionCache:
+    def test_resolution_cached_per_execution_and_adapter(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+            return_value=_IMAGE_CONFIG,
+        ) as resolve:
+            for _ in range(3):  # three prompts, same adapter + execution
+                detect_image_mode_config(
+                    output={"x2text_adapter": "uuid-1", "name": "p"},
+                    shim=MagicMock(),
+                    usage_kwargs={"execution_id": "e1"},
+                )
+        assert resolve.call_count == 1
+
+    def test_run_id_scopes_cache_when_execution_id_missing(self):
+        # IDE payloads carry no execution_id: two RUNS on the same adapter
+        # must each resolve fresh (an adapter edit between runs takes
+        # effect), while prompts within one run share the cached result.
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+            return_value=_IMAGE_CONFIG,
+        ) as resolve:
+            for run in ("run-1", "run-2"):
+                for _ in range(2):  # two prompts per run
+                    detect_image_mode_config(
+                        output={"x2text_adapter": "uuid-1", "name": "p"},
+                        shim=MagicMock(),
+                        usage_kwargs={"run_id": run},
+                    )
+        assert resolve.call_count == 2  # once per run, not once total
+
+    def test_no_scope_id_never_caches(self):
+        # With neither execution_id nor run_id, a shared ("", adapter)
+        # entry would pin a stale mode forever — caching must be skipped.
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+            return_value=_IMAGE_CONFIG,
+        ) as resolve:
+            for _ in range(3):
+                detect_image_mode_config(
+                    output={"x2text_adapter": "uuid-1", "name": "p"},
+                    shim=MagicMock(),
+                    usage_kwargs={},
+                )
+        assert resolve.call_count == 3
+
+
+def _run(plugin=None, x2text_config=_IMAGE_CONFIG, metrics=None, **overrides):
+    kwargs = {
+        "output": {"x2text_adapter": "uuid-1", "name": "p1", "promptx": "q?"},
+        "shim": MagicMock(),
+        "llm": MagicMock(),
+        "extract_file_path": "/data/extract/doc.txt",
+        "execution_source": "ide",
+        "metadata": {"context": {}},
+        "metrics": metrics if metrics is not None else {},
+        "x2text_config": x2text_config,
+        "usage_kwargs": {"run_id": "r1", "execution_id": "e1"},
+    }
+    kwargs.update(overrides)
+    with (
+        patch(
+            "executor.executors.vlm_image_answer.ExecutorPluginLoader.get",
+            return_value=plugin,
+        ),
+        patch(
+            "executor.executors.vlm_image_answer.FileUtils.get_fs_instance",
+            return_value=MagicMock(),
+        ),
+    ):
+        return run_vlm_image_answer(**kwargs)
+
+
+class TestPluginAbsent:
+    def test_raises_structured_error_never_falls_through(self):
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=None)
+        assert excinfo.value.error_code == IMAGE_OUTPUT_REQUIRES_CLOUD
+        assert str(excinfo.value).startswith(IMAGE_OUTPUT_REQUIRES_CLOUD + ":")
+        assert "Unstract Cloud" in str(excinfo.value)
+
+
+class TestPluginDispatch:
+    def test_answer_and_page_store_dir_contract(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.return_value = {"answer": "42", "llm_metrics": {"t": 1}}
+        metrics = {}
+        answer = _run(plugin=plugin, metrics=metrics)
+        assert answer == "42"
+        call_kwargs = plugin.run_with_metrics.call_args.kwargs
+        # Deterministic path derived from the extract file path via the
+        # shared helper — the writer/reader agreement contract.
+        assert call_kwargs["page_store_dir"] == "/data/extract/doc/pages"
+        assert call_kwargs["x2text_config"] == _IMAGE_CONFIG
+        assert metrics["p1"]["vlm_image_answer"] == {"t": 1}
+
+    def test_pages_dir_keys_on_extract_path_not_rewritten_file_path(self):
+        # Summarize-as-source / smart-table rewrite the payload FILE_PATH;
+        # the reader must key on the extract path regardless.
+        plugin = MagicMock()
+        plugin.run_with_metrics.return_value = {"answer": "a"}
+        _run(plugin=plugin, extract_file_path="/data/extract/report.txt")
+        call_kwargs = plugin.run_with_metrics.call_args.kwargs
+        assert call_kwargs["page_store_dir"] == "/data/extract/report/pages"
+
+    def test_loader_not_found_maps_to_image_output_missing(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = PageImagesNotFoundError(
+            "no images", page_store_dir="/d/pages"
+        )
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=plugin)
+        assert excinfo.value.error_code == IMAGE_OUTPUT_MISSING
+
+    def test_cap_error_maps_to_page_cap_code(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = PageCapExceededError(
+            "too big", page_store_dir="/d/pages", page_count=50, page_cap=20
+        )
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=plugin)
+        assert excinfo.value.error_code == IMAGE_PAGE_CAP_EXCEEDED
+
+    def test_too_large_error_maps_to_pages_too_large_code(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = PageImageSetTooLargeError(
+            "too many bytes",
+            page_store_dir="/d/pages",
+            total_bytes=99,
+            max_total_bytes=10,
+        )
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=plugin)
+        assert excinfo.value.error_code == IMAGE_PAGES_TOO_LARGE
+
+    def test_plugin_error_code_attribute_is_wrapped(self):
+        class VisionError(Exception):
+            error_code = "VISION_LLM_REQUIRED"
+
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = VisionError("model X has no vision")
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=plugin)
+        assert excinfo.value.error_code == "VISION_LLM_REQUIRED"
+        assert "model X has no vision" in str(excinfo.value)
+
+    def test_unexpected_plugin_error_propagates_unwrapped(self):
+        plugin = MagicMock()
+        plugin.run_with_metrics.side_effect = RuntimeError("boom")
+        with pytest.raises(RuntimeError, match="boom"):
+            _run(plugin=plugin)
+
+
+class TestUnsupportedOperationGuard:
+    def test_single_pass_rejected_for_image_mode(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+            return_value=_IMAGE_CONFIG,
+        ):
+            with pytest.raises(VlmImageAnswerError) as excinfo:
+                raise_if_image_mode_unsupported(
+                    operation="Single-pass extraction",
+                    adapter_instance_id="uuid-1",
+                    shim=MagicMock(),
+                    scope_id="e1",
+                )
+        assert excinfo.value.error_code == IMAGE_OUTPUT_UNSUPPORTED_OPERATION
+
+    def test_text_mode_passes(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+            return_value=_TEXT_CONFIG,
+        ):
+            raise_if_image_mode_unsupported(
+                operation="Single-pass extraction",
+                adapter_instance_id="uuid-1",
+                shim=MagicMock(),
+                scope_id="e1",
+            )  # no raise
+
+    def test_no_adapter_id_passes(self):
+        raise_if_image_mode_unsupported(
+            operation="Single-pass extraction",
+            adapter_instance_id=None,
+            shim=MagicMock(),
+        )  # no raise, no platform call
+
+    def test_stamped_image_mode_rejected_without_platform_call(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            with pytest.raises(VlmImageAnswerError):
+                raise_if_image_mode_unsupported(
+                    operation="Single-pass extraction",
+                    adapter_instance_id="uuid-1",
+                    shim=MagicMock(),
+                    stamped_mode="image",
+                )
+        resolve.assert_not_called()
+
+    def test_unstamped_ide_single_pass_passes_without_platform_call(self):
+        with patch(
+            "executor.executors.vlm_image_answer.PlatformHelper.get_adapter_config",
+        ) as resolve:
+            raise_if_image_mode_unsupported(
+                operation="Single-pass extraction",
+                adapter_instance_id="uuid-1",
+                shim=MagicMock(),
+                execution_source="ide",
+            )  # no raise
+        resolve.assert_not_called()
