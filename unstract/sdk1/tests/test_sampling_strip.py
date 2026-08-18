@@ -1,6 +1,10 @@
-"""Tests for the Claude Opus 4.7+ sampling-parameter strip.
+"""Tests for the Claude sampling-parameter strip.
 
-Covers every Opus release from 4.7 onwards (4.7, 4.8, 4.9, Opus 5+).
+Covers Claude Opus 4.7 and every model released since — every Opus release from
+4.7 onwards (4.7, 4.8, 4.9, Opus 5+) plus Sonnet 5, Fable 5 and Mythos 5 — all
+of which reject `temperature`/`top_p`/`top_k`. Sonnet 5 is the model behind the
+reported Azure AI Foundry `temperature is deprecated` failure.
+
 Pins the detection regex and the four-adapter wiring against the failure
 modes that surfaced in PR #1934 review:
 - prefix collisions (`claude-opus-4-70`, `-75`, `4-7verbose`)
@@ -68,6 +72,7 @@ OPUS_47_POSITIVES: list[str] = [
     "us.anthropic.claude-opus-4-8-20260101-v1:0",
     "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-8-20260101-v1:0",
     "vertex_ai/claude-opus-4-8@20260101",
+    "azure_ai/claude-opus-4-8",
     "azure_ai/my-claude-opus-4-8-deployment",
     "claude.opus.4.8",
     "claude-opus-4-9",
@@ -87,6 +92,36 @@ def test_has_deprecated_sampling_params_positive(model: str) -> None:
     assert _has_deprecated_sampling_params(model)
 
 
+# Every Claude model released after Opus 4.7 also rejects sampling params.
+# Opus 4.8+ is covered above; the non-Opus families (Sonnet 5, Fable 5,
+# Mythos 5) are listed as literal stems. Sonnet 5 is the model behind the
+# reported Azure AI Foundry `temperature is deprecated` failure.
+POST_47_POSITIVES: list[str] = [
+    # Sonnet 5 — native, Azure AI Foundry (prefixed by validate_model), case,
+    # deployment names embedding the id, separator normalization, version tag
+    "claude-sonnet-5",
+    "anthropic/claude-sonnet-5",
+    "azure_ai/claude-sonnet-5",
+    "azure_ai/claude-sonnet-5-prod",
+    "azure_ai/my-claude-sonnet-5-deployment",
+    "Claude-Sonnet-5",  # case
+    "claude.sonnet.5",  # dot separators
+    "claude_sonnet_5",  # underscore separators
+    "claude-sonnet-5v1",  # version tag
+    "anthropic.claude-sonnet-5-20260101-v1:0",  # Bedrock foundation model id
+    "vertex_ai/claude-sonnet-5@20260101",  # Vertex AI
+    # Fable 5 / Mythos 5
+    "claude-fable-5",
+    "vertex_ai/claude-fable-5@20260101",
+    "claude-mythos-5",
+]
+
+
+@pytest.mark.parametrize("model", POST_47_POSITIVES)
+def test_has_deprecated_sampling_params_positive_post_opus_47(model: str) -> None:
+    assert _has_deprecated_sampling_params(model)
+
+
 # ── detection: negatives ────────────────────────────────────────────────────
 
 NEGATIVES: list[str | None] = [
@@ -96,6 +131,18 @@ NEGATIVES: list[str | None] = [
     "claude-sonnet-4-7",
     "claude-haiku-4-5",
     "anthropic.claude-3-5-sonnet-20241022-v2:0",
+    # Sonnet families that still accept sampling params must NOT match the
+    # `claude-sonnet-5` stem
+    "claude-sonnet-4-5",
+    "claude-sonnet-4-6",
+    # Prefix collisions / alpha continuations for the new stems — lock the
+    # trailing-edge anchor the same way it is locked for opus-4-7
+    "claude-sonnet-50",
+    "claude-sonnet-59",
+    "claude-sonnet-5verbose",
+    "claude-sonnet-5variant",
+    "claude-opus-4-80",
+    "claude-fable-50",
     # Non-Anthropic providers
     "gpt-4o",
     "gemini-2.0-flash",
@@ -299,6 +346,35 @@ def test_validate_strips_temperature_for_opus_4_7(
 
 def test_vertex_validate_strips_temperature_for_opus_4_7() -> None:
     result = VertexAILLMParameters.validate(_vertex_metadata("claude-opus-4-7@20260101"))
+    for param in _DEPRECATED_SAMPLING_PARAMS:
+        assert param not in result, f"vertex: {param} should be stripped"
+
+
+@pytest.mark.parametrize(
+    "name,cls,extra",
+    ADAPTER_CASES,
+    ids=lambda v: v if isinstance(v, str) else "",
+)
+def test_validate_strips_temperature_for_sonnet_5(
+    name: str, cls: type, extra: dict[str, Any]
+) -> None:
+    """Sonnet 5 rejects temperature just like Opus 4.7.
+
+    The `azure_ai_foundry` case is the exact scenario reported: configuring
+    Claude Sonnet 5 on Azure AI Foundry 400'd with `temperature is deprecated`.
+    """
+    model = {
+        "anthropic": "claude-sonnet-5",
+        "bedrock": "anthropic.claude-sonnet-5-20260101-v1:0",
+        "azure_ai_foundry": "claude-sonnet-5",
+    }[name]
+    result = cls.validate({"model": model, "temperature": 0.5, **extra})
+    for param in _DEPRECATED_SAMPLING_PARAMS:
+        assert param not in result, f"{name}: {param} should be stripped"
+
+
+def test_vertex_validate_strips_temperature_for_sonnet_5() -> None:
+    result = VertexAILLMParameters.validate(_vertex_metadata("claude-sonnet-5@20260101"))
     for param in _DEPRECATED_SAMPLING_PARAMS:
         assert param not in result, f"vertex: {param} should be stripped"
 

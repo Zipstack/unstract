@@ -1,6 +1,7 @@
 """Unit tests for retry_utils module."""
 
 import errno
+import time
 from collections.abc import Callable
 from unittest.mock import MagicMock, Mock
 
@@ -12,9 +13,14 @@ from unstract.sdk1.utils.retry_utils import (
     create_retry_decorator,
     is_retryable_error,
     retry_platform_service_call,
-    retry_prompt_service_call,
     retry_with_exponential_backoff,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch: MonkeyPatch) -> None:
+    """Backoff logic is under test, not wall-clock timing — skip real sleeps."""
+    monkeypatch.setattr(time, "sleep", lambda *_a, **_k: None)
 
 
 class TestIsRetryableError:
@@ -485,10 +491,6 @@ class TestPreconfiguredDecorators:
         """Test that retry_platform_service_call decorator exists."""
         assert retry_platform_service_call is not None
 
-    def test_retry_prompt_service_call_exists(self) -> None:
-        """Test that retry_prompt_service_call decorator exists."""
-        assert retry_prompt_service_call is not None
-
     def test_platform_service_decorator_retries_on_connection_error(
         self, clean_env: MonkeyPatch
     ) -> None:
@@ -498,21 +500,6 @@ class TestPreconfiguredDecorators:
         )
 
         decorated_func = retry_platform_service_call(mock_func)
-
-        result = decorated_func()
-
-        assert result == "success"
-        assert mock_func.call_count == 2
-
-    def test_prompt_service_decorator_retries_on_timeout(
-        self, clean_env: MonkeyPatch
-    ) -> None:
-        """Test prompt service decorator retries Timeout."""
-        mock_func = Mock(
-            __name__="test_func", side_effect=[Timeout("Timed out"), "success"]
-        )
-
-        decorated_func = retry_prompt_service_call(mock_func)
 
         result = decorated_func()
 

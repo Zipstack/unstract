@@ -7,8 +7,10 @@ from django.db import transaction
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from plugins import get_plugin
@@ -20,6 +22,7 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
 from utils.organization_utils import filter_queryset_by_organization, resolve_organization
+from utils.pagination import OptionalPagination
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -69,11 +72,29 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
-class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class WorkflowViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["workflow_name", "created_at", "modified_at"]
+    notification_resource_name_field = "workflow_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.WORKFLOW.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -86,17 +107,26 @@ class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             WorkflowKey.WF_IS_ACTIVE,
             WorkflowKey.WF_NAME,
         )
-        # Use for_user method to include shared workflows
-        queryset = (
-            Workflow.objects.for_user(self.request.user).filter(**filter_args)
-            if filter_args
-            else Workflow.objects.for_user(self.request.user)
+        # Use for_user to include shared workflows; prefetch owner/co-owner
+        # joins to avoid per-row queries in the Owned By column.
+        queryset = Workflow.objects.for_user(self.request.user)
+        if filter_args:
+            queryset = queryset.filter(**filter_args)
+        queryset = queryset.select_related("created_by").prefetch_related(
+            "memberships__user"
         )
-        order_by = self.request.query_params.get("order_by")
-        if order_by == "desc":
-            queryset = queryset.order_by("-modified_at")
-        elif order_by == "asc":
-            queryset = queryset.order_by("modified_at")
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(workflow_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
 
         return queryset
 
@@ -128,6 +158,11 @@ class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         """
         workflow = serializer.save(
             is_active=True,
+        )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        workflow.memberships.get_or_create(
+            user_id=self.request.user.id, defaults={"role": ResourceRole.OWNER}
         )
         try:
             # Create empty WorkflowEndpoints for UI compatibility

@@ -47,10 +47,35 @@ def drf_logging_exc_handler(exc: Exception, context: Any) -> Response | None:
         return response
 
     response: Response | None = exception_handler(exc=exc, context=context)
+    _enrich_not_found_detail(response=response, context=context)
     ExceptionLoggingMiddleware.format_exc_and_log(
         request=request, response=response, exception=exc
     )
     return response
+
+
+def _enrich_not_found_detail(response: Response | None, context: Any) -> None:
+    """Replace DRF's generic "Not found." with the resource's name.
+
+    Derives a human label from the view's `queryset` model so every 404
+    reads "<Resource> not found." app-wide, no per-view work. Uses the
+    static `queryset` attr (not `get_queryset()`) to avoid running view
+    logic during error handling; views without it keep the generic message.
+    Override `Meta.verbose_name` to tune a model's label.
+    """
+    if response is None or getattr(response, "status_code", None) != 404:
+        return
+    data = getattr(response, "data", None)
+    if not isinstance(data, dict):
+        return
+    model = getattr(getattr(context.get("view"), "queryset", None), "model", None)
+    if model is None:
+        return
+    label = str(model._meta.verbose_name).capitalize()
+    for err in data.get("errors", []):
+        # Guard: a raise here would mask the original error with a 500.
+        if isinstance(err, dict) and err.get("code") == "not_found":
+            err["detail"] = f"{label} not found."
 
 
 class ExceptionLoggingMiddleware:

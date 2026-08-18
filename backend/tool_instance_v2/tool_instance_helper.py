@@ -9,7 +9,11 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
-from permissions.permission import has_group_access
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    has_group_access,
+)
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -71,6 +75,19 @@ class ToolInstanceHelper:
         tool_instance.save()
 
     @staticmethod
+    def get_adapter_id_key(adapter_property: dict[str, Any]) -> str:
+        """The metadata key holding a spec property's companion adapter ID.
+
+        Every writer stores an adapter key and this companion together; a
+        populated adapter key with a missing ID key bypasses the lazy migrator
+        and then fails schema enum validation. Resolved in one place so the
+        writers cannot drift on where that companion lives.
+        """
+        return adapter_property.get(
+            AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+        )
+
+    @staticmethod
     def update_metadata_with_adapter_properties(
         metadata: dict[str, Any],
         adapter_key: str,
@@ -110,9 +127,7 @@ class ToolInstanceHelper:
                     adapter_type=adapter_type, adapter_name=adapter_value
                 )
             adapter_id = str(adapter.id)
-            metadata_key_for_id = adapter_property.get(
-                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-            )
+            metadata_key_for_id = ToolInstanceHelper.get_adapter_id_key(adapter_property)
             # Keep adapter_key and adapter_id_key both canonical to the resolved
             # target UUID; otherwise stale UUID-shaped values at adapter_key
             # bypass the lazy migrator and fail schema enum validation later.
@@ -212,9 +227,24 @@ class ToolInstanceHelper:
         if adapter_type == AdapterTypes.OCR:
             properties = schema_spec.get_ocr_adapter_properties()
         for adapter_key, adapter_property in properties.items():
-            metadata_key_for_id = adapter_property.get(
-                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-            )
+            metadata_key_for_id = ToolInstanceHelper.get_adapter_id_key(adapter_property)
+            # Only fill in what has no value yet. This runs right after tool
+            # instance creation, which may already have seeded a key with a
+            # value resolved for that specific tool - `challenge_llm` carries
+            # the exported project's challenger LLM, and it is one of the LLM
+            # adapter properties walked here. Overwriting it would replace a
+            # tool-specific choice with the user's global default.
+            existing_value = metadata.get(adapter_key)
+            if existing_value:
+                # Keep the pair consistent for whoever populated the adapter
+                # key. No caller reaching here today leaves the ID key unset -
+                # this holds the invariant rather than repairing a known writer.
+                # Cheap and worth keeping: a populated adapter key with a
+                # missing ID key bypasses the lazy migrator and then fails
+                # schema enum validation (see
+                # `update_metadata_with_adapter_properties`).
+                metadata.setdefault(metadata_key_for_id, existing_value)
+                continue
             metadata[adapter_key] = str(adapter.id)
             metadata[metadata_key_for_id] = str(adapter.id)
 
@@ -507,8 +537,8 @@ class ToolInstanceHelper:
             if not (
                 is_admin
                 or adapter_instance.shared_to_org
-                or adapter_instance.created_by == user
-                or adapter_instance.shared_users.filter(pk=user.pk).exists()
+                or _is_resource_owner(user, adapter_instance)
+                or _is_resource_viewer(user, adapter_instance)
                 or has_group_access(user, adapter_instance)
             ):
                 logger.error(
@@ -553,25 +583,21 @@ class ToolInstanceHelper:
             logger.info(f"Not validating tool access for tool: {tool_uid}")
             return
 
-        is_admin = OrganizationMemberService.is_user_organization_admin(user)
-
         # Try to find the tool in AgenticStudioRegistry if available
         if IS_AGENTIC_REGISTRY_AVAILABLE:
             try:
-                agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
-                if (
-                    is_admin
-                    or agentic_registry_tool.created_by == user
-                    or agentic_registry_tool.shared_to_org
-                    or agentic_registry_tool.shared_users.filter(pk=user.pk).exists()
-                ):
-                    return
-                raise PermissionDenied(
-                    "You don't have permission to perform this action."
-                )
-            except AgenticStudioRegistry.DoesNotExist:
-                # Not an agentic studio tool either
-                pass
+                if AgenticStudioRegistry.objects.filter(pk=tool_uid).exists():
+                    # Access derives from the linked project's current share
+                    # state, not the export-time snapshot.
+                    if (
+                        AgenticStudioRegistry.objects.list_tools(user)
+                        .filter(pk=tool_uid)
+                        .exists()
+                    ):
+                        return
+                    raise PermissionDenied(
+                        "You don't have permission to perform this action."
+                    )
             except DjangoValidationError:
                 # Invalid UUID format, might be a static tool
                 logger.info(f"Not validating tool access for tool: {tool_uid}")

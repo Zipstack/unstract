@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import "./AdapterSelectionModal.css";
 
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -45,8 +46,7 @@ function AdapterSelectionModal({
     try {
       const adapterTypes = ["LLM", "EMBEDDING", "VECTOR_DB", "X2TEXT"];
       const requests = adapterTypes.map((type) =>
-        axiosPrivate({
-          method: "GET",
+        fetchAllPages(axiosPrivate, {
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
@@ -57,14 +57,9 @@ function AdapterSelectionModal({
         }),
       );
 
-      const responses = await Promise.all(requests);
+      const [llm, embedding, vectorDb, x2text] = await Promise.all(requests);
 
-      setAdapters({
-        llm: responses[0]?.data || [],
-        embedding: responses[1]?.data || [],
-        vectorDb: responses[2]?.data || [],
-        x2text: responses[3]?.data || [],
-      });
+      setAdapters({ llm, embedding, vectorDb, x2text });
     } catch (err) {
       setAlertDetails(
         handleException(err, "Failed to fetch available adapters"),

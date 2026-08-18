@@ -402,6 +402,23 @@ const formattedDateTime = (ISOdateTime) => {
   }
 };
 
+/**
+ * Relative time for a backend timestamp ("3 days ago").
+ *
+ * Strict ISO parsing: malformed input returns "" (callers should hide the
+ * label) instead of moment's literal "Invalid date". Clamped to now so a
+ * slightly-fast server clock never renders "in a few seconds".
+ * @param {string} ISOdateTime ISO-8601 timestamp
+ * @returns {string} relative time, or "" when absent/malformed
+ */
+const timeAgo = (ISOdateTime) => {
+  const parsed = moment(ISOdateTime, moment.ISO_8601, true);
+  if (!parsed.isValid()) {
+    return "";
+  }
+  return moment.min(parsed, moment()).fromNow();
+};
+
 const getBackendErrorDetail = (attr, backendErrors) => {
   if (backendErrors) {
     // Handle structured error response with errors array
@@ -763,6 +780,7 @@ export {
   formatSecondsToHMS,
   formatTimeDisplay,
   formattedDateTime,
+  timeAgo,
   formattedDateTimeWithSeconds,
   generateApiRunStatusId,
   generateCoverageKey,

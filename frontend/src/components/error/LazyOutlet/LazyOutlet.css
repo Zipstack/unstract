@@ -1,0 +1,17 @@
+/* Center the route-loading fallback in the content area. */
+.lazyOutletFallback {
+  display: flex;
+  width: 100%;
+  min-height: 60vh;
+  align-items: center;
+  justify-content: center;
+}
+
+/* GenericLoader's .center uses `width/height: inherit`, which collapses to a
+   narrow column inside the flex content area (the loader text ends up wrapping
+   one word per line next to the sidebar). Pin it to the full fallback width so
+   it renders centered at its natural size instead. */
+.lazyOutletFallback > .center {
+  width: 100%;
+  height: auto;
+}

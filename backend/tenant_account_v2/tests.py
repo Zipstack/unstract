@@ -17,6 +17,7 @@ from account_v2.models import Organization, User
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.test import TestCase
+from permissions.roles import ResourceRole
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
@@ -49,7 +50,20 @@ def _shared_group_ids(resource) -> set[int]:
 
 
 def _shared_user_ids(resource) -> set[int]:
-    return set(resource.shared_users.values_list("id", flat=True))
+    """Direct-viewer user ids (VIEWER memberships, UN-2202)."""
+    return set(
+        resource.memberships.filter(role=ResourceRole.VIEWER).values_list(
+            "user_id", flat=True
+        )
+    )
+
+
+def _add_viewers(resource, *users) -> None:
+    """Add direct viewers as VIEWER rows (successor to ``shared_users.add``)."""
+    for user in users:
+        resource.memberships.get_or_create(
+            user=user, defaults={"role": ResourceRole.VIEWER}
+        )
 
 
 class GroupSharingTestBase(TestCase):
@@ -81,6 +95,8 @@ class GroupSharingTestBase(TestCase):
         self.workflow = Workflow.objects.create(
             workflow_name="wf-1", organization=self.org, created_by=self.owner
         )
+        # Creator's access flows through an OWNER membership row (UN-2202).
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
 
 
 class ShareAuthorizationServiceTests(GroupSharingTestBase):
@@ -116,12 +132,12 @@ class ShareAuthorizationServiceTests(GroupSharingTestBase):
         self.assertTrue(self.workflow.shared_to_org)
 
     def test_admin_can_remove_users(self) -> None:
-        self.workflow.shared_users.add(self.member)
+        _add_viewers(self.workflow, self.member)
         self._authorize(self.admin, {"shared_users": []})
         self.assertEqual(_shared_user_ids(self.workflow), set())
 
     def test_unprivileged_cannot_remove_users(self) -> None:
-        self.workflow.shared_users.add(self.member, self.outsider)
+        _add_viewers(self.workflow, self.member, self.outsider)
         with self.assertRaises(PermissionDenied):
             # outsider (a shared user, not owner/admin) tries to drop member
             self._authorize(self.outsider, {"shared_users": [self.outsider.id]})
@@ -156,7 +172,7 @@ class ShareAuthorizationServiceTests(GroupSharingTestBase):
 
     def test_authorize_is_atomic_on_partial_denial(self) -> None:
         """A denial on any axis must leave every axis uncommitted."""
-        self.workflow.shared_users.add(self.outsider)
+        _add_viewers(self.workflow, self.outsider)
         with self.assertRaises(PermissionDenied):
             # users add is allowed for a shared user, but the org toggle isn't
             self._authorize(
@@ -229,7 +245,7 @@ class SignalCleanupTests(GroupSharingTestBase):
     """The two ``post_delete`` cleanups: rejoin-backdoor and orphan prevention."""
 
     def test_org_member_removal_purges_memberships_and_direct_shares(self) -> None:
-        self.workflow.shared_users.add(self.member)
+        _add_viewers(self.workflow, self.member)
         set_resource_share_groups(self.workflow, [self.group.id])
 
         OrganizationMember.objects.get(user=self.member).delete()
@@ -238,6 +254,61 @@ class SignalCleanupTests(GroupSharingTestBase):
             GroupMembership.objects.filter(user=self.member, group=self.group).exists()
         )
         self.assertNotIn(self.member.id, _shared_user_ids(self.workflow))
+
+    def test_org_member_removal_purges_co_owner_but_keeps_sole_owner(self) -> None:
+        """OWNER rows are purged on org exit EXCEPT where the departing user is
+        the last owner — closes the co-owner rejoin backdoor without orphaning a
+        solely-owned resource (UN-2202 review #2).
+        """
+        # self.member is a co-owner of the shared workflow (self.owner owns it
+        # too) and the SOLE owner of a second workflow.
+        self.workflow.memberships.create(user=self.member, role=ResourceRole.OWNER)
+        solo = Workflow.objects.create(
+            workflow_name="wf-solo", organization=self.org, created_by=self.member
+        )
+        solo.memberships.create(user=self.member, role=ResourceRole.OWNER)
+
+        OrganizationMember.objects.get(user=self.member).delete()
+
+        # co-owner row purged (owner remains) → rejoin backdoor closed
+        self.assertEqual(
+            set(
+                self.workflow.memberships.filter(role=ResourceRole.OWNER).values_list(
+                    "user_id", flat=True
+                )
+            ),
+            {self.owner.pk},
+        )
+        # sole-owner row kept → resource not orphaned (spec §7.4)
+        self.assertTrue(
+            solo.memberships.filter(user=self.member, role=ResourceRole.OWNER).exists()
+        )
+
+    def test_org_member_removal_ignores_stale_ex_member_owner_rows(self) -> None:
+        """A departed user's kept OWNER row is not "another owner": counting
+        it would purge the last LIVE owner, leaving the resource manageable by
+        nobody in the org (UN-2202 review #5).
+        """
+        wf = Workflow.objects.create(
+            workflow_name="wf-stale", organization=self.org, created_by=self.member
+        )
+        wf.memberships.create(user=self.member, role=ResourceRole.OWNER)
+
+        # Step 1: the sole owner departs — the carve-out keeps the (now
+        # stale) row.
+        OrganizationMember.objects.get(user=self.member).delete()
+        self.assertTrue(
+            wf.memberships.filter(user=self.member, role=ResourceRole.OWNER).exists()
+        )
+
+        # Step 2: an org admin later adds a live co-owner, who then departs.
+        wf.memberships.create(user=self.outsider, role=ResourceRole.OWNER)
+        OrganizationMember.objects.get(user=self.outsider).delete()
+
+        # The live owner's row survives — the stale row didn't count.
+        self.assertTrue(
+            wf.memberships.filter(user=self.outsider, role=ResourceRole.OWNER).exists()
+        )
 
     def test_resource_delete_purges_group_shares(self) -> None:
         set_resource_share_groups(self.workflow, [self.group.id])

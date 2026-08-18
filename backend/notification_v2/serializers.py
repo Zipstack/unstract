@@ -25,6 +25,9 @@ class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Notification
         fields = "__all__"
+        # Custom validate_name already enforces uniqueness with friendly per-field
+        # errors; drop the redundant DRF auto-validator (fragile on partial PATCH).
+        validators = []
 
     def validate(self, data):
         """Validate the data for the NotificationSerializer."""

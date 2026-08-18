@@ -8,14 +8,21 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
+from utils.user_context import UserContext
 
 from backend.constants import RequestKey
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -24,7 +31,7 @@ from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
-from .serializers import ConnectorInstanceSerializer
+from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
 if notification_plugin:
@@ -34,18 +41,62 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(
+    OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["connector_name", "created_at", "modified_at"]
+    notification_resource_name_field = "connector_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        if not notification_plugin:
+            return None
+        return ResourceType.CONNECTOR.value
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["update", "destroy", "partial_update"]:
+        if self.action in [
+            "update",
+            "destroy",
+            "partial_update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
+    @staticmethod
+    def _enforce_connector_creation_restriction(request: Any) -> None:
+        """Controlled mode (UN-3585): only org admins may create connectors
+        when the org has enabled the restriction. Service accounts (platform
+        API-key sessions) bypass; the default (flag off) keeps creation open
+        for everyone. Applies to all connector types (all connect to external
+        systems).
+        """
+        if getattr(request.user, "is_service_account", False):
+            return
+        organization = UserContext.get_organization()
+        if (
+            organization
+            and organization.restrict_connector_creation
+            and not OrganizationMemberService.is_user_organization_admin(request.user)
+        ):
+            raise PermissionDenied(
+                "Connector creation is restricted to organization admins. "
+                "Please contact your organization admin."
+            )
+
     def get_queryset(self) -> QuerySet | None:
-        queryset = ConnectorInstance.objects.for_user(self.request.user)
+        # Avoid per-row queries for owner/co-owner + creator fields in list views
+        queryset = (
+            ConnectorInstance.objects.for_user(self.request.user)
+            .select_related("created_by")
+            .prefetch_related("memberships__user")
+        )
 
         filter_args = FilterHelper.build_filter_args(
             self.request,
@@ -74,6 +125,18 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
                     f"Invalid connector_mode parameter: {connector_mode_param}"
                 )
                 queryset = queryset.none()
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(connector_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
 
         return queryset
 
@@ -161,11 +224,18 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
+        # Explicitly bind the connector to the request-scoped organization.
+        # Defense-in-depth: DefaultOrganizationMixin already declares
+        # `organization` as editable=False (so DRF drops any client-supplied
+        # value) and its save() backfills the org from UserContext when unset.
+        # Binding here makes that explicit at the callsite and keeps the row's
+        # org consistent with the org the controlled-mode check evaluated.
         serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
             created_by=self.request.user,
             modified_by=self.request.user,
+            organization=UserContext.get_organization(),
         )  # type: ignore
 
         # Clean up OAuth cache after successful create
@@ -173,6 +243,10 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
+        # Fail fast on the admin restriction before validating the payload —
+        # the check depends only on the request/org, not on validated data, so
+        # a denied caller shouldn't get input-validation feedback first.
+        self._enforce_connector_creation_restriction(request)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
@@ -182,8 +256,18 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
                 f"{CIKey.CONNECTOR_EXISTS}, \
                     {CIKey.DUPLICATE_API}"
             )
+        # ``created_by`` is audit-only; the creator's access flows through an
+        # OWNER membership row (UN-2202 co-owners).
+        serializer.instance.memberships.get_or_create(
+            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+        )
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(self, request: Request, pk: Any = None) -> Response:
+        connector = self.get_object()
+        return Response(SharedUserListSerializer(connector).data)
 
     def perform_destroy(self, instance: ConnectorInstance) -> None:
         """Override perform_destroy to handle ProtectedError gracefully.

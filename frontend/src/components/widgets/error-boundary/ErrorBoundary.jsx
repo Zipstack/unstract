@@ -4,6 +4,12 @@ import { Component } from "react";
 
 const { Text } = Typography;
 
+// Shallow element-wise compare; resetKeys are typically fresh arrays each
+// render (e.g. [location.pathname]), so a reference check would never match.
+function resetKeysChanged(prev = [], next = []) {
+  return prev.length !== next.length || prev.some((v, i) => v !== next[i]);
+}
+
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -14,6 +20,18 @@ class ErrorBoundary extends Component {
     console.error("Error ", error);
     this.props.onError({ error, errorInfo });
     this.setState({ error });
+  }
+
+  componentDidUpdate(prevProps) {
+    // Once a value in resetKeys changes (e.g. the user navigated), clear the
+    // error so the boundary re-renders its children — recovery without a
+    // full page reload.
+    if (
+      this.state.error &&
+      resetKeysChanged(prevProps.resetKeys, this.props.resetKeys)
+    ) {
+      this.setState({ error: undefined });
+    }
   }
 
   render() {
@@ -37,6 +55,12 @@ ErrorBoundary.propTypes = {
    * By default, it shows "There was an error" message
    */
   fallbackComponent: PropTypes.any,
+  /**
+   * When any value in this array changes while in the error state, the
+   * boundary resets and re-renders its children (e.g. [location.pathname]
+   * so navigation recovers without a reload).
+   */
+  resetKeys: PropTypes.array,
 };
 
 ErrorBoundary.defaultProps = {

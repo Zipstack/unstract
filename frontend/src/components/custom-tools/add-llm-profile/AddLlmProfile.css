@@ -1,5 +1,25 @@
 /* Styles for AddLlmProfile */
 
+.conn-modal-form-pad-left:has(> .add-llm-profile-body) {
+  padding: 8px 16px;
+}
+
+.conn-modal-row:has(.add-llm-profile-body) {
+  height: auto !important;
+}
+.conn-modal-col:has(.add-llm-profile-body) {
+  overflow-y: visible;
+}
+
+.add-llm-profile-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-bottom: 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+}
+
 .add-llm-profile-row {
   width: 100%;
 }
