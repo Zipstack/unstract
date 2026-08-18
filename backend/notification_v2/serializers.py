@@ -69,17 +69,12 @@ class NotificationSerializer(serializers.ModelSerializer):
             # model, so DRF makes it optional and a webhook would otherwise
             # persist with no destination at all.
             #
-            # `self.partial` alone is not the right gate: a PATCH that switches
-            # an existing URL-less notification *to* WEBHOOK is also creating a
-            # destination-less webhook, so the type change is checked too.
-            becoming_webhook = notification_type != getattr(
-                self.instance, "notification_type", None
-            )
-            if (
-                is_webhook
-                and not getattr(self.instance, "url", None)
-                and (not self.partial or becoming_webhook)
-            ):
+            # Gate on the stored URL, not on `partial`: a webhook with no
+            # destination is invalid however it got that way — a create, a
+            # switch to WEBHOOK, or a legacy row being edited for something
+            # else. A row that already has a URL is untouched, which is what
+            # keeps the documented PATCH case working.
+            if is_webhook and not getattr(self.instance, "url", None):
                 raise serializers.ValidationError(
                     {"url": "A webhook notification requires a URL."}
                 )

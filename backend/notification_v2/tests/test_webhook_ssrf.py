@@ -207,3 +207,22 @@ class WebhookTestEndpointTest(SimpleTestCase):
 
         assert response.data["status_code"] == 302
         assert response.data["success"] is False
+
+
+class UrlLessWebhookRowTest(SimpleTestCase):
+    """A stored webhook with no URL is invalid however it got that way."""
+
+    def test_patch_on_a_url_less_webhook_row_is_rejected(self):
+        """Even when the PATCH is about something else entirely.
+
+        Gating on `partial` let a legacy WEBHOOK row with url=None survive an
+        unrelated edit and stay undeliverable. Gating on the stored URL does
+        not, and leaves rows that already have one alone.
+        """
+        instance = Mock(api=None, notification_type="WEBHOOK", url=None)
+        serializer = NotificationSerializer(instance=instance, partial=True)
+
+        data = {"pipeline": Mock(), "authorization_type": "NONE", "max_retries": 2}
+        with self.assertRaises(ValidationError) as caught:
+            serializer.validate(data)
+        assert "url" in caught.exception.detail
