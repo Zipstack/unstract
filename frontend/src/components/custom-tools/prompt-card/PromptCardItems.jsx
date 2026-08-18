@@ -83,7 +83,6 @@ function PromptCardItems({
     indexDocs,
     isSimplePromptStudio,
     isPublicSource,
-    adapters,
     selectedHighlight,
     details,
     singlePassExtractMode,
@@ -114,32 +113,6 @@ function PromptCardItems({
     );
   }, [allTableSettings]);
 
-  const getModelOrAdapterId = (profile, adapters) => {
-    const result = { conf: {} };
-    const keys = [
-      { key: "llm", label: "LLM" },
-      { key: "embedding_model", label: "Embedding Model" },
-      { key: "vector_store", label: "Vector Store" },
-      { key: "x2text", label: "Text Extractor" },
-    ];
-
-    keys.forEach((key) => {
-      const adapterName = profile[key.key];
-      const adapter = adapters?.find(
-        (adapter) => adapter?.adapter_name === adapterName,
-      );
-      if (adapter) {
-        result.conf[key.label] =
-          adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") {
-          result.icon = adapter?.icon;
-        }
-        result.conf["Profile Name"] = profile?.profile_name;
-      }
-    });
-    return result;
-  };
-
   const getUpdatedCoverage = (promptId, singlePass, promptOutputs) => {
     let updatedCoverage = null;
     Object.keys(promptOutputs).forEach((key) => {
@@ -166,18 +139,17 @@ function PromptCardItems({
     getUpdatedCoverage(promptId, singlePassExtractMode, promptOutputs) ||
     coverageCountData;
 
-  const getAdapterInfo = async (adapterData) => {
-    // If simple prompt studio, return early
+  useEffect(() => {
+    setExpandCard(true);
+  }, [isSinglePassExtractLoading]);
+
+  useEffect(() => {
     if (isSimplePromptStudio) {
       return;
     }
-
-    // Update llmProfiles with additional fields
-    const updatedProfiles = llmProfiles?.map((profile) => {
-      return { ...getModelOrAdapterId(profile, adapterData), ...profile };
-    });
+    // conf and icon come from the profile payload, not the viewer's adapters.
     setLlmProfileDetails(
-      updatedProfiles
+      (llmProfiles || [])
         .map((profile) => ({
           ...profile,
           isDefault: profile?.profile_id === selectedLlmProfileId,
@@ -192,15 +164,7 @@ function PromptCardItems({
           return 0;
         }),
     );
-  };
-
-  useEffect(() => {
-    setExpandCard(true);
-  }, [isSinglePassExtractLoading]);
-
-  useEffect(() => {
-    getAdapterInfo(adapters);
-  }, [llmProfiles, selectedLlmProfileId]);
+  }, [llmProfiles, selectedLlmProfileId, isSimplePromptStudio]);
 
   return (
     <Card
