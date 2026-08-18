@@ -33,11 +33,10 @@ class LogContext:
     organization_id: str | None = None
     correlation_id: str | None = None
     request_id: str | None = None
-    # True only when request_id came from an upstream message header (a genuine
-    # cross-service correlation id), not a locally-derived payload id or the
-    # task_id fallback. Gates worker->worker re-propagation so a fallback id is
-    # never stamped onto child tasks (which would override their own
-    # file_execution_id correlation).
+    # Gates worker->worker re-propagation: only an id received from upstream may
+    # be stamped onto child tasks. A locally-derived fallback (task_id, or a
+    # payload id) must not be, or it would override the child's own
+    # file_execution_id correlation -- e.g. on beat-scheduled pipelines.
     request_id_propagatable: bool = False
 
 
@@ -712,12 +711,8 @@ def _extract_request_id(
 def _request_id_from_message(task: Any) -> str | None:
     """Read an explicit request_id propagated via Celery message headers.
 
-    The task producer (backend ``before_task_publish`` handler, or a worker
-    re-publishing a downstream task) injects ``request_id`` into the message
-    headers. Celery exposes custom headers on ``task.request`` -- as a direct
-    attribute under protocol v2, and via the raw ``headers`` mapping as a
-    version-safe fallback. This is the authoritative cross-service correlation
-    id and takes precedence over payload-derived ids (file_execution_id, etc.).
+    Celery may surface a custom header either as a direct attribute on
+    ``task.request`` or only in its raw ``headers`` mapping, so both are tried.
     """
     request = getattr(task, "request", None)
     if request is None:
@@ -733,15 +728,12 @@ def _request_id_from_message(task: Any) -> str | None:
 def _bind_task_context(task_id, task, args, kwargs, **_):
     """Celery ``task_prerun`` handler: bind request_id onto the log context.
 
-    Resolution order: an explicit request_id propagated on the message headers
-    (genuine cross-service correlation), then a payload-derived id
-    (``_extract_request_id``), then the Celery ``task_id``. Only the first
-    (header) source is marked propagatable, so a locally-derived fallback is
-    never re-stamped onto child tasks.
+    Resolution order: message header, then a payload-derived id, then the Celery
+    ``task_id``. Only the header source is marked propagatable.
 
-    The whole resolution runs inside the ``try`` so a malformed payload -- or a
-    surprising ``task.request`` -- can never raise and leave the previous task's
-    id bound on the thread.
+    The whole resolution stays inside the ``try``: an exception escaping here
+    would skip ``update_context`` and leave the *previous* task's id bound on a
+    pooled thread.
     """
     propagatable = False
     try:
@@ -769,13 +761,10 @@ def _propagate_request_id_on_publish(headers=None, **_):
     """Celery ``before_task_publish`` handler (worker side): forward the current
     request_id onto tasks this worker publishes.
 
-    Keeps a genuine cross-service correlation id flowing across worker->worker
-    task chains (e.g. a file-processing task enqueuing a callback). Only
-    propagates when the current id came from an upstream header
-    (``request_id_propagatable``) -- never a locally-derived payload id or the
-    ``task_id`` fallback, which would otherwise override the child task's own
-    ``file_execution_id`` correlation (e.g. for beat/scheduler-originated
-    pipelines). No-ops when absent or when the caller already set the header.
+    Keeps an upstream correlation id flowing across worker->worker chains (e.g.
+    a file-processing task enqueuing a callback). Gated on
+    ``request_id_propagatable`` -- see ``LogContext`` for why a fallback id must
+    not fan out. No-ops when absent or when the caller already set the header.
     """
     if headers is None or headers.get("request_id"):
         return

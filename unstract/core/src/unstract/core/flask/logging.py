@@ -33,9 +33,11 @@ def setup_logging(log_level: int):
             "disable_existing_loggers": False,
             "formatters": {
                 "default": {
-                    # Canonical format shared with the Django backend (``enriched``),
-                    # the workers (``WorkerLogger``) and the x2text-service so a single
-                    # gcloud query parses request_id/trace_id/span_id uniformly.
+                    # Canonical cross-service log format -- this module owns it.
+                    # A single gcloud query parses request_id/trace_id/span_id
+                    # across every service only while the copies agree; the known
+                    # copies are the Django backend ``enriched`` formatter, the
+                    # workers' ``WorkerLogger``, and ``x2text-service``.
                     "format": (
                         "%(levelname)s : [%(asctime)s]"
                         "{module:%(module)s process:%(process)d thread:%(thread)d "

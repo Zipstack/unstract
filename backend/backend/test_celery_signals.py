@@ -102,7 +102,7 @@ def test_publish_tolerates_missing_headers():
 
 
 def test_prerun_binds_id_from_task_attribute():
-    """Protocol v2 promotes custom headers to attributes on the Context."""
+    """Celery surfaces the custom header as an attribute on the Context."""
     bind_request_id(task=_Task(_Request(request_id=REQUEST_ID)))
 
     assert log_request_id_local.request_id == REQUEST_ID
@@ -110,7 +110,7 @@ def test_prerun_binds_id_from_task_attribute():
 
 
 def test_prerun_falls_back_to_raw_headers_mapping():
-    """Version-safe path for when the header is not promoted to an attribute."""
+    """Fallback for when Celery leaves the header only in the raw mapping."""
     bind_request_id(task=_Task(_Request(headers={Common.REQUEST_ID: REQUEST_ID})))
 
     assert log_request_id_local.request_id == REQUEST_ID

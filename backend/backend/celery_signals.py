@@ -1,14 +1,8 @@
-"""Celery signal handlers for the backend (producer side).
+"""Celery signal handlers carrying the HTTP ``request_id`` onto published tasks.
 
-Propagates the HTTP ``request_id`` (correlation ID assigned by
-``CustomRequestIDMiddleware``) onto every published Celery task so that worker
-logs can be correlated back to the originating request.
-
-The value is placed in the task message headers under ``request_id``. Workers
-read it from ``task.request`` in ``task_prerun`` and bind it onto their log
-context -- see ``workers/shared/infrastructure/logging/logger.py``. Using the
-``before_task_publish`` signal means this works for *every* ``send_task`` /
-``.delay`` / ``.apply_async`` call with no per-call-site changes.
+The id travels in the task message headers under ``Common.REQUEST_ID``. Hooking
+``before_task_publish`` rather than each producer is deliberate: it covers every
+``send_task`` / ``.delay`` / ``.apply_async`` with no per-call-site change.
 """
 
 import logging
@@ -25,11 +19,9 @@ logger = logging.getLogger(__name__)
 def propagate_request_id(headers=None, **kwargs):
     """Inject the current request_id into the outgoing task's message headers.
 
-    Fires in the producer thread (the web request thread for API-triggered
-    tasks), where ``StateStore`` still holds the request_id set by
-    ``CustomRequestIDMiddleware``. No-ops when there is no request_id in scope
-    (e.g. beat-scheduled publishes), leaving the worker to fall back to its
-    own correlation id (execution_id / task_id).
+    Relies on firing in the *producer* thread, where ``StateStore`` still holds
+    the id set by ``CustomRequestIDMiddleware``. No-ops without one (e.g. beat
+    publishes), leaving the worker to derive its own correlation id.
     """
     if headers is None:
         return
@@ -45,7 +37,6 @@ def propagate_request_id(headers=None, **kwargs):
 
 
 def _request_id_from_task(task) -> str | None:
-    """Read a propagated request_id off a Celery task's message context."""
     request = getattr(task, "request", None)
     if request is None:
         return None
@@ -59,15 +50,13 @@ def _request_id_from_task(task) -> str | None:
 
 @task_prerun.connect
 def bind_request_id(task=None, **kwargs):
-    """Bind the propagated request_id for tasks executed by the backend's OWN
-    Celery workers (beat, dashboard-metric tasks, etc.).
+    """Bind the propagated request_id for tasks run by the backend's own workers.
 
-    The separate ``workers/`` fleet has its own ``task_prerun`` reader; the
-    backend Celery app previously injected the header (``propagate_request_id``)
-    but never consumed it, so backend-executed tasks logged ``request_id:-``.
-    Binding it onto ``log_request_id``'s thread-local makes
-    ``log_request_id.filters.RequestIDFilter`` emit it, and onto ``StateStore``
-    so any task this worker itself publishes re-propagates it.
+    Two writes, both required: ``log_request_id``'s thread-local is the only
+    thing ``log_request_id.filters.RequestIDFilter`` reads (the HTTP middleware
+    is otherwise its sole writer, so a task would log ``request_id:-``), and
+    ``StateStore`` is what ``propagate_request_id`` reads, so tasks this worker
+    itself publishes carry the id onward.
     """
     request_id = _request_id_from_task(task)
     if not request_id:
@@ -81,7 +70,7 @@ def bind_request_id(task=None, **kwargs):
 
 @task_postrun.connect
 def clear_request_id(**kwargs):
-    """Clear the task-scoped request_id bound in ``bind_request_id``."""
+    """Clear the task-scoped request_id -- worker threads are pooled and reused."""
     if hasattr(log_request_id_local, "request_id"):
         try:
             del log_request_id_local.request_id
