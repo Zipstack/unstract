@@ -63,6 +63,21 @@ function AddLlmProfile({
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { getStrategies } = useRetrievalStrategies();
 
+  const editedProfile = llmProfiles?.find(
+    (item) => item?.profile_id === editLlmProfileId,
+  );
+
+  const adapterOptions = (items, field) => {
+    const id = editedProfile?.[`${field}_id`];
+    if (!id || items?.some((item) => item?.value === id)) {
+      return items;
+    }
+    return [
+      ...items,
+      { value: id, label: editedProfile?.[field], disabled: true },
+    ];
+  };
+
   useEffect(() => {
     setAdaptorProfilesDropdown();
   }, []);
@@ -121,38 +136,18 @@ function AddLlmProfile({
 
     setModalTitle("Edit LLM Profile");
 
-    const llmProfileDetails = [...llmProfiles].find(
-      (item) => item?.profile_id === editLlmProfileId,
-    );
-
-    const llmItem = llmItems.find(
-      (item) => item?.label === llmProfileDetails?.llm,
-    );
-
-    const vectorDbItem = vectorDbItems.find(
-      (item) => item?.label === llmProfileDetails?.vector_store,
-    );
-
-    const embeddingItem = embeddingItems.find(
-      (item) => item?.label === llmProfileDetails?.embedding_model,
-    );
-
-    const x2TextItem = x2TextItems.find(
-      (item) => item?.label === llmProfileDetails?.x2text,
-    );
-
     setResetForm(true);
     setFormDetails({
-      profile_name: llmProfileDetails?.profile_name,
-      llm: llmItem?.value || null,
-      chunk_size: llmProfileDetails?.chunk_size,
-      vector_store: vectorDbItem?.value || null,
-      chunk_overlap: llmProfileDetails?.chunk_overlap,
-      embedding_model: embeddingItem?.value || null,
-      x2text: x2TextItem?.value || null,
-      retrieval_strategy: llmProfileDetails?.retrieval_strategy,
-      similarity_top_k: llmProfileDetails?.similarity_top_k,
-      section: llmProfileDetails?.section,
+      profile_name: editedProfile?.profile_name,
+      llm: editedProfile?.llm_id || null,
+      chunk_size: editedProfile?.chunk_size,
+      vector_store: editedProfile?.vector_store_id || null,
+      chunk_overlap: editedProfile?.chunk_overlap,
+      embedding_model: editedProfile?.embedding_model_id || null,
+      x2text: editedProfile?.x2text_id || null,
+      retrieval_strategy: editedProfile?.retrieval_strategy,
+      similarity_top_k: editedProfile?.similarity_top_k,
+      section: editedProfile?.section,
       prompt_studio_tool: details?.tool_id,
     });
     setActiveKey(true);
@@ -501,7 +496,7 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
                   <Select
-                    options={llmItems}
+                    options={adapterOptions(llmItems, "llm")}
                     onSelect={handleLlmChangeForTokens}
                   />
                 </Form.Item>
@@ -556,7 +551,9 @@ function AddLlmProfile({
                   }
                   help={getBackendErrorDetail("vector_store", backendErrors)}
                 >
-                  <Select options={vectorDbItems} />
+                  <Select
+                    options={adapterOptions(vectorDbItems, "vector_store")}
+                  />
                 </Form.Item>
               </Col>
               <Col span={1} />
@@ -598,7 +595,9 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("embedding_model", backendErrors)}
             >
-              <Select options={embeddingItems} />
+              <Select
+                options={adapterOptions(embeddingItems, "embedding_model")}
+              />
             </Form.Item>
             <Form.Item
               label="Text Extractor"
@@ -615,7 +614,7 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("x2text", backendErrors)}
             >
-              <Select options={x2TextItems} />
+              <Select options={adapterOptions(x2TextItems, "x2text")} />
             </Form.Item>
             <Collapse
               expandIcon={({ isActive }) => handleCaretIcon(isActive)}
