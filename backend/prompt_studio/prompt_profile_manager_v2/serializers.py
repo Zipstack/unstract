@@ -2,6 +2,8 @@ import logging
 from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.models import AdapterInstance
+from rest_framework.serializers import ValidationError
 
 from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
@@ -25,6 +27,24 @@ class ProfileManagerSerializer(AuditSerializer):
         fields = "__all__"
         # Dropped so a duplicate create surfaces the view's DuplicateData.
         validators = []
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Reject a change to an adapter the requester cannot access.
+
+        An unchanged value passes, so a co-owner can still save a profile
+        that points at an adapter shared only with the owner.
+        """
+        request = self.context.get("request")
+        if not request:
+            return attrs
+        accessible = AdapterInstance.objects.for_user(request.user)
+        for field, _ in ADAPTER_LABELS:
+            adapter = attrs.get(field)
+            if not adapter or adapter == getattr(self.instance, field, None):
+                continue
+            if not accessible.filter(id=adapter.id).exists():
+                raise ValidationError({field: "No access to the selected adapter."})
+        return attrs
 
     def to_representation(self, instance):  # type: ignore
         """Resolve the adapter FKs to the name, model and icon the UI renders.
