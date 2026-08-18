@@ -1,28 +1,23 @@
 #!/bin/bash
 set -o pipefail
 
-# Extract local path dependencies from [tool.uv.sources] in a pyproject.toml.
-# Returns resolved pyproject.toml paths for each local dependency.
+# Resolved pyproject.toml paths for a directory's local path dependencies.
+# The lockfile is read as well as the pyproject: it records the whole resolved
+# graph, so a change further down it (sdk1 -> connectors) is still seen, while
+# the pyproject covers a dependency added but not yet locked.
 get_local_dep_pyprojects() {
     local dir="$1"
-    local file_path="$dir/pyproject.toml"
 
-    grep -A1 'path\s*=' "$file_path" 2>/dev/null \
-        | grep -oP 'path\s*=\s*"\K[^"]+' \
-        | while read -r rel_path; do
-            # Resolve relative to the service directory
-            local dep_pyproject
-            if [[ "$dir" == "." ]]; then
-                dep_pyproject="$rel_path/pyproject.toml"
-            else
-                dep_pyproject="$dir/$rel_path/pyproject.toml"
-            fi
-            # Normalize the path
-            dep_pyproject=$(realpath --relative-to=. "$dep_pyproject" 2>/dev/null || echo "$dep_pyproject")
-            if [[ -f "$dep_pyproject" ]]; then
-                echo "$dep_pyproject"
-            fi
-        done
+    {
+        grep -oP 'path\s*=\s*"\K[^"]+' "$dir/pyproject.toml" 2>/dev/null
+        grep -oP 'source = \{ (editable|directory) = "\K[^"]+' "$dir/uv.lock" 2>/dev/null
+    } | while read -r rel_path; do
+        local dep_pyproject
+        dep_pyproject=$(realpath --relative-to=. "$dir/$rel_path/pyproject.toml" 2>/dev/null) || continue
+        if [[ -f "$dep_pyproject" ]]; then
+            echo "$dep_pyproject"
+        fi
+    done | sort -u
 }
 
 # Check if a directory's own pyproject.toml or any of its local
@@ -109,7 +104,9 @@ directories=(
     "unstract/connectors"
     "unstract/sdk1"
     "unstract/tool-registry"
+    "unstract/tool-sandbox"
     "unstract/workflow-execution"
+    "tool-sidecar"
     "workers"
 )
 
