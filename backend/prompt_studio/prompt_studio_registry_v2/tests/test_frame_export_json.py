@@ -5,156 +5,37 @@ single-pass execution stores ``PromptStudioOutputManager`` rows under the
 tool's *default* profile with ``is_single_pass_extract=True`` (see
 ``OutputManagerHelper.handle_prompt_output_update``). The export
 validator must therefore look up rows by that same (profile, mode) tuple
-— previously it filtered by ``prompt.profile_manager`` (the prompt-card
+-- previously it filtered by ``prompt.profile_manager`` (the prompt-card
 FK, frozen at prompt-creation time), which silently missed rows whenever
 the default profile and the prompt-level profile diverged. The result
 was a misleading "project without prompts cannot be exported" error
 after a successful single-pass run.
 
-Mirrors the ``test_build_index_payload`` approach: the backend test
-environment has no ``pytest-django`` and the helper has a heavy
-Django-coupled import surface, so every collaborator is stubbed on
-``sys.modules`` before the helper is imported.
+The same resolved profile must also drive the per-prompt export entry
+(llm / vector-db / embedding / x2text / chunking / retrieval settings),
+so the exported tool carries the settings the prompts actually ran with.
+
+The helper module is imported for real and its collaborators are patched
+on it per-test, so no database is touched. Nothing is stubbed into
+``sys.modules``: that pattern shadows the real ``account_v2`` /
+``unstract.*`` modules for every later test on the same pytest worker
+(see ``b60dd6f3``). Like the sibling ``test_fetch_json_for_registry``,
+this file needs Django configured -- it runs in the rig's
+``unit-backend`` tier, where ``DJANGO_SETTINGS_MODULE`` is set
+(``tests/groups.yaml``).
 """
 
 from __future__ import annotations
 
-import sys
-import types
+from contextlib import ExitStack
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-import pytest
-
-
-def _install(name: str, attrs: dict[str, Any] | None = None) -> types.ModuleType:
-    """Install (or replace) a fake module into ``sys.modules``."""
-    mod = types.ModuleType(name)
-    if attrs:
-        for key, value in attrs.items():
-            setattr(mod, key, value)
-    sys.modules[name] = mod
-    return mod
-
-
-def _install_package(name: str) -> types.ModuleType:
-    """Install a fake package (only if it is not already loaded)."""
-    if name in sys.modules:
-        return sys.modules[name]
-    mod = types.ModuleType(name)
-    mod.__path__ = []  # type: ignore[attr-defined]
-    sys.modules[name] = mod
-    return mod
-
-
-try:
-    # Configure a minimal Django settings module so that ``settings``
-    # attribute access inside ``frame_export_json`` (PLATFORM_POSTAMBLE,
-    # WORD_CONFIDENCE_POSTAMBLE) does not raise ``ImproperlyConfigured``.
-    # Safe to call repeatedly — ``configure`` is idempotent for our use
-    # because we check ``configured`` first.
-    try:
-        from django.conf import settings as _dj_settings
-
-        if not _dj_settings.configured:
-            _dj_settings.configure(
-                PLATFORM_POSTAMBLE="",
-                WORD_CONFIDENCE_POSTAMBLE="",
-            )
-    except Exception:
-        pass
-
-    _install_package("account_v2")
-    _install("account_v2.models", {"User": MagicMock(name="User")})
-
-    _install_package("adapter_processor_v2")
-    _install(
-        "adapter_processor_v2.models",
-        {"AdapterInstance": MagicMock(name="AdapterInstance")},
-    )
-
-    _install("plugins", {"get_plugin": MagicMock(return_value=None)})
-
-    _install_package("prompt_studio")
-    _install(
-        "prompt_studio.lookup_utils",
-        {"validate_lookups_for_export": MagicMock(return_value=({}, None))},
-    )
-
-    _install_package("prompt_studio.prompt_profile_manager_v2")
-    _install(
-        "prompt_studio.prompt_profile_manager_v2.models",
-        {"ProfileManager": MagicMock(name="ProfileManager")},
-    )
-
-    _install_package("prompt_studio.prompt_studio_core_v2")
-    _install(
-        "prompt_studio.prompt_studio_core_v2.models",
-        {"CustomTool": MagicMock(name="CustomTool")},
-    )
-    _install(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper",
-        {"PromptStudioHelper": MagicMock(name="PromptStudioHelper")},
-    )
-
-    _install_package("prompt_studio.prompt_studio_output_manager_v2")
-    _install(
-        "prompt_studio.prompt_studio_output_manager_v2.models",
-        {"PromptStudioOutputManager": MagicMock(name="PromptStudioOutputManager")},
-    )
-
-    _install_package("prompt_studio.prompt_studio_v2")
-    _install(
-        "prompt_studio.prompt_studio_v2.models",
-        {"ToolStudioPrompt": MagicMock(name="ToolStudioPrompt")},
-    )
-
-    _install_package("unstract")
-    _install_package("unstract.tool_registry")
-    _install(
-        "unstract.tool_registry.dto",
-        {
-            "Properties": MagicMock(name="Properties"),
-            "Spec": MagicMock(name="Spec"),
-            "Tool": MagicMock(name="Tool"),
-        },
-    )
-
-    # Sibling modules of the helper — both define Django Model /
-    # ModelSerializer classes that require ``INSTALLED_APPS`` at import
-    # time. Stub them so the helper's ``from .models import ...`` and
-    # ``from .serializers import ...`` resolve without booting Django.
-    _install(
-        "prompt_studio.prompt_studio_registry_v2.models",
-        {"PromptStudioRegistry": MagicMock(name="PromptStudioRegistry")},
-    )
-    _install(
-        "prompt_studio.prompt_studio_registry_v2.serializers",
-        {"PromptStudioRegistrySerializer": MagicMock(name="PromptStudioRegistrySerializer")},
-    )
-
-    from prompt_studio.prompt_studio_registry_v2 import (  # noqa: E402
-        prompt_studio_registry_helper as _psrh_mod,
-    )
-
-    PromptStudioRegistryHelper = _psrh_mod.PromptStudioRegistryHelper
-    _IMPORT_ERROR: str | None = None
-# Only swallow import/dependency failures here (stub drift, missing
-# transitive module). Genuine bugs inside the helper (NameError,
-# SyntaxError, TypeError at module load, etc.) must surface as real test
-# failures, not silently skip the suite.
-except (ImportError, ModuleNotFoundError, AttributeError) as exc:
-    _IMPORT_ERROR = (
-        f"prompt_studio_registry_helper could not be imported in this "
-        f"environment: {type(exc).__name__}: {exc}"
-    )
-    PromptStudioRegistryHelper = None  # type: ignore[assignment]
-    _psrh_mod = None  # type: ignore[assignment]
-
-
-pytestmark = pytest.mark.skipif(
-    _IMPORT_ERROR is not None, reason=_IMPORT_ERROR or ""
+from prompt_studio.prompt_studio_registry_v2 import (
+    prompt_studio_registry_helper as _psrh_mod,
 )
+
+PromptStudioRegistryHelper = _psrh_mod.PromptStudioRegistryHelper
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +45,8 @@ pytestmark = pytest.mark.skipif(
 
 def _make_profile(name: str) -> MagicMock:
     """Build a ProfileManager mock with the attributes frame_export_json
-    accesses on both the default and prompt-level profiles."""
+    accesses on both the default and prompt-level profiles.
+    """
     profile = MagicMock(name=f"ProfileManager[{name}]")
     profile.profile_id = f"profile-{name}"
     profile.llm.id = f"llm-{name}"
@@ -215,35 +97,45 @@ def _make_prompt(*, profile: MagicMock) -> MagicMock:
     return prompt
 
 
-def _run_export(*, tool: MagicMock, prompt: MagicMock, force_export: bool = False):
-    """Invoke ``frame_export_json`` with a patched
-    ``PromptStudioOutputManager.objects.filter`` and return the captured
-    filter call along with the result (or raised exception).
+def _run_export(
+    *,
+    tool: MagicMock,
+    prompt: MagicMock,
+    default_profile: MagicMock,
+    force_export: bool = False,
+) -> tuple[MagicMock, Any]:
+    """Invoke ``frame_export_json`` with every collaborator patched on the
+    helper module and return the captured ``PromptStudioOutputManager``
+    filter call along with the result.
     """
-    # The filter chain is ``Model.objects.filter(...).all()`` — return a
+    # The filter chain is ``Model.objects.filter(...).all()`` -- return a
     # truthy list so the prompt is treated as "run".
-    filter_call = MagicMock(name="filter")
+    output_manager = MagicMock(name="PromptStudioOutputManager")
+    filter_call = output_manager.objects.filter
     filter_call.return_value.all.return_value = [object()]
 
-    objects = MagicMock(name="objects")
-    objects.filter = filter_call
-
-    raised: Exception | None = None
-    result: Any = None
-    with patch.object(_psrh_mod.PromptStudioOutputManager, "objects", objects):
-        try:
-            result = PromptStudioRegistryHelper.frame_export_json(
-                tool=tool, prompts=[prompt], force_export=force_export,
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(_psrh_mod, "PromptStudioOutputManager", output_manager)
+        )
+        stack.enter_context(
+            patch.object(
+                _psrh_mod.ProfileManager,
+                "get_default_llm_profile",
+                return_value=default_profile,
             )
-        except Exception as exc:  # surface to assertions
-            raised = exc
+        )
+        stack.enter_context(
+            patch.object(
+                _psrh_mod, "validate_lookups_for_export", return_value=({}, None)
+            )
+        )
+        stack.enter_context(patch.object(_psrh_mod, "get_plugin", return_value=None))
+        result = PromptStudioRegistryHelper.frame_export_json(
+            tool=tool, prompts=[prompt], force_export=force_export
+        )
 
-    return filter_call, result, raised
-
-
-# ---------------------------------------------------------------------------
-# Tests
-# ---------------------------------------------------------------------------
+    return filter_call, result
 
 
 def _per_prompt_output(result: Any) -> dict[str, Any]:
@@ -257,7 +149,7 @@ def _assert_output_uses_profile(output: dict[str, Any], profile: MagicMock) -> N
     """Assert the per-prompt export entry was assembled from ``profile``.
 
     Covers the fields the exported tool consumes when single-pass is
-    disabled at runtime — these were previously hardcoded to
+    disabled at runtime -- these were previously hardcoded to
     ``prompt.profile_manager`` regardless of single-pass mode.
     """
     assert output["llm"] == profile.llm.id
@@ -272,13 +164,18 @@ def _assert_output_uses_profile(output: dict[str, Any], profile: MagicMock) -> N
     assert output["reindex"] == profile.reindex
 
 
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+
 class TestFrameExportJsonProfileLookup:
     """Pin the UN-3332 fix: validation profile depends on single-pass mode."""
 
     def test_single_pass_uses_default_profile_and_single_pass_flag(self) -> None:
         """When single-pass is on, BOTH the validation filter and the
         per-prompt export entry must use the tool's default profile (with
-        ``is_single_pass_extract=True``) — NOT the prompt's own
+        ``is_single_pass_extract=True``) -- NOT the prompt's own
         ``profile_manager`` FK.
         """
         default_profile = _make_profile("default")
@@ -286,19 +183,15 @@ class TestFrameExportJsonProfileLookup:
         tool = _make_tool(single_pass=True)
         prompt = _make_prompt(profile=prompt_profile)
 
-        with patch.object(
-            _psrh_mod.ProfileManager,
-            "get_default_llm_profile",
-            return_value=default_profile,
-        ):
-            filter_call, result, raised = _run_export(tool=tool, prompt=prompt)
+        filter_call, result = _run_export(
+            tool=tool, prompt=prompt, default_profile=default_profile
+        )
 
-        assert raised is None, f"export failed unexpectedly: {raised!r}"
         filter_call.assert_called_once()
         kwargs = filter_call.call_args.kwargs
-        assert kwargs["profile_manager"] is default_profile, (
-            "single-pass export must validate against the default profile"
-        )
+        assert (
+            kwargs["profile_manager"] is default_profile
+        ), "single-pass export must validate against the default profile"
         assert kwargs["is_single_pass_extract"] is True
         assert kwargs["tool_id"] == tool.tool_id
         assert kwargs["prompt_id"] == prompt.prompt_id
@@ -314,19 +207,15 @@ class TestFrameExportJsonProfileLookup:
         tool = _make_tool(single_pass=False)
         prompt = _make_prompt(profile=prompt_profile)
 
-        with patch.object(
-            _psrh_mod.ProfileManager,
-            "get_default_llm_profile",
-            return_value=default_profile,
-        ):
-            filter_call, result, raised = _run_export(tool=tool, prompt=prompt)
+        filter_call, result = _run_export(
+            tool=tool, prompt=prompt, default_profile=default_profile
+        )
 
-        assert raised is None, f"export failed unexpectedly: {raised!r}"
         filter_call.assert_called_once()
         kwargs = filter_call.call_args.kwargs
-        assert kwargs["profile_manager"] is prompt_profile, (
-            "non-single-pass export must validate against the prompt's profile"
-        )
+        assert (
+            kwargs["profile_manager"] is prompt_profile
+        ), "non-single-pass export must validate against the prompt's profile"
         assert kwargs["is_single_pass_extract"] is False
         _assert_output_uses_profile(_per_prompt_output(result), prompt_profile)
 
@@ -340,15 +229,12 @@ class TestFrameExportJsonProfileLookup:
         tool = _make_tool(single_pass=True)
         prompt = _make_prompt(profile=prompt_profile)
 
-        with patch.object(
-            _psrh_mod.ProfileManager,
-            "get_default_llm_profile",
-            return_value=default_profile,
-        ):
-            filter_call, result, raised = _run_export(
-                tool=tool, prompt=prompt, force_export=True,
-            )
+        filter_call, result = _run_export(
+            tool=tool,
+            prompt=prompt,
+            default_profile=default_profile,
+            force_export=True,
+        )
 
-        assert raised is None, f"forced export failed: {raised!r}"
         filter_call.assert_not_called()
         _assert_output_uses_profile(_per_prompt_output(result), default_profile)
