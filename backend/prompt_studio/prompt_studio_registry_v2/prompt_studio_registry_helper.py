@@ -1,4 +1,5 @@
 import logging
+import uuid
 from typing import Any
 
 from account_v2.models import User
@@ -38,6 +39,23 @@ class PromptStudioRegistryHelper:
     """
 
     @staticmethod
+    def _resolve_challenge_llm_id(tool: CustomTool) -> str:
+        """Resolve the adapter ID to seed as challenge_llm's spec default.
+
+        Mirrors the precedence frame_export_json already uses: the tool's own
+        challenge_llm FK, else the project default profile's LLM.
+
+        Args:
+            tool (CustomTool): Saved tool data
+
+        Returns:
+            str: Adapter instance ID of the challenger LLM
+        """
+        if tool.challenge_llm:
+            return str(tool.challenge_llm.id)
+        return str(ProfileManager.get_default_llm_profile(tool).llm.id)
+
+    @staticmethod
     def frame_spec(tool: CustomTool) -> Spec:
         """Method to return spec of the Custom tool.
 
@@ -47,14 +65,31 @@ class PromptStudioRegistryHelper:
         Returns:
             dict: spec dict
         """
+        # A "type": "string" property with no spec default is seeded into tool
+        # instance metadata as "" (ToolUtils.get_default_settings). Because
+        # challenge_llm declares adapterType, the instance schema carries an
+        # enum of real adapter IDs, which "" can never satisfy - so deployment
+        # validation rejected the freshly seeded instance, regardless of whether
+        # LLMChallenge was enabled (the seeding never consulted that flag).
+        #
+        # Seed the resolved LLM instead of leaving it empty. adapterType stays
+        # declared unconditionally: it is the sole discriminator in
+        # Spec.get_adapter_properties() (tool-registry dto.py), so dropping it
+        # would take challenge_llm out of every adapter-aware path - the
+        # challenge_llm_adapter_id writes that runtime actually reads
+        # (structure_tool_task.py), the settings-form adapter dropdown, and the
+        # lazy adapter-id migration check.
+        challenge_llm_property: dict[str, Any] = {
+            "type": "string",
+            "title": "Challenger LLM",
+            "adapterType": "LLM",
+            "description": "LLM to use for LLMChallenge",
+            "adapterIdKey": "challenge_llm_adapter_id",
+            "default": PromptStudioRegistryHelper._resolve_challenge_llm_id(tool),
+        }
+
         properties = {
-            "challenge_llm": {
-                "type": "string",
-                "title": "Challenger LLM",
-                "adapterType": "LLM",
-                "description": "LLM to use for LLMChallenge",
-                "adapterIdKey": "challenge_llm_adapter_id",
-            },
+            "challenge_llm": challenge_llm_property,
             "enable_challenge": {
                 "type": "boolean",
                 "title": "Enable LLMChallenge",
@@ -144,6 +179,49 @@ class PromptStudioRegistryHelper:
         )
 
     @staticmethod
+    def get_resolved_settings(prompt_registry_id: str) -> dict[str, Any]:
+        """Return the settings export already resolved for this exported tool.
+
+        ``frame_export_json`` resolves adapter-valued settings at export time -
+        notably ``challenge_llm``, which falls back to the default profile's LLM
+        when the project set none - and stores them under
+        ``tool_metadata[tool_settings]``. ``Tool`` (built from ``tool_spec`` /
+        ``tool_property``) does not carry them, so callers that only have a
+        ``Tool`` cannot see the resolved values.
+
+        Returns an empty dict when the registry row is missing or carries no
+        settings, so callers can treat "no resolved settings" as a no-op.
+        """
+        # `ToolInstance.tool_id` is a free-form CharField and registry tools use
+        # slugs ("classify", "text_extractor"), which a UUID pk lookup would
+        # reject. Screening them out here keeps this a silent no-op for every
+        # non-Prompt-Studio tool instead of logging on a fully normal path.
+        # Checked inline rather than via `ToolInstanceHelper.is_uuid_format`:
+        # `tool_instance_v2.tool_processor` already imports this module at
+        # module level, so importing back into `tool_instance_v2` would cycle.
+        try:
+            uuid.UUID(str(prompt_registry_id))
+        except ValueError:
+            return {}
+        try:
+            # Only `tool_metadata` is needed, and it is the largest column on the
+            # row - the full JSONB blob of every prompt and output. Fetching just
+            # that column avoids pulling the rest a second time, since the caller
+            # has already loaded this row to build the `Tool`.
+            metadata = PromptStudioRegistry.objects.values_list(
+                "tool_metadata", flat=True
+            ).get(pk=prompt_registry_id)
+        except PromptStudioRegistry.DoesNotExist:
+            # A UUID-shaped tool_id with no registry row - e.g. an agentic tool
+            # in cloud. Expected, so this stays at debug.
+            logger.debug(
+                f"No prompt studio registry entry for {prompt_registry_id}; "
+                "no resolved settings to apply"
+            )
+            return {}
+        return (metadata or {}).get(JsonSchemaKey.TOOL_SETTINGS, {}) or {}
+
+    @staticmethod
     def update_or_create_psr_tool(
         custom_tool: CustomTool,
         shared_with_org: bool,
@@ -206,13 +284,10 @@ class PromptStudioRegistryHelper:
             if not shared_with_org:
                 obj.shared_users.clear()
                 obj.shared_users.add(*user_ids)
-                # add prompt studio users
-                # for shared_user in custom_tool.shared_users:
-                obj.shared_users.add(
-                    *custom_tool.shared_users.all().values_list("id", flat=True)
-                )
-                # add prompt studio owner
-                obj.shared_users.add(custom_tool.created_by)
+                # Mirror the source tool's access: its direct viewers and its
+                # owners (creator + co-owners, UN-2202).
+                obj.shared_users.add(*[u.id for u in custom_tool.viewers()])
+                obj.shared_users.add(*[u.id for u in custom_tool.owners()])
             else:
                 obj.shared_users.clear()
             obj.save()
@@ -442,6 +517,26 @@ class PromptStudioRegistryHelper:
             tool_metadata[JsonSchemaKey.ICON] = prompts.get(JsonSchemaKey.ICON)
             tool_metadata[JsonSchemaKey.FUNCTION_NAME] = prompts.get(
                 JsonSchemaKey.PROMPT_REGISTRY_ID
+            )
+            # Back-reference to the Prompt Studio project that produced this
+            # entry. `function_name` is the registry UUID, so without this the
+            # only correlator left is `name`, which is ambiguous when two
+            # projects share one.
+            #
+            # Read from the `custom_tool` FK column and published as
+            # `prompt_studio_tool_id`. Not `tool_id`: consumers of this listing
+            # also POST to `tool_instance/`, where `tool_id` means the tool's
+            # *function name* (`ToolInstance.tool_id`), so that key already has
+            # an incompatible meaning in the same call path.
+            #
+            # Stringified so the value does not depend on DRF's renderer to
+            # leave this dict, and so it compares like-for-like against
+            # `function_name`, which DRF's UUIDField already renders as a str.
+            # `fetch_tools_descriptions` emits no such key at all, so consumers
+            # must treat a missing key and `None` alike.
+            custom_tool_id = prompts.get(JsonSchemaKey.CUSTOM_TOOL)
+            tool_metadata[JsonSchemaKey.PROMPT_STUDIO_TOOL_ID] = (
+                str(custom_tool_id) if custom_tool_id is not None else None
             )
             tool_list.append(tool_metadata)
             tool_metadata = {}

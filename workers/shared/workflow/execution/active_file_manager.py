@@ -20,23 +20,43 @@ from ...infrastructure.logging import WorkerLogger
 
 # Constants for cache configuration
 DEFAULT_ACTIVE_FILE_CACHE_TTL = 300  # 5 minutes
-MAX_ACTIVE_FILE_CACHE_TTL = 7200  # 2 hours maximum
+# Cap the active-file marker TTL at the PG stuck-batch reaper's DEFAULT timeout
+# (WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS, 9000s) so a marker can be configured to
+# outlive a stalled-but-not-yet-reaped batch — below it there is a window where
+# the marker has expired but the reaper hasn't yet marked the execution terminal.
+# NOTE: the reaper timeout is env-tunable; if it's raised above 9000, raise this
+# too or that window reopens. Default marker TTL stays 300s; operators opt in to
+# longer.
+MAX_ACTIVE_FILE_CACHE_TTL = 9000  # 2.5 hours maximum
 
 
 def get_active_file_cache_ttl() -> int:
     """Get the configurable TTL for active file cache entries.
 
     Returns:
-        TTL in seconds, with sensible defaults and bounds checking
+        TTL in seconds, clamped to [60, MAX_ACTIVE_FILE_CACHE_TTL] (1 minute to
+        2.5 hours). A non-integer or out-of-range ``ACTIVE_FILE_CACHE_TTL`` is
+        surfaced as a warning rather than silently swallowed — a silently
+        shortened TTL re-opens the very window a raised value was meant to close.
     """
-    try:
-        ttl = int(os.environ.get("ACTIVE_FILE_CACHE_TTL", DEFAULT_ACTIVE_FILE_CACHE_TTL))
-        # Ensure TTL is within reasonable bounds
-        return min(
-            max(ttl, 60), MAX_ACTIVE_FILE_CACHE_TTL
-        )  # Between 1 minute and 2 hours
-    except (ValueError, TypeError):
+    raw = os.environ.get("ACTIVE_FILE_CACHE_TTL")
+    if raw is None:
         return DEFAULT_ACTIVE_FILE_CACHE_TTL
+    try:
+        ttl = int(raw)
+    except (ValueError, TypeError):
+        logger.warning(
+            f"ACTIVE_FILE_CACHE_TTL={raw!r} is not an integer; "
+            f"using default {DEFAULT_ACTIVE_FILE_CACHE_TTL}s."
+        )
+        return DEFAULT_ACTIVE_FILE_CACHE_TTL
+    clamped = min(max(ttl, 60), MAX_ACTIVE_FILE_CACHE_TTL)
+    if clamped != ttl:
+        logger.warning(
+            f"ACTIVE_FILE_CACHE_TTL={ttl}s out of range; clamped to {clamped}s "
+            f"(allowed 60..{MAX_ACTIVE_FILE_CACHE_TTL})."
+        )
+    return clamped
 
 
 class LoggerProtocol(Protocol):

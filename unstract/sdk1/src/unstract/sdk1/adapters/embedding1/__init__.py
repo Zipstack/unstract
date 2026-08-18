@@ -4,6 +4,7 @@ from unstract.sdk1.adapters.base1 import register_adapters
 from unstract.sdk1.adapters.embedding1.azure_openai import AzureOpenAIEmbeddingAdapter
 from unstract.sdk1.adapters.embedding1.bedrock import AWSBedrockEmbeddingAdapter
 from unstract.sdk1.adapters.embedding1.gemini import GeminiEmbeddingAdapter
+from unstract.sdk1.adapters.embedding1.mistral import MistralEmbeddingAdapter
 from unstract.sdk1.adapters.embedding1.nvidia_build import NvidiaBuildEmbeddingAdapter
 from unstract.sdk1.adapters.embedding1.ollama import OllamaEmbeddingAdapter
 from unstract.sdk1.adapters.embedding1.openai import OpenAIEmbeddingAdapter
@@ -22,6 +23,7 @@ __all__ = [
     "AzureOpenAIEmbeddingAdapter",
     "AWSBedrockEmbeddingAdapter",
     "GeminiEmbeddingAdapter",
+    "MistralEmbeddingAdapter",
     "NvidiaBuildEmbeddingAdapter",
     "OpenAIEmbeddingAdapter",
     "OpenAICompatibleEmbeddingAdapter",

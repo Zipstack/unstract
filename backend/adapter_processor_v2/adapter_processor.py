@@ -75,6 +75,7 @@ class AdapterProcessor:
                     AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
                     AdapterKeys.ADAPTER_TYPE: each_adapter.get(AdapterKeys.ADAPTER_TYPE),
+                    AdapterKeys.DOC_URL: each_adapter.get(AdapterKeys.DOC_URL, ""),
                 }
             )
         return supported_adapters

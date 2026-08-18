@@ -39,7 +39,6 @@ services:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
@@ -60,7 +59,6 @@ services:
       - rabbitmq
       - db
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-metrics
 
     labels:
@@ -83,7 +81,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-ide-callback
       - WORKER_TYPE=ide_callback
       - WORKER_NAME=ide-callback-worker
@@ -107,7 +104,6 @@ services:
     ports:
       - "5555:5555"
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-flower
     volumes:
       - unstract_data:/data
@@ -129,7 +125,6 @@ services:
       - db
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-celery-beat
 
   # Frontend React app
@@ -143,7 +138,6 @@ services:
       - backend
       - reverse-proxy
     environment:
-      - ENVIRONMENT=development
       # Running platform version, surfaced on the profile page. Reuses the same
       # ${VERSION} that tags the image, so it always matches what's deployed
       # (and updates on RC->stable promotion, which only retags — doesn't rebuild).
@@ -219,7 +213,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-api-deployment-v2
       - WORKER_TYPE=api_deployment
       - CELERY_QUEUES_API_DEPLOYMENT=${CELERY_QUEUES_API_DEPLOYMENT:-celery_api_deployments}
@@ -252,7 +245,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-callback-v2
       - WORKER_TYPE=callback
       - WORKER_NAME=callback-worker-v2
@@ -294,7 +286,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-file-processing-v2
       - WORKER_TYPE=file_processing
       - WORKER_MODE=oss
@@ -332,7 +323,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-general-v2
       - WORKER_TYPE=general
       - WORKER_NAME=general-worker-v2
@@ -360,7 +350,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-notification-v2
       - WORKER_TYPE=notification
       - WORKER_NAME=notification-worker-v2
@@ -409,7 +398,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-log-consumer-v2
       - WORKER_TYPE=log_consumer
       - WORKER_NAME=log-consumer-worker-v2
@@ -458,7 +446,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-log-history-scheduler-v2
       # Scheduler interval in seconds
       - LOG_HISTORY_CONSUMER_INTERVAL=${LOG_HISTORY_CONSUMER_INTERVAL:-5}
@@ -483,7 +470,6 @@ services:
       - redis
       - rabbitmq
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-scheduler-v2
       - WORKER_TYPE=scheduler
       - WORKER_NAME=scheduler-worker-v2
@@ -529,7 +515,6 @@ services:
       - rabbitmq
       - platform-service
     environment:
-      - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-executor-v2
       - WORKER_TYPE=executor
       - WORKER_NAME=executor-worker-v2
@@ -547,6 +532,337 @@ services:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
       - prompt_studio_data:/app/prompt-studio-data
+
+  # ===========================================================================
+  # PG-queue services (Postgres-backed transport) — gated behind the `pg-queue`
+  # compose profile, so a plain `docker compose up` starts NONE of them and
+  # behaviour is identical to today. Bring them up with:
+  #   docker compose --profile pg-queue up -d
+  # They consume from Postgres, not the broker. The orchestrator consumers and
+  # the reaper are broker-free for PG-routed executions (fan-out honors the
+  # carried transport; a missing transport fails closed to Celery, which these
+  # consumers aren't expected to receive). The fan-out and callback consumers
+  # still hand off to the Celery executor (tool-execution RPC) / Celery
+  # notifications, so they keep a rabbitmq dependency until the executor and
+  # notifications themselves move to PG. Each maps 1:1 to a future K8s Deployment.
+  # Executions still route to Celery until the single `pg_queue_enabled` Flipt
+  # flag is ramped — that is the rollout, not this change.
+  # ===========================================================================
+
+  # Orchestrator consumer for API-deployment executions (async_execute_bin_api).
+  worker-pg-orchestrator-api:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-orchestrator-api
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8093:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-orchestrator-api
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=api_deployment
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_api_deployments
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # async_execute_bin arms the barrier + dispatches batches, then returns — a
+      # bounded-minutes orchestration, and idempotency-guarded (UN-3671) so a vt
+      # overrun can't double-orchestrate. Without an explicit vt the consumer
+      # defaults to 30s and a slow dispatch redelivers mid-run. 600/660 mirrors the
+      # k8s deployment defaults (grace-equivalent handled by restart:unless-stopped here).
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_ORCHESTRATOR_VT_SECONDS:-600}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_ORCHESTRATOR_HEALTH_STALE_SECONDS:-660}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Orchestrator consumer for general / scheduled-ETL executions (async_execute_bin).
+  worker-pg-orchestrator-general:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-orchestrator-general
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8094:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-orchestrator-general
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=general
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Orchestration is bounded-minutes + claim-guarded (see orchestrator-api).
+      # Without an explicit vt it defaults to 30s. 600/660 matches our k8s deployment defaults (workerPg* values, separate chart repo).
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_ORCHESTRATOR_VT_SECONDS:-600}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_ORCHESTRATOR_HEALTH_STALE_SECONDS:-660}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Fan-out consumer (process_file_batch) — both the ETL and API file queues.
+  worker-pg-fileproc:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-fileproc
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8095:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # still dispatches the tool-execution RPC to the Celery executor (until the executor/tool-RPC moves to PG)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-fileproc
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=file_processing
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing,api_file_processing
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # UN-3606: prefork N consumer children so file batches run in parallel (the
+      # PG analogue of the Celery worker's --concurrency). SKIP LOCKED distributes
+      # batches across children + replicas; a single execution is still capped by
+      # MAX_PARALLEL_FILE_BATCHES. Mirrors WORKER_FILE_PROCESSING_CONCURRENCY.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_FILEPROC_CONCURRENCY:-4}
+      # process_file_batch blocks on the executor RPC (up to EXECUTOR_RESULT_TIMEOUT,
+      # default 3600s). vt must exceed ONE batch's worst case (children run in
+      # parallel, not serially) or a long batch gets re-claimed mid-run; health-stale
+      # sits just above vt so a legitimately-long batch never trips the fleet probe.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_FILEPROC_VT_SECONDS:-3660}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_FILEPROC_HEALTH_STALE_SECONDS:-3720}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Fan-in callback consumer (process_batch_callback / _api) — both callback queues.
+  worker-pg-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-callback
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8096:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # may dispatch Celery notifications when not PG-routed (until notifications move to PG)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-callback
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=callback
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing_callback,api_file_processing_callback
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # The aggregating callback (fan-in) runs after all batches: aggregate results,
+      # update status, push destination, notify. Without an explicit vt it defaults
+      # to 30s and a >30s callback redelivers — re-firing webhooks + subscription
+      # billing. 3660/3720 matches our k8s deployment defaults (separate chart repo).
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_CALLBACK_VT_SECONDS:-3660}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_CALLBACK_HEALTH_STALE_SECONDS:-3720}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Scheduler consumer — runs scheduler.tasks.execute_pipeline_task fired by the
+  # orchestrator's PG scheduler tick (Beat replacement). Distinct from the Celery
+  # 'scheduler' worker; this only runs the trigger, which then creates the
+  # execution + dispatches the workflow exactly as today.
+  worker-pg-scheduler:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-scheduler
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8098:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # the trigger dispatches async_execute_bin (Celery path when not PG-routed)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-scheduler
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=scheduler
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=scheduler
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Scheduled-trigger dispatch is quick (enqueue the execution). Without an
+      # explicit vt it defaults to 30s. 180/240 matches our k8s deployment defaults (separate chart repo).
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_SCHEDULER_VT_SECONDS:-180}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_SCHEDULER_HEALTH_STALE_SECONDS:-240}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Executor RPC over PG — runs execute_extraction as a request-reply: claims
+  # work from Postgres and writes the ExecutionResult to pg_task_result for the
+  # blocking caller. Same heavy executor runtime as worker-executor-v2 (tool
+  # execution → platform-service / adapters / file storage), but broker-free: it
+  # is the terminal of the RPC and dispatches nothing onward to Celery. Dark
+  # until the backend pg_queue_enabled gate is flipped.
+  worker-pg-executor:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-executor
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8099:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-executor
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # The executor runs LLM inference — far longer than the consumer's 30s/60s
+      # defaults. Set the visibility timeout AND the liveness stale-threshold
+      # ABOVE the executor's hard per-task limit (EXECUTOR_TASK_TIME_LIMIT=3600s),
+      # else a long task is re-claimed mid-run (double execution / token
+      # double-spend, two runs racing the same reply_key) or killed by the probe.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_EXECUTOR_VT_SECONDS:-3660}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_EXECUTOR_HEALTH_STALE_SECONDS:-3720}
+      # UN-3606: prefork N executor children so concurrent file batches' executor
+      # RPCs run in parallel instead of serializing here. Without this the
+      # file-processing parallelism delivers no end-to-end speedup — the LLM
+      # extraction (the wall-clock-dominant work) is the bottleneck. Match the
+      # file-processing concurrency so N parallel files get N parallel executors.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_EXECUTOR_CONCURRENCY:-4}
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
+    profiles:
+      - pg-queue
+
+  # IDE callback consumer (③c) — drains the ``ide_callback`` queue the executor
+  # self-chains onto for async/callback dispatch (Prompt Studio run/index/extract,
+  # lookups). Registers the ide_callback worker's tasks (ide_prompt_complete,
+  # ide_index_complete, extraction_complete, …). Idle (receives no work) until
+  # dispatch_with_callback routes to PG (i.e. the gating flag is on); the Celery
+  # ``worker-ide-callback`` still serves the Celery path. No broker dependency:
+  # these callbacks only do API writes + ws emits, never an onward Celery dispatch.
+  # Lightweight, so a modest concurrency suffices; scale via replicas (SKIP LOCKED).
+  worker-pg-ide-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-ide-callback
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8100:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-ide-callback
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
+      # Callbacks are sub-second (ws emit + small API writes), so nowhere near the
+      # executor's 1h limit — but set the visibility timeout above a slow internal
+      # API write (backend under load) so a sibling replica can't re-claim mid-run
+      # and double-emit. Health-stale sits above it. Overridable per-env.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_IDE_CALLBACK_VT_SECONDS:-120}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_IDE_CALLBACK_HEALTH_STALE_SECONDS:-180}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
+    profiles:
+      - pg-queue
+
+  # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
+  # elects a single leader via pg_orchestrator_lock; extra replicas idle as
+  # standby). Besides barrier-orphan recovery it runs the PG scheduler tick
+  # (fires due pg_owned schedules — Beat replacement); dark until rows are owned.
+  worker-pg-reaper:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-reaper
+    restart: unless-stopped
+    command: ["pg-queue-reaper"]
+    ports:
+      - "8097:8086"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-reaper
+      - WORKER_PG_REAPER_INTERVAL_SECONDS=${WORKER_PG_REAPER_INTERVAL_SECONDS:-5}
+      - WORKER_PG_REAPER_HEALTH_PORT=8086
+      # Retention sweep (cadence-gated inside the leader's tick): drop expired
+      # pg_task_result rows + orphaned pg_batch_dedup markers so neither grows
+      # unbounded as the gate ramps. The dedup retention below (default 24h) should
+      # be kept above the longest possible execution, so an in-flight marker is
+      # never swept.
+      - WORKER_PG_REAPER_SWEEP_SECONDS=${WORKER_PG_REAPER_SWEEP_SECONDS:-300}
+      - WORKER_PG_DEDUP_RETENTION_SECONDS=${WORKER_PG_DEDUP_RETENTION_SECONDS:-86400}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
 
 volumes:
   prompt_studio_data:

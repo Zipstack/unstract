@@ -1,9 +1,8 @@
-"""Single placeholder e2e smoke test.
+"""E2E smoke gate: rig plumbing is wired and every service is up.
 
-Exercises the rig's e2e plumbing end-to-end (platform up → URL injection →
-pytest discovery → result aggregation → platform down) without depending on
-auth state or seed data. Real workflow + API-deployment tests will land in
-adjacent files (tests/e2e/workflows/, tests/e2e/api_deployment/, ...).
+Depends on no auth state or seed data, so it isolates "is the platform
+healthy" from feature tests. The other e2e groups depend on this one, so a
+red smoke run stops them before they produce confusing failures.
 """
 
 from __future__ import annotations
@@ -12,6 +11,8 @@ import os
 
 import pytest
 import requests
+
+from tests.rig.runtime import PlatformEndpoints, health_targets
 
 pytestmark = [pytest.mark.e2e, pytest.mark.critical]
 
@@ -30,6 +31,18 @@ def test_rig_session_sentinel_present() -> None:
     )
 
 
-def test_backend_health(platform) -> None:
-    response = requests.get(f"{platform.backend_url.rstrip('/')}/health/", timeout=10)
-    assert response.status_code < 500, f"backend /health returned {response.status_code}"
+def test_all_services_healthy(platform: PlatformEndpoints) -> None:
+    """Every HTTP service in the stack answers its health endpoint with 200.
+
+    This is the gate the rest of the e2e tier depends on — a half-booted stack
+    should fail here loudly rather than surface as confusing downstream errors.
+    """
+    failures = []
+    for name, url in health_targets(platform):
+        try:
+            resp = requests.get(url, timeout=10)
+            if resp.status_code != 200:
+                failures.append(f"{name} ({url}) -> HTTP {resp.status_code}")
+        except requests.RequestException as exc:
+            failures.append(f"{name} ({url}) -> {exc}")
+    assert not failures, "unhealthy services: " + "; ".join(failures)
