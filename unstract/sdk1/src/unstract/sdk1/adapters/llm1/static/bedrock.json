@@ -29,12 +29,12 @@
       "type": "string",
       "title": "Model",
       "default": "amazon.titan-text-express-v1",
-      "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
+      "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models. Models served by the Bedrock Mantle endpoint (OpenAI GPT-5.x, Google Gemma 4, xAI Grok) are routed there automatically — enter the bare model ID, e.g. `openai.gpt-5.6-terra`, not a `us.`/`global.` cross-Region inference profile ID."
     },
     "model_id": {
       "type": "string",
       "title": "Application Inference Profile ARN",
-      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
+      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx. Not supported for Bedrock Mantle models (GPT-5.x, Gemma 4, Grok) — ignored with a warning."
     },
     "auth_type": {
       "type": "string",
@@ -66,12 +66,12 @@
       "type": "boolean",
       "title": "Enable Extended Thinking",
       "default": false,
-      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+      "description": "Enhance reasoning for complex tasks with step-by-step transparency. For Claude models this enables extended thinking with the token budget below. For GPT-5.x (Bedrock Mantle), GPT-OSS and Nova 2 models it enables the model's own reasoning at medium effort; the budget below does not apply. Models without reasoning support ignore this setting."
     },
     "guardrail_identifier": {
       "type": "string",
       "title": "Bedrock Guardrail Identifier",
-      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable."
+      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable. Not supported for Bedrock Mantle models (GPT-5.x, Gemma 4, Grok) — ignored with a warning."
     },
     "guardrail_version": {
       "type": "string",
