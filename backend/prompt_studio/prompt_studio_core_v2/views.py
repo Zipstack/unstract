@@ -377,7 +377,7 @@ class PromptStudioCoreView(
 
         profile_manager_instances = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_tool
-        )
+        ).select_related("llm", "embedding_model", "vector_store", "x2text")
 
         serialized_instances = ProfileManagerSerializer(
             profile_manager_instances, many=True
