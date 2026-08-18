@@ -1,18 +1,24 @@
-import re
 import uuid
 
 from flask import Flask, g, request
 
-# An incoming X-Request-ID is caller-supplied and lands in every log line and in
-# the echoed response header, so it is only accepted in a shape that cannot forge
-# a log record (ANSI/control characters) or bloat one (unbounded length).
-SAFE_REQUEST_ID = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
-
 
 def _incoming_request_id() -> str:
+    """Adopt the caller's id, or mint one.
+
+    Unlike the Django backend these services are not internet-facing: every
+    caller is another Unstract service forwarding an id, so honouring it is the
+    whole point. The id still lands unescaped in every log line and in the echoed
+    response header, so only the canonical UUID our services emit is accepted --
+    which bounds length and rules out the control characters that would let a
+    caller forge a log record.
+    """
     request_id = request.headers.get("X-Request-ID")
-    if request_id and SAFE_REQUEST_ID.match(request_id):
-        return request_id
+    try:
+        if request_id and str(uuid.UUID(request_id)) == request_id:
+            return request_id
+    except (AttributeError, TypeError, ValueError):
+        pass
     return str(uuid.uuid4())
 
 

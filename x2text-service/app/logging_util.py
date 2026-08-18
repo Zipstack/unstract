@@ -5,16 +5,10 @@ than an import: this service does not take the ``unstract-core`` dependency.
 """
 
 import logging
-import re
 import uuid
 from logging.config import dictConfig
 
 from flask import Flask, g, has_request_context, request
-
-# See ``unstract.core.flask.middleware``: a caller-supplied id reaches every log
-# line and the echoed response header, so only a shape that cannot forge or bloat
-# a record is accepted.
-SAFE_REQUEST_ID = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
 
 # Copy of the canonical format owned by ``unstract.core.flask.logging``; a
 # divergence silently splits this service out of the cross-service log query.
@@ -94,8 +88,13 @@ def register_request_id_middleware(app: Flask) -> None:
 
     @app.before_request
     def _assign_request_id() -> None:
+        # Only the canonical UUID our services emit is adopted; see
+        # ``unstract.core.flask.middleware`` for why the shape is checked at all.
         request_id = request.headers.get("X-Request-ID")
-        if not (request_id and SAFE_REQUEST_ID.match(request_id)):
+        try:
+            if not (request_id and str(uuid.UUID(request_id)) == request_id):
+                request_id = str(uuid.uuid4())
+        except (AttributeError, TypeError, ValueError):
             request_id = str(uuid.uuid4())
         g.request_id = request_id
 
