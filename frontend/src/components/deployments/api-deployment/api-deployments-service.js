@@ -111,14 +111,15 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
-    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+    updateSharing: (id, sharedUsers, shareWithEveryone, sharedGroups = []) => {
       options = {
-        method: "PATCH",
-        url: `${path}/api/deployment/${id}/`,
+        method: "POST",
+        url: `${path}/api/deployment/${id}/share/`,
         headers: requestHeaders,
         data: {
           shared_users: sharedUsers,
           shared_to_org: shareWithEveryone,
+          shared_groups: sharedGroups,
         },
       };
       return axiosPrivate(options);
@@ -127,6 +128,23 @@ function apiDeploymentsService() {
       options = {
         method: "GET",
         url: `${path}/users/`,
+      };
+      return axiosPrivate(options);
+    },
+    addCoOwner: (id, userId) => {
+      options = {
+        method: "POST",
+        url: `${path}/api/deployment/${id}/owners/`,
+        headers: requestHeaders,
+        data: { user_id: userId },
+      };
+      return axiosPrivate(options);
+    },
+    removeCoOwner: (id, userId) => {
+      options = {
+        method: "DELETE",
+        url: `${path}/api/deployment/${id}/owners/${userId}/`,
+        headers: requestHeaders,
       };
       return axiosPrivate(options);
     },

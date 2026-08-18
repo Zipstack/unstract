@@ -55,24 +55,6 @@ class AuthenticationHelper:
         return user
 
     def create_initial_platform_key(self, user: User, organization: Organization) -> None:
-        """Create an initial platform key for the given user and organization.
-
-        This method generates a new platform key with the specified parameters
-        and saves it to the database. The generated key is set as active and
-        assigned the name "Key #1". The key is associated with the provided
-        user and organization.
-
-        Parameters:
-            user (User): The user for whom the platform key is being created.
-            organization (Organization):
-                The organization to which the platform key belongs.
-
-        Raises:
-            Exception: If an error occurs while generating the platform key.
-
-        Returns:
-            None
-        """
         try:
             PlatformAuthenticationService.generate_platform_key(
                 is_active=True,
@@ -81,7 +63,7 @@ class AuthenticationHelper:
                 organization=organization,
             )
         except Exception:
-            logger.error(
+            logger.exception(
                 "Failed to create default platform key for "
                 f"organization {organization.organization_id}"
             )
@@ -97,11 +79,11 @@ class AuthenticationHelper:
         """
         # removing user from organization
         OrganizationMemberService.remove_users_by_user_pks(user_pks)
-        # removing user m2m relations , while removing user
+        # removing user m2m relations , while removing user.
+        # Adapter/CustomTool shares (UN-2202) are now VIEWER membership rows,
+        # purged org-scoped by the ``cleanup_user_org_access`` post_delete signal.
         for user_pk in user_pks:
             User.objects.get(pk=user_pk).prompt_registries.clear()
-            User.objects.get(pk=user_pk).shared_custom_tools.clear()
-            User.objects.get(pk=user_pk).shared_adapters_instance.clear()
 
     @staticmethod
     def remove_user_from_organization_by_user_id(
@@ -123,10 +105,10 @@ class AuthenticationHelper:
         # removing user from organization
         OrganizationMemberService.remove_user_by_user_id(user_id)
 
-        # removing user m2m relations , while removing user
+        # removing user m2m relations , while removing user.
+        # Adapter/CustomTool shares (UN-2202) are now VIEWER membership rows,
+        # purged org-scoped by the ``cleanup_user_org_access`` post_delete signal.
         User.objects.get(user_id=user_id).prompt_registries.clear()
-        User.objects.get(user_id=user_id).shared_custom_tools.clear()
-        User.objects.get(user_id=user_id).shared_adapters_instance.clear()
 
         # removing user from organization cache
         OrganizationMemberService.remove_user_membership_in_organization_cache(

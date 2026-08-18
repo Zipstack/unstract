@@ -25,6 +25,10 @@ adapter_detail = AdapterInstanceViewSet.as_view(
 
 adapter_users = AdapterInstanceViewSet.as_view({"get": "list_of_shared_users"})
 adapter_info = AdapterInstanceViewSet.as_view({"get": "adapter_info"})
+adapter_share = AdapterInstanceViewSet.as_view({"post": "share"})
+adapter_effective_members = AdapterInstanceViewSet.as_view({"get": "effective_members"})
+adapter_owners = AdapterInstanceViewSet.as_view({"post": "add_co_owner"})
+adapter_owner_detail = AdapterInstanceViewSet.as_view({"delete": "remove_co_owner"})
 urlpatterns = format_suffix_patterns(
     [
         path("adapter_schema/", adapter_schema, name="get_adapter_schema"),
@@ -38,6 +42,18 @@ urlpatterns = format_suffix_patterns(
             "adapter/users/<uuid:pk>/",
             adapter_users,
             name="adapter-users",
+        ),
+        path("adapter/<uuid:pk>/share/", adapter_share, name="adapter-share"),
+        path(
+            "adapter/<uuid:pk>/effective-members/",
+            adapter_effective_members,
+            name="adapter-effective-members",
+        ),
+        path("adapter/<uuid:pk>/owners/", adapter_owners, name="adapter-owners"),
+        path(
+            "adapter/<uuid:pk>/owners/<int:user_id>/",
+            adapter_owner_detail,
+            name="adapter-owner-detail",
         ),
     ]
 )

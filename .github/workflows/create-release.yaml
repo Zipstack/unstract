@@ -4,11 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       version_bump:
-        description: "Version bump type (hotfix branches force 'patch')"
+        description: "Version bump ('auto' = minor if a FEAT/GATED-FEAT PR merged since the last release, else patch; hotfix branches force 'patch')"
         required: true
-        default: "patch"
+        default: "auto"
         type: choice
         options:
+          - auto
           - patch
           - minor
           - major
@@ -39,6 +40,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      # 'auto' version_bump classifies merged PR titles via `gh pr list`, which
+      # needs read access to pull requests. Declaring an explicit permissions
+      # block sets every unlisted scope to 'none', so without this the query 403s
+      # and 'auto' falls back to patch (with a warning) on every run.
+      pull-requests: read
     defaults:
       run:
         shell: bash -euo pipefail {0}
@@ -82,7 +88,9 @@ jobs:
         env:
           BUMP: ${{ github.event.inputs.version_bump }}
         run: |
-          if [[ "$BUMP" != "patch" ]]; then
+          # 'auto' is allowed here — the "Resolve auto bump" step maps it to 'patch'
+          # on a hotfix line (hotfixes are patch-only by definition).
+          if [[ "$BUMP" != "patch" && "$BUMP" != "auto" ]]; then
             echo "::error::Hotfix branches only support 'patch' bumps. Got: '$BUMP'"
             exit 1
           fi
@@ -126,11 +134,110 @@ jobs:
           echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Base release: $LATEST_TAG"
 
+      - name: Ensure there are new commits to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          BRANCH: ${{ github.ref_name }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          # Reject a no-op release: if the branch has no commits beyond the last release
+          # tag (e.g. main is already at v0.177.0), there is nothing to release. This
+          # prevents empty releases such as v0.177.1 pointing at the same commit as
+          # v0.177.0. The workflow has no local checkout, so use the compare API's
+          # `ahead_by` (commits on BRANCH not in LATEST_TAG). `// empty` stops a null/
+          # absent value from reaching the comparison as the literal "null"; we then
+          # require a non-negative integer and fail loudly on anything unexpected, so a
+          # transient API error is never mistaken for "no new commits".
+          AHEAD=$(gh api "repos/${{ github.repository }}/compare/${LATEST_TAG}...${BRANCH}" --jq '.ahead_by // empty') \
+            || { echo "::error::Could not query commits since $LATEST_TAG (compare API failed)."; exit 1; }
+          if ! [[ "$AHEAD" =~ ^[0-9]+$ ]]; then
+            echo "::error::Unexpected ahead_by='${AHEAD:-<empty>}' from compare ${LATEST_TAG}...${BRANCH}; refusing to guess."
+            exit 1
+          fi
+          if [[ "$AHEAD" == "0" ]]; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "::warning::No new commits on '$BRANCH' since $LATEST_TAG — a real run would be rejected (nothing to release)."
+            else
+              echo "::error::No new commits on '$BRANCH' since $LATEST_TAG — nothing to release. Aborting to avoid an empty release."
+              exit 1
+            fi
+          else
+            echo "✅ $AHEAD new commit(s) on '$BRANCH' since $LATEST_TAG"
+          fi
+
+      - name: Resolve auto bump
+        id: resolve-bump
+        if: github.event.inputs.version_bump == 'auto'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+        run: |
+          # 'auto' only chooses minor-vs-patch on main; hotfix lines are patch-only.
+          if [[ "$MODE" != "main" ]]; then
+            echo "resolved=patch" >> "$GITHUB_OUTPUT"
+            echo "::notice::auto bump on hotfix line -> patch"
+            exit 0
+          fi
+
+          # Classify PRs merged into main after the base release was published:
+          # any [FEAT]/[GATED-FEAT] title (the only feature PR types in the
+          # contribution guide) => minor, otherwise patch. Every failure below
+          # degrades to patch — never over-bump the public version, and never
+          # hard-fail the release on a transient query hiccup. '// empty' keeps a
+          # JSON null from leaking through as the literal "null" (matches the
+          # get-latest step's convention).
+          SINCE=$(gh api "repos/${{ github.repository }}/releases/tags/$LATEST_TAG" --jq '.published_at // empty' 2>/tmp/gh_since.err || echo "")
+          if [[ -z "$SINCE" ]]; then
+            echo "::warning::Could not resolve publish time for $LATEST_TAG; defaulting to patch."
+            cat /tmp/gh_since.err >&2 || true
+            echo "resolved=patch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          LIMIT=200
+          if ! PR_JSON=$(gh pr list --repo "${{ github.repository }}" \
+              --base main --state merged --limit "$LIMIT" --search "merged:>$SINCE" \
+              --json title 2>/tmp/gh_pr.err); then
+            echo "::warning::PR classification query failed; defaulting to patch."
+            cat /tmp/gh_pr.err >&2 || true   # surface 403/permission vs rate-limit/5xx
+            RESOLVED=patch
+          else
+            # Parse defensively: malformed/non-array stdout must degrade to patch,
+            # not crash the job under `set -e`/pipefail.
+            TOTAL=$(jq 'length' <<<"$PR_JSON" 2>/dev/null) || TOTAL=""
+            FEAT_COUNT=$(jq '[.[] | select(.title | test("\\[(FEAT|GATED-FEAT)\\]"; "i"))] | length' <<<"$PR_JSON" 2>/dev/null) || FEAT_COUNT=""
+            if ! [[ "$TOTAL" =~ ^[0-9]+$ && "$FEAT_COUNT" =~ ^[0-9]+$ ]]; then
+              echo "::warning::PR classification returned unparseable output; defaulting to patch."
+              RESOLVED=patch
+            elif [[ "$FEAT_COUNT" -gt 0 ]]; then
+              RESOLVED=minor
+            else
+              RESOLVED=patch
+              # Truncation only changes the outcome when no FEAT was found within
+              # the cap, so only warn in that case (a FEAT beyond it could be missed).
+              if [[ "$TOTAL" -ge "$LIMIT" ]]; then
+                echo "::warning::merged-PR query hit the $LIMIT-result cap since $SINCE; a FEAT PR beyond it may be missed — double-check the bump (override with version_bump=minor if needed)."
+              fi
+            fi
+          fi
+
+          echo "resolved=$RESOLVED" >> "$GITHUB_OUTPUT"
+          if [[ "$RESOLVED" == "minor" ]]; then
+            echo "::notice::auto bump: $FEAT_COUNT FEAT/GATED-FEAT PR(s) merged since $LATEST_TAG -> minor"
+          else
+            echo "::notice::auto bump: no FEAT/GATED-FEAT PR merged since $LATEST_TAG -> patch. Re-run with version_bump=minor to override."
+          fi
+
       - name: Compute next version
         id: compute-version
         env:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
-          BUMP_TYPE: ${{ github.event.inputs.version_bump }}
+          # Non-auto: use the raw input. Auto: use the resolved value, falling back
+          # to 'patch' (never back to 'auto', which would hit compute-version's
+          # unknown-bump error).
+          BUMP_TYPE: ${{ github.event.inputs.version_bump != 'auto' && github.event.inputs.version_bump || steps.resolve-bump.outputs.resolved || 'patch' }}
         run: |
           VERSION="${LATEST_TAG#v}"
           MAJOR=$(echo "$VERSION" | cut -d. -f1)
@@ -193,9 +300,12 @@ jobs:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
           NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
           BUMP: ${{ github.event.inputs.version_bump }}
+          RESOLVED: ${{ steps.resolve-bump.outputs.resolved }}
           PRERELEASE: ${{ github.event.inputs.pre_release }}
           MODE: ${{ steps.branch-mode.outputs.mode }}
         run: |
+          BUMP_DISPLAY="$BUMP"
+          [[ "$BUMP" == "auto" ]] && BUMP_DISPLAY="auto -> ${RESOLVED}"
           {
             echo "## Dry Run Summary"
             echo ""
@@ -203,7 +313,7 @@ jobs:
             echo "|-------|-------|"
             echo "| Mode | $MODE |"
             echo "| Current version | $LATEST_TAG |"
-            echo "| Bump type | $BUMP |"
+            echo "| Bump type | $BUMP_DISPLAY |"
             echo "| Next version | $NEW_TAG |"
             echo "| Pre-release | $PRERELEASE |"
             echo ""
@@ -229,12 +339,54 @@ jobs:
             --notes-start-tag "$LATEST_TAG"
           )
 
-          # Only mark as "latest" on main releases; hotfixes never override latest
-          # (matches the convention documented in the Hotfix Deployment Guide).
-          if [[ "$MODE" == "main" ]]; then
-            RELEASE_ARGS+=(--latest=true)
-          else
+          # Decide whether this release should become GitHub "latest".
+          #
+          # Rule: mark latest iff this version supersedes the current "latest" release
+          # (i.e. it is the newest stable release by semver). This replaces the old
+          # main-only heuristic, which left hotfixes on the CURRENT production line
+          # (e.g. latest v0.176.3, hotfix -> v0.176.4) incorrectly marked latest=false.
+          # Hotfixes on OLDER lines still stay latest=false because they do not
+          # supersede the current latest.
+          if [[ "$PRERELEASE" == "true" ]]; then
+            # A pre-release is never GitHub "latest" — skip the supersession check so we
+            # never emit --latest=true alongside --prerelease.
+            echo "ℹ️ Pre-release $NEW_TAG - not marking latest"
             RELEASE_ARGS+=(--latest=false)
+          else
+            # Query the current "latest" release, distinguishing a genuine 404 (no latest
+            # release yet) from a transient API failure (rate limit / 5xx). On a transient
+            # failure we must NOT silently fall through to latest=true, or a back-version
+            # hotfix could wrongly steal "latest" — fail the job loudly instead. (Mirrors
+            # the existing guarded pattern in the "Fetch base release version" step above.)
+            if CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // empty' 2>/tmp/gh_latest.err); then
+              :
+            elif grep -qiE 'HTTP 404|Not Found' /tmp/gh_latest.err; then
+              CURRENT_LATEST=""   # genuinely no latest release yet
+            else
+              echo "::error::Could not determine the current latest release (transient gh API failure); refusing to guess the 'latest' flag."
+              cat /tmp/gh_latest.err >&2
+              exit 1
+            fi
+            if [[ -z "$CURRENT_LATEST" ]]; then
+              echo "✅ No existing 'latest' release - marking $NEW_TAG as latest"
+              RELEASE_ARGS+=(--latest=true)
+            elif [[ "$NEW_TAG" == "$CURRENT_LATEST" ]]; then
+              # Defensive/unreachable: the "Check for tag collision" step rejects a NEW_TAG
+              # that already exists, and CURRENT_LATEST is an existing release, so the two
+              # cannot be equal here. Kept only as a guard against a tie if this block is
+              # ever reused without that upstream check.
+              echo "ℹ️ $NEW_TAG equals current latest $CURRENT_LATEST - leaving latest unchanged"
+              RELEASE_ARGS+=(--latest=false)
+            else
+              NEWEST=$(printf '%s\n%s\n' "$NEW_TAG" "$CURRENT_LATEST" | sort -V | tail -n1)
+              if [[ "$NEWEST" == "$NEW_TAG" ]]; then
+                echo "✅ $NEW_TAG supersedes current latest $CURRENT_LATEST (mode: $MODE) - marking as latest"
+                RELEASE_ARGS+=(--latest=true)
+              else
+                echo "ℹ️ $NEW_TAG does not supersede current latest $CURRENT_LATEST (mode: $MODE) - NOT marking as latest"
+                RELEASE_ARGS+=(--latest=false)
+              fi
+            fi
           fi
 
           if [[ "$PRERELEASE" == "true" ]]; then
@@ -250,9 +402,12 @@ jobs:
           LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
           NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
           BUMP: ${{ github.event.inputs.version_bump }}
+          RESOLVED: ${{ steps.resolve-bump.outputs.resolved }}
           PRERELEASE: ${{ github.event.inputs.pre_release }}
           MODE: ${{ steps.branch-mode.outputs.mode }}
         run: |
+          BUMP_DISPLAY="$BUMP"
+          [[ "$BUMP" == "auto" ]] && BUMP_DISPLAY="auto -> ${RESOLVED}"
           {
             echo "## Release Created"
             echo ""
@@ -261,7 +416,7 @@ jobs:
             echo "| Mode | $MODE |"
             echo "| Previous version | $LATEST_TAG |"
             echo "| New version | $NEW_TAG |"
-            echo "| Bump type | $BUMP |"
+            echo "| Bump type | $BUMP_DISPLAY |"
             echo "| Pre-release | $PRERELEASE |"
             echo "| Triggered by | ${{ github.actor }} |"
             echo ""

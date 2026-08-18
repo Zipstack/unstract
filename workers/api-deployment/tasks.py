@@ -7,6 +7,8 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
+from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.api import InternalAPIClient
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -24,7 +26,14 @@ from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrat
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 from worker import app
 
-from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    ExecutionStatus,
+    FileHashData,
+    WorkerFileData,
+    is_pg_transport,
+    normalize_transport,
+)
 from unstract.core.worker_models import ApiDeploymentResultStatus
 
 logger = WorkerLogger.get_logger(__name__)
@@ -289,7 +298,7 @@ def _unified_api_execution(
             logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_API,
     autoretry_for=(Exception,),
@@ -348,7 +357,7 @@ def async_execute_bin_api(
     )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN,
     autoretry_for=(Exception,),
@@ -413,6 +422,15 @@ def _run_workflow_api(
     WorkflowHelper.process_input_files() methods.
     """
     total_files = len(hash_values_of_files)
+    # Resolve transport ONCE, up front from the authoritative kwargs source, so
+    # the failure handler can rely on it even if orchestration fails before the
+    # fan-out (the PR-1 seam; the fan-out honours it → PG path = PgBarrier).
+    # Fail-closed to celery on any unrecognised value.
+    transport = normalize_transport(
+        kwargs.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+        logger=logger,
+        context=f" [exec:{execution_id}]",
+    )
 
     # TOOL VALIDATION: Validate tool instances before API workflow orchestration
     # Get workflow execution context to retrieve tool instances
@@ -667,22 +685,108 @@ def _run_workflow_api(
         # Create callback queue using same logic as Django backend
         file_processing_callback_queue = _get_callback_queue_name_api()
 
-        # Execute chord exactly matching Django pattern
-        from celery import chord
-
-        result = chord(batch_tasks)(
-            app.signature(
-                "process_batch_callback_api",  # Use API-specific callback
-                kwargs={
-                    "execution_id": str(execution_id),
-                    "pipeline_id": str(pipeline_id) if pipeline_id else None,
-                    "organization_id": str(schema_name),
-                },  # Pass required parameters for API callback
-                queue=file_processing_callback_queue,
-            )
+        # Route through ``WorkflowOrchestrationUtils.create_chord_execution``
+        # (which delegates to ``CeleryChordBarrier`` under the hood) instead of
+        # calling ``chord(...)`` directly. Same Celery semantics, but the
+        # ``Barrier`` abstraction lets a future Phase 6b swap to
+        # ``RedisDecrBarrier`` behind a flag without touching this call site.
+        # The header tasks + callback now carry the fairness slot for
+        # downstream PG Queue routing — closes the chord-fairness gap noted
+        # in Phase 5.1.
+        # Hoist FairnessKey to a local so the chord path and the
+        # zero-batch fallback can't drift apart on the slot's shape.
+        api_fairness = FairnessKey(
+            org_id=str(schema_name),
+            workload_type=WorkloadType.API,
+        )
+        # transport was resolved up front (see top of _run_workflow_api).
+        result = WorkflowOrchestrationUtils.create_chord_execution(
+            batch_tasks=batch_tasks,
+            callback_task_name="process_batch_callback_api",
+            callback_kwargs={
+                "execution_id": str(execution_id),
+                "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                "organization_id": str(schema_name),
+            },
+            callback_queue=file_processing_callback_queue,
+            app_instance=app,
+            fairness=api_fairness,
+            transport=transport,
         )
 
-        if not result:
+        if result is None:
+            # Identity-against-``None`` mirrors the ``Barrier`` Protocol
+            # contract verbatim: ``None`` is the *sole* signal of "no
+            # work enqueued" (substrate-level failures raise instead).
+            # Two reasons ``result`` can be ``None``:
+            # 1. Zero ``batch_tasks`` — the barrier short-circuits and
+            #    returns ``None``. Pre-Barrier this would have called
+            #    ``chord(empty)(callback)`` which Celery handles by
+            #    firing the callback immediately with ``[]``. We
+            #    preserve that observable end-state by dispatching the
+            #    callback explicitly with an empty result list, so
+            #    workflow_execution_status, API result cache, and
+            #    pipeline notifications all run exactly as they would
+            #    have pre-Barrier. The new wire isn't literally byte-
+            #    identical (this is a plain ``send_task`` with an
+            #    additive fairness header rather than the chord-
+            #    aggregation primitive), but the observable end-state
+            #    is equivalent. Effectively unreachable — the upstream
+            #    ``if not hash_values_of_files:`` early return plus
+            #    valid ``FileHashData`` inputs mean ``_get_file_batches``
+            #    always yields >=1 batch — but the defence closes the
+            #    theoretical gap (e.g. all entries dropped because none
+            #    are ``FileHashData`` / ``dict``, which would still
+            #    bypass the upstream guard).
+            # 2. ``batch_tasks`` is non-empty but the barrier returned
+            #    ``None`` for some other reason — a genuine queue failure.
+            if not batch_tasks:
+                logger.info(
+                    f"Execution {execution_id} orchestrated with zero "
+                    "batch tasks — firing callback directly with empty "
+                    "result list (preserves pre-Barrier zero-files contract)"
+                )
+                # Route through ``queue_backend.dispatch`` (not raw
+                # ``app.send_task``) so the canary in
+                # ``test_dispatch_sites_characterisation.py`` stays
+                # happy and the fairness slot rides on the wire same
+                # as the chord-path callback does. body=[] matches
+                # Celery's chord-with-empty-header semantic exactly.
+                callback_result = dispatch(
+                    "process_batch_callback_api",
+                    args=[[]],
+                    kwargs={
+                        "execution_id": str(execution_id),
+                        "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                        "organization_id": str(schema_name),
+                    },
+                    queue=file_processing_callback_queue,
+                    fairness=api_fairness,
+                )
+                return {
+                    "status": "orchestrated",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "task_id": task_id,
+                    "files_processed": total_files,
+                    "files_from_cache": len(cached_results),
+                    "batches_created": 0,
+                    # ``chord_id`` here is the standalone callback
+                    # task id (no chord; the dispatch above is a
+                    # direct ``send_task``). Same response-shape key
+                    # as the normal path; semantically a task id
+                    # rather than a chord id. Log/metrics consumers
+                    # treating ``chord_id`` as "chord identifier"
+                    # should branch on ``batches_created == 0``.
+                    "chord_id": callback_result.id,
+                    "cached_results": list(cached_results.keys())
+                    if cached_results
+                    else [],
+                    "message": (
+                        f"Zero batch tasks for execution {execution_id} — "
+                        "callback fired directly with empty result list"
+                    ),
+                }
             exception = f"Failed to queue execution task {execution_id}"
             logger.error(exception)
             raise Exception(exception)
@@ -705,12 +809,37 @@ def _run_workflow_api(
         }
 
     except Exception as e:
-        # Update execution to ERROR status matching Django pattern
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=ExecutionStatus.ERROR.value,
-            error_message=f"Error while processing files: {str(e)}",
-        )
+        error_message = f"Error while processing files: {str(e)}"
+        # On PG, surface the error to the UI + reconcile file counters so a failed
+        # run reads "N failed" not "N in progress"; the wrapped update inside the
+        # helper guarantees a status-update failure can't mask `e` or skip the
+        # re-raise below (see record_pg_orchestration_failure). The Celery branch
+        # is the original bare update, untouched.
+        if is_pg_transport(transport):
+            error_logger = None
+            try:
+                error_logger = WorkerWorkflowLogger.create_for_api_workflow(
+                    execution_id=str(execution_id),
+                    organization_id=str(schema_name),
+                    pipeline_id=str(pipeline_id) if pipeline_id else None,
+                )
+            except Exception as log_error:
+                logger.warning(f"Failed to build UI logger: {log_error}")
+            WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+                api_client=api_client,
+                execution_id=execution_id,
+                total_files=total_files,
+                error_message=error_message,
+                logger=logger,
+                workflow_logger=error_logger,
+            )
+        else:
+            # Update execution to ERROR status matching Django pattern
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.ERROR.value,
+                error_message=error_message,
+            )
         logger.error(f"Execution {execution_id} failed: {str(e)}", exc_info=True)
         raise
 
@@ -993,7 +1122,7 @@ def _calculate_manual_review_decisions_for_batch_api(
         return [False] * len(batch)
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @retry(max_attempts=3, base_delay=2.0)
 @with_execution_context
@@ -1064,7 +1193,7 @@ def api_deployment_status_check(
         raise
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @with_execution_context
 def api_deployment_cleanup(

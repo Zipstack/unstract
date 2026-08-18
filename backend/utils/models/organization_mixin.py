@@ -11,7 +11,8 @@ class DefaultOrganizationMixin(models.Model):
         db_comment="Foreign key reference to the Organization model.",
         null=True,
         blank=True,
-        default=None,
+        # Server-managed field; set in save(), never accepted as client input.
+        editable=False,
     )
 
     class Meta:

@@ -1,0 +1,46 @@
+/* Shared styles for the API key management screens (platform + global). */
+
+.api-key-manager__content {
+  padding: 20px;
+}
+
+.api-key-manager__header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.api-key-manager__key-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  cursor: pointer;
+}
+
+.api-key-manager__key-text {
+  font-family: monospace;
+  font-size: 13px;
+  pointer-events: none;
+  /* Theme-aware (respects dark mode) instead of a hardcoded rgba. */
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.65));
+}
+
+.api-key-manager__copy-icon {
+  font-size: 12px;
+  color: var(--ant-color-text-tertiary, rgba(0, 0, 0, 0.45));
+}
+
+.api-key-manager__key-cell:hover .api-key-manager__copy-icon {
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+}
+
+.api-key-manager__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.api-key-manager__deployment-select {
+  width: 100%;
+  margin-top: 8px;
+}

@@ -2,9 +2,9 @@ from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOrganizationMember
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
 from workflow_manager.file_execution.serializers import WorkflowFileExecutionSerializer
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionSerializer
@@ -19,7 +19,8 @@ class TagViewSet(viewsets.ModelViewSet):
     serializer_class = TagSerializer
     pagination_class = CustomPagination
     ordering_fields = ["created_at"]
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, DeterministicOrderingFilter]
+    filterset_fields = ["name"]
 
     def get_queryset(self):
         """Retrieve the base queryset for the Tag model, allowing additional

@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
-from .views import NotificationViewSet
+from .views import NotificationSettingsView, NotificationViewSet
 
 notification_list = NotificationViewSet.as_view({"get": "list", "post": "create"})
 notification_detail = NotificationViewSet.as_view(
@@ -16,6 +16,13 @@ notification_detail = NotificationViewSet.as_view(
 urlpatterns = format_suffix_patterns(
     [
         path("", notification_list, name="notification-list"),
+        # Org-scoped notification batching settings. Mounted before the
+        # <uuid:pk> route so "settings" is not interpreted as a UUID.
+        path(
+            "settings/",
+            NotificationSettingsView.as_view(),
+            name="notification-settings",
+        ),
         path("<uuid:pk>/", notification_detail, name="notification-detail"),
         path(
             "pipeline/<uuid:pipeline_uuid>/",

@@ -81,9 +81,18 @@ class FileManagerHelper:
             if os.path.normpath(file_path) == os.path.normpath(file_name):
                 continue
 
-            # Call fs.info() to get file size if its missing
+            # Google-native docs (Docs/Sheets/Slides) carry no fileSize, so pydrive2's
+            # info() raises on int(None); fall back to 0 (display-only) to keep listing.
             if file_info.get("type") == "file" and file_info.get("size") is None:
-                file_info = fs.info(file_name)
+                try:
+                    file_info = fs.info(file_name)
+                except Exception as exc:
+                    logger.warning(
+                        "fs.info() failed for %s; using ls() metadata: %s",
+                        file_name,
+                        exc,
+                    )
+                    file_info["size"] = 0
 
             file_content_type = file_info.get("ContentType")
             if not file_content_type:

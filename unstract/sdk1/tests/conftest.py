@@ -25,10 +25,6 @@ def clean_env(monkeypatch: MonkeyPatch) -> MonkeyPatch:
         "PLATFORM_SERVICE_BASE_DELAY",
         "PLATFORM_SERVICE_MULTIPLIER",
         "PLATFORM_SERVICE_JITTER",
-        "PROMPT_SERVICE_MAX_RETRIES",
-        "PROMPT_SERVICE_BASE_DELAY",
-        "PROMPT_SERVICE_MULTIPLIER",
-        "PROMPT_SERVICE_JITTER",
     ]
     for var in env_vars:
         monkeypatch.delenv(var, raising=False)

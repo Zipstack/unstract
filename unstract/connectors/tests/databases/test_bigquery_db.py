@@ -2,7 +2,6 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 import google.api_core.exceptions
-
 from unstract.connectors.databases.bigquery.bigquery import BigQuery
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,

@@ -31,22 +31,42 @@ class EnvHelper:
             FileStorage: FIleStorage instance initialised using the provider
             and credentials configured in the env
         """
+        raw = os.environ.get(env_name)
+        if not raw:
+            raise FileStorageError(
+                f"Required env var '{env_name}' is unset or empty. "
+                f"Expected JSON config of the form: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
         try:
-            file_storage_creds = json.loads(os.environ.get(env_name, ""))
+            file_storage_creds = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise FileStorageError(
+                f"Env var '{env_name}' is not valid JSON: {e}. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            ) from e
+        if not isinstance(file_storage_creds, dict):
+            raise FileStorageError(
+                f"Env var '{env_name}' must be a JSON object. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
+        try:
             provider = FileStorageProvider(file_storage_creds[CredentialKeyword.PROVIDER])
-            credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
-            if storage_type == StorageType.PERMANENT:
-                file_storage = PermanentFileStorage(provider=provider, **credentials)
-            elif storage_type == StorageType.SHARED_TEMPORARY:
-                file_storage = SharedTemporaryFileStorage(
-                    provider=provider, **credentials
-                )
-            else:
-                raise NotImplementedError()
-            return file_storage
-        except KeyError as e:
-            logger.error(f"Required credentials are missing in the env: {str(e)}")
+        except (KeyError, ValueError) as e:
+            logger.error(f"Invalid storage configuration in env: {str(e)}")
             logger.error(f"The configuration format is {EnvHelper.ENV_CONFIG_FORMAT}")
-            raise e
-        except FileStorageError as e:
-            raise e
+            raise FileStorageError(
+                f"Invalid storage configuration in env var '{env_name}': {e}. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            ) from e
+        credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
+        if not isinstance(credentials, dict):
+            raise FileStorageError(
+                f"Env var '{env_name}' field '{CredentialKeyword.CREDENTIALS}' "
+                f"must be a JSON object. Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
+        if storage_type == StorageType.PERMANENT:
+            return PermanentFileStorage(provider=provider, **credentials)
+        elif storage_type == StorageType.SHARED_TEMPORARY:
+            return SharedTemporaryFileStorage(provider=provider, **credentials)
+        else:
+            raise NotImplementedError()

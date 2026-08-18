@@ -1,5 +1,7 @@
 from django.shortcuts import get_object_or_404
+from permissions.permission import _is_resource_owner, _is_resource_viewer
 from rest_framework.permissions import BasePermission
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -8,9 +10,9 @@ class IsWorkflowOwnerOrShared(BasePermission):
     """Permission class to check if user has access to a workflow.
 
     Checks:
-    1. User is the workflow owner (created_by)
-    2. User has shared access (in shared_users)
-    3. Workflow is shared to user's organization (shared_to_org)
+    1. User owns the workflow (OWNER membership; ``created_by`` is audit-only).
+    2. User is a direct viewer (VIEWER membership).
+    3. Workflow is shared to user's organization (shared_to_org).
 
     Caches the workflow on request object to avoid duplicate fetching.
     """
@@ -28,18 +30,18 @@ class IsWorkflowOwnerOrShared(BasePermission):
             request._workflow_cache = get_object_or_404(
                 Workflow.objects.select_related(
                     "created_by", "organization"
-                ).prefetch_related("shared_users"),
+                ).prefetch_related("memberships__user"),
                 id=workflow_id,
             )
 
         workflow = request._workflow_cache
         user = request.user
 
-        # Check access: owner OR shared user OR shared to organization
         has_access = (
-            workflow.created_by == user
-            or user in workflow.shared_users.all()
+            _is_resource_owner(user, workflow)
+            or _is_resource_viewer(user, workflow)
             or (workflow.shared_to_org and workflow.organization == user.organization)
+            or OrganizationMemberService.is_user_organization_admin(user)
         )
 
         return has_access

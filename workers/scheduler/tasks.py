@@ -7,7 +7,8 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from celery import shared_task
+from queue_backend import FairnessKey, QueueBackend, dispatch, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -22,7 +23,13 @@ from shared.models.scheduler_models import (
 from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
 
-from unstract.core.data_models import NotificationPayload, NotificationSource
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    NotificationPayload,
+    NotificationSource,
+    is_pg_transport,
+    normalize_transport,
+)
 
 # Import the exact backend logic to ensure consistency
 
@@ -81,6 +88,7 @@ def _send_pipeline_status_notification(
             pipeline_id=pipeline_id,
             pipeline_name=pipeline_name,
             notification_payload=notification,
+            execution_id=execution_id,
         )
         logger.info(f"Notification sent successfully for {pipeline_type} {pipeline_id}")
     except Exception as notification_error:
@@ -136,6 +144,17 @@ def _execute_scheduled_workflow(
                 pipeline_id=context.pipeline_id,
             )
 
+        # Transport this execution rides (9e), decided by the backend at creation
+        # and carried in the dispatched task's payload. Absent key (older backend)
+        # → celery default; a present-but-unrecognized value (version skew) is
+        # coerced to celery with a loud warning rather than dispatched onto an
+        # unknown substrate (fail-closed).
+        transport = normalize_transport(
+            workflow_execution.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+            logger=logger,
+            context=f" [exec:{execution_id}]",
+        )
+
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Created workflow execution for scheduled pipeline {context.pipeline_name}"
         )
@@ -145,29 +164,34 @@ def _execute_scheduled_workflow(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Triggering async execution for workflow {context.workflow_id}"
         )
 
-        # Use Celery to dispatch async execution task directly (like backend scheduler does)
-        from celery import current_app
-
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Dispatching async_execute_bin task for scheduled execution"
         )
 
         try:
-            # Dispatch the Celery task directly to the general queue
-            async_result = current_app.send_task(
+            async_result = dispatch(
                 "async_execute_bin",
                 args=[
-                    context.organization_id,  # schema_name (organization_id)
-                    context.workflow_id,  # workflow_id
-                    execution_id,  # execution_id
-                    {},  # hash_values_of_files (empty for scheduled)
-                    True,  # scheduled (THIS IS A SCHEDULED EXECUTION)
+                    context.organization_id,
+                    context.workflow_id,
+                    execution_id,
+                    {},
+                    True,  # scheduled
                 ],
                 kwargs={
-                    "use_file_history": context.use_file_history,  # Pass as kwarg
-                    "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
+                    "use_file_history": context.use_file_history,
+                    "pipeline_id": context.pipeline_id,
+                    "transport": transport,
                 },
-                queue=QueueName.GENERAL,  # Route to General queue for proper separation
+                queue=QueueName.GENERAL,
+                # Orchestrator transport (9e PR A / 2d): route async_execute_bin
+                # onto PG for a pg_queue execution (carried-marker wins over the
+                # allow-list); None keeps the legacy Celery dispatch.
+                backend=QueueBackend.PG if is_pg_transport(transport) else None,
+                fairness=FairnessKey(
+                    org_id=context.organization_id,
+                    workload_type=WorkloadType.NON_API,
+                ),
             )
 
             task_id = async_result.id
@@ -211,7 +235,7 @@ def _execute_scheduled_workflow(
         )
 
 
-@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+@worker_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
 def execute_pipeline_task(
     self,
     workflow_id: Any,
@@ -234,7 +258,7 @@ def execute_pipeline_task(
     )
 
 
-@shared_task(name="execute_pipeline_task_v2", bind=True)
+@worker_task(name="execute_pipeline_task_v2", bind=True)
 def execute_pipeline_task_v2(
     self,
     organization_id: Any,
@@ -415,7 +439,7 @@ def execute_pipeline_task_v2(
 
 
 # Health check task for monitoring
-@shared_task(name="scheduler_health_check")
+@worker_task(name="scheduler_health_check")
 def health_check() -> dict[str, Any]:
     """Health check task for scheduler worker.
 

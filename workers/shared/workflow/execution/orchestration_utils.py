@@ -4,30 +4,127 @@ This module provides standardized workflow orchestration patterns,
 chord execution, batch processing, and task coordination utilities.
 """
 
-import os
-from typing import Any
+from __future__ import annotations
 
-from celery import chord
+import os
+from typing import TYPE_CHECKING, Any
+
+from queue_backend import BarrierHandle, FairnessKey, get_barrier
+from queue_backend.pg_barrier import PgBarrier
+
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    ExecutionStatus,
+    is_pg_transport,
+)
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
 from ...infrastructure.logging import WorkerLogger
 
+if TYPE_CHECKING:
+    from celery.canvas import Signature
+    from queue_backend import Barrier
+
 logger = WorkerLogger.get_logger(__name__)
+
+# Single ``Barrier`` instance reused across all
+# ``WorkflowOrchestrationUtils.create_chord_execution`` calls on the **celery**
+# transport. The substrate is selected at module-import (worker startup) time by
+# the ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips require a
+# pod restart — same posture as every other ``WORKER_*`` env in the codebase.
+_BARRIER = get_barrier()
+
+
+def _barrier_for_transport(transport: str) -> Barrier:
+    """Pick the fan-in substrate for a per-execution transport (9e).
+
+    The ``pg_queue`` transport always coordinates on Postgres — it uses a fresh
+    :class:`PgBarrier` in its fire-and-forget mode regardless of
+    ``WORKER_BARRIER_BACKEND`` (the env-selected singleton is the *celery*-transport
+    substrate, which may be ``chord``). Every other transport uses that singleton.
+    """
+    if is_pg_transport(transport):
+        return PgBarrier()
+    return _BARRIER
 
 
 class WorkflowOrchestrationUtils:
     """Centralized workflow orchestration patterns and utilities."""
 
     @staticmethod
+    def record_pg_orchestration_failure(
+        *,
+        api_client: Any,
+        execution_id: str,
+        total_files: int,
+        error_message: str,
+        logger: Any,
+        workflow_logger: Any | None = None,
+    ) -> None:
+        """Record a **PG** orchestration failure: surface the error to the UI and
+        reconcile the file counters, both best-effort.
+
+        Call this ONLY on the PG transport (the caller gates on
+        ``is_pg_transport``); the Celery failure path keeps its own original
+        status update untouched, so it stays byte-identical.
+
+        Two things happen, neither of which may disturb the caller's control flow
+        (it still has the original orchestration exception to log / re-raise):
+
+        * **(C)** if a ``workflow_logger`` is given, publish the error to the UI /
+          WebSocket logs (guarded — a logging hiccup must not abort the rest).
+        * **(B)** mark the attempted files failed via ``update_status`` so the run
+          reads "N failed" not "N in progress" (UI derives in-progress as
+          ``total - successful - failed``). ``total_files`` is sent alongside the
+          aggregates because the backend serializer requires it ("total_files is
+          required when file aggregates are provided") and enforces
+          ``successful + failed <= total`` — both hold here (0 + N <= N). The call
+          is wrapped: a status-update failure (e.g. a serializer/validation error)
+          is logged but **not** re-raised, so it can never mask the real
+          orchestration error or skip the caller's re-raise (greptile P1).
+        """
+        if workflow_logger:
+            try:
+                workflow_logger.log_error(
+                    logger, f"❌ Workflow orchestration failed: {error_message}"
+                )
+            except Exception as log_error:
+                logger.warning(f"Failed to publish error to UI logs: {log_error}")
+        try:
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.ERROR.value,
+                error_message=error_message,
+                total_files=total_files,
+                successful_files=0,
+                failed_files=total_files,
+            )
+        except Exception as status_error:
+            logger.error(
+                f"Failed to write ERROR status + file counts for execution "
+                f"{execution_id}: {status_error}",
+                exc_info=True,
+            )
+
+    @staticmethod
     def create_chord_execution(
-        batch_tasks: list[Any],
+        batch_tasks: list[Signature],
         callback_task_name: str,
         callback_kwargs: dict[str, Any],
         callback_queue: str,
         app_instance: Any,
-    ) -> Any:
-        """Standardized chord creation and execution pattern.
+        *,
+        fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
+    ) -> BarrierHandle | None:
+        """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
+
+        Routes through ``CeleryChordBarrier`` — a thin wrapper around
+        ``celery.chord(header)(body)`` that lets Phase 6b swap the
+        substrate (e.g. to ``RedisDecrBarrier``) without touching this
+        call site a second time. Behaviour is identical to the
+        previous direct ``chord(...)`` call.
 
         Args:
             batch_tasks: List of batch task signatures
@@ -35,49 +132,30 @@ class WorkflowOrchestrationUtils:
             callback_kwargs: Keyword arguments for callback
             callback_queue: Queue name for callback task
             app_instance: Celery app instance
+            fairness: Optional ``FairnessKey`` attached as a message
+                header on every header task and the callback — closes
+                the chord-fairness gap that Phase 5.1 (``dispatch()``)
+                deliberately scoped out. See ``queue_backend.fairness``
+                for the slot name constant.
 
         Returns:
-            Chord result object or None if no batch tasks
+            Barrier handle (Celery ``AsyncResult``-shaped — ``.id``
+            exposed for chord-id logging) or None if no batch tasks.
 
         Note:
-            This consolidates the identical chord creation pattern found in
-            api-deployment and general workers.
-
-            CRITICAL: Returns None for zero batch tasks, signaling to parent
-            that direct pipeline status updates should be handled instead.
+            CRITICAL: Returns None for zero batch tasks, signaling to
+            parent that direct pipeline status updates should be
+            handled instead.
         """
-        try:
-            callback_signature = app_instance.signature(
-                callback_task_name,
-                kwargs=callback_kwargs,
-                queue=callback_queue,
-            )
-            # For zero files, skip chord entirely - parent should handle status updates directly
-            if not batch_tasks:
-                # Extract execution_id from callback kwargs for logging
-                execution_id = callback_kwargs.get("execution_id")
-                pipeline_id = callback_kwargs.get("pipeline_id")
-                logger.info(
-                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] Zero batch tasks detected - skipping chord execution "
-                    f"(parent should handle pipeline status updates directly)"
-                )
-                return None  # Signal to parent that no chord was created
-
-            # Normal chord execution for non-empty batch tasks
-            result = chord(batch_tasks)(callback_signature)
-
-            logger.info(
-                f"Chord execution started - "
-                f"batch_tasks={len(batch_tasks)}, "
-                f"callback={callback_task_name}, "
-                f"queue={callback_queue}"
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to create chord execution: {e}")
-            raise
+        return _barrier_for_transport(transport).enqueue(
+            batch_tasks,
+            callback_task_name=callback_task_name,
+            callback_kwargs=callback_kwargs,
+            callback_queue=callback_queue,
+            app_instance=app_instance,
+            fairness=fairness,
+            transport=transport,
+        )
 
     @staticmethod
     def determine_manual_review_routing(
@@ -325,16 +403,33 @@ class WorkflowOrchestrationMixin:
     """Mixin class to add orchestration utilities to worker tasks."""
 
     def create_chord(
-        self, batch_tasks, callback_task_name, callback_kwargs, callback_queue
+        self,
+        batch_tasks,
+        callback_task_name,
+        callback_kwargs,
+        callback_queue,
+        *,
+        fairness: FairnessKey | None = None,
     ):
-        """Create chord using standardized pattern."""
+        """Create chord using standardized pattern.
+
+        Forwards ``fairness`` to ``create_chord_execution`` so mixin
+        callers can opt into the chord-fairness plumbing that bare
+        ``dispatch()`` sites get via Phase 5.1. ``None`` keeps the
+        pre-Barrier wire shape exactly.
+        """
         # Get app instance from task context
         app_instance = getattr(self, "app", None)
         if not app_instance:
             raise RuntimeError("Celery app instance not available in task context")
 
         return WorkflowOrchestrationUtils.create_chord_execution(
-            batch_tasks, callback_task_name, callback_kwargs, callback_queue, app_instance
+            batch_tasks,
+            callback_task_name,
+            callback_kwargs,
+            callback_queue,
+            app_instance,
+            fairness=fairness,
         )
 
     def determine_manual_review_routing(self, files, manual_review_config=None):

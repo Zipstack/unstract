@@ -26,6 +26,9 @@ class ToolStudioPromptSerializer(AuditSerializer):
     class Meta:
         model = ToolStudioPrompt
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData on create); drop
+        # the DRF auto-validator that 400s on re-save / PUT before the view runs.
+        validators = []
 
 
 class ToolStudioIndexSerializer(serializers.Serializer):

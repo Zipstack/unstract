@@ -100,7 +100,6 @@ list_descendants ()
 directories=(
     "."
     "backend"
-    "prompt-service"
     "platform-service"
     "runner"
     "x2text-service"

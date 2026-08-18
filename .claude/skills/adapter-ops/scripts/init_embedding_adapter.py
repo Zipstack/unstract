@@ -25,9 +25,7 @@ from urllib.request import Request, urlopen
 SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 # Find the sdk1 adapters directory relative to the repo root
-REPO_ROOT = (
-    SKILL_DIR.parent.parent.parent
-)  # .claude/skills/unstract-adapter-extension -> repo root
+REPO_ROOT = SKILL_DIR.parent.parent.parent  # .claude/skills/adapter-ops -> repo root
 SDK1_ADAPTERS = REPO_ROOT / "unstract" / "sdk1" / "src" / "unstract" / "sdk1" / "adapters"
 ICONS_DIR = REPO_ROOT / "frontend" / "public" / "icons" / "adapter-icons"
 

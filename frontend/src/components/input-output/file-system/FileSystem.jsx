@@ -204,7 +204,8 @@ function transformTree(tree) {
     title = key.split("/").at(-1);
     isFile = node.type === "file";
     modifiedDate = node.modified_at?.split(" ")[0] || "";
-    size = isFile ? formatBytes(node.size) : "";
+    // Blank when size is 0/unknown (e.g. Google-native docs) instead of "0 B".
+    size = isFile && node.size ? formatBytes(node.size) : "";
 
     node["key"] = key;
     node["icon"] = isFile ? <Document /> : <Folder />;

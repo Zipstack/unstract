@@ -1,0 +1,223 @@
+# Unstract test rig — group definitions.
+#
+# Each group is the unit of selection. A group's `paths` are passed to pytest
+# (or another runner). `depends_on` is expanded transitively before execution.
+#
+# Add new groups by appending to this file. Validate with:
+#   python -m tests.rig validate
+#   python -m tests.rig list-groups
+#   python -m tests.rig expand <group>
+version: 1
+
+defaults:
+  timeout_seconds: 600
+  parallel: true
+  runner: pytest
+
+  # Shared so migrations run under the same settings the tests read.
+  backend_test_env: &backend_test_env
+    DJANGO_SETTINGS_MODULE: backend.settings.test
+    # Tenancy is row-level, not schema-per-tenant.
+    DB_SCHEMA: public
+    # Resolved at import with no default.
+    DJANGO_SECRET_KEY: test-secret-key-not-for-production
+    # All-zero Fernet key: valid format, obvious placeholder.
+    ENCRYPTION_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+    CELERY_BROKER_BASE_URL: redis://localhost:6379
+    CELERY_BROKER_USER: guest
+    CELERY_BROKER_PASS: guest
+    INDEXING_FLAG_TTL: "3600"
+    ENABLE_LOG_HISTORY: "False"
+    STRUCTURE_TOOL_IMAGE_URL: docker:test
+    STRUCTURE_TOOL_IMAGE_NAME: test-structure-tool
+    STRUCTURE_TOOL_IMAGE_TAG: test
+    SYSTEM_ADMIN_USERNAME: admin
+    SYSTEM_ADMIN_PASSWORD: admin
+    SYSTEM_ADMIN_EMAIL: admin@example.com
+    # Only used to build paths at init.
+    WORKFLOW_EXECUTION_DIR_PREFIX: /tmp/unstract-workflow-exec
+
+  # Provisioned DB gets its schema from the real migration, not fixture DDL,
+  # since the tables are Django-managed models owned by the backend.
+  postgres_migrate:
+    workdir: backend
+    apps: [pg_queue]
+    env: *backend_test_env
+
+groups:
+  # ── Unit tier: pure pytest, no external services ───────────────────────────
+  unit-rig:
+    # Rig self-tests. Run from repo root so the `tests.rig` import resolves.
+    tier: unit
+    workdir: .
+    paths: [tests/rig/tests]
+    coverage_source: tests/rig
+
+  unit-sdk1:
+    tier: unit
+    workdir: unstract/sdk1
+    paths: [tests]
+    markers: "not slow and not integration"
+    uv_sync_group: test
+    coverage_source: src/unstract/sdk1
+
+  unit-platform-service:
+    tier: unit
+    workdir: platform-service
+    paths: [tests]
+    uv_sync_group: test
+    coverage_source: src
+    optional: true   # service has only a couple of tests today
+
+  unit-workers:
+    tier: unit
+    workdir: workers
+    paths: [tests, shared/tests]
+    # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
+    # so select by exclusion. `conftest.py` marks real-Postgres tests
+    # `integration` (routed to the `integration-workers` group); `slow` tests are
+    # also excluded from this fast lane. (`markers: "unit"` here previously
+    # matched *zero* tests — the suite silently never ran in CI.)
+    markers: "not integration and not slow"
+    uv_sync_group: test
+    coverage_source: shared
+
+  unit-backend:
+    tier: unit
+    workdir: backend
+    # Marker-selected, not a hand-kept file list: live-infra tests carry
+    # `integration` and run in integration-backend.
+    paths: ["."]
+    markers: "not integration"
+    uv_sync_group: test
+    env: *backend_test_env
+    coverage_source: .
+
+  unit-connectors:
+    tier: unit
+    workdir: unstract/connectors
+    paths: [tests]
+    # Pure connector tests only. Credential / live-infra tests are marked
+    # `@pytest.mark.integration` and run in `integration-connectors`.
+    markers: "not integration"
+    uv_sync_group: test
+    coverage_source: src
+
+  unit-core:
+    tier: unit
+    workdir: unstract/core
+    paths: [tests]
+    # No `test` uv group in unstract/core today; rig still injects pytest plugins.
+    install_editable: true
+    coverage_source: src
+
+  # ── Integration tier: needs infra but not full platform ────────────────────
+  integration-backend:
+    tier: integration
+    workdir: backend
+    # Complement of unit-backend: conftest auto-marks DB-bound tests
+    # `integration`, so new ones join here with no edit. The rig provisions
+    # requires_services and injects their env; cred-gated tests skip without.
+    paths: ["."]
+    markers: "integration"
+    uv_sync_group: test
+    env: *backend_test_env
+    requires_services: [postgres, redis, minio]
+    coverage_source: .
+
+  integration-workers:
+    tier: integration
+    workdir: workers
+    paths: [tests, shared/tests]
+    # Real-Postgres tests, auto-marked `integration` by conftest and connecting
+    # over TEST_DB_*, which the rig points at the provisioned container.
+    markers: "integration"
+    uv_sync_group: test
+    coverage_source: shared
+    requires_services: [postgres]
+    # Optional until REQUIRE_PG_TESTS=1 turns the fixtures' graceful skips into
+    # hard failures, so the lane can't pass having run nothing.
+    optional: true
+
+  integration-connectors:
+    tier: integration
+    workdir: unstract/connectors
+    paths: [tests]
+    markers: "integration"
+    # Most need real third-party creds and skip when absent; MinIO runs
+    # because the rig provisions it and injects the creds.
+    requires_services: [minio]
+    uv_sync_group: test
+    coverage_source: src
+
+  integration-workflow-execution:
+    tier: integration
+    paths: [tests/integration/workflow_execution]
+    requires_services: [postgres, redis, minio]
+    depends_on: [unit-sdk1, unit-workers]
+    optional: true   # placeholder until tests are authored
+
+  # ── E2E tier: real HTTP against running platform ───────────────────────────
+  # Platform groups must depend (transitively) on e2e-smoke; the rig enforces
+  # this so smoke gates and runs first. Nothing ships bypassing it.
+  e2e-smoke:
+    tier: e2e
+    paths: [tests/e2e/smoke]
+    requires_platform: true
+    critical: true
+    timeout_seconds: 1200
+    depends_on: [unit-sdk1, unit-workers]
+
+  # Not optional: login is a gated critical path; red fails the build.
+  e2e-login:
+    tier: e2e
+    paths: [tests/e2e/auth]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  # Owner-side co-owner HTTP contract (endpoints reachable, CSRF, org-scoped,
+  # validation + last-owner guard). Gating — CI-verified green before dropping
+  # the optional flag (the e2e stack can't run against a dev auth0 backend).
+  e2e-coowners:
+    tier: e2e
+    paths: [tests/e2e/coowners]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  e2e-workflow:
+    tier: e2e
+    paths: [tests/e2e/workflows]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  e2e-api-deployment:
+    tier: e2e
+    paths: [tests/e2e/api_deployment]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  e2e-prompt-studio:
+    tier: e2e
+    paths: [tests/e2e/prompt_studio]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  e2e-etl:
+    tier: e2e
+    paths: [tests/e2e/etl]
+    requires_platform: true
+    critical: true
+    depends_on: [e2e-smoke]
+
+  e2e-hurl:
+    tier: e2e
+    runner: hurl
+    paths: [tests/e2e/hurl]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    optional: true

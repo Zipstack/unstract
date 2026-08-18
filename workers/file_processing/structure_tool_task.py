@@ -23,12 +23,17 @@ from pathlib import Path
 from typing import Any
 
 from file_processing.worker import app
+from queue_backend import FairnessKey, worker_task
+from queue_backend.fairness import WorkloadType
+from queue_backend.pg_queue.executor_rpc import (
+    RoutingExecutionDispatcher,
+    get_executor_dispatcher,
+)
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
 
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -36,6 +41,26 @@ logger = logging.getLogger(__name__)
 # Timeout for executor worker calls (seconds).
 # Reads from EXECUTOR_RESULT_TIMEOUT env, defaults to 3600.
 EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
+
+
+def _fairness_headers(
+    organization_id: str,
+) -> dict[str, dict[str, str | int | None]]:
+    """Fairness header for executor dispatches.
+
+    Structure-tool dispatches are workflow-execution work — both ETL
+    and API workflows route through here. ``NON_API`` is the safe
+    default (API traffic preempting is a strictly weaker mistake than
+    the inverse).
+
+    TODO(UN-3504): propagate the caller's WorkloadType (API vs ETL)
+    instead of hard-coding ``NON_API``. Requires the chord-lift work
+    so the workflow type flows from the chord caller down to here.
+    """
+    return FairnessKey(
+        org_id=organization_id,
+        workload_type=WorkloadType.NON_API,
+    ).as_header()
 
 
 # -----------------------------------------------------------------------
@@ -190,7 +215,7 @@ def _should_skip_extraction_for_smart_table(
 # -----------------------------------------------------------------------
 
 
-@app.task(bind=True, name=str(TaskName.EXECUTE_STRUCTURE_TOOL))
+@worker_task(bind=True, name=str(TaskName.EXECUTE_STRUCTURE_TOOL))
 def execute_structure_tool(self, params: dict) -> dict:
     """Execute structure tool as a Celery task.
 
@@ -254,7 +279,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
 
     platform_helper = _create_platform_helper(shim, file_execution_id)
-    dispatcher = ExecutionDispatcher(celery_app=app)
+    # Gate-routed: PG executor RPC when pg_queue_enabled is on, else the unchanged
+    # Celery ExecutionDispatcher (zero-regression by construction — see executor_rpc).
+    dispatcher = get_executor_dispatcher(celery_app=app)
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----
@@ -451,6 +478,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "parallel_pages": at_settings.get("parallel_pages", 4),
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
+            "group_key": at_settings.get("group_key", ""),
+            # Set on the output at export by prompt_studio_registry_helper.py
+            # when a lookup is assigned; None otherwise.
+            "lookup_config": at_output.get("lookup_config"),
         }
         at_ctx = ExecutionContext(
             executor_name="agentic_table",
@@ -464,7 +495,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             file_execution_id=file_execution_id,
             executor_params=agentic_params,
         )
-        at_result = dispatcher.dispatch(at_ctx, timeout=EXECUTOR_TIMEOUT)
+        at_result = dispatcher.dispatch(
+            at_ctx,
+            timeout=EXECUTOR_TIMEOUT,
+            headers=_fairness_headers(organization_id),
+        )
         if not at_result.success:
             return at_result.to_dict()
         at_output_data = at_result.data.get("output", {}) or {}
@@ -503,7 +538,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             },
         )
         pipeline_start = time.monotonic()
-        pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
+        pipeline_result = dispatcher.dispatch(
+            pipeline_ctx,
+            timeout=EXECUTOR_TIMEOUT,
+            headers=_fairness_headers(organization_id),
+        )
         pipeline_elapsed = time.monotonic() - pipeline_start
 
         if not pipeline_result.success:
@@ -645,7 +684,7 @@ def _run_agentic_extraction(
     input_file_path: str,
     output_dir_path: str,
     tool_instance_metadata: dict,
-    dispatcher: ExecutionDispatcher,
+    dispatcher: RoutingExecutionDispatcher,
     shim: Any,
     file_execution_id: str,
     execution_id: str,
@@ -716,7 +755,11 @@ def _run_agentic_extraction(
             "include_source_refs": enable_highlight,
         },
     )
-    agentic_result = dispatcher.dispatch(agentic_ctx, timeout=EXECUTOR_TIMEOUT)
+    agentic_result = dispatcher.dispatch(
+        agentic_ctx,
+        timeout=EXECUTOR_TIMEOUT,
+        headers=_fairness_headers(organization_id),
+    )
 
     if not agentic_result.success:
         return agentic_result.to_dict()

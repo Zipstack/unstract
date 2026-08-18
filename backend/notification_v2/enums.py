@@ -36,3 +36,26 @@ class PlatformType(Enum):
     @classmethod
     def choices(cls):
         return [(e.value, e.name.replace("_", " ").capitalize()) for e in cls]
+
+
+class BufferStatus(Enum):
+    """Lifecycle states for a NotificationBuffer row.
+
+    PENDING       — waiting for the next flush tick.
+    SENDING       — claimed by a flush and handed to the dispatch task; awaiting
+                    its success/failure callback. Reclaimed to PENDING by the
+                    reaper if it stays here past the dispatch lease (crash window).
+    DISPATCHED    — delivery succeeded.
+    DEAD_LETTER   — Celery exhausted retries, or the row hit
+                    NOTIFICATION_MAX_DISPATCH_ATTEMPTS reclaim attempts; terminal,
+                    never re-picked.
+    """
+
+    PENDING = "PENDING"
+    SENDING = "SENDING"
+    DISPATCHED = "DISPATCHED"
+    DEAD_LETTER = "DEAD_LETTER"
+
+    @classmethod
+    def choices(cls):
+        return [(e.value, e.name.replace("_", " ").capitalize()) for e in cls]

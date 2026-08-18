@@ -5,6 +5,7 @@ class ApiExecution:
     TIMEOUT_FORM_DATA: str = "timeout"
     INCLUDE_METADATA: str = "include_metadata"
     INCLUDE_METRICS: str = "include_metrics"
+    INCLUDE_EXTRACTED_TEXT: str = "include_extracted_text"
     USE_FILE_HISTORY: str = "use_file_history"  # Undocumented parameter
     EXECUTION_ID: str = "execution_id"
     TAGS: str = "tags"

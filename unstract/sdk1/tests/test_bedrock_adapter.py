@@ -322,6 +322,86 @@ def test_llm_legacy_drops_stray_bearer_token() -> None:
     assert "api_key" not in out
 
 
+# ── LLM: Bedrock Guardrails ──────────────────────────────────────────────────
+
+
+def _llm_base() -> dict:
+    return {
+        "auth_type": "access_keys",
+        "model": "anthropic.claude-3-haiku-20240307-v1:0",
+        "region_name": "us-east-1",
+        "aws_access_key_id": "AKIAFAKE",
+        "aws_secret_access_key": "secret",
+    }
+
+
+def test_llm_guardrail_packs_into_litellm_kwarg() -> None:
+    out = AWSBedrockLLMParameters.validate(
+        {
+            **_llm_base(),
+            "guardrail_identifier": "ff6ujrregl1q",
+            "guardrail_version": "DRAFT",
+            "guardrail_trace": "enabled",
+        }
+    )
+    assert out["guardrailConfig"] == {
+        "guardrailIdentifier": "ff6ujrregl1q",
+        "guardrailVersion": "DRAFT",
+        "trace": "enabled",
+    }
+    assert "guardrail_identifier" not in out
+
+
+def test_llm_guardrail_omitted_drops_key() -> None:
+    out = AWSBedrockLLMParameters.validate(_llm_base())
+    assert "guardrailConfig" not in out
+
+
+def test_llm_guardrail_identifier_without_version_raises() -> None:
+    """Bedrock rejects identifier without version with an opaque error — fail fast."""
+    with pytest.raises(ValueError, match="guardrail_version is required"):
+        AWSBedrockLLMParameters.validate(
+            {**_llm_base(), "guardrail_identifier": "ff6ujrregl1q"}
+        )
+
+
+def test_llm_guardrail_whitespace_identifier_treated_as_absent() -> None:
+    out = AWSBedrockLLMParameters.validate({**_llm_base(), "guardrail_identifier": "   "})
+    assert "guardrailConfig" not in out
+
+
+def test_llm_guardrail_whitespace_version_raises() -> None:
+    with pytest.raises(ValueError, match="guardrail_version is required"):
+        AWSBedrockLLMParameters.validate(
+            {
+                **_llm_base(),
+                "guardrail_identifier": "ff6ujrregl1q",
+                "guardrail_version": "   ",
+            }
+        )
+
+
+def test_llm_guardrail_strips_surrounding_whitespace() -> None:
+    out = AWSBedrockLLMParameters.validate(
+        {
+            **_llm_base(),
+            "guardrail_identifier": "  ff6ujrregl1q  ",
+            "guardrail_version": "  DRAFT  ",
+        }
+    )
+    assert out["guardrailConfig"]["guardrailIdentifier"] == "ff6ujrregl1q"
+    assert out["guardrailConfig"]["guardrailVersion"] == "DRAFT"
+
+
+def test_llm_guardrail_survives_revalidation() -> None:
+    """`LLM.complete()` re-validates self.kwargs — guardrailConfig must round-trip."""
+    first = AWSBedrockLLMParameters.validate(
+        {**_llm_base(), "guardrail_identifier": "g", "guardrail_version": "1"}
+    )
+    second = AWSBedrockLLMParameters.validate(dict(first))
+    assert second["guardrailConfig"] == first["guardrailConfig"]
+
+
 # ── Embedding: same auth_type matrix ─────────────────────────────────────────
 
 

@@ -177,7 +177,9 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             members: list[OrganizationMember] = (
                 auth_controller.get_organization_members_by_org_id()
             )
-            serialized_members = OrganizationMemberSerializer(members, many=True).data
+            serialized_members = OrganizationMemberSerializer(
+                members, many=True, context={"auth_controller": auth_controller}
+            ).data
             return Response(
                 status=status.HTTP_200_OK,
                 data={"message": "success", "members": serialized_members},

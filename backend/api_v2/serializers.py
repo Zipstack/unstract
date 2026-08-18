@@ -8,6 +8,7 @@ from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from rest_framework import serializers
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -22,6 +23,10 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    serialize_owner_refs,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -34,9 +39,20 @@ from backend.serializers import AuditSerializer
 
 
 class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
+    # ``shared_groups`` is no longer an M2M on APIDeployment — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+
     class Meta:
         model = APIDeployment
         fields = "__all__"
+        # IntegrityErrorMixin owns uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the mixin can map a friendly message.
+        validators = []
+        extra_kwargs = {
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
@@ -210,6 +226,9 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 If -1 it corresponds to async execution. Defaults to -1
             include_metadata (bool): Flag to include metadata in API response
             include_metrics (bool): Flag to include metrics in API response
+            include_extracted_text (bool): Flag to include the full extracted text
+                of the input file in the API response. The extracted text is returned
+                at the top level of each file result, independent of include_metadata.
             use_file_history (bool): Flag to use FileHistory to save and retrieve
                 responses quickly. This is undocumented to the user and can be
                 helpful for demos.
@@ -232,6 +251,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     )
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
 
     presigned_urls = ListField(child=URLField(), required=False)
@@ -381,6 +401,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # Get context from serializer
         api = self.context.get("api")
         api_key = self.context.get("api_key")
+        is_global_key = self.context.get("is_global_key", False)
 
         if not api or not api_key:
             raise ValidationError("Unable to validate LLM profile ownership")
@@ -390,6 +411,29 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             profile = ProfileManager.objects.get(profile_id=value)
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
+
+        # Global API Keys are org-level (not tied to a single user), so the
+        # per-user ownership check below does not apply. We must still confirm
+        # the profile belongs to the same organization as the deployment,
+        # otherwise a caller could reference another org's profile by UUID.
+        # ``ProfileManager.objects`` is not org-scoped by default, so this
+        # check is load-bearing, not merely defense-in-depth.
+        if is_global_key:
+            # A profile's org is only derivable through its prompt studio tool.
+            # That FK is nullable, and an unattached profile therefore has no
+            # org to compare against — ``None`` never equals a real org id, so
+            # such a profile is rejected. That is deliberate: with no way to
+            # attribute the profile to an organization, the org-scoped key must
+            # fail closed rather than accept it.
+            profile_org_id = (
+                profile.prompt_studio_tool.organization_id
+                if profile.prompt_studio_tool_id
+                else None
+            )
+            if profile_org_id != api.organization_id:
+                # Generic error avoids confirming another org's profile exists.
+                raise ValidationError("Profile not found")
+            return value
 
         # Get the specific API key being used
         try:
@@ -408,6 +452,7 @@ class ExecutionQuerySerializer(Serializer):
     execution_id = CharField(required=True)
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
 
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
@@ -437,6 +482,8 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_5_run_statuses = SerializerMethodField()
     run_count = SerializerMethodField()
     last_run_time = SerializerMethodField()
+    is_owner = SerializerMethodField()
+    co_owners_count = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -454,11 +501,20 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_5_run_statuses",
             "run_count",
             "last_run_time",
+            "is_owner",
+            "co_owners_count",
         ]
 
     def get_created_by_email(self, obj):
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return obj.is_owner(request.user) if request else False
+
+    def get_co_owners_count(self, obj) -> int:
+        return obj.co_owners_count()
 
     def get_run_count(self, instance) -> int:
         """Get total execution count for this API deployment."""
@@ -504,6 +560,7 @@ class DeploymentResponseSerializer(Serializer):
 
 
 class APIExecutionResponseSerializer(Serializer):
+    execution_id = CharField()
     execution_status = CharField()
     status_api = CharField()
     error = CharField()
@@ -511,24 +568,41 @@ class APIExecutionResponseSerializer(Serializer):
 
 
 class SharedUserListSerializer(ModelSerializer):
-    """Serializer for returning API deployment with shared user details."""
+    """Serializer for returning API deployment with shared user + group details."""
 
     shared_users = SerializerMethodField()
+    shared_groups = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
-        fields = ["id", "display_name", "shared_users", "shared_to_org", "created_by"]
+        fields = [
+            "id",
+            "display_name",
+            "shared_users",
+            "shared_to_org",
+            "shared_groups",
+            "co_owners",
+            "created_by",
+        ]
 
     def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
+        """Return direct viewers (VIEWER members) with id and email."""
         return [
             {"id": user.id, "email": user.email}
-            for user in obj.shared_users.filter(is_service_account=False)
+            for user in obj.viewers()
+            if not user.is_service_account
         ]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
     def get_created_by(self, obj):
         """Return creator details."""
         if obj.created_by:
             return {"id": obj.created_by.id, "email": obj.created_by.email}
         return None
+
+    def get_co_owners(self, obj):
+        return serialize_owner_refs(obj)

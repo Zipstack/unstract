@@ -3,12 +3,13 @@
 This module contains Celery tasks for processing execution logs.
 """
 
+import json
 import os
 from typing import Any
 from urllib.parse import quote
 
 import socketio
-from celery import shared_task
+from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 from shared.utils.api_client_singleton import get_singleton_api_client
@@ -68,7 +69,7 @@ sio = socketio.Server(
 )
 
 
-@shared_task(name=LogProcessingTask.TASK_NAME)
+@worker_task(name=LogProcessingTask.TASK_NAME)
 def logs_consumer(**kwargs: Any) -> None:
     """Task to process logs from log publisher.
 
@@ -107,7 +108,10 @@ def logs_consumer(**kwargs: Any) -> None:
 
     # Emit WebSocket event directly through Socket.IO (via Redis broker)
     try:
-        payload = {"data": log_message}
+        # Coerce UUID/datetime/etc. to JSON-safe primitives — Socket.IO's
+        # serializer is stdlib json and chokes on non-primitive types.
+        safe_message = json.loads(json.dumps(log_message, default=str))
+        payload = {"data": safe_message}
         sio.emit(event, data=payload, room=room)
         logger.debug(f"WebSocket event emitted successfully for room {room}")
     except Exception as e:
@@ -115,7 +119,7 @@ def logs_consumer(**kwargs: Any) -> None:
 
 
 # Health check task for monitoring
-@shared_task(name="log_consumer_health_check")
+@worker_task(name="log_consumer_health_check")
 def health_check() -> dict[str, Any]:
     """Health check task for log consumer worker.
 

@@ -16,6 +16,7 @@ import {
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useBackNavigation } from "../../../hooks/useBackNavigation";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
@@ -49,19 +50,9 @@ function ExecutionLogs() {
   const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
 
-  // Compute back route - use location state if available, otherwise default to logs listing
-  const backRoute = id
-    ? location.state?.from || `/${sessionDetails?.orgName}/logs`
-    : null;
-
-  // Scroll-restoration wins; otherwise preserve caller's upstream UI state.
-  const backRouteState =
-    id && location.state?.scrollToCardId
-      ? {
-          scrollToCardId: location.state.scrollToCardId,
-          cardExpanded: location.state.cardExpanded,
-        }
-      : location.state?.backRouteState || null;
+  const handleNavigateBack = useBackNavigation(
+    `/${sessionDetails?.orgName}/logs`,
+  );
 
   const items = [
     {
@@ -220,8 +211,7 @@ function ExecutionLogs() {
         title={"Execution Logs"}
         customButtons={logTabs}
         enableSearch={false}
-        previousRoute={backRoute}
-        previousRouteState={backRouteState}
+        onNavigateBack={id ? handleNavigateBack : undefined}
       />
       <div className="file-log-layout">
         {id ? (
