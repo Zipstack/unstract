@@ -1,8 +1,8 @@
 """Request-level tests for ``X-Request-ID`` correlation at the HTTP boundary.
 
-The correlation chain this PR builds (backend -> Celery workers -> internal API
-callbacks) is only anchored if the backend actually *adopts* the id its caller
-sent. That hinges on a single setting, and the failure mode is silent: when
+The correlation chain (backend -> Celery workers -> internal API callbacks) is
+only anchored if the backend actually *adopts* the id its caller sent. That
+hinges on a single setting, and the failure mode is silent: when
 ``LOG_REQUEST_ID_HEADER`` is the raw header name rather than the WSGI ``META``
 key, ``django-log-request-id`` looks up a key that never exists, falls through
 to ``GENERATE_REQUEST_ID_IF_NOT_IN_HEADER`` and mints a fresh uuid4 per
@@ -119,3 +119,38 @@ class IncomingRequestIDTest(SimpleTestCase):
         # Parses without raising, and round-trips to the same string.
         parsed = uuid.UUID(response["X-Request-ID"])
         self.assertEqual(str(parsed), response["X-Request-ID"])
+
+    def test_ansi_escapes_in_incoming_id_are_rejected(self):
+        r"""A caller-supplied id lands unescaped in every log line, so one
+        carrying terminal control codes could erase the real prefix of a record
+        and forge the rest. gunicorn only rejects ``\\0\\r\\n``, so the escape
+        arrives intact and the middleware is the place that has to drop it.
+        """
+        sent = "\x1b[2K\x1b[1000Ddeadbeef} :- SPOOFED: admin deleted org 42"
+
+        response = self.client.get(ECHO_URL, headers={"x-request-id": sent})
+
+        bound = response[REQUEST_ID_ECHO_HEADER]
+        self.assertNotEqual(bound, sent)
+        self.assertRegex(bound, _UUID4_RE)
+
+    def test_overlong_incoming_id_is_rejected(self):
+        """The id is re-stamped onto every published Celery message and every
+        log line of an execution, so an unbounded one amplifies: gunicorn
+        accepts ~8KB, which one API call can fan out across N file tasks.
+        """
+        sent = "A" * 8000
+
+        response = self.client.get(ECHO_URL, headers={"x-request-id": sent})
+
+        self.assertRegex(response[REQUEST_ID_ECHO_HEADER], _UUID4_RE)
+
+    def test_incoming_id_at_the_length_limit_is_kept(self):
+        """The bound is on hostile length, not on legitimate upstream formats --
+        an id up to 128 chars is still adopted verbatim.
+        """
+        sent = "b" * 128
+
+        response = self.client.get(ECHO_URL, headers={"x-request-id": sent})
+
+        self.assertEqual(response[REQUEST_ID_ECHO_HEADER], sent)

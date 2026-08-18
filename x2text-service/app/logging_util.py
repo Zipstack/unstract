@@ -1,22 +1,23 @@
 """Request-id-aware logging for the x2text-service.
 
-Self-contained mirror of the shared ``unstract.core.flask`` logging pattern so
-the service participates in cross-service correlation (a single ``request_id``
-in every log line) without taking on the ``unstract-core`` dependency.
-
-The format string is kept identical to the Django backend and the workers so a
-single gcloud query parses ``request_id`` / ``trace_id`` / ``span_id`` uniformly
-across every service.
+Deliberately a self-contained copy of ``unstract.core.flask``'s logging rather
+than an import: this service does not take the ``unstract-core`` dependency.
 """
 
 import logging
+import re
 import uuid
 from logging.config import dictConfig
 
 from flask import Flask, g, has_request_context, request
 
-# Canonical log format shared with the Django backend (``enriched``) and the
-# workers (``WorkerLogger``). Keep these in sync.
+# See ``unstract.core.flask.middleware``: a caller-supplied id reaches every log
+# line and the echoed response header, so only a shape that cannot forge or bloat
+# a record is accepted.
+SAFE_REQUEST_ID = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
+
+# Copy of the canonical format owned by ``unstract.core.flask.logging``; a
+# divergence silently splits this service out of the cross-service log query.
 LOG_FORMAT = (
     "%(levelname)s : [%(asctime)s]"
     "{module:%(module)s process:%(process)d thread:%(thread)d "
@@ -93,7 +94,10 @@ def register_request_id_middleware(app: Flask) -> None:
 
     @app.before_request
     def _assign_request_id() -> None:
-        g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        request_id = request.headers.get("X-Request-ID")
+        if not (request_id and SAFE_REQUEST_ID.match(request_id)):
+            request_id = str(uuid.uuid4())
+        g.request_id = request_id
 
     @app.after_request
     def _echo_request_id(response):

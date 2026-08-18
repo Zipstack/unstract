@@ -1,6 +1,19 @@
+import re
 import uuid
 
 from flask import Flask, g, request
+
+# An incoming X-Request-ID is caller-supplied and lands in every log line and in
+# the echoed response header, so it is only accepted in a shape that cannot forge
+# a log record (ANSI/control characters) or bloat one (unbounded length).
+SAFE_REQUEST_ID = re.compile(r"\A[A-Za-z0-9._:-]{1,128}\Z")
+
+
+def _incoming_request_id() -> str:
+    request_id = request.headers.get("X-Request-ID")
+    if request_id and SAFE_REQUEST_ID.match(request_id):
+        return request_id
+    return str(uuid.uuid4())
 
 
 def register_request_id_middleware(app: Flask):
@@ -12,7 +25,7 @@ def register_request_id_middleware(app: Flask):
 
     @app.before_request
     def assign_request_id():
-        g.request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
+        g.request_id = _incoming_request_id()
 
     @app.after_request
     def echo_request_id(response):
