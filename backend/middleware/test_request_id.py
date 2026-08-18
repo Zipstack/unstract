@@ -171,3 +171,33 @@ class InternalRequestIDTest(SimpleTestCase):
         response = self.client.get(INTERNAL_URL)
 
         self.assertRegex(response[REQUEST_ID_ECHO_HEADER], _UUID4_RE)
+
+
+@override_settings(
+    ROOT_URLCONF=__name__,
+    MIDDLEWARE=["corsheaders.middleware.CorsMiddleware"] + _MIDDLEWARE,
+)
+class RequestIDIsReadableByTheBrowserTest(SimpleTestCase):
+    """The frontend is a separate origin, so the echo only reaches JS if the
+    header is named in ``CORS_EXPOSE_HEADERS``.
+
+    Without it the browser hides the header, ``getRequestIdFromError`` falls
+    through to the id the interceptor *sent*, and -- now that the backend
+    provisions its own -- the error toast shows an id that appears in no log.
+    Nothing errors; the id is simply wrong, which is why this is pinned.
+    """
+
+    def test_request_id_is_exposed_to_a_cross_origin_caller(self):
+        origin = "http://localhost:3000"
+
+        response = self.client.get(
+            PUBLIC_URL, headers={"origin": origin, "x-request-id": "ignored"}
+        )
+
+        exposed = response.get("Access-Control-Expose-Headers", "")
+        self.assertIn(
+            "X-Request-ID",
+            [h.strip() for h in exposed.split(",")],
+            "the browser cannot read the id the backend logged",
+        )
+        self.assertRegex(response["X-Request-ID"], _UUID4_RE)

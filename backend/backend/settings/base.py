@@ -284,6 +284,10 @@ LOG_REQUEST_ID_HEADER = "HTTP_X_REQUEST_ID"
 REQUEST_ID_RESPONSE_HEADER = "X-Request-ID"
 GENERATE_REQUEST_ID_IF_NOT_IN_HEADER = True
 NO_REQUEST_ID = "-"
+# The frontend is a separate origin, so the browser hides every response header
+# not named here -- without this the id the backend logged is unreadable in JS
+# and the error toast falls back to showing an id that appears in no log.
+CORS_EXPOSE_HEADERS = [REQUEST_ID_RESPONSE_HEADER]
 
 
 class OTelFieldFilter(logging.Filter):
