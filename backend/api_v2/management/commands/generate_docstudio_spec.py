@@ -23,6 +23,13 @@ from drf_spectacular.generators import SchemaGenerator
 DEFAULT_OUT = Path(__file__).resolve().parents[4] / "specs" / "docstudio-oss.json"
 URLCONF = "api_v2.deployment_spec_urls"
 REGENERATE = "uv run python manage.py generate_docstudio_spec"
+# Named in every failure message: the repos that regenerate from this file are
+# the ones a spec change actually breaks, and nothing there watches this repo.
+DOWNSTREAM = (
+    "The published client (Zipstack/unstract-python-client) and the CLI "
+    "(Zipstack/unstract-cli) are generated from this file — raise the matching "
+    "PRs there for anything that changes an operation id, a tag or a schema."
+)
 
 
 class SpecGenerationFailed(CommandError):
@@ -77,7 +84,7 @@ class Command(BaseCommand):
             if current != rendered:
                 raise CommandError(
                     f"{out} is out of date. Run `{REGENERATE}` from `backend/` "
-                    "and commit the result."
+                    f"and commit the result.\n\n{DOWNSTREAM}"
                 )
             self.stdout.write(f"{out} is up to date")
             return

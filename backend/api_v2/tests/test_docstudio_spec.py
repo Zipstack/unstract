@@ -5,17 +5,20 @@ spec describing an API the server no longer serves, so drift fails here rather
 than in a client repo.
 """
 
+import dataclasses
 import json
 
 from django.urls import resolve, reverse
 from drf_spectacular.drainage import GENERATOR_STATS
+from workflow_manager.workflow_v2.dto import ExecutionResponse
 
 from api_v2.management.commands.generate_docstudio_spec import (
     DEFAULT_OUT,
+    DOWNSTREAM,
     REGENERATE,
     render_spec,
 )
-
+from api_v2.serializers import APIExecutionResponseSerializer
 
 #: Keys under a path item that are operations. The rest -- `parameters`,
 #: `summary`, vendor extensions -- describe the path, not a call.
@@ -44,13 +47,14 @@ def test_committed_spec_matches_the_code() -> None:
     assert DEFAULT_OUT.exists(), f"{DEFAULT_OUT} is missing"
     assert DEFAULT_OUT.read_text() == render_spec(), (
         f"{DEFAULT_OUT} is out of date. Run `{REGENERATE}` from `backend/` and "
-        "commit the result."
+        f"commit the result.\n\n{DOWNSTREAM}"
     )
 
 
 def test_generation_reports_no_diagnostics() -> None:
     """A warned-about operation is published with guessed request and response
-    shapes, and the drift comparison certifies the guess."""
+    shapes, and the drift comparison certifies the guess.
+    """
     render_spec()
     assert not GENERATOR_STATS._error_cache
     assert not GENERATOR_STATS._warn_cache
@@ -58,7 +62,8 @@ def test_generation_reports_no_diagnostics() -> None:
 
 def test_spec_paths_are_the_urls_the_server_serves() -> None:
     """Resolves the real mount rather than restating it: a spec generated for
-    URLs the server does not serve is the failure this file exists to catch."""
+    URLs the server does not serve is the failure this file exists to catch.
+    """
     served = reverse(
         "api_deployment_execution", kwargs={"org_name": "ORG", "api_name": "API"}
     )
@@ -83,7 +88,8 @@ def test_spec_documents_the_deployment_operations() -> None:
 
 def test_operations_require_the_deployment_key() -> None:
     """Without this the unset DRF authentication default is published as
-    though it were a decision, and no generated client can authenticate."""
+    though it were a decision, and no generated client can authenticate.
+    """
     spec = _committed()
     scheme = spec["components"]["securitySchemes"]["deploymentKey"]
 
@@ -101,7 +107,8 @@ def test_clients_can_branch_on_every_failure_they_will_see() -> None:
 
 def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
     """The semantics that a status read destroys the result must reach the
-    generated client, not live in a source comment."""
+    generated client, not live in a source comment.
+    """
     reads = [
         operation
         for _, _, operation in _operations(_committed())
@@ -112,3 +119,14 @@ def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
     for status_op in reads:
         assert "one-shot" in status_op["description"]
         assert status_op["responses"]["406"]["description"].strip()
+
+
+def test_the_documented_response_fields_are_ones_the_code_produces() -> None:
+    """The view returns the execution DTO as a dict rather than through this
+    serializer, so a renamed DTO field would otherwise reach clients as a field
+    the server never sends.
+    """
+    documented = set(APIExecutionResponseSerializer().get_fields())
+    produced = {field.name for field in dataclasses.fields(ExecutionResponse)}
+
+    assert documented <= produced, documented - produced
