@@ -653,18 +653,15 @@ REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
-# Read while generating the API deployment OpenAPI spec
-# (``manage.py generate_docstudio_spec``). ``DEFAULT_SCHEMA_CLASS`` above is a
-# project-wide DRF default, but DRF dereferences it only when a schema is
-# generated, so neither has an effect at request time.
+# Read only while generating the OpenAPI spec
+# (``manage.py generate_docstudio_spec``); no effect at request time.
 SPECTACULAR_SETTINGS = {
     "TITLE": "Unstract API",
     "VERSION": "v1",
     "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
     "SERVE_INCLUDE_SCHEMA": False,
-    # DRF's unset ``DEFAULT_AUTHENTICATION_CLASSES`` would otherwise be
-    # introspected as a decision and publish session and basic auth, which
-    # these endpoints do not accept.
+    # Declared, because DRF's unset authentication default is otherwise
+    # introspected as a decision and publishes auth these endpoints reject.
     "APPEND_COMPONENTS": {
         "securitySchemes": {
             "deploymentKey": {
@@ -708,13 +705,6 @@ WHITELISTED_PATHS.append("/health")
 
 # These path will work without organization in request
 ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
-
-# API Doc Generator Settings
-# https://drf-yasg.readthedocs.io/en/stable/settings.html
-REDOC_SETTINGS = {
-    "PATH_IN_MIDDLE": True,
-    "REQUIRED_PROPS_FIRST": True,
-}
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"

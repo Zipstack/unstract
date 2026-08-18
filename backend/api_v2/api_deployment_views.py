@@ -5,13 +5,6 @@ from typing import Any
 
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
-from drf_spectacular.utils import (
-    OpenApiParameter,
-    OpenApiResponse,
-    extend_schema,
-    extend_schema_serializer,
-    extend_schema_view,
-)
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
@@ -40,11 +33,11 @@ from api_v2.exceptions import (
     contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
+from api_v2.openapi_schema import DEPLOYMENT_EXECUTION_SCHEMA
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
-    APIExecutionResponseSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -58,149 +51,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-# Declares no field of its own, so every backend parameter arrives free and a
-# change to the real serializer moves the spec. It exists only to carry a
-# caller-facing description in place of the implementation docstring, and to
-# keep the published model name stable.
-@extend_schema_serializer(component_name="ExecuteRequest")
-class ExecuteRequest(ExecutionRequestSerializer):
-    """The documents to run, and the options that shape the result.
-
-    Supply `files`, `presigned_urls`, or both.
-    """
-
-
-class FileResult(serializers.Serializer):
-    file = serializers.CharField()
-    file_execution_id = serializers.CharField(required=False)
-    status = serializers.CharField(required=False)
-    result = serializers.JSONField(required=False)
-    metadata = serializers.JSONField(required=False)
-    metrics = serializers.JSONField(required=False)
-    error = serializers.CharField(required=False, allow_null=True)
-
-
-# Subclasses the serializer that builds the response, so a field added or
-# removed there moves the spec. Docstrings on these annotation serializers are
-# published as the client-facing model description, so they are written for
-# the caller rather than the maintainer.
-class ExecutionMessage(APIExecutionResponseSerializer):
-    """The execution's identity and, once it has finished, its per-file
-    results.
-    """
-
-    # The one field that has to be restated: the real declaration is an
-    # untyped JSONField, which gives generated clients nothing to work with.
-    # The backend also sends `result: null` while pending, and without
-    # allow_null the generated deserialiser iterates None and crashes.
-    result = FileResult(many=True, required=False, allow_null=True)
-
-
-class ExecuteResponse(serializers.Serializer):
-    message = ExecutionMessage()
-
-
-class StatusResponse(serializers.Serializer):
-    status = serializers.CharField()
-    message = FileResult(many=True, required=False, allow_null=True)
-
-
-class ErrorResponse(serializers.Serializer):
-    status = serializers.CharField(required=False)
-    message = serializers.JSONField(required=False, allow_null=True)
-
-
-# The pattern the route itself enforces, restated so a generated client can
-# reject a mistyped identifier without a round trip.
-PATH_SEGMENT = {"type": "string", "pattern": r"^[\w-]+$"}
-
-DEPLOYMENT_PATH_PARAMETERS = [
-    OpenApiParameter(
-        "org_name",
-        PATH_SEGMENT,
-        OpenApiParameter.PATH,
-        description="Organization identifier.",
-    ),
-    OpenApiParameter(
-        "api_name",
-        PATH_SEGMENT,
-        OpenApiParameter.PATH,
-        description="API deployment name.",
-    ),
-]
-
-
-DEPLOYMENT_AUTH = [{"deploymentKey": []}]
-
-# Every failure a caller has to handle. Declared explicitly because a client
-# generated without them treats an authentication or rate-limit response as an
-# unknown status and has nothing to branch on.
-DEPLOYMENT_ERRORS = {
-    400: OpenApiResponse(ErrorResponse, description="The request failed validation."),
-    401: OpenApiResponse(ErrorResponse, description="The API key is not valid."),
-    403: OpenApiResponse(ErrorResponse, description="No API key was supplied."),
-    404: OpenApiResponse(ErrorResponse, description="No such active deployment."),
-    429: OpenApiResponse(
-        ErrorResponse, description="Too many concurrent executions; retry later."
-    ),
-    500: ErrorResponse,
-}
-
-EXECUTE_DESCRIPTION = (
-    "Execute an API deployment against one or more documents.\n\n"
-    "Supply the documents either as `files` (multipart upload) or as "
-    "`presigned_urls` (HTTPS S3 URLs), or both — a request carrying neither is "
-    f"rejected, and the two together may not exceed "
-    f"{ExecutionRequestSerializer.MAX_FILES_ALLOWED} documents.\n\n"
-    "With the default `timeout` of -1 the call returns as soon as the "
-    "execution is queued; read the outcome from the status endpoint."
-)
-
-STATUS_DESCRIPTION = (
-    "Read the result of a previously started execution.\n\n"
-    "This read is one-shot: the first call that observes a completed execution "
-    "acknowledges it and the stored result is discarded, so every later call "
-    "for that execution answers 406. Poll while the execution is pending, and "
-    "keep the payload of the call that returns it — it cannot be fetched again."
-)
-
-
-# The generated clients take their command names, module paths and request
-# shapes from here, so this block is part of the public API surface.
-@extend_schema_view(
-    post=extend_schema(
-        operation_id="execute",
-        tags=["deployment"],
-        auth=DEPLOYMENT_AUTH,
-        parameters=DEPLOYMENT_PATH_PARAMETERS,
-        request={"multipart/form-data": ExecuteRequest},
-        responses={
-            200: ExecuteResponse,
-            409: OpenApiResponse(
-                ErrorResponse, description="The deployment has no active API key."
-            ),
-            422: ExecuteResponse,
-            **DEPLOYMENT_ERRORS,
-        },
-        description=EXECUTE_DESCRIPTION,
-    ),
-    get=extend_schema(
-        operation_id="status",
-        tags=["deployment"],
-        auth=DEPLOYMENT_AUTH,
-        parameters=DEPLOYMENT_PATH_PARAMETERS + [ExecutionQuerySerializer],
-        responses={
-            200: StatusResponse,
-            406: OpenApiResponse(
-                ErrorResponse,
-                description="The result was already consumed by an earlier call.",
-            ),
-            422: StatusResponse,
-            **DEPLOYMENT_ERRORS,
-        },
-        description=STATUS_DESCRIPTION,
-    ),
-)
+@DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
