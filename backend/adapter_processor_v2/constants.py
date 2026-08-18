@@ -35,6 +35,7 @@ class AdapterKeys:
     IS_AVAILABLE = "is_available"
     DEPRECATION_METADATA = "deprecation_metadata"
     IS_DEPRECATED = "is_deprecated"
+    UNAVAILABLE_ICON = "⚠️"
 
 
 class AllowedDomains(Enum):
