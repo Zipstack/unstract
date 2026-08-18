@@ -931,24 +931,6 @@ wheels = [
 ]
 
 [[package]]
-name = "drf-yasg"
-version = "1.21.15"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "djangorestframework" },
-    { name = "inflection" },
-    { name = "packaging" },
-    { name = "pytz" },
-    { name = "pyyaml" },
-    { name = "uritemplate" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/4a/88/345135459b9cbaff0e8ee3270819e89ca92064a35a0a94a1cfce41c084db/drf_yasg-1.21.15.tar.gz", hash = "sha256:ef86838c4ef10dcd3ac1ebf2be601cbe02978b999671caa43667f7c9db961468", size = 5153419, upload-time = "2026-02-24T18:09:21.072Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f9/a4/400b0565cf25395f1d5e1a24e5d18dab8f4199e4212174341fea6f05747c/drf_yasg-1.21.15-py3-none-any.whl", hash = "sha256:7c7a7ab9feb0e13cdd6e25147d99adb0500a68bd96509ffd8f8cf7efd4bdc77e", size = 4856209, upload-time = "2026-02-24T18:09:18.982Z" },
-]
-
-[[package]]
 name = "dropbox"
 version = "12.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -3707,7 +3689,6 @@ dependencies = [
     { name = "djangorestframework" },
     { name = "drf-spectacular" },
     { name = "drf-standardized-errors" },
-    { name = "drf-yasg" },
     { name = "google-cloud-recaptcha-enterprise" },
     { name = "gunicorn" },
     { name = "httpx" },
@@ -3775,7 +3756,6 @@ requires-dist = [
     { name = "djangorestframework", specifier = "==3.17.1" },
     { name = "drf-spectacular", specifier = "==0.30.0" },
     { name = "drf-standardized-errors", specifier = ">=0.12.6" },
-    { name = "drf-yasg", specifier = ">=1.21.8" },
     { name = "google-cloud-recaptcha-enterprise", specifier = ">=1.28.2" },
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },

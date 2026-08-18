@@ -30,7 +30,6 @@ dependencies = [
     # Pinned: its rendering is the committed spec, so an upgrade rewrites the
     # contract published clients are generated from.
     "drf-spectacular==0.30.0",
-    "drf-yasg>=1.21.8", # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.2.2",
     "python-magic==0.4.27", # For file upload/download

@@ -371,9 +371,6 @@ SHARED_APPS = (
     # Connector OAuth
     # "connector_auth",
     "social_django",
-    # Doc generator
-    "drf_yasg",
-    "docs",
     # Plugins
     "plugins.apps.PluginsConfig",
     "feature_flag",
@@ -677,8 +674,8 @@ SPECTACULAR_SETTINGS = {
             }
         }
     },
-    # Group descriptions clients show in their help; without this the spec has
-    # no root `tags` array and the text has nowhere to live.
+    # Group descriptions generated clients show in their help; without this
+    # the spec has no root `tags` array for the text to live in.
     "TAGS": [
         {
             "name": "deployment",
