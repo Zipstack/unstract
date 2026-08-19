@@ -1,24 +1,343 @@
 """JSON repair utility functions.
 
 Copied from prompt-service/.../utils/json_repair_helper.py — already Flask-free.
+
+Two entry points, deliberately separated:
+
+``repair_json_with_best_structure(json_str)``
+    Untouched legacy behaviour. Every historical caller keeps the exact
+    result it got before — see ``_repair_legacy``, which must not be
+    edited (UN-4017).
+
+``repair_json_with_best_structure(json_str, contract=...)``
+    Opt-in. Runs the same legacy parse, then — only if the result does
+    not satisfy the caller's contract — tries the salvage strategies in
+    ``_SALVAGERS``. No contract means no salvager is reachable, so the
+    returned value cannot differ from what this module always returned.
+
+Diagnostics are the exception to that split: they run on every call,
+contract or not. They only emit log records, never influence the return
+value, and are wrapped so they cannot raise.
+
+To handle a newly observed LLM response shape, add one ``@salvager``
+function plus a test case. Do not modify ``_repair_legacy``.
 """
 
 import json
+import logging
+import os
+import re
+import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
-def repair_json_with_best_structure(json_str: str) -> Any:
-    """Intelligently repair JSON string using the best parsing strategy.
+# Raw LLM output is customer document content. It goes to a dedicated logger so
+# it can be routed or dropped at the sink independently of everything else, and
+# it must never reach ``publish_log`` — that feeds the user-visible execution
+# log stream and the ENABLE_LOG_HISTORY table.
+raw_logger = logging.getLogger("unstract.debug.raw_llm")
 
-    Attempts to parse as valid JSON first, then falls back to basic repair
-    heuristics. The full ``json_repair`` library is used when available for
-    more aggressive repair.
+_RAW_DEBUG_DEFAULT_MAX_CHARS = 4000
 
-    Args:
-        json_str: The JSON string to repair
 
-    Returns:
-        The parsed JSON object with the best structure
+# Environments where logging document content is acceptable. Deliberately not
+# keyed off REGION: that holds geography in production (US, EU) and an
+# environment name elsewhere (STAGING, DEV), so it answers "which environment
+# is this" only by accident — and its chart default is "STAGING", meaning an
+# environment that forgot to set it would read as non-prod. DEPLOYMENT_ENV
+# says only what it means and defaults to production, so unset, unrecognised,
+# and any future region all fail closed.
+_NON_PROD_ENVIRONMENTS = frozenset({"staging", "dev", "integration", "local"})
+
+
+def _raw_debug_enabled() -> bool:
+    """Whether raw LLM payloads may be logged.
+
+    Read per call so a test can toggle it; flipping it for real needs a pod
+    restart either way. Requires both the flag and a non-prod DEPLOYMENT_ENV,
+    so setting the flag in production cannot dump document content — a flag
+    that *can* be enabled in prod eventually will be.
+    """
+    enabled = os.getenv("DEBUG_LOG_RAW_LLM_RESPONSE", "false").lower() == "true"
+    environment = os.getenv("DEPLOYMENT_ENV", "production").strip().lower()
+    return enabled and environment in _NON_PROD_ENVIRONMENTS
+
+
+def _correlation() -> dict[str, str]:
+    """request_id / execution_id for tying a payload back to an execution.
+
+    The log formatter already stamps request_id onto every record, so this is
+    only needed for the webhook payload, which does not go through it. Never
+    raises: a diagnostics path must not be able to fail an extraction.
+    """
+    try:
+        from shared.infrastructure.logging import WorkerLogger
+
+        ctx = WorkerLogger.get_context()
+        if ctx is None:
+            return {}
+        return {
+            k: v
+            for k, v in (
+                ("request_id", ctx.request_id),
+                ("execution_id", ctx.execution_id),
+                ("organization_id", ctx.organization_id),
+                ("task_id", ctx.task_id),
+                ("correlation_id", ctx.correlation_id),
+            )
+            if v
+        }
+    except Exception:  # noqa: BLE001 - diagnostics must not raise
+        return {}
+
+
+def _head_tail(text: str) -> str:
+    """Clip the middle, never the end.
+
+    Set DEBUG_LOG_RAW_LLM_MAX_CHARS=0 for no clipping at all. A cap is kept as
+    the default because the clipping that matters happens upstream of the Logs
+    Explorer: the container runtime splits a log line at ~16KB, and Cloud
+    Logging caps a single entry at ~256KB — a payload above those never
+    arrives whole, whichever way you read it. The ``webhook`` sink bypasses
+    that pipeline entirely and is the way to get a genuinely full response.
+
+    When it does clip, it clips the middle: the debris that breaks parsing — a
+    trailing fence marker, closing prose, an unterminated string — is at the
+    END, so head-only truncation drops exactly the evidence worth having.
+    """
+    try:
+        limit = int(
+            os.getenv("DEBUG_LOG_RAW_LLM_MAX_CHARS", _RAW_DEBUG_DEFAULT_MAX_CHARS)
+        )
+    except ValueError:
+        limit = _RAW_DEBUG_DEFAULT_MAX_CHARS
+    if limit <= 0 or len(text) <= limit:
+        return text
+    head = (limit + 1) // 2
+    tail = limit // 2
+    # tail can be 0 at limit=1, and text[-0:] is the WHOLE string — the cap
+    # would silently emit everything it was set to prevent.
+    suffix = text[-tail:] if tail else ""
+    dropped = len(text) - head - tail
+    return f"{text[:head]}…[{dropped} chars elided]…{suffix}"
+
+
+def _post_to_webhook(url: str, payload: dict[str, Any]) -> None:
+    """Ship the full payload out of band, so it never enters the log pipeline.
+
+    Dispatched on a daemon thread: this fires on every repair, and a
+    synchronous post would add up to the timeout per prompt — tens of seconds
+    per file against a slow collector, for a diagnostic. Fire and forget, so
+    it swallows every error and never retries.
+    """
+
+    def _send() -> None:
+        try:
+            import requests
+
+            requests.post(url, json=payload, timeout=(2, 5))
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not raise
+            logger.warning("raw LLM debug webhook failed: %s", type(exc).__name__)
+
+    threading.Thread(target=_send, name="raw-llm-debug-webhook", daemon=True).start()
+
+
+def _emit_raw_payload(json_str: str, context: dict[str, Any]) -> None:
+    """Send the raw response to the configured sink.
+
+    ``webhook`` sends it whole and keeps it out of logs entirely; ``log``
+    (the default) writes a middle-elided copy to the dedicated logger.
+    """
+    sink = os.getenv("DEBUG_LOG_RAW_LLM_SINK", "log").strip().lower()
+    url = os.getenv("DEBUG_RAW_LLM_WEBHOOK_URL", "").strip()
+    correlation = _correlation()
+    if sink == "webhook":
+        # Fail closed. Choosing the webhook sink is a choice to keep document
+        # content out of the log pipeline, so a missing URL must not quietly
+        # put it there instead — a typo would become a privacy regression.
+        if not url:
+            logger.warning(
+                "DEBUG_LOG_RAW_LLM_SINK=webhook but DEBUG_RAW_LLM_WEBHOOK_URL is "
+                "unset; dropping the raw payload rather than logging it"
+            )
+            return
+        _post_to_webhook(url, {**correlation, **context, "raw_response": json_str})
+        return
+    # request_id is stamped onto the record by RequestIDFilter; execution_id is
+    # not, so pass it explicitly to keep a payload tied to its execution.
+    raw_logger.warning(
+        "raw LLM response (%s) execution_id=%s: %s",
+        context.get("outcome", ""),
+        correlation.get("execution_id", "-"),
+        _head_tail(json_str),
+    )
+
+
+def _shape(value: Any, sample: int = 8) -> str:
+    """Structural description carrying no document content.
+
+    Safe to emit in production — this is what makes the raw-payload flag
+    rarely necessary in the first place.
+    """
+    if isinstance(value, dict):
+        return f"dict(keys={len(value)})"
+    if isinstance(value, list):
+        kinds = [type(el).__name__ for el in value[:sample]]
+        suffix = ", …" if len(value) > sample else ""
+        return f"list(len={len(value)}, elements=[{', '.join(kinds)}{suffix}])"
+    if isinstance(value, str):
+        return f"str(len={len(value)})"
+    return type(value).__name__
+
+
+def _skeleton(value: Any, known_keys: frozenset[str], depth: int = 3) -> Any:
+    """Structure with every leaf replaced by its type, and keys allowlisted.
+
+    Keys are NOT safe to emit merely because a well-formed response keys on
+    prompt field names — this runs on malformed responses, where repair
+    routinely promotes document text into key position (prose containing
+    ``{field: value}`` parses to a dict keyed on document text). Only keys the
+    caller declared in its contract are echoed; anything else becomes its
+    length, which is what makes this trace safe to log unconditionally.
+    """
+    if depth < 0:
+        return "…"
+    if isinstance(value, dict):
+        return {
+            (k if k in known_keys else f"<key:{len(str(k))}>"): _skeleton(
+                v, known_keys, depth - 1
+            )
+            for k, v in value.items()
+        }
+    if isinstance(value, list):
+        return [_skeleton(el, known_keys, depth - 1) for el in value[:8]]
+    if isinstance(value, str):
+        return f"<str:{len(value)}>"
+    return f"<{type(value).__name__}>"
+
+
+# Highlight / confidence / line-number extraction annotates the response with
+# ``// 0x..`` comments per value and marker-delimited word-confidence blocks,
+# then maps them onto the parsed structure POSITIONALLY — a flat comment list
+# popped during a recursive walk (see the cloud highlight_data plugin's
+# ``_process_json`` / ``map_comments``). Any reshape of the parsed value shifts
+# that alignment and silently attaches line numbers to the wrong fields, which
+# is worse than the error we are fixing, so an annotated response is never
+# reshaped.
+#
+# Requiring the ``0x`` payload matters: a bare ``//`` also occurs inside
+# ordinary document values — a path, "N/A // pending" — and treating those as
+# annotations would silently switch the fix OFF for those documents, leaving
+# the very AttributeError this exists to prevent. ``(?<![:\w])`` additionally
+# keeps ``https://`` out.
+_HEX_ANNOTATION = re.compile(r"(?<![:\w])//\s*0x", re.IGNORECASE)
+
+
+def _word_confidence_marker() -> str:
+    """Must track the consumer, which reads the same env var (default ``%%%``).
+
+    Hardcoding it would silently break both the reshape guard and the alignment
+    check for any operator who overrides the marker.
+    """
+    return os.getenv("WORD_CONFIDENCE_MARKER", "%%%")
+
+
+def _word_confidence_block(marker: str) -> re.Pattern[str]:
+    # Paired, as the consumer strips it. A single stray marker in a value (a
+    # table separator, say) is not an annotation and must not trip the guard.
+    return re.compile(f"{re.escape(marker)}.*?{re.escape(marker)}", re.DOTALL)
+
+
+def _is_annotated(json_str: str) -> bool:
+    """True when a positional metadata pass depends on the exact structure.
+
+    Known gap (accepted, UN-4017): the consumer extracts comments with
+    ``re.findall(r"//(.*)")`` over raw text, so a *value* containing ``//``
+    still reads as a comment there and can shift later fields' line numbers —
+    the same offset class as the PR #546 regression. Not fixed here; the
+    alignment check reports it.
+    """
+    if not isinstance(json_str, str):
+        # Callers historically passed anything json.loads accepts, bytes
+        # included. Diagnostics must not narrow the accepted input.
+        return False
+    marker = _word_confidence_marker()
+    # Substring pre-check first: the regex scan is per-prompt per-file, and the
+    # overwhelmingly common response carries neither marker.
+    if "//" not in json_str and marker not in json_str:
+        return False
+    if _HEX_ANNOTATION.search(json_str):
+        return True
+    return bool(_word_confidence_block(marker).search(json_str))
+
+
+def _count_leaves(value: Any) -> int:
+    """Leaves a positional comment walk would consume.
+
+    Mirrors ``map_comments``: it recurses into dicts and lists and consumes one
+    comment per leaf, with empty containers counting as a leaf themselves.
+    """
+    if isinstance(value, dict):
+        return sum(_count_leaves(v) for v in value.values()) if value else 1
+    if isinstance(value, list):
+        return sum(_count_leaves(v) for v in value) if value else 1
+    return 1
+
+
+# The metadata comment is hex plus separators. Anything else in a captured
+# comment means the capture picked up document text — the `//` of a URL, a
+# path, "N/A // pending" — because `//(.*)` is greedy to end of line and
+# swallows the real `// 0x..` that follows it on the same line.
+_HEX_COMMENT = re.compile(r"^[\s0-9a-fA-Fx,:;|_-]*$")
+
+
+def _annotation_alignment(json_str: str) -> str:
+    """Check the comment stream against the structure it maps onto.
+
+    Two independent failure signatures, both invisible in the extracted output
+    — which looks perfectly well-formed while the metadata points at the wrong
+    fields:
+
+    * a count mismatch — a phantom comment shifted every later field;
+    * a malformed comment — the capture swallowed document text, so that
+      field's line number is garbage even though the counts still line up.
+
+    Counts only; comment content is never logged.
+    """
+    # The consumer strips word-confidence blocks and THEN parses, so both the
+    # comment count and the leaf count must come from the stripped text. Taking
+    # leaves from a parse of the unstripped text counts word-confidence tokens
+    # the real mapping never sees, and reports MISMATCH on every well-formed
+    # highlight+word-confidence response — a false positive on precisely the
+    # class this check exists for.
+    stripped = _word_confidence_block(_word_confidence_marker()).sub("", json_str)
+    parsed = _repair_legacy(stripped)
+    comments = re.findall(r"//(.*)", stripped)
+    if not comments:
+        # Word-confidence-only responses (``%%%`` with no per-value comments)
+        # are not comment-mapped at all, so there is nothing to align.
+        return "comments=0 n/a"
+    malformed = sum(1 for c in comments if not _HEX_COMMENT.match(c.strip()))
+    leaves = _count_leaves(parsed)
+    ok = len(comments) == leaves and not malformed
+    return (
+        f"comments={len(comments)} leaves={leaves} "
+        f"malformed={malformed} {'ok' if ok else 'MISMATCH'}"
+    )
+
+
+def _repair_legacy(json_str: str) -> Any:
+    """Original repair logic, preserved verbatim.
+
+    The ``"[" + json_str`` candidate exists to recover *truncated or
+    fragmented* responses — objects emitted without their opening
+    bracket, e.g. ``{...},{...},{...``. ``len(parsed_with_wrap) > 1`` is
+    the fragmentation signal. Two years of edge cases are encoded here;
+    changing any branch changes behaviour for inputs nobody has a test
+    for. Layer fixes in ``_SALVAGERS`` instead.
     """
     # Fast path — try strict JSON first
     try:
@@ -61,3 +380,272 @@ def repair_json_with_best_structure(json_str: str) -> Any:
     except ImportError:
         # json_repair not installed — return the raw string
         return json_str
+
+
+@dataclass(frozen=True)
+class JsonContract:
+    """What the caller needs the parsed value to look like.
+
+    ``required_keys`` disambiguates when several candidate values survive
+    parsing — without it, "pick the first dict" can return a schema
+    example quoted in the model's prose, or a fragment holding one field,
+    instead of the real answer.
+    """
+
+    expect: type = dict
+    required_keys: tuple[str, ...] = field(default_factory=tuple)
+    # Only set when the caller does no positional comment mapping. Reshaping
+    # an annotated response misaligns line numbers and word confidences.
+    reshape_annotated: bool = False
+
+    def satisfied_by(self, value: Any) -> bool:
+        if not isinstance(value, self.expect):
+            return False
+        if self.expect is dict and self.required_keys:
+            return any(k in value for k in self.required_keys)
+        return bool(value) or not self.required_keys
+
+    def score(self, value: Any) -> int:
+        """How complete a candidate is. Candidates compete on this."""
+        if self.expect is dict and isinstance(value, dict):
+            return sum(k in value for k in self.required_keys)
+        return 0
+
+
+# A salvager returns a repaired value, or None when it does not apply.
+Salvager = Callable[[Any, str, JsonContract], Any]
+_SALVAGERS: list[tuple[str, Salvager]] = []
+
+
+def salvager(name: str) -> Callable[[Salvager], Salvager]:
+    """Register a salvage strategy. Order of registration is try-order."""
+
+    def register(fn: Salvager) -> Salvager:
+        _SALVAGERS.append((name, fn))
+        return fn
+
+    return register
+
+
+def _is_junk(element: Any) -> bool:
+    """Non-container leftovers from prose, fences or reasoning preambles.
+
+    Only leading/trailing scalars are ever dropped by callers of this —
+    a scalar is never a valid member of a dict-shaped answer.
+    """
+    return not isinstance(element, (dict, list))
+
+
+@salvager("unwrap_single")
+def _unwrap_single(value: Any, raw: str, contract: JsonContract) -> Any:
+    """``[{...}]`` where the caller wants the object itself."""
+    if isinstance(value, list) and len(value) == 1 and isinstance(value[0], dict):
+        return value[0]
+    return None
+
+
+@salvager("drop_junk_elements")
+def _drop_junk_elements(value: Any, raw: str, contract: JsonContract) -> Any:
+    """Discard scalar debris that faked a fragmentation signal.
+
+    Covers ``<thinking>`` preambles, numbered lists, trailing mangled
+    fence markers (``"...json"``) — anything that added a bare string or
+    number alongside the real object.
+    """
+    if not isinstance(value, list):
+        return None
+    kept = [el for el in value if not _is_junk(el)]
+    if len(kept) == len(value):
+        return None
+    if len(kept) == 1 and isinstance(kept[0], dict):
+        return kept[0]
+    return kept or None
+
+
+@salvager("pick_complete_match")
+def _pick_complete_match(value: Any, raw: str, contract: JsonContract) -> Any:
+    """An element already holds every required key — prefer it untouched.
+
+    Guards against picking a schema example the model quoted in prose,
+    which scores zero required keys, and against merging sibling records
+    that each happen to carry one field.
+    """
+    if not isinstance(value, list) or not contract.required_keys:
+        return None
+    for element in value:
+        if isinstance(element, dict) and all(
+            k in element for k in contract.required_keys
+        ):
+            return element
+    return None
+
+
+@salvager("merge_fragments")
+def _merge_fragments(value: Any, raw: str, contract: JsonContract) -> Any:
+    """Genuine truncation recovery: one object split across fragments.
+
+    This is the case the ``"["`` wrap was built for. Merged only when
+    the fragments do not disagree — a repeated key means these are
+    distinct records (a line-item list), not one split object.
+    """
+    if not isinstance(value, list) or contract.expect is not dict:
+        return None
+    dicts = [el for el in value if isinstance(el, dict)]
+    if len(dicts) < 2 or len(dicts) != len(value):
+        return None
+    merged: dict[str, Any] = {}
+    for fragment in dicts:
+        if any(k in merged for k in fragment):
+            return None
+        merged.update(fragment)
+    return merged or None
+
+
+@salvager("pick_best_partial")
+def _pick_best_partial(value: Any, raw: str, contract: JsonContract) -> Any:
+    """Last resort — the dict carrying the most required keys."""
+    if not isinstance(value, list) or not contract.required_keys:
+        return None
+    dicts = [el for el in value if isinstance(el, dict)]
+    if not dicts:
+        return None
+    best = max(dicts, key=contract.score)
+    return best if contract.score(best) else None
+
+
+def _log_cleansing_chain(
+    json_str: str, parsed: Any, contract: JsonContract | None, satisfied: bool
+) -> None:
+    """Emit the step-by-step parse trace for every repair.
+
+    A failure logs at WARNING so it is diagnosable in production with nothing
+    enabled; a success logs the same trace at DEBUG. Which step mangled a
+    response is the question this answers, and reconstructing it after the
+    fact is not possible from the outcome alone — hence the whole chain, on
+    every call rather than only the ones that blew up.
+
+    Structure only: no document content at any level.
+    """
+    known_keys = frozenset(contract.required_keys) if contract else frozenset()
+    annotated = _is_annotated(json_str)
+    alignment = _annotation_alignment(json_str) if annotated else "n/a"
+    # An offset never fails the parse, so warn on it even when the contract is
+    # met: this is the trail a "highlight is on the wrong line" report follows.
+    level = logging.WARNING if not satisfied or "MISMATCH" in alignment else logging.DEBUG
+    if logger.isEnabledFor(level):
+        logger.log(
+            level,
+            "JSON repair %s | raw=%s annotated=%s alignment=%s | legacy=%s | "
+            "unwrapped=%s | wanted=%s keys=%s | skeleton=%s",
+            "satisfied contract" if satisfied else "did NOT satisfy contract",
+            _shape(json_str),
+            annotated,
+            alignment,
+            _shape(parsed),
+            _shape(_reparse_without_wrap(json_str)),
+            contract.expect.__name__ if contract else "any",
+            list(contract.required_keys) if contract else [],
+            json.dumps(_skeleton(parsed, known_keys), ensure_ascii=False)[:500],
+        )
+
+    if _raw_debug_enabled():
+        _emit_raw_payload(
+            json_str,
+            {
+                "outcome": "satisfied" if satisfied else "contract_not_satisfied",
+                "expected": contract.expect.__name__ if contract else "any",
+                "required_keys": list(contract.required_keys) if contract else [],
+                "legacy_shape": _shape(parsed),
+                "annotated": _is_annotated(json_str),
+                "environment": os.getenv("DEPLOYMENT_ENV", ""),
+            },
+        )
+
+
+def _reparse_without_wrap(json_str: str) -> Any:
+    """Parse without the ``"["`` prefix.
+
+    The wrap recovers fragmented output, but on newer json_repair
+    releases it can also mis-tokenise an intact response and shred it
+    into fragments — in which case the unwrapped parse is the intact
+    one. Offered as a competing candidate, never as a replacement.
+    """
+    try:
+        from json_repair import repair_json
+
+        return repair_json(json_str=json_str, return_objects=True, ensure_ascii=False)
+    except Exception:
+        return None
+
+
+def _candidates(parsed: Any, json_str: str, contract: JsonContract):
+    """Every value worth considering, in preference order for ties."""
+    for source in (parsed, _reparse_without_wrap(json_str)):
+        if source is None:
+            continue
+        yield source
+        for name, strategy in _SALVAGERS:
+            try:
+                salvaged = strategy(source, json_str, contract)
+            except Exception:
+                logger.warning("json salvage strategy %s raised; skipping", name)
+                continue
+            if salvaged is not None:
+                yield salvaged
+
+
+def repair_json_with_best_structure(
+    json_str: str, contract: JsonContract | None = None
+) -> Any:
+    """Intelligently repair JSON string using the best parsing strategy.
+
+    Args:
+        json_str: The JSON string to repair
+        contract: Optional shape the caller requires. When omitted the
+            result is exactly what this function has always returned.
+
+    Returns:
+        The parsed JSON object with the best structure. With a contract,
+        the most complete candidate satisfying it, otherwise the legacy
+        result unchanged so the caller can reject it explicitly.
+    """
+    parsed = _repair_legacy(json_str)
+    satisfied = contract is None or contract.satisfied_by(parsed)
+    try:
+        _log_cleansing_chain(json_str, parsed, contract, satisfied)
+    except Exception:  # noqa: BLE001 - diagnostics must never fail a repair
+        logger.warning("JSON repair diagnostics failed", exc_info=True)
+    if satisfied:
+        return parsed
+
+    if not contract.reshape_annotated and _is_annotated(json_str):
+        logger.warning(
+            "Response carries positional metadata; refusing to reshape so "
+            "line numbers and word confidences stay aligned"
+        )
+        return parsed
+
+    best: Any = None
+    best_score = -1
+    for candidate in _candidates(parsed, json_str, contract):
+        if not contract.satisfied_by(candidate):
+            continue
+        score = contract.score(candidate)
+        if score > best_score:
+            best, best_score = candidate, score
+
+    if best is None:
+        logger.warning(
+            "LLM JSON did not satisfy contract (got %s, wanted %s); no salvage applied",
+            type(parsed).__name__,
+            contract.expect.__name__,
+        )
+        return parsed
+
+    logger.info(
+        "Recovered %s from malformed LLM JSON (matched %d/%d expected keys)",
+        contract.expect.__name__,
+        best_score,
+        len(contract.required_keys),
+    )
+    return best
