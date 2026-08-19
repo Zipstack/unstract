@@ -26,14 +26,24 @@ services:
     env_file:
       - ../backend/.env
     depends_on:
-      - db
-      - redis
-      - rabbitmq
-      - reverse-proxy
-      - minio
-      - minio-bootstrap
-      - platform-service
-      - x2text-service
+      db:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_started
+      reverse-proxy:
+        condition: service_started
+      minio:
+        condition: service_started
+      # One-shot bucket setup. Waiting for completion keeps `up --wait` from
+      # treating its exit as a stack failure.
+      minio-bootstrap:
+        condition: service_completed_successfully
+      platform-service:
+        condition: service_started
+      x2text-service:
+        condition: service_started
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
