@@ -87,7 +87,7 @@ else:
     _DEFAULT_TIMEOUT = httpx.Timeout(None)
 
     # Copied from litellm 1.96.2 cohere/embed/handler.py async_embedding().
-    # ONLY CHANGE: Added timeout=timeout to the client.post() call.
+    # ONLY BEHAVIOURAL CHANGE: Added timeout=timeout to the client.post() call.
     # Source: litellm/llms/cohere/embed/handler.py::async_embedding
     async def _patched_async_embedding(  # type: ignore[return]  # noqa: ANN202
         model: str,
@@ -155,7 +155,11 @@ else:
         )
 
     # Copied from litellm 1.96.2 cohere/embed/handler.py embedding().
-    # ONLY CHANGE: Added timeout=timeout to the client.post() call.
+    # ONLY BEHAVIOURAL CHANGE: Added timeout=timeout to the client.post() call.
+    # Two inert cosmetic deviations from upstream, noted so the next re-diff
+    # against a newer litellm is not surprised by them: the signature annotates
+    # `encoding` as `object` rather than upstream's `Any`, and upstream's no-op
+    # `model = model` statement is omitted.
     # Source: litellm/llms/cohere/embed/handler.py::embedding
     def _patched_embedding(  # type: ignore[return]  # noqa: ANN202
         model: str,

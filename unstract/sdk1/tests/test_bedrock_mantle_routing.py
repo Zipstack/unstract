@@ -3,7 +3,8 @@
 The unit tests in ``test_bedrock_adapter.py`` assert the *shape* the adapter
 produces. These assert what actually goes on the wire when that shape is handed
 to ``litellm.completion()``: the URL, the signed Authorization header and the
-request body. The HTTP transport is patched, so no AWS credentials, network
+request body. The HTTP transport is patched and the model registry is pinned
+to the bundled copy in ``tests/conftest.py``, so no AWS credentials, network
 access or spend are involved.
 
 Why this matters: the two Bedrock endpoints differ in every one of those three
@@ -19,6 +20,10 @@ from unittest.mock import patch
 
 import httpx
 import pytest
+
+# Imported for its import-time side effect: it sets `litellm.drop_params`,
+# which the Mantle path depends on (see `_complete`).
+import unstract.sdk1.llm  # noqa: F401
 from unstract.sdk1.adapters.base1 import AWSBedrockLLMParameters
 
 # Placeholder credentials. SigV4 is a keyed hash over the request, so signing
@@ -53,13 +58,19 @@ _AMBIENT_VARS = (
 
 @pytest.fixture(autouse=True)
 def _isolated_litellm_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    """Pin LiteLLM to its bundled cost map and strip ambient AWS config.
+    """Strip ambient AWS config and assert the registry pin actually took.
 
-    ``LITELLM_LOCAL_MODEL_COST_MAP`` keeps the test offline and deterministic:
-    without it LiteLLM fetches its model registry over the network at import,
-    which would make routing depend on an external fetch.
+    The registry pin itself cannot live here: ``LITELLM_LOCAL_MODEL_COST_MAP``
+    is read once when litellm is imported, which happens at collection time,
+    so setting it from a fixture body is a no-op that silently leaves these
+    tests reading the *network* registry. It is set at module scope in
+    ``tests/conftest.py`` instead; the assertion below fails loudly if that
+    ever stops taking effect rather than quietly reverting to the network.
     """
-    monkeypatch.setenv("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+    assert os.environ.get("LITELLM_LOCAL_MODEL_COST_MAP") == "True", (
+        "Expected the bundled LiteLLM registry to be pinned in conftest.py; "
+        "without it these routing assertions depend on a network fetch."
+    )
     for var in _AMBIENT_VARS:
         monkeypatch.delenv(var, raising=False)
     yield
@@ -137,9 +148,17 @@ def _complete(metadata: dict[str, Any]) -> dict[str, Any]:
         return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
 
     completion_kwargs = AWSBedrockLLMParameters.validate(metadata)
-    # Mirrors unstract.sdk1.llm, which sets this globally so provider-specific
-    # rejections (e.g. gpt-5.x refusing temperature != 1) degrade to a drop.
-    litellm.drop_params = True
+    # Assert rather than set. The whole Mantle path is load-bearing on
+    # `unstract.sdk1.llm` setting this globally: the adapter emits the
+    # `BaseChatCompletionParameters` default `temperature=0.1` for a
+    # non-reasoning call, and GPT-5.x rejects any temperature but 1 *before*
+    # issuing the request. Setting the flag here instead would keep this suite
+    # green through a refactor that dropped it, while every GPT-5.x Bedrock
+    # completion broke in production.
+    assert litellm.drop_params is True, (
+        "unstract.sdk1.llm must set litellm.drop_params; without it GPT-5.x "
+        "rejects the adapter's default temperature before any HTTP request."
+    )
 
     with patch("litellm.llms.custom_httpx.http_handler.HTTPHandler.post", _mock_post):
         litellm.completion(
@@ -251,7 +270,6 @@ def test_mantle_cost_is_resolvable() -> None:
     ``audit.py`` looks cost up from the validated model string and swallows any
     exception, so an unpriced prefix is revenue-affecting but invisible.
     """
-    os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
     from litellm import cost_per_token
 
     validated = AWSBedrockLLMParameters.validate(

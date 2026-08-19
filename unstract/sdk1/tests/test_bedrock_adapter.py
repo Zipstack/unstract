@@ -713,6 +713,31 @@ def test_llm_non_mantle_models_keep_standard_bedrock_route(model: str) -> None:
     assert _validate_llm(model=model)["model"] == f"bedrock/{model}"
 
 
+def test_llm_unknown_mantle_model_falls_back_to_standard_bedrock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Mantle model the loaded registry has not catalogued routes to `bedrock/`.
+
+    This is the failure that bites when AWS ships a Mantle model before LiteLLM
+    catalogues it: routing degrades silently to the classic endpoint, where the
+    request fails with an opaque AWS error. Pinned here so the fallback is a
+    known, documented property rather than an accident of registry contents.
+    """
+    import litellm
+
+    pruned = {
+        k: v
+        for k, v in litellm.model_cost.items()
+        if k != "bedrock_mantle/openai.gpt-5.6-terra"
+    }
+    monkeypatch.setattr(litellm, "model_cost", pruned)
+
+    assert (
+        _validate_llm(model="openai.gpt-5.6-terra")["model"]
+        == "bedrock/openai.gpt-5.6-terra"
+    )
+
+
 @pytest.mark.parametrize(
     "model",
     ["bedrock/openai.gpt-5.6-terra", "bedrock_mantle/anthropic.claude-3-haiku"],
@@ -755,6 +780,28 @@ def test_llm_mantle_strips_guardrail_and_aip_arn(
     assert not out.get("model_id")
     assert "Bedrock Guardrails" in caplog.text
     assert "Application Inference Profile" in caplog.text
+
+
+def test_llm_mantle_strip_warns_once_not_per_completion(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`LLM.complete()` re-validates on every call, so the warning must not repeat.
+
+    The first pass removes the keys, so a second validation of the already
+    validated payload has nothing left to strip. A reorder that moved the strip
+    after the Pydantic dump would emit this warning on every completion.
+    """
+    with caplog.at_level(logging.WARNING):
+        first = _validate_llm(
+            model="openai.gpt-5.6-terra",
+            guardrail_identifier="ff6ujrregl1q",
+            guardrail_version="1",
+        )
+        warnings_after_first = len(caplog.records)
+        AWSBedrockLLMParameters.validate(dict(first))
+
+    assert warnings_after_first == 1
+    assert len(caplog.records) == 1
 
 
 def test_llm_standard_bedrock_keeps_guardrail(

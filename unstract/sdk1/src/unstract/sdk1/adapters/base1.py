@@ -69,7 +69,8 @@ _MODEL_ID_FIELDS: tuple[str, ...] = ("model", "model_id")
 # LiteLLM provider prefixes for the two distinct AWS Bedrock endpoints:
 # `bedrock/` is the classic bedrock-runtime Converse/Invoke surface, while
 # `bedrock_mantle/` is the OpenAI-compatible bedrock-mantle endpoint that
-# serves the OpenAI GPT-5.x, Google Gemma 4 and xAI Grok families.
+# serves the OpenAI GPT-5.x and GPT-OSS, Google Gemma 4 and xAI Grok families.
+# The membership list is not hardcoded — see `_is_bedrock_mantle_model`.
 _BEDROCK_PREFIX = "bedrock/"
 _BEDROCK_MANTLE_PREFIX = "bedrock_mantle/"
 # Default effort used when reasoning is switched on for a model that takes
@@ -1098,14 +1099,17 @@ def _is_bedrock_mantle_model(model: str) -> bool:
     Converse/Invoke surface, and LiteLLM exposes it as its own provider
     (``bedrock_mantle/``). The two model-id namespaces are disjoint but look
     confusingly similar -- ``openai.gpt-oss-120b-1:0`` is a Converse model
-    while ``openai.gpt-oss-120b`` is a Mantle one -- so membership is decided
-    by an **exact lookup** in LiteLLM's own registry, never by a family or
-    prefix match. Anything LiteLLM does not list as a Mantle model (Claude,
-    Titan, Nova, ARNs, and the ``us.``/``global.`` cross-Region inference
-    profile ids that belong to ``bedrock-runtime``) keeps the classic route.
+    while ``openai.gpt-oss-120b`` is a Mantle one -- so membership **for an
+    unprefixed id** is decided by an exact lookup in LiteLLM's own registry,
+    never by a family or substring match. An explicit prefix on the incoming id
+    short-circuits that lookup and always wins, so an operator can override the
+    routing by typing the fully-qualified model id.
 
-    An explicit prefix on the incoming id always wins, so an operator can
-    override the routing by typing the fully-qualified model id.
+    Anything LiteLLM does not list as a Mantle model keeps the classic route:
+    Claude, Titan, Nova, ARNs, and the ``us.``/``global.`` cross-Region
+    inference profile ids that belong to ``bedrock-runtime``. Note that set is
+    not closed — it also contains any genuine Mantle model missing from the
+    registry this process loaded, which routes to ``bedrock/`` and fails there.
     """
     if model.startswith(_BEDROCK_MANTLE_PREFIX):
         return True
@@ -1140,7 +1144,10 @@ def _apply_bedrock_reasoning_config(metadata: dict[str, "Any"]) -> bool:
     Converse, Nova 2) takes ``reasoning_effort``, which LiteLLM then maps to
     that family's own wire field. Emitting the Anthropic shape for a
     non-Anthropic model is a silent no-op -- LiteLLM drops it -- which is why
-    the switch never did anything outside Claude.
+    the switch produced no *reasoning* outside Claude before this mapping
+    existed. It was never wholly inert, though: the ``temperature = 1`` write
+    below is unconditional, so enabling the toggle has always changed sampling
+    for every Bedrock family, including ones that cannot reason at all.
 
     Returns whether reasoning ended up enabled, so the caller can decide which
     keys to carry onto the validated payload.
@@ -1172,6 +1179,12 @@ def _apply_bedrock_reasoning_config(metadata: dict[str, "Any"]) -> bool:
         metadata.pop("thinking", None)
         return True
 
+    # Mirrors the pop in the branch above: the two shapes are mutually
+    # exclusive, and leaving a stray `reasoning_effort` on an Anthropic model
+    # would emit both. That is inert on the wire only because
+    # `litellm.drop_params` discards it on the Converse route, which is not a
+    # guarantee worth resting on.
+    metadata.pop("reasoning_effort", None)
     if not has_thinking_config:
         thinking_config: dict[str, Any] = {"type": "enabled"}
         budget_tokens = metadata.get("budget_tokens")
@@ -1179,6 +1192,15 @@ def _apply_bedrock_reasoning_config(metadata: dict[str, "Any"]) -> bool:
             thinking_config["budget_tokens"] = budget_tokens
         metadata["thinking"] = thinking_config
     return True
+
+
+# Params the Bedrock Mantle endpoint has no field for, mapped to the label used
+# when telling the operator they were ignored. Single source of truth: the strip
+# below iterates this mapping, so a new key cannot be added without its label.
+_MANTLE_UNSUPPORTED_PARAMS: dict[str, str] = {
+    "guardrailConfig": "Bedrock Guardrails",
+    "model_id": "Application Inference Profile ARNs",
+}
 
 
 def _strip_unsupported_mantle_params(validated: dict[str, "Any"]) -> None:
@@ -1191,7 +1213,7 @@ def _strip_unsupported_mantle_params(validated: dict[str, "Any"]) -> None:
     which would leave an operator believing a guardrail is enforced when it is
     not -- so drop them here and say so loudly.
     """
-    unsupported = [key for key in ("guardrailConfig", "model_id") if validated.get(key)]
+    unsupported = [key for key in _MANTLE_UNSUPPORTED_PARAMS if validated.get(key)]
     if not unsupported:
         return
     for key in unsupported:
@@ -1202,13 +1224,7 @@ def _strip_unsupported_mantle_params(validated: dict[str, "Any"]) -> None:
         "Guardrail or an Application Inference Profile, use a model served by "
         "the standard Bedrock (Converse) endpoint.",
         validated.get("model"),
-        " and ".join(
-            {
-                "guardrailConfig": "Bedrock Guardrails",
-                "model_id": "Application Inference Profile ARNs",
-            }[key]
-            for key in unsupported
-        ),
+        " and ".join(_MANTLE_UNSUPPORTED_PARAMS[key] for key in unsupported),
     )
 
 
@@ -1229,10 +1245,6 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     # Declared so it survives Pydantic re-validation of kwargs.
     # Matches LiteLLM's Bedrock kwarg name, hence the mixed case.
     guardrailConfig: dict | None = None  # noqa: N815
-    # Reasoning knob for the non-Anthropic families (Mantle GPT-5.x, gpt-oss,
-    # Nova 2). Declared so it survives `LLM.complete()`'s re-validation of
-    # self.kwargs; otherwise Pydantic would drop it as an unknown field.
-    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -1258,10 +1270,12 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # etc.). The LLM layer enforces the same model gate; this just keeps the
         # validated metadata honest.
         # The Anthropic check reuses the same helper as the reasoning config, so
-        # the two model gates cannot drift apart. It checks both ``model`` and
-        # ``model_id`` so callers routing through a Bedrock Application
-        # Inference Profile (opaque ARN in ``model``, Claude id in ``model_id``)
-        # still qualify.
+        # the two gates *inside this function* cannot drift apart. It checks
+        # both ``model`` and ``model_id`` so callers routing through a Bedrock
+        # Application Inference Profile (opaque ARN in ``model``, Claude id in
+        # ``model_id``) still qualify. Note the LLM layer keeps its own markers
+        # (`llm.py`'s `_BEDROCK_CACHE_MODEL_MARKERS`) and does not call this
+        # helper, so extending the helper alone will not move that gate.
         enable_prompt_caching = bool(
             adapter_metadata.get("enable_prompt_caching", False)
         ) and _is_bedrock_anthropic_model(result_metadata)
@@ -1293,12 +1307,12 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         if not validated.get("guardrailConfig"):
             validated.pop("guardrailConfig", None)
 
-        # Add the reasoning config to the final result if enabled. Exactly one
-        # of the two shapes is emitted, decided by the model family above.
-        # `reasoning_effort` is a declared field, so Pydantic always re-emits it
-        # as None -- drop that placeholder first so it is only ever present when
-        # it carries a real value.
-        validated.pop("reasoning_effort", None)
+        # Re-attach the reasoning config if enabled. Exactly one of the two
+        # shapes is present, decided by the model family above.
+        # `reasoning_effort` is deliberately not a declared field: it is
+        # stripped from `validation_metadata` below, so Pydantic never sees it
+        # and re-attaching here is what carries it across `LLM.complete()`'s
+        # re-validation of self.kwargs.
         if enable_thinking:
             if "thinking" in result_metadata:
                 validated["thinking"] = result_metadata["thinking"]
