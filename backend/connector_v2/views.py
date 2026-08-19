@@ -47,6 +47,9 @@ class ConnectorInstanceViewSet(
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
     pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["connector_name", "created_at", "modified_at"]
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -105,10 +108,6 @@ class ConnectorInstanceViewSet(
         if filter_args:
             queryset = queryset.filter(**filter_args)
 
-        search = self.request.query_params.get("search")
-        if search:
-            queryset = queryset.filter(connector_name__icontains=search)
-
         # Filter by connector_mode
         connector_mode_param = self.request.query_params.get("connector_mode")
         if connector_mode_param:
@@ -127,10 +126,19 @@ class ConnectorInstanceViewSet(
                 )
                 queryset = queryset.none()
 
-        # Order by the DISTINCT ON field so pagination is deterministic and the
-        # admin/service branch (no distinct) is ordered too. Not modified_at:
-        # that would conflict with the DISTINCT ON in for_user().
-        return queryset.order_by("id")
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(connector_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
+
+        return queryset
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.

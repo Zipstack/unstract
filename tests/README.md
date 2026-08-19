@@ -107,6 +107,7 @@ Optional knobs (see `groups.yaml` for examples):
 | `install_editable` | Runs `uv pip install -e .` in the workdir. |
 | `pip_install` | Explicit deps to install before pytest. |
 | `requires_services` | Infra needed (`postgres`, `redis`, `minio`, ...). |
+| `postgres_migrate` (under `defaults`, applied once per run — not a per-group key) | `{workdir, apps, env}` — runs `manage.py migrate` against the provisioned Postgres before any group runs, for tests that read tables another service's ORM owns. |
 | `requires_platform` | Set true for e2e — rig brings the full platform up. |
 | `depends_on` | Other groups that must run first. |
 | `critical` | Marks the group as covering a critical path. |
@@ -158,7 +159,7 @@ The `platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars; e
 
 Execute-path e2e tests must not call a real provider, so the rig sets `UNSTRACT_LLM_MOCK_RESPONSE` (default `MOCK_LLM_OK`) before boot, for any runtime and treating an exported empty string as unset. The test overlay forwards it into the workers, and `unstract.sdk1.llm` passes it to litellm as `mock_response`: for the non-streaming completion path litellm returns the string verbatim with fixed usage (10 prompt / 20 completion / 30 total), so both the answer and the token counts are exact-assertable. Streaming (`stream_complete`) goes through a different litellm path whose usage differs, so don't assume 10/20/30 there. Sentinels like `litellm.RateLimitError` force error paths. Unset (the production default) the hook is a no-op.
 
-Mocking needs two conditions, not one: `ENVIRONMENT` must also be `test` or `development`. Production sets neither variable, so a stray mock var alone cannot fake completions and their billing — and a refusal is logged rather than silent, since setting the var at all means someone expected mocking. `development` is allowed because that is what base compose sets on the workers that run the injection; the test overlay pins `ENVIRONMENT=test` on those same two workers explicitly, so the tier can't lose its mock to a base-compose edit.
+The variable being set is the only condition, deliberately. A second gate on `ENVIRONMENT` was tried and removed: it did not defend against the case it was written for — a worker env block copied out of this overlay carries both variables together — and compose declared `ENVIRONMENT` on every service anyway, so any deployment derived from it satisfied the gate. Nothing read that variable, so it was dropped everywhere along with the gate. What remains is that the hatch is off unless someone sets it, and that it warns once per process while active. Making fake spend safe to *detect* rather than trying to prevent the config wants the usage record itself to say it was mocked.
 
 A CI/dev override wins (the rig only fills an unset value). Running these tests under the rig **fails** if the var is missing; running **without** the rig just skips the execute-path tests — export it on both sides (your shell and the workers) if you boot the stack yourself.
 

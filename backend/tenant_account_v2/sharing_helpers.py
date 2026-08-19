@@ -36,6 +36,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Model, QuerySet
 from django.db.models.functions import Cast
+from permissions.roles import ResourceRole
 from rest_framework.exceptions import ValidationError
 from utils.user_context import UserContext
 
@@ -215,6 +216,30 @@ def resources_visible_via_memberships(
     qs = ResourceMembership.objects.filter(
         content_type=ContentType.objects.get_for_model(model),
         user=user,
+    )
+    if organization is not None:
+        qs = qs.filter(organization=organization)
+    return _object_id_subquery(qs, model)
+
+
+def resources_matching_owner_search(
+    model: type[Model], term: str, organization: Organization | None = None
+) -> QuerySet[Any]:
+    """Subquery of ``model`` PKs whose displayed owner matches ``term``.
+
+    Owner search hits the same OWNER memberships that back the "Owned By"
+    column, so the search box agrees with what is shown. Matches on the email
+    prefix (the local part is the shown name) so a bare domain fragment like
+    "com" doesn't return every row in a single-domain org. Skips service
+    accounts, org-scoped like :func:`resources_visible_via_memberships`. Any
+    OWNER counts, so a co-owner's email surfaces the resource too.
+    """
+    organization = organization or UserContext.get_organization()
+    qs = ResourceMembership.objects.filter(
+        content_type=ContentType.objects.get_for_model(model),
+        role=ResourceRole.OWNER,
+        user__is_service_account=False,
+        user__email__istartswith=term,
     )
     if organization is not None:
         qs = qs.filter(organization=organization)

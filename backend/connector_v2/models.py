@@ -44,14 +44,10 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         member_ids = resources_visible_via_memberships(self.model, user)
 
-        return (
-            self.get_queryset()
-            .filter(
-                models.Q(pk__in=member_ids)
-                | models.Q(shared_to_org=True)
-                | models.Q(pk__in=group_shared_ids)
-            )
-            .distinct("id")
+        return self.get_queryset().filter(
+            models.Q(pk__in=member_ids)
+            | models.Q(shared_to_org=True)
+            | models.Q(pk__in=group_shared_ids)
         )
 
 
@@ -171,5 +167,12 @@ class ConnectorInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["connector_name", "organization"],
                 name="unique_organization_connector",
+            ),
+        ]
+        # Backs the default org-scoped `-modified_at, pk` list ordering.
+        indexes = [
+            models.Index(
+                fields=["organization", "-modified_at"],
+                name="connector_org_modified_idx",
             ),
         ]

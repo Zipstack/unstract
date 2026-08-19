@@ -26,6 +26,7 @@ import pytest
 from queue_backend import (
     BarrierBackend,
     CeleryChordBarrier,
+    PgBarrier,
     RedisDecrBarrier,
     get_barrier,
 )
@@ -39,6 +40,7 @@ class TestBarrierBackendEnum:
         documented env value)."""
         assert BarrierBackend.CHORD.value == "chord"
         assert BarrierBackend.REDIS.value == "redis"
+        assert BarrierBackend.PG.value == "pg"
 
     def test_str_enum_string_equality(self):
         """``StrEnum`` members compare equal to their string values —
@@ -46,6 +48,7 @@ class TestBarrierBackendEnum:
         interchangeably without conversion."""
         assert BarrierBackend.CHORD == "chord"
         assert BarrierBackend.REDIS == "redis"
+        assert BarrierBackend.PG == "pg"
 
 
 class TestGetBarrierFactory:
@@ -65,6 +68,10 @@ class TestGetBarrierFactory:
     def test_redis_selects_redis_decr_barrier(self, monkeypatch):
         monkeypatch.setenv("WORKER_BARRIER_BACKEND", BarrierBackend.REDIS)
         assert isinstance(get_barrier(), RedisDecrBarrier)
+
+    def test_pg_selects_pg_barrier(self, monkeypatch):
+        monkeypatch.setenv("WORKER_BARRIER_BACKEND", BarrierBackend.PG)
+        assert isinstance(get_barrier(), PgBarrier)
 
     def test_unknown_value_raises_loudly(self, monkeypatch):
         """Silent fallback to default would mask a typo'd production

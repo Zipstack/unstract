@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from functools import lru_cache
+from functools import cache, lru_cache
 from typing import Any, NoReturn, cast
 
 import litellm
@@ -32,13 +32,47 @@ from unstract.sdk1.utils.retry_utils import (
 
 logger = logging.getLogger(__name__)
 
+
+# Truthy-looking values that people commonly set expecting a boolean flag to
+# turn on — but only "true" enables caching. We warn (once each) so a stray
+# ENABLE_PROMPT_CACHING=1 doesn't leave caching silently off.
+_PROMPT_CACHING_TRUTHY_LOOKALIKES = frozenset(
+    {"1", "yes", "y", "on", "t", "enable", "enabled"}
+)
+
+
+@cache
+def _warn_prompt_caching_lookalike(value: str) -> None:
+    logger.warning(
+        "ENABLE_PROMPT_CACHING=%r is not recognized as enabled; only 'true' "
+        "(case-insensitive) turns prompt caching on — caching stays OFF.",
+        value,
+    )
+
+
+def is_prompt_caching_enabled() -> bool:
+    """Whether LLM prompt caching is enabled platform-wide (opt-in, default off).
+
+    A single master switch (``ENABLE_PROMPT_CACHING`` env var) that turns the
+    caching capability on for every ``LLM`` on a supported provider, so callers
+    don't each have to pass ``enable_prompt_caching``. Consumers still decide
+    *what* to cache by passing ``cache_prefix``. Exposed for consumers that gate
+    their own prompt-restructuring on the same flag.
+
+    Only ``"true"`` (case-insensitive) enables it; a truthy-looking value like
+    ``"1"``/``"yes"``/``"on"`` logs a one-time warning and stays off.
+    """
+    raw = os.environ.get("ENABLE_PROMPT_CACHING", "").strip().lower()
+    if raw == "true":
+        return True
+    if raw in _PROMPT_CACHING_TRUTHY_LOOKALIKES:
+        _warn_prompt_caching_lookalike(raw)
+    return False
+
+
 # Lets tests force a deterministic completion without a provider or a secret.
 # Unset in production, where this is a no-op.
 _MOCK_RESPONSE_ENV = "UNSTRACT_LLM_MOCK_RESPONSE"
-# Second condition on the hatch, so a stray mock var alone can't fake
-# completions and their billing. Deployments that set neither fail closed.
-_ENVIRONMENT_ENV = "ENVIRONMENT"
-_MOCK_ALLOWED_ENVIRONMENTS = frozenset({"test", "development"})
 
 
 @lru_cache(maxsize=1)
@@ -52,26 +86,9 @@ def _warn_mock_active() -> None:
     )
 
 
-@lru_cache(maxsize=1)
-def _warn_mock_refused(environment: str) -> None:
-    # Loud rather than silent: the var being set at all means someone expected
-    # mocking, and they need to know why the bill is real.
-    logger.warning(
-        "%s is set but %s=%r is not one of %s — calling the provider for real.",
-        _MOCK_RESPONSE_ENV,
-        _ENVIRONMENT_ENV,
-        environment,
-        sorted(_MOCK_ALLOWED_ENVIRONMENTS),
-    )
-
-
 def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
     mock = os.getenv(_MOCK_RESPONSE_ENV)
     if not mock or "mock_response" in completion_kwargs:
-        return
-    environment = os.getenv(_ENVIRONMENT_ENV, "").strip().lower()
-    if environment not in _MOCK_ALLOWED_ENVIRONMENTS:
-        _warn_mock_refused(environment)
         return
     _warn_mock_active()
     completion_kwargs["mock_response"] = mock
@@ -208,6 +225,7 @@ class LLM:
         system_prompt: str = "",
         kwargs: dict[str, object] | None = None,
         capture_metrics: bool = False,
+        enable_prompt_caching: bool = False,
     ) -> None:
         """Initialize the LLM interface.
 
@@ -220,6 +238,9 @@ class LLM:
             system_prompt: System prompt for the LLM
             kwargs: Additional keyword arguments for configuration
             capture_metrics: Whether to capture performance metrics
+            enable_prompt_caching: Force provider prompt caching on for
+                supported providers (Anthropic / Bedrock-Anthropic), regardless
+                of the stored adapter metadata. Ignored for other providers.
         """
         if adapter_metadata is None:
             adapter_metadata = {}
@@ -271,6 +292,16 @@ class LLM:
             self.kwargs = self.adapter.validate(self._adapter_metadata)
             self._cost_model = self.kwargs.pop("cost_model", None)
             self.kwargs.pop("context_window", None)
+            # Opt-in provider prompt caching (Anthropic / Bedrock-Anthropic).
+            # Enabled either via adapter metadata (from the stored adapter
+            # config) or the explicit constructor arg (for callers that build
+            # the LLM by ``adapter_instance_id`` and can't edit stored metadata).
+            # Popped so it never reaches litellm; applied on the message payload.
+            self._enable_prompt_caching = (
+                bool(self.kwargs.pop("enable_prompt_caching", False))
+                or enable_prompt_caching
+                or is_prompt_caching_enabled()
+            )
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"],
@@ -349,8 +380,129 @@ class LLM:
                 actual_err=e,
             ) from e
 
+    # Providers for which we emit explicit ``cache_control`` blocks. Anthropic
+    # and Bedrock-Anthropic support message-level prompt caching this way;
+    # OpenAI / Azure auto-cache server-side (no marker needed) and other
+    # providers don't support it, so we never tag their payloads.
+    _PROMPT_CACHE_PROVIDERS = frozenset({"anthropic", "bedrock"})
+    # Bedrock hosts many model families (Anthropic Claude, Amazon Titan/Nova,
+    # Meta Llama, Cohere, Mistral, AI21). Only Anthropic/Claude models on
+    # Bedrock honor ``cache_control``; emitting the blocks for other families
+    # would be ineffective and could produce unsupported message shapes. These
+    # substrings identify the cache-capable Bedrock models by their model id.
+    _BEDROCK_CACHE_MODEL_MARKERS = ("anthropic", "claude")
+
+    def _prompt_caching_active(self) -> bool:
+        """Whether to emit ``cache_control`` blocks for this call."""
+        if not self._enable_prompt_caching:
+            return False
+        provider = self.adapter.get_provider()
+        if provider not in self._PROMPT_CACHE_PROVIDERS:
+            return False
+        if provider == "bedrock":
+            # Gate on the underlying model, not just the provider: only
+            # Anthropic/Claude models on Bedrock support cache_control. Check
+            # both ``model`` and ``model_id`` — when a caller routes through a
+            # Bedrock Application Inference Profile, the ARN in ``model`` is
+            # opaque and the Claude id appears only in ``model_id``.
+            recognized = any(
+                marker in str(self.kwargs.get(field, "")).lower()
+                for field in ("model", "model_id")
+                for marker in self._BEDROCK_CACHE_MODEL_MARKERS
+            )
+            if not recognized:
+                # Enabled but the model can't be confirmed as Anthropic/Claude
+                # (e.g. a fully opaque Application Inference Profile ARN with no
+                # Claude id in model/model_id). Skipping is safe; leave a
+                # breadcrumb so operators can diagnose a Claude-on-Bedrock call
+                # that unexpectedly isn't caching.
+                logger.debug(
+                    "Prompt caching enabled but skipped for Bedrock: "
+                    "model=%r model_id=%r not recognized as Anthropic/Claude",
+                    self.kwargs.get("model"),
+                    self.kwargs.get("model_id"),
+                )
+            return recognized
+        return True
+
+    def is_prompt_caching_active(self) -> bool:
+        """Public: whether ``cache_control`` blocks are emitted for this LLM.
+
+        True only when caching is enabled (adapter flag, constructor arg, or the
+        ``ENABLE_PROMPT_CACHING`` master switch) *and* the provider/model
+        supports it. Callers use this to decide whether reordering a prompt into
+        a cached prefix is worthwhile — reordering for a non-caching provider
+        changes prompt structure with no benefit.
+        """
+        return self._prompt_caching_active()
+
+    def _build_messages(
+        self, prompt: str, cache_prefix: str | None = None
+    ) -> list[dict[str, object]]:
+        """Build the system + user message list for a chat completion.
+
+        When prompt caching is active (opt-in flag + a supported provider), a
+        stable prefix is tagged with ``cache_control`` so providers that support
+        prefix caching (Anthropic, Bedrock-Anthropic) reuse it across calls.
+        LiteLLM forwards ``cache_control`` blocks to the provider unchanged.
+
+        - non-empty ``cache_prefix`` given: the user turn is split into a cached
+          stable prefix block followed by the per-request volatile block. The
+          text the model sees is ``cache_prefix + prompt`` — identical to
+          passing the concatenation as a single prompt, so no prompt semantics
+          change.
+        - otherwise: the stable system prompt is cached.
+
+        Only the stable portion is tagged; per-request content is never cached.
+        An empty ``cache_prefix`` is treated as absent — Anthropic rejects empty
+        text content blocks, and an empty prefix carries no caching benefit.
+        """
+        if self._prompt_caching_active() and cache_prefix:
+            return [
+                {"role": "system", "content": self._system_prompt},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": cache_prefix,
+                            "cache_control": {"type": "ephemeral"},
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                },
+            ]
+        if self._prompt_caching_active():
+            return [
+                {
+                    "role": "system",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": self._system_prompt,
+                            "cache_control": {"type": "ephemeral"},
+                        }
+                    ],
+                },
+                {"role": "user", "content": prompt},
+            ]
+        # Caching inactive (opt-in off, or an unsupported provider): emit no
+        # cache_control, but if the caller split the prompt into
+        # (cache_prefix, prompt) the model must still see the full text —
+        # concatenate rather than drop the prefix.
+        user_content = cache_prefix + prompt if cache_prefix else prompt
+        return [
+            {"role": "system", "content": self._system_prompt},
+            {"role": "user", "content": user_content},
+        ]
+
     @capture_metrics
-    def complete(self, prompt: str, **kwargs: object) -> dict[str, object]:
+    def complete(
+        self,
+        prompt: str,
+        cache_prefix: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
         """Return a standard chat completion dict with optional metrics capture.
 
         Return a standard chat completion dict and optionally captures metrics if run
@@ -358,6 +510,11 @@ class LLM:
 
         Args:
             prompt   (str)   The input text prompt for generating the completion.
+            cache_prefix (str | None) Stable text to cache ahead of ``prompt``.
+                When prompt caching is active for a supported provider, this is
+                emitted as a ``cache_control`` block so repeated calls sharing
+                the same prefix reuse it. The model sees ``cache_prefix + prompt``
+                unchanged. Ignored when caching is off or unsupported.
             **kwargs (Any)   Additional arguments passed to the completion function.
 
         Returns:
@@ -365,10 +522,7 @@ class LLM:
                 any processed output, and the captured metrics (if applicable).
         """
         try:
-            messages: list[dict[str, str]] = [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": prompt},
-            ]
+            messages = self._build_messages(prompt, cache_prefix=cache_prefix)
             logger.debug(
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API"
             )
@@ -376,6 +530,7 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
+            completion_kwargs.pop("enable_prompt_caching", None)
             completion_kwargs.pop("context_window", None)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
@@ -500,6 +655,7 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
+            completion_kwargs.pop("enable_prompt_caching", None)
             completion_kwargs.pop("context_window", None)
 
             response: dict[str, object] = litellm.completion(
@@ -551,17 +707,17 @@ class LLM:
         self,
         prompt: str,
         callback_manager: object | None = None,
+        cache_prefix: str | None = None,
         **kwargs: object,
     ) -> Generator[LLMResponseCompat, None, None]:
         """Yield LLMResponseCompat objects with text chunks.
 
-        Chunks arrive as they stream from the provider.
+        Chunks arrive as they stream from the provider. ``cache_prefix`` behaves
+        as in :meth:`complete` — a stable prefix cached ahead of ``prompt`` when
+        prompt caching is active for a supported provider.
         """
         try:
-            messages = [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": prompt},
-            ]
+            messages = self._build_messages(prompt, cache_prefix=cache_prefix)
             logger.debug(
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API"
             )
@@ -569,6 +725,7 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
+            completion_kwargs.pop("enable_prompt_caching", None)
             completion_kwargs.pop("context_window", None)
 
             max_retries = pop_litellm_retry_kwargs(
@@ -628,13 +785,20 @@ class LLM:
                 message=error_msg, status_code=status_code, actual_err=e
             ) from e
 
-    async def acomplete(self, prompt: str, **kwargs: object) -> dict[str, object]:
-        """Asynchronous chat completion (wrapper around ``litellm.acompletion``)."""
+    async def acomplete(
+        self,
+        prompt: str,
+        cache_prefix: str | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Asynchronous chat completion (wrapper around ``litellm.acompletion``).
+
+        ``cache_prefix`` mirrors :meth:`complete` / :meth:`stream_complete`: when
+        prompt caching is active it is emitted as a cached stable prefix ahead of
+        ``prompt``; otherwise it is concatenated so the model sees the same text.
+        """
         try:
-            messages = [
-                {"role": "system", "content": self._system_prompt},
-                {"role": "user", "content": prompt},
-            ]
+            messages = self._build_messages(prompt, cache_prefix=cache_prefix)
             logger.debug(
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
             )
@@ -642,6 +806,7 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
+            completion_kwargs.pop("enable_prompt_caching", None)
             completion_kwargs.pop("context_window", None)
 
             max_retries = pop_litellm_retry_kwargs(
@@ -788,6 +953,57 @@ class LLM:
         self._pending_usage = []
         return records
 
+    def _compute_call_cost(
+        self,
+        model: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        has_cache_tokens: bool,
+        response: object | None,
+    ) -> float:
+        """Compute the dollar cost of a single call.
+
+        When caching is active, cache-read tokens are billed at ~0.1x and
+        cache-write at ~1.25x of the base input rate. ``litellm.cost_per_token``
+        prices every prompt token at the full input rate, so it over-reports
+        cost on cache hits. In that case let litellm read the cache token counts
+        off the response for an accurate figure, falling back to the per-token
+        path (which is exact when no caching is involved).
+        """
+        if has_cache_tokens and response is not None:
+            try:
+                # Pass ``model`` so cached calls price against the same model as
+                # the ``cost_per_token`` fallback below. Without it,
+                # ``completion_cost`` derives the model from the response and
+                # ignores any ``cost_model`` override.
+                return litellm.completion_cost(completion_response=response, model=model)
+            except Exception:
+                # Warn (not debug): the cost_per_token fallback prices every
+                # prompt token at the full input rate, so it over-reports cost
+                # by up to ~10x on cache hits. Operators watching spend need to
+                # see that a recorded cost may be inflated.
+                logger.warning(
+                    "completion_cost() failed for model=%s; falling back to "
+                    "cost_per_token — recorded cost may be OVER-reported for "
+                    "this cached call",
+                    model,
+                    exc_info=True,
+                )
+        try:
+            prompt_cost, compl_cost = litellm.cost_per_token(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+            return prompt_cost + compl_cost
+        except Exception:
+            logger.warning(
+                "Failed to compute cost for model=%s; recording as 0.0",
+                model,
+                exc_info=True,
+            )
+            return 0.0
+
     def _record_usage(
         self,
         model: str,
@@ -800,6 +1016,10 @@ class LLM:
         prompt_tokens = usage_data.get("prompt_tokens", 0)
         completion_tokens = usage_data.get("completion_tokens", 0)
         total_tokens = usage_data.get("total_tokens", 0)
+        # Prompt-caching token counts (populated by Anthropic / Bedrock-Anthropic
+        # when caching is enabled; 0 for every other provider/call).
+        cache_creation_tokens = usage_data.get("cache_creation_input_tokens", 0) or 0
+        cache_read_tokens = usage_data.get("cache_read_input_tokens", 0) or 0
 
         # Fall back to litellm when providers omit prompt tokens — avoids 0-token billing.
         if prompt_tokens == 0 and messages:
@@ -824,30 +1044,29 @@ class LLM:
             id_suffix += f" response_id={response_id}"
         if request_id is not None:
             id_suffix += f" request_id={request_id}"
+        cache_suffix = ""
+        if cache_creation_tokens or cache_read_tokens:
+            cache_suffix = (
+                f" cache_write={cache_creation_tokens} cache_read={cache_read_tokens}"
+            )
         logger.info(
-            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d%s",
+            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d%s%s",
             model,
             llm_api,
             prompt_tokens,
             completion_tokens,
             total_tokens,
+            cache_suffix,
             id_suffix,
         )
 
-        try:
-            prompt_cost, compl_cost = litellm.cost_per_token(
-                model=model,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-            )
-            cost = prompt_cost + compl_cost
-        except Exception:
-            logger.warning(
-                "Failed to compute cost for model=%s; recording as 0.0",
-                model,
-                exc_info=True,
-            )
-            cost = 0.0
+        cost = self._compute_call_cost(
+            model=model,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            has_cache_tokens=bool(cache_creation_tokens or cache_read_tokens),
+            response=response,
+        )
 
         # Trailing segment matches legacy Audit semantics (e.g. bedrock/anthropic/claude).
         display_model = model.rsplit("/", 1)[-1] if model else model
