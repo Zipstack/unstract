@@ -65,7 +65,13 @@ test = [
     "pytest-cov>=4.1.0",
     "pytest-timeout>=2.3.1",
     "factory-boy>=3.3.0",
-    "responses>=0.23.0"
+    "responses>=0.23.0",
+    # json_repair_helper imports this; the image gets it transitively from
+    # cloud plugin deps, so the OSS test env is the only place it is missing.
+    # Without it the helper silently takes `except ImportError: return
+    # json_str`, and any test asserting real repair behaviour passes while
+    # pinning the fallback (UN-4017).
+    "json-repair>=0.25.0",
 ]
 
 deploy = [
