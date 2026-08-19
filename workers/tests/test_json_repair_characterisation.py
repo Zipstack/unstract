@@ -233,7 +233,9 @@ def test_contract_does_not_merge_repeated_keys():
     """Repeated keys mean distinct records, not one split object."""
     raw = '{"invoice_number": "A"},{"invoice_number": "B"}'
     result = repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
-    assert result in ({"invoice_number": "A"}, {"invoice_number": "B"})
+    # First wins: candidates are generated in preference order and ties keep
+    # the earlier one, so this is deterministic rather than "either is fine".
+    assert result == {"invoice_number": "A"}
 
 
 def test_contract_drops_mangled_fence_debris():
@@ -410,7 +412,14 @@ def test_webhook_failure_never_breaks_extraction(monkeypatch):
     monkeypatch.setenv(RAW_FLAG, "true")
     monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
-    monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://unreachable.invalid/raw")
+    monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
+
+    def _boom(*args, **kwargs):
+        raise ConnectionError("collector down")
+
+    # Patched rather than dialling a real host: a unit test must not depend on
+    # DNS, and the point here is the swallow, not the socket.
+    monkeypatch.setattr("executor.executors.json_repair_helper._post_to_webhook", _boom)
     raw = OBJ + ',{"b": 2}'
     result = repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
     assert result.get("invoice_number") == "INV-001"
@@ -468,6 +477,16 @@ def test_zero_max_chars_disables_clipping(monkeypatch, caplog):
         repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
     assert "elided" not in caplog.text
     assert "x" * 20000 in caplog.text
+
+
+@pytest.fixture(autouse=True)
+def _clear_log_context():
+    """`_context` is a thread-local; a set context outlives its test."""
+    yield
+    from shared.infrastructure.logging import WorkerLogger
+    from shared.infrastructure.logging.logger import LogContext
+
+    WorkerLogger.set_context(LogContext())
 
 
 def test_webhook_payload_carries_correlation_ids(monkeypatch):
@@ -574,3 +593,163 @@ def test_max_chars_of_one_does_not_emit_the_whole_payload(monkeypatch, caplog):
         repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
     assert caplog.text.count("SECRET") <= 1
     assert "chars elided" in caplog.text
+
+
+# --- Part 5: findings from review ---------------------------------------
+
+
+def test_bytes_input_still_parses_as_it_always_did():
+    """Diagnostics must not narrow the accepted input domain.
+
+    json.loads accepts bytes, so _repair_legacy always did too; a regex scan
+    in the diagnostics made it raise TypeError.
+    """
+    assert repair_json_with_best_structure(b'{"a": 1}') == {"a": 1}
+    assert repair_json_with_best_structure(b'{"a": 1}') == _original_impl(b'{"a": 1}')
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "N/A // pending",
+        "docs//archive/2024",
+        "row %%% separator",
+    ],
+    ids=["slashes-in-prose", "path", "stray-marker"],
+)
+def test_marker_like_text_in_a_value_does_not_disable_the_fix(value):
+    """A bare `//` or a lone marker in document text is not an annotation.
+
+    Treating it as one silently switched the reshape guard on and returned a
+    list — the exact AttributeError this module exists to prevent.
+    """
+    raw = f'1. notes\n\n{{"invoice_number": "INV-001", "note": "{value}", "total": 1}}'
+    result = repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert isinstance(result, dict), f"{value!r} disabled the salvage"
+    assert result.get("invoice_number") == "INV-001"
+
+
+def test_real_hex_annotation_still_blocks_reshaping():
+    """The narrower rule must not lose the protection it exists for."""
+    raw = "1. notes\n\n" + ANNOTATED
+    assert repair_json_with_best_structure(raw, contract=DICT_CONTRACT) == _original_impl(
+        raw
+    )
+
+
+def test_alignment_is_clean_for_annotated_plus_word_confidence(caplog):
+    """The consumer strips `%%%` then parses; leaves must come from that too.
+
+    Counting leaves from a parse of the unstripped text made every
+    well-formed highlight+word-confidence response report MISMATCH.
+    """
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(ANNOTATED_AND_WORD_CONF, contract=DICT_CONTRACT)
+    assert "MISMATCH" not in caplog.text
+    assert "alignment=comments=2 leaves=2 malformed=0 ok" in caplog.text
+
+
+def test_word_confidence_marker_env_override_is_honoured(monkeypatch, caplog):
+    """The consumer reads WORD_CONFIDENCE_MARKER; hardcoding breaks silently."""
+    monkeypatch.setenv("WORD_CONFIDENCE_MARKER", "@@@")
+    raw = ANNOTATED + "\n@@@\nINV-001 0.98\n@@@"
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert "MISMATCH" not in caplog.text
+
+
+def test_skeleton_redacts_every_key_when_there_is_no_contract(caplog):
+    """The no-contract path logs in production, so it must declare nothing."""
+    raw = '{"parties": {"Jane Roe": "plaintiff"}},{"b": 2}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw)
+    assert "Jane Roe" not in caplog.text
+    assert "parties" not in caplog.text
+
+
+def test_diagnostics_failure_cannot_break_a_repair(monkeypatch, caplog):
+    """Any future addition inside the trace must not fail an extraction."""
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("diagnostics exploded")
+
+    monkeypatch.setattr("executor.executors.json_repair_helper._shape", _boom)
+    # DEBUG so the trace is actually emitted; the args are lazily evaluated
+    # behind isEnabledFor, so at WARNING _shape would never be reached.
+    with caplog.at_level(logging.DEBUG):
+        assert repair_json_with_best_structure(OBJ) == _original_impl(OBJ)
+    assert "diagnostics failed" in caplog.text
+
+
+def test_webhook_is_dispatched_off_the_calling_thread(monkeypatch):
+    """A synchronous post would add up to its timeout to every prompt."""
+    import threading
+
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
+    monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
+    seen = {}
+    done = threading.Event()
+
+    def _fake_post(url, json, timeout):
+        seen["thread"] = threading.current_thread().name
+        done.set()
+
+    import requests
+
+    monkeypatch.setattr(requests, "post", _fake_post)
+    repair_json_with_best_structure(OBJ + ',{"b": 2}', contract=DICT_CONTRACT)
+    assert done.wait(5), "webhook never fired"
+    assert seen["thread"] != threading.current_thread().name
+
+
+# --- Part 6: dependency drift -------------------------------------------
+#
+# Part 1 compares production against _original_impl, but both call the SAME
+# installed json_repair, so a version bump moves both sides together and the
+# pin stays green. json-repair is declared with a lower bound, and its own
+# heuristics are expected to evolve — _reparse_without_wrap exists precisely
+# because a newer release can mis-tokenise an intact response. These assert
+# absolute values, so a routine `uv lock` refresh that changes what customers
+# get fails here instead of shipping.
+#
+# A failure is NOT necessarily a regression: re-read the new output, decide
+# whether it is better or worse, then update the expectation deliberately.
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        pytest.param(OBJ, {"invoice_number": "INV-001", "total": 1250.5}, id="bare"),
+        pytest.param(
+            OBJ + ',{"b": 2}',
+            [{"invoice_number": "INV-001", "total": 1250.5}, {"b": 2}],
+            id="two-objects",
+        ),
+        pytest.param(
+            '{"a": 1},{"b": 2},{"c": 3',
+            [{"a": 1}, {"b": 2}, {"c": 3}],
+            id="fragmented-truncated",
+        ),
+        # Documents today's behaviour rather than endorsing it: the wrap
+        # candidate shreds an intact fenced response, which is the whole
+        # reason the contract path offers an unwrapped candidate.
+        pytest.param(
+            "```json\n" + OBJ + "\n```",
+            ["json\n{", 'invoice_number": "INV-001', {"total": 1250.5}],
+            id="fenced-shredded-by-the-wrap",
+        ),
+    ],
+)
+def test_no_contract_output_is_pinned_against_library_drift(raw, expected):
+    assert repair_json_with_best_structure(raw) == expected
+
+
+def test_contract_output_is_pinned_against_library_drift():
+    """The salvage result customers actually receive, not just its type."""
+    raw = "<thinking>\nExtracting.\n</thinking>\n" + OBJ
+    assert repair_json_with_best_structure(raw, contract=DICT_CONTRACT) == {
+        "invoice_number": "INV-001",
+        "total": 1250.5,
+    }

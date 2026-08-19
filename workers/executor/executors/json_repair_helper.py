@@ -12,8 +12,12 @@ Two entry points, deliberately separated:
 ``repair_json_with_best_structure(json_str, contract=...)``
     Opt-in. Runs the same legacy parse, then — only if the result does
     not satisfy the caller's contract — tries the salvage strategies in
-    ``_SALVAGERS``. A caller that passes no contract can never reach
-    this code, so enhancements here cannot regress existing paths.
+    ``_SALVAGERS``. No contract means no salvager is reachable, so the
+    returned value cannot differ from what this module always returned.
+
+Diagnostics are the exception to that split: they run on every call,
+contract or not. They only emit log records, never influence the return
+value, and are wrapped so they cannot raise.
 
 To handle a newly observed LLM response shape, add one ``@salvager``
 function plus a test case. Do not modify ``_repair_legacy``.
@@ -23,6 +27,7 @@ import json
 import logging
 import os
 import re
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -123,15 +128,21 @@ def _head_tail(text: str) -> str:
 def _post_to_webhook(url: str, payload: dict[str, Any]) -> None:
     """Ship the full payload out of band, so it never enters the log pipeline.
 
-    Fire and forget: a debug sink must never slow down or fail an extraction,
-    so this swallows every error and never retries.
+    Dispatched on a daemon thread: this fires on every repair, and a
+    synchronous post would add up to the timeout per prompt — tens of seconds
+    per file against a slow collector, for a diagnostic. Fire and forget, so
+    it swallows every error and never retries.
     """
-    try:
-        import requests
 
-        requests.post(url, json=payload, timeout=(2, 5))
-    except Exception as exc:  # noqa: BLE001 - diagnostics must not raise
-        logger.warning("raw LLM debug webhook failed: %s", type(exc).__name__)
+    def _send() -> None:
+        try:
+            import requests
+
+            requests.post(url, json=payload, timeout=(2, 5))
+        except Exception as exc:  # noqa: BLE001 - diagnostics must not raise
+            logger.warning("raw LLM debug webhook failed: %s", type(exc).__name__)
+
+    threading.Thread(target=_send, name="raw-llm-debug-webhook", daemon=True).start()
 
 
 def _emit_raw_payload(json_str: str, context: dict[str, Any]) -> None:
@@ -209,27 +220,58 @@ def _skeleton(value: Any, known_keys: frozenset[str], depth: int = 3) -> Any:
 
 
 # Highlight / confidence / line-number extraction annotates the response with
-# ``// 0x..`` comments per value and ``%%%``-delimited word-confidence blocks,
+# ``// 0x..`` comments per value and marker-delimited word-confidence blocks,
 # then maps them onto the parsed structure POSITIONALLY — a flat comment list
 # popped during a recursive walk (see the cloud highlight_data plugin's
 # ``_process_json`` / ``map_comments``). Any reshape of the parsed value shifts
 # that alignment and silently attaches line numbers to the wrong fields, which
-# is worse than the error we are fixing. Detect the annotations and refuse to
-# reshape. ``(?<![:\w])`` keeps URLs such as ``https://`` from matching.
-_ANNOTATED_RESPONSE = re.compile(r"%%%|(?<![:\w])//")
+# is worse than the error we are fixing, so an annotated response is never
+# reshaped.
+#
+# Requiring the ``0x`` payload matters: a bare ``//`` also occurs inside
+# ordinary document values — a path, "N/A // pending" — and treating those as
+# annotations would silently switch the fix OFF for those documents, leaving
+# the very AttributeError this exists to prevent. ``(?<![:\w])`` additionally
+# keeps ``https://`` out.
+_HEX_ANNOTATION = re.compile(r"(?<![:\w])//\s*0x", re.IGNORECASE)
+
+
+def _word_confidence_marker() -> str:
+    """Must track the consumer, which reads the same env var (default ``%%%``).
+
+    Hardcoding it would silently break both the reshape guard and the alignment
+    check for any operator who overrides the marker.
+    """
+    return os.getenv("WORD_CONFIDENCE_MARKER", "%%%")
+
+
+def _word_confidence_block(marker: str) -> re.Pattern[str]:
+    # Paired, as the consumer strips it. A single stray marker in a value (a
+    # table separator, say) is not an annotation and must not trip the guard.
+    return re.compile(f"{re.escape(marker)}.*?{re.escape(marker)}", re.DOTALL)
 
 
 def _is_annotated(json_str: str) -> bool:
     """True when a positional metadata pass depends on the exact structure.
 
-    Known gap (accepted, UN-4017): the consumer side extracts comments with
-    ``re.findall(r"//(.*)")`` over the raw text, so a *value* containing ``//``
-    — a URL, a path, ``"N/A // pending"`` — reads as a comment. On a line with
-    no real hex comment that adds an entry and shifts every later field's line
-    number: the same offset class as the PR #546 regression. Not fixed here;
-    revisit if it is ever observed or reported.
+    Known gap (accepted, UN-4017): the consumer extracts comments with
+    ``re.findall(r"//(.*)")`` over raw text, so a *value* containing ``//``
+    still reads as a comment there and can shift later fields' line numbers —
+    the same offset class as the PR #546 regression. Not fixed here; the
+    alignment check reports it.
     """
-    return bool(_ANNOTATED_RESPONSE.search(json_str))
+    if not isinstance(json_str, str):
+        # Callers historically passed anything json.loads accepts, bytes
+        # included. Diagnostics must not narrow the accepted input.
+        return False
+    marker = _word_confidence_marker()
+    # Substring pre-check first: the regex scan is per-prompt per-file, and the
+    # overwhelmingly common response carries neither marker.
+    if "//" not in json_str and marker not in json_str:
+        return False
+    if _HEX_ANNOTATION.search(json_str):
+        return True
+    return bool(_word_confidence_block(marker).search(json_str))
 
 
 def _count_leaves(value: Any) -> int:
@@ -252,7 +294,7 @@ def _count_leaves(value: Any) -> int:
 _HEX_COMMENT = re.compile(r"^[\s0-9a-fA-Fx,:;|_-]*$")
 
 
-def _annotation_alignment(json_str: str, parsed: Any) -> str:
+def _annotation_alignment(json_str: str) -> str:
     """Check the comment stream against the structure it maps onto.
 
     Two independent failure signatures, both invisible in the extracted output
@@ -265,11 +307,15 @@ def _annotation_alignment(json_str: str, parsed: Any) -> str:
 
     Counts only; comment content is never logged.
     """
-    # The consumer strips word-confidence blocks before parsing, so they are
-    # not part of the structure the comments map onto. Counting them here
-    # invents leaves that the real mapping never sees.
-    json_str = re.sub(r"%%%.*?%%%", "", json_str, flags=re.DOTALL)
-    comments = re.findall(r"//(.*)", json_str)
+    # The consumer strips word-confidence blocks and THEN parses, so both the
+    # comment count and the leaf count must come from the stripped text. Taking
+    # leaves from a parse of the unstripped text counts word-confidence tokens
+    # the real mapping never sees, and reports MISMATCH on every well-formed
+    # highlight+word-confidence response — a false positive on precisely the
+    # class this check exists for.
+    stripped = _word_confidence_block(_word_confidence_marker()).sub("", json_str)
+    parsed = _repair_legacy(stripped)
+    comments = re.findall(r"//(.*)", stripped)
     if not comments:
         # Word-confidence-only responses (``%%%`` with no per-value comments)
         # are not comment-mapped at all, so there is nothing to align.
@@ -482,7 +528,7 @@ def _log_cleansing_chain(
     """
     known_keys = frozenset(contract.required_keys) if contract else frozenset()
     annotated = _is_annotated(json_str)
-    alignment = _annotation_alignment(json_str, parsed) if annotated else "n/a"
+    alignment = _annotation_alignment(json_str) if annotated else "n/a"
     # An offset never fails the parse, so warn on it even when the contract is
     # met: this is the trail a "highlight is on the wrong line" report follows.
     level = logging.WARNING if not satisfied or "MISMATCH" in alignment else logging.DEBUG
@@ -565,7 +611,10 @@ def repair_json_with_best_structure(
     """
     parsed = _repair_legacy(json_str)
     satisfied = contract is None or contract.satisfied_by(parsed)
-    _log_cleansing_chain(json_str, parsed, contract, satisfied)
+    try:
+        _log_cleansing_chain(json_str, parsed, contract, satisfied)
+    except Exception:  # noqa: BLE001 - diagnostics must never fail a repair
+        logger.warning("JSON repair diagnostics failed", exc_info=True)
     if satisfied:
         return parsed
 
