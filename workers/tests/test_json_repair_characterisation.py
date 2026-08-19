@@ -305,32 +305,46 @@ RAW_FLAG = "DEBUG_LOG_RAW_LLM_RESPONSE"
 
 
 @pytest.mark.parametrize(
-    "flag,region,expected",
+    "flag,environment,expected",
     [
-        ("true", "STAGING", True),
-        ("true", "DEV", True),
         ("true", "staging", True),
-        ("true", "US", False),
-        ("true", "EU", False),
+        ("true", "dev", True),
+        ("true", "STAGING", True),
+        ("true", "production", False),
         ("true", "", False),
+        # Unset must fail closed: a worker that never received the var is the
+        # likeliest way this would ever leak.
         ("true", None, False),
-        ("false", "STAGING", False),
-        (None, "STAGING", False),
-        ("TRUE", "STAGING", True),
-        ("1", "STAGING", False),
+        # A value nobody anticipated is not an invitation.
+        ("true", "prod-eu", False),
+        ("true", "us", False),
+        ("false", "staging", False),
+        (None, "staging", False),
+        ("TRUE", "staging", True),
+        ("1", "staging", False),
     ],
 )
-def test_raw_debug_requires_flag_and_non_prod_region(monkeypatch, flag, region, expected):
-    for name, value in ((RAW_FLAG, flag), ("REGION", region)):
+def test_raw_debug_requires_flag_and_non_prod_environment(
+    monkeypatch, flag, environment, expected
+):
+    for name, value in ((RAW_FLAG, flag), ("DEPLOYMENT_ENV", environment)):
         monkeypatch.delenv(name, raising=False)
         if value is not None:
             monkeypatch.setenv(name, value)
     assert _raw_debug_enabled() is expected
 
 
+def test_region_alone_never_unlocks_raw_logging(monkeypatch):
+    """REGION is geography in prod (US/EU) — it must not gate this."""
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.delenv("DEPLOYMENT_ENV", raising=False)
+    assert _raw_debug_enabled() is False
+
+
 def test_raw_payload_is_not_logged_by_default(monkeypatch, caplog):
     monkeypatch.delenv(RAW_FLAG, raising=False)
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     secret = '{"patient_name": "Jane Roe"},{"ssn": "123-45-6789"}'
     with caplog.at_level(logging.DEBUG):
         repair_json_with_best_structure(secret, contract=DICT_CONTRACT)
@@ -340,7 +354,7 @@ def test_raw_payload_is_not_logged_by_default(monkeypatch, caplog):
 
 def test_raw_payload_is_logged_when_enabled_in_staging(monkeypatch, caplog):
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     secret = '{"patient_name": "Jane Roe"},{"ssn": "123-45-6789"}'
     with caplog.at_level(logging.DEBUG):
         repair_json_with_best_structure(secret, contract=DICT_CONTRACT)
@@ -350,7 +364,7 @@ def test_raw_payload_is_logged_when_enabled_in_staging(monkeypatch, caplog):
 def test_log_sink_elides_the_middle_and_keeps_the_end(monkeypatch, caplog):
     """The parse-breaking debris is at the end — it must survive clipping."""
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_MAX_CHARS", "80")
     raw = '{"a": "START' + "x" * 5000 + 'END"},"trailing-debris-json"'
     with caplog.at_level(logging.DEBUG):
@@ -362,7 +376,7 @@ def test_log_sink_elides_the_middle_and_keeps_the_end(monkeypatch, caplog):
 
 def test_webhook_sink_sends_the_untruncated_payload(monkeypatch):
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
     monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
     raw = '{"a": "' + "x" * 50000 + '"},{"b": 2}'
@@ -379,7 +393,7 @@ def test_webhook_sink_sends_the_untruncated_payload(monkeypatch):
 
 def test_webhook_sink_never_writes_the_payload_to_logs(monkeypatch, caplog):
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
     monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
     monkeypatch.setattr(
@@ -394,7 +408,7 @@ def test_webhook_sink_never_writes_the_payload_to_logs(monkeypatch, caplog):
 
 def test_webhook_failure_never_breaks_extraction(monkeypatch):
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
     monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://unreachable.invalid/raw")
     raw = OBJ + ',{"b": 2}'
@@ -405,7 +419,7 @@ def test_webhook_failure_never_breaks_extraction(monkeypatch):
 def test_shape_trace_is_emitted_without_any_flag(monkeypatch, caplog):
     """The PII-free diagnostic must be available in production as-is."""
     monkeypatch.delenv(RAW_FLAG, raising=False)
-    monkeypatch.setenv("REGION", "US")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "production")
     raw = '{"patient_name": "Jane Roe"},{"ssn": "123-45-6789"}'
     with caplog.at_level(logging.WARNING):
         repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
@@ -422,7 +436,7 @@ def test_skeleton_keeps_keys_and_drops_values():
 def test_raw_payload_is_emitted_on_success_too(monkeypatch, caplog):
     """Always-on capture: a clean parse is logged as well as a broken one."""
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     with caplog.at_level(logging.DEBUG):
         repair_json_with_best_structure(OBJ, contract=DICT_CONTRACT)
     assert "INV-001" in caplog.text
@@ -446,7 +460,7 @@ def test_shape_trace_covers_the_no_contract_path(monkeypatch, caplog):
 
 def test_zero_max_chars_disables_clipping(monkeypatch, caplog):
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_MAX_CHARS", "0")
     raw = '{"a": "' + "x" * 20000 + '"},{"b": 2}'
     with caplog.at_level(logging.DEBUG):
@@ -460,7 +474,7 @@ def test_webhook_payload_carries_correlation_ids(monkeypatch):
     from shared.infrastructure.logging.logger import LogContext
 
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
     monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
     WorkerLogger.set_context(LogContext(request_id="req-123", execution_id="exec-456"))
@@ -479,7 +493,7 @@ def test_log_sink_carries_execution_id(monkeypatch, caplog):
     from shared.infrastructure.logging.logger import LogContext
 
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.delenv("DEBUG_LOG_RAW_LLM_SINK", raising=False)
     WorkerLogger.set_context(LogContext(request_id="req-9", execution_id="exec-9"))
     with caplog.at_level(logging.DEBUG):
@@ -525,7 +539,7 @@ def test_webhook_sink_without_url_drops_payload_rather_than_logging_it(
 ):
     """A typo in the URL must not silently divert document content to logs."""
     monkeypatch.setenv(RAW_FLAG, "true")
-    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
     monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
     monkeypatch.delenv("DEBUG_RAW_LLM_WEBHOOK_URL", raising=False)
     secret = '{"patient_name": "Jane Roe"},{"b": 2}'

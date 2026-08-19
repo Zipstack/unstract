@@ -38,23 +38,27 @@ raw_logger = logging.getLogger("unstract.debug.raw_llm")
 _RAW_DEBUG_DEFAULT_MAX_CHARS = 4000
 
 
-# Environments where logging document content is acceptable. An allowlist, not
-# a "not production" check: an unset or unrecognised REGION must fail closed,
-# otherwise a worker that simply never received the var would start logging
-# customer data. REGION is US/EU in production.
-_NON_PROD_REGIONS = frozenset({"STAGING", "DEV", "INTEGRATION", "LOCAL"})
+# Environments where logging document content is acceptable. Deliberately not
+# keyed off REGION: that holds geography in production (US, EU) and an
+# environment name elsewhere (STAGING, DEV), so it answers "which environment
+# is this" only by accident — and its chart default is "STAGING", meaning an
+# environment that forgot to set it would read as non-prod. DEPLOYMENT_ENV
+# says only what it means and defaults to production, so unset, unrecognised,
+# and any future region all fail closed.
+_NON_PROD_ENVIRONMENTS = frozenset({"staging", "dev", "integration", "local"})
 
 
 def _raw_debug_enabled() -> bool:
     """Whether raw LLM payloads may be logged.
 
     Read per call so a test can toggle it; flipping it for real needs a pod
-    restart either way. Requires both the flag and a non-prod REGION, so
-    setting the flag in production cannot dump document content — a flag that
-    *can* be enabled in prod eventually will be.
+    restart either way. Requires both the flag and a non-prod DEPLOYMENT_ENV,
+    so setting the flag in production cannot dump document content — a flag
+    that *can* be enabled in prod eventually will be.
     """
     enabled = os.getenv("DEBUG_LOG_RAW_LLM_RESPONSE", "false").lower() == "true"
-    return enabled and os.getenv("REGION", "").strip().upper() in _NON_PROD_REGIONS
+    environment = os.getenv("DEPLOYMENT_ENV", "production").strip().lower()
+    return enabled and environment in _NON_PROD_ENVIRONMENTS
 
 
 def _correlation() -> dict[str, str]:
@@ -493,7 +497,7 @@ def _log_cleansing_chain(
                 "required_keys": list(contract.required_keys) if contract else [],
                 "legacy_shape": _shape(parsed),
                 "annotated": _is_annotated(json_str),
-                "region": os.getenv("REGION", ""),
+                "environment": os.getenv("DEPLOYMENT_ENV", ""),
             },
         )
 
