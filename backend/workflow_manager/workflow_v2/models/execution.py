@@ -234,6 +234,27 @@ class WorkflowExecution(BaseModel):
                 name="we_active_by_workflow_idx",
                 condition=~Q(status__in=["COMPLETED", "STOPPED", "ERROR"]),
             ),
+            # Partial index over UNDISPATCHED executions — see migration 0026.
+            # Serves the undispatched-execution sweep (undispatched_sweep.py), which
+            # terminalises rows left PENDING because the request died between
+            # create_workflow_execution and execute_workflow_async. Effectively EMPTY
+            # in steady state: an execution leaves PENDING within seconds, and one of
+            # task_id / queue_message_id is stamped the moment dispatch succeeds — so
+            # it costs almost nothing and only grows when something is wrong.
+            # we_active_by_workflow_idx above is *usable* for the same predicate
+            # (PENDING implies NOT IN terminal) but is keyed on workflow_id, which the
+            # sweep does not filter on — so without this the sweep falls back to a full
+            # scan of that index. Literals are frozen in the migration and tied to
+            # ExecutionStatus by tests/test_undispatched_execution_index.py.
+            models.Index(
+                fields=["created_at"],
+                name="we_undispatched_idx",
+                condition=Q(
+                    status="PENDING",
+                    task_id__isnull=True,
+                    queue_message_id__isnull=True,
+                ),
+            ),
         ]
 
     @property

@@ -1326,7 +1326,49 @@ class PgReaper:
                 dedup,
                 claims,
             )
+        self._sweep_undispatched_executions()
         self._maybe_recover_stuck_executions()
+
+    def _sweep_undispatched_executions(self) -> None:
+        """Terminalise executions created but never dispatched (backend-side).
+
+        The gap this closes: an abort between ``create_workflow_execution`` and
+        ``execute_workflow_async`` commits a PENDING row that was never queued. No
+        queue message and no barrier are ever created, so
+        :func:`recover_expired_barriers` — which scans ``pg_barrier_state`` — cannot
+        see it, and PENDING is not terminal, so nothing else resolves it either.
+        Observed as 967 orphans from one load test whose API tier shed 71% of traffic.
+
+        Delegated to the backend rather than done here: this reaper deliberately never
+        touches backend tables (it reads/writes execution state through the internal
+        API), and the sweep also needs the rate limiter and the API storage connector.
+        The reaper contributes what it uniquely has — leader election, so exactly one
+        instance sweeps — while the backend owns the logic.
+
+        Cadence-gated with the retention sweeps: these rows are already older than the
+        grace period, so there is nothing to gain from running it every tick.
+
+        **Swallowed on failure**, unlike barrier recovery. This cleans up work that is
+        already dead; a fault here must not discard the connection or abort the tick
+        and thereby defer schedule dispatch, which serves live traffic.
+        """
+        try:
+            response = self._get_api_client().sweep_undispatched_executions()
+        except Exception:
+            self._metrics.undispatched_sweep_failures.inc()
+            logger.warning(
+                "Reaper: undispatched-execution sweep failed; retrying next sweep",
+                exc_info=True,
+            )
+            return
+        swept = (getattr(response, "data", None) or {}).get("swept", 0)
+        if swept:
+            self._metrics.undispatched_swept.inc(swept)
+            logger.info(
+                "Reaper: terminalised %s undispatched execution(s) "
+                "(created but never queued)",
+                swept,
+            )
 
     def _maybe_recover_stuck_executions(self) -> None:
         """Opt-in safety-net: finalize PG executions stranded non-terminal after all

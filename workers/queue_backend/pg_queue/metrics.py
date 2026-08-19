@@ -282,6 +282,21 @@ class ReaperMetrics(_Exporter):
             "Orphan-claim recovery attempts that raised (row left for retry)",
             registry=self.registry,
         )
+        self.undispatched_swept = Counter(
+            "pg_reaper_undispatched_swept_total",
+            "Executions terminalised because they were created but never dispatched "
+            "(no task_id and no queue_message_id past the grace period). These have no "
+            "barrier, so barrier recovery cannot see them; a sustained non-zero rate "
+            "means requests are dying between create_workflow_execution and dispatch",
+            registry=self.registry,
+        )
+        self.undispatched_sweep_failures = Counter(
+            "pg_reaper_undispatched_sweep_failures_total",
+            "Undispatched-execution sweep calls that raised (swallowed so the tick "
+            "still dispatches schedules; a sustained non-zero rate means PENDING rows "
+            "are accumulating unrecovered)",
+            registry=self.registry,
+        )
         self.sweep_failures = Counter(
             "pg_reaper_sweep_failures_total",
             "Whole-sweep failures, by swept table (see the reaper fail-streak log)",
