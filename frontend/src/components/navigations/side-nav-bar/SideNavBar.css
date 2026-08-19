@@ -1,18 +1,24 @@
 /*
- * The sidebar shares the top nav's surface.
+ * The sidebar is a LIGHT surface.
  *
- * PageLayout.css paints `.topNav` with `var(--primary)`; this file used to
- * hardcode #0d3a63, so the two bars that meet at the top-left corner were
- * different colours.
+ * It has been three colours: a hardcoded #0d3a63 navy, then `var(--primary)`
+ * violet (which it shared with the top nav). The Figma design puts the nav on
+ * the same white plane as the rest of the shell and keeps the brand violet for
+ * the ACTIVE item only, so this is now `--sidebar` -- the token that exists for
+ * exactly this surface and that follows light/dark on its own.
  *
- * Deliberately NOT `var(--sidebar)`: that token is `--neutral-0` (white) in
- * light mode, and every rule below this one is written for a dark surface —
- * white headings, #b4c2cf item text, rgba(255,255,255,…) dividers, and
- * `filter: brightness(0) invert(1)` on the icons. On white they would all
- * disappear. `--primary` keeps the light-on-dark family valid.
+ * Every rule below is therefore written for a light surface: `--sidebar-
+ * foreground` text, `--sidebar-border` hairlines, and icons tinted through
+ * `currentColor`. Putting the background back to a dark value without also
+ * reverting those would leave dark-on-dark text.
  */
 .side-bar {
-  background-color: var(--primary);
+  background-color: var(--sidebar);
+  /*
+   * The nav and the content area are both white now. Without this hairline the
+   * boundary between them only exists where an active pill happens to sit.
+   */
+  border-inline-end: 1px solid var(--sidebar-border);
   overflow: hidden;
   height: 100%;
 }
@@ -60,7 +66,7 @@
   padding: 8px;
   height: auto;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-top: 1px solid var(--sidebar-border);
   border-radius: 0;
   flex-shrink: 0;
   background: transparent;
@@ -68,11 +74,11 @@
 }
 
 .sidebar-toggle-container.ant-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--sidebar-accent);
 }
 
 .sidebar-toggle-icon {
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--muted-foreground);
   font-size: 13px;
   /* width/height, not font-size alone: antd shipped an icon FONT (sized by
    * font-size); lucide ships SVGs, which ignore it and fall back to their
@@ -83,13 +89,13 @@
 }
 
 /*
- * Was #1890ff (antd's default blue) — an off-palette accent that now sits on
- * a violet sidebar. The pinned state just needs to read as "on" against the
- * unpinned rgba(255,255,255,0.6) above, so full white carries it without
- * introducing a third brand colour.
+ * The pinned state just needs to read as "on" against the muted rest colour
+ * above. It has been #1890ff (antd's default blue) and then #ffffff for the
+ * violet bar; on a light surface the brand violet is both on-palette and the
+ * same accent the active item uses, so the two agree.
  */
 .sidebar-toggle-icon.pinned {
-  color: #ffffff;
+  color: var(--sidebar-primary);
 }
 
 .secondary-list-wrapper {
@@ -108,33 +114,39 @@
 }
 
 /*
- * The menu icons are inline SVG assets with `fill="#90A4B7"` baked in — a
- * slate grey picked for the old navy sidebar, where it measured 4.54:1. On
- * `--primary` violet it collapses to 1.84:1 and the icons all but vanish.
+ * The menu icons are single-colour SVGs with `fill="#90A4B7"` baked in -- a
+ * slate picked for the old navy sidebar. They arrive as a per-item `src`, so
+ * `color` cannot reach them; the file used to recolour them wholesale with
+ * `filter: brightness(0) invert(1)` to force them white for the dark surface.
  *
- * The assets are data-URI <img> sources, so `color` cannot reach them and
- * recolouring would mean re-authoring every SVG. Instead the same filter the
- * rule below already uses for hover/active is applied at rest, then dimmed
- * with opacity to match `.sidebar-item-text`'s 0.85 — so an idle icon is
- * white-at-85% and the active one goes to full white, preserving the
- * inactive/active distinction the hover rule was drawing.
+ * That filter can reach black or white but not an arbitrary hue, and the
+ * design needs the ACTIVE icon violet. So the SVG is used as a MASK over a
+ * `currentColor` fill instead: the icon takes whatever colour its row already
+ * has, which lets the active rule below tint label and icon in one
+ * declaration. `--menu-item-icon` is set per item in SideNavBar.jsx.
  */
 .side-bar .menu-item-icon {
-  margin-top: 1;
-  height: auto;
+  /*
+   * Was `width: 25px; height: auto` on an <img>. A masked span has no
+   * intrinsic size, so the height must be stated; `contain` keeps the 20px
+   * artwork at 20px inside the 25px column the collapsed rail is spaced for.
+   */
+  /*
+   * `display` is load-bearing: this replaced an <img>, where width/height
+   * apply intrinsically. A <span> is inline by default, so both were ignored
+   * and the icon collapsed to a 0x0 box (present, masked, and invisible).
+   */
+  display: inline-block;
   width: 25px;
-  filter: brightness(0) invert(1);
-  opacity: 0.85;
-}
-
-.space-styles-active .menu-item-icon,
-.space-styles:hover .menu-item-icon {
-  filter: brightness(0) invert(1);
-  opacity: 1;
+  height: 20px;
+  flex-shrink: 0;
+  background-color: currentColor;
+  mask: var(--menu-item-icon) no-repeat center / contain;
+  -webkit-mask: var(--menu-item-icon) no-repeat center / contain;
 }
 
 .sidebar-footer-icons {
-  color: white;
+  color: var(--sidebar-foreground);
   font-size: 20px;
   /* width/height, not font-size alone: antd shipped an icon FONT (sized by
    * font-size); lucide ships SVGs, which ignore it and fall back to their
@@ -143,7 +155,7 @@
   height: 20px;
 }
 .sidebar-footer-text {
-  color: white;
+  color: var(--sidebar-foreground);
   padding-left: 10px;
 }
 
@@ -152,50 +164,76 @@
   padding: 10px 8px;
   border-radius: 8px;
   width: 100%;
+  /* Sets `currentColor` for the masked icon as well as the label. */
+  color: var(--sidebar-foreground);
 }
 
 /*
- * Was #005b82 — a navy-family highlight chosen for the old navy sidebar,
- * which reads as a muddy blue patch on violet. A white overlay tints
- * whatever the surface happens to be, so it tracks `--primary` in both
- * light and dark mode instead of naming a second colour.
+ * Hover and active are washes of the brand colour rather than named tints:
+ * `color-mix` tracks `--primary` in both light and dark, the same reasoning
+ * that made the violet sidebar use rgba(255,255,255,.16) instead of naming a
+ * second colour. Deliberately NOT `--sidebar-accent`, which is a neutral grey
+ * and would drop the violet the design puts on the selected item.
+ */
+.space-styles:hover {
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+}
+
+/*
+ * `--primary` itself (#6f5cef) measures 4.04:1 on this wash -- under AA for
+ * the 13px label. `--violet-600` is the palette's own next step down, still
+ * reads as the same accent, and clears it at 5.2:1.
+ *
+ * Dark mode needs the opposite direction, not the same value: there the wash
+ * sits on a near-black sidebar, so a DARKER violet would be worse. Hence the
+ * override rather than one theme-agnostic colour.
  */
 .space-styles-active,
-.space-styles:hover {
-  background: rgba(255, 255, 255, 0.16);
+.space-styles-active:hover {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--violet-600);
+}
+
+.dark .space-styles-active,
+.dark .space-styles-active:hover {
+  color: var(--violet-300);
 }
 
 .space-styles-disable {
   cursor: not-allowed;
 }
 
+/* Section labels (BUILD / MANAGE / REVIEW) are secondary to the items. */
 .sidebar-main-heading {
-  color: white;
+  color: var(--muted-foreground);
   font-weight: 600;
   font-size: 15px;
 }
 
 /*
- * #b4c2cf was a muted slate picked to sit on the old navy sidebar, where it
- * measured 6.41:1. On `--primary` violet it falls to 2.6:1 — under even the
- * 3:1 large-text floor, so it cannot carry over.
- *
- * White is 4.72:1 on violet and clears AA for normal text; the tints between
- * (#e8e5fb, #dcd8f9) top out at 3.82:1 and do not. Muting is done with
- * opacity instead, which keeps the ratio close to white's while still
- * separating inactive items from the active one (which is full-strength).
+ * Was rgba(255,255,255,.85) for the violet surface. antd's Typography sets its
+ * own colour, so this is stated rather than inherited from `.space-styles`;
+ * the active override below then has to be stated too.
  */
 .sidebar-item-text {
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--sidebar-foreground);
   text-align: left;
 }
 
+/* `currentColor` so the label follows the row's per-theme active colour
+ * above instead of restating it twice. */
 .space-styles-active .sidebar-item-text {
-  color: white;
+  color: currentColor;
 }
 
-.space-styles:hover .sidebar-item-text {
-  color: white;
+/*
+ * The 0.8 wash reads fine for the description on the plain surface (9.2:1),
+ * but on the active row's violet it falls to 2.97:1. 11px is normal text for
+ * WCAG, so it gets no large-text exemption -- the active row states it at
+ * full strength.
+ */
+.space-styles-active .fs-11 {
+  opacity: 1;
 }
 
 .slider-wrap {
@@ -227,23 +265,20 @@
 }
 
 .sidebar-divider {
-  background-color: rgba(255, 255, 255, 0.3);
+  background-color: var(--sidebar-border);
+  border-color: var(--sidebar-border);
   margin: 10px 0;
 }
 
-/* Same rebase as .sidebar-item-text — #b4c2cf is 2.6:1 on violet. */
+/* A lucide SVG (stroke: currentColor), so it follows the row like the masked
+ * icons do -- no separate active/hover rules needed. */
 .sidebar-antd-icon {
   font-size: 22px;
-  color: rgba(255, 255, 255, 0.85);
+  color: inherit;
   width: 25px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.space-styles-active .sidebar-antd-icon,
-.space-styles:hover .sidebar-antd-icon {
-  color: white;
 }
 
 .sidebar-menu-tag {

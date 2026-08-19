@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
-import { Divider, Image, Tag } from "@/components/ui/shims/antd-leaves";
+import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
 import { Popover, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Layout } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -693,11 +693,13 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                               ?.toLowerCase()
                               ?.replaceAll(/\s+/g, "-")}`}
                           >
-                            <Image
-                              src={el.image}
-                              alt="side_icon"
+                            <span
                               className="menu-item-icon"
-                              preview={false}
+                              style={{
+                                "--menu-item-icon": `url("${el.image}")`,
+                              }}
+                              role="img"
+                              aria-label="side_icon"
                             />
                             {!collapsed && (
                               <div>
@@ -753,11 +755,13 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             ?.toLowerCase()
                             ?.replaceAll(/\s+/g, "-")}`}
                         >
-                          <Image
-                            src={el.image}
-                            alt="side_icon"
+                          <span
                             className="menu-item-icon"
-                            preview={false}
+                            style={{
+                              "--menu-item-icon": `url("${el.image}")`,
+                            }}
+                            role="img"
+                            aria-label="side_icon"
                           />
                           {!collapsed && (
                             <div>
