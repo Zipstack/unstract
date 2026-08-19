@@ -135,13 +135,18 @@ def _emit_raw_payload(json_str: str, context: dict[str, Any]) -> None:
     sink = os.getenv("DEBUG_LOG_RAW_LLM_SINK", "log").strip().lower()
     url = os.getenv("DEBUG_RAW_LLM_WEBHOOK_URL", "").strip()
     correlation = _correlation()
-    if sink == "webhook" and url:
+    if sink == "webhook":
+        # Fail closed. Choosing the webhook sink is a choice to keep document
+        # content out of the log pipeline, so a missing URL must not quietly
+        # put it there instead — a typo would become a privacy regression.
+        if not url:
+            logger.warning(
+                "DEBUG_LOG_RAW_LLM_SINK=webhook but DEBUG_RAW_LLM_WEBHOOK_URL is "
+                "unset; dropping the raw payload rather than logging it"
+            )
+            return
         _post_to_webhook(url, {**correlation, **context, "raw_response": json_str})
         return
-    if sink == "webhook":
-        logger.warning(
-            "DEBUG_LOG_RAW_LLM_SINK=webhook but DEBUG_RAW_LLM_WEBHOOK_URL is unset"
-        )
     # request_id is stamped onto the record by RequestIDFilter; execution_id is
     # not, so pass it explicitly to keep a payload tied to its execution.
     raw_logger.warning(

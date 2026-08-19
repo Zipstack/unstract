@@ -518,3 +518,18 @@ def test_word_confidence_only_response_is_not_an_alignment_mismatch(caplog):
         repair_json_with_best_structure(WORD_CONF, contract=DICT_CONTRACT)
     assert "MISMATCH" not in caplog.text
     assert "comments=0 n/a" in caplog.text
+
+
+def test_webhook_sink_without_url_drops_payload_rather_than_logging_it(
+    monkeypatch, caplog
+):
+    """A typo in the URL must not silently divert document content to logs."""
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
+    monkeypatch.delenv("DEBUG_RAW_LLM_WEBHOOK_URL", raising=False)
+    secret = '{"patient_name": "Jane Roe"},{"b": 2}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(secret, contract=DICT_CONTRACT)
+    assert "Jane Roe" not in caplog.text
+    assert "dropping the raw payload" in caplog.text
