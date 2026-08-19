@@ -10,9 +10,6 @@ extraction passes the LLM's parsed JSON straight through as the outputs map,
 and that parse returns a list whenever the model wraps its answer in prose, a
 reasoning block, or a stray fence marker. Validating here means no future
 executor can 500 the backend the same way.
-
-NOTE: run via a Django-bootstrapped harness (no pytest-django in this repo yet;
-CI-gating of these view tests is tracked in UN-3692). Verified locally green.
 """
 
 import json
@@ -57,6 +54,24 @@ def test_list_outputs_rejected_with_400_and_a_reason():
     assert "invalid json" not in body["error"].lower()
 
 
+def test_non_mapping_metadata_rejected():
+    """metadata is indexed five times at helper lines 135-139, before the
+    `if not prompts` early exit — so it 500s even with valid outputs."""
+    request = MagicMock()
+    request.method = "POST"
+    request.body = json.dumps(
+        {
+            "prompt_ids": ["p1"],
+            "document_id": "doc-1",
+            "outputs": {"invoice_number": "INV-001"},
+            "metadata": [],
+        }
+    )
+    response = prompt_output(request)
+    assert response.status_code == 400
+    assert "metadata must be a JSON object" in _body(response)["error"]
+
+
 def test_non_mapping_outputs_rejected():
     for outputs in ("a string", 42, True, [], [1, 2]):
         response = prompt_output(_request(outputs))
@@ -64,15 +79,22 @@ def test_non_mapping_outputs_rejected():
 
 
 def test_helper_is_never_reached_for_invalid_outputs():
-    """Rejected at the boundary, before any ORM or helper work happens."""
-    with patch(f"{_VIEWS}.status") as _status:
-        _status.HTTP_400_BAD_REQUEST = 400
-        with patch(
-            "prompt_studio.prompt_studio_output_manager_v2."
-            "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
-        ) as handler:
-            prompt_output(_request([{"a": 1}]))
+    """Rejected at the boundary, before any ORM or helper work happens.
+
+    The ORM is patched so the assertion cannot pass by accident: without it,
+    removing the guard makes `filter()` raise on the fake prompt id and the
+    helper goes uncalled for the wrong reason.
+    """
+    with patch(
+        "prompt_studio.prompt_studio_v2.models.ToolStudioPrompt.objects"
+    ) as prompts, patch(
+        "prompt_studio.prompt_studio_output_manager_v2."
+        "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
+    ) as handler:
+        prompts.filter.return_value.order_by.return_value = []
+        response = prompt_output(_request([{"a": 1}]))
     handler.assert_not_called()
+    assert response.status_code == 400
 
 
 def test_dict_outputs_still_reach_the_helper():

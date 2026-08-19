@@ -69,28 +69,31 @@ def prompt_output(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # `outputs` is indexed by prompt key downstream (OutputManagerHelper.
-    # handle_prompt_output_update -> outputs.get(prompt.prompt_key)), so a
-    # non-mapping raises AttributeError deep in the helper and surfaces as an
-    # opaque 500. Single-pass extraction passes the LLM's parsed JSON straight
-    # through here, and that parse yields a list whenever the model wraps its
-    # answer in prose or a fence — so this is reachable from real traffic, not
-    # just a malformed client. Reject it at the boundary with a reason
-    # attached, and no future executor can 500 the backend this way (UN-4017).
-    if not isinstance(outputs, dict):
-        return JsonResponse(
-            {
-                "success": False,
-                "error": (
-                    "outputs must be a JSON object keyed by prompt name, got "
-                    f"{type(outputs).__name__}. A JSON array is valid JSON but "
-                    "cannot be indexed by prompt name; single-pass extraction "
-                    "produces one when the LLM returns an array rather than an "
-                    "object."
-                ),
-            },
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    # Both of these are indexed by key inside OutputManagerHelper.
+    # handle_prompt_output_update: `metadata` at its lines 135-139 (context,
+    # challenge_data, highlight_data, confidence_data, word_confidence_data,
+    # all unconditional and reached before the `if not prompts` early exit),
+    # and `outputs` at line 179. A non-mapping in either raises AttributeError
+    # deep in the helper and surfaces as an opaque 500.
+    #
+    # Reachable from ordinary traffic, not just a malformed client: single-pass
+    # extraction passes the LLM's parsed JSON straight through as `outputs`,
+    # and the repair returns a list whenever the model adds commentary or
+    # answers in prose. Rejecting both here with a reason means no executor can
+    # 500 the backend this way (UN-4017).
+    for field_name, value in (("outputs", outputs), ("metadata", metadata)):
+        if not isinstance(value, dict):
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        f"{field_name} must be a JSON object, got "
+                        f"{type(value).__name__}. A JSON array is valid JSON "
+                        "but cannot be indexed by key."
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
     try:
         from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
