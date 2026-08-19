@@ -584,10 +584,9 @@ def _normalize_minimax_thinking(
     if thinking is None:
         return
     if is_m2_model:
-        raise ValueError(
-            f"{model_id} uses always-on thinking and does not accept "
-            "thinking configuration."
-        )
+        # M2.x always thinks; the provider accepts this parameter but ignores it.
+        adapter_metadata.pop("thinking")
+        return
     if not isinstance(thinking, dict) or thinking.get("type") not in {
         "adaptive",
         "disabled",
@@ -634,8 +633,6 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
         _normalize_minimax_thinking(adapter_metadata, model_id)
 
         validated = MiniMaxLLMParameters(**adapter_metadata).model_dump()
-        if _is_minimax_m2_model(model_id):
-            validated.pop("thinking", None)
         validated["cost_model"] = f"{_MINIMAX_PROVIDER_PREFIX}{model_id}"
         if context_window := _minimax_context_window(model_id):
             validated["context_window"] = context_window

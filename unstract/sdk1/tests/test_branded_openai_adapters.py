@@ -189,24 +189,27 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
 def test_minimax_m2_uses_always_on_thinking_without_request_parameter() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
-    assert "thinking" not in validated
-    assert "thinking" not in MiniMaxLLMParameters.validate(dict(validated))
+    assert validated["thinking"] is None
+    assert MiniMaxLLMParameters.validate(dict(validated))["thinking"] is None
 
     explicitly_enabled = MiniMaxLLMParameters.validate(
         {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": True}
     )
-    assert "thinking" not in explicitly_enabled
+    assert explicitly_enabled["thinking"] is None
 
 
-def test_minimax_m2_rejects_configurable_thinking_payload() -> None:
-    with pytest.raises(ValueError, match="uses always-on thinking"):
-        MiniMaxLLMParameters.validate(
-            {
-                "model": "MiniMax-M2.7",
-                "api_key": "k",
-                "thinking": {"type": "adaptive"},
-            }
-        )
+def test_minimax_m2_strips_explicit_thinking_payload() -> None:
+    # The provider accepts a thinking payload for M2.x but ignores it, so drop it
+    # instead of failing a call that works today.
+    validated = MiniMaxLLMParameters.validate(
+        {
+            "model": "MiniMax-M2.7",
+            "api_key": "k",
+            "thinking": {"type": "disabled"},
+        }
+    )
+
+    assert validated["thinking"] is None
 
 
 def test_minimax_m2_thinking_rules_require_model_family_boundary() -> None:
@@ -326,8 +329,6 @@ def test_branded_llm_schema_exposes_api_base_with_default(
 
 
 def test_minimax_schema_covers_models_thinking_and_regions() -> None:
-    from jsonschema import Draft202012Validator
-
     schema = json.loads(MiniMaxLLMAdapter.get_json_schema())
 
     assert schema["properties"]["model"]["examples"] == [
@@ -340,27 +341,6 @@ def test_minimax_schema_covers_models_thinking_and_regions() -> None:
         "standard",
         "priority",
     ]
-    assert schema["allOf"][0]["then"]["properties"]["enable_thinking"] == {"const": True}
-    validator = Draft202012Validator(schema)
-    config = {
-        "adapter_name": "m2",
-        "api_key": "k",
-    }
-    for model in (
-        "MiniMax-M2.7",
-        "minimax-m2.7",
-        "minimax/MiniMax-M2.7",
-        "anthropic/minimax-m2.7",
-    ):
-        m2_config = {**config, "model": model}
-        assert not list(validator.iter_errors({**m2_config, "enable_thinking": True}))
-        assert list(validator.iter_errors({**m2_config, "enable_thinking": False}))
-
-    assert not list(
-        validator.iter_errors(
-            {**config, "model": "MiniMax-M20", "enable_thinking": False}
-        )
-    )
     assert "reasoning_effort" not in json.dumps(schema)
 
 
