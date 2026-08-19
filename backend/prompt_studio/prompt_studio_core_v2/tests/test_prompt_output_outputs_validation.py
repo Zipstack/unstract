@@ -105,3 +105,66 @@ def test_missing_outputs_defaults_to_empty_dict_and_is_accepted():
         handler.return_value = []
         response = prompt_output(request)
     assert response.status_code == 200
+
+
+# --- The in-backend execution path -------------------------------------
+#
+# prompt_studio_helper._handle_response is the other route to
+# handle_prompt_output_update. It dispatches the same single_pass_extraction
+# executor, so it receives the same shapes; guarding only the internal API
+# would have left this path still able to 500.
+
+from prompt_studio.prompt_studio_core_v2.exceptions import AnswerFetchError  # noqa: E402
+from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (  # noqa: E402
+    PromptStudioHelper,
+)
+
+
+def _handle(outputs, is_single_pass=True):
+    return PromptStudioHelper._handle_response(
+        response={"output": outputs, "metadata": {}, "status": "COMPLETED"},
+        run_id="run-1",
+        prompts=[],
+        document_id="doc-1",
+        is_single_pass=is_single_pass,
+    )
+
+
+def test_in_backend_path_rejects_a_list_with_422():
+    try:
+        _handle([{"invoice_number": "INV-001"}, {"b": 2}])
+    except AnswerFetchError as exc:
+        assert exc.status_code == 422
+        assert "JSON array" in str(exc.detail)
+    else:
+        raise AssertionError("a list was accepted on the in-backend path")
+
+
+def test_in_backend_single_pass_message_points_at_the_prompt():
+    try:
+        _handle([{"a": 1}], is_single_pass=True)
+    except AnswerFetchError as exc:
+        assert "all prompts share one response" in str(exc.detail)
+    else:
+        raise AssertionError("expected AnswerFetchError")
+
+
+def test_in_backend_single_prompt_omits_the_single_pass_advice():
+    """That advice is only true of single pass; it would misdirect otherwise."""
+    try:
+        _handle([{"a": 1}], is_single_pass=False)
+    except AnswerFetchError as exc:
+        assert "JSON array" in str(exc.detail)
+        assert "all prompts share one response" not in str(exc.detail)
+    else:
+        raise AssertionError("expected AnswerFetchError")
+
+
+def test_in_backend_path_still_accepts_a_dict():
+    with patch(
+        "prompt_studio.prompt_studio_output_manager_v2."
+        "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
+    ) as handler:
+        handler.return_value = []
+        _handle({"invoice_number": "INV-001"})
+    handler.assert_called_once()

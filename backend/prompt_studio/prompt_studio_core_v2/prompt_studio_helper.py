@@ -1875,10 +1875,33 @@ class PromptStudioHelper:
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
 
+        outputs = response["output"]
+        # Same guard as the internal API (UN-4017). This is the in-backend
+        # execution path — it dispatches the identical single_pass_extraction
+        # executor, so it can receive the identical bad shape. Without this,
+        # handle_prompt_output_update does outputs.get(prompt.prompt_key) on a
+        # list and raises AttributeError, which surfaces as a bare 500.
+        if not isinstance(outputs, dict):
+            detail = (
+                "LLM returned a JSON array where a single JSON object keyed by "
+                f"field name is expected (got {type(outputs).__name__})."
+            )
+            if is_single_pass:
+                detail += (
+                    " In single-pass extraction all prompts share one response,"
+                    " so a prompt that asks for a list or for separate JSON"
+                    " entries can change the shape of the entire result."
+                    " Rephrase that prompt to describe the value of its own"
+                    " field, or run these prompts with single-pass extraction"
+                    " turned off."
+                )
+            logger.error("%s run_id=%s document_id=%s", detail, run_id, document_id)
+            raise AnswerFetchError(detail, status_code=422)
+
         return OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
-            outputs=response["output"],
+            outputs=outputs,
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
