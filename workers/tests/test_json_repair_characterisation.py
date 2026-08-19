@@ -374,7 +374,7 @@ def test_webhook_sink_sends_the_untruncated_payload(monkeypatch):
     repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
     assert sent["url"] == "http://collector.local/raw"
     assert sent["payload"]["raw_response"] == raw, "payload was truncated"
-    assert sent["payload"]["reason"] == "contract_not_satisfied"
+    assert sent["payload"]["outcome"] == "contract_not_satisfied"
 
 
 def test_webhook_sink_never_writes_the_payload_to_logs(monkeypatch, caplog):
@@ -409,7 +409,7 @@ def test_shape_trace_is_emitted_without_any_flag(monkeypatch, caplog):
     raw = '{"patient_name": "Jane Roe"},{"ssn": "123-45-6789"}'
     with caplog.at_level(logging.WARNING):
         repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
-    assert "JSON repair did not satisfy contract" in caplog.text
+    assert "did NOT satisfy contract" in caplog.text
     assert "annotated=False" in caplog.text
     assert "Jane Roe" not in caplog.text
 
@@ -417,3 +417,104 @@ def test_shape_trace_is_emitted_without_any_flag(monkeypatch, caplog):
 def test_skeleton_keeps_keys_and_drops_values():
     skeleton = _skeleton({"name": "Jane Roe", "items": [{"qty": 2}]})
     assert skeleton == {"name": "<str:8>", "items": [{"qty": "<int>"}]}
+
+
+def test_raw_payload_is_emitted_on_success_too(monkeypatch, caplog):
+    """Always-on capture: a clean parse is logged as well as a broken one."""
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(OBJ, contract=DICT_CONTRACT)
+    assert "INV-001" in caplog.text
+    assert "satisfied" in caplog.text
+
+
+def test_shape_trace_is_emitted_on_success_at_debug(monkeypatch, caplog):
+    monkeypatch.delenv(RAW_FLAG, raising=False)
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(OBJ, contract=DICT_CONTRACT)
+    assert "JSON repair satisfied contract" in caplog.text
+    assert "INV-001" not in caplog.text, "shape trace must carry no values"
+
+
+def test_shape_trace_covers_the_no_contract_path(monkeypatch, caplog):
+    monkeypatch.delenv(RAW_FLAG, raising=False)
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(OBJ)
+    assert "wanted=any" in caplog.text
+
+
+def test_zero_max_chars_disables_clipping(monkeypatch, caplog):
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_MAX_CHARS", "0")
+    raw = '{"a": "' + "x" * 20000 + '"},{"b": 2}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert "elided" not in caplog.text
+    assert "x" * 20000 in caplog.text
+
+
+def test_webhook_payload_carries_correlation_ids(monkeypatch):
+    from shared.infrastructure.logging import WorkerLogger
+    from shared.infrastructure.logging.logger import LogContext
+
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
+    monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
+    WorkerLogger.set_context(LogContext(request_id="req-123", execution_id="exec-456"))
+    sent = {}
+    monkeypatch.setattr(
+        "executor.executors.json_repair_helper._post_to_webhook",
+        lambda url, payload: sent.update(payload),
+    )
+    repair_json_with_best_structure(OBJ + ',{"b": 2}', contract=DICT_CONTRACT)
+    assert sent["request_id"] == "req-123"
+    assert sent["execution_id"] == "exec-456"
+
+
+def test_log_sink_carries_execution_id(monkeypatch, caplog):
+    from shared.infrastructure.logging import WorkerLogger
+    from shared.infrastructure.logging.logger import LogContext
+
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("REGION", "STAGING")
+    monkeypatch.delenv("DEBUG_LOG_RAW_LLM_SINK", raising=False)
+    WorkerLogger.set_context(LogContext(request_id="req-9", execution_id="exec-9"))
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(OBJ, contract=DICT_CONTRACT)
+    assert "execution_id=exec-9" in caplog.text
+
+
+def test_alignment_mismatch_warns_even_when_parse_succeeds(caplog):
+    """A `//` inside a value adds a phantom comment and shifts line numbers.
+
+    The parse succeeds and the output looks fine, so this warning is the only
+    signal — the trail a "highlight is on the wrong line" report follows.
+    """
+    raw = '{\n  "url": "https://x.com/a",\n  "total": 1 // 0x2b\n}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert "MISMATCH" in caplog.text
+    assert "WARNING" in caplog.text
+
+
+def test_alignment_ok_when_every_leaf_has_a_comment(caplog):
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(ANNOTATED, contract=DICT_CONTRACT)
+    assert "alignment=comments=2 leaves=2 malformed=0 ok" in caplog.text
+
+
+def test_alignment_not_computed_for_unannotated_responses(caplog):
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(OBJ, contract=DICT_CONTRACT)
+    assert "alignment=n/a" in caplog.text
+
+
+def test_word_confidence_only_response_is_not_an_alignment_mismatch(caplog):
+    """`%%%` without `//` comments is not comment-mapped — nothing to align."""
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(WORD_CONF, contract=DICT_CONTRACT)
+    assert "MISMATCH" not in caplog.text
+    assert "comments=0 n/a" in caplog.text

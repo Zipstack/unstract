@@ -57,14 +57,47 @@ def _raw_debug_enabled() -> bool:
     return enabled and os.getenv("REGION", "").strip().upper() in _NON_PROD_REGIONS
 
 
+def _correlation() -> dict[str, str]:
+    """request_id / execution_id for tying a payload back to an execution.
+
+    The log formatter already stamps request_id onto every record, so this is
+    only needed for the webhook payload, which does not go through it. Never
+    raises: a diagnostics path must not be able to fail an extraction.
+    """
+    try:
+        from shared.infrastructure.logging import WorkerLogger
+
+        ctx = WorkerLogger.get_context()
+        if ctx is None:
+            return {}
+        return {
+            k: v
+            for k, v in (
+                ("request_id", ctx.request_id),
+                ("execution_id", ctx.execution_id),
+                ("organization_id", ctx.organization_id),
+                ("task_id", ctx.task_id),
+                ("correlation_id", ctx.correlation_id),
+            )
+            if v
+        }
+    except Exception:  # noqa: BLE001 - diagnostics must not raise
+        return {}
+
+
 def _head_tail(text: str) -> str:
     """Clip the middle, never the end.
 
-    Only used for the ``log`` sink, where the backend clips a single entry at
-    ~256KB anyway. The debris that breaks parsing — a trailing fence marker,
-    closing prose, an unterminated string — is at the END of the response, so
-    head-only truncation removes exactly the evidence worth having. Use the
-    ``webhook`` sink when the full payload is needed.
+    Set DEBUG_LOG_RAW_LLM_MAX_CHARS=0 for no clipping at all. A cap is kept as
+    the default because the clipping that matters happens upstream of the Logs
+    Explorer: the container runtime splits a log line at ~16KB, and Cloud
+    Logging caps a single entry at ~256KB — a payload above those never
+    arrives whole, whichever way you read it. The ``webhook`` sink bypasses
+    that pipeline entirely and is the way to get a genuinely full response.
+
+    When it does clip, it clips the middle: the debris that breaks parsing — a
+    trailing fence marker, closing prose, an unterminated string — is at the
+    END, so head-only truncation drops exactly the evidence worth having.
     """
     try:
         limit = int(
@@ -72,7 +105,7 @@ def _head_tail(text: str) -> str:
         )
     except ValueError:
         limit = _RAW_DEBUG_DEFAULT_MAX_CHARS
-    if len(text) <= limit:
+    if limit <= 0 or len(text) <= limit:
         return text
     half = limit // 2
     dropped = len(text) - (half * 2)
@@ -101,15 +134,21 @@ def _emit_raw_payload(json_str: str, context: dict[str, Any]) -> None:
     """
     sink = os.getenv("DEBUG_LOG_RAW_LLM_SINK", "log").strip().lower()
     url = os.getenv("DEBUG_RAW_LLM_WEBHOOK_URL", "").strip()
+    correlation = _correlation()
     if sink == "webhook" and url:
-        _post_to_webhook(url, {**context, "raw_response": json_str})
+        _post_to_webhook(url, {**correlation, **context, "raw_response": json_str})
         return
     if sink == "webhook":
         logger.warning(
             "DEBUG_LOG_RAW_LLM_SINK=webhook but DEBUG_RAW_LLM_WEBHOOK_URL is unset"
         )
+    # request_id is stamped onto the record by RequestIDFilter; execution_id is
+    # not, so pass it explicitly to keep a payload tied to its execution.
     raw_logger.warning(
-        "raw LLM response (%s): %s", context.get("reason", ""), _head_tail(json_str)
+        "raw LLM response (%s) execution_id=%s: %s",
+        context.get("outcome", ""),
+        correlation.get("execution_id", "-"),
+        _head_tail(json_str),
     )
 
 
@@ -169,6 +208,57 @@ def _is_annotated(json_str: str) -> bool:
     revisit if it is ever observed or reported.
     """
     return bool(_ANNOTATED_RESPONSE.search(json_str))
+
+
+def _count_leaves(value: Any) -> int:
+    """Leaves a positional comment walk would consume.
+
+    Mirrors ``map_comments``: it recurses into dicts and lists and consumes one
+    comment per leaf, with empty containers counting as a leaf themselves.
+    """
+    if isinstance(value, dict):
+        return sum(_count_leaves(v) for v in value.values()) if value else 1
+    if isinstance(value, list):
+        return sum(_count_leaves(v) for v in value) if value else 1
+    return 1
+
+
+# The metadata comment is hex plus separators. Anything else in a captured
+# comment means the capture picked up document text — the `//` of a URL, a
+# path, "N/A // pending" — because `//(.*)` is greedy to end of line and
+# swallows the real `// 0x..` that follows it on the same line.
+_HEX_COMMENT = re.compile(r"^[\s0-9a-fA-Fx,:;|_-]*$")
+
+
+def _annotation_alignment(json_str: str, parsed: Any) -> str:
+    """Check the comment stream against the structure it maps onto.
+
+    Two independent failure signatures, both invisible in the extracted output
+    — which looks perfectly well-formed while the metadata points at the wrong
+    fields:
+
+    * a count mismatch — a phantom comment shifted every later field;
+    * a malformed comment — the capture swallowed document text, so that
+      field's line number is garbage even though the counts still line up.
+
+    Counts only; comment content is never logged.
+    """
+    # The consumer strips word-confidence blocks before parsing, so they are
+    # not part of the structure the comments map onto. Counting them here
+    # invents leaves that the real mapping never sees.
+    json_str = re.sub(r"%%%.*?%%%", "", json_str, flags=re.DOTALL)
+    comments = re.findall(r"//(.*)", json_str)
+    if not comments:
+        # Word-confidence-only responses (``%%%`` with no per-value comments)
+        # are not comment-mapped at all, so there is nothing to align.
+        return "comments=0 n/a"
+    malformed = sum(1 for c in comments if not _HEX_COMMENT.match(c.strip()))
+    leaves = _count_leaves(parsed)
+    ok = len(comments) == leaves and not malformed
+    return (
+        f"comments={len(comments)} leaves={leaves} "
+        f"malformed={malformed} {'ok' if ok else 'MISMATCH'}"
+    )
 
 
 def _repair_legacy(json_str: str) -> Any:
@@ -355,32 +445,47 @@ def _pick_best_partial(value: Any, raw: str, contract: JsonContract) -> Any:
     return best if contract.score(best) else None
 
 
-def _log_cleansing_chain(json_str: str, parsed: Any, contract: JsonContract) -> None:
-    """Emit the step-by-step parse trace for a response that failed its contract.
+def _log_cleansing_chain(
+    json_str: str, parsed: Any, contract: JsonContract | None, satisfied: bool
+) -> None:
+    """Emit the step-by-step parse trace for every repair.
 
-    Structure only, at WARNING, so every production failure is diagnosable
-    without enabling anything. Which step mangled the response is the question
-    this answers — reconstructing it after the fact needs the whole chain.
+    A failure logs at WARNING so it is diagnosable in production with nothing
+    enabled; a success logs the same trace at DEBUG. Which step mangled a
+    response is the question this answers, and reconstructing it after the
+    fact is not possible from the outcome alone — hence the whole chain, on
+    every call rather than only the ones that blew up.
+
+    Structure only: no document content at any level.
     """
-    as_is = _reparse_without_wrap(json_str)
-    logger.warning(
-        "JSON repair did not satisfy contract | raw=%s annotated=%s | "
-        "legacy=%s | unwrapped=%s | wanted=%s keys=%s | skeleton=%s",
-        _shape(json_str),
-        _is_annotated(json_str),
-        _shape(parsed),
-        _shape(as_is),
-        contract.expect.__name__,
-        list(contract.required_keys),
-        json.dumps(_skeleton(parsed), ensure_ascii=False)[:500],
-    )
+    annotated = _is_annotated(json_str)
+    alignment = _annotation_alignment(json_str, parsed) if annotated else "n/a"
+    # An offset never fails the parse, so warn on it even when the contract is
+    # met: this is the trail a "highlight is on the wrong line" report follows.
+    level = logging.WARNING if not satisfied or "MISMATCH" in alignment else logging.DEBUG
+    if logger.isEnabledFor(level):
+        logger.log(
+            level,
+            "JSON repair %s | raw=%s annotated=%s alignment=%s | legacy=%s | "
+            "unwrapped=%s | wanted=%s keys=%s | skeleton=%s",
+            "satisfied contract" if satisfied else "did NOT satisfy contract",
+            _shape(json_str),
+            annotated,
+            alignment,
+            _shape(parsed),
+            _shape(_reparse_without_wrap(json_str)),
+            contract.expect.__name__ if contract else "any",
+            list(contract.required_keys) if contract else [],
+            json.dumps(_skeleton(parsed), ensure_ascii=False)[:500],
+        )
+
     if _raw_debug_enabled():
         _emit_raw_payload(
             json_str,
             {
-                "reason": "contract_not_satisfied",
-                "expected": contract.expect.__name__,
-                "required_keys": list(contract.required_keys),
+                "outcome": "satisfied" if satisfied else "contract_not_satisfied",
+                "expected": contract.expect.__name__ if contract else "any",
+                "required_keys": list(contract.required_keys) if contract else [],
                 "legacy_shape": _shape(parsed),
                 "annotated": _is_annotated(json_str),
                 "region": os.getenv("REGION", ""),
@@ -436,10 +541,10 @@ def repair_json_with_best_structure(
         result unchanged so the caller can reject it explicitly.
     """
     parsed = _repair_legacy(json_str)
-    if contract is None or contract.satisfied_by(parsed):
+    satisfied = contract is None or contract.satisfied_by(parsed)
+    _log_cleansing_chain(json_str, parsed, contract, satisfied)
+    if satisfied:
         return parsed
-
-    _log_cleansing_chain(json_str, parsed, contract)
 
     if not contract.reshape_annotated and _is_annotated(json_str):
         logger.warning(
