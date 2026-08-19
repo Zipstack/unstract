@@ -111,9 +111,13 @@ def _head_tail(text: str) -> str:
         limit = _RAW_DEBUG_DEFAULT_MAX_CHARS
     if limit <= 0 or len(text) <= limit:
         return text
-    half = limit // 2
-    dropped = len(text) - (half * 2)
-    return f"{text[:half]}…[{dropped} chars elided]…{text[-half:]}"
+    head = (limit + 1) // 2
+    tail = limit // 2
+    # tail can be 0 at limit=1, and text[-0:] is the WHOLE string — the cap
+    # would silently emit everything it was set to prevent.
+    suffix = text[-tail:] if tail else ""
+    dropped = len(text) - head - tail
+    return f"{text[:head]}…[{dropped} chars elided]…{suffix}"
 
 
 def _post_to_webhook(url: str, payload: dict[str, Any]) -> None:
@@ -178,18 +182,27 @@ def _shape(value: Any, sample: int = 8) -> str:
     return type(value).__name__
 
 
-def _skeleton(value: Any, depth: int = 3) -> Any:
-    """Structure with every leaf replaced by its type — keys, never values.
+def _skeleton(value: Any, known_keys: frozenset[str], depth: int = 3) -> Any:
+    """Structure with every leaf replaced by its type, and keys allowlisted.
 
-    Keys are prompt field names (schema, author-defined), not extracted
-    document content, so this stays safe to log by default.
+    Keys are NOT safe to emit merely because a well-formed response keys on
+    prompt field names — this runs on malformed responses, where repair
+    routinely promotes document text into key position (prose containing
+    ``{field: value}`` parses to a dict keyed on document text). Only keys the
+    caller declared in its contract are echoed; anything else becomes its
+    length, which is what makes this trace safe to log unconditionally.
     """
     if depth < 0:
         return "…"
     if isinstance(value, dict):
-        return {k: _skeleton(v, depth - 1) for k, v in value.items()}
+        return {
+            (k if k in known_keys else f"<key:{len(str(k))}>"): _skeleton(
+                v, known_keys, depth - 1
+            )
+            for k, v in value.items()
+        }
     if isinstance(value, list):
-        return [_skeleton(el, depth - 1) for el in value[:8]]
+        return [_skeleton(el, known_keys, depth - 1) for el in value[:8]]
     if isinstance(value, str):
         return f"<str:{len(value)}>"
     return f"<{type(value).__name__}>"
@@ -467,6 +480,7 @@ def _log_cleansing_chain(
 
     Structure only: no document content at any level.
     """
+    known_keys = frozenset(contract.required_keys) if contract else frozenset()
     annotated = _is_annotated(json_str)
     alignment = _annotation_alignment(json_str, parsed) if annotated else "n/a"
     # An offset never fails the parse, so warn on it even when the contract is
@@ -485,7 +499,7 @@ def _log_cleansing_chain(
             _shape(_reparse_without_wrap(json_str)),
             contract.expect.__name__ if contract else "any",
             list(contract.required_keys) if contract else [],
-            json.dumps(_skeleton(parsed), ensure_ascii=False)[:500],
+            json.dumps(_skeleton(parsed, known_keys), ensure_ascii=False)[:500],
         )
 
     if _raw_debug_enabled():

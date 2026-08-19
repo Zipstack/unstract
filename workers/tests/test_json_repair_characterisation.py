@@ -428,8 +428,9 @@ def test_shape_trace_is_emitted_without_any_flag(monkeypatch, caplog):
     assert "Jane Roe" not in caplog.text
 
 
-def test_skeleton_keeps_keys_and_drops_values():
-    skeleton = _skeleton({"name": "Jane Roe", "items": [{"qty": 2}]})
+def test_skeleton_keeps_declared_keys_and_drops_values():
+    declared = frozenset({"name", "items", "qty"})
+    skeleton = _skeleton({"name": "Jane Roe", "items": [{"qty": 2}]}, declared)
     assert skeleton == {"name": "<str:8>", "items": [{"qty": "<int>"}]}
 
 
@@ -547,3 +548,29 @@ def test_webhook_sink_without_url_drops_payload_rather_than_logging_it(
         repair_json_with_best_structure(secret, contract=DICT_CONTRACT)
     assert "Jane Roe" not in caplog.text
     assert "dropping the raw payload" in caplog.text
+
+
+def test_skeleton_redacts_keys_the_contract_did_not_declare():
+    """Repair promotes document text into key position on malformed input."""
+    skeleton = _skeleton({"invoice_number": "x", "Jane Roe": 1}, frozenset(KEYS))
+    assert skeleton == {"invoice_number": "<str:1>", "<key:8>": "<int>"}
+
+
+def test_shape_trace_never_emits_document_text_from_keys(caplog):
+    """A dict keyed on document content must not reach the logs."""
+    raw = '{"Jane Roe": "patient"},{"b": 2}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert "Jane Roe" not in caplog.text
+
+
+def test_max_chars_of_one_does_not_emit_the_whole_payload(monkeypatch, caplog):
+    """limit//2 == 0 and text[-0:] is the whole string — the cap must hold."""
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_MAX_CHARS", "1")
+    raw = '{"a": "' + "SECRET" * 500 + '"},{"b": 2}'
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+    assert caplog.text.count("SECRET") <= 1
+    assert "chars elided" in caplog.text
