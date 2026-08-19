@@ -83,8 +83,10 @@ def prompt_output(request):
                 "success": False,
                 "error": (
                     "outputs must be a JSON object keyed by prompt name, got "
-                    f"{type(outputs).__name__}. This usually means the LLM "
-                    "returned a non-object JSON response."
+                    f"{type(outputs).__name__}. A JSON array is valid JSON but "
+                    "cannot be indexed by prompt name; single-pass extraction "
+                    "produces one when the LLM returns an array rather than an "
+                    "object."
                 ),
             },
             status=status.HTTP_400_BAD_REQUEST,

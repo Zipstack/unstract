@@ -52,6 +52,9 @@ def test_list_outputs_rejected_with_400_and_a_reason():
     assert body["success"] is False
     assert "outputs must be a JSON object" in body["error"]
     assert "list" in body["error"]
+    # A JSON array is valid JSON — the message must not imply it was malformed.
+    assert "malformed" not in body["error"].lower()
+    assert "invalid json" not in body["error"].lower()
 
 
 def test_non_mapping_outputs_rejected():
