@@ -69,6 +69,27 @@ def prompt_output(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # `outputs` is indexed by prompt key downstream (OutputManagerHelper.
+    # handle_prompt_output_update -> outputs.get(prompt.prompt_key)), so a
+    # non-mapping raises AttributeError deep in the helper and surfaces as an
+    # opaque 500. Single-pass extraction passes the LLM's parsed JSON straight
+    # through here, and that parse yields a list whenever the model wraps its
+    # answer in prose or a fence — so this is reachable from real traffic, not
+    # just a malformed client. Reject it at the boundary with a reason
+    # attached, and no future executor can 500 the backend this way (UN-4017).
+    if not isinstance(outputs, dict):
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    "outputs must be a JSON object keyed by prompt name, got "
+                    f"{type(outputs).__name__}. This usually means the LLM "
+                    "returned a non-object JSON response."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     try:
         from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
             OutputManagerHelper,
