@@ -1897,7 +1897,11 @@ class PromptStudioHelper:
                 "single JSON object keyed by field name is expected (got "
                 f"{type(value).__name__})."
             )
-            if is_single_pass:
+            # Only for `outputs`. `metadata` is assembled by the executor, not
+            # returned by the LLM, so telling the user to rephrase a prompt
+            # would be a dead end for a defect that is ours — the same
+            # misdirection the shape claim above was rewritten to avoid.
+            if is_single_pass and field_name == "outputs":
                 detail += (
                     " In single-pass extraction all prompts share one response,"
                     " so a prompt that asks for a list or for separate JSON"

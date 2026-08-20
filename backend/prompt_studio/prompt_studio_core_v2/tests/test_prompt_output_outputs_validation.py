@@ -190,3 +190,26 @@ def test_in_backend_path_still_accepts_a_dict():
         handler.return_value = []
         _handle({"invoice_number": "INV-001"})
     handler.assert_called_once()
+
+
+def test_metadata_rejection_does_not_tell_the_user_to_rephrase_a_prompt():
+    """`metadata` is executor-assembled, never LLM output.
+
+    Rewording a prompt cannot change it, so the single-pass advice would send
+    the user down a dead end for a defect that is ours.
+    """
+    try:
+        PromptStudioHelper._handle_response(
+            response={"output": {"a": 1}, "metadata": [], "status": "COMPLETED"},
+            run_id="run-1",
+            prompts=[],
+            document_id="doc-1",
+            is_single_pass=True,
+        )
+    except AnswerFetchError as exc:
+        detail = str(exc.detail)
+        assert "metadata map" in detail
+        assert "all prompts share one response" not in detail
+        assert "Rephrase" not in detail
+    else:
+        raise AssertionError("non-dict metadata was accepted")
