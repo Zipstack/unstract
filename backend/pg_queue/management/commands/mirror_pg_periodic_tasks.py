@@ -71,13 +71,37 @@ def cron_from_periodic_task(task: PeriodicTask) -> str:
     Only the first two are in use here, and only they map onto cron:
 
     * ``crontab`` — a direct field-for-field reconstruction.
-    * ``interval`` — expressed as a step cron where one exists exactly
-      (``*/N`` minutes / hours / days).
+    * ``interval`` — expressed as a step cron ONLY where one exists exactly.
 
     Returns ``""`` for anything else — notably **second**-resolution intervals,
     which have no cron expression at all. Coarsening one to a minute would silently
     change how often it runs, so the caller skips those and says so rather than
     guessing.
+
+    **``*/N`` is not "every N".** A step cron restarts at each field boundary, so it
+    is faithful only when N divides the field's range exactly. Otherwise the last
+    step of one period runs into the first of the next and the task fires early —
+    silently, and only at the boundary, which is the hardest kind of drift to spot:
+
+    * ``*/7`` minutes → :00 :07 … :56, then **:00** — a 4-minute gap, not 7.
+    * ``*/45`` minutes → :00 :45, then **:00** — fires roughly twice as often.
+    * ``0 */5`` hours → 0 5 10 15 20, then **0** — a 4-hour gap, not 5.
+
+    So minutes need ``60 % every == 0`` and hours ``24 % every == 0``, not merely a
+    range check.
+
+    **Days are worse and are refused beyond 1.** ``*/N`` on day-of-month restarts
+    every month, and months are 28-31 days, so the gap at the boundary varies by
+    month and even by year: ``0 0 */7 * *`` fires on the 1st, 8th, 15th, 22nd, 29th
+    and then the 1st again — 2 to 4 days later depending on the month. There is no
+    correct cron for "every N days" at N > 1, so only ``every == 1`` maps (to a
+    plain daily), and the rest fall through to the caller's skip-and-explain path.
+
+    An earlier version range-checked (``every < 60`` / ``< 24`` / ``< 32``) while
+    the docstring claimed exactness, so an "every 45 minutes" periodic mirrored to
+    something that fires twice as often. Nothing in integration hit it (15 divides
+    60), but Beat schedules are per-environment DB rows that exist in no source
+    file, so staging or production can carry one.
     """
     if task.crontab is not None:
         c = task.crontab
@@ -88,13 +112,13 @@ def cron_from_periodic_task(task: PeriodicTask) -> str:
     every = interval.every
     if every < 1:
         return ""
-    if interval.period == IntervalSchedule.MINUTES and every < 60:
+    if interval.period == IntervalSchedule.MINUTES and every < 60 and 60 % every == 0:
         return f"*/{every} * * * *"
-    if interval.period == IntervalSchedule.HOURS and every < 24:
+    if interval.period == IntervalSchedule.HOURS and every < 24 and 24 % every == 0:
         return f"0 */{every} * * *"
-    if interval.period == IntervalSchedule.DAYS and every < 32:
-        return f"0 0 */{every} * *"
-    # SECONDS, or a step too large to express as a single cron field.
+    if interval.period == IntervalSchedule.DAYS and every == 1:
+        return "0 0 * * *"
+    # SECONDS, a step that does not divide its field, or anything else.
     return ""
 
 

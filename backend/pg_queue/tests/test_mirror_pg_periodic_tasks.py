@@ -74,8 +74,13 @@ class TestCronConversion:
         "every,period,expected",
         [
             (15, MINUTES, "*/15 * * * *"),  # dashboard_metrics.aggregate_from_sources
+            (1, MINUTES, "*/1 * * * *"),
+            (30, MINUTES, "*/30 * * * *"),
             (2, HOURS, "0 */2 * * *"),
-            (3, DAYS, "0 0 */3 * *"),
+            (12, HOURS, "0 */12 * * *"),
+            # every==1 day is the ONLY expressible day interval; emitted as a plain
+            # daily rather than `*/1` so the stored cron says what it means.
+            (1, DAYS, "0 0 * * *"),
         ],
     )
     def test_interval_maps_to_an_exact_step_cron(self, every, period, expected):
@@ -93,6 +98,43 @@ class TestCronConversion:
     def test_step_too_large_for_one_field_is_refused(self, every, period):
         # `*/90` in a 0-59 minute field does not mean "every 90 minutes".
         assert cron_from_periodic_task(_task(interval=_interval(every, period))) == ""
+
+    @pytest.mark.parametrize(
+        "every,period,fires_instead",
+        [
+            (7, MINUTES, ":00 :07 … :56 then :00 — a 4-minute gap, not 7"),
+            (45, MINUTES, ":00 :45 then :00 — roughly twice as often"),
+            (8, MINUTES, ":00 :08 … :56 then :00 — a 4-minute gap"),
+            (25, MINUTES, ":00 :25 :50 then :00 — a 10-minute gap"),
+            (5, HOURS, "0 5 10 15 20 then 0 — a 4-hour gap, not 5"),
+            (7, HOURS, "0 7 14 21 then 0 — a 3-hour gap"),
+            (9, HOURS, "0 9 18 then 0 — a 6-hour gap"),
+        ],
+    )
+    def test_an_interval_that_does_not_divide_its_field_is_refused(
+        self, every, period, fires_instead
+    ):
+        """`*/N` restarts at each field boundary, so it is only "every N" when N
+        divides the range. The old code range-checked (`every < 60` / `< 24`) while
+        the docstring claimed exactness, so these mirrored to a cron that fires at
+        the wrong rate — silently, and only at the boundary.
+
+        Refusing sends them down plan_mirror's skip-and-explain path, which is what
+        already happens for second-resolution intervals: they stay on Beat, visibly,
+        instead of being adopted at a frequency nobody chose.
+        """
+        assert cron_from_periodic_task(_task(interval=_interval(every, period))) == "", (
+            f"every {every} {period} must be refused — `*/{every}` fires {fires_instead}"
+        )
+
+    @pytest.mark.parametrize("every", [2, 3, 7, 15, 31])
+    def test_multi_day_intervals_are_refused_because_months_vary(self, every):
+        """`0 0 */N * *` restarts every month and months are 28-31 days, so the
+        boundary gap depends on the month and the year. `0 0 */7 * *` fires on the
+        1st, 8th, 15th, 22nd, 29th, then the 1st again — 2 to 4 days later. There is
+        no correct cron for "every N days" at N > 1, so only every==1 is expressible.
+        """
+        assert cron_from_periodic_task(_task(interval=_interval(every, DAYS))) == ""
 
     def test_no_schedule_at_all_is_refused(self):
         # solar/clocked periodics have neither crontab nor interval.
