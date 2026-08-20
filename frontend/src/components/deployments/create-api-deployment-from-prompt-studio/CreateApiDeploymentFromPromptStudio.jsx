@@ -418,30 +418,18 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Cleanup created resources on failure
       await cleanupCreatedResources(createdResources);
 
-      // Show error message to user
-      let errorMessage = "Failed to create API deployment";
-      const errorDetails = err?.response?.data?.errors;
-
-      if (errorDetails) {
-        setBackendErrors(err.response.data);
-        // Extract specific error messages for better user feedback
-        if (errorDetails.length > 0) {
-          const errorDetails = errorDetails
-            .map((e) => `${e.attr}: ${e.detail}`)
-            .join(", ");
-          errorMessage = `API deployment creation failed: ${errorDetails}`;
-        }
-      }
-
-      // Always show an alert for API deployment failures
-      setAlertDetails({
-        type: "error",
-        content: errorMessage,
-      });
+      setAlertDetails(
+        handleException(
+          err,
+          "Failed to create API deployment",
+          setBackendErrors,
+        ),
+      );
 
       // If we're on step 2 and have backend errors for deployment fields,
       // go back to step 1 to show the errors
-      if (errorDetails && currentStep === 1) {
+      const errorDetails = err?.response?.data?.errors;
+      if (Array.isArray(errorDetails) && currentStep === 1) {
         const hasDeploymentFieldErrors = errorDetails.some((error) =>
           ["api_name", "display_name", "description"].includes(error?.attr),
         );
