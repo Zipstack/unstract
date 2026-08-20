@@ -15,10 +15,8 @@ from app.models import X2TextAudit
 from app.util import X2TextUtil
 
 basic = Blueprint("basic", __name__)
-# Configure the logging format and level
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+# Logging is configured centrally in app.logging_util.setup_logging() (called from
+# create_app) with the request_id-aware canonical format shared across services.
 
 UNSTRUCTURED_URL = "unstructured-url"
 UNSTRUCTURED_API_KEY = "unstructured-api-key"

@@ -33,6 +33,11 @@ class LogContext:
     organization_id: str | None = None
     correlation_id: str | None = None
     request_id: str | None = None
+    # Gates worker->worker re-propagation: only an id received from upstream may
+    # be stamped onto child tasks. A locally-derived fallback (task_id, or a
+    # payload id) must not be, or it would override the child's own
+    # file_execution_id correlation -- e.g. on beat-scheduled pipelines.
+    request_id_propagatable: bool = False
 
 
 class RequestIDFilter(logging.Filter):
@@ -703,22 +708,72 @@ def _extract_request_id(
     return None
 
 
+def _request_id_from_message(task: Any) -> str | None:
+    """Read an explicit request_id propagated via Celery message headers.
+
+    Celery may surface a custom header either as a direct attribute on
+    ``task.request`` or only in its raw ``headers`` mapping, so both are tried.
+    """
+    request = getattr(task, "request", None)
+    if request is None:
+        return None
+    value = getattr(request, "request_id", None)
+    if not value:
+        headers = getattr(request, "headers", None)
+        if isinstance(headers, Mapping):
+            value = headers.get("request_id")
+    return _coerce_id(value)
+
+
 def _bind_task_context(task_id, task, args, kwargs, **_):
     """Celery ``task_prerun`` handler: bind request_id onto the log context.
 
-    Catches any extraction failure so a malformed payload can never leave
-    the previous task's id bound on the thread.
+    Resolution order: message header, then a payload-derived id, then the Celery
+    ``task_id``. Only the header source is marked propagatable.
+
+    The whole resolution stays inside the ``try``: an exception escaping here
+    would skip ``update_context`` and leave the *previous* task's id bound on a
+    pooled thread.
     """
+    propagatable = False
     try:
-        request_id = _extract_request_id(args or (), kwargs or {}, task) or task_id
+        request_id = _request_id_from_message(task)
+        if request_id:
+            propagatable = True
+        else:
+            request_id = _extract_request_id(args or (), kwargs or {}, task)
     except Exception:
         logging.getLogger(__name__).debug(
             "request_id extraction failed for task %s; falling back to task_id",
             task_id,
             exc_info=True,
         )
-        request_id = task_id
-    WorkerLogger.update_context(request_id=request_id, task_id=task_id)
+        request_id = None
+    request_id = request_id or task_id
+    WorkerLogger.update_context(
+        request_id=request_id,
+        task_id=task_id,
+        request_id_propagatable=propagatable,
+    )
+
+
+def _propagate_request_id_on_publish(headers=None, **_):
+    """Celery ``before_task_publish`` handler (worker side): forward the current
+    request_id onto tasks this worker publishes.
+
+    Keeps an upstream correlation id flowing across worker->worker chains (e.g.
+    a file-processing task enqueuing a callback). Gated on
+    ``request_id_propagatable`` -- see ``LogContext`` for why a fallback id must
+    not fan out. No-ops when absent or when the caller already set the header.
+    """
+    if headers is None or headers.get("request_id"):
+        return
+    ctx = WorkerLogger.get_context()
+    if not ctx or not getattr(ctx, "request_id_propagatable", False):
+        return
+    request_id = _coerce_id(getattr(ctx, "request_id", None))
+    if request_id:
+        headers["request_id"] = request_id
 
 
 def _clear_task_context(**_):
@@ -728,7 +783,9 @@ def _clear_task_context(**_):
     ``WorkerLogger.configure()``; only nulls out the per-task fields bound
     in ``_bind_task_context``.
     """
-    WorkerLogger.update_context(request_id=None, task_id=None)
+    WorkerLogger.update_context(
+        request_id=None, task_id=None, request_id_propagatable=False
+    )
 
 
 @functools.lru_cache(maxsize=1)
@@ -739,13 +796,14 @@ def _install_celery_request_id_signals() -> None:
     debug log if Celery is not importable (e.g. unit tests).
     """
     try:
-        from celery.signals import task_postrun, task_prerun
+        from celery.signals import before_task_publish, task_postrun, task_prerun
     except ImportError as exc:
         logging.getLogger(__name__).debug(
             "celery.signals not importable; request_id signal install skipped: %s",
             exc,
         )
         return
+    before_task_publish.connect(_propagate_request_id_on_publish, weak=False)
     task_prerun.connect(_bind_task_context, weak=False)
     task_postrun.connect(_clear_task_context, weak=False)
 

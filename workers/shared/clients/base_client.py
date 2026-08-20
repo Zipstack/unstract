@@ -32,6 +32,20 @@ logger = WorkerLogger.get_logger(__name__)
 APPLICATION_JSON = "application/json"
 
 
+def _current_request_id() -> str | None:
+    """Return the request_id bound on the current worker log context, if any.
+
+    Bound by the ``task_prerun`` handler in the logging module; used to
+    propagate ``X-Request-ID`` onto outbound calls to the backend internal API.
+    Returns ``None`` for the ``"-"`` placeholder so no empty header is sent.
+    """
+    ctx = WorkerLogger.get_context()
+    request_id = getattr(ctx, "request_id", None) if ctx else None
+    if not request_id or request_id == "-":
+        return None
+    return request_id
+
+
 # Single PG-queue rollout flag (same key as pg_queue.flags / executor_rpc).
 _PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
 
@@ -315,6 +329,12 @@ class BaseAPIClient:
                 current_org_id = organization_id or self.organization_id
                 if current_org_id:
                     headers["X-Organization-ID"] = current_org_id
+
+                # Propagate the correlation id back to the backend so worker
+                # callbacks share the originating request's request_id in logs.
+                request_id = _current_request_id()
+                if request_id:
+                    headers["X-Request-ID"] = request_id
 
                 if headers:
                     kwargs["headers"] = headers
