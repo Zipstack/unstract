@@ -72,8 +72,31 @@ const SelectContent = React.forwardRef<
   <SelectPrimitive.Portal>
     <SelectPrimitive.Content
       ref={ref}
+      /*
+       * `max-h` is load-bearing, and the way it is written matters.
+       *
+       * Upstream shadcn writes this cap with Tailwind v3's shorthand, where
+       * the custom property sits bare inside the arbitrary value with no
+       * var() around it. v4 removed that shorthand and emits the value
+       * verbatim, so the browser got an invalid max-height, discarded the
+       * declaration, and every dropdown in the app lost its cap — the Prompt
+       * Studio LLM list grew past the bottom of a scroll-locked page with no
+       * way to reach the rest. Nothing errors on this: not the build, not the
+       * linter, not jsdom. The custom property MUST be wrapped in var().
+       * Guarded by cascade-and-affordances.test.jsx.
+       *
+       * The 16rem cap is antd's `listHeight` default, which is what these
+       * dropdowns looked like before the migration; `min()` keeps Radix's
+       * collision-aware shrinking when the trigger sits near the window edge.
+       *
+       * Do NOT add `flex flex-col` here. Radix already sets
+       * `display:flex; flex-direction:column` as an INLINE style, which
+       * outranks any utility class — that flex layout, plus the Viewport's
+       * inline `flex: 1`, is what makes the Viewport the scroller once this
+       * cap exists, and what makes the scroll chevrons appear.
+       */
       className={cn(
-        "relative z-50 max-h-[--radix-select-content-available-height] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[--radix-select-content-transform-origin]",
+        "relative z-50 max-h-[min(16rem,var(--radix-select-content-available-height))] min-w-[8rem] overflow-y-auto overflow-x-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 origin-[var(--radix-select-content-transform-origin)]",
         position === "popper" &&
           "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
         className,
@@ -83,10 +106,20 @@ const SelectContent = React.forwardRef<
     >
       <SelectScrollUpButton />
       <SelectPrimitive.Viewport
+        /*
+         * Upstream also sets `h-[var(--radix-select-trigger-height)]` here.
+         * It has never done anything: Radix gives this element an inline
+         * `flex: 1` (so `flex-basis: 0%`), and on a column flex item
+         * `flex-basis` supersedes `height` on the main axis. Dropped rather
+         * than kept, because if Radix ever stopped setting `flex: 1` the
+         * declaration would come alive and clamp every dropdown to a single
+         * 32px row. Height here is for flex to decide, bounded by the
+         * Content's `max-h` above.
+         */
         className={cn(
           "p-1",
           position === "popper" &&
-            "h-[var(--radix-select-trigger-height)] w-full min-w-[var(--radix-select-trigger-width)]",
+            "w-full min-w-[var(--radix-select-trigger-width)]",
         )}
       >
         {children}

@@ -416,4 +416,72 @@ describe("cascade and affordance guards", () => {
       "Radix slots onto a single element child — wrap the value in a <span>",
     ).toEqual([]);
   });
+  /*
+   * Tailwind v3 let you name a custom property bare inside an arbitrary
+   * value, with no var() around it. v4 removed that shorthand and emits the
+   * value verbatim, so the browser sees a property name where a value should
+   * be, drops the declaration, and the utility silently does nothing.
+   * Nothing errors: not the build, not the linter, not jsdom.
+   *
+   * NB: the examples above are described rather than written out, because
+   * Tailwind scans this file too — spelling the broken form here would emit
+   * the very dead rule the build-level `grep` for it is meant to catch.
+   *
+   * That is how SelectContent lost its max-height in the migration — the
+   * Prompt Studio LLM dropdown grew to the full option-list height and ran
+   * off the bottom of a scroll-locked page with no way to reach the rest.
+   * Four `origin-` utilities on popover/tooltip/dropdown-menu were dead the
+   * same way, which is why this guards the pattern rather than the one class.
+   */
+  describe("no Tailwind v3 bare-custom-property shorthand", () => {
+    it("wraps every arbitrary custom-property value in var()", () => {
+      const SRC = path.join(process.cwd(), "src");
+      // `-[--name]` and nothing else inside the brackets. Deliberately does
+      // NOT match `data-[state=open]`, `[&_svg]`, `max-h-[var(--x)]`, or v4
+      // arbitrary *properties* like `[--x:red]` (those carry a `:`).
+      const V3_SHORTHAND = /[a-z0-9]-\[--[a-zA-Z][\w-]*\]/g;
+      const offenders = [];
+
+      const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) {
+            if (entry.name !== "node_modules") walk(full);
+            continue;
+          }
+          // Skip test files — this guard's own regex literal would match.
+          if (!/\.[jt]sx?$/.test(entry.name) || entry.name.includes(".test.")) {
+            continue;
+          }
+          const src = fs.readFileSync(full, "utf8");
+          for (const m of src.matchAll(V3_SHORTHAND)) {
+            const line = src.slice(0, m.index).split("\n").length;
+            offenders.push(`${path.relative(SRC, full)}:${line} → ${m[0]}`);
+          }
+        }
+      };
+      walk(SRC);
+
+      expect(
+        offenders,
+        "Tailwind v4 removed `util-[--var]`; these compile to an invalid " +
+          "declaration the browser discards. Write `util-[var(--var)]`.",
+      ).toEqual([]);
+    });
+
+    /*
+     * Guards against "fixing" a future failure of the test above by deleting
+     * the utility instead of repairing it. Without a max-height the dropdown
+     * grows to the full option list and runs off the bottom of the page.
+     */
+    it("SelectContent still declares a max-height", () => {
+      const src = fs.readFileSync(
+        path.join(process.cwd(), "src/components/ui/select.tsx"),
+        "utf8",
+      );
+      expect(src).toMatch(
+        /max-h-\[[^\]]*--radix-select-content-available-height[^\]]*\]/,
+      );
+    });
+  });
 });
