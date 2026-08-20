@@ -34,47 +34,86 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _retargeted_next_run_at(pipeline_id: str, cron_string: str) -> datetime | None:
-    """The ``next_run_at`` a cron EDIT should set for Beat parity, or ``None`` to
-    leave it as the PG scheduler's baseline owns it.
+# Sentinel: leave the ``next_run_at`` column alone entirely. Distinct from the
+# value ``None``, which is a deliberate instruction to WRITE NULL — the PG tick
+# reads NULL as "record a baseline next pass, don't fire this one". Conflating
+# the two is what let a stale next_run_at survive a resume.
+_LEAVE_NEXT_RUN_AT = object()
 
-    Returns a recomputed next-match ONLY when ``cron_string`` differs from an
-    already-baselined mirror row (``next_run_at`` set). Returns ``None`` for a
-    brand-new row (no mirror yet) and a not-yet-baselined one (``next_run_at``
-    NULL) so the scheduler's no-burst baseline records the first next-time.
+
+def _next_run_at_for_upsert(
+    pipeline_id: str, cron_string: str, enabled: bool
+) -> datetime | None | object:
+    """What the mirror upsert should do with ``next_run_at``. Three outcomes:
+
+    * :data:`_LEAVE_NEXT_RUN_AT` — don't touch the column. A brand-new row, a
+      not-yet-baselined one (``next_run_at`` NULL), or an unchanged cron on a
+      row that was already enabled. The PG tick's no-burst baseline owns it.
+    * ``None`` — write NULL, i.e. "baseline on the next tick, don't fire". A
+      RESUME: the mirror row was ``enabled=False`` and the incoming state is
+      ``True``.
+    * a ``datetime`` — a cron EDIT on an already-baselined row: retarget to the
+      new cron's next match for Beat parity (UN-3690), else the scheduler fires
+      once more at the stale old-cron time.
+
+    **Why resume needs the explicit NULL, and why it is checked first.** While a
+    schedule is paused its ``next_run_at`` keeps drifting into the past, so the
+    instant ``enabled`` flips back the tick's
+    ``WHERE pg_owned AND enabled AND (next_run_at IS NULL OR <= now())`` matches
+    and the pipeline runs immediately — days late, on top of whatever the
+    operator triggered by hand. ``enable_task`` already baselines for exactly
+    this reason (see ``_mirror_periodic_schedule_set_enabled``), but the UI
+    resume does not take that path: it re-saves the pipeline, which reaches
+    ``SchedulerHelper._schedule_task_job`` → here and ``reconcile_ownership_for``
+    — and that one deliberately baselines only on a Beat→PG hand-over
+    (``pg_owned and not was_pg_owned``), so an already-``pg_owned`` row keeps its
+    stale value and nothing clears it. Observed on integration 2026-08-12, -14
+    and -20: three enables of ``gallh_load_test``, three spurious runs 2-3s
+    later, each settling back onto the cron afterwards. Exactly one extra run per
+    enable — bounded, but it costs a full LLM pass over the source.
+
+    Resume is checked BEFORE the cron comparison because a resume that also
+    edited the cron must still baseline; ordering it the other way would let the
+    ``cron_string == existing`` early-out swallow the resume case, which is the
+    common one (a plain pause/resume does not change the cron).
+
+    Scoped to the TRANSITION, not to every call — the same discipline
+    ``reconcile_ownership_for`` uses. This runs on every pipeline save, so
+    clearing unconditionally would re-baseline mid-cycle: a save at 12:07:59
+    against a 12:08 ``next_run_at`` would skip that fire entirely.
 
     Fully guarded on purpose: this is an OPTIONAL enhancement over the mandatory
     ``cron_string``/``enabled`` mirror write, so a read failure, a ``None``/invalid
     cron (normally rejected upstream by ``PipelineSerializer.validate_cron_string``
-    in ``pipeline_v2``), or a croniter error must degrade to ``None`` — never take
-    the base mirror write down with it.
+    in ``pipeline_v2``), or a croniter error must degrade to leaving the column
+    alone — never take the base mirror write down with it.
     """
     try:
         existing = (
             PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id)
-            .values("cron_string", "next_run_at")
+            .values("cron_string", "next_run_at", "enabled")
             .first()
         )
-        if (
-            existing is None
-            or existing["next_run_at"] is None
-            or existing["cron_string"] == cron_string
-        ):
+        if existing is None or existing["next_run_at"] is None:
+            return _LEAVE_NEXT_RUN_AT
+        if enabled and not existing["enabled"]:
             return None
+        if existing["cron_string"] == cron_string:
+            return _LEAVE_NEXT_RUN_AT
         return croniter(cron_string, timezone.now()).get_next(datetime)
     except Exception as exc:
         # Log the ACTUAL cause (bad read; cron=None → AttributeError;
         # CroniterBadCronError / CroniterBadDateError; a croniter API change) — a
         # generic "could not recompute" is a dead end when debugging a stale fire.
         logger.warning(
-            "pg_periodic_schedule: could not retarget next_run_at for pipeline %s "
+            "pg_periodic_schedule: could not resolve next_run_at for pipeline %s "
             "(cron %r): %s",
             pipeline_id,
             cron_string,
             exc,
             exc_info=True,
         )
-        return None
+        return _LEAVE_NEXT_RUN_AT
 
 
 def mirror_periodic_schedule_upsert(
@@ -94,18 +133,15 @@ def mirror_periodic_schedule_upsert(
             "cron_string": cron_string,
             "enabled": enabled,
         }
-        # Beat parity: a cron EDIT on an already-baselined row must retarget
-        # next_run_at to the new cron's next match, else the PG scheduler fires
-        # once more at the STALE old-cron time — Beat has no such staleness, it
-        # recomputes due-ness live from the crontab each tick (UN-3690). Left
-        # untouched (NULL) for a brand-new row — the scheduler's no-burst baseline
-        # is correct there (a new schedule fires at its next match) — and for a
-        # Beat→PG hand-over, where next_run_at is already NULL (never set while
-        # Beat-owned; ownership clears it only on rollback to Beat, see
-        # reconcile_ownership_for). Computed via a fully-guarded helper so it can
-        # never take down the mandatory cron_string/enabled mirror write below.
-        next_run_at = _retargeted_next_run_at(pipeline_id, cron_string)
-        if next_run_at is not None:
+        # next_run_at is owned by the PG tick, with two exceptions this path must
+        # honour: a cron EDIT retargets it (Beat parity, UN-3690) and a RESUME
+        # clears it to NULL so a value that went stale during the pause can't fire
+        # a catch-up run the moment the schedule is re-enabled. The helper decides
+        # which — including "leave it alone", which is NOT the same as writing NULL
+        # — and is fully guarded so it can never take down the mandatory
+        # cron_string/enabled mirror write below.
+        next_run_at = _next_run_at_for_upsert(pipeline_id, cron_string, enabled)
+        if next_run_at is not _LEAVE_NEXT_RUN_AT:
             defaults["next_run_at"] = next_run_at
         PgPeriodicSchedule.objects.update_or_create(
             pipeline_id=pipeline_id,
