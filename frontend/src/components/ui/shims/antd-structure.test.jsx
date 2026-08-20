@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   Badge,
@@ -769,6 +769,161 @@ describe("antd-compatible structural shims (P4)", () => {
         },
       });
       expect(beforeUpload).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * With `action` set and no `customRequest`, antd POSTs the file itself.
+   * The shim swallowed `action` into `...props` and fell through to the
+   * no-uploader branch, so Manage Documents reported "File uploaded
+   * successfully" and appended an empty document row for a request that was
+   * never sent — and React warned about `action` on a non-`<form>` node.
+   */
+  describe("Upload `action` uploader (antd parity)", () => {
+    const pickFile = (container, file) => {
+      const input = container.querySelector("input[type='file']");
+      fireEvent.change(input, { target: { files: [file] } });
+    };
+
+    const jsonResponse = (body, ok = true) => ({
+      ok,
+      text: () => Promise.resolve(JSON.stringify(body)),
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("POSTs the file to `action` as multipart with `headers` and `name`", async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ data: [{ document_id: "d1" }] }));
+      vi.stubGlobal("fetch", fetchMock);
+
+      const { container } = render(
+        <Upload.Dragger
+          name="file"
+          action="/api/v1/upload"
+          headers={{ "X-CSRFToken": "tok" }}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      const file = new File(["%PDF-"], "invoice.pdf", {
+        type: "application/pdf",
+      });
+      pickFile(container, file);
+
+      await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe("/api/v1/upload");
+      expect(init.method).toBe("POST");
+      expect(init.headers).toEqual({ "X-CSRFToken": "tok" });
+      expect(init.body.get("file")).toBe(file);
+    });
+
+    it("reports `uploading` then `done` with the parsed response body", async () => {
+      const body = { data: [{ document_id: "d1", document_name: "a.pdf" }] };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(body)));
+      const onChange = vi.fn();
+
+      const { container } = render(
+        <Upload.Dragger name="file" action="/api/v1/upload" onChange={onChange}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      pickFile(
+        container,
+        new File(["%PDF-"], "a.pdf", { type: "application/pdf" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onChange.mock.calls.map(([info]) => info.file.status)).toEqual([
+          "uploading",
+          "done",
+        ]),
+      );
+      const done = onChange.mock.calls.at(-1)[0];
+      expect(done.file.response).toEqual(body);
+    });
+
+    it("reports `error` with the parsed body when the server rejects it", async () => {
+      const body = { errors: [{ detail: "File too large" }] };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockResolvedValue(jsonResponse(body, false)),
+      );
+      const onChange = vi.fn();
+
+      const { container } = render(
+        <Upload.Dragger name="file" action="/api/v1/upload" onChange={onChange}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      pickFile(
+        container,
+        new File(["%PDF-"], "a.pdf", { type: "application/pdf" }),
+      );
+
+      await vi.waitFor(() =>
+        expect(onChange.mock.calls.at(-1)[0].file.status).toBe("error"),
+      );
+      expect(onChange.mock.calls.at(-1)[0].file.response).toEqual(body);
+    });
+
+    it("does not leak `action` onto the DOM node", () => {
+      const { container } = render(
+        <Upload.Dragger name="file" action="/api/v1/upload">
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      expect(container.querySelector("[action='/api/v1/upload']")).toBeNull();
+    });
+
+    it("skips the upload when beforeUpload rejects, without an unhandled rejection", async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal("fetch", fetchMock);
+      const beforeUpload = vi
+        .fn()
+        .mockRejectedValue(new Error("File name already exists"));
+
+      const { container } = render(
+        <Upload.Dragger
+          name="file"
+          action="/api/v1/upload"
+          beforeUpload={beforeUpload}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      pickFile(
+        container,
+        new File(["%PDF-"], "a.pdf", { type: "application/pdf" }),
+      );
+
+      await vi.waitFor(() => expect(beforeUpload).toHaveBeenCalled());
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it("does not report success when there is no uploader at all", () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <Upload.Dragger onChange={onChange}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      const file = new File(["{}"], "p.json", { type: "application/json" });
+      pickFile(container, file);
+      // The no-action call-sites (FileUpload, FileWidget) read the File off
+      // `originFileObj` and upload it themselves, so this path must stay.
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file: expect.objectContaining({
+            status: "done",
+            originFileObj: file,
+          }),
+        }),
+      );
     });
   });
 

@@ -138,6 +138,16 @@ interface UploadProps
     onError?: (err?: unknown) => void;
   }) => void;
   onChange?: (info: { file: UploadFile; fileList: UploadFile[] }) => void;
+  /**
+   * antd's declarative uploader: with `action` set and no `customRequest`,
+   * antd itself POSTs the file as multipart. Destructured rather than left to
+   * `...props` for two reasons — the shim has to actually send the request,
+   * and React rejects `action` on a non-`<form>` DOM node.
+   */
+  action?: string;
+  headers?: Record<string, string>;
+  /** The multipart field name antd posts the file under. */
+  name?: string;
   accept?: string;
   multiple?: boolean;
   showUploadList?: boolean;
@@ -782,12 +792,15 @@ function Footer({ className, ...p }: React.HTMLAttributes<HTMLElement>) {
   return <footer className={className} {...p} />;
 }
 
-/** antd `<Upload beforeUpload customRequest>` over a hidden file input. */
+/** antd `<Upload beforeUpload customRequest action>` over a hidden file input. */
 const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
   {
     beforeUpload,
     customRequest,
     onChange,
+    action,
+    headers,
+    name,
     accept,
     multiple,
     showUploadList,
@@ -801,29 +814,79 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
 ) {
   const inputRef = React.useRef<HTMLInputElement>(null);
 
+  const emit = (status: UploadFile["status"], file: File, response?: unknown) =>
+    onChange?.({
+      file: { name: file.name, status, response, originFileObj: file },
+      fileList: fileList ?? [],
+    });
+
+  /**
+   * antd hands the parsed body back as `info.file.response` on both the done
+   * and error paths — Manage Documents reads `response.data[0]` for the new
+   * document and `response.errors[0].detail` for the failure message, so a
+   * non-JSON body has to degrade to text rather than throw.
+   */
+  const readBody = async (res: Response) => {
+    const text = await res.text();
+    try {
+      return JSON.parse(text);
+    } catch {
+      return text;
+    }
+  };
+
+  /**
+   * The `action` uploader. Without it the shim fell straight through to the
+   * `!customRequest` branch below and reported `status: "done"` for a request
+   * it had never sent: Manage Documents logged "File uploaded successfully"
+   * and appended an empty row for every file, and nothing reached the server.
+   */
+  const uploadToAction = async (endpoint: string, file: File) => {
+    emit("uploading", file);
+    const body = new FormData();
+    body.append(name ?? "file", file);
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: headers ?? {},
+        body,
+        credentials: "same-origin",
+      });
+      const payload = await readBody(res);
+      emit(res.ok ? "done" : "error", file, payload);
+    } catch (err) {
+      emit("error", file, err);
+    }
+  };
+
   const handleFiles = async (files: File[]) => {
     for (const file of files) {
-      // antd aborts the upload when beforeUpload returns false.
-      const proceed = beforeUpload ? await beforeUpload(file, files) : true;
+      // antd aborts the upload when beforeUpload returns false, and equally
+      // when the promise it returned rejects — Manage Documents rejects to
+      // veto a duplicate file name, which used to surface as an unhandled
+      // rejection that killed the rest of the loop.
+      let proceed: boolean | unknown = true;
+      if (beforeUpload) {
+        try {
+          proceed = await beforeUpload(file, files);
+        } catch {
+          continue;
+        }
+      }
       if (proceed === false) {
         continue;
       }
-      customRequest?.({
-        file,
-        onSuccess: (body?: unknown) =>
-          onChange?.({
-            file: { status: "done", response: body, originFileObj: file },
-            fileList: fileList ?? [],
-          }),
-        onError: (err?: unknown) =>
-          onChange?.({
-            file: { status: "error", response: err, originFileObj: file },
-            fileList: fileList ?? [],
-          }),
-      });
-      if (!customRequest) {
+      if (customRequest) {
+        customRequest({
+          file,
+          onSuccess: (body?: unknown) => emit("done", file, body),
+          onError: (err?: unknown) => emit("error", file, err),
+        });
+      } else if (action) {
+        await uploadToAction(action, file);
+      } else {
         onChange?.({
-          file: { status: "done", originFileObj: file },
+          file: { name: file.name, status: "done", originFileObj: file },
           fileList: files,
         });
       }
@@ -858,7 +921,12 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
         multiple={multiple}
         disabled={disabled}
         className="hidden"
-        onChange={(e) => handleFiles(Array.from(e.target.files ?? []))}
+        onChange={(e) => {
+          handleFiles(Array.from(e.target.files ?? []));
+          // Clear the input so re-picking the same file fires change again;
+          // otherwise retrying a failed upload silently does nothing.
+          e.target.value = "";
+        }}
       />
       <span
         onClick={() => !disabled && inputRef.current?.click()}
