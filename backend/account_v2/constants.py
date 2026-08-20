@@ -45,8 +45,8 @@ class ErrorMessage:
 
 
 class DefaultOrg:
-    ORGANIZATION_NAME = "mock_org"
-    MOCK_ORG = "mock_org"
+    ORGANIZATION_NAME = settings.DEFAULT_ORGANIZATION_NAME
+    MOCK_ORG = settings.DEFAULT_ORGANIZATION_NAME
     MOCK_USER = settings.DEFAULT_AUTH_USERNAME
     MOCK_USER_ID = "mock_user_id"
     MOCK_USER_EMAIL = "email@mock.com"

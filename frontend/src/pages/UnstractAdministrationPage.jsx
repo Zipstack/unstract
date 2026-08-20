@@ -1,4 +1,5 @@
 import "./UnstractAdministrationPage.css";
+import config from "../config";
 import { useSessionStore } from "../store/session-store";
 
 let UnstractAdministration;
@@ -23,7 +24,7 @@ function UnstractAdministrationPage() {
 
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const orgName = sessionDetails?.orgName;
-  const isOpenSource = orgName === "mock_org";
+  const isOpenSource = orgName === config.defaultOrgName;
 
   // Staff permission check - protects route at component level
   if (!isStaff || isOpenSource) {

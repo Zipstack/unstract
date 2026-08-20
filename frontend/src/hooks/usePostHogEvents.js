@@ -1,5 +1,6 @@
 import { usePostHog } from "posthog-js/react";
 
+import config from "../config";
 import { isSaasProdDeployment } from "../helpers/PostHogDeployment";
 import { useSessionStore } from "../store/session-store";
 
@@ -61,7 +62,7 @@ const usePostHogEvents = () => {
     try {
       const orgId = sessionDetails?.orgId;
       const orgName = sessionDetails?.orgName;
-      const isOpenSource = orgName === "mock_org";
+      const isOpenSource = orgName === config.defaultOrgName;
       const software = isOpenSource ? "OSS" : "SAAS";
       const email = sessionDetails?.email;
       const userId = sessionDetails?.id;
