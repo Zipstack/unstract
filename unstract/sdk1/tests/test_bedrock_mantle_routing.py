@@ -14,7 +14,6 @@ lands on the wrong host with the wrong body schema.
 
 import json
 import os
-from collections.abc import Iterator
 from typing import Any
 from unittest.mock import patch
 
@@ -57,7 +56,7 @@ _AMBIENT_VARS = (
 
 
 @pytest.fixture(autouse=True)
-def _isolated_litellm_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _isolated_litellm_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip ambient AWS config and assert the registry pin actually took.
 
     The registry pin itself cannot live here: ``LITELLM_LOCAL_MODEL_COST_MAP``
@@ -73,7 +72,6 @@ def _isolated_litellm_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     )
     for var in _AMBIENT_VARS:
         monkeypatch.delenv(var, raising=False)
-    yield
 
 
 def _chat_completion_payload() -> dict[str, Any]:
