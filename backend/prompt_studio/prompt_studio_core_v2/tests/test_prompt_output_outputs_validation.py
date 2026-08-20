@@ -157,7 +157,7 @@ def test_in_backend_path_rejects_a_list_with_422():
         _handle([{"invoice_number": "INV-001"}, {"b": 2}])
     except AnswerFetchError as exc:
         assert exc.status_code == 422
-        assert "JSON array" in str(exc.detail)
+        assert "outputs map" in str(exc.detail)
     else:
         raise AssertionError("a list was accepted on the in-backend path")
 
@@ -176,7 +176,7 @@ def test_in_backend_single_prompt_omits_the_single_pass_advice():
     try:
         _handle([{"a": 1}], is_single_pass=False)
     except AnswerFetchError as exc:
-        assert "JSON array" in str(exc.detail)
+        assert "outputs map" in str(exc.detail)
         assert "all prompts share one response" not in str(exc.detail)
     else:
         raise AssertionError("expected AnswerFetchError")

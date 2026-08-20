@@ -1876,15 +1876,26 @@ class PromptStudioHelper:
             }
 
         outputs = response["output"]
+        metadata = response["metadata"]
         # Same guard as the internal API (UN-4017). This is the in-backend
         # execution path — it dispatches the identical single_pass_extraction
         # executor, so it can receive the identical bad shape. Without this,
         # handle_prompt_output_update does outputs.get(prompt.prompt_key) on a
         # list and raises AttributeError, which surfaces as a bare 500.
-        if not isinstance(outputs, dict):
+        # `metadata` is indexed five times at the top of
+        # handle_prompt_output_update, unconditionally and before its
+        # `if not prompts` early exit, so it has the same exposure as `outputs`
+        # and had been left unchecked here.
+        for field_name, value in (("outputs", outputs), ("metadata", metadata)):
+            if isinstance(value, dict):
+                continue
+            # Name the type rather than asserting a shape: this fires for
+            # NoneType, int and bool too, and "LLM returned a JSON array
+            # (got NoneType)" contradicts itself.
             detail = (
-                "LLM returned a JSON array where a single JSON object keyed by "
-                f"field name is expected (got {type(outputs).__name__})."
+                f"LLM response could not be used as the {field_name} map — a "
+                "single JSON object keyed by field name is expected (got "
+                f"{type(value).__name__})."
             )
             if is_single_pass:
                 detail += (
@@ -1905,7 +1916,7 @@ class PromptStudioHelper:
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            metadata=response["metadata"],
+            metadata=metadata,
         )
 
     @staticmethod
