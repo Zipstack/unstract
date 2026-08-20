@@ -175,13 +175,47 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(screen.getByText("Accept terms")).toBeInTheDocument();
   });
 
-  // antd hands Switch a BOOLEAN.
-  it("Switch onChange receives a boolean", async () => {
+  // antd hands Switch a BOOLEAN plus the originating click event.
+  it("Switch onChange receives the boolean and the click event", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
     render(<Switch onChange={onChange} />);
     await user.click(screen.getByRole("switch"));
-    expect(onChange).toHaveBeenCalledWith(true);
+    expect(onChange).toHaveBeenCalledWith(true, expect.anything());
+    expect(typeof onChange.mock.calls[0][1].stopPropagation).toBe("function");
+  });
+
+  /*
+   * The card toggles (API Deployments, Pipelines) are written
+   * `onChange={(checked, e) => { e.stopPropagation(); ... }}`. Dropping antd's
+   * second argument made that throw before the handler's real work ran, so the
+   * deployment never toggled and no request was sent.
+   */
+  it("Switch onChange lets a handler call stopPropagation on the event", async () => {
+    const user = userEvent.setup();
+    const onCardClick = vi.fn();
+    const onToggle = vi.fn();
+    render(
+      <div onClick={onCardClick}>
+        <Switch
+          onChange={(checked, e) => {
+            e.stopPropagation();
+            onToggle(checked);
+          }}
+        />
+      </div>,
+    );
+    await user.click(screen.getByRole("switch"));
+    expect(onToggle).toHaveBeenCalledWith(true);
+    expect(onCardClick).not.toHaveBeenCalled();
+  });
+
+  it("Switch still forwards a caller's own onClick", async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(<Switch onClick={onClick} />);
+    await user.click(screen.getByRole("switch"));
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   /*

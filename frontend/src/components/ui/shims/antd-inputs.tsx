@@ -192,11 +192,19 @@ interface AntSwitchProps {
    */
   value?: boolean;
   defaultChecked?: boolean;
-  /** antd hands over a plain boolean here, unlike Checkbox. */
-  onChange?: (checked: boolean) => void;
+  /**
+   * antd hands over the new boolean AND the originating click event, unlike
+   * Checkbox which hands over an event alone. Card toggles rely on the second
+   * argument to stop the click reaching the card behind them.
+   */
+  onChange?: (
+    checked: boolean,
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => void;
   disabled?: boolean;
   size?: "small" | "default";
   className?: string;
+  onClick?: React.MouseEventHandler<HTMLButtonElement>;
 }
 
 interface AntRadioProps {
@@ -814,7 +822,18 @@ const Checkbox = React.forwardRef<HTMLButtonElement, AntCheckboxProps>(
   },
 );
 
-/** antd `<Switch checked onChange>` — onChange receives a boolean. */
+/**
+ * antd `<Switch checked onChange>` — onChange receives `(checked, event)`.
+ *
+ * onChange is driven off the Root's own `onClick`, NOT off Radix's
+ * `onCheckedChange`. Radix routes that through `useControllableState`, which
+ * invokes the callback from inside a state updater — i.e. during the following
+ * render, after the click has finished bubbling. A handler written
+ * `(checked, e) => e.stopPropagation()` (both card toggles are) would then run
+ * too late to stop anything. Reading `aria-checked` off the button gives the
+ * pre-toggle state for controlled and uncontrolled switches alike, and a
+ * `<button>` turns keyboard activation into a click, so both input paths work.
+ */
 const Switch = React.forwardRef<HTMLButtonElement, AntSwitchProps>(
   function Switch(
     {
@@ -822,6 +841,7 @@ const Switch = React.forwardRef<HTMLButtonElement, AntSwitchProps>(
       value,
       defaultChecked,
       onChange,
+      onClick,
       disabled,
       size,
       className,
@@ -835,7 +855,13 @@ const Switch = React.forwardRef<HTMLButtonElement, AntSwitchProps>(
         checked={checked ?? value}
         defaultChecked={defaultChecked}
         disabled={disabled}
-        onCheckedChange={(next) => onChange?.(next)}
+        onClick={(event) => {
+          onClick?.(event);
+          onChange?.(
+            event.currentTarget.getAttribute("aria-checked") !== "true",
+            event,
+          );
+        }}
         className={cn(size === "small" && "scale-90", className)}
         {...props}
       />
