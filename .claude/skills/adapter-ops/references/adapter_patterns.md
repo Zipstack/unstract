@@ -266,7 +266,20 @@ def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
     return validated
 ```
 
-## Thinking Configuration Pattern (Anthropic, VertexAI, Bedrock)
+## Thinking Configuration Pattern (Anthropic, VertexAI)
+
+For providers whose reasoning is configured with an Anthropic-style `thinking`
+block and an explicit token budget.
+
+> **The shape is provider-specific — check before copying this.** Anthropic
+> models take the `thinking` block below; most other reasoning-capable families
+> (OpenAI, Mistral, Bedrock's GPT-5.x / GPT-OSS / Nova 2) take
+> `reasoning_effort` instead, and LiteLLM maps that to each family's own wire
+> field. Emitting the wrong shape is a **silent no-op** — LiteLLM drops it, the
+> request succeeds, and no reasoning happens. AWS Bedrock spans both, so
+> `AWSBedrockLLMParameters` branches on the model family in
+> `_apply_bedrock_reasoning_config`; use that as the reference for any provider
+> where the shape is not uniform.
 
 For providers supporting extended thinking:
 
@@ -347,6 +360,14 @@ def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
 
     return validated
 ```
+
+**If your provider supports both shapes**, they are mutually exclusive: clear
+the one you are not emitting (`metadata.pop("reasoning_effort", None)` in the
+`thinking` branch and vice versa). Leaving both is inert on the wire only
+because `litellm.drop_params` discards the stray key, which is not a guarantee
+worth resting on. Note also that a `temperature = 1` write applied before the
+family branch changes sampling for *every* model, including ones that cannot
+reason — scope it, or document it.
 
 ## Conditional Fields Pattern
 
