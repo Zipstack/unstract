@@ -8,6 +8,7 @@ import { ConfirmHost } from "@/components/widgets/confirm-modal/ConfirmHost";
 import { showAppToast } from "@/hooks/useAppToast";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
+import { NotificationClearAll } from "./components/notification/NotificationClearAll.jsx";
 import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { THEME } from "./helpers/GetStaticData.js";
@@ -106,8 +107,11 @@ function App() {
           <PageTitle title={"Unstract"} />
           {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
           {/* top-right matches where antd's notification stack used to
-              appear; sonner defaults to bottom-right (C4). */}
-          <Toaster position="top-right" closeButton richColors />
+              appear; sonner defaults to bottom-right (C4). The 56px offset
+              reserves a band above the stack for the "Clear all" control —
+              see `.notification-clear-all`, which pins itself into it. */}
+          <Toaster position="top-right" offset={56} closeButton richColors />
+          <NotificationClearAll />
           {/* Mounted once here so a confirm dialog outlives whatever opened
               it — Delete sits inside a dropdown that unmounts on click. */}
           <ConfirmHost />

@@ -652,3 +652,27 @@ body {
 .notification-id-line__value {
   word-break: break-all;
 }
+
+/* Sits in the band `<Toaster offset>` reserves above the toast stack (App.jsx);
+ * the offset and this `top` are a pair. Sonner's viewport is z-index
+ * 999999999, so this has to clear it to stay clickable. */
+.notification-clear-all {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1000000000;
+  display: flex;
+  justify-content: flex-end;
+  /* Radix sets `pointer-events: none` on <body> while a modal dialog is open,
+   * and that inherits down to here. Re-enable it: a modal open is exactly when
+   * toasts pile up, so the control has to stay clickable through one. */
+  pointer-events: auto;
+}
+
+@media (max-width: 600px) {
+  /* Sonner drops to a 16px viewport offset on narrow screens. */
+  .notification-clear-all {
+    top: 16px;
+    right: 16px;
+  }
+}
