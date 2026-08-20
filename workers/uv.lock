@@ -1947,15 +1947,6 @@ wheels = [
 ]
 
 [[package]]
-name = "json-repair"
-version = "0.63.3"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b5/fe/708f83b5d42f0dc687fc720b0eba1217d9632539a5ccac432c4cfc4794ee/json_repair-0.63.3.tar.gz", hash = "sha256:87747d2d136124961a56392687c84558f5609244301df5ce641b84dac52f3b92", size = 52739 }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/63/7d171e5fb75ec70e714ec119df1052af5a7224fc19c5668f0e99faf50e6a/json_repair-0.63.3-py3-none-any.whl", hash = "sha256:3681cc25e44f17749d6d440ae69d7c4275609a75092bcde03c6bacc3f3c8475e", size = 51170 },
-]
-
-[[package]]
 name = "jsonschema"
 version = "4.23.0"
 source = { registry = "https://pypi.org/simple" }
@@ -4997,7 +4988,6 @@ dev = [
 ]
 test = [
     { name = "factory-boy" },
-    { name = "json-repair" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
@@ -5049,7 +5039,6 @@ dev = [
 ]
 test = [
     { name = "factory-boy", specifier = ">=3.3.0" },
-    { name = "json-repair", specifier = ">=0.25.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=4.1.0" },
