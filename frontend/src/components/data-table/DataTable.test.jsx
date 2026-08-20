@@ -219,3 +219,34 @@ describe("DataTable antd row/layout props", () => {
     expect(container.querySelector("table").style.tableLayout).toBe("");
   });
 });
+
+describe("DataTable showHeader", () => {
+  it("renders the column headers by default", () => {
+    const { container } = render(
+      <DataTable columns={columns} dataSource={rowsFor(1)} rowKey="id" />,
+    );
+    expect(container.querySelector("thead")).toBeInTheDocument();
+    expect(screen.getByText("Name")).toBeInTheDocument();
+  });
+
+  /*
+   * antd omits the <thead> entirely for `showHeader={false}` rather than
+   * emitting an empty one, and ~12 CSS rules in the app target
+   * `.ant-table-thead` (heights, sticky offsets) that an empty header row
+   * would still reserve space for.
+   */
+  it("omits the header entirely when showHeader is false", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        showHeader={false}
+      />,
+    );
+    expect(container.querySelector("thead")).not.toBeInTheDocument();
+    expect(screen.queryByText("Name")).not.toBeInTheDocument();
+    // The body still renders — this hides the header, not the table.
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+  });
+});

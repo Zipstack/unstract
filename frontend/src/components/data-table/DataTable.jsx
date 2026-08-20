@@ -154,6 +154,16 @@ function DataTable({
    * console error to show for it.
    */
   onRow,
+  /**
+   * antd's `showHeader`, default true.
+   *
+   * Declared for the same reason as `onRow` above: undeclared, it fell into
+   * `...props` and was spread onto the wrapper <div>, where React not only
+   * ignored it but warned about an unknown `showHeader` DOM attribute on every
+   * render of the logs panel. A call site asking for `showHeader={false}` would
+   * silently have got a header anyway.
+   */
+  showHeader = true,
   className,
   emptyText = "No data",
   ...props
@@ -232,64 +242,66 @@ function DataTable({
           className={cn(size === "small" && "text-sm")}
           style={tableLayout ? { tableLayout } : undefined}
         >
-          <TableHeader className="ant-table-thead">
-            {table.getHeaderGroups().map((hg) => (
-              /*
-               * antd's `.ant-table-thead > tr > th` is `background: #fafafa`
-               * with a 1px #f0f0f0 bottom border (verified against the
-               * reference's own stylesheet). shadcn leaves the header
-               * transparent, so on the now-white table surface the header row
-               * was indistinguishable from the body.
-               *
-               * `hover:bg-muted` on TableRow would otherwise repaint the
-               * header on hover, so it is neutralised here.
-               */
-              <TableRow
-                key={hg.id}
-                className="border-b border-separator bg-[var(--neutral-50)] hover:bg-[var(--neutral-50)]"
-              >
-                {hg.headers.map((header) => {
-                  const sorted = header.column.getIsSorted();
-                  return (
-                    <TableHead
-                      key={header.id}
-                      style={{ width: header.column.columnDef.meta?.width }}
-                      className={cn(
-                        /*
-                         * shadcn's TableHead defaults to `font-medium
-                         * text-muted-foreground`, which renders headers at
-                         * weight 500 in grey. antd's `.ant-table-thead > th`
-                         * is weight 600 at near-full opacity, so dev's column
-                         * titles read as washed out beside the reference.
-                         */
-                        "font-semibold text-foreground",
-                        header.column.columnDef.meta?.align === "center" &&
-                          "text-center",
-                        header.column.columnDef.meta?.align === "right" &&
-                          "text-right",
-                        header.column.getCanSort() &&
-                          "cursor-pointer select-none",
-                      )}
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {flexRender(
-                          header.column.columnDef.header,
-                          header.getContext(),
+          {showHeader ? (
+            <TableHeader className="ant-table-thead">
+              {table.getHeaderGroups().map((hg) => (
+                /*
+                 * antd's `.ant-table-thead > tr > th` is `background: #fafafa`
+                 * with a 1px #f0f0f0 bottom border (verified against the
+                 * reference's own stylesheet). shadcn leaves the header
+                 * transparent, so on the now-white table surface the header row
+                 * was indistinguishable from the body.
+                 *
+                 * `hover:bg-muted` on TableRow would otherwise repaint the
+                 * header on hover, so it is neutralised here.
+                 */
+                <TableRow
+                  key={hg.id}
+                  className="border-b border-separator bg-[var(--neutral-50)] hover:bg-[var(--neutral-50)]"
+                >
+                  {hg.headers.map((header) => {
+                    const sorted = header.column.getIsSorted();
+                    return (
+                      <TableHead
+                        key={header.id}
+                        style={{ width: header.column.columnDef.meta?.width }}
+                        className={cn(
+                          /*
+                           * shadcn's TableHead defaults to `font-medium
+                           * text-muted-foreground`, which renders headers at
+                           * weight 500 in grey. antd's `.ant-table-thead > th`
+                           * is weight 600 at near-full opacity, so dev's column
+                           * titles read as washed out beside the reference.
+                           */
+                          "font-semibold text-foreground",
+                          header.column.columnDef.meta?.align === "center" &&
+                            "text-center",
+                          header.column.columnDef.meta?.align === "right" &&
+                            "text-right",
+                          header.column.getCanSort() &&
+                            "cursor-pointer select-none",
                         )}
-                        {sorted === "asc" ? (
-                          <ChevronUp className="size-3" />
-                        ) : null}
-                        {sorted === "desc" ? (
-                          <ChevronDown className="size-3" />
-                        ) : null}
-                      </span>
-                    </TableHead>
-                  );
-                })}
-              </TableRow>
-            ))}
-          </TableHeader>
+                        onClick={header.column.getToggleSortingHandler()}
+                      >
+                        <span className="inline-flex items-center gap-1">
+                          {flexRender(
+                            header.column.columnDef.header,
+                            header.getContext(),
+                          )}
+                          {sorted === "asc" ? (
+                            <ChevronUp className="size-3" />
+                          ) : null}
+                          {sorted === "desc" ? (
+                            <ChevronDown className="size-3" />
+                          ) : null}
+                        </span>
+                      </TableHead>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableHeader>
+          ) : null}
           <TableBody className="ant-table-tbody ant-table-body">
             {isLoading ? (
               <TableRow>
