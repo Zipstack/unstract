@@ -363,6 +363,51 @@ describe("antd-compatible input shims (P3-03)", () => {
   });
 
   /*
+   * antd lets a single option be disabled so an inaccessible value can still be
+   * LABELLED without being re-selectable. Three call-sites depend on it — the
+   * challenge-manager and agentic Settings dropdowns both surface an adapter
+   * the viewer cannot use, and AddLlmProfile does the same for a profile.
+   * Dropping the flag made those options freely selectable, and picking one
+   * fails validation on save.
+   */
+  it("Select disables an option flagged in the `options` data prop", () => {
+    render(
+      <Select
+        open
+        options={[
+          { value: "a", label: "Usable" },
+          { value: "b", label: "Not shared with you", disabled: true },
+        ]}
+      />,
+    );
+    expect(
+      screen.getByRole("option", { name: "Not shared with you" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Usable" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  it("Select disables a Select.Option child flagged as disabled", () => {
+    render(
+      <Select open>
+        <Select.Option value="a">Usable</Select.Option>
+        <Select.Option value="b" disabled>
+          Connector unavailable
+        </Select.Option>
+      </Select>,
+    );
+    expect(
+      screen.getByRole("option", { name: "Connector unavailable" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("option", { name: "Usable" })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+  });
+
+  /*
    * antd allows a STANDALONE `<Radio checked onClick />` with no group — Manage
    * Documents and the LLM-profiles table each render one per row to mark the
    * active item. Radix's RadioGroupItem reads its group context and THROWS

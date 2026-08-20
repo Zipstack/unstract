@@ -134,7 +134,7 @@ interface AntInputNumberProps
 interface SelectOption {
   value: string | number;
   label?: React.ReactNode;
-  /** Radio.Group forwards this to the individual radio. */
+  /** Renders the option unselectable — Select and Radio.Group both honour it. */
   disabled?: boolean;
 }
 
@@ -690,6 +690,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
         .map((c) => ({
           value: c.props.value,
           label: c.props.children ?? c.props.label,
+          disabled: c.props.disabled,
         }));
 
     /*
@@ -732,7 +733,11 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
         </SelectTrigger>
         <SelectContent>
           {items.map((o) => (
-            <SelectItem key={String(o.value)} value={String(o.value)}>
+            <SelectItem
+              key={String(o.value)}
+              value={String(o.value)}
+              disabled={o.disabled}
+            >
               {/*
                * antd falls back to the VALUE when an option carries no label,
                * and call-sites rely on it: the prompt card's enforce-type list
