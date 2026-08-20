@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Radio } from "@/components/ui/shims/antd-inputs";
 import { Col, Space } from "@/components/ui/shims/antd-layout";
-import { Divider, Image } from "@/components/ui/shims/antd-leaves";
+import { Divider } from "@/components/ui/shims/antd-leaves";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
@@ -23,6 +23,7 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { ProfileIcon } from "./ProfileIcon";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
 import { PromptRunTimer } from "./PromptRunTimer";
@@ -121,7 +122,7 @@ function PromptOutput({
   const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
-      {Object.entries(adapterConf)?.map(([key, value]) => (
+      {Object.entries(adapterConf || {}).map(([key, value]) => (
         <div key={key}>
           <strong>{key}:</strong> {value}
         </div>
@@ -346,13 +347,7 @@ function PromptOutput({
                 >
                   <div className="llm-info">
                     <div className="llm-info-left">
-                      <Image
-                        src={profile?.icon}
-                        width={15}
-                        height={15}
-                        preview={false}
-                        className="prompt-card-llm-icon"
-                      />
+                      <ProfileIcon icon={profile?.icon} />
                       <Typography.Text
                         className="prompt-card-llm-title"
                         ellipsis={{ tooltip: profile?.conf?.LLM }}

@@ -1,6 +1,5 @@
 import PropTypes from "prop-types";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
-import { Image } from "@/components/ui/shims/antd-leaves";
 import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import usePromptOutput from "../../../hooks/usePromptOutput";
@@ -8,6 +7,7 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { ProfileIcon } from "./ProfileIcon";
 
 let TableOutput;
 try {
@@ -71,13 +71,7 @@ function PromptOutputsModal({
                   <div>
                     {displayLlmProfile && (
                       <div className="prompt-output-llm-bg">
-                        <Image
-                          src={profile?.icon}
-                          width={15}
-                          height={15}
-                          preview={false}
-                          className="prompt-card-llm-icon"
-                        />
+                        <ProfileIcon icon={profile?.icon} />
                         <Typography.Text className="prompt-card-llm-title">
                           {profile?.conf?.LLM}
                         </Typography.Text>

@@ -13,7 +13,6 @@ import "./OutputForDocModal.css";
 import {
   displayPromptResult,
   getDocIdFromKey,
-  getLLMModelNamesForProfiles,
 } from "../../../helpers/GetStaticData";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -22,13 +21,11 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 let publicOutputsApi;
-let publicAdapterApi;
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
   );
   publicOutputsApi = mod.publicOutputsApi;
-  publicAdapterApi = mod.publicAdapterApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -82,13 +79,23 @@ function OutputForDocModal({
       return;
     }
     handleGetOutputForDocs(selectedProfile);
-    getAdapterInfo();
   }, [
     open,
     selectedProfile,
     singlePassExtractMode,
     isSinglePassExtractLoading,
   ]);
+
+  useEffect(() => {
+    // Model name comes from the profile payload, not the viewer's adapters.
+    setAdapterData(
+      (llmProfiles || []).map((profile) => ({
+        profile_name: profile?.profile_name,
+        llm_model: profile?.conf?.LLM,
+        profile_id: profile?.profile_id,
+      })),
+    );
+  }, [llmProfiles]);
 
   useEffect(() => {
     setSelectedProfile(profileId);
@@ -172,17 +179,6 @@ function OutputForDocModal({
     promptOutputInstance["isLoading"] = docOutputs[key]?.isLoading || false;
 
     return promptOutputInstance;
-  };
-
-  const getAdapterInfo = () => {
-    let url = `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`;
-    if (isPublicSource) {
-      url = publicAdapterApi(id, "LLM");
-    }
-    axiosPrivate.get(url).then((res) => {
-      const adapterList = res.data;
-      setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
-    });
   };
 
   const handleGetOutputForDocs = (profile = profileManagerId) => {
