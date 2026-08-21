@@ -191,7 +191,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         include_metrics: bool = False,
         include_extracted_text: bool = False,
         use_file_history: bool = False,
-        tag_names: list[str] = [],
+        tag_names: list[str] | None = None,
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
         hitl_packet_id: str | None = None,
@@ -222,6 +222,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             Rate limiting is handled at the view layer. This method should be called
             after rate limit checks have passed, with a pre-acquired execution_id.
         """
+        tag_names = tag_names or []
         # Use provided execution_id or generate one (for backward compatibility)
         if execution_id is None:
             execution_id = str(uuid.uuid4())
