@@ -87,7 +87,9 @@ class ExecutionResponse:
         else:
             item.pop("metadata", None)
 
-    def remove_result_metadata_keys(self, keys_to_remove: list[str] | None = None) -> None:
+    def remove_result_metadata_keys(
+        self, keys_to_remove: list[str] | None = None
+    ) -> None:
         """Removes specified keys from the 'metadata' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance. If
         'keys_to_remove' is empty, the 'metadata' key itself is removed.
