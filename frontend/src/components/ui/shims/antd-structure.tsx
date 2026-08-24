@@ -239,6 +239,8 @@ interface DescriptionsProps
   }>;
   column?: number;
   bordered?: boolean;
+  /** antd appends a colon to the label of a NON-bordered Descriptions. */
+  colon?: boolean;
   /*
    * Passed by two cloud plugins (`size="small"` / `"middle"`). Accepted
    * rather than forwarded — the DOM has no such attribute, and the density
@@ -428,8 +430,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
          * never matches antd's activeKey and the ".1:$…" string leaks out
          * through onChange as a profile id (that was the 500).
          */
-        key:
-          c.props.tabKey ?? String(c.key ?? "").replace(/^\.(\d+:)?\$/, ""),
+        key: c.props.tabKey ?? String(c.key ?? "").replace(/^\.(\d+:)?\$/, ""),
         label: c.props.tab,
         // antd supports an icon on TabPane too, not just on `items`.
         icon: c.props.icon,
@@ -1145,12 +1146,12 @@ const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
           )}
         >
           {/*
-            * The icon needs its own shrink-0 box. Dropped straight into the
-            * flex row, a long label squeezes the SVG to width 0 while leaving
-            * its height at 24 — "SummarizedExtraction" in the Prompt Studio
-            * settings menu rendered as a blank gap where every shorter
-            * sibling showed its icon. antd wraps the icon for the same reason.
-            */}
+           * The icon needs its own shrink-0 box. Dropped straight into the
+           * flex row, a long label squeezes the SVG to width 0 while leaving
+           * its height at 24 — "SummarizedExtraction" in the Prompt Studio
+           * settings menu rendered as a blank gap where every shorter
+           * sibling showed its icon. antd wraps the icon for the same reason.
+           */}
           {item.icon ? (
             <span className="flex shrink-0 items-center">{item.icon}</span>
           ) : null}
@@ -1224,15 +1225,15 @@ function SkeletonButton({
   ...props
 }: SkeletonBlockProps) {
   return (
-      <ShadcnSkeleton
-        className={cn(
-          SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
-          block ? "w-full" : "w-16",
-          shape === "circle" ? "rounded-full" : "rounded-md",
-          className,
-        )}
-        {...props}
-      />
+    <ShadcnSkeleton
+      className={cn(
+        SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
+        block ? "w-full" : "w-16",
+        shape === "circle" ? "rounded-full" : "rounded-md",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -1244,17 +1245,17 @@ function SkeletonInput({
   ...props
 }: SkeletonBlockProps) {
   return (
-      <ShadcnSkeleton
-        className={cn(
-          SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
-          // antd's Input skeleton spans its container unless told otherwise;
-          // the call-sites rely on that to fill a panel row.
-          block === false ? "w-40" : "w-full",
-          "rounded-md",
-          className,
-        )}
-        {...props}
-      />
+    <ShadcnSkeleton
+      className={cn(
+        SKELETON_BLOCK_SIZES[size] ?? SKELETON_BLOCK_SIZES.default,
+        // antd's Input skeleton spans its container unless told otherwise;
+        // the call-sites rely on that to fill a panel row.
+        block === false ? "w-40" : "w-full",
+        "rounded-md",
+        className,
+      )}
+      {...props}
+    />
   );
 }
 
@@ -1387,54 +1388,198 @@ const Tree = React.forwardRef<HTMLDivElement, TreeProps>(function Tree(
   );
 });
 
+/** One `<Descriptions.Item>`, however the call-site supplied it. */
+type DescriptionEntry = NonNullable<DescriptionsProps["items"]>[number];
+
+/**
+ * antd's cell padding is `padding paddingLG`, stepped down a token per size:
+ * 16/24 by default, 12/24 for "middle", 8/16 for "small".
+ */
+function cellPadding(size: SizeToken | undefined) {
+  if (size === "small") {
+    return "px-4 py-2";
+  }
+  return size === "middle" ? "px-6 py-3" : "px-6 py-4";
+}
+
+/** antd's `itemPaddingBottom`, which spaces the rows of a plain Descriptions. */
+function itemPaddingBottom(size: SizeToken | undefined) {
+  if (size === "small") {
+    return "pb-2";
+  }
+  return size === "middle" ? "pb-3" : "pb-4";
+}
+
+/** `items` and `<Descriptions.Item>` children are two spellings of one list. */
+function toEntries(
+  items: DescriptionsProps["items"],
+  children: React.ReactNode,
+): DescriptionEntry[] {
+  if (items) {
+    return items;
+  }
+  return React.Children.toArray(children)
+    .filter((c): c is React.ReactElement<DescriptionEntry> =>
+      React.isValidElement(c),
+    )
+    .map((c, i) => ({
+      key: String(c.key ?? i),
+      label: c.props.label,
+      children: c.props.children,
+    }));
+}
+
 /**
  * antd `<Descriptions>` — a label/value grid. Only cloud plugins use it, but it
  * lives here per D9 so both repos share one implementation.
+ *
+ * antd renders it as a real <table>: a row per `column` items, with the label
+ * BESIDE its value — a `<th>` when `bordered`, an inline `<span>` and a colon
+ * when not. The first pass emitted a <dl> of stacked label-above-value pairs
+ * instead, which cost LLMWhisperer's billing page its pricing table: each plan
+ * card listed the four processing modes and their prices as loose text, and the
+ * two plugin CSS rules that hook antd's own DOM matched nothing — `.pricing-table
+ * th` (label cell transparent, not grey) and the free card's
+ * `.ant-descriptions-item-content { display: none }`, which is what leaves that
+ * card showing mode names without prices.
  */
 const DescriptionsBase = React.forwardRef<HTMLDivElement, DescriptionsProps>(
   function Descriptions(
-    { title, items, column = 3, bordered, className, children, ...props },
+    {
+      title,
+      items,
+      column = 3,
+      bordered,
+      size,
+      colon = true,
+      className,
+      children,
+      ...props
+    },
     ref,
   ) {
+    const entries = toEntries(items, children);
+    const rows: DescriptionEntry[][] = [];
+    for (let i = 0; i < entries.length; i += column) {
+      rows.push(entries.slice(i, i + column));
+    }
+
+    const padding = bordered ? cellPadding(size) : itemPaddingBottom(size);
+
     return (
-      <div ref={ref} className={cn("w-full", className)} {...props}>
-        {title ? <div className="mb-2 font-medium">{title}</div> : null}
-        <dl
+      <div
+        ref={ref}
+        className={cn(
+          "ant-descriptions w-full",
+          bordered && "ant-descriptions-bordered",
+          className,
+        )}
+        {...props}
+      >
+        {title ? (
+          <div className="ant-descriptions-header mb-2 font-medium">
+            {title}
+          </div>
+        ) : null}
+        <div
           className={cn(
-            "grid gap-x-4 gap-y-2",
-            bordered && "rounded-md border p-3",
+            "ant-descriptions-view",
+            /*
+             * The rounding has to clip the corner cells, and the outer border
+             * belongs to this wrapper so the cells only draw the dividers
+             * BETWEEN themselves — otherwise every edge doubles up.
+             */
+            bordered && "overflow-hidden rounded-lg border border-separator",
           )}
-          style={{ gridTemplateColumns: `repeat(${column}, minmax(0, 1fr))` }}
         >
-          {items
-            ? items.map((item) => (
-                <div key={String(item.key ?? item.label)}>
-                  <dt className="text-sm text-muted-foreground">
-                    {item.label}
-                  </dt>
-                  <dd className="text-sm">{item.children}</dd>
-                </div>
-              ))
-            : children}
-        </dl>
+          {/*
+           * Deliberately NOT `table-fixed`: antd sizes these columns to their
+           * content, which is what lets a long label like "High Quality with
+           * Form Elements / Table" take the width it needs.
+           */}
+          <table className="w-full border-collapse">
+            <tbody>
+              {rows.map((row, r) => (
+                <tr
+                  key={row.map((item) => String(item.key ?? item.label)).join()}
+                  className="ant-descriptions-row"
+                >
+                  {row.map((item, c) =>
+                    bordered ? (
+                      <React.Fragment key={String(item.key ?? item.label)}>
+                        <th
+                          className={cn(
+                            "ant-descriptions-item-label text-start align-top text-sm font-normal text-muted-foreground",
+                            // antd's `labelBg` — a wash, not an opaque grey, so
+                            // it tints whatever the surface underneath is.
+                            "bg-black/[0.02]",
+                            padding,
+                            r < rows.length - 1 && "border-b border-separator",
+                            "border-r border-separator",
+                          )}
+                        >
+                          {item.label}
+                        </th>
+                        <td
+                          className={cn(
+                            "ant-descriptions-item-content align-top text-sm",
+                            padding,
+                            r < rows.length - 1 && "border-b border-separator",
+                            c < row.length - 1 && "border-r border-separator",
+                          )}
+                        >
+                          {item.children}
+                        </td>
+                      </React.Fragment>
+                    ) : (
+                      <td
+                        key={String(item.key ?? item.label)}
+                        className={cn(
+                          "ant-descriptions-item align-top",
+                          r < rows.length - 1 && padding,
+                        )}
+                      >
+                        <div className="ant-descriptions-item-container flex text-sm">
+                          <span
+                            className={cn(
+                              "ant-descriptions-item-label me-2 shrink-0 text-muted-foreground",
+                              /*
+                               * antd hangs the colon off ::after, so the label's
+                               * own text stays exactly what the call-site wrote
+                               * — a `getByText("Owner")` still matches.
+                               */
+                              colon && "after:ms-px after:content-[':']",
+                            )}
+                          >
+                            {item.label}
+                          </span>
+                          <span className="ant-descriptions-item-content min-w-0">
+                            {item.children}
+                          </span>
+                        </div>
+                      </td>
+                    ),
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     );
   },
 );
 
-function DescriptionsItem({
-  label,
-  children,
-}: {
+/**
+ * A marker only: `<Descriptions>` reads `label`/`children` off these elements
+ * and lays the cells out itself, exactly as antd does. Rendering it standalone
+ * would emit a row with no table around it, so it renders nothing.
+ */
+function DescriptionsItem(_props: {
   label?: React.ReactNode;
   children?: React.ReactNode;
 }) {
-  return (
-    <div>
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{children}</dd>
-    </div>
-  );
+  return null;
 }
 
 /** antd `<Statistic title value prefix suffix precision />`. */
@@ -1548,7 +1693,8 @@ const Transfer = React.forwardRef<HTMLDivElement, TransferProps>(
       if (!term) {
         return true;
       }
-      const text = typeof item.title === "string" ? item.title : String(item.key);
+      const text =
+        typeof item.title === "string" ? item.title : String(item.key);
       return text.toLowerCase().includes(term.toLowerCase());
     };
 
@@ -1617,7 +1763,9 @@ const Transfer = React.forwardRef<HTMLDivElement, TransferProps>(
           {/* antd's header: select-all on the left, count, then the title. */}
           <div className="ant-transfer-list-header flex items-center gap-2 border-b px-3 py-2 text-sm">
             <Checkbox
-              checked={allChecked ? true : someChecked ? "indeterminate" : false}
+              checked={
+                allChecked ? true : someChecked ? "indeterminate" : false
+              }
               onCheckedChange={toggleAll}
               disabled={disabled || !selectable.length}
               aria-label={`Select all in ${

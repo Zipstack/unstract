@@ -199,8 +199,9 @@ describe("antd-compatible structural shims (P4)", () => {
         <Skeleton.Input active size="large" />
       </div>,
     );
-    expect(container.querySelectorAll("div[class*='animate-pulse']").length)
-      .toBeGreaterThanOrEqual(2);
+    expect(
+      container.querySelectorAll("div[class*='animate-pulse']").length,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("Tabs keep the pill look when type='card'", () => {
@@ -366,6 +367,80 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("Ada")).toBeInTheDocument();
   });
 
+  /*
+   * antd lays Descriptions out as a real <table> with the label BESIDE its
+   * value, and plugin CSS hooks that DOM directly: LLMWhisperer's billing page
+   * styles `.pricing-table th`, and its free-plan card hides
+   * `.ant-descriptions-item-content` to show modes without prices. A <dl> of
+   * stacked pairs matched neither rule and lost the pricing table entirely.
+   */
+  it("Descriptions renders a table, one row per column-worth of items", () => {
+    const { container } = render(
+      <Descriptions
+        column={1}
+        items={[
+          { key: "a", label: "Native Text", children: "$1/1000 pages" },
+          { key: "b", label: "Low Cost", children: "$5/1000 pages" },
+        ]}
+      />,
+    );
+    expect(container.querySelector("table")).toBeInTheDocument();
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+  });
+
+  it("Descriptions packs `column` items into each row", () => {
+    const { container } = render(
+      <Descriptions
+        column={2}
+        items={[
+          { key: "a", label: "Document", children: "a.pdf" },
+          { key: "b", label: "Tool", children: "extract" },
+          { key: "c", label: "Reviewers", children: "2" },
+        ]}
+      />,
+    );
+    const rows = container.querySelectorAll("tbody tr");
+    expect(rows).toHaveLength(2);
+    expect(rows[0].querySelectorAll("td")).toHaveLength(2);
+    expect(rows[1].querySelectorAll("td")).toHaveLength(1);
+  });
+
+  it("Descriptions bordered puts the label in a th beside its value", () => {
+    const { container } = render(
+      <Descriptions
+        bordered
+        column={1}
+        items={[{ key: "a", label: "Native Text", children: "$1/1000 pages" }]}
+      />,
+    );
+    const row = container.querySelector("tbody tr");
+    expect(within(row).getByText("Native Text").tagName).toBe("TH");
+    const content = row.querySelector("td");
+    expect(content).toHaveClass("ant-descriptions-item-content");
+    expect(content).toHaveTextContent("$1/1000 pages");
+  });
+
+  it("Descriptions keeps the label's own text free of the colon", () => {
+    render(
+      <Descriptions items={[{ key: "a", label: "Owner", children: "Ada" }]} />,
+    );
+    // antd hangs the colon off ::after, so call-sites (and their tests) can
+    // still match the label they wrote.
+    expect(screen.getByText("Owner")).toHaveTextContent(/^Owner$/);
+  });
+
+  it("Descriptions reads Descriptions.Item children as items", () => {
+    const { container } = render(
+      <Descriptions bordered column={1}>
+        <Descriptions.Item label="Name">Invoice API</Descriptions.Item>
+        <Descriptions.Item label="Base URL">https://x/api</Descriptions.Item>
+      </Descriptions>,
+    );
+    expect(container.querySelectorAll("tbody tr")).toHaveLength(2);
+    expect(screen.getByText("Name").tagName).toBe("TH");
+    expect(screen.getByText("Invoice API")).toBeInTheDocument();
+  });
+
   it("Statistic applies precision and suffix", () => {
     render(
       <Statistic title="Uptime" value={99.456} precision={1} suffix="%" />,
@@ -490,9 +565,7 @@ describe("antd-compatible structural shims (P4)", () => {
     render(
       <Transfer dataSource={[{ key: "1", title: "A" }]} targetKeys={[]} />,
     );
-    expect(
-      screen.getByLabelText("Move selected to the right"),
-    ).toBeDisabled();
+    expect(screen.getByLabelText("Move selected to the right")).toBeDisabled();
     expect(screen.getByLabelText("Move selected to the left")).toBeDisabled();
   });
 
@@ -536,7 +609,9 @@ describe("antd-compatible structural shims (P4)", () => {
     render(
       <Transfer dataSource={[{ key: "1", title: "A" }]} targetKeys={[]} />,
     );
-    expect(screen.queryByPlaceholderText("Search here")).not.toBeInTheDocument();
+    expect(
+      screen.queryByPlaceholderText("Search here"),
+    ).not.toBeInTheDocument();
   });
 
   it("Transfer select-all checks every row in its own panel", () => {
