@@ -646,12 +646,30 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         stuck past ``stuck_seconds`` whose files are ALL terminal, recomputes the
         correct terminal status from those files, and finalizes them.
 
-        Scoped to PG by ``queue_message_id`` (the durable per-row transport marker;
-        Celery rows carry ``task_id`` and ``queue_message_id=NULL``), so it needs no
-        Flipt context and never touches Celery executions.
+        **Covers BOTH transports (UN-3796).** It was scoped to PG by
+        ``queue_message_id__isnull=False``, which made a Celery execution invisible —
+        so one stranded by a PG cutover (its workers removed while its chord callback
+        was still to fire) sat ``EXECUTING`` forever with nothing able to close it. The
+        finalization logic itself was always transport-agnostic: it reads file statuses
+        and recomputes the terminal status, never touching a queue. Only the selection
+        was narrow.
+
+        Now requires the row to have been dispatched on **some** transport —
+        ``queue_message_id`` (PG) or ``task_id`` (Celery). That deliberately excludes
+        rows with BOTH handles NULL, which are never-dispatched and belong to
+        ``workflow_v2/undispatched_sweep.py``; the two predicates are disjoint on
+        ``task_id`` so they can never contend for the same row. (The
+        ``total == 0 → skipped`` guard below would also catch those, but relying on a
+        downstream guard for correctness is how overlaps get reintroduced.)
+
+        The method and route keep the ``_pg_`` name despite no longer being PG-only:
+        the URL is an internal-API contract between backend and workers, and renaming
+        it would break during a rolling deploy where an older worker still calls the
+        old path. Misleading name, deliberate trade.
         """
         from datetime import timedelta
 
+        from django.db.models import Q
         from django.utils import timezone
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -674,7 +692,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
         stuck_ids = list(
             WorkflowExecution.objects.filter(
-                queue_message_id__isnull=False,  # PG-only; Celery uses task_id
+                # Dispatched on EITHER transport. Both-NULL means never dispatched —
+                # undispatched_sweep.py's row, not ours.
+                Q(queue_message_id__isnull=False) | Q(task_id__isnull=False),
                 status__in=[
                     ExecutionStatus.PENDING.value,
                     ExecutionStatus.EXECUTING.value,

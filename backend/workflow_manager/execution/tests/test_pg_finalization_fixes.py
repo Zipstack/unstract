@@ -113,14 +113,49 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert out["skipped"] == 1
         assert ex.status == ExecutionStatus.PENDING.value
 
-    def test_celery_execution_never_scanned(self):
+    def test_celery_execution_IS_now_recovered(self):
+        """INVERTED deliberately (UN-3796). This asserted `scanned == 0` — that a
+        Celery execution is never touched.
+
+        That exclusion is the bug. A PG cutover removes the Celery workers, and an
+        execution whose files all finished but whose chord callback never fired then
+        sits EXECUTING forever: the callback is gone, there is no pg_barrier_state to
+        recover from, and this endpoint refused to look. Nothing else could close it.
+
+        The finalization logic was always transport-agnostic — it reads file statuses
+        and recomputes the terminal status. Only the selection was narrow.
+        """
         ex = self._exec(
             ExecutionStatus.EXECUTING, pg=False, files=[ExecutionStatus.COMPLETED]
         )
         _age(ex, 9999)
         out = self._call()
         ex.refresh_from_db()
-        assert out["scanned"] == 0  # queue_message_id IS NULL → PG filter excludes it
+        assert out["recovered"] == 1
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_a_NEVER_DISPATCHED_execution_is_left_to_the_undispatched_sweep(self):
+        """The disjointness guard. Both handles NULL means the request died before
+        dispatch — undispatched_sweep.py's row, which marks it ERROR with "did not
+        start, safe to re-run".
+
+        Both sweeps run on the same reaper cadence against the same table, so an
+        overlap would be live from the first tick: one marking it ERROR while the
+        other finalized it from whatever files happened to exist.
+        """
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.EXECUTING.value,
+            queue_message_id=None,
+            task_id=None,
+        )
+        WorkflowFileExecution.objects.create(
+            workflow_execution=ex, file_name="f", status=ExecutionStatus.COMPLETED.value
+        )
+        _age(ex, 9999)
+        out = self._call()
+        ex.refresh_from_db()
+        assert out["scanned"] == 0
         assert ex.status == ExecutionStatus.EXECUTING.value
 
     def test_still_processing_is_skipped(self):
