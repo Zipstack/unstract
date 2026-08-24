@@ -250,3 +250,251 @@ describe("DataTable showHeader", () => {
     expect(screen.getByText("Row 1")).toBeInTheDocument();
   });
 });
+
+/*
+ * antd's banded header: a column carrying `title` + `children` instead of a
+ * `dataIndex`. Ignoring `children` collapsed the band to one accessor-less
+ * leaf, which is how the LLMWhisperer processing-modes table came to render
+ * its title over sixteen empty rows.
+ */
+describe("DataTable grouped columns", () => {
+  const grouped = [
+    {
+      title: "Processing Modes",
+      children: [
+        { title: "Name", dataIndex: "feature", key: "feature" },
+        { title: "Native Text", dataIndex: "nativeText", key: "nativeText" },
+      ],
+    },
+  ];
+  const rows = [{ key: "1", feature: "Cost", nativeText: "$1/1,000 pages" }];
+
+  it("renders the band title and its leaf titles as two header rows", () => {
+    const { container } = render(
+      <DataTable
+        columns={grouped}
+        dataSource={rows}
+        rowKey="key"
+        pagination={false}
+      />,
+    );
+    expect(container.querySelectorAll("thead tr")).toHaveLength(2);
+    expect(screen.getByText("Processing Modes")).toBeInTheDocument();
+    expect(screen.getByText("Name")).toBeInTheDocument();
+    expect(screen.getByText("Native Text")).toBeInTheDocument();
+  });
+
+  it("renders a cell per leaf column, not one blank cell per row", () => {
+    render(
+      <DataTable
+        columns={grouped}
+        dataSource={rows}
+        rowKey="key"
+        pagination={false}
+      />,
+    );
+    expect(screen.getByText("Cost")).toBeInTheDocument();
+    expect(screen.getByText("$1/1,000 pages")).toBeInTheDocument();
+    expect(document.querySelectorAll("tbody tr td")).toHaveLength(2);
+  });
+
+  it("spans the band across its leaves so the header rows line up", () => {
+    const { container } = render(
+      <DataTable
+        columns={grouped}
+        dataSource={rows}
+        rowKey="key"
+        pagination={false}
+      />,
+    );
+    const [bandRow, leafRow] = container.querySelectorAll("thead tr");
+    expect(bandRow.querySelectorAll("th")).toHaveLength(1);
+    expect(bandRow.querySelector("th")).toHaveAttribute("colspan", "2");
+    expect(leafRow.querySelectorAll("th")).toHaveLength(2);
+  });
+
+  it("honours a leaf column's render as antd does", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Band",
+            children: [
+              {
+                title: "Name",
+                dataIndex: "feature",
+                key: "feature",
+                render: (value) => <b>{`rendered ${value}`}</b>,
+              },
+            ],
+          },
+        ]}
+        dataSource={rows}
+        rowKey="key"
+        pagination={false}
+      />,
+    );
+    expect(screen.getByText("rendered Cost")).toBeInTheDocument();
+  });
+
+  /*
+   * Child indices restart at 0 inside every band, so an index-derived id
+   * collides with a top-level column's — and TanStack rejects duplicate ids.
+   */
+  it("keeps ids unique when neither band nor leaf declares a key", () => {
+    expect(() =>
+      render(
+        <DataTable
+          columns={[
+            { title: "Band", children: [{ title: "A", dataIndex: "feature" }] },
+          ]}
+          dataSource={rows}
+          rowKey="key"
+          pagination={false}
+        />,
+      ),
+    ).not.toThrow();
+    expect(screen.getByText("Cost")).toBeInTheDocument();
+  });
+
+  it("spans the empty state across every leaf column", () => {
+    const { container } = render(
+      <DataTable
+        columns={grouped}
+        dataSource={[]}
+        rowKey="key"
+        pagination={false}
+      />,
+    );
+    expect(container.querySelector("tbody td")).toHaveAttribute("colspan", "2");
+  });
+});
+
+/*
+ * antd's `scroll={{ x, y }}`. Ten call-sites pass it; before it was declared it
+ * fell into `...props` and onto the wrapper <div>, so every one of them got a
+ * table at full height with no pinned header.
+ */
+describe("DataTable scroll", () => {
+  // shadcn's own overflow wrapper is the scrolling ancestor, so the cap has to
+  // land there for `position: sticky` to have anything to stick to.
+  const scroller = (container) =>
+    container.querySelector("table").parentElement;
+
+  it("caps the scrolling wrapper at scroll.y", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(20)}
+        rowKey="id"
+        pagination={false}
+        scroll={{ y: 500 }}
+      />,
+    );
+    const wrapper = container.querySelector(".ant-table-container");
+    // The cap is declared here but applies to the child — assert the child is
+    // the element that actually scrolls.
+    expect(wrapper).toHaveClass("[&>div]:max-h-[var(--table-scroll-y)]");
+    expect(wrapper).toHaveStyle({ "--table-scroll-y": "500px" });
+    expect(scroller(container).parentElement).toBe(wrapper);
+    expect(scroller(container)).toHaveClass("overflow-auto");
+  });
+
+  it("passes a string scroll.y through as the caller wrote it", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(3)}
+        rowKey="id"
+        scroll={{ y: "calc(100vh - 450px)" }}
+      />,
+    );
+    expect(container.querySelector(".ant-table-container")).toHaveStyle({
+      "--table-scroll-y": "calc(100vh - 450px)",
+    });
+  });
+
+  it("pins the header rows when the body scrolls", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(20)}
+        rowKey="id"
+        scroll={{ y: 500 }}
+      />,
+    );
+    const th = container.querySelector("thead th");
+    expect(th).toHaveStyle({ position: "sticky", top: "0px" });
+    // The <tr> carries the background and border, and a pinned cell leaves the
+    // row behind — so the cell has to bring its own.
+    expect(th).toHaveClass("bg-[var(--neutral-50)]");
+  });
+
+  it("leaves the header unpinned without scroll.y", () => {
+    const { container } = render(
+      <DataTable columns={columns} dataSource={rowsFor(3)} rowKey="id" />,
+    );
+    expect(container.querySelector("thead th").style.position).toBe("");
+    expect(container.querySelector(".ant-table-container")).not.toHaveClass(
+      "[&>div]:max-h-[var(--table-scroll-y)]",
+    );
+  });
+
+  it("gives the table a minimum width for scroll.x", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(3)}
+        rowKey="id"
+        scroll={{ x: 1200 }}
+      />,
+    );
+    expect(container.querySelector("table")).toHaveStyle({
+      minWidth: "1200px",
+    });
+  });
+
+  it("reads scroll.x === true as max-content, as antd does", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(3)}
+        rowKey="id"
+        scroll={{ x: true }}
+      />,
+    );
+    expect(container.querySelector("table")).toHaveStyle({
+      minWidth: "max-content",
+    });
+  });
+
+  it("keeps tableLayout working alongside scroll.x", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(3)}
+        rowKey="id"
+        tableLayout="fixed"
+        scroll={{ x: "max-content" }}
+      />,
+    );
+    expect(container.querySelector("table")).toHaveStyle({
+      tableLayout: "fixed",
+      minWidth: "max-content",
+    });
+  });
+
+  it("does not leak scroll onto the DOM as an attribute", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(3)}
+        rowKey="id"
+        scroll={{ x: 900, y: 400 }}
+      />,
+    );
+    expect(
+      container.querySelector(".ant-table-wrapper").getAttribute("scroll"),
+    ).toBeNull();
+  });
+});

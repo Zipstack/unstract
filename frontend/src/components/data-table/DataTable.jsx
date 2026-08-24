@@ -39,20 +39,51 @@ import { cn } from "@/lib/utils";
  * import it rather than build their own.
  */
 
-/** antd column defs → TanStack column defs. */
-function toColumns(antdColumns = [], rowSelection) {
-  const cols = antdColumns.filter(Boolean).map((c, i) => ({
-    id: String(c.key ?? c.dataIndex ?? i),
+/**
+ * One antd column → one TanStack column def.
+ *
+ * antd spells a banded header as a column that carries a `title` and a
+ * `children` array instead of a `dataIndex`; the leaves under it are the real
+ * columns. Ignoring `children` collapsed the whole band to a single leaf whose
+ * accessor was undefined, so the LLMWhisperer processing-modes table rendered
+ * its group title above sixteen blank rows — a header with no table under it.
+ *
+ * `path` only supplies the id for a column with neither `key` nor `dataIndex`:
+ * child indices restart at 0 inside every band, so the plain index the flat
+ * version used would collide across levels.
+ */
+function toColumn(c, path) {
+  const id = String(c.key ?? c.dataIndex ?? path);
+  const meta = { align: c.align, width: c.width, className: c.className };
+
+  if (c.children?.length) {
+    return {
+      id,
+      header: c.title,
+      meta,
+      columns: c.children
+        .filter(Boolean)
+        .map((child, i) => toColumn(child, `${path}-${i}`)),
+    };
+  }
+
+  return {
+    id,
     accessorKey: c.dataIndex,
     header: c.title,
     enableSorting: Boolean(c.sorter),
-    meta: { align: c.align, width: c.width, className: c.className },
+    meta,
     cell: ({ row }) => {
       const value = c.dataIndex ? row.original?.[c.dataIndex] : undefined;
       // antd's render(value, record, index) contract.
       return c.render ? c.render(value, row.original, row.index) : value;
     },
-  }));
+  };
+}
+
+/** antd column defs → TanStack column defs. */
+function toColumns(antdColumns = [], rowSelection) {
+  const cols = antdColumns.filter(Boolean).map((c, i) => toColumn(c, i));
 
   if (!rowSelection) {
     return cols;
@@ -164,6 +195,18 @@ function DataTable({
    * silently have got a header anyway.
    */
   showHeader = true,
+  /**
+   * antd's `scroll={{ x, y }}`: `y` caps the body height and pins the header
+   * above it, `x` gives the table a minimum width so cramped columns overflow
+   * sideways instead of squashing.
+   *
+   * Declared for the same reason as `onRow` and `showHeader` above — it fell
+   * into `...props` and onto the wrapper <div>, so all ten call-sites asking
+   * for it silently got a table that grew to its full height instead. The
+   * LLMWhisperer processing-modes table asks for `y: 500` and stood 1270px
+   * tall, pushing its own header off the top of the screen.
+   */
+  scroll,
   className,
   emptyText = "No data",
   ...props
@@ -176,6 +219,10 @@ function DataTable({
     () => toColumns(columns, rowSelection),
     [columns, rowSelection],
   );
+
+  // antd reads `scroll.x === true` as "as wide as the content needs".
+  const scrollX = scroll?.x === true ? "max-content" : scroll?.x;
+  const scrollY = scroll?.y;
 
   // antd accepts `pagination={false}` to disable, or an object to configure.
   const paginated = pagination !== false;
@@ -228,6 +275,38 @@ function DataTable({
     // ticks a row, which is when antd would fire onChange.
   }, [selection, rowKey]);
 
+  /*
+   * antd renders the header as a SECOND table outside the scrolling body, so a
+   * banded header stays put in full. One table can only pin rows with
+   * `position: sticky`, and every row after the first has to sit below the
+   * ones above it — an offset that cannot be known statically, since a header
+   * row's height depends on where its titles wrap. So: measure after layout.
+   */
+  const headRef = React.useRef(null);
+  const [headerOffsets, setHeaderOffsets] = React.useState([]);
+  const headerRowCount = table.getHeaderGroups().length;
+  React.useLayoutEffect(() => {
+    if (!scrollY || !headRef.current) {
+      return undefined;
+    }
+    const measure = () => {
+      let top = 0;
+      setHeaderOffsets(
+        // `querySelectorAll` rather than `thead.rows`, which jsdom does not
+        // implement — the measurement threw and took the whole table with it.
+        Array.from(headRef.current.querySelectorAll("tr")).map((row) => {
+          const offset = top;
+          top += row.offsetHeight;
+          return offset;
+        }),
+      );
+    };
+    measure();
+    // Re-wrapping at a new width restacks the rows.
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [scrollY, headerRowCount]);
+
   // antd accepts `loading` as a boolean or `{ spinning }`.
   const isLoading =
     typeof loading === "object" ? Boolean(loading?.spinning) : Boolean(loading);
@@ -237,14 +316,38 @@ function DataTable({
     // rules targeting these (heights, sticky headers, overflow) that would
     // otherwise match nothing.
     <div className={cn("ant-table-wrapper w-full", className)} {...props}>
-      <div className="ant-table ant-table-container">
+      <div
+        className={cn(
+          "ant-table ant-table-container",
+          /*
+           * The cap goes on shadcn's own `overflow-auto` wrapper (the <div>
+           * this one holds), NOT here: `position: sticky` resolves against the
+           * nearest scrolling ancestor, and capping the outer div would leave
+           * the inner one unscrolled — a header pinned to something that never
+           * moves does not move either.
+           */
+          scrollY && "[&>div]:max-h-[var(--table-scroll-y)]",
+        )}
+        style={
+          scrollY
+            ? {
+                "--table-scroll-y":
+                  typeof scrollY === "number" ? `${scrollY}px` : scrollY,
+              }
+            : undefined
+        }
+      >
         <Table
           className={cn(size === "small" && "text-sm")}
-          style={tableLayout ? { tableLayout } : undefined}
+          style={
+            tableLayout || scrollX
+              ? { tableLayout, minWidth: scrollX }
+              : undefined
+          }
         >
           {showHeader ? (
-            <TableHeader className="ant-table-thead">
-              {table.getHeaderGroups().map((hg) => (
+            <TableHeader className="ant-table-thead" ref={headRef}>
+              {table.getHeaderGroups().map((hg, groupIndex) => (
                 /*
                  * antd's `.ant-table-thead > tr > th` is `background: #fafafa`
                  * with a 1px #f0f0f0 bottom border (verified against the
@@ -261,11 +364,38 @@ function DataTable({
                 >
                   {hg.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
+                    // A banded column's own row: antd centres the band title
+                    // over the leaves it covers.
+                    const isBand = header.subHeaders.length > 0;
                     return (
                       <TableHead
                         key={header.id}
-                        style={{ width: header.column.columnDef.meta?.width }}
+                        /*
+                         * A band spans its leaves, and TanStack pads the rows
+                         * where a column has no parent with placeholder
+                         * headers — without the span the second header row
+                         * would be pushed out of alignment with the first.
+                         */
+                        colSpan={header.colSpan}
+                        style={{
+                          width: header.column.columnDef.meta?.width,
+                          ...(scrollY
+                            ? {
+                                position: "sticky",
+                                top: headerOffsets[groupIndex] ?? 0,
+                              }
+                            : null),
+                        }}
                         className={cn(
+                          /*
+                           * The row's own background and bottom border belong
+                           * to the <tr>, which the pinned cell leaves behind —
+                           * the body would scroll through it. An inset shadow
+                           * stands in for the border because a collapsed
+                           * table border does not travel with a sticky cell.
+                           */
+                          scrollY &&
+                            "z-[1] bg-[var(--neutral-50)] shadow-[inset_0_-1px_0_var(--separator)]",
                           /*
                            * shadcn's TableHead defaults to `font-medium
                            * text-muted-foreground`, which renders headers at
@@ -274,6 +404,7 @@ function DataTable({
                            * titles read as washed out beside the reference.
                            */
                           "font-semibold text-foreground",
+                          isBand && "text-center",
                           header.column.columnDef.meta?.align === "center" &&
                             "text-center",
                           header.column.columnDef.meta?.align === "right" &&
@@ -283,18 +414,20 @@ function DataTable({
                         )}
                         onClick={header.column.getToggleSortingHandler()}
                       >
-                        <span className="inline-flex items-center gap-1">
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                          {sorted === "asc" ? (
-                            <ChevronUp className="size-3" />
-                          ) : null}
-                          {sorted === "desc" ? (
-                            <ChevronDown className="size-3" />
-                          ) : null}
-                        </span>
+                        {header.isPlaceholder ? null : (
+                          <span className="inline-flex items-center gap-1">
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                            {sorted === "asc" ? (
+                              <ChevronUp className="size-3" />
+                            ) : null}
+                            {sorted === "desc" ? (
+                              <ChevronDown className="size-3" />
+                            ) : null}
+                          </span>
+                        )}
                       </TableHead>
                     );
                   })}
@@ -305,7 +438,10 @@ function DataTable({
           <TableBody className="ant-table-tbody ant-table-body">
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={cols.length} className="h-24 text-center">
+                <TableCell
+                  colSpan={table.getVisibleLeafColumns().length}
+                  className="h-24 text-center"
+                >
                   <Spinner />
                 </TableCell>
               </TableRow>
@@ -341,7 +477,10 @@ function DataTable({
               ))
             ) : (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={cols.length} className="p-0">
+                <TableCell
+                  colSpan={table.getVisibleLeafColumns().length}
+                  className="p-0"
+                >
                   {/*
                    * antd renders <Empty> here — an illustration above the
                    * text — not a bare string. Emitting only `emptyText` left
