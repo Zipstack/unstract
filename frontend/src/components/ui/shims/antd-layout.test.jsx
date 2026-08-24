@@ -32,6 +32,42 @@ describe("antd-compatible layout shims (P1-05)", () => {
     expect(container.querySelectorAll(".ant-space-item")).toHaveLength(2);
   });
 
+  it("wraps fragment children individually, as antd's toArray does", () => {
+    // The playground header shape: everything behind one conditional
+    // fragment. React's Children.toArray counts that as a single child, so
+    // without flattening the whole header lands in one .ant-space-item and
+    // loses its gaps.
+    const show = true;
+    const { container } = render(
+      <Space>
+        {show && (
+          <>
+            <span>a</span>
+            <span>b</span>
+            <span>c</span>
+          </>
+        )}
+      </Space>,
+    );
+    expect(container.querySelectorAll(".ant-space-item")).toHaveLength(3);
+  });
+
+  it("flattens nested fragments and drops their falsy children", () => {
+    const { container } = render(
+      <Space>
+        <span>a</span>
+        <>
+          <span>b</span>
+          {false && <span>hidden</span>}
+          <>
+            <span>c</span>
+          </>
+        </>
+      </Space>,
+    );
+    expect(container.querySelectorAll(".ant-space-item")).toHaveLength(3);
+  });
+
   it("wraps mapped children individually", () => {
     const { container } = render(
       <Space>

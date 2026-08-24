@@ -131,6 +131,27 @@ const ALIGN: Record<AlignToken, string> = {
 };
 
 /**
+ * antd counts `Space`'s children with rc-util's `toArray`, which **descends
+ * into fragments**; React's own `Children.toArray` does not — it counts
+ * `<>…</>` as a single child.
+ *
+ * That difference is not cosmetic. A call-site that renders its items behind
+ * `{cond && <>…</>}` (the LLMWhisperer playground header does) collapsed into
+ * one `.ant-space-item`, so the gap between them disappeared and any
+ * block-level child — a vertical `Divider` — broke onto its own line, which
+ * stacked the header vertically.
+ */
+function flattenFragments(children: React.ReactNode): React.ReactNode[] {
+  return React.Children.toArray(children).flatMap((child) =>
+    React.isValidElement(child) && child.type === React.Fragment
+      ? flattenFragments(
+          (child.props as { children?: React.ReactNode }).children,
+        )
+      : [child],
+  );
+}
+
+/**
  * antd `<Space>`. Keeps the `.ant-space` / `.ant-space-item` structure so the
  * existing CSS that targets it keeps working.
  */
@@ -151,7 +172,7 @@ const Space = React.forwardRef<HTMLDivElement, SpaceProps>(function Space(
   const gap = resolveGap(size);
   // toArray already discards null, undefined and booleans, so the empty
   // string is the only falsy child left worth dropping.
-  const items = React.Children.toArray(children).filter((c) => c !== "");
+  const items = flattenFragments(children).filter((c) => c !== "");
 
   return (
     <div
