@@ -175,6 +175,34 @@ def reaper_interval_from_env() -> float:
     return value
 
 
+#: How long an execution must sit non-terminal with EVERY file already terminal before
+#: the safety net finalizes it (``WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS``).
+#:
+#: Ten minutes, and deliberately NOT the barrier stuck-timeout it used to default to.
+#: Those answer different questions: the barrier timeout bounds how long a batch may
+#: make no progress (hours, because a single file can legitimately take that long),
+#: whereas this only needs to outlast a callback that is about to fire — seconds.
+#:
+#: **The threshold is not what makes this safe.** The endpoint skips unless every file
+#: is terminal (``internal_views.py``: ``total == 0 or terminal < total → skipped``), so
+#: a legitimately running execution is never a candidate no matter how short this is.
+#: Inheriting the multi-hour barrier timeout therefore bought nothing and cost a lot: a
+#: stranded execution — the common shape being a Celery run whose callback worker was
+#: removed by a deploy (its grace is 300s while file-processing gets 7200s) — sat dead
+#: for ~2.5 h before anything noticed.
+#:
+#: A DEFAULT rather than something operators set, because production and on-prem have
+#: no operator and no Flipt. A value that only exists as an env override is a value
+#: those environments never get, and they are exactly the ones that cannot diagnose a
+#: hung execution themselves.
+#:
+#: Not lowered further because ``total`` counts the file rows that EXIST, not
+#: ``execution.total_files`` — while discovery is still creating rows, a brief
+#: "all existing rows terminal" moment is possible. Ten minutes clears that comfortably.
+#: Comparing against ``total_files`` would close the window properly and allow less.
+_DEFAULT_STUCK_RECOVERY_SECONDS = 600
+
+
 def _positive_duration_from_env(name: str, default: _N, cast: Callable[[str], _N]) -> _N:
     """Read a positive duration env var (default on unset; raise on invalid/<=0).
 
@@ -1079,15 +1107,13 @@ class PgReaper:
         )
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
-        # Safety-net recovery of PG executions stranded non-terminal after all files
+        # Safety-net recovery of executions stranded non-terminal after all files
         # completed (barrier gone → invisible to the PG-table sweeps). Enablement +
-        # kill-switch semantics live in stuck_recovery_enabled_from_env(); the stuck
-        # window (below) defaults to the barrier stuck-timeout so it never races a
-        # legitimately long execution.
+        # kill-switch semantics live in stuck_recovery_enabled_from_env().
         self._stuck_recovery_enabled = stuck_recovery_enabled_from_env()
         self._stuck_recovery_seconds = _positive_duration_from_env(
             "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
-            self._stuck_timeout_seconds,
+            _DEFAULT_STUCK_RECOVERY_SECONDS,
             int,
         )
         # None → "never swept", so the first leader tick sweeps immediately; set to
