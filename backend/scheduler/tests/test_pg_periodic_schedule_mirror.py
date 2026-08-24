@@ -435,10 +435,15 @@ class TestResumeBaselinesInsteadOfCatchingUp:
     IMMEDIATELY on resume — the longer the pause, the more certain. NULL is the guard:
     "record a baseline next tick, don't fire this cycle" (pg_queue/models.py:366).
 
-    Beat parity, not a new rule — DatabaseScheduler keeps no persisted next_run_at and
-    recomputes due-ness from the crontab each tick, so resume never produced a catch-up
-    run there. Observed on integration 2026-08-14: gallh_load_test fired ~2s after being
+    Observed on integration 2026-08-14: gallh_load_test fired ~2s after being
     re-enabled, against a next_run_at two days old, on top of the operator's manual run.
+
+    CORRECTION (2026-08-24): this docstring used to claim "Beat parity, not a new rule —
+    DatabaseScheduler ... recomputes due-ness from the crontab each tick, so resume
+    never produced a catch-up run there." Wrong on the mechanism: it recomputes from
+    PeriodicTask.last_run_at, so Beat catches up as well. Both schedulers need their
+    clock baselined on a hand-over; the Beat half is pinned by
+    scheduler/tests/test_pg_schedule_ownership.py::TestBeatClockBaselineOnRelease.
     """
 
     def _run(self, fn):

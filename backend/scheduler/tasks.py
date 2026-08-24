@@ -168,11 +168,17 @@ def _mirror_periodic_schedule_set_enabled(pipeline_id: str, enabled: bool) -> No
             # certain. NULL means "record a baseline next tick, don't fire this cycle"
             # (pg_queue/models.py:366), which resumes at the next cron match instead.
             #
-            # This is Beat parity, not a new rule: DatabaseScheduler holds no persisted
-            # next_run_at and recomputes due-ness from the crontab each tick, so
-            # re-enabling never produced a catch-up run there. Observed on integration
-            # 2026-08-14: gallh_load_test fired ~2s after being re-enabled, against a
-            # next_run_at two days old.
+            # Observed on integration 2026-08-14: gallh_load_test fired ~2s after
+            # being re-enabled, against a next_run_at two days old.
+            #
+            # CORRECTION (2026-08-24): this used to add "Beat parity, not a new rule:
+            # DatabaseScheduler ... recomputes due-ness from the crontab each tick, so
+            # re-enabling never produced a catch-up run there." That was WRONG.
+            # DatabaseScheduler recomputes from PeriodicTask.last_run_at, which is
+            # exactly what makes it catch up too — releasing 23 schedules back to Beat
+            # fired 4 pipelines and 3 periodics within 30 ms. Beat needs the same
+            # baseline on its own clock; see scheduler/ownership.py. So this is a
+            # shared hazard of both schedulers, not a PG-only regression.
             #
             # Safe to do unconditionally here: this helper is reached only from
             # enable_task/disable_task (an explicit pause/resume), never from the

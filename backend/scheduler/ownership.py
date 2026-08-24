@@ -240,9 +240,28 @@ def reconcile_ownership_for(
                 # Return False so the ramp count isn't inflated past what's live.
                 return False
             # Beat owns it only when active AND not handed to PG.
-            PeriodicTask.objects.filter(name=pipeline_id).update(
-                enabled=active and not pg_owned
-            )
+            beat_updates: dict = {"enabled": active and not pg_owned}
+            # Baseline Beat's clock on the way BACK, for the same reason next_run_at
+            # is baselined on the way out — and this half was missing.
+            #
+            # DatabaseScheduler keeps no next_run_at; it derives due-ness from
+            # PeriodicTask.last_run_at against the crontab. A schedule that spent days
+            # PG-owned carries a last_run_at from before the hand-over, so the instant
+            # `enabled` flips back every missed interval is overdue and Beat replays
+            # them at once. Observed on integration 2026-08-24: releasing 23 schedules
+            # fired 4 pipelines plus 3 periodics within 30 ms of "Released to Beat".
+            #
+            # An earlier comment here asserted the opposite — that DatabaseScheduler
+            # "recomputes due-ness from the crontab each tick, so re-enabling never
+            # produced a catch-up run". That was wrong: it recomputes from last_run_at,
+            # which is exactly what makes it catch up.
+            #
+            # Scoped to the RELEASE transition, mirroring the next_run_at rule above:
+            # stamping it on every call would push the clock forward on an ordinary
+            # pipeline save and silently skip a due fire.
+            if was_pg_owned and not pg_owned:
+                beat_updates["last_run_at"] = timezone.now()
+            PeriodicTask.objects.filter(name=pipeline_id).update(**beat_updates)
             # Bulk .update() bypasses django-celery-beat's post_save signal, so
             # PeriodicTasks.last_update never bumps and DatabaseScheduler never
             # reloads — Beat would keep firing the schedule from its stale

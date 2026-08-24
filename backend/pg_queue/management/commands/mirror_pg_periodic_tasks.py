@@ -31,6 +31,7 @@ from typing import Any, NamedTuple
 
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.utils import timezone
 from django_celery_beat.models import IntervalSchedule, PeriodicTask, PeriodicTasks
 
 from pg_queue.models import PgPeriodicTask
@@ -385,9 +386,21 @@ class Command(BaseCommand):
                     if not to_pg:
                         row.next_run_at = None
                     row.save(update_fields=["pg_owned", "next_run_at", "updated_at"])
-                    PeriodicTask.objects.filter(name=row.name).update(
-                        enabled=beat_enabled
-                    )
+                    beat_updates: dict = {"enabled": beat_enabled}
+                    # Baseline Beat's clock on release, the mirror of clearing
+                    # next_run_at above. DatabaseScheduler derives due-ness from
+                    # PeriodicTask.last_run_at against the crontab, so a periodic that
+                    # spent days PG-owned is overdue by every interval it missed and
+                    # Beat replays them the moment `enabled` flips back. Seen on
+                    # integration 2026-08-24: all three dashboard_metrics.* fired
+                    # inside 30 ms of the release, alongside four pipelines.
+                    #
+                    # Release-only: on adopt Beat is being switched OFF, so its clock
+                    # is irrelevant, and touching it would corrupt the value a later
+                    # release needs to restore.
+                    if not to_pg:
+                        beat_updates["last_run_at"] = timezone.now()
+                    PeriodicTask.objects.filter(name=row.name).update(**beat_updates)
                     # Bulk .update() bypasses django-celery-beat's post_save signal,
                     # so PeriodicTasks.last_update never bumps and DatabaseScheduler
                     # never reloads. Without this, --adopt would set pg_owned=True and

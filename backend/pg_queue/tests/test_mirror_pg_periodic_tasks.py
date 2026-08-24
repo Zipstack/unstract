@@ -259,9 +259,12 @@ class TestReleaseRestoresRatherThanResurrects:
 
     _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
 
-    def _release(self, mirrored_enabled: bool):
+    def _flip(self, flag: str, mirrored_enabled: bool = True):
         row = SimpleNamespace(
-            name="h", pg_owned=True, next_run_at=None, enabled=mirrored_enabled
+            name="h",
+            pg_owned=(flag == "--release"),
+            next_run_at=None,
+            enabled=mirrored_enabled,
         )
         with (
             patch(f"{self._CMD}.PgPeriodicTask") as Model,
@@ -276,15 +279,58 @@ class TestReleaseRestoresRatherThanResurrects:
             Model.objects.all.return_value.order_by.return_value = qs
             Beat.objects.exclude.return_value.select_related.return_value.order_by.return_value.iterator.return_value = []
             row.save = MagicMock()
-            call_command("mirror_pg_periodic_tasks", "--release")
+            call_command("mirror_pg_periodic_tasks", flag)
             return Beat.objects.filter.return_value.update.call_args.kwargs
 
+    def _release(self, mirrored_enabled: bool):
+        return self._flip("--release", mirrored_enabled)
+
     def test_a_row_that_was_enabled_is_restored_enabled(self):
-        assert self._release(mirrored_enabled=True) == {"enabled": True}
+        assert self._release(mirrored_enabled=True)["enabled"] is True
 
     def test_a_row_that_was_DISABLED_stays_disabled(self):
         # The regression: blanket `enabled=True` re-armed a job someone stopped.
-        assert self._release(mirrored_enabled=False) == {"enabled": False}
+        assert self._release(mirrored_enabled=False)["enabled"] is False
+
+
+class TestReleaseBaselinesBeatsClock:
+    """Release must reset Beat's clock, or Beat replays every missed interval.
+
+    DatabaseScheduler keeps no next_run_at — it derives due-ness from
+    ``PeriodicTask.last_run_at`` against the crontab. A periodic that spent days
+    PG-owned still carries the last_run_at from before the hand-over, so the moment
+    ``enabled`` flips back it is overdue by every interval it missed and Beat fires
+    them all at once.
+
+    Observed on integration 2026-08-24: releasing the fleet fired all three
+    ``dashboard_metrics.*`` plus four pipelines within 30 ms of "Released to Beat".
+    This is the exact mirror of the next_run_at baseline on the adopt side
+    (``scheduler/ownership.py``, OSS 2088d6962) — that half was fixed, this one was
+    not, and a comment there wrongly claimed Beat does not catch up.
+
+    These assertions previously read ``== {"enabled": ...}`` on the whole kwargs dict.
+    Changed deliberately, not loosened: the write now carries a second key, and the
+    per-key assertions below plus the two new cases pin strictly more than the exact
+    dict did.
+    """
+
+    _CMD = "pg_queue.management.commands.mirror_pg_periodic_tasks"
+
+    def _flip(self, flag: str):
+        return TestReleaseRestoresRatherThanResurrects()._flip(flag)
+
+    def test_release_stamps_last_run_at(self):
+        kwargs = self._flip("--release")
+        assert "last_run_at" in kwargs, (
+            "release must baseline Beat's clock; without it DatabaseScheduler sees "
+            "every missed interval as overdue and replays them"
+        )
+        assert kwargs["last_run_at"] is not None
+
+    def test_adopt_does_NOT_touch_last_run_at(self):
+        """On adopt Beat is being switched OFF, so its clock is irrelevant — and
+        overwriting it would destroy the value a later release needs to restore."""
+        assert "last_run_at" not in self._flip("--adopt")
 
 
 class TestMirrorDoesNotClobberAnAdoptedRow:

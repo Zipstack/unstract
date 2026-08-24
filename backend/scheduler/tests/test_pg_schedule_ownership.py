@@ -301,7 +301,15 @@ class TestStalePgOwnershipIsReleased:
         assert updates["next_run_at"] is None
         # Beat re-enabled in the same breath — releasing pg_owned without this would
         # leave the schedule with NO firer at all.
-        PT.objects.filter.return_value.update.assert_called_once_with(enabled=True)
+        #
+        # UN-3796 (2026-08-24): the write now also baselines Beat's clock, so this
+        # asserts per-key rather than on the whole kwargs dict. Not a loosening — the
+        # repair path is a RELEASE, and it is the one most likely to hand back a row
+        # whose last_run_at is deeply stale, which is exactly what makes Beat replay
+        # every missed interval at once. TestBeatClockBaselineOnRelease pins the rule.
+        beat = PT.objects.filter.return_value.update.call_args.kwargs
+        assert beat["enabled"] is True
+        assert "last_run_at" in beat
         # ...and Beat told to reload, else it keeps its stale in-memory copy.
         PTs.update_changed.assert_called_once()
 
@@ -314,7 +322,11 @@ class TestStalePgOwnershipIsReleased:
             patch("scheduler.ownership.PeriodicTasks"),
         ):
             ownership.reconcile_ownership_for(_PID, _ORG, active=False)
-        PT.objects.filter.return_value.update.assert_called_once_with(enabled=False)
+        beat = PT.objects.filter.return_value.update.call_args.kwargs
+        assert beat["enabled"] is False
+        # Baselined even though it stays paused: if it is resumed later, Beat must not
+        # then replay the backlog accrued while PG owned it.
+        assert "last_run_at" in beat
 
     def test_flipt_is_never_consulted_while_the_gate_is_off(self, monkeypatch):
         """The repair resolves to Beat unconditionally.
@@ -421,9 +433,14 @@ class TestNextRunBaselineOnTransition:
 
     Observed on integration 2026-08-14: gallh_load_test carried
     next_run_at=2026-08-12 06:08 and fired ~2s after being re-enabled — two days late,
-    on top of the operator's own manual run. Beat never did this: DatabaseScheduler
-    keeps no persisted next_run_at and recomputes due-ness from the crontab each tick,
-    so this is a PG-path regression against it, not a cosmetic difference.
+    on top of the operator's own manual run.
+
+    CORRECTION (2026-08-24): this docstring used to add "Beat never did this:
+    DatabaseScheduler keeps no persisted next_run_at and recomputes due-ness from the
+    crontab each tick." That is wrong. It recomputes from ``PeriodicTask.last_run_at``,
+    which is precisely why it DOES catch up — releasing the fleet fired four pipelines
+    and three periodics inside 30 ms. Beat has the same failure mode from the other
+    direction; see TestBeatClockBaselineOnRelease below.
     """
 
     def _reconcile(self, monkeypatch, *, was_pg_owned, now_pg_owned):
@@ -467,3 +484,75 @@ class TestNextRunBaselineOnTransition:
         """
         updates = self._reconcile(monkeypatch, was_pg_owned=True, now_pg_owned=True)
         assert "next_run_at" not in updates
+
+
+class TestBeatClockBaselineOnRelease:
+    """Handing a schedule BACK to Beat must reset Beat's clock, or Beat replays.
+
+    The symmetric half of the class above, and the one that was missing.
+    DatabaseScheduler stores no next_run_at; it derives due-ness from
+    ``PeriodicTask.last_run_at`` against the crontab. A pipeline that spent days
+    PG-owned still carries the last_run_at from before the hand-over, so the instant
+    ``enabled`` flips back it is overdue by every interval it missed — and Beat fires
+    them all at once.
+
+    Observed on integration 2026-08-24: `converge_pg_scheduler` released 23 schedules
+    and Beat dispatched four pipelines plus three dashboard_metrics.* periodics within
+    30 ms of logging "Released to Beat".
+    """
+
+    def _reconcile(self, monkeypatch, *, was_pg_owned, now_pg_owned, active=True):
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        with (
+            patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
+            patch("scheduler.ownership.PeriodicTask") as Beat,
+            patch("scheduler.ownership.PeriodicTasks"),
+            patch(
+                "scheduler.ownership.transaction.atomic",
+                return_value=contextlib.nullcontext(),
+            ),
+            patch(
+                "scheduler.ownership.check_feature_flag_status",
+                return_value=now_pg_owned,
+            ),
+        ):
+            qs = Sched.objects.filter.return_value
+            qs.values_list.return_value.first.return_value = was_pg_owned
+            qs.update.return_value = 1
+            ownership.reconcile_ownership_for(_PID, _ORG, active=active)
+            return Beat.objects.filter.return_value.update.call_args.kwargs
+
+    def test_releasing_to_beat_stamps_last_run_at(self, monkeypatch):
+        beat = self._reconcile(monkeypatch, was_pg_owned=True, now_pg_owned=False)
+        assert beat["enabled"] is True
+        assert "last_run_at" in beat, (
+            "release must baseline Beat's clock, else every interval missed while "
+            "PG owned the schedule is overdue and Beat replays them at once"
+        )
+        assert beat["last_run_at"] is not None
+
+    def test_handing_over_to_pg_does_NOT_touch_beats_clock(self, monkeypatch):
+        """Adoption switches Beat OFF, so its clock is irrelevant — and overwriting it
+        would destroy the value the eventual release needs to restore from."""
+        beat = self._reconcile(monkeypatch, was_pg_owned=False, now_pg_owned=True)
+        assert beat["enabled"] is False
+        assert "last_run_at" not in beat
+
+    def test_an_unchanged_owner_is_NOT_re_stamped(self, monkeypatch):
+        """Same transition-scoping reason as next_run_at: reconcile runs on every
+        pipeline save, and stamping unconditionally would push Beat's clock forward
+        on an ordinary edit and silently skip a due fire."""
+        beat = self._reconcile(monkeypatch, was_pg_owned=False, now_pg_owned=False)
+        assert "last_run_at" not in beat
+
+    def test_a_paused_pipeline_is_released_disabled_but_still_baselined(
+        self, monkeypatch
+    ):
+        """A paused schedule comes back paused — but if it is later resumed, Beat must
+        not then replay the backlog it accrued while PG owned it."""
+        beat = self._reconcile(
+            monkeypatch, was_pg_owned=True, now_pg_owned=False, active=False
+        )
+        assert beat["enabled"] is False
+        assert "last_run_at" in beat
