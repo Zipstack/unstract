@@ -35,9 +35,12 @@ def _reaper_with(api_client):
 class TestTheTriggerIsWiredToTheBackend:
     def test_it_calls_the_backend_sweep(self):
         api = MagicMock()
-        api.sweep_undispatched_executions.return_value = SimpleNamespace(
-            data={"swept": 3}
-        )
+        # The REAL client returns the parsed body verbatim (typed `-> dict[str, Any]`),
+        # not an object with `.data`. This fixture used to be SimpleNamespace(data=...),
+        # a shape nothing in the call chain produces — so it asserted inc(3) while
+        # production read `.data` off a dict and always incremented by 0. The test
+        # passed against a fiction and hid a dead metric.
+        api.sweep_undispatched_executions.return_value = {"swept": 3}
         r = _reaper_with(api)
         r._sweep_undispatched_executions()
         api.sweep_undispatched_executions.assert_called_once_with()
@@ -48,9 +51,7 @@ class TestTheTriggerIsWiredToTheBackend:
     def test_a_zero_result_is_not_an_error(self):
         """The steady state. Must stay quiet, not log every 5 minutes forever."""
         api = MagicMock()
-        api.sweep_undispatched_executions.return_value = SimpleNamespace(
-            data={"swept": 0}
-        )
+        api.sweep_undispatched_executions.return_value = {"swept": 0}
         r = _reaper_with(api)
         r._sweep_undispatched_executions()  # no raise
         # A zero must NOT touch the counter: inc(0) is harmless but a nonzero rate is
@@ -61,11 +62,9 @@ class TestTheTriggerIsWiredToTheBackend:
         """A backend on an older image returns no `swept` key — that must not take
         down a leader tick that also dispatches schedules.
         """
-        for payload in (None, {}, {"unexpected": 1}):
+        for payload in (None, {}, {"unexpected": 1}, SimpleNamespace(data={"swept": 9})):
             api = MagicMock()
-            api.sweep_undispatched_executions.return_value = SimpleNamespace(
-                data=payload
-            )
+            api.sweep_undispatched_executions.return_value = payload
             _reaper_with(api)._sweep_undispatched_executions()  # no raise
 
 

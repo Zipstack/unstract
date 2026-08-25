@@ -1387,7 +1387,16 @@ class PgReaper:
                 exc_info=True,
             )
             return
-        swept = (getattr(response, "data", None) or {}).get("swept", 0)
+        # sweep_undispatched_executions() is typed `-> dict[str, Any]` and returns the
+        # parsed body verbatim — {"swept": N}, no {"data": ...} envelope. Reading
+        # `.data` off a plain dict yields None, so this counter was always 0: the
+        # metric never incremented and the "terminalised N" line never fired, leaving
+        # the 967-orphan condition this sweep exists to detect completely invisible.
+        # The sibling recover_stuck_pg_executions() hits the same flat-body shape and
+        # documents it (execution_client.py:352-358); it wraps there instead, which is
+        # why that one works. Read the dict directly here rather than add a second
+        # wrapping convention.
+        swept = (response if isinstance(response, dict) else {}).get("swept", 0)
         if swept:
             self._metrics.undispatched_swept.inc(swept)
             logger.info(
