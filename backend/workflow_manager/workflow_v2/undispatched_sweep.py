@@ -220,19 +220,29 @@ def _release_abandoned_resources(execution_id: str, workflow_id: str) -> None:
             exc_info=True,
         )
 
-    # Then the staged input. Scoped by workflow_id + execution_id, and guarded by an
-    # exists() check inside, so it is a clean no-op for an execution that died BEFORE
-    # staging — nothing else's files can be reached from here.
-    try:
-        from workflow_manager.endpoint_v2.destination import DestinationConnector
-
-        DestinationConnector.delete_api_storage_dir(
-            workflow_id=workflow_id, execution_id=execution_id
-        )
-    except Exception:
-        logger.warning(
-            "Undispatched sweep: could not delete the API storage dir for %s "
-            "(orphaned input files remain)",
-            execution_id,
-            exc_info=True,
-        )
+    # The staged input is deliberately NOT deleted here.
+    #
+    # This sweep infers "never dispatched" from the ABSENCE of both handles
+    # (task_id IS NULL AND queue_message_id IS NULL). That inference is not sound:
+    # three paths in workflow_helper leave a RUNNING execution in exactly that state,
+    # all of them after the message is already on its transport —
+    #
+    #   * _record_dispatch_handle raises and the caller swallows it, explicitly
+    #     "continuing — the orchestrator is already running" (workflow_helper.py:686)
+    #   * the handle comes back empty and it returns without writing (:544)
+    #   * a PG handle will not parse as a bigint and it returns without writing (:562)
+    #
+    # so after the 15-minute grace this sweep can claim a live execution. Marking it
+    # ERROR is wrong but self-corrects — the running worker's own terminal write
+    # supersedes it, and error→completed is explicitly permitted by the status guard.
+    # Deleting its input does not self-correct: the worker is still going to read it,
+    # and the row's user-facing message invites a re-run against data that is gone.
+    #
+    # Dropping the delete keeps the reversible half of the sweep and removes the
+    # irreversible one, at the cost of leaking an input directory for executions that
+    # genuinely never started. That is the right trade while the predicate is unsound;
+    # the real fix is to make dispatch a POSITIVE fact (stamp dispatched_at in the same
+    # call that records the handle, including on the three branches above, and key both
+    # this predicate and the 0026 partial index on it) — tracked separately, since it
+    # needs a migration and an index rebuild.
+    _ = workflow_id  # retained: the signature is restored with the positive-fact fix

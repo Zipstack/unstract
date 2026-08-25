@@ -60,9 +60,10 @@ class TestSweepsWhatNothingElseOwns:
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.ERROR.value
         assert ex.error_message == UNDISPATCHED_ERROR_MESSAGE
-        assert WorkflowExecution.objects.filter(
-            status=ExecutionStatus.PENDING.value
-        ).count() == 0
+        assert (
+            WorkflowExecution.objects.filter(status=ExecutionStatus.PENDING.value).count()
+            == 0
+        )
 
     def test_it_is_idempotent(self):
         """Runs on every tick — a second pass must find nothing, not re-write."""
@@ -156,6 +157,47 @@ class TestNeverTouchesALiveExecution:
         assert sweep_undispatched_executions() == 0
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.PENDING.value
+
+
+class TestNeverDeletesStagedInput:
+    """The sweep must not perform any IRREVERSIBLE cleanup, because its "never
+    dispatched" test is an INFERENCE and the inference is unsound.
+
+    Both handles being NULL is reached by three paths in ``workflow_helper`` AFTER the
+    message is on its transport: ``_record_dispatch_handle`` raising and being swallowed
+    by the caller ("continuing — the orchestrator is already running"), an empty handle
+    returning early, and a PG handle that will not parse returning early. So a claimed
+    row may be a LIVE execution.
+
+    Marking it ERROR is survivable — the running worker's own terminal write supersedes
+    it, and error→completed is explicitly permitted by the status guard. Deleting its
+    staged input is not: the worker is still going to read it.
+
+    This pins the ABSENCE of that call. Re-adding it is only safe once dispatch is a
+    positive fact (a stamped ``dispatched_at``) rather than an inferred absence.
+    """
+
+    def test_the_sweep_module_does_not_delete_api_storage(self):
+        import inspect
+
+        from workflow_manager.workflow_v2 import undispatched_sweep
+
+        source = inspect.getsource(undispatched_sweep)
+        executable = "\n".join(
+            line for line in source.splitlines() if not line.lstrip().startswith("#")
+        )
+        assert "delete_api_storage_dir" not in executable
+
+    def test_releasing_resources_still_frees_the_rate_limit_slot(self):
+        """The reversible half must survive the removal — a held slot consumes the
+        org's API-deployment concurrency budget until the limiter TTL expires it.
+        """
+        import inspect
+
+        from workflow_manager.workflow_v2 import undispatched_sweep
+
+        source = inspect.getsource(undispatched_sweep._release_abandoned_resources)
+        assert "release_slot" in source
 
 
 class TestUserFacingMessage:
