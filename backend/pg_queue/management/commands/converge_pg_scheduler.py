@@ -15,8 +15,12 @@ change like any other, and re-running changes nothing once converged.
 **Safe to run unattended**, which is what lets ``entrypoint.sh`` call it on every
 start:
 
-* Both directions are idempotent — ``_set_ownership`` skips rows already in the
-  target state, and the pipeline path no-ops when ownership already matches.
+* Both directions are idempotent in OUTCOME — ``_set_ownership`` skips periodic rows
+  already in the target state. The pipeline path is idempotent but **not** free: it
+  rewrites ``pg_periodic_schedule`` and the Beat ``PeriodicTask`` row and bumps
+  ``PeriodicTasks.update_changed()`` for every schedule on every call, whether or not
+  ownership changed — so a backend start costs 2N row writes and N Beat reloads. Safe
+  to repeat, not a no-op; an earlier version of this line claimed the latter.
 * Neither direction invents state. Beat's ``PeriodicTask`` rows are only ever
   *disabled* and *re-enabled*, never created or deleted, and the value written on
   release is the one recorded before adoption (``pg_periodic_task.enabled``, and the

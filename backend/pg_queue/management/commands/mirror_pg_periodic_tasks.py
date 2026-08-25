@@ -400,7 +400,17 @@ class Command(BaseCommand):
                     # release needs to restore.
                     if not to_pg:
                         beat_updates["last_run_at"] = timezone.now()
-                    PeriodicTask.objects.filter(name=row.name).update(**beat_updates)
+                    matched = PeriodicTask.objects.filter(name=row.name).update(
+                        **beat_updates
+                    )
+                    if not matched:
+                        # See ownership.py: a bulk .update() returning 0 is
+                        # indistinguishable from success. On release that means a
+                        # periodic PG has let go of and Beat cannot pick up.
+                        self.stderr.write(
+                            f"WARNING: no Beat PeriodicTask named {row.name!r} to "
+                            f"{verb} — it may now have no firer"
+                        )
                     # Bulk .update() bypasses django-celery-beat's post_save signal,
                     # so PeriodicTasks.last_update never bumps and DatabaseScheduler
                     # never reloads. Without this, --adopt would set pg_owned=True and

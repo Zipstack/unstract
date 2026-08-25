@@ -45,6 +45,11 @@ WORKER_SCHEMA_CONTRACT = {
         "read_ct",
         "priority",
         "state",
+        # Delayed visibility (countdown/eta), migration 0002. Absent from this set
+        # until now, while workers depend on it in raw SQL — so renaming or dropping
+        # it would have kept this guard green and broken delayed delivery at runtime,
+        # which is exactly the drift this file exists to catch.
+        "available_at",
     },
     "pg_task_result": {
         "task_id",

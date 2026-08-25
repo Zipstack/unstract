@@ -109,8 +109,7 @@ def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> boo
         # edit — warn with traceback rather than logger.exception so a persistently
         # down Flipt doesn't bury real errors as a per-edit Sentry exception.
         logger.warning(
-            "resolve_schedule_owner: Flipt check failed for pipeline %s; "
-            "leaving on Beat",
+            "resolve_schedule_owner: Flipt check failed for pipeline %s; leaving on Beat",
             pipeline_id,
             exc_info=True,
         )
@@ -261,7 +260,19 @@ def reconcile_ownership_for(
             # pipeline save and silently skip a due fire.
             if was_pg_owned and not pg_owned:
                 beat_updates["last_run_at"] = timezone.now()
-            PeriodicTask.objects.filter(name=pipeline_id).update(**beat_updates)
+            matched = PeriodicTask.objects.filter(name=pipeline_id).update(**beat_updates)
+            if not matched:
+                # 0 rows means Beat has no row for this pipeline — on the RELEASE
+                # direction that is a schedule with no firer at all: PG has let go
+                # and Beat has nothing to take over. Silent before this: a bulk
+                # .update() reports success by returning 0, so a rollback could
+                # orphan a schedule and log nothing.
+                logger.warning(
+                    "reconcile_ownership_for: no Beat PeriodicTask named %s to "
+                    "%s — the schedule may now have no firer",
+                    pipeline_id,
+                    "release to" if not pg_owned else "disable for adoption",
+                )
             # Bulk .update() bypasses django-celery-beat's post_save signal, so
             # PeriodicTasks.last_update never bumps and DatabaseScheduler never
             # reloads — Beat would keep firing the schedule from its stale
