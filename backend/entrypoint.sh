@@ -64,11 +64,15 @@ if [ "$migrate" = true ]; then
         || echo "WARNING: PG schedule convergence failed; continuing startup (schedules keep their current firer)"
 fi
 
-# Configure Gunicorn based on --dev flag
+# Configure Gunicorn based on --dev flag.
+# Threads must exceed concurrent browser tabs — each open Socket.IO WebSocket
+# holds one thread for its lifetime. The pool spawns threads lazily, so a high
+# ceiling is free at idle.
 gunicorn_args=(
     --bind 0.0.0.0:8000
-    --workers 2
-    --threads 2
+    --workers "${GUNICORN_WORKERS:-2}"
+    --threads "${GUNICORN_THREADS:-512}"
+    --worker-class gthread
     --log-level debug
     --timeout 600
     --access-logfile -
