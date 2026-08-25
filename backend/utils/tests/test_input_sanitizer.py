@@ -25,28 +25,56 @@ class TestValidateNoHtmlTags:
         with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
             validate_no_html_tags("<script>alert(1)</script>")
 
-    def test_rejects_img_tag(self):
-        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
-            validate_no_html_tags('<img src=x onerror=alert(1)>')
+    def test_rejects_img_tag_via_event_handler(self):
+        with pytest.raises(
+            ValidationError, match="must not contain event handler attributes"
+        ):
+            validate_no_html_tags("<img src=x onerror=alert(1)>")
 
-    def test_rejects_div_tag(self):
+    def test_rejects_iframe_tag(self):
         with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
-            validate_no_html_tags("<div>content</div>")
+            validate_no_html_tags("<iframe src=//evil.example></iframe>")
 
-    def test_rejects_self_closing_tag(self):
+    def test_rejects_svg_tag(self):
         with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
-            validate_no_html_tags("<br/>")
+            validate_no_html_tags("<svg/onload=alert(1)>")
+
+    def test_rejects_closing_script_tag(self):
+        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
+            validate_no_html_tags("</script>")
+
+    def test_rejects_script_tag_with_inner_space(self):
+        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
+            validate_no_html_tags("< script >alert(1)")
 
     def test_rejects_unclosed_script_tag(self):
         with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
             validate_no_html_tags("<script")
 
-    def test_rejects_unclosed_img_tag(self):
-        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
-            validate_no_html_tags("<img src=x onerror")
+    def test_allows_inert_markup(self):
+        assert validate_no_html_tags("<div>content</div>") == "<div>content</div>"
+        assert validate_no_html_tags("Use <br> to break lines.") == (
+            "Use <br> to break lines."
+        )
 
     def test_allows_less_than_with_number(self):
         assert validate_no_html_tags("a < 3") == "a < 3"
+
+    def test_allows_comparison_without_space(self):
+        assert validate_no_html_tags("rows where qty <threshold") == (
+            "rows where qty <threshold"
+        )
+        assert validate_no_html_tags("if x<y then return 1") == "if x<y then return 1"
+
+    def test_allows_angle_bracket_placeholders(self):
+        assert validate_no_html_tags("extract the <invoice_no> field") == (
+            "extract the <invoice_no> field"
+        )
+
+    def test_allows_currency_range(self):
+        assert validate_no_html_tags("total is < 500 USD, tax > 5%") == (
+            "total is < 500 USD, tax > 5%"
+        )
 
     def test_rejects_javascript_protocol(self):
         with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
@@ -67,6 +95,10 @@ class TestValidateNoHtmlTags:
     def test_rejects_data_uri_with_mime_type(self):
         with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("data:application/javascript,code")
+
+    def test_allows_inert_data_uri(self):
+        value = "See data:image/png;base64,iVBORw0KGgo="
+        assert validate_no_html_tags(value) == value
 
     def test_allows_benign_data_colon_in_text(self):
         assert validate_no_html_tags("Input data: JSON format") == "Input data: JSON format"
@@ -107,6 +139,12 @@ class TestValidateNoHtmlTags:
 
     def test_allows_condition_text(self):
         assert validate_no_html_tags("condition = good") == "condition = good"
+
+    def test_allows_spaced_event_word(self):
+        assert validate_no_html_tags("on error = retry") == "on error = retry"
+
+    def test_allows_spaced_event_word_without_padding(self):
+        assert validate_no_html_tags("on change=true") == "on change=true"
 
     def test_rejects_event_handler_after_semicolon(self):
         with pytest.raises(
