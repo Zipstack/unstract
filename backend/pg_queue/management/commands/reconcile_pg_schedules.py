@@ -99,12 +99,18 @@ class Command(BaseCommand):
             raise CommandError("--batch-size must be >= 1")
         backfilled = self._backfill_mirrors(dry_run, batch_size)
 
-        # --mirror-only exists because the deploy-time automation must be safe to run
-        # at ANY flag state. The reconcile below is fail-closed (rollout off → every
-        # schedule stays on Beat, nothing written), but with the rollout ON it flips
-        # ownership *and disables the matching Beat PeriodicTask* — a behaviour change
-        # no unattended job should make on its own. Backfilling is inert at every flag
-        # state, so that is what automation runs; ownership stays an operator action.
+        # --mirror-only exists because it is safe to run at ANY flag state: backfilling
+        # is inert, while the reconcile below — fail-closed when the rollout is off —
+        # flips ownership *and disables the matching Beat PeriodicTask* when it is on.
+        #
+        # It is NO LONGER what the deploy-time automation runs. entrypoint.sh invokes
+        # converge_pg_scheduler on every backend start, without --mirror-only, so
+        # ownership hand-over IS an unattended action now; the env var is the operator's
+        # consent, given once, rather than a command typed per environment. That is
+        # deliberate — it is what makes rollback a values change — but it means this
+        # path's caller is no longer the only way ownership moves. A previous version of
+        # this comment ended "ownership stays an operator action", which stopped being
+        # true when the entrypoint switched commands.
         if mirror_only:
             reconciled, pg_owned, failed = 0, 0, 0
         else:

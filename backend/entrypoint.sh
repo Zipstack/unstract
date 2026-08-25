@@ -28,26 +28,25 @@ if [ "$migrate" = true ]; then
     echo "Migration initiated"
     .venv/bin/python manage.py migrate
 
-    # Backfill PG-scheduler mirror rows for pipeline schedules created before the
-    # mirror existed (UN-3796). NOT a migration — an ordinary management command,
-    # sequenced after migrate only because pg_periodic_schedule must exist first.
+    # Converge schedule ownership to whatever PG_SCHEDULER_ENABLED declares (UN-3796)
+    # — adopt when on, release back to Beat when off. NOT a migration: an ordinary
+    # management command, sequenced after migrate only because pg_periodic_schedule
+    # must exist first.
     #
-    # --mirror-only: purely additive, writes only pg_periodic_schedule and never a
-    # Beat PeriodicTask, so it is safe at any flag state. Ownership hand-over stays
-    # an explicit operator action.
+    # READ THIS BEFORE ASSUMING A RESTART IS INERT. This is NOT the earlier
+    # `--mirror-only` invocation, and it does NOT leave Beat alone: with
+    # PG_SCHEDULER_ENABLED=true it flips pg_owned and DISABLES the Beat PeriodicTask
+    # row for every mirrored pipeline. A rolling restart therefore can move schedules
+    # off Beat. (A comment here used to describe --mirror-only and state that
+    # "ownership hand-over stays an explicit operator action" — it survived the switch
+    # to converge_pg_scheduler and told an SRE auditing exactly this question the
+    # opposite of the truth.)
     #
-    # Runs on EVERY start, not once: schedules created while an older backend was
-    # deployed, and rows previously skipped for malformed args, are only picked up by
-    # a re-run. It is idempotent (already-mirrored pipelines are skipped), so there
-    # is nothing to retire until Celery is decommissioned.
-    #
-    # Best-effort by design: a mirror failure must never stop the backend from
-    # starting. Beat keeps firing everything in that case, which is the safe state.
-    # Converge schedule ownership to whatever PG_SCHEDULER_ENABLED declares — adopt
-    # when on, release back to Beat when off. Running it on every start is what makes
-    # the ROLLBACK real: flipping the env var back is enough, with no operator
-    # remembering a management command in every environment (on-prem included, where
-    # `manage.py` is not something a deploy can reach). Idempotent both ways.
+    # Running it on every start is what makes the ROLLBACK real: flipping the env var
+    # back is enough, with no operator remembering a management command in every
+    # environment (on-prem included, where `manage.py` is not something a deploy can
+    # reach). Idempotent both ways, and a no-op for rows whose ownership already
+    # matches, so a restart that changes nothing writes nothing.
     #
     # PG_SCHEDULER_ADOPT_PERIODICS additionally moves the dashboard_metrics.* rows;
     # it is separate because adopting them needs workerPgMetrics deployed.

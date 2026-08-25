@@ -143,9 +143,8 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
             base = cur.fetchone()[0]
             cur.execute(
                 f"""
-                SELECT pipeline_id, organization_id, workflow_id, pipeline_name,
-                       cron_string, next_run_at
-                FROM {qualified('pg_periodic_schedule')}
+                SELECT {", ".join(_DueSchedule._fields)}
+                FROM {qualified("pg_periodic_schedule")}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)
                 """,
@@ -292,9 +291,8 @@ def dispatch_due_periodic_tasks(conn: PgConnection) -> int:
             base = cur.fetchone()[0]
             cur.execute(
                 f"""
-                SELECT name, task_name, queue, task_args, task_kwargs, org_id,
-                       cron_string, next_run_at
-                FROM {qualified('pg_periodic_task')}
+                SELECT {", ".join(_DuePeriodicTask._fields)}
+                FROM {qualified("pg_periodic_task")}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)
                 """,

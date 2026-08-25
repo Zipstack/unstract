@@ -183,10 +183,21 @@ def reaper_interval_from_env() -> float:
 #: make no progress (hours, because a single file can legitimately take that long),
 #: whereas this only needs to outlast a callback that is about to fire — seconds.
 #:
-#: **The threshold is not what makes this safe.** The endpoint skips unless every file
-#: is terminal (``internal_views.py``: ``total == 0 or terminal < total → skipped``), so
-#: a legitimately running execution is never a candidate no matter how short this is.
-#: Inheriting the multi-hour barrier timeout therefore bought nothing and cost a lot: a
+#: **The threshold IS load-bearing — do not lower it casually.** It was not, once: the
+#: only guard was all-files-terminal (``internal_views.py``: ``total == 0 or
+#: terminal < total → skipped``), and against that guard the value genuinely did not
+#: matter. It does now. The selection also requires ``last_file_at < cutoff``, because
+#: all-files-terminal alone leaves a live race: between the last file going terminal and
+#: the callback finalizing, a HEALTHY execution passes every other check, and a sweep
+#: landing there finalizes it first — the status guard then refuses the callback's own
+#: write and the notification is lost. This threshold is what sizes that window, so it
+#: must exceed the worst-case callback latency after the last file completes. An earlier
+#: version of this comment said "seconds" and "no matter how short this is"; acting on
+#: that today reopens the race.
+#:
+#: What remains true is that inheriting the multi-hour barrier timeout is wrong — it
+#: answers a different question (how long a batch may make no progress, where one file
+#: can legitimately take hours) and it cost a lot: a
 #: stranded execution — the common shape being a Celery run whose callback worker was
 #: removed by a deploy (its grace is 300s while file-processing gets 7200s) — sat dead
 #: for ~2.5 h before anything noticed.
