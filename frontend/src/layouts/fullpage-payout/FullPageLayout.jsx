@@ -5,7 +5,7 @@ import { LazyOutlet } from "../../components/error/LazyOutlet/LazyOutlet.jsx";
 
 function FullPageLayout() {
   return (
-    <Layout className="container">
+    <Layout className="full-page-layout">
       <LazyOutlet />
     </Layout>
   );
