@@ -27,6 +27,10 @@ try {
 const useEnforceTypeSwitchGate =
   useEnforceTypeSwitchGatePlugin || (() => () => null);
 
+// Fields with an inline error renderer on the card. Anything else falls back
+// to the global alert, so widening the sanitizer cannot silence a rejection.
+const RENDERABLE_FIELD_ERRORS = new Set(["prompt_key"]);
+
 const PromptCard = memo(
   ({
     promptDetails,
@@ -181,7 +185,25 @@ const PromptCard = memo(
         setUpdateStatus,
       );
       setPromptDetailsState((prev) => ({ ...prev, [name]: value }));
-      return handleChangePromptCard(name, value, promptId)
+
+      let handledInline = false;
+      const showInlineErrors = (fieldErrors) => {
+        const renderable = Object.entries(fieldErrors).filter(([attr]) =>
+          RENDERABLE_FIELD_ERRORS.has(attr),
+        );
+        if (!renderable.length) {
+          return false;
+        }
+        // Keep the typed value so user can fix in place; show inline error.
+        setFieldErrors((prev) => ({
+          ...prev,
+          ...Object.fromEntries(renderable),
+        }));
+        handledInline = true;
+        return true;
+      };
+
+      return handleChangePromptCard(name, value, promptId, showInlineErrors)
         .then((res) => {
           const data = res?.data;
           setUpdatedPromptsCopy((prev) => {
@@ -195,21 +217,9 @@ const PromptCard = memo(
             setUpdateStatus,
           );
         })
-        .catch((err) => {
+        .catch(() => {
           handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
-          const data = err?.response?.data;
-          const fieldErrorMap = {};
-          if (data?.type === "validation_error" && Array.isArray(data?.errors)) {
-            data.errors.forEach((e) => {
-              if (e?.attr) {
-                fieldErrorMap[e.attr] = e.detail || "Invalid value";
-              }
-            });
-          }
-          if (Object.keys(fieldErrorMap).length > 0) {
-            // Keep the typed value so user can fix in place; show inline error.
-            setFieldErrors((prev) => ({ ...prev, ...fieldErrorMap }));
-          } else {
+          if (!handledInline) {
             // Roll back only the field that failed, for the same reason.
             setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
           }

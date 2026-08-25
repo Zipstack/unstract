@@ -37,6 +37,19 @@ try {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+const getFieldErrors = (err) => {
+  const data = err?.response?.data;
+  if (data?.type !== "validation_error" || !Array.isArray(data?.errors)) {
+    return {};
+  }
+  return data.errors.reduce((acc, e) => {
+    if (e?.attr) {
+      acc[e.attr] = e.detail || "Invalid value";
+    }
+    return acc;
+  }, {});
+};
+
 function DocumentParser({
   addPromptInstance,
   scrollToBottom,
@@ -140,7 +153,12 @@ function DocumentParser({
     return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;
   };
 
-  const handleChangePromptCard = async (name, value, promptId) => {
+  const handleChangePromptCard = async (
+    name,
+    value,
+    promptId,
+    onFieldError,
+  ) => {
     const promptsAndNotes = details?.prompts || [];
 
     if (name === "prompt_key") {
@@ -205,17 +223,16 @@ function DocumentParser({
         return res;
       })
       .catch((err) => {
-        // Field-keyed DRF validation errors are surfaced inline on the
-        // prompt card; re-throw so the card's catch can render them.
-        const data = err?.response?.data;
-        const hasFieldError =
-          data?.type === "validation_error" &&
-          Array.isArray(data?.errors) &&
-          data.errors.some((e) => e?.attr);
-        if (hasFieldError) {
-          throw err;
+        // Inline rendering of field errors is opt-in: a caller that has no
+        // renderer for the offending field returns false and gets the alert,
+        // so a rejected value can never fail silently.
+        const fieldErrors = getFieldErrors(err);
+        const handledInline =
+          Object.keys(fieldErrors).length > 0 && onFieldError?.(fieldErrors);
+        if (!handledInline) {
+          setAlertDetails(handleException(err, "Failed to update"));
         }
-        setAlertDetails(handleException(err, "Failed to update"));
+        throw err;
       });
   };
 
