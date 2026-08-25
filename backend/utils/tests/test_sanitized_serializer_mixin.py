@@ -50,7 +50,7 @@ class TestSanitizedSerializerMixin:
 
     def test_each_field_gets_its_own_validator(self):
         """Default-arg closure capture: the field_name in the error must match the offender."""
-        s = PlainSerializer(data={"name": "ok", "description": "<x>"})
+        s = PlainSerializer(data={"name": "ok", "description": "<script>"})
         assert not s.is_valid()
         assert "description" in s.errors
         msg = str(s.errors["description"][0])
