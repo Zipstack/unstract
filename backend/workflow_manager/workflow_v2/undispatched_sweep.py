@@ -55,8 +55,29 @@ logger = logging.getLogger(__name__)
 # to be dispatched" is elapsed time, and terminalising a live execution is far worse
 # than leaving a dead one a while longer. Well under the barrier stuck-timeout (~2.5h)
 # so the two sweeps never contend for the same row.
+# RAISED 900 -> 3600 deliberately, and the reason is PG-specific.
+#
+# The predicate cannot distinguish "never dispatched" from "dispatched, handle not
+# recorded, message still sitting in the queue" — see the note in
+# _release_abandoned_resources for the three paths that produce the second state. On
+# CELERY that mismatch was survivable: the orchestrator runs on the row regardless and
+# its terminal write supersedes the sweep's ERROR. On PG it is not. Both worker entry
+# points STOP on a terminal execution (general/tasks.py returns
+# skipped_terminal_execution; file_processing/tasks.py raises _TerminalExecutionSkip),
+# so a row this sweep terminalises while its message is still queued gets acked and
+# dropped rather than run.
+#
+# That failure needs a slow queue AND an unrecorded handle at once. An hour is chosen to
+# sit well clear of any realistic dequeue latency, which is what shrinks the overlap to
+# near-nothing without new machinery. It is a mitigation, not the fix: the fix is to make
+# dispatch a POSITIVE fact (a stamped dispatched_at) so the predicate stops guessing.
+#
+# Still well under the barrier stuck-timeout (~2.5h), so the two sweeps never contend for
+# the same row. Cost of the raise: a genuinely undispatched execution shows PENDING for
+# up to an hour before it errors. Override per-environment with the env var if a
+# deployment's queue latency justifies something tighter.
 _MIN_AGE_ENV = "UNDISPATCHED_EXECUTION_GRACE_SECONDS"
-DEFAULT_MIN_AGE_SECONDS = 900  # 15 minutes
+DEFAULT_MIN_AGE_SECONDS = 3600  # 1 hour
 
 # Bounds one sweep so a large backlog (a 502 storm leaves hundreds) can't hold a long
 # transaction open. Whatever is left is picked up by the next tick.

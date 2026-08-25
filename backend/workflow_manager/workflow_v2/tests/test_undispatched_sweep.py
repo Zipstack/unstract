@@ -169,6 +169,40 @@ class TestNeverTouchesALiveExecution:
         assert ex.status == ExecutionStatus.PENDING.value
 
 
+class TestGracePeriodIsSizedForTheQueue:
+    """The grace period is the ONLY thing separating "abandoned" from "dispatched but
+    not yet recorded", and on PG that distinction has teeth.
+
+    A row this sweep terminalises while its message is still queued does not get run
+    late — both PG worker entry points STOP on a terminal execution and ack the message
+    (general/tasks.py returns skipped_terminal_execution; file_processing/tasks.py
+    raises _TerminalExecutionSkip), so the work is dropped. On Celery the orchestrator
+    ran regardless and its own terminal write superseded the ERROR, which is why this
+    was survivable before the PG transport and is not after it.
+
+    An hour is chosen to sit clear of any realistic dequeue latency. Lowering it back
+    toward the queue's p99 wait re-opens that window, so this pins the value: change it
+    deliberately, with a latency figure in hand, not as a tidy-up.
+    """
+
+    def test_the_grace_period_is_an_hour(self):
+        from workflow_manager.workflow_v2.undispatched_sweep import (
+            DEFAULT_MIN_AGE_SECONDS,
+        )
+
+        assert DEFAULT_MIN_AGE_SECONDS == 3600
+
+    def test_it_stays_clear_of_the_barrier_stuck_timeout(self):
+        """Must remain well under ~2.5h or this sweep and the barrier reaper start
+        contending for the same rows — the disjointness the two sweeps depend on.
+        """
+        from workflow_manager.workflow_v2.undispatched_sweep import (
+            DEFAULT_MIN_AGE_SECONDS,
+        )
+
+        assert DEFAULT_MIN_AGE_SECONDS < 9000
+
+
 class TestNeverDeletesStagedInput:
     """The sweep must not perform any IRREVERSIBLE cleanup, because its "never
     dispatched" test is an INFERENCE and the inference is unsound.
