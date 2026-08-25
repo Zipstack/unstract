@@ -12,11 +12,11 @@ RECONCILE_TASK_NAME = "dashboard_metrics_reconcile_source_window"
 
 def create_reconciliation_task(apps, schema_editor):
     """Create the once-daily reconciliation periodic task."""
-    CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
-    PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
+    crontab_model = apps.get_model("django_celery_beat", "CrontabSchedule")
+    periodic_task_model = apps.get_model("django_celery_beat", "PeriodicTask")
 
     # 4:00 AM UTC — clear of the 2:00 and 3:00 cleanup tasks
-    schedule_4am, _ = CrontabSchedule.objects.get_or_create(
+    schedule_4am, _ = crontab_model.objects.get_or_create(
         minute="0",
         hour="4",
         day_of_week="*",
@@ -25,7 +25,7 @@ def create_reconciliation_task(apps, schema_editor):
         defaults={"timezone": "UTC"},
     )
 
-    PeriodicTask.objects.update_or_create(
+    periodic_task_model.objects.update_or_create(
         name=RECONCILE_TASK_NAME,
         defaults={
             "task": "dashboard_metrics.aggregate_from_sources",
@@ -43,8 +43,8 @@ def create_reconciliation_task(apps, schema_editor):
 
 def remove_reconciliation_task(apps, schema_editor):
     """Remove the reconciliation periodic task on rollback."""
-    PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
-    PeriodicTask.objects.filter(name=RECONCILE_TASK_NAME).delete()
+    periodic_task_model = apps.get_model("django_celery_beat", "PeriodicTask")
+    periodic_task_model.objects.filter(name=RECONCILE_TASK_NAME).delete()
 
 
 class Migration(migrations.Migration):

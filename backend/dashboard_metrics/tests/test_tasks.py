@@ -298,6 +298,32 @@ class TestMonthlyRollup(TestCase):
         assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 0
         assert not self._monthly_rows()
 
+    def test_monthly_row_is_dropped_once_its_daily_rows_are_gone(self):
+        """A month whose daily rows were deleted must not keep a stale total."""
+        self._daily(date(2024, 3, 5), value=10)
+        self._daily(date(2024, 4, 5), value=7)
+        _rollup_monthly_from_daily(date(2024, 3, 1))
+        assert len(self._monthly_rows()) == 2
+
+        EventMetricsDaily._base_manager.filter(date=date(2024, 3, 5)).delete()
+        _rollup_monthly_from_daily(date(2024, 3, 1))
+
+        rows = self._monthly_rows()
+        assert len(rows) == 1
+        assert rows[0].month == date(2024, 4, 1)
+
+    def test_months_before_the_window_are_left_alone(self):
+        """Orphan cleanup must not reach outside the rebuilt window."""
+        self._daily(date(2024, 1, 10), value=99)
+        _rollup_monthly_from_daily(date(2024, 1, 1))
+        EventMetricsDaily._base_manager.all().delete()
+
+        self._daily(date(2024, 3, 5), value=10)
+        _rollup_monthly_from_daily(date(2024, 3, 1))
+
+        months = [row.month for row in self._monthly_rows()]
+        assert months == [date(2024, 1, 1), date(2024, 3, 1)]
+
 
 class TestSourceWindow(TestCase):
     """Tests for the per-run source window and the reconciliation pass."""
