@@ -76,7 +76,7 @@ class Command(BaseCommand):
             help=(
                 "Backfill missing mirror rows and skip the ownership reconcile. "
                 "Purely additive: touches only pg_periodic_schedule, never a Beat "
-                "PeriodicTask. This is the mode automation runs — see handle()."
+                "PeriodicTask. This is the mode automation runs ONLY on the release path (converge_pg_scheduler with PG_SCHEDULER_ENABLED=false); the adopt path runs the full reconcile — see handle()."
             ),
         )
         parser.add_argument(

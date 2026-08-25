@@ -27,11 +27,21 @@ from unstract.core.data_models import ExecutionStatus
 
 
 def _execution(**overrides):
-    """A PENDING, never-dispatched execution old enough to sweep."""
-    from workflow_manager.workflow_v2.models import WorkflowExecution
+    """A PENDING, never-dispatched execution old enough to sweep.
+
+    A workflow is REQUIRED, not incidental: ``WorkflowExecution.save()`` calls
+    ``_handle_execution_cache()``, which dereferences ``self.workflow.id``. Built
+    without one, every test here died with ``AttributeError: 'NoneType' object has no
+    attribute 'id'`` before reaching its assertion — which is what CI reported the
+    moment this PR left draft and the integration tier actually ran.
+    """
+    from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
     fields = {
         "id": uuid.uuid4(),
+        "workflow": Workflow.objects.create(
+            workflow_name=f"wf-sweep-{uuid.uuid4().hex[:8]}"
+        ),
         "status": ExecutionStatus.PENDING.value,
         "task_id": None,
         "queue_message_id": None,

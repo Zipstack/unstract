@@ -23,6 +23,41 @@ from queue_backend.pg_queue.pg_scheduler import (
 
 
 class TestPureHelpers:
+    def test_the_field_names_ARE_the_select_column_lists(self):
+        """The one guarantee the _fields-derived SELECT cannot give itself.
+
+        Deriving the column list from the type makes a REORDER harmless — there is no
+        second list to drift from. It makes a RENAME silent in a new way: the query
+        simply starts asking for a different column. Every test that would execute
+        these queries needs live Postgres and SKIPS without it, so a rename would
+        otherwise reach production unchallenged.
+
+        Pinning the tuples turns that into a red test in the default lane, which forces
+        whoever renames a field to confirm a matching migration in
+        backend/pg_queue/models.py. Do NOT update these literals to match a rename
+        without doing so — that is the mistake this exists to stop.
+        """
+        from queue_backend.pg_queue.pg_scheduler import _DuePeriodicTask, _DueSchedule
+
+        assert _DueSchedule._fields == (
+            "pipeline_id",
+            "organization_id",
+            "workflow_id",
+            "pipeline_name",
+            "cron_string",
+            "next_run_at",
+        )
+        assert _DuePeriodicTask._fields == (
+            "name",
+            "task_name",
+            "queue",
+            "task_args",
+            "task_kwargs",
+            "org_id",
+            "cron_string",
+            "next_run_at",
+        )
+
     def test_next_run_is_strictly_after_base(self):
         base = datetime.datetime(2026, 6, 18, 10, 0, 0)
         # 09:00 daily — already past at 10:00, so the next is tomorrow 09:00.
@@ -82,8 +117,16 @@ def _seed(conn, *, pg_owned, enabled, next_run_at, cron="0 9 * * *"):
                created_at, updated_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, NULL, %s, now(), now())
             """,
-            (pid, _MARKER, str(uuid.uuid4()), "Test ETL", cron, enabled, pg_owned,
-             next_run_at),
+            (
+                pid,
+                _MARKER,
+                str(uuid.uuid4()),
+                "Test ETL",
+                cron,
+                enabled,
+                pg_owned,
+                next_run_at,
+            ),
         )
     conn.commit()
     return pid
@@ -113,7 +156,9 @@ def clean(pg_conn):
     """Remove any rows this test created (the tick commits, so teardown must)."""
     yield pg_conn
     with pg_conn.cursor() as cur:
-        cur.execute("DELETE FROM pg_periodic_schedule WHERE organization_id = %s", (_MARKER,))
+        cur.execute(
+            "DELETE FROM pg_periodic_schedule WHERE organization_id = %s", (_MARKER,)
+        )
         cur.execute("DELETE FROM pg_queue_message WHERE org_id = %s", (_MARKER,))
     pg_conn.commit()
 
@@ -348,8 +393,12 @@ def _messages_on(conn, queue):
 def clean_periodic(pg_conn):
     yield pg_conn
     with pg_conn.cursor() as cur:
-        cur.execute("DELETE FROM pg_periodic_task WHERE name LIKE %s", (f"{_PT_MARKER}%",))
-        cur.execute("DELETE FROM pg_queue_message WHERE queue_name LIKE %s", (f"{_PT_MARKER}%",))
+        cur.execute(
+            "DELETE FROM pg_periodic_task WHERE name LIKE %s", (f"{_PT_MARKER}%",)
+        )
+        cur.execute(
+            "DELETE FROM pg_queue_message WHERE queue_name LIKE %s", (f"{_PT_MARKER}%",)
+        )
     pg_conn.commit()
 
 
@@ -360,7 +409,10 @@ class TestDispatchDuePeriodicTasks:
         conn = clean_periodic
         past = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
         name = _seed_periodic(
-            conn, pg_owned=True, enabled=True, next_run_at=past,
+            conn,
+            pg_owned=True,
+            enabled=True,
+            next_run_at=past,
             task_kwargs={"retention_days": 30},
         )
 

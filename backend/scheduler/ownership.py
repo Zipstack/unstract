@@ -262,17 +262,28 @@ def reconcile_ownership_for(
                 beat_updates["last_run_at"] = timezone.now()
             matched = PeriodicTask.objects.filter(name=pipeline_id).update(**beat_updates)
             if not matched:
-                # 0 rows means Beat has no row for this pipeline — on the RELEASE
-                # direction that is a schedule with no firer at all: PG has let go
-                # and Beat has nothing to take over. Silent before this: a bulk
-                # .update() reports success by returning 0, so a rollback could
-                # orphan a schedule and log nothing.
-                logger.warning(
-                    "reconcile_ownership_for: no Beat PeriodicTask named %s to "
-                    "%s — the schedule may now have no firer",
-                    pipeline_id,
-                    "release to" if not pg_owned else "disable for adoption",
-                )
+                # Branch the WHOLE message, not just the verb. The two directions mean
+                # opposite things, and an earlier version applied the alarming tail to
+                # both — which is how the direction that matters gets filtered out.
+                if pg_owned:
+                    # Adopt: nothing to switch off. The mirror row was just written
+                    # pg_owned=True and the PG tick selects WHERE pg_owned AND enabled,
+                    # so PG *is* the firer. Benign, and this path runs on every pipeline
+                    # save, so a warning here would be noise.
+                    logger.info(
+                        "reconcile_ownership_for: no Beat PeriodicTask named %s to "
+                        "disable — PG owns it now, nothing needed switching off",
+                        pipeline_id,
+                    )
+                else:
+                    # Release: PG has let go and Beat has no row to take over, so the
+                    # schedule has no firer at all — on the rollback path. Silent before
+                    # this: a bulk .update() reports success by returning 0.
+                    logger.warning(
+                        "reconcile_ownership_for: no Beat PeriodicTask named %s to "
+                        "release to — the schedule may now have no firer",
+                        pipeline_id,
+                    )
             # Bulk .update() bypasses django-celery-beat's post_save signal, so
             # PeriodicTasks.last_update never bumps and DatabaseScheduler never
             # reloads — Beat would keep firing the schedule from its stale

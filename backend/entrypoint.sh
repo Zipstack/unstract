@@ -36,7 +36,9 @@ if [ "$migrate" = true ]; then
     # READ THIS BEFORE ASSUMING A RESTART IS INERT. This is NOT the earlier
     # `--mirror-only` invocation, and it does NOT leave Beat alone: with
     # PG_SCHEDULER_ENABLED=true it flips pg_owned and DISABLES the Beat PeriodicTask
-    # row for every mirrored pipeline. A rolling restart therefore can move schedules
+    # row for every mirrored pipeline THE pg_queue_enabled FLAG SELECTS — ownership is
+    # additionally per-schedule Flipt-gated and fails closed, so with Flipt blind or the
+    # flag at 0% this moves nothing and Beat keeps every row. A rolling restart therefore can move schedules
     # off Beat. (A comment here used to describe --mirror-only and state that
     # "ownership hand-over stays an explicit operator action" — it survived the switch
     # to converge_pg_scheduler and told an SRE auditing exactly this question the
@@ -45,14 +47,21 @@ if [ "$migrate" = true ]; then
     # Running it on every start is what makes the ROLLBACK real: flipping the env var
     # back is enough, with no operator remembering a management command in every
     # environment (on-prem included, where `manage.py` is not something a deploy can
-    # reach). Idempotent both ways, and a no-op for rows whose ownership already
-    # matches, so a restart that changes nothing writes nothing.
+    # reach). Idempotent both ways in OUTCOME, but NOT free: with the gate on it
+    # rewrites pg_periodic_schedule and the Beat PeriodicTask row and bumps
+    # PeriodicTasks.update_changed() for every schedule, whether or not ownership
+    # changed — roughly 2N row writes and N Beat reloads per pod start. (A previous
+    # version of this line said "a restart that changes nothing writes nothing"; that
+    # was wrong, and contradicted converge_pg_scheduler's own docstring.) The release
+    # direction runs --mirror-only and skips the reconcile, so it costs nothing here.
     #
     # PG_SCHEDULER_ADOPT_PERIODICS additionally moves the dashboard_metrics.* rows;
     # it is separate because adopting them needs workerPgMetrics deployed.
     #
     # Best-effort by design: a convergence failure must never stop the backend from
-    # starting. Whatever fired the schedules before keeps firing them in that case.
+    # starting. Note it is NOT all-or-nothing though — convergence commits per schedule
+    # as it goes, so a failure can leave a partial hand-over. The command's summary line
+    # names the failed count; re-run it or flip the env var back.
     PERIODICS_FLAG=""
     if [ "$(printf '%s' "${PG_SCHEDULER_ADOPT_PERIODICS:-}" | tr '[:upper:]' '[:lower:]')" = "true" ]; then
         PERIODICS_FLAG="--periodics"

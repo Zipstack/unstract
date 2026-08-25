@@ -294,13 +294,18 @@ class RecoverStuckPgExecutionsTests(TestCase):
         the selection filter, not the early return this test exists to pin.
         """
         ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
-        WorkflowFileExecution.objects.filter(workflow_execution=ex).update(
-            modified_at=None
-        )
+        # modified_at is NOT NULL at the database level, so it cannot be forced to NULL
+        # to reach the early return — an earlier version of this test tried and died on
+        # an IntegrityError. Patch the aggregate instead, which is the only way the
+        # helper can legitimately see a missing timestamp.
         ex.execution_time = 7.5
         ex.save(update_fields=["execution_time"])
 
-        self.view._restamp_execution_time_from_files(ex)
+        with patch(
+            "workflow_manager.file_execution.models.WorkflowFileExecution.objects"
+        ) as objects:
+            objects.filter.return_value.aggregate.return_value = {"last": None}
+            self.view._restamp_execution_time_from_files(ex)
 
         ex.refresh_from_db()
         assert ex.execution_time == 7.5

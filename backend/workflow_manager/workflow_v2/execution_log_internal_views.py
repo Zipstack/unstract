@@ -187,7 +187,7 @@ class SweepUndispatchedExecutionsAPIView(APIView):
     touches backend tables: it reads execution state through
     ``get_workflow_execution`` and writes through ``update_workflow_execution_status``.
     A ``WorkflowExecution`` query inside the worker would break that boundary, and the
-    sweep also needs the rate limiter and the API storage connector — both backend-side.
+    sweep also needs the rate limiter — both backend-side.
 
     Transport-agnostic on purpose: the create-then-dispatch window sits upstream of
     ``resolve_transport``, so this recovers Celery-path strands too.

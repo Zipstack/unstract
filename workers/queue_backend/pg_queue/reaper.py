@@ -181,7 +181,8 @@ def reaper_interval_from_env() -> float:
 #: Ten minutes, and deliberately NOT the barrier stuck-timeout it used to default to.
 #: Those answer different questions: the barrier timeout bounds how long a batch may
 #: make no progress (hours, because a single file can legitimately take that long),
-#: whereas this only needs to outlast a callback that is about to fire — seconds.
+#: whereas this must outlast the worst-case callback latency after the last file goes
+#: terminal (see below — that is what sizes it).
 #:
 #: **The threshold IS load-bearing — do not lower it casually.** It was not, once: the
 #: only guard was all-files-terminal (``internal_views.py``: ``total == 0 or
@@ -1378,7 +1379,7 @@ class PgReaper:
 
         Delegated to the backend rather than done here: this reaper deliberately never
         touches backend tables (it reads/writes execution state through the internal
-        API), and the sweep also needs the rate limiter and the API storage connector.
+        API), and the sweep also needs the rate limiter.
         The reaper contributes what it uniquely has — leader election, so exactly one
         instance sweeps — while the backend owns the logic.
 

@@ -1454,7 +1454,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         find it and PENDING — a non-terminal state — is never resolved.
 
         Backend-side because the sweep touches ``WorkflowExecution``, the API-deployment
-        rate limiter and the API storage connector; the reaper only supplies leader
+        rate limiter; the reaper only supplies leader
         election so exactly one instance runs it. Org-agnostic: the sweep spans all
         organizations, so no ``organization_id`` is sent.
         """

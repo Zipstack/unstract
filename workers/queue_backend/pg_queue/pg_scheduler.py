@@ -56,8 +56,14 @@ SCHEDULER_QUEUE_NAME = "scheduler"
 
 
 class _DueSchedule(NamedTuple):
-    """One row from the due-schedules scan — names bound to columns at one site
-    so a future reorder of the SELECT can't silently misassign fields.
+    """One row from the due-schedules scan.
+
+    THE FIELD NAMES ARE THE QUERY. They are emitted verbatim as the SELECT's column
+    list (see the scan below), so every one MUST be a column of
+    ``pg_periodic_schedule`` — renaming a field here rewrites the SQL and needs a
+    matching migration in ``backend/pg_queue/models.py``. That is what makes a reorder
+    harmless (there is no second list to drift from) and a RENAME dangerous, which is
+    the opposite of what an earlier version of this docstring implied.
     """
 
     pipeline_id: uuid.UUID
@@ -143,7 +149,7 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
             base = cur.fetchone()[0]
             cur.execute(
                 f"""
-                SELECT {", ".join(_DueSchedule._fields)}
+                SELECT {", ".join(f'"{f}"' for f in _DueSchedule._fields)}
                 FROM {qualified("pg_periodic_schedule")}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)
@@ -234,8 +240,15 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
 class _DuePeriodicTask(NamedTuple):
     """One row from the generic-periodic due scan (UN-3796).
 
-    Sibling of :class:`_DueSchedule`. Same reason for existing: the field names are
-    bound to the SELECT's column order at exactly one site.
+    Sibling of :class:`_DueSchedule`, and carries the same rule: the field names are
+    emitted verbatim as the SELECT's column list, so each MUST be a column of
+    ``pg_periodic_task``.
+
+    Note this type says ``org_id`` where its sibling says ``organization_id``. Tempting
+    to unify — do not, without a migration. The two back different tables, and renaming
+    this one would silently select a column ``pg_periodic_task`` does not have; the
+    resulting UndefinedColumn propagates out of the dispatch and takes down the whole
+    leader tick, retention sweep and gauge refresh included.
     """
 
     name: str
@@ -291,7 +304,7 @@ def dispatch_due_periodic_tasks(conn: PgConnection) -> int:
             base = cur.fetchone()[0]
             cur.execute(
                 f"""
-                SELECT {", ".join(_DuePeriodicTask._fields)}
+                SELECT {", ".join(f'"{f}"' for f in _DuePeriodicTask._fields)}
                 FROM {qualified("pg_periodic_task")}
                 WHERE pg_owned AND enabled
                   AND (next_run_at IS NULL OR next_run_at <= %s)

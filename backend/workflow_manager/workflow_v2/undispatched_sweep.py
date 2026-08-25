@@ -28,7 +28,12 @@ is transport-aware for exactly that reason.
 **The predicate.** ``workflow_helper.py:566/570`` stamps ``queue_message_id`` (PG) or
 ``task_id`` (Celery) immediately after a successful dispatch, and the model documents
 that the other stays NULL. So ``PENDING`` + both handles NULL + older than the grace
-period means the dispatch never happened — no JSONB probing, no cross-table joins, and
+period means the dispatch USUALLY never happened — but see the note in
+_release_abandoned_resources: three paths in workflow_helper reach that exact
+state AFTER dispatch, which is why this sweep does no irreversible cleanup and
+why the real fix is a positive dispatched_at rather than an inferred absence.
+Do not shorten the grace period or reinstate cleanup on the strength of this
+paragraph alone. Nominally it means the dispatch never happened — no JSONB probing, no cross-table joins, and
 correct under either transport.
 """
 
@@ -196,7 +201,11 @@ def _release_abandoned_resources(execution_id: str, workflow_id: str) -> None:
 
     **Best-effort, and deliberately so.** The status write already succeeded and is the
     part that matters; a failure to tidy up must never propagate and stall the rest of
-    the batch. Each side is isolated so one failing does not skip the other.
+    the batch.
+
+    Only the slot is released here. The staged input is deliberately retained — see the
+    note in the body for why, and why re-adding that delete needs the predicate fixed
+    first.
     """
     # Slot first: it is the one with a live cost. Held slots consume the org's API
     # deployment concurrency budget until the Redis ZSET TTL (6h) expires them, so a
@@ -211,7 +220,15 @@ def _release_abandoned_resources(execution_id: str, workflow_id: str) -> None:
             .get(id=execution_id)
             .workflow.organization
         )
-        APIDeploymentRateLimiter.release_slot(organization, execution_id)
+        # str(...organization_id), NOT the model instance. release_slot builds its Redis
+        # key by formatting the argument into "api_deployment:rate_limit:org:{org_id}",
+        # and acquire_slot built it from str(organization.organization_id). Passing the
+        # instance yields "...:org:Organization object (12)", which matches nothing — the
+        # ZREM removes a non-member, returns 0, raises nothing, and the slot stays held
+        # for the full 6h TTL. Silent, and the exact harm this call exists to prevent.
+        APIDeploymentRateLimiter.release_slot(
+            str(organization.organization_id), execution_id
+        )
     except Exception:
         logger.warning(
             "Undispatched sweep: could not release the rate-limit slot for %s "
@@ -232,11 +249,26 @@ def _release_abandoned_resources(execution_id: str, workflow_id: str) -> None:
     #   * the handle comes back empty and it returns without writing (:544)
     #   * a PG handle will not parse as a bigint and it returns without writing (:562)
     #
-    # so after the 15-minute grace this sweep can claim a live execution. Marking it
-    # ERROR is wrong but self-corrects — the running worker's own terminal write
-    # supersedes it, and error→completed is explicitly permitted by the status guard.
-    # Deleting its input does not self-correct: the worker is still going to read it,
-    # and the row's user-facing message invites a re-run against data that is gone.
+    # so after the 15-minute grace this sweep can claim a live execution.
+    #
+    # Do NOT read the surviving ERROR write as harmless. An earlier version of this note
+    # claimed it "self-corrects — the running worker's own terminal write supersedes it".
+    # That is false on the PG transport: both worker entry points treat a terminal
+    # execution as a reason to STOP, not to overwrite. general/tasks.py returns
+    # skipped_terminal_execution before it would write EXECUTING, and
+    # file_processing/tasks.py raises _TerminalExecutionSkip. So a wrongly-claimed row is
+    # silently DROPPED — the message is acked, no retry is scheduled, and the only trace
+    # is a worker WARNING. The realistic trigger is not the three no-handle paths above
+    # but a saturated queue: a message enqueued successfully and still unconsumed at 15
+    # minutes gets marked ERROR and then discarded, under exactly the backlog conditions
+    # that produced the orphans this sweep was built for.
+    #
+    # Even where a terminal write does land, error_message is not cleared by it, so a
+    # wrongly-claimed run can complete while still showing the customer "This execution
+    # did not start... You can safely run it again."
+    #
+    # Deleting the input is worse again and is what this removal addresses: the worker is
+    # still going to read it, and the message invites a re-run against data that is gone.
     #
     # Dropping the delete keeps the reversible half of the sweep and removes the
     # irreversible one, at the cost of leaking an input directory for executions that
