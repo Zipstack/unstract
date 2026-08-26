@@ -73,6 +73,11 @@ interface KeyedItem {
   children?: React.ReactNode;
   icon?: React.ReactNode;
   disabled?: boolean;
+  /**
+   * Overrides the id Tabs derives from its own `data-testid`. Worth setting
+   * where `key` is a uuid or a bare ordinal, which makes a poor locator.
+   */
+  "data-testid"?: string;
 }
 
 interface CardProps
@@ -102,6 +107,12 @@ interface TabsProps
    * the silent gap that typing this layer is meant to expose.
    */
   size?: SizeToken;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface ListProps<T = unknown> extends React.HTMLAttributes<HTMLDivElement> {
@@ -185,6 +196,12 @@ interface SegmentedProps
   options?: Array<SegmentedOption | string>;
   value?: string | number;
   onChange?: (value: string | number) => void;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface MenuProps
@@ -397,6 +414,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
     size: _size,
     className,
     children,
+    "data-testid": testId,
     ...props
   },
   ref,
@@ -414,6 +432,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
           icon?: React.ReactNode;
           children?: React.ReactNode;
           disabled?: boolean;
+          "data-testid"?: string;
         }> => React.isValidElement(c),
       )
       .map((c) => ({
@@ -431,6 +450,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
          * through onChange as a profile id (that was the 500).
          */
         key: c.props.tabKey ?? String(c.key ?? "").replace(/^\.(\d+:)?\$/, ""),
+        "data-testid": c.props["data-testid"],
         label: c.props.tab,
         // antd supports an icon on TabPane too, not just on `items`.
         icon: c.props.icon,
@@ -450,6 +470,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         : { defaultValue: String(defaultActiveKey ?? first ?? "") })}
       onValueChange={(v) => onChange?.(v)}
       className={cn("ant-tabs", className)}
+      data-testid={testId}
       // Radix Root takes value/defaultValue/onValueChange/orientation only;
       // the remaining antd props are consumed above, not forwarded.
     >
@@ -475,6 +496,10 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
             <TabsTrigger
               key={String(p.key)}
               value={String(p.key)}
+              data-testid={
+                p["data-testid"] ??
+                (testId && p.key != null ? `${testId}-tab-${p.key}` : undefined)
+              }
               disabled={p.disabled}
               className={cn(
                 type !== "card" &&
@@ -1086,7 +1111,14 @@ const Drawer = React.forwardRef<HTMLDivElement, DrawerProps>(function Drawer(
 /** antd `<Segmented options value onChange>`. */
 const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
   function Segmented(
-    { options = [], value, onChange, className, ...props },
+    {
+      options = [],
+      value,
+      onChange,
+      className,
+      "data-testid": testId,
+      ...props
+    },
     ref,
   ) {
     return (
@@ -1094,15 +1126,28 @@ const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
         ref={ref}
         className={cn("inline-flex gap-1 rounded-md bg-muted p-1", className)}
         data-segmented=""
+        data-testid={testId}
         {...props}
       >
         {options.map((o) => {
           const val = typeof o === "object" ? o.value : o;
           const label = typeof o === "object" ? o.label : o;
           return (
+            /*
+             * Segments are repeated controls built from `options`, so they
+             * cannot be labelled from the call-site. The ids derive from the
+             * parent's, as Tabs and Dropdown do, so a call-site opts in once.
+             *
+             * NOTE: this makes each segment selectable, not the ACTIVE one
+             * assertable — which segment is selected is still expressed only
+             * by the Tailwind classes below. Exposing that state would mean
+             * adding an attribute rather than a test id, which is out of scope
+             * for this pass.
+             */
             <button
               key={String(val)}
               type="button"
+              data-testid={testId ? `${testId}-option-${val}` : undefined}
               onClick={() => onChange?.(val)}
               className={cn(
                 "ant-segmented-item cursor-pointer rounded px-3 py-1 text-sm disabled:cursor-not-allowed",

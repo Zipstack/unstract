@@ -110,6 +110,11 @@ interface MenuItem {
   /** antd renders a separator for this instead of an item. */
   type?: "divider" | "group" | "item";
   onClick?: (e: React.MouseEvent<HTMLElement>) => void;
+  /**
+   * Overrides the id derived from the parent's `data-testid` (see Dropdown).
+   * Worth setting when `key` is a uuid, which makes an unreadable locator.
+   */
+  "data-testid"?: string;
 }
 
 interface MenuProp {
@@ -138,6 +143,12 @@ interface ModalProps
   closable?: boolean;
   /** Remounts the body on reopen, which the Form shim relies on to re-seed. */
   destroyOnClose?: boolean;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface TooltipProps
@@ -154,6 +165,12 @@ interface DropdownProps
   trigger?: string[];
   placement?: Placement;
   disabled?: boolean;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface DropdownButtonProps extends DropdownProps {
@@ -171,6 +188,12 @@ interface PopconfirmProps
   cancelText?: React.ReactNode;
   okType?: "primary" | "danger" | "default";
   disabled?: boolean;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface PopoverProps
@@ -194,6 +217,12 @@ interface PopoverProps
   getPopupContainer?: (node: HTMLElement) => HTMLElement;
   destroyTooltipOnHide?: boolean;
   trigger?: string | string[];
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so destructuring
+   * one out of these props is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface CollapseItem {
@@ -286,6 +315,7 @@ const ModalBase = React.forwardRef<HTMLDivElement, ModalProps>(function Modal(
     className,
     style,
     children,
+    "data-testid": testId,
     ...props
   },
   ref,
@@ -352,6 +382,7 @@ const ModalBase = React.forwardRef<HTMLDivElement, ModalProps>(function Modal(
             e.preventDefault();
           }
         }}
+        data-testid={testId}
         {...props}
       >
         {title ? (
@@ -375,13 +406,18 @@ const ModalBase = React.forwardRef<HTMLDivElement, ModalProps>(function Modal(
           <DialogFooter>{footer}</DialogFooter>
         ) : (
           <DialogFooter>
-            <Button onClick={onCancel} {...cancelButtonProps}>
+            <Button
+              onClick={onCancel}
+              data-testid={testId ? `${testId}-cancel` : undefined}
+              {...cancelButtonProps}
+            >
               {cancelText}
             </Button>
             <Button
               type="primary"
               loading={confirmLoading}
               onClick={onOk}
+              data-testid={testId ? `${testId}-ok` : undefined}
               {...okButtonProps}
             >
               {okText}
@@ -529,7 +565,16 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
  */
 const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
   function Dropdown(
-    { menu, overlay, trigger, placement, disabled, children, ...props },
+    {
+      menu,
+      overlay,
+      trigger,
+      placement,
+      disabled,
+      children,
+      "data-testid": testId,
+      ...props
+    },
     ref,
   ) {
     const items = menu?.items ?? [];
@@ -545,7 +590,13 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
         >
           {children}
         </DropdownMenuTrigger>
-        <DropdownMenuContent ref={ref} align="end">
+        {/*
+         * `data-testid` goes on the CONTENT, alongside `ref`, and NOT on the
+         * trigger: the trigger is `children`, which the call-site renders and
+         * can label itself, while this panel is portalled out of the tree with
+         * no stable position and only library classes to select on.
+         */}
+        <DropdownMenuContent ref={ref} data-testid={testId} align="end">
           {overlay ??
             items.map((item, i) =>
               item?.type === "divider" ? (
@@ -565,6 +616,12 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
                    */
                   className="ant-dropdown-menu-item p-0"
                   key={item?.key ?? i}
+                  data-testid={
+                    item?.["data-testid"] ??
+                    (testId && item?.key
+                      ? `${testId}-item-${item.key}`
+                      : undefined)
+                  }
                   disabled={item?.disabled}
                   onClick={(e) => {
                     menu?.onClick?.({ key: item?.key, domEvent: e });
@@ -682,6 +739,7 @@ const Popconfirm = React.forwardRef<HTMLDivElement, PopconfirmProps>(
       okType,
       disabled,
       children,
+      "data-testid": testId,
       ...props
     },
     ref,
@@ -693,7 +751,17 @@ const Popconfirm = React.forwardRef<HTMLDivElement, PopconfirmProps>(
     return (
       <AlertDialog {...props}>
         <AlertDialogTrigger asChild>{children}</AlertDialogTrigger>
-        <AlertDialogContent ref={ref}>
+        {/*
+         * On the CONTENT, with `ref` — `...props` lands on Radix's Root, which
+         * renders no DOM, so an id written at a call-site reached nothing.
+         *
+         * The two buttons derive from it because they are the whole point of
+         * the component and cannot be labelled from outside: the shim builds
+         * them from `okText`/`cancelText`, they are portalled, and they carry
+         * nothing but library classes. Confirming a delete is exactly the step
+         * a test has to drive.
+         */}
+        <AlertDialogContent ref={ref} data-testid={testId}>
           <AlertDialogHeader>
             <AlertDialogTitle>{title}</AlertDialogTitle>
             {description ? (
@@ -701,11 +769,15 @@ const Popconfirm = React.forwardRef<HTMLDivElement, PopconfirmProps>(
             ) : null}
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={onCancel}>
+            <AlertDialogCancel
+              onClick={onCancel}
+              data-testid={testId ? `${testId}-cancel` : undefined}
+            >
               {cancelText}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={onConfirm}
+              data-testid={testId ? `${testId}-ok` : undefined}
               className={
                 okType === "danger"
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -759,6 +831,7 @@ const AntPopover = React.forwardRef<HTMLDivElement, PopoverProps>(
       destroyTooltipOnHide,
       children,
       className,
+      "data-testid": testId,
       ...props
     },
     ref,
@@ -827,6 +900,13 @@ const AntPopover = React.forwardRef<HTMLDivElement, PopoverProps>(
         </PopoverTrigger>
         <PopoverContent
           ref={ref}
+          /*
+           * On the CONTENT, with `ref`, not on Radix's Root — the Root renders
+           * no DOM at all, so a `data-testid` in `...props` vanished. The panel
+           * is portalled and the trigger is `children`, which the call-site can
+           * label itself, so this is the half that needs a handle.
+           */
+          data-testid={testId}
           // Same handlers on the panel: without them the 150ms timer fires as
           // the pointer crosses the gap and the menu closes under the cursor.
           {...hoverHandlers}

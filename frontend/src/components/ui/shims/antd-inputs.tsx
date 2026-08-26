@@ -234,6 +234,12 @@ interface AntSelectProps {
   size?: SizeToken;
   className?: string;
   children?: React.ReactNode;
+  /**
+   * Forwarded to the TRIGGER, for the same reason as `style` above: `...props`
+   * lands on Radix's Root, which renders no DOM, so a test id written at a
+   * call-site reached nothing at all.
+   */
+  "data-testid"?: string;
 }
 
 interface AntCheckboxProps {
@@ -622,12 +628,14 @@ function TagsInput({
   placeholder,
   disabled,
   className,
+  "data-testid": testId,
 }: {
   value?: string[];
   onChange?: (value: string[]) => void;
   placeholder?: React.ReactNode;
   disabled?: boolean;
   className?: string;
+  "data-testid"?: string;
 }) {
   const [draft, setDraft] = React.useState("");
   const tags = React.useMemo(
@@ -646,6 +654,7 @@ function TagsInput({
 
   return (
     <div
+      data-testid={testId}
       className={cn(
         "flex min-h-8 flex-wrap items-center gap-1 rounded-md px-2 py-1",
         disabled && "cursor-not-allowed opacity-50",
@@ -838,6 +847,7 @@ interface SearchableSelectProps {
   onSelect: (item: NormalisedOption) => void;
   /** Honoured so a call-site (or a test) can force the popup open, as antd allows. */
   open?: boolean;
+  "data-testid"?: string;
 }
 
 /**
@@ -871,6 +881,7 @@ const SearchableSelect = React.forwardRef<
     renderPopup,
     onSelect,
     open: openProp,
+    "data-testid": testId,
   },
   ref,
 ) {
@@ -980,6 +991,7 @@ const SearchableSelect = React.forwardRef<
           role="combobox"
           aria-expanded={open}
           disabled={disabled}
+          data-testid={testId}
           style={style}
           // Radix's Select marks an empty trigger this way and the shared
           // class string greys the placeholder off it.
@@ -1086,6 +1098,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       className,
       style,
       children,
+      "data-testid": testId,
       ...props
     },
     ref,
@@ -1118,6 +1131,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
           placeholder={placeholder}
           disabled={disabled}
           className={className}
+          data-testid={testId}
         />
       );
     }
@@ -1183,6 +1197,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
             onChange?.(...toChangeArgs(item, String(item.value), labelInValue))
           }
           open={(props as { open?: boolean }).open}
+          data-testid={testId}
         />
       );
     }
@@ -1204,10 +1219,12 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
         <SelectTrigger
           ref={ref}
           /*
-           * `style` belongs on the TRIGGER, not on Radix's Root (which renders
-           * nothing) — call-sites size these with `style={{ width: 200 }}`.
+           * `style` and `data-testid` belong on the TRIGGER, not on Radix's
+           * Root (which renders nothing) — call-sites size these with
+           * `style={{ width: 200 }}`, and the trigger is what a test clicks.
            */
           style={style}
+          data-testid={testId}
           className={cn(
             "ant-select-selector",
             size === "small" && "h-8 text-sm",
