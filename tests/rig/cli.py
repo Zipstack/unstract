@@ -912,6 +912,7 @@ def _execute_group(
     env.update(group_env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
+        env.setdefault("UNSTRACT_FRONTEND_URL", endpoints.frontend_url)
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
         env.setdefault("UNSTRACT_PLATFORM_SERVICE_URL", endpoints.platform_service_url)
         env.setdefault("UNSTRACT_RUNNER_URL", endpoints.runner_url)

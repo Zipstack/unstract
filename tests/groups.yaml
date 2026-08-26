@@ -247,8 +247,9 @@ groups:
     # unobservable there. Every UI defect found during the shadcn migration was
     # spotted by a human in a browser, not by the unit suite.
     #
-    # `requires_platform` so the rig boots the stack and exports
-    # UNSTRACT_BACKEND_URL; the Playwright config reads that for its baseURL.
+    # `requires_platform` so the rig boots the stack and exports the endpoints:
+    # the Playwright config takes its baseURL from UNSTRACT_FRONTEND_URL, and
+    # fixtures.js drives the API through UNSTRACT_BACKEND_URL.
     # `optional` until the suite is real: no browsers installed (or no
     # node_modules) must skip, not gate merges.
     tier: e2e

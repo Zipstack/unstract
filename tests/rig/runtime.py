@@ -124,6 +124,10 @@ class PlatformEndpoints:
     platform_service_url: str
     runner_url: str
     x2text_url: str
+    # Served on its own origin, not behind the backend: compose publishes the
+    # frontend on :3000 and the backend on :8000. Browser-driven groups need
+    # this one — pointing them at `backend_url` lands on the API instead.
+    frontend_url: str = "http://localhost:3000"
     admin_user: str = "unstract"
     admin_password: str = "unstract"
     infra: InfraEndpoints = field(default_factory=InfraEndpoints)
@@ -145,6 +149,9 @@ class PlatformEndpoints:
             ),
             runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
             x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+            frontend_url=os.environ.get(
+                "UNSTRACT_FRONTEND_URL", "http://localhost:3000"
+            ),
             admin_user=os.environ.get("UNSTRACT_ADMIN_USER", "unstract"),
             admin_password=os.environ.get("UNSTRACT_ADMIN_PASSWORD", "unstract"),
             infra=infra or InfraEndpoints(),

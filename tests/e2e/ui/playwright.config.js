@@ -17,14 +17,15 @@ import { defineConfig, devices } from "@playwright/test";
  */
 
 /*
- * The rig exports UNSTRACT_BACKEND_URL when it brings the platform up. The
- * frontend is served separately, so allow an explicit override and fall back to
- * the dev server's port.
+ * The rig exports UNSTRACT_FRONTEND_URL when it brings the platform up; the
+ * fallback matches the port compose publishes the frontend on.
+ *
+ * Deliberately no UNSTRACT_BACKEND_URL fallback. The frontend has its own
+ * origin (:3000 vs the backend's :8000), and the rig always exports the backend
+ * URL — so accepting it here would silently point every spec at the API and
+ * make the :3000 default unreachable in exactly the case it exists for.
  */
-const baseURL =
-  process.env.UNSTRACT_FRONTEND_URL ??
-  process.env.UNSTRACT_BACKEND_URL ??
-  "http://localhost:3000";
+const baseURL = process.env.UNSTRACT_FRONTEND_URL ?? "http://localhost:3000";
 
 export default defineConfig({
   // Specs sit beside this config; `@playwright/test` is installed here too, so
