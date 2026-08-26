@@ -940,7 +940,12 @@ const SearchableSelect = React.forwardRef<
         </div>
       ) : (
         visible.map((o, i) => (
-          <div
+          // Options are deliberately not focusable and carry no key handler of
+          // their own: this is the `aria-activedescendant` combobox pattern, so
+          // focus stays on the input and its onKeyDown drives Arrow/Enter into
+          // the same `choose` this onClick calls. A handler here would be dead
+          // code — the element can never receive the event.
+          <div // NOSONAR
             key={String(o.value)}
             id={`${listId}-${i}`}
             role="option"
@@ -1043,7 +1048,12 @@ const SearchableSelect = React.forwardRef<
          * `dropdownRender` footer opens a modal, and the popup would sit on
          * top of it. Options close the popup through `choose` already.
          */}
-        <div onClick={() => setOpen(false)}>
+        {/*
+         * `presentation`: the wrapper only catches clicks bubbling out of the
+         * footer — it carries no semantics of its own, and the elements that
+         * do (the listbox below, the footer's buttons) are already reachable.
+         */}
+        <div role="presentation" onClick={() => setOpen(false)}>
           {renderPopup ? renderPopup(menu) : menu}
         </div>
       </PopoverContent>
@@ -1216,8 +1226,11 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
              * top of the very modal it just opened. Close on `click` rather
              * than `mousedown`: unmounting the button mid-mousedown would eat
              * the click before the footer's own handler ever ran.
+             *
+             * `presentation` keeps this passive wrapper from breaking the
+             * listbox/option relationship Radix sets up around it.
              */
-            <div onClick={() => setPopupOpen(false)}>
+            <div role="presentation" onClick={() => setPopupOpen(false)}>
               {renderPopup(<>{optionItems}</>)}
             </div>
           ) : (
