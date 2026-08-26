@@ -132,7 +132,7 @@ const METRIC_PRIORITY = [
 /**
  * Format large numbers for display.
  *
- * @param {number} value - The number to format
+ * @param {number|null|undefined} value - The number to format
  * @param {number} precision - Decimal precision (default 0)
  * @return {string} Formatted number string
  */

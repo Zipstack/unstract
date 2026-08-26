@@ -52,7 +52,7 @@ function formatDate(dateStr) {
 /**
  * Format a number for display in tooltips.
  *
- * @param {number} value - Number to format
+ * @param {number|null|undefined} value - Number to format
  * @return {string} Formatted number
  */
 function formatValue(value) {
