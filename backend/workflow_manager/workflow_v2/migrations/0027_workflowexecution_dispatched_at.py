@@ -58,10 +58,11 @@ class Migration(migrations.Migration):
                 null=True,
                 blank=True,
                 db_comment=(
-                    "Set when the orchestrator task was successfully handed to its "
-                    "transport. NULL means it was never dispatched — the positive fact "
-                    "the undispatched sweep needs, because absent task_id/"
-                    "queue_message_id also occurs for executions that ARE running."
+                    "Set when the orchestrator task was handed to its transport. NULL means "
+                    "never dispatched. The POSITIVE fact the undispatched sweep needs: absent "
+                    "task_id/queue_message_id also occurs for executions that ARE running, "
+                    "because three paths in workflow_helper return without recording a handle "
+                    "after the message is already enqueued."
                 ),
             ),
         ),
