@@ -63,12 +63,17 @@ test.describe("navigation", () => {
     await item.scrollIntoViewIfNeeded();
     await item.hover();
 
-    const menu = page.locator(".settings-sidebar-popover");
+    /*
+     * Was `.settings-sidebar-popover`, which the HITL fly-out ALSO uses — so
+     * the locator was ambiguous the moment both were rendered. Each panel now
+     * has its own id, and its entries derive theirs from the menu item keys.
+     */
+    const menu = page.getByTestId("platform-menu");
     await expect(menu, "Platform fly-out did not open").toBeVisible({
       timeout: 10000,
     });
 
-    await menu.getByText(/User Management/i).click();
+    await menu.getByTestId("platform-menu-item-users").click();
     await expect(page).toHaveURL(/\/users(\/|$|\?)/, { timeout: 20000 });
     await expect(page.getByText(/Manage Users/i).first()).toBeVisible();
   });

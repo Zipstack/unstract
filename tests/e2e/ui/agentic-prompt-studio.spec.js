@@ -18,7 +18,13 @@ import { expect, test } from "./fixtures.js";
 async function openFirstProject(page, app) {
   await app.goto("agentic-prompt-studio/projects");
 
-  const project = page.locator(".list-view-row, .ant-list-item").first();
+  /*
+   * Was `.list-view-row, .ant-list-item` — neither exists any more, so this
+   * skipped rather than failed rather than surfacing anything.
+   */
+  const project = page
+    .locator('[data-testid^="aps-project-list-row-"]')
+    .first();
   if ((await project.count()) === 0) {
     test.skip(true, "no agentic prompt studio projects in this org");
   }

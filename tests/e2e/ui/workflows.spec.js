@@ -32,7 +32,7 @@ test.describe("workflows", () => {
     await app.goto("workflows");
     await page.getByRole("button", { name: /New Workflow/i }).click();
 
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByTestId("new-workflow-modal");
     await expect(dialog).toBeVisible();
 
     /*
@@ -41,7 +41,8 @@ test.describe("workflows", () => {
      * error text at all — the guard is that it refuses to proceed, which is
      * what actually protects against a half-built workflow being created.
      */
-    await dialog.getByRole("button", { name: /Create Workflow/i }).click();
+    // "Create Workflow" here, "Edit Workflow" in the edit flow — same button.
+    await dialog.getByTestId("new-workflow-modal-ok").click();
     await expect(dialog, "empty form was accepted").toBeVisible();
     await expect(page).toHaveURL(/\/workflows(\/|$|\?)/);
   });
@@ -54,19 +55,24 @@ test.describe("workflows", () => {
   test("a workflow opens and exposes its actions", async ({ page, app }) => {
     await app.goto("workflows");
 
-    const card = page.locator(".list-view-row").first();
+    // Was `.list-view-row` — dead since the ResourceTable migration, which
+    // made this test skip instead of fail. See prompt-studio.spec.js.
+    const card = page.locator('[data-testid^="workflow-list-row-"]').first();
     if ((await card.count()) === 0) {
       test.skip(true, "no workflows in this org");
     }
     await card.click();
 
-    const actions = page.getByRole("button", { name: /Actions/i });
+    const actions = page.getByTestId("workflow-actions-btn");
     await expect(actions, "workflow detail has no Actions menu").toBeVisible({
       timeout: 20000,
     });
 
+    // The menu is portalled; its entries derive their ids from the Dropdown's.
     await actions.click();
-    await expect(page.getByRole("menuitem", { name: /Run Workflow/i })).toBeVisible();
+    await expect(
+      page.getByTestId("workflow-actions-item-run-workflow"),
+    ).toBeVisible();
   });
 });
 
@@ -96,16 +102,24 @@ test.describe("api deployments", () => {
   }) => {
     await app.goto("api");
 
-    const endpoint = page.getByText(/API ENDPOINT/i).first();
-    if ((await endpoint.count()) === 0) {
+    /*
+     * Scope to ONE deployment card rather than taking `.first()` of a
+     * page-wide `[role=switch]`: that locator would happily match a switch
+     * belonging to a different card, or to no card at all.
+     */
+    const card = page
+      .locator('[data-testid^="api-deployment-list-card-"]')
+      .first();
+    if ((await card.count()) === 0) {
       test.skip(true, "no API deployments in this org");
     }
-    await expect(endpoint).toBeVisible();
+
+    await expect(card.getByText(/API Endpoint/i).first()).toBeVisible();
 
     // The enable/disable toggle is the control that takes a deployment in and
     // out of service — the single most consequential switch on this page.
     await expect(
-      page.locator("[role=switch]").first(),
+      card.locator('[data-testid^="api-deployment-toggle-"]'),
       "deployment has no enable/disable control",
     ).toBeVisible();
   });

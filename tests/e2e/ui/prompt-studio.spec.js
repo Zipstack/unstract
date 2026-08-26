@@ -34,7 +34,7 @@ test.describe("prompt studio", () => {
     await app.goto("tools");
     await page.getByRole("button", { name: /New Project/i }).click();
 
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByTestId("add-prompt-project-modal");
     await expect(dialog).toBeVisible();
     await expect(dialog.getByText(/Prompt Studio project name/i)).toBeVisible();
 
@@ -47,7 +47,9 @@ test.describe("prompt studio", () => {
      * AddCustomToolFormModal.jsx never renders, because the submit reaches the
      * API before antd's own validation shows.
      */
-    await dialog.getByRole("button", { name: /^Save$/i }).click();
+    // The footer button reads "Save" here and "Update" in the edit flow, so
+    // its id is the stable handle, not its label.
+    await dialog.getByTestId("add-prompt-project-modal-ok").click();
     await expect(
       dialog.getByText(/may not be blank/i).first(),
     ).toBeVisible();
@@ -65,7 +67,14 @@ test.describe("prompt studio", () => {
   }) => {
     await app.goto("tools");
 
-    const project = page.locator(".list-view-row").first();
+    /*
+     * Was `.list-view-row`, which stopped matching anything when the listing
+     * moved to ResourceTable — so this test silently SKIPPED rather than
+     * failing. Rows now carry an id minted from the project's tool_id.
+     */
+    const project = page
+      .locator('[data-testid^="prompt-studio-list-row-"]')
+      .first();
     if ((await project.count()) === 0) {
       test.skip(true, "no prompt studio projects in this org");
     }
