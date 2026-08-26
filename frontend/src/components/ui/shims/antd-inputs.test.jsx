@@ -725,6 +725,32 @@ describe("antd-compatible input shims (P3-03)", () => {
       ).toBeInTheDocument();
     });
 
+    /*
+     * The prompt card's enforce-type list is built as `{ value: "text" }` with
+     * no label at all, so the only thing left to match on is the value the
+     * trigger is already showing.
+     */
+    it("filters on the value when an option carries no label", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          options={[
+            { value: "text" },
+            { value: "json" },
+            { value: "agentic_table" },
+          ]}
+        />,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "table");
+
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "agentic_table" }),
+      ).toBeInTheDocument();
+    });
+
     it("filters on optionFilterProp when told to", async () => {
       const user = userEvent.setup();
       render(

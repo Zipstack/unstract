@@ -283,7 +283,7 @@ function PromptCardItems({
                         className="prompt-card-select-type"
                         size="small"
                         placeholder="Enforce Type"
-                        optionFilterProp="children"
+                        showSearch
                         options={enforceTypeList}
                         value={promptDetails?.enforce_type || null}
                         disabled={

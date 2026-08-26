@@ -486,6 +486,7 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
                   <Select
+                    showSearch
                     options={adapterOptions(llmItems, "llm")}
                     onSelect={handleLlmChangeForTokens}
                   />
@@ -542,6 +543,7 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("vector_store", backendErrors)}
                 >
                   <Select
+                    showSearch
                     options={adapterOptions(vectorDbItems, "vector_store")}
                   />
                 </Form.Item>
@@ -586,6 +588,7 @@ function AddLlmProfile({
               help={getBackendErrorDetail("embedding_model", backendErrors)}
             >
               <Select
+                showSearch
                 options={adapterOptions(embeddingItems, "embedding_model")}
               />
             </Form.Item>
@@ -604,7 +607,10 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("x2text", backendErrors)}
             >
-              <Select options={adapterOptions(x2TextItems, "x2text")} />
+              <Select
+                showSearch
+                options={adapterOptions(x2TextItems, "x2text")}
+              />
             </Form.Item>
             <Collapse
               expandIcon={({ isActive }) => handleCaretIcon(isActive)}

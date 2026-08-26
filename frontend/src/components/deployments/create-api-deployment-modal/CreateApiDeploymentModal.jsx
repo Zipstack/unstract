@@ -263,7 +263,7 @@ const CreateApiDeploymentModal = ({
             }
             help={getBackendErrorDetail("workflow", backendErrors)}
           >
-            <Select>
+            <Select showSearch>
               {workflowEndpointList?.map((endpoint) => {
                 return (
                   <Option

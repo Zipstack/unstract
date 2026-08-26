@@ -334,7 +334,7 @@ const EtlTaskDeploy = ({
               }
               help={getBackendErrorDetail("workflow", backendErrors)}
             >
-              <Select>
+              <Select showSearch>
                 {workflowList.map((workflow) => {
                   return (
                     <Option value={workflow.id} key={workflow.workflow_name}>
