@@ -143,6 +143,7 @@ UPDATE {table}
            FROM {table}
           WHERE status = %s
             AND created_at < %s
+            AND dispatched_at IS NULL
             AND task_id IS NULL
             AND queue_message_id IS NULL
           ORDER BY created_at
@@ -150,6 +151,7 @@ UPDATE {table}
           FOR UPDATE SKIP LOCKED
        )
    AND status = %s
+   AND dispatched_at IS NULL
    AND task_id IS NULL
    AND queue_message_id IS NULL
 RETURNING id, workflow_id

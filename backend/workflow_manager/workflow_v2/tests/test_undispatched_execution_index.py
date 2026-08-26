@@ -1,6 +1,6 @@
 """Guard: the undispatched-execution partial index stays in sync with reality.
 
-``we_undispatched_idx`` (``WorkflowExecution.Meta.indexes``) hardcodes the literal
+``we_undispatched_dispatch_idx`` (``WorkflowExecution.Meta.indexes``) hardcodes the literal
 ``'PENDING'`` and the two dispatch-handle columns. The same predicate is written a
 second time in migration 0026's ``RunSQL``, and a third time as the sweep's WHERE clause
 in ``undispatched_sweep.py`` — migrations cannot import app enums, so the literal cannot
@@ -29,7 +29,7 @@ if not apps.ready:
 
 from unstract.core.data_models import ExecutionStatus  # noqa: E402
 
-INDEX_NAME = "we_undispatched_idx"
+INDEX_NAME = "we_undispatched_dispatch_idx"
 _MIGRATION = (
     Path(__file__).resolve().parent.parent
     / "migrations"
@@ -54,12 +54,17 @@ class TestTheModelIndexMatchesTheEnum:
         matching every row the sweep looks for."""
         assert _condition_children()["status"] == ExecutionStatus.PENDING.value
 
-    def test_both_dispatch_handles_are_in_the_predicate(self):
-        """Dropping either makes the index non-matching for the sweep's WHERE clause
+    def test_all_three_dispatch_signals_are_in_the_predicate(self):
+        """Dropping any makes the index non-matching for the sweep's WHERE clause
         (Postgres needs the query predicate to imply the index predicate), so the sweep
         would quietly fall back to scanning.
+
+        Three, not two: `dispatched_at` is the authoritative test (0027), and the two
+        handle checks are retained so the rollout is single-phase — a row dispatched by
+        an old pod mid-deploy has no stamp but does have a handle, and must not be swept.
         """
         children = _condition_children()
+        assert children.get("dispatched_at__isnull") is True
         assert children.get("task_id__isnull") is True
         assert children.get("queue_message_id__isnull") is True
 

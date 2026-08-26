@@ -710,9 +710,22 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         files = WorkflowFileExecution.objects.filter(workflow_execution=OuterRef("pk"))
         stuck_ids = list(
             WorkflowExecution.objects.filter(
-                # Dispatched on EITHER transport. Both-NULL means never dispatched —
-                # undispatched_sweep.py's row, not ours.
-                Q(queue_message_id__isnull=False) | Q(task_id__isnull=False),
+                # Dispatched by ANY evidence: the positive stamp, or either transport
+                # handle. dispatched_at alone is not enough — pre-0027 rows never got
+                # one — and the handles alone are not enough either, which is the gap
+                # that makes this three-way rather than two.
+                #
+                # Once undispatched_sweep also requires `dispatched_at IS NULL`, a row
+                # that WAS dispatched but whose handle write failed stops matching that
+                # sweep. Without dispatched_at here it would match neither, and an
+                # execution whose files all finished could sit non-terminal forever with
+                # nothing able to close it — trading "wrongly terminalised" for "never
+                # terminalised". The three-way test keeps the two sweeps disjoint AND
+                # jointly exhaustive: undispatched takes rows where all three are absent,
+                # this takes rows where any one is present.
+                Q(dispatched_at__isnull=False)
+                | Q(queue_message_id__isnull=False)
+                | Q(task_id__isnull=False),
                 status__in=[
                     ExecutionStatus.PENDING.value,
                     ExecutionStatus.EXECUTING.value,

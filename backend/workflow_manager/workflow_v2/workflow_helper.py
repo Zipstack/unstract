@@ -666,6 +666,28 @@ class WorkflowHelper:
             # the bookkeeping below must NOT flip the (now-running) row to ERROR.
             dispatched = True
 
+            # Record dispatch as a POSITIVE fact, before any bookkeeping that can
+            # fail. The undispatched sweep used to infer "never dispatched" from
+            # `task_id IS NULL AND queue_message_id IS NULL`, which the three paths
+            # below all reach on a RUNNING execution — the swallowed exception around
+            # _record_dispatch_handle, and its two early returns for an empty or
+            # unparseable handle. This single write sits upstream of all three, so the
+            # sweep can ask a question with a true answer instead of guessing.
+            #
+            # Its own try/except for the same reason the handle write has one: we are
+            # past the point of no return and nothing here may abort the caller. If it
+            # fails we are back to the old ambiguity for this one execution, which is
+            # strictly no worse than before.
+            try:
+                WorkflowExecutionServiceHelper.mark_dispatched(execution_id)
+            except Exception:
+                logger.exception(
+                    f"[{org_schema}] Failed to stamp dispatched_at for execution "
+                    f"'{execution_id}'; continuing — the orchestrator is already "
+                    "running. This row is now indistinguishable from an undispatched "
+                    "one and may be terminalised by the undispatched sweep."
+                )
+
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )

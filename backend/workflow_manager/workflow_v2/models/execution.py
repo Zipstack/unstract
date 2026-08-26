@@ -213,6 +213,17 @@ class WorkflowExecution(BaseModel):
         db_comment="Details of encountered errors",
     )
     attempts = models.IntegerField(default=0, db_comment="number of attempts taken")
+    dispatched_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Set when the orchestrator task was handed to its transport. NULL means "
+            "never dispatched. The POSITIVE fact the undispatched sweep needs: absent "
+            "task_id/queue_message_id also occurs for executions that ARE running, "
+            "because three paths in workflow_helper return without recording a handle "
+            "after the message is already enqueued."
+        ),
+    )
     execution_time = models.FloatField(default=0, db_comment="execution time in seconds")
     tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
@@ -253,9 +264,10 @@ class WorkflowExecution(BaseModel):
             # ExecutionStatus by tests/test_undispatched_execution_index.py.
             models.Index(
                 fields=["created_at"],
-                name="we_undispatched_idx",
+                name="we_undispatched_dispatch_idx",
                 condition=Q(
                     status="PENDING",
+                    dispatched_at__isnull=True,
                     task_id__isnull=True,
                     queue_message_id__isnull=True,
                 ),

@@ -169,6 +169,63 @@ class TestNeverTouchesALiveExecution:
         assert ex.status == ExecutionStatus.PENDING.value
 
 
+@pytest.mark.django_db
+class TestDispatchIsAPositiveFactNotAnInference:
+    """The fix for the defect the whole file's caution was working around.
+
+    The sweep used to infer "never dispatched" from `task_id IS NULL AND
+    queue_message_id IS NULL`. Three paths in workflow_helper reach that state on a
+    RUNNING execution — a swallowed exception around _record_dispatch_handle, an empty
+    handle, an unparseable PG handle — so the sweep could mark live work ERROR and, on
+    the PG transport, get it silently DROPPED (both worker entry points stop on a
+    terminal execution rather than superseding it).
+
+    `dispatched_at` is stamped the instant dispatch succeeds, upstream of all three.
+    """
+
+    def test_a_dispatched_row_is_never_swept_even_with_no_handles(self):
+        """THE regression. This is exactly the shape the three failure paths produce:
+        dispatch succeeded, neither handle was recorded. Before dispatched_at this row
+        was swept to ERROR while its worker was still running.
+        """
+        from workflow_manager.workflow_v2.undispatched_sweep import (
+            sweep_undispatched_executions,
+        )
+
+        ex = _execution(dispatched_at=timezone.now() - timedelta(hours=2))
+        assert sweep_undispatched_executions() == 0
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.PENDING.value
+
+    def test_an_unstamped_row_with_a_handle_is_still_not_swept(self):
+        """The single-phase rollout guarantee. During a rolling deploy an OLD backend
+        pod dispatches without stamping, so the row has no dispatched_at — but it does
+        have a handle. Keeping the handle checks alongside the new one is what lets this
+        ship in one release instead of two.
+        """
+        from workflow_manager.workflow_v2.undispatched_sweep import (
+            sweep_undispatched_executions,
+        )
+
+        ex = _execution(task_id=uuid.uuid4())
+        assert sweep_undispatched_executions() == 0
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.PENDING.value
+
+    def test_a_genuinely_undispatched_row_is_still_swept(self):
+        """The fix must not disable the sweep. A row with no stamp and no handle is the
+        967-orphan case this exists for, and it must still terminalise.
+        """
+        from workflow_manager.workflow_v2.undispatched_sweep import (
+            sweep_undispatched_executions,
+        )
+
+        ex = _execution()
+        assert sweep_undispatched_executions() == 1
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.ERROR.value
+
+
 class TestGracePeriodIsSizedForTheQueue:
     """The grace period is the ONLY thing separating "abandoned" from "dispatched but
     not yet recorded", and on PG that distinction has teeth.
