@@ -261,7 +261,9 @@ describe("antd-compatible input shims (P3-03)", () => {
    * reference shows "text".
    */
   it("Select falls back to the option value when no label is given", () => {
-    render(<Select options={[{ value: "text" }, { value: "json" }]} value="text" />);
+    render(
+      <Select options={[{ value: "text" }, { value: "json" }]} value="text" />,
+    );
     expect(screen.getByText("text")).toBeInTheDocument();
   });
 
@@ -439,6 +441,449 @@ describe("antd-compatible input shims (P3-03)", () => {
       "aria-disabled",
       "true",
     );
+  });
+
+  /*
+   * antd's `dropdownRender` (renamed `popupRender` in 5.25) is how both
+   * Configure Connector and the Lookup drawer pin a "create one" action under
+   * the option list. The shim dropped the prop, so an org with no connectors
+   * got an empty dropdown and no route to making one — the list is not the
+   * only thing that prop carries.
+   */
+  describe("Select popupRender / dropdownRender (antd parity)", () => {
+    const CONNECTORS = [
+      { value: "gcs", label: "GCS Testing" },
+      { value: "s3", label: "S3 Oct 6 2025" },
+    ];
+
+    it("renders the option list AND the call-site's footer", () => {
+      render(
+        <Select
+          open
+          options={CONNECTORS}
+          popupRender={(menu) => (
+            <>
+              {menu}
+              <button type="button">+ Add new connector</button>
+            </>
+          )}
+        />,
+      );
+      expect(
+        screen.getByRole("option", { name: "GCS Testing" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "+ Add new connector" }),
+      ).toBeInTheDocument();
+    });
+
+    it("honours the pre-5.25 `dropdownRender` spelling too", () => {
+      render(
+        <Select
+          open
+          options={CONNECTORS}
+          dropdownRender={(menu) => (
+            <>
+              {menu}
+              <button type="button">+ Add new connector</button>
+            </>
+          )}
+        />,
+      );
+      expect(
+        screen.getByRole("button", { name: "+ Add new connector" }),
+      ).toBeInTheDocument();
+    });
+
+    it("fires the footer's own handler when it is clicked", async () => {
+      const user = userEvent.setup();
+      const onAddNew = vi.fn();
+      render(
+        <Select
+          open
+          options={CONNECTORS}
+          dropdownRender={(menu) => (
+            <>
+              {menu}
+              <button type="button" onClick={onAddNew}>
+                + Add new connector
+              </button>
+            </>
+          )}
+        />,
+      );
+      await user.click(
+        screen.getByRole("button", { name: "+ Add new connector" }),
+      );
+      expect(onAddNew).toHaveBeenCalledTimes(1);
+    });
+
+    /*
+     * antd closes its dropdown as soon as focus leaves the select, so the
+     * footer button closes it for free. Radix does not, and both call-sites
+     * open a modal from that footer — an open popup would sit on top of it.
+     */
+    it("closes the popup once the footer has been clicked", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          options={CONNECTORS}
+          dropdownRender={(menu) => (
+            <>
+              {menu}
+              <button type="button">+ Add new connector</button>
+            </>
+          )}
+        />,
+      );
+      // Keyboard, not click: jsdom has no pointer capture for Radix's trigger.
+      fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+      const footer = await screen.findByRole("button", {
+        name: "+ Add new connector",
+      });
+
+      await user.click(footer);
+
+      expect(
+        screen.queryByRole("button", { name: "+ Add new connector" }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  /*
+   * `labelInValue` makes antd read AND write the selection as
+   * `{ value, label }`. Configure Connector is written against it, so ignoring
+   * the flag handed the call-site a bare string — `option?.value` came back
+   * undefined and picking a connector did nothing.
+   */
+  describe("Select labelInValue (antd parity)", () => {
+    const CONNECTORS = [
+      { value: "gcs", label: "GCS Testing" },
+      { value: "s3", label: "S3 Oct 6 2025" },
+    ];
+
+    it("hands onChange a { value, label } pair", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select open labelInValue options={CONNECTORS} onChange={onChange} />,
+      );
+      await user.click(screen.getByRole("option", { name: "S3 Oct 6 2025" }));
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ value: "s3", label: "S3 Oct 6 2025" }),
+        expect.anything(),
+      );
+    });
+
+    it("reads a controlled { value, label } back onto the trigger", () => {
+      render(
+        <Select
+          labelInValue
+          options={CONNECTORS}
+          value={{ value: "gcs", label: "GCS Testing" }}
+          placeholder="Select a connector"
+        />,
+      );
+      // String()-ing the object would yield "[object Object]", matching no
+      // option: the trigger went blank AND swallowed the placeholder.
+      expect(screen.getByRole("combobox")).toHaveTextContent("GCS Testing");
+    });
+
+    it("still hands onChange a bare value without the flag", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Select open options={CONNECTORS} onChange={onChange} />);
+      await user.click(screen.getByRole("option", { name: "S3 Oct 6 2025" }));
+      expect(onChange).toHaveBeenCalledWith("s3", expect.anything());
+    });
+  });
+
+  /*
+   * antd's `showSearch` filters the list as you type — 27 call-sites set it,
+   * and the shim consumed the prop without ever rendering a search box, so
+   * every one of them was a plain scroll-and-hunt dropdown.
+   */
+  describe("Select showSearch / filterOption (antd parity)", () => {
+    const CONNECTORS = [
+      { value: "gcs", label: "GCS Testing" },
+      { value: "s3", label: "S3 Oct 6 2025" },
+      { value: "az", label: "Unstract's Azure cloud storage" },
+    ];
+
+    const openSearch = async (user) => {
+      await user.click(screen.getByRole("combobox"));
+      return screen.getByRole("searchbox");
+    };
+
+    it("renders a search box and filters the options as you type", async () => {
+      const user = userEvent.setup();
+      render(<Select showSearch options={CONNECTORS} />);
+      const box = await openSearch(user);
+
+      expect(screen.getAllByRole("option")).toHaveLength(3);
+      await user.type(box, "azure");
+
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "Unstract's Azure cloud storage" }),
+      ).toBeInTheDocument();
+    });
+
+    it("routes the query through the call-site's own filterOption", async () => {
+      const user = userEvent.setup();
+      const filterOption = vi.fn(
+        (input, option) => option.value === "s3" && input === "x",
+      );
+      render(
+        <Select showSearch options={CONNECTORS} filterOption={filterOption} />,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "x");
+
+      expect(filterOption).toHaveBeenCalledWith("x", CONNECTORS[0]);
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "S3 Oct 6 2025" }),
+      ).toBeInTheDocument();
+    });
+
+    /*
+     * Summarize Manager filters on `option.children`. Normalising the option
+     * into `{ value, label }` left that undefined, and `.toLowerCase()` on it
+     * throws on the FIRST keystroke — a crash, not a missing filter.
+     */
+    it("hands filterOption the <Select.Option> props, children included", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          filterOption={(input, option) =>
+            option.children.toLowerCase().includes(input.toLowerCase())
+          }
+        >
+          <Select.Option value="a">AzureOpenAI</Select.Option>
+          <Select.Option value="b">Bedrock</Select.Option>
+        </Select>,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "bed");
+
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "Bedrock" }),
+      ).toBeInTheDocument();
+    });
+
+    /*
+     * Adapter Selection sets a STRING `label` next to a rich `children` node
+     * and filters on the label. Display must still use the node.
+     */
+    it("keeps a string label alongside rich children", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          filterOption={(input, option) =>
+            option.label?.toLowerCase().includes(input.toLowerCase())
+          }
+        >
+          <Select.Option value="a" label="AzureOpenAI">
+            <span>AzureOpenAI (azure|1234)</span>
+          </Select.Option>
+          <Select.Option value="b" label="Bedrock">
+            <span>Bedrock (bedrock|5678)</span>
+          </Select.Option>
+        </Select>,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "azure");
+
+      const options = screen.getAllByRole("option");
+      expect(options).toHaveLength(1);
+      // The NODE is what renders, not the label used for filtering.
+      expect(options[0]).toHaveTextContent("AzureOpenAI (azure|1234)");
+    });
+
+    it("falls back to the option's own text when no filterOption is given", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          options={[
+            // A label built as an element, as the connector list is.
+            { value: "gcs", label: <span>GCS Testing</span> },
+            { value: "s3", label: <span>S3 Oct 6 2025</span> },
+          ]}
+        />,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "gcs");
+
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "GCS Testing" }),
+      ).toBeInTheDocument();
+    });
+
+    it("filters on optionFilterProp when told to", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          optionFilterProp="title"
+          options={[
+            { value: "a", label: "First", title: "alpha" },
+            { value: "b", label: "Second", title: "beta" },
+          ]}
+        />,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "beta");
+
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      expect(
+        screen.getByRole("option", { name: "Second" }),
+      ).toBeInTheDocument();
+    });
+
+    it("shows every option when filterOption is false, as antd does", async () => {
+      const user = userEvent.setup();
+      render(<Select showSearch filterOption={false} options={CONNECTORS} />);
+      const box = await openSearch(user);
+      await user.type(box, "nothing matches this");
+
+      expect(screen.getAllByRole("option")).toHaveLength(3);
+    });
+
+    it("renders notFoundContent when the query matches nothing", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          showSearch
+          options={CONNECTORS}
+          notFoundContent="No projects available"
+        />,
+      );
+      const box = await openSearch(user);
+      await user.type(box, "zzzz");
+
+      expect(screen.queryAllByRole("option")).toHaveLength(0);
+      expect(screen.getByText("No projects available")).toBeInTheDocument();
+    });
+
+    it("selects with the keyboard without leaving the search box", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(<Select showSearch options={CONNECTORS} onChange={onChange} />);
+      const box = await openSearch(user);
+
+      await user.keyboard("{ArrowDown}{Enter}");
+
+      expect(onChange).toHaveBeenCalledWith("s3", CONNECTORS[1]);
+      expect(box).not.toBeInTheDocument();
+    });
+
+    it("selects by click and shows the choice on the trigger", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      const { rerender } = render(
+        <Select showSearch options={CONNECTORS} onChange={onChange} />,
+      );
+      await openSearch(user);
+      await user.click(screen.getByRole("option", { name: "GCS Testing" }));
+
+      expect(onChange).toHaveBeenCalledWith("gcs", CONNECTORS[0]);
+
+      rerender(
+        <Select
+          showSearch
+          options={CONNECTORS}
+          value="gcs"
+          onChange={onChange}
+        />,
+      );
+      expect(screen.getByRole("combobox")).toHaveTextContent("GCS Testing");
+    });
+
+    it("shows the placeholder until something is chosen", async () => {
+      render(
+        <Select
+          showSearch
+          options={CONNECTORS}
+          placeholder="Select a connector"
+        />,
+      );
+      expect(screen.getByRole("combobox")).toHaveTextContent(
+        "Select a connector",
+      );
+    });
+
+    /*
+     * Configure Connector sets showSearch AND dropdownRender AND labelInValue
+     * at once — the searchable path has to carry all three or the "+ Add new
+     * connector" footer disappears again the moment search starts working.
+     */
+    it("keeps a dropdownRender footer below the filtered list", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          showSearch
+          labelInValue
+          options={CONNECTORS}
+          onChange={onChange}
+          dropdownRender={(menu) => (
+            <>
+              {menu}
+              <button type="button">+ Add new connector</button>
+            </>
+          )}
+        />,
+      );
+      const box = await openSearch(user);
+      expect(
+        screen.getByRole("button", { name: "+ Add new connector" }),
+      ).toBeInTheDocument();
+
+      await user.type(box, "s3");
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+      // Still pinned under the now-filtered list.
+      expect(
+        screen.getByRole("button", { name: "+ Add new connector" }),
+      ).toBeInTheDocument();
+
+      await user.click(screen.getByRole("option", { name: "S3 Oct 6 2025" }));
+      expect(onChange).toHaveBeenCalledWith(
+        expect.objectContaining({ value: "s3", label: "S3 Oct 6 2025" }),
+        CONNECTORS[1],
+      );
+    });
+
+    it("drops the query when the popup closes", async () => {
+      const user = userEvent.setup();
+      render(<Select showSearch options={CONNECTORS} />);
+      const box = await openSearch(user);
+      await user.type(box, "azure");
+      expect(screen.getAllByRole("option")).toHaveLength(1);
+
+      await user.keyboard("{Escape}");
+      await user.click(screen.getByRole("combobox"));
+
+      expect(screen.getAllByRole("option")).toHaveLength(3);
+    });
+  });
+
+  it("Select renders each option through `optionRender` when given", () => {
+    render(
+      <Select
+        open
+        options={[{ value: "gcs", label: "GCS Testing", data: { icon: "x" } }]}
+        optionRender={(option) => <span>icon {option.label}</span>}
+      />,
+    );
+    expect(
+      screen.getByRole("option", { name: "icon GCS Testing" }),
+    ).toBeInTheDocument();
   });
 
   /*

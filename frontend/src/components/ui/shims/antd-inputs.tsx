@@ -1,9 +1,20 @@
-import { Eye, EyeOff, Search as SearchIcon } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Eye,
+  EyeOff,
+  Search as SearchIcon,
+} from "lucide-react";
 import * as React from "react";
 
 import { Checkbox as ShadcnCheckbox } from "@/components/ui/checkbox";
 import { Input as ShadcnInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   RadioGroupItem,
   RadioGroup as ShadcnRadioGroup,
@@ -14,6 +25,9 @@ import {
   SelectTrigger,
   SelectValue,
   Select as ShadcnSelect,
+  selectContentClassName,
+  selectItemClassName,
+  selectTriggerClassName,
 } from "@/components/ui/select";
 import { Switch as ShadcnSwitch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -138,19 +152,69 @@ interface SelectOption {
   disabled?: boolean;
 }
 
+interface LabelInValue {
+  value: string | number;
+  label?: React.ReactNode;
+}
+
 interface AntSelectProps {
-  value?: string | number | string[];
+  value?: string | number | string[] | LabelInValue;
   defaultValue?: string | number;
-  /** Receives the ORIGINAL option value, so non-string values survive. */
+  /**
+   * Receives the ORIGINAL option value, so non-string values survive — or a
+   * `{ value, label }` pair when `labelInValue` is set, as antd does.
+   */
   onChange?: (
-    value: string | number | string[],
+    value: string | number | string[] | LabelInValue,
     option?: SelectOption,
   ) => void;
   options?: SelectOption[];
   placeholder?: React.ReactNode;
   disabled?: boolean;
   allowClear?: boolean;
+  /**
+   * antd turns the selector into a text box and filters the list as you type.
+   * Radix's Select cannot: its keyboard handling is a single-character
+   * typeahead over focused items, and an <input> inside its content loses
+   * focus the moment the pointer crosses an option. So a `showSearch` select
+   * renders as a Popover-anchored combobox instead (see SearchableSelect).
+   */
   showSearch?: boolean;
+  /**
+   * antd's own signature: `(input, option) => boolean`, receiving the OPTION
+   * DATA — `{ value, label, ... }` for `options`, or the `<Select.Option>`
+   * props for children. Call-sites read whatever field they built the option
+   * from (`option.label`, `option.children`, `option.data.label`), so the
+   * whole object has to survive: handing over a normalised `{ value, label }`
+   * would have made `option.children.toLowerCase()` throw mid-keystroke.
+   * `false` disables filtering, as antd allows.
+   */
+  filterOption?: boolean | ((input: string, option: SelectOption) => boolean);
+  /** Which field the DEFAULT filter reads; antd's escape hatch for no filterOption. */
+  optionFilterProp?: string;
+  /** antd's empty state. Rendered when the search matches nothing. */
+  notFoundContent?: React.ReactNode;
+  /**
+   * antd hands the selection over as `{ value, label }` instead of a bare
+   * value, and reads the controlled `value` in that same shape. Configure
+   * Connector is written against it — `onChange={(option) =>
+   * handleConnectorSelect(option?.value)}` — so ignoring the flag handed that
+   * call-site a bare string, `option?.value` came back undefined, and picking
+   * a connector did nothing at all.
+   */
+  labelInValue?: boolean;
+  /** Per-option renderer; antd falls back to the option's `label` without it. */
+  optionRender?: (option: SelectOption) => React.ReactNode;
+  /**
+   * Wraps the option list so a call-site can pin its own content below it —
+   * Configure Connector's "+ Add new connector" and the Lookup drawer's
+   * "Create Lookup" are both rendered this way, and both are the ONLY route
+   * to creating one. Dropping the prop left an org with no connectors staring
+   * at an empty dropdown with no way out. `dropdownRender` is the pre-5.25
+   * spelling of the same prop; the app still uses both.
+   */
+  popupRender?: (menu: React.ReactNode) => React.ReactNode;
+  dropdownRender?: (menu: React.ReactNode) => React.ReactNode;
   /**
    * antd's `tags` mode is a FREE-TEXT multi-value input: the user types a
    * value, presses Enter, and it becomes a removable chip. Radix's Select is
@@ -634,6 +698,359 @@ function TagsInput({
  * does too, so the adaptation is mostly about accepting either `options` data
  * or `<Select.Option>` children.
  */
+/**
+ * One option, split into the three things the shim needs separately:
+ * what to RENDER, what to hand CALL-SITES, and what to key Radix on.
+ *
+ * Keeping `data` verbatim is the load-bearing part. antd passes the option's
+ * own props to `filterOption`/`optionRender`, and the call-sites read whatever
+ * field they authored: Summarize Manager filters on `option.children`,
+ * Adapter Selection on `option.label` (a string it sets ALONGSIDE a rich
+ * `children` node), Configure Connector on `option.data.label`. Normalising
+ * those into one `{ value, label }` shape made `option.children` undefined and
+ * `option.label` a React element — both of which throw on `.toLowerCase()` on
+ * the first keystroke, which is worse than not filtering at all.
+ */
+interface NormalisedOption {
+  value: string | number;
+  disabled?: boolean;
+  /** What the list and the trigger show. */
+  display: React.ReactNode;
+  /** The option verbatim, as antd hands it to filterOption/optionRender. */
+  data: SelectOption;
+}
+
+function normaliseOptions(
+  options: SelectOption[] | undefined,
+  children: React.ReactNode,
+): NormalisedOption[] {
+  if (options) {
+    return options.map((o) => ({
+      value: o.value,
+      disabled: o.disabled,
+      /*
+       * antd falls back to the VALUE when an option carries no label, and
+       * call-sites rely on it: the prompt card's enforce-type list is built as
+       * `{ value: "text" }` with no label at all. Rendering a bare `label`
+       * left every item blank, so the trigger showed an empty box instead of
+       * the selected type.
+       */
+      display: o.label ?? String(o.value),
+      data: o,
+    }));
+  }
+  return React.Children.toArray(children)
+    .filter(
+      (
+        c,
+      ): c is React.ReactElement<
+        SelectOption & { children?: React.ReactNode }
+      > => React.isValidElement(c),
+    )
+    .map((c) => ({
+      value: c.props.value,
+      disabled: c.props.disabled,
+      // `<Option label="x">rich node</Option>` renders the node and filters on
+      // the label, so display prefers children and `data` keeps both.
+      display: c.props.children ?? c.props.label ?? String(c.props.value),
+      data: c.props,
+    }));
+}
+
+/** antd's onChange arguments: `{ value, label }` under labelInValue, else the raw value. */
+function toChangeArgs(
+  match: NormalisedOption | undefined,
+  raw: string,
+  labelInValue: boolean | undefined,
+): [string | number | LabelInValue, SelectOption | undefined] {
+  const selected = match?.value ?? raw;
+  return [
+    labelInValue ? { value: selected, label: match?.display } : selected,
+    match?.data,
+  ];
+}
+
+/**
+ * Flatten an option's renderable content to text, so the DEFAULT filter can
+ * match labels that are elements — `<Space><Image/><span>GCS</span></Space>`
+ * is the usual shape here, and `String()` on that yields "[object Object]".
+ */
+function optionText(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") {
+    return "";
+  }
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+  if (Array.isArray(node)) {
+    return node.map(optionText).join(" ");
+  }
+  if (React.isValidElement(node)) {
+    return optionText((node.props as { children?: React.ReactNode }).children);
+  }
+  return "";
+}
+
+/**
+ * antd's filtering: an explicit `filterOption` wins, `false` disables it, and
+ * otherwise it is a case-insensitive substring over `optionFilterProp` —
+ * falling back to the option's own text, which is what a user typing into
+ * these lists is looking at.
+ */
+function matchesQuery(
+  item: NormalisedOption,
+  query: string,
+  filterOption: AntSelectProps["filterOption"],
+  optionFilterProp: string | undefined,
+): boolean {
+  if (!query) {
+    return true;
+  }
+  if (filterOption === false) {
+    return true;
+  }
+  if (typeof filterOption === "function") {
+    return filterOption(query, item.data);
+  }
+  const field = optionFilterProp
+    ? (item.data as Record<string, unknown>)[optionFilterProp]
+    : undefined;
+  const haystack = optionFilterProp
+    ? optionText(field as React.ReactNode)
+    : optionText(item.display) || String(item.value);
+  return haystack.toLowerCase().includes(query.toLowerCase());
+}
+
+interface SearchableSelectProps {
+  items: NormalisedOption[];
+  /** Already unwrapped from labelInValue and normalised to a string. */
+  value?: string;
+  placeholder?: React.ReactNode;
+  disabled?: boolean;
+  size?: SizeToken;
+  className?: string;
+  style?: React.CSSProperties;
+  filterOption?: AntSelectProps["filterOption"];
+  optionFilterProp?: string;
+  notFoundContent?: React.ReactNode;
+  optionRender?: (option: SelectOption) => React.ReactNode;
+  renderPopup?: (menu: React.ReactNode) => React.ReactNode;
+  onSelect: (item: NormalisedOption) => void;
+  /** Honoured so a call-site (or a test) can force the popup open, as antd allows. */
+  open?: boolean;
+}
+
+/**
+ * antd's `showSearch` select: a text box that filters the list as you type.
+ *
+ * Deliberately NOT Radix's Select. That component owns keyboard focus — it
+ * moves DOM focus onto the highlighted option and runs a single-character
+ * typeahead on the content — so an <input> nested inside it is unusable: the
+ * typeahead swallows the keystrokes, and Select.Item re-focuses itself on
+ * every pointermove, stealing the caret the moment the mouse crosses the
+ * list. This is the ARIA combobox pattern instead: focus stays in the input
+ * for the whole interaction and the active option is tracked with
+ * `aria-activedescendant`, which is also what antd does.
+ */
+const SearchableSelect = React.forwardRef<
+  HTMLButtonElement,
+  SearchableSelectProps
+>(function SearchableSelect(
+  {
+    items,
+    value,
+    placeholder,
+    disabled,
+    size,
+    className,
+    style,
+    filterOption,
+    optionFilterProp,
+    notFoundContent,
+    optionRender,
+    renderPopup,
+    onSelect,
+    open: openProp,
+  },
+  ref,
+) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = openProp ?? uncontrolledOpen;
+  const [query, setQuery] = React.useState("");
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const listId = React.useId();
+
+  const selected = items.find((o) => String(o.value) === value);
+  const visible = items.filter((o) =>
+    matchesQuery(o, query, filterOption, optionFilterProp),
+  );
+
+  /*
+   * Clamp rather than reset: the query changes on every keystroke, and an
+   * active index left pointing past the end of the newly filtered list would
+   * make Enter a no-op.
+   */
+  const active = Math.min(activeIndex, Math.max(visible.length - 1, 0));
+
+  const setOpen = (next: boolean) => {
+    setUncontrolledOpen(next);
+    if (!next) {
+      // antd drops the query when the dropdown closes, so reopening shows the
+      // full list rather than the last search.
+      setQuery("");
+    }
+  };
+
+  const choose = (item: NormalisedOption | undefined) => {
+    if (!item || item.disabled) {
+      return;
+    }
+    onSelect(item);
+    setOpen(false);
+  };
+
+  const move = (delta: number) => {
+    if (!visible.length) {
+      return;
+    }
+    let next = active;
+    // Skip disabled rows, and stop rather than wrap once the ends are reached.
+    for (let step = 0; step < visible.length; step++) {
+      next += delta;
+      if (next < 0 || next >= visible.length) {
+        return;
+      }
+      if (!visible[next].disabled) {
+        setActiveIndex(next);
+        return;
+      }
+    }
+  };
+
+  const menu = (
+    <div
+      role="listbox"
+      id={listId}
+      className="max-h-64 overflow-y-auto overflow-x-hidden p-1"
+    >
+      {visible.length === 0 ? (
+        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+          {notFoundContent ?? "No results"}
+        </div>
+      ) : (
+        visible.map((o, i) => (
+          <div
+            key={String(o.value)}
+            id={`${listId}-${i}`}
+            role="option"
+            aria-selected={String(o.value) === value}
+            aria-disabled={o.disabled || undefined}
+            className={cn(
+              selectItemClassName,
+              i === active && "bg-accent text-accent-foreground",
+              o.disabled && "pointer-events-none opacity-50",
+            )}
+            onPointerMove={() => setActiveIndex(i)}
+            onClick={() => choose(o)}
+          >
+            {String(o.value) === value && (
+              <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                <Check className="h-4 w-4" />
+              </span>
+            )}
+            {optionRender ? optionRender(o.data) : o.display}
+          </div>
+        ))
+      )}
+    </div>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          ref={ref}
+          type="button"
+          role="combobox"
+          aria-expanded={open}
+          disabled={disabled}
+          style={style}
+          // Radix's Select marks an empty trigger this way and the shared
+          // class string greys the placeholder off it.
+          data-placeholder={selected ? undefined : ""}
+          className={cn(
+            selectTriggerClassName,
+            "ant-select-selector",
+            size === "small" && "h-8 text-sm",
+            className,
+          )}
+        >
+          <span className="truncate">{selected?.display ?? placeholder}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className={cn(
+          selectContentClassName,
+          // The LIST scrolls, not the surface — otherwise the search box
+          // scrolls away from the results it is filtering.
+          "w-[var(--radix-popover-trigger-width)] max-h-none overflow-hidden p-0",
+        )}
+        // Focus belongs in the search box, not on the surface Radix would
+        // otherwise focus; without this the first keystroke goes nowhere.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <div className="flex items-center gap-2 border-b px-3">
+          <SearchIcon className="h-4 w-4 shrink-0 opacity-50" />
+          <input
+            ref={inputRef}
+            type="text"
+            role="searchbox"
+            aria-controls={listId}
+            aria-activedescendant={
+              visible.length ? `${listId}-${active}` : undefined
+            }
+            className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={
+              typeof placeholder === "string" ? placeholder : "Search"
+            }
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                move(1);
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                move(-1);
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                choose(visible[active]);
+              }
+            }}
+          />
+        </div>
+        {/*
+         * Same close-on-interaction wrapper as the plain Select path: a
+         * `dropdownRender` footer opens a modal, and the popup would sit on
+         * top of it. Options close the popup through `choose` already.
+         */}
+        <div onClick={() => setOpen(false)}>
+          {renderPopup ? renderPopup(menu) : menu}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+});
+
 const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
   function Select(
     {
@@ -645,6 +1062,13 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       disabled,
       allowClear,
       showSearch,
+      filterOption,
+      optionFilterProp,
+      notFoundContent,
+      labelInValue,
+      optionRender,
+      popupRender,
+      dropdownRender,
       mode,
       // antd styling prop; consumed so it cannot land on the DOM
       variant,
@@ -656,6 +1080,13 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
     },
     ref,
   ) {
+    /*
+     * Only consulted when a popup renderer is supplied — see the SelectContent
+     * below for why that case has to drive `open` itself. Declared up here
+     * because the tags-mode return below is an early exit.
+     */
+    const [popupOpen, setPopupOpen] = React.useState(false);
+
     /*
      * Free-text multi-value entry; Radix's Select cannot express it.
      *
@@ -671,11 +1102,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       return (
         <TagsInput
           value={
-            Array.isArray(value)
-              ? value
-              : value == null
-                ? []
-                : [String(value)]
+            Array.isArray(value) ? value : value == null ? [] : [String(value)]
           }
           onChange={(next) => onChange?.(next)}
           placeholder={placeholder}
@@ -685,21 +1112,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       );
     }
 
-    const items =
-      options ??
-      React.Children.toArray(children)
-        .filter(
-          (
-            c,
-          ): c is React.ReactElement<
-            SelectOption & { children?: React.ReactNode }
-          > => React.isValidElement(c),
-        )
-        .map((c) => ({
-          value: c.props.value,
-          label: c.props.children ?? c.props.label,
-          disabled: c.props.disabled,
-        }));
+    const items = normaliseOptions(options, children);
 
     /*
      * antd treats "" as "nothing selected" and shows the placeholder; several
@@ -707,21 +1120,75 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
      * empty string internally, so passing it through leaves the trigger blank
      * AND suppresses the placeholder. Map it back to undefined.
      */
-    const toValue = (v: string | number | string[] | undefined) =>
+    const toValue = (
+      v: string | number | string[] | LabelInValue | undefined,
+    ) => {
+      /*
+       * Under `labelInValue` the call-site holds `{ value, label }`, and
+       * `String()`-ing that yields "[object Object]", which matches no item:
+       * the trigger went blank AND suppressed the placeholder, so a selected
+       * connector looked like no selection at all.
+       */
+      const raw =
+        labelInValue && v != null && typeof v === "object" && !Array.isArray(v)
+          ? v.value
+          : v;
       // An array only reaches here if a call-site passes one without a `mode`;
       // antd shows nothing in that case, and Radix would throw on a non-string.
-      v == null || v === "" || Array.isArray(v) ? undefined : String(v);
+      return raw == null || raw === "" || Array.isArray(raw)
+        ? undefined
+        : String(raw);
+    };
+
+    // `dropdownRender` is what antd called this before 5.25; both are in use.
+    const renderPopup = popupRender ?? dropdownRender;
+
+    const optionItems = items.map((o) => (
+      <SelectItem
+        key={String(o.value)}
+        value={String(o.value)}
+        disabled={o.disabled}
+      >
+        {optionRender ? optionRender(o.data) : o.display}
+      </SelectItem>
+    ));
+
+    if (showSearch) {
+      return (
+        <SearchableSelect
+          ref={ref}
+          items={items}
+          value={toValue(value) ?? toValue(defaultValue)}
+          placeholder={placeholder}
+          disabled={disabled}
+          size={size}
+          className={className}
+          style={style}
+          filterOption={filterOption}
+          optionFilterProp={optionFilterProp}
+          notFoundContent={notFoundContent}
+          optionRender={optionRender}
+          renderPopup={renderPopup}
+          onSelect={(item) =>
+            onChange?.(...toChangeArgs(item, String(item.value), labelInValue))
+          }
+          open={(props as { open?: boolean }).open}
+        />
+      );
+    }
 
     return (
       <ShadcnSelect
         value={toValue(value)}
         defaultValue={toValue(defaultValue)}
         onValueChange={(v) => {
-          // Hand back the original (possibly non-string) option value.
           const match = items.find((o) => String(o.value) === v);
-          onChange?.(match?.value ?? v, match);
+          onChange?.(...toChangeArgs(match, v, labelInValue));
         }}
         disabled={disabled}
+        {...(renderPopup
+          ? { open: popupOpen, onOpenChange: setPopupOpen }
+          : {})}
         {...props}
       >
         <SelectTrigger
@@ -740,22 +1207,22 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
           <SelectValue placeholder={placeholder} />
         </SelectTrigger>
         <SelectContent>
-          {items.map((o) => (
-            <SelectItem
-              key={String(o.value)}
-              value={String(o.value)}
-              disabled={o.disabled}
-            >
-              {/*
-               * antd falls back to the VALUE when an option carries no label,
-               * and call-sites rely on it: the prompt card's enforce-type list
-               * is built as `{ value: "text" }` with no label at all. Rendering
-               * a bare `label` left every item blank, so the trigger showed an
-               * empty box instead of the selected type.
-               */}
-              {o.label ?? String(o.value)}
-            </SelectItem>
-          ))}
+          {renderPopup ? (
+            /*
+             * antd closes its dropdown the moment focus leaves the select, so
+             * a footer button inside `dropdownRender` closes it as a side
+             * effect. Radix has no equivalent, and both call-sites open a
+             * modal from that footer — leaving the popup open would park it on
+             * top of the very modal it just opened. Close on `click` rather
+             * than `mousedown`: unmounting the button mid-mousedown would eat
+             * the click before the footer's own handler ever ran.
+             */
+            <div onClick={() => setPopupOpen(false)}>
+              {renderPopup(<>{optionItems}</>)}
+            </div>
+          ) : (
+            optionItems
+          )}
         </SelectContent>
       </ShadcnSelect>
     );
