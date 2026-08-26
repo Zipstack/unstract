@@ -1072,14 +1072,21 @@ function Agency() {
               strokeColor={workflowProgress === 100 ? "#52c41a" : "#1890ff"}
             />
           </div>
+          {/*
+           * The entries are portalled and built from `actionsMenuItems`, so
+           * they derive their ids from this one: `workflow-actions-item-
+           * run-workflow`, and so on for the other two.
+           */}
           <Dropdown
             menu={{ items: actionsMenuItems, onClick: handleMenuClick }}
             placement="bottomRight"
             trigger={["click"]}
+            data-testid="workflow-actions"
           >
             <Button
               type="primary"
               icon={<Settings />}
+              data-testid="workflow-actions-btn"
               loading={loadingType === "EXECUTE" || isClearingFileHistory}
               disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >

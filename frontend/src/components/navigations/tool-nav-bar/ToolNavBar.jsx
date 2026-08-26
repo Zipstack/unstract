@@ -48,6 +48,7 @@ function ToolNavBar({
             type="text"
             shape="circle"
             icon={<ArrowLeft />}
+            data-testid="tool-nav-bar-back-btn"
             onClick={handleBack}
           />
         )}
@@ -87,6 +88,7 @@ function ToolNavBar({
             options={segmentOptions}
             value={segmentValue}
             onChange={segmentFilter}
+            data-testid="tool-nav-bar-segment"
             className="tool-nav-bar__segment"
           />
         )}
@@ -97,6 +99,7 @@ function ToolNavBar({
             key={searchKey}
             className="tool-nav-bar__search"
             placeholder={searchPlaceholder}
+            data-testid="tool-nav-bar-search"
             onChange={onSearchDebounce}
             allowClear
           />

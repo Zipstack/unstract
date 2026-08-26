@@ -105,6 +105,7 @@ function createApiDeploymentCardConfig({
                 <Switch
                   size="small"
                   checked={deployment.is_active}
+                  data-testid={`api-deployment-toggle-${deployment.id}`}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     updateStatus(deployment);
@@ -113,6 +114,7 @@ function createApiDeploymentCardConfig({
               </Tooltip>
               <CardActionBox
                 item={deployment}
+                testIdPrefix="api-deployment"
                 setSelectedItem={setSelectedRow}
                 onEdit={onEdit}
                 onShare={onShare}

@@ -64,6 +64,7 @@ function TopBar({
           {enableSearch && (
             <Input
               placeholder={searchPlaceholder}
+              data-testid="top-bar-search"
               onChange={onSearchDebounce}
             />
           )}

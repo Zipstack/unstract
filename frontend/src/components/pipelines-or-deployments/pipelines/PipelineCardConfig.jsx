@@ -329,6 +329,7 @@ function createPipelineCardConfig({
                 <Switch
                   size="small"
                   checked={pipeline.active}
+                  data-testid={`pipeline-toggle-${pipeline.id}`}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     handleEnablePipeline(checked, pipeline.id);
@@ -337,6 +338,7 @@ function createPipelineCardConfig({
               </Tooltip>
               <CardActionBox
                 item={pipeline}
+                testIdPrefix="pipeline"
                 setSelectedItem={setSelectedPorD}
                 onEdit={onEdit}
                 onShare={onShare}

@@ -68,6 +68,7 @@ function SortHeader({
   sort,
   userSorted,
   onSortChange,
+  testId,
 }) {
   // Don't light up the default sort column on load — only once the user picks.
   const active = userSorted && sort?.sortBy === sortKey;
@@ -85,12 +86,17 @@ function SortHeader({
     }
   };
   return (
+    // The menu is portalled and its entries repeat verbatim across the four
+    // sortable columns, so `${testId}-menu-item-asc` is the only thing that
+    // distinguishes "A-Z under Name" from "A-Z under Modified".
     <Dropdown
       trigger={["click"]}
       menu={{ items, onClick, selectedKeys: active ? [sort.order] : [] }}
+      data-testid={testId ? `${testId}-menu` : undefined}
     >
       <button
         type="button"
+        data-testid={testId}
         className={`resource-table-th${active ? " active" : ""}`}
       >
         <span>{label}</span>
@@ -110,6 +116,7 @@ SortHeader.propTypes = {
   sort: PropTypes.object,
   userSorted: PropTypes.bool,
   onSortChange: PropTypes.func,
+  testId: PropTypes.string,
 };
 
 /**
@@ -144,8 +151,25 @@ function ResourceTable({
   showOwner = true,
   isClickable = true,
   type,
+  /**
+   * Prefix for the `data-testid`s below. Every control in this table repeats
+   * once per row — the action buttons share an aria-label (`Edit Prompt
+   * Project`), and the rows themselves differ only by content — so a test
+   * needs the row id to address one of them. Callers pass a page-specific
+   * prefix (`prompt-studio-list`) so the resulting locators read as the screen
+   * they belong to rather than as this widget.
+   */
+  testIdPrefix = "resource-table",
 }) {
   const navigate = useNavigate();
+  /*
+   * Note the shape: the ROW is `<prefix>-row-<id>` and a control inside it is
+   * `<prefix>-<action>-<id>` — deliberately NOT `<prefix>-row-<action>-<id>`,
+   * which would make every action button a prefix-match for the row itself and
+   * leave `[data-testid^="…-row-"]` matching five elements per row.
+   */
+  const rowTestId = (item, action) =>
+    `${testIdPrefix}-${action}-${item?.[idProp]}`;
 
   const renderName = (item) => {
     const icon = iconProp ? item?.[iconProp] : null;
@@ -247,6 +271,7 @@ function ResourceTable({
       <button
         type="button"
         className="resource-table-owner-btn"
+        data-testid={rowTestId(item, "owner")}
         onClick={(event) => {
           event.stopPropagation();
           handleCoOwner(event, item);
@@ -275,6 +300,7 @@ function ResourceTable({
             type="button"
             className="action-icon-btn"
             aria-label={`Edit ${type}`}
+            data-testid={rowTestId(item, "edit")}
             aria-disabled={deprecated}
             onClick={(event) => !deprecated && handleEdit?.(event, item)}
           >
@@ -287,6 +313,7 @@ function ResourceTable({
               type="button"
               className="action-icon-btn"
               aria-label={`Share ${type}`}
+              data-testid={rowTestId(item, "share")}
               aria-disabled={deprecated}
               onClick={(event) => !deprecated && handleShare(event, item, true)}
             >
@@ -294,18 +321,26 @@ function ResourceTable({
             </button>
           </Tooltip>
         )}
+        {/*
+         * The confirm panel is NOT keyed by row: only one can be open at a
+         * time, so a per-row id would just make the locator longer without
+         * making it more specific. The button that opens it is per-row,
+         * because every row has one.
+         */}
         <Popconfirm
           title={`Delete the ${type}`}
           description={`Are you sure to delete ${item?.[titleProp]}`}
           okText="Yes"
           cancelText="No"
           icon={<CircleHelp />}
+          data-testid={`${testIdPrefix}-delete-confirm`}
           onConfirm={(event) => handleDelete?.(event, item)}
         >
           <button
             type="button"
             className="action-icon-btn"
             aria-label={`Delete ${type}`}
+            data-testid={rowTestId(item, "delete")}
           >
             <Trash2 className="action-icon-buttons delete-icon" />
           </button>
@@ -318,6 +353,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-name`}
           label="Name"
           sortKey={titleProp}
           sortType="text"
@@ -339,6 +375,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-created`}
           label="Created"
           sortKey={dateProp}
           sortType="date"
@@ -354,6 +391,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-modified`}
           label="Modified"
           sortKey={modifiedProp}
           sortType="date"
@@ -403,6 +441,7 @@ function ResourceTable({
   return (
     <Table
       className="resource-table"
+      data-testid={testIdPrefix}
       rowKey={idProp}
       tableLayout="fixed"
       columns={columns}
@@ -411,6 +450,9 @@ function ResourceTable({
       onChange={handleChange}
       rowClassName={isClickable ? "resource-table-row-clickable" : ""}
       onRow={(item) => ({
+        // Whatever `onRow` returns is spread onto the <tr>, which is how the
+        // row gets an id at all — there is no other hook for it.
+        "data-testid": `${testIdPrefix}-row-${item?.[idProp]}`,
         // onRowClick lets callers override the default relative nav (e.g. an
         // absolute org-scoped path with router state).
         onClick: isClickable
@@ -460,6 +502,7 @@ ResourceTable.propTypes = {
   showOwner: PropTypes.bool,
   isClickable: PropTypes.bool,
   type: PropTypes.string,
+  testIdPrefix: PropTypes.string,
 };
 
 export { ResourceTable };

@@ -338,7 +338,11 @@ function Header({
         )}
         <div>
           <Tooltip title="Settings">
-            <Button icon={<Settings />} onClick={() => setOpenSettings(true)} />
+            <Button
+              icon={<Settings />}
+              data-testid="ps-header-settings-btn"
+              onClick={() => setOpenSettings(true)}
+            />
           </Tooltip>
         </div>
         {CloneButton && <CloneButton setOpenCloneModal={setOpenCloneModal} />}
@@ -369,6 +373,7 @@ function Header({
           }}
           trigger={["click"]}
           disabled={isPublicSource}
+          data-testid="ps-header-export-menu"
         >
           <CustomButton
             type="primary"
@@ -376,6 +381,7 @@ function Header({
             disabled={isPublicSource}
             icon={<ExportToolIcon />}
             className="export-text"
+            data-testid="ps-header-export-btn"
           >
             Export
           </CustomButton>
@@ -442,6 +448,7 @@ function Header({
       />
       <Modal
         title="Edit Project"
+        data-testid="ps-edit-project-modal"
         open={editModalOpen}
         onOk={handleEditSubmit}
         onCancel={() => setEditModalOpen(false)}
@@ -467,6 +474,7 @@ function Header({
         onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
         open={confirmModalVisible}
         title="Are you sure"
+        data-testid="ps-force-export-modal"
         okText="Force Export"
         centered
       >
@@ -479,6 +487,7 @@ function Header({
         onCancel={() => setApiDeploymentConfirmModalVisible(false)}
         open={apiDeploymentConfirmModalVisible}
         title="Create API Deployment"
+        data-testid="ps-create-api-deployment-modal"
         okText="Proceed"
         centered
         width={600}

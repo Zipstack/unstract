@@ -32,6 +32,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
       type="inner"
       bordered={true}
       className={`ds-card ${srcDetails?.isDisabled ? "disabled" : ""}`}
+      data-testid={`ds-card-${srcDetails?.id}`}
       onClick={handleSelectSource}
     >
       <div className="cover-container">

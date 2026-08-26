@@ -326,6 +326,7 @@ function ConnectorsPage() {
           )}
           {!loadError && displayList?.length > 0 && (
             <ResourceTable
+              testIdPrefix="connector-list"
               dataSource={displayList}
               loading={loading}
               pagination={pagination}

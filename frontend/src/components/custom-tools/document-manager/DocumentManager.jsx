@@ -390,6 +390,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             activeKey={activeKey}
             items={items}
             onChange={handleActiveKeyChange}
+            data-testid="doc-manager-tabs"
             moreIcon={<></>}
           />
         </div>
@@ -466,6 +467,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                   isSinglePassExtractLoading ||
                   page <= 1
                 }
+                data-testid="doc-manager-prev-doc-btn"
                 onClick={handlePageLeft}
               >
                 <ChevronLeft className="doc-manager-paginate-icon" />
@@ -479,6 +481,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                   isSinglePassExtractLoading ||
                   page >= listOfDocs?.length
                 }
+                data-testid="doc-manager-next-doc-btn"
                 onClick={handlePageRight}
               >
                 <ChevronRight className="doc-manager-paginate-icon" />

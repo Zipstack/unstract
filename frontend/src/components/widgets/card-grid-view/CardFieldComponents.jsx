@@ -40,7 +40,15 @@ function CardActionBox({
   onDelete,
   deleteTitle = "Delete item?",
   kebabMenuItems,
+  /**
+   * Names the kind of card this box sits on ("api-deployment", "pipeline").
+   * Combined with the item's id it yields `api-deployment-edit-<id>`, which is
+   * the only way to tell one card's Edit from another's.
+   */
+  testIdPrefix,
 }) {
+  const testId = (suffix) =>
+    testIdPrefix ? `${testIdPrefix}-${suffix}-${item?.id}` : undefined;
   const handleEditAction = (e) => {
     e.stopPropagation();
     setSelectedItem(item);
@@ -58,12 +66,14 @@ function CardActionBox({
       <Button
         type="text"
         className="action-icon-btn edit-icon"
+        data-testid={testId("edit")}
         icon={<Pencil />}
         onClick={handleEditAction}
       />
       <Button
         type="text"
         className="action-icon-btn share-icon"
+        data-testid={testId("share")}
         icon={<Share2 />}
         onClick={handleShareAction}
       />
@@ -78,10 +88,19 @@ function CardActionBox({
         okText="Delete"
         cancelText="Cancel"
         okButtonProps={{ danger: true }}
+        /*
+         * Not keyed by item: only one confirm panel can be open at a time, so
+         * the id identifies the KIND of thing being deleted, which is what a
+         * test needs to know before clicking through.
+         */
+        data-testid={
+          testIdPrefix ? `${testIdPrefix}-delete-confirm` : undefined
+        }
       >
         <Button
           type="text"
           className="action-icon-btn delete-icon"
+          data-testid={testId("delete")}
           icon={<Trash2 />}
           onClick={(e) => e.stopPropagation()}
         />
@@ -90,10 +109,12 @@ function CardActionBox({
         menu={kebabMenuItems}
         trigger={["click"]}
         placement="bottomRight"
+        data-testid={testId("kebab-menu")}
       >
         <Button
           type="text"
           className="card-kebab-menu"
+          data-testid={testId("kebab-btn")}
           icon={<EllipsisVertical />}
           onClick={(e) => e.stopPropagation()}
         />
@@ -110,6 +131,7 @@ CardActionBox.propTypes = {
   onDelete: PropTypes.func,
   deleteTitle: PropTypes.string,
   kebabMenuItems: PropTypes.object.isRequired,
+  testIdPrefix: PropTypes.string,
 };
 
 /**

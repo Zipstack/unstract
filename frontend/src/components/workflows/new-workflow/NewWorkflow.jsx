@@ -80,6 +80,7 @@ function NewWorkflow({
       centered
       maskClosable={false}
       okText={name ? "Edit Workflow" : "Create Workflow"}
+      data-testid="new-workflow-modal"
       width="400px"
       okButtonProps={{ disabled: disableCreation, loading: loading }}
     >

@@ -487,6 +487,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
             )}
             {!loadError && displayList?.length > 0 && (
               <ResourceTable
+                testIdPrefix="prompt-studio-list"
                 dataSource={displayList}
                 loading={isLoading}
                 pagination={pagination}

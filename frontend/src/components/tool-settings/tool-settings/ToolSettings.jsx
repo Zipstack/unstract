@@ -361,8 +361,11 @@ function ToolSettings({ type }) {
         searchKey={type}
         onSearch={(value) => handleSearch(value)}
         customButtons={
+          // The label is `btnText[type]` — "New LLM Profile" on one route and
+          // "New Text Extractor" on another — so it is not a stable handle.
           <CustomButton
             type="primary"
+            data-testid={`${type}-adapter-add-btn`}
             onClick={handleOpenAddSourceModal}
             icon={<Plus />}
           >
@@ -393,6 +396,7 @@ function ToolSettings({ type }) {
             )}
             {!loadError && displayList?.length > 0 && (
               <ResourceTable
+                testIdPrefix="adapter-list"
                 dataSource={displayList}
                 loading={isLoading}
                 pagination={pagination}

@@ -192,6 +192,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      data-testid="add-source-modal"
       className="add-source-modal"
     >
       {selectedSourceId ? (

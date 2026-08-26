@@ -8,7 +8,7 @@ import { EmptyPlaceholder } from "../../../assets";
 
 function EmptyState({ text, btnText, handleClick }) {
   return (
-    <div className="display-flex-center-h-and-v">
+    <div className="display-flex-center-h-and-v" data-testid="empty-state">
       <Space direction="vertical" className="display-flex-align-center">
         <EmptyPlaceholder />
         <div>
@@ -17,7 +17,12 @@ function EmptyState({ text, btnText, handleClick }) {
           </div>
           {btnText?.length > 0 && (
             <div className="display-flex-center">
-              <Button type="link" icon={<Plus />} onClick={handleClick}>
+              <Button
+                type="link"
+                icon={<Plus />}
+                data-testid="empty-state-action-btn"
+                onClick={handleClick}
+              >
                 {btnText}
               </Button>
             </div>

@@ -181,11 +181,12 @@ const SettingsPopoverContent = ({ orgName, navigate, isAdmin }) => {
   };
 
   return (
-    <nav className="settings-sidebar-popover">
+    <nav className="settings-sidebar-popover" data-testid="platform-menu">
       {settingsMenuItems.map((menuItem) => (
         <button
           key={menuItem.key}
           type="button"
+          data-testid={`platform-menu-item-${menuItem.key}`}
           className={`settings-menu-item ${
             currentActiveKey === menuItem.key ? "active" : ""
           }`}
@@ -257,11 +258,12 @@ const HITLPopoverContent = ({ orgName, role, navigate }) => {
   const currentActiveKey = getActiveHITLKey(orgName);
 
   return (
-    <nav className="settings-sidebar-popover">
+    <nav className="settings-sidebar-popover" data-testid="hitl-menu">
       {hitlMenuItems.map((menuItem) => (
         <button
           key={menuItem.key}
           type="button"
+          data-testid={`hitl-menu-item-${menuItem.key}`}
           className={`settings-menu-item ${
             currentActiveKey === menuItem.key ? "active" : ""
           }`}

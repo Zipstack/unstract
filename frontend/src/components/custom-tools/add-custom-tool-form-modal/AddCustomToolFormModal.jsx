@@ -109,6 +109,7 @@ function AddCustomToolFormModal({
       maskClosable={false}
       onOk={handleSubmit}
       okText={isEdit ? "Update" : "Save"}
+      data-testid="add-prompt-project-modal"
       okButtonProps={{
         loading: isLoading,
       }}
@@ -177,6 +178,7 @@ function AddCustomToolFormModal({
             placement="bottomLeft"
             arrow={false}
             trigger={"click"}
+            data-testid="add-prompt-project-icon-popover"
             className="emoji-modal"
             title={
               <EmojiPicker
@@ -209,7 +211,7 @@ function AddCustomToolFormModal({
              * updates per click — Radix's (open -> false) and this one
              * (!prev), which race and can leave the picker unable to reopen.
              */}
-            <Button>
+            <Button data-testid="add-prompt-project-icon-btn">
               {icon} {icon ? "Change" : "Choose"} Icon
             </Button>
           </Popover>

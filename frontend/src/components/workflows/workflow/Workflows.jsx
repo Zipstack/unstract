@@ -436,6 +436,7 @@ function Workflows() {
           )}
           {!loadError && projectList?.length > 0 && (
             <ResourceTable
+              testIdPrefix="workflow-list"
               dataSource={projectList}
               loading={loading}
               pagination={pagination}

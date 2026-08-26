@@ -22,7 +22,12 @@ function Header({ type, openAddModal, enableSearch, onSearch, setSearchList }) {
   };
 
   const addButton = (
-    <CustomButton type="primary" icon={<Plus />} onClick={handleOnClick}>
+    <CustomButton
+      type="primary"
+      icon={<Plus />}
+      data-testid={`${type}-deployment-add-btn`}
+      onClick={handleOnClick}
+    >
       {deploymentsStaticContent[type].addBtn}
     </CustomButton>
   );
