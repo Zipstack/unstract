@@ -181,7 +181,12 @@ describe("antd-compatible overlay shims (P2)", () => {
   it("does not overwrite the child's own data-state", () => {
     render(
       <Tooltip title="" data-state="closed">
-        <button type="button" role="switch" aria-checked="true" data-state="checked">
+        <button
+          type="button"
+          role="switch"
+          aria-checked="true"
+          data-state="checked"
+        >
           toggle
         </button>
       </Tooltip>,
@@ -484,7 +489,9 @@ describe("antd-compatible overlay shims (P2)", () => {
       render(
         <Collapse
           activeKey={"1"}
-          expandIcon={({ isActive }) => <span>{isActive ? "open" : "shut"}</span>}
+          expandIcon={({ isActive }) => (
+            <span>{isActive ? "open" : "shut"}</span>
+          )}
           items={[{ key: "1", label: "Advanced", children: "settings body" }]}
         />,
       );

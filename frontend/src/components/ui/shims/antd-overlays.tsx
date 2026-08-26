@@ -937,9 +937,7 @@ const CollapseBase = React.forwardRef<HTMLDivElement, CollapseProps>(
       return (
         <Collapsible
           key={key ?? undefined}
-          {...(controlled
-            ? { open }
-            : { defaultOpen: open })}
+          {...(controlled ? { open } : { defaultOpen: open })}
           onOpenChange={(next) =>
             onChange?.(next && key != null ? [normalizeKey(key)] : [])
           }

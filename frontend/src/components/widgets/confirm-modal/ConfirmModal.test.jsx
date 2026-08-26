@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { Dropdown } from "@/components/ui/shims/antd-overlays";
-
-import { resetConfirm } from "./confirmStore";
 import { ConfirmHost } from "./ConfirmHost";
 import { ConfirmModal } from "./ConfirmModal";
+import { resetConfirm } from "./confirmStore";
 
 // The store is module-level, so a dialog left open by one test would leak
 // `pointer-events: none` on <body> into the next.

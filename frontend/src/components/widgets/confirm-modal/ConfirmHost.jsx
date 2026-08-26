@@ -11,11 +11,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 
-import {
-  getConfirmState,
-  settleConfirm,
-  subscribe,
-} from "./confirmStore";
+import { getConfirmState, settleConfirm, subscribe } from "./confirmStore";
 
 /**
  * Renders the app-wide confirm dialog. Mount once near the app root.

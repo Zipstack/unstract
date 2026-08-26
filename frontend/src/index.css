@@ -312,9 +312,7 @@
    */
   :where(span, p, label, td, th, li, a):not(:where(.flex, .inline-flex, .grid))
     > svg.lucide,
-  :where(span, p, label, td, th, li, a):not(
-      :where(.flex, .inline-flex, .grid)
-    )
+  :where(span, p, label, td, th, li, a):not(:where(.flex, .inline-flex, .grid))
     > :where(span, i):not(:where(.flex, .inline-flex))
     > svg.lucide {
     display: inline-block;

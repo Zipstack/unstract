@@ -77,9 +77,7 @@ describe("popover layout must not depend on viewport breakpoints", () => {
    * the right edge. The positioning context has to be the months ROW.
    */
   it("anchors the nav arrows to the months row, not one month", async () => {
-    render(
-      <RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />,
-    );
+    render(<RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />);
     fireEvent.click(screen.getAllByRole("button")[0]);
     await screen.findAllByRole("grid");
 
@@ -119,9 +117,7 @@ describe("popover layout must not depend on viewport breakpoints", () => {
    * a year away took twelve clicks.
    */
   it("offers month AND year selection, like antd's header", async () => {
-    render(
-      <RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />,
-    );
+    render(<RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />);
     fireEvent.click(screen.getAllByRole("button")[0]);
     await screen.findAllByRole("grid");
 

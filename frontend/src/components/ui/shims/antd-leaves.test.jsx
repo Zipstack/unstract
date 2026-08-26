@@ -94,14 +94,16 @@ describe("antd-compatible leaf shims (P1-06)", () => {
     const { container } = render(
       <Alert type="info" showIcon message="Heads up" />,
     );
-    const el = container.querySelector('[role="alert"]') ?? container.firstChild;
+    const el =
+      container.querySelector('[role="alert"]') ?? container.firstChild;
     expect(el.className).toContain("bg-info-bg");
     expect(el.className).toContain("border-info");
   });
 
   it("defaults to the info theme when no type is given, as antd does", () => {
     const { container } = render(<Alert message="Heads up" />);
-    const el = container.querySelector('[role="alert"]') ?? container.firstChild;
+    const el =
+      container.querySelector('[role="alert"]') ?? container.firstChild;
     expect(el.className).toContain("bg-info-bg");
   });
 
