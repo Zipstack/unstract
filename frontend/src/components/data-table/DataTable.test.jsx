@@ -498,3 +498,49 @@ describe("DataTable scroll", () => {
     ).toBeNull();
   });
 });
+
+/*
+ * `bordered` was the fourth antd prop to reach the wrapper <div> instead of
+ * being consumed, after onRow, showHeader and scroll. This one was noisier
+ * than the others — React rejects it outright ("Received `true` for a
+ * non-boolean attribute `bordered`") on every render — but just as invisible
+ * to the suite, because a console error fails nothing.
+ */
+describe("DataTable bordered", () => {
+  it("draws cell rules when asked", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        bordered
+      />,
+    );
+    expect(container.querySelector("table").className).toContain(
+      "ant-table-bordered",
+    );
+  });
+
+  it("leaves the table unbordered by default", () => {
+    const { container } = render(
+      <DataTable columns={columns} dataSource={rowsFor(2)} rowKey="id" />,
+    );
+    expect(container.querySelector("table").className).not.toContain(
+      "ant-table-bordered",
+    );
+  });
+
+  it("does not leak bordered onto the DOM as an attribute", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        bordered
+      />,
+    );
+    expect(
+      container.querySelector(".ant-table-wrapper").getAttribute("bordered"),
+    ).toBeNull();
+  });
+});

@@ -207,6 +207,16 @@ function DataTable({
    * tall, pushing its own header off the top of the screen.
    */
   scroll,
+  /**
+   * antd's `bordered`: rules between every cell, plus an outer frame.
+   *
+   * Declared for the same reason as `onRow`, `showHeader` and `scroll` above —
+   * undeclared it fell into `...props` and onto the wrapper <div>, where React
+   * warned "Received `true` for a non-boolean attribute `bordered`" on every
+   * render. The agentic Prompt Studio's extracted-data tables ask for it, and
+   * got a borderless table plus a console error instead.
+   */
+  bordered = false,
   className,
   emptyText = "No data",
   ...props
@@ -338,7 +348,11 @@ function DataTable({
         }
       >
         <Table
-          className={cn(size === "small" && "text-sm")}
+          className={cn(
+            size === "small" && "text-sm",
+            bordered &&
+              "ant-table-bordered border border-separator [&_td]:border-r [&_td]:border-separator [&_th]:border-r [&_th]:border-separator [&_td:last-child]:border-r-0 [&_th:last-child]:border-r-0",
+          )}
           style={
             tableLayout || scrollX
               ? { tableLayout, minWidth: scrollX }

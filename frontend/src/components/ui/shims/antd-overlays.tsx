@@ -155,6 +155,20 @@ interface TooltipProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "title"> {
   title?: React.ReactNode;
   placement?: Placement;
+  /**
+   * antd's open delay, in SECONDS. Radix takes milliseconds, so it is scaled
+   * below. Undeclared, it fell into `rest`, rode along to the trigger and
+   * landed on the DOM — React warned about an unrecognised `mouseEnterDelay`
+   * prop on every render of the agentic document-status list.
+   */
+  mouseEnterDelay?: number;
+  /**
+   * antd's close delay, also in seconds. Consumed but NOT honoured: Radix's
+   * Tooltip has no close-delay prop (only `disableHoverableContent`, which is
+   * a different behaviour). Declared so it cannot reach the DOM the way
+   * `mouseEnterDelay` did.
+   */
+  mouseLeaveDelay?: number;
 }
 
 interface DropdownProps
@@ -433,7 +447,16 @@ const ModalBase = React.forwardRef<HTMLDivElement, ModalProps>(function Modal(
 
 /** antd `<Tooltip title placement>`. Renders nothing extra when title is empty. */
 const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
-  { title, placement = "top", children, className, ...props },
+  {
+    title,
+    placement = "top",
+    mouseEnterDelay,
+    // Consumed only; see the note on the prop.
+    mouseLeaveDelay: _mouseLeaveDelay,
+    children,
+    className,
+    ...props
+  },
   ref,
 ) {
   /*
@@ -524,7 +547,11 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
 
   return (
     <TooltipProvider>
-      <ShadcnTooltip>
+      <ShadcnTooltip
+        {...(mouseEnterDelay != null
+          ? { delayDuration: mouseEnterDelay * 1000 }
+          : {})}
+      >
         {/*
          * The outer primitive's ref and attributes go on the TRIGGER: they
          * identify the element it anchors to, and the bubble is not that

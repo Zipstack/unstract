@@ -551,3 +551,40 @@ describe("antd-compatible overlay shims (P2)", () => {
     });
   });
 });
+
+/*
+ * antd's Tooltip delays are seconds; Radix's are milliseconds, and Radix has
+ * no close-delay prop at all. Neither was declared, so both rode along in
+ * `rest` onto the TRIGGER — `rest` is deliberately forwarded there so Radix's
+ * own aria/data attributes reach the anchored element, which meant these two
+ * reached the DOM with it and React warned on every render.
+ */
+describe("Tooltip antd delay props", () => {
+  it("does not leak mouseEnterDelay or mouseLeaveDelay onto the trigger", () => {
+    render(
+      <Tooltip title="hi" mouseEnterDelay={0.3} mouseLeaveDelay={0.2}>
+        <button type="button">trigger</button>
+      </Tooltip>,
+    );
+    const trigger = screen.getByRole("button", { name: "trigger" });
+    expect(trigger.getAttribute("mouseEnterDelay")).toBeNull();
+    expect(trigger.getAttribute("mouseenterdelay")).toBeNull();
+    expect(trigger.getAttribute("mouseLeaveDelay")).toBeNull();
+    expect(trigger.getAttribute("mouseleavedelay")).toBeNull();
+  });
+
+  /*
+   * Only asserts the tooltip still works with the prop present. The delay
+   * itself is Radix's to honour once `delayDuration` is handed over, and
+   * asserting on wall-clock timing here would buy a flaky test.
+   */
+  it("still opens when a delay is supplied", async () => {
+    render(
+      <Tooltip title="delayed tip" mouseEnterDelay={0}>
+        <button type="button">trigger</button>
+      </Tooltip>,
+    );
+    fireEvent.focus(screen.getByRole("button", { name: "trigger" }));
+    expect(await screen.findAllByText("delayed tip")).not.toHaveLength(0);
+  });
+});
