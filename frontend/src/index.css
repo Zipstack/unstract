@@ -623,7 +623,15 @@ body {
  * `.logs-container` alone is 999 — so a sidebar fly-out opened near the bottom
  * of the screen was clipped by the Logs footer. Sit above the app's legacy
  * z-indexes but below `.fullscreen-loader` (2000), which must still cover
- * everything. */
+ * everything.
+ *
+ * The layer ladder, for reference:
+ *   legacy app chrome  100–1000   (.logs-container 999, agency/settings 1000)
+ *   modal layer        1100       (dialog/alert-dialog/sheet overlay+content)
+ *   popper layer       1500       (this rule — must clear a modal above it)
+ *   fullscreen loader  2000
+ * Modals were left on Radix's stock z-50 at first, which put them *under* the
+ * Logs footer: the footer stayed bright white over the dimmed page. */
 [data-radix-popper-content-wrapper] {
   z-index: 1500 !important;
 }
