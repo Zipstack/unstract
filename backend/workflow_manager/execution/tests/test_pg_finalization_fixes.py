@@ -272,7 +272,16 @@ class RecoverStuckPgExecutionsTests(TestCase):
         # Set the timestamps AFTER _age — it backdates the file rows too, so doing this
         # first would have them overwritten and the assertion would read 0.0.
         created = timezone.now() - timedelta(seconds=9000)
-        WorkflowExecution.objects.filter(pk=ex.pk).update(created_at=created)
+        # modified_at MUST be passed explicitly here. BaseModelManager.update() does
+        # `kwargs.setdefault("modified_at", timezone.now())`, so updating created_at
+        # alone silently re-stamps modified_at to NOW and un-ages the row _age() just
+        # aged — the execution then fails `modified_at__lt=cutoff`, the endpoint reports
+        # scanned=0, and the test fails on STATUS with no hint that a timestamp moved.
+        # That cost a CI round trip; the manager's docstring documents the override.
+        WorkflowExecution.objects.filter(pk=ex.pk).update(
+            created_at=created,
+            modified_at=timezone.now() - timedelta(seconds=9000),
+        )
         WorkflowFileExecution.objects.filter(workflow_execution=ex).update(
             modified_at=created + timedelta(seconds=42)
         )
