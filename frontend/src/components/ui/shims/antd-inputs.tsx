@@ -91,8 +91,7 @@ interface CountProps {
 }
 
 interface AntInputProps
-  extends
-    Omit<
+  extends Omit<
       React.InputHTMLAttributes<HTMLInputElement>,
       // `size` is a number on the DOM input and a token in antd; `prefix` is
       // the RDFa string attribute on HTMLAttributes and a ReactNode in antd.
@@ -115,7 +114,8 @@ interface AntInputProps
 }
 
 interface AntTextAreaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement>, CountProps {
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,
+    CountProps {
   /** antd accepts `true` or a { minRows, maxRows } pair. */
   autoSize?: boolean | { minRows?: number; maxRows?: number };
   /** See AntInputProps.variant — EditableText drives prompt VALUES through this. */
@@ -128,10 +128,8 @@ interface AntTextAreaProps
   size?: "small" | "middle" | "large";
 }
 
-interface AntSearchProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  "size"
-> {
+interface AntSearchProps
+  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
   /** Not forwarded to the DOM: the native `size` is a character count. */
   /** Fired on Enter, with the current input value. */
   onSearch?: (value: string) => void;
@@ -144,10 +142,11 @@ interface AntSearchProps extends Omit<
   allowClear?: boolean;
 }
 
-interface AntInputNumberProps extends Omit<
-  React.InputHTMLAttributes<HTMLInputElement>,
-  "onChange" | "size"
-> {
+interface AntInputNumberProps
+  extends Omit<
+    React.InputHTMLAttributes<HTMLInputElement>,
+    "onChange" | "size"
+  > {
   /** antd hands over the numeric VALUE, not the event; null when cleared. */
   onChange?: (value: number | null) => void;
   size?: SizeToken;

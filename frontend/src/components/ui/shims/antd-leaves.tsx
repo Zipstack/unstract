@@ -86,10 +86,8 @@ interface SpinProps extends React.HTMLAttributes<HTMLElement> {
   spinning?: boolean;
 }
 
-interface AlertProps extends Omit<
-  React.HTMLAttributes<HTMLDivElement>,
-  "children"
-> {
+interface AlertProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
   message?: React.ReactNode;
   description?: React.ReactNode;
   type?: AlertType;
@@ -101,10 +99,8 @@ interface AlertProps extends Omit<
   action?: React.ReactNode;
 }
 
-interface ImageProps extends Omit<
-  React.ImgHTMLAttributes<HTMLImageElement>,
-  "width" | "height"
-> {
+interface ImageProps
+  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
   width?: number | string;
   height?: number | string;
   /** antd opens a lightbox; accepted so call-sites keep compiling. */
@@ -122,10 +118,8 @@ interface EmptyProps extends React.HTMLAttributes<HTMLDivElement> {
   image?: React.ReactNode;
 }
 
-interface AvatarProps extends Omit<
-  React.HTMLAttributes<HTMLSpanElement>,
-  "children"
-> {
+interface AvatarProps
+  extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
   /** A token, or an explicit pixel size. */
   size?: "small" | "default" | "large" | number;
   shape?: "circle" | "square";
