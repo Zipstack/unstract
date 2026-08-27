@@ -1,9 +1,13 @@
 import {
+  Check,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   CircleCheck,
   CircleX,
+  LoaderCircle,
   Upload as UploadIcon,
+  X,
 } from "lucide-react";
 import * as React from "react";
 import { DataTable } from "@/components/data-table/DataTable";
@@ -220,9 +224,34 @@ interface SkeletonProps
   title?: boolean;
 }
 
-interface StepsProps extends React.HTMLAttributes<HTMLOListElement> {
+type StepStatus = "wait" | "process" | "finish" | "error";
+
+interface StepItem {
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  /** Overrides the status derived from this step's index vs `current`. */
+  status?: StepStatus;
+  icon?: React.ReactNode;
+  /** antd keeps a disabled step unclickable even when `onChange` is set. */
+  disabled?: boolean;
+}
+
+interface StepsProps
+  extends Omit<React.HTMLAttributes<HTMLOListElement>, "onChange"> {
   current?: number;
-  items?: Array<{ title?: React.ReactNode; description?: React.ReactNode }>;
+  items?: StepItem[];
+  /** antd applies this to the CURRENT step; the others follow `current`. */
+  status?: StepStatus;
+  /**
+   * Present ⇒ the steps become clickable, as antd's `<Steps onChange>` does.
+   * Omitted ⇒ they stay inert text, which is what the API-deployment wizard
+   * wants.
+   */
+  onChange?: (current: number) => void;
+  /** antd's token, not a DOM attribute — consumed rather than forwarded. */
+  size?: SizeToken;
+  /** The legacy `<Steps.Step>` children form. */
+  children?: React.ReactNode;
 }
 
 interface PaginationProps
@@ -237,6 +266,9 @@ interface PaginationProps
 interface TreeNode {
   key: string;
   title?: React.ReactNode;
+  icon?: React.ReactNode;
+  /** A file rather than a directory: no switcher, never expandable. */
+  isLeaf?: boolean;
   children?: TreeNode[];
 }
 
@@ -244,6 +276,20 @@ interface TreeProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "onSelect"> {
   treeData?: TreeNode[];
   onSelect?: (keys: string[], info: { node: TreeNode }) => void;
+}
+
+interface DirectoryTreeProps extends TreeProps {
+  expandedKeys?: string[];
+  selectedKeys?: string[];
+  onExpand?: (keys: string[]) => void;
+  /** Resolves once the node's children have been fetched into `treeData`. */
+  loadData?: (node: TreeNode) => Promise<unknown> | void;
+  switcherIcon?: React.ReactNode;
+  /** `false` limits expanding to the switcher; antd's default is the row. */
+  expandAction?: false | "click" | "doubleClick";
+  showLine?: boolean;
+  autoExpandParent?: boolean;
+  rootClassName?: string;
 }
 
 interface DescriptionsProps
@@ -1348,34 +1394,136 @@ const Skeleton = Object.assign(SkeletonBase, {
   Input: SkeletonInput,
 });
 
-/** antd `<Steps current items>`. */
-const Steps = React.forwardRef<HTMLOListElement, StepsProps>(function Steps(
-  { current = 0, items = [], className, ...props },
+/** One `<Steps.Step>`; the parent reads its props, so it renders nothing. */
+function Step(_props: StepItem) {
+  return null;
+}
+
+/** Written out so Tailwind sees the class names statically. */
+const STEP_MARKER: Record<StepStatus, string> = {
+  wait: "bg-muted text-muted-foreground",
+  process: "bg-primary text-primary-foreground",
+  finish: "bg-primary/15 text-primary",
+  error: "bg-destructive text-white",
+};
+
+/**
+ * antd derives a step's status from its index against `current`, unless the
+ * item carries its own — which the cloud onboarding stepper does for all five.
+ * The top-level `status` prop applies to the current step only.
+ */
+function resolveStepStatus(
+  item: StepItem,
+  index: number,
+  current: number,
+  overall: StepStatus | undefined,
+): StepStatus {
+  if (item.status) {
+    return item.status;
+  }
+  if (index === current) {
+    return overall ?? "process";
+  }
+  return index < current ? "finish" : "wait";
+}
+
+/**
+ * antd `<Steps current items>`. Also supports the legacy `<Steps.Step>`
+ * children form, which CreateApiDeploymentFromPromptStudio uses.
+ */
+const StepsBase = React.forwardRef<HTMLOListElement, StepsProps>(function Steps(
+  {
+    current = 0,
+    items,
+    status,
+    onChange,
+    // Consumed, not forwarded: antd's token is not a DOM attribute.
+    size: _size,
+    className,
+    children,
+    ...props
+  },
   ref,
 ) {
+  const entries: StepItem[] =
+    items ??
+    React.Children.toArray(children)
+      .filter((c): c is React.ReactElement<StepItem> => React.isValidElement(c))
+      .map((c) => ({
+        title: c.props.title,
+        description: c.props.description,
+        status: c.props.status,
+        icon: c.props.icon,
+        disabled: c.props.disabled,
+      }));
+
   return (
     <ol
       ref={ref}
       className={cn("flex items-center gap-4", className)}
       {...props}
     >
-      {items.map((item, i) => (
-        <li key={String(item.title ?? i)} className="flex items-center gap-2">
-          <span
-            className={cn(
-              "flex size-6 items-center justify-center rounded-full text-xs",
-              i <= current
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground",
+      {entries.map((item, i) => {
+        const stepStatus = resolveStepStatus(item, i, current, status);
+        const body = (
+          <>
+            <span
+              className={cn(
+                "flex size-6 shrink-0 items-center justify-center rounded-full text-xs",
+                STEP_MARKER[stepStatus],
+              )}
+            >
+              {item.icon ??
+                (stepStatus === "finish" ? (
+                  <Check className="size-3.5" />
+                ) : stepStatus === "error" ? (
+                  <X className="size-3.5" />
+                ) : (
+                  i + 1
+                ))}
+            </span>
+            <span className="flex flex-col items-start text-left">
+              <span
+                className={cn(
+                  "text-sm",
+                  stepStatus === "process" && "font-medium",
+                  stepStatus === "error" && "text-destructive",
+                )}
+              >
+                {item.title}
+              </span>
+              {item.description ? (
+                <span className="text-xs text-muted-foreground">
+                  {item.description}
+                </span>
+              ) : null}
+            </span>
+          </>
+        );
+
+        return (
+          // Index key: steps are a fixed ordered list, and titles repeat.
+          <li key={i}>
+            {onChange && !item.disabled ? (
+              <button
+                type="button"
+                className="flex cursor-pointer items-center gap-2 rounded"
+                aria-current={stepStatus === "process" ? "step" : undefined}
+                onClick={() => onChange(i)}
+              >
+                {body}
+              </button>
+            ) : (
+              <span
+                className="flex items-center gap-2"
+                aria-current={stepStatus === "process" ? "step" : undefined}
+              >
+                {body}
+              </span>
             )}
-          >
-            {i + 1}
-          </span>
-          <span className={cn("text-sm", i === current && "font-medium")}>
-            {item.title}
-          </span>
-        </li>
-      ))}
+          </li>
+        );
+      })}
     </ol>
   );
 });
@@ -1424,7 +1572,7 @@ const Pagination = React.forwardRef<HTMLDivElement, PaginationProps>(
 );
 
 /** antd `<Tree treeData>` — a shallow nested list; no call-site drags nodes. */
-const Tree = React.forwardRef<HTMLDivElement, TreeProps>(function Tree(
+const TreeBase = React.forwardRef<HTMLDivElement, TreeProps>(function Tree(
   { treeData = [], onSelect, className, ...props },
   ref,
 ) {
@@ -1448,6 +1596,167 @@ const Tree = React.forwardRef<HTMLDivElement, TreeProps>(function Tree(
     </div>
   );
 });
+
+/**
+ * antd `<Tree.DirectoryTree>` — the file browser in the Configure Connector
+ * modal, which is the only call-site.
+ *
+ * It cannot share TreeBase: that one renders every node expanded and has no
+ * notion of `loadData`, but the connector browser lists one directory at a
+ * time and fetches a folder's children the first time it is opened. The
+ * folders come back childless, so without `loadData` the tree is a flat list
+ * of unopenable directories.
+ *
+ * `expandedKeys`/`selectedKeys` fall back to internal state when the
+ * call-site omits them, because antd supports both forms and FileExplorer
+ * only happens to drive the controlled one.
+ */
+const DirectoryTree = React.forwardRef<HTMLDivElement, DirectoryTreeProps>(
+  function DirectoryTree(
+    {
+      treeData = [],
+      expandedKeys,
+      selectedKeys,
+      onExpand,
+      onSelect,
+      loadData,
+      switcherIcon,
+      /*
+       * antd's DirectoryTree expands a directory when its ROW is clicked;
+       * `expandAction={false}` restricts that to the switcher. FileExplorer
+       * passes false so that picking a destination folder does not also
+       * expand it.
+       */
+      expandAction = "click",
+      // Consumed, not forwarded: antd chrome flags, not DOM attributes.
+      showLine: _showLine,
+      autoExpandParent: _autoExpandParent,
+      rootClassName,
+      className,
+      ...props
+    },
+    ref,
+  ) {
+    const [ownExpandedKeys, setOwnExpandedKeys] = React.useState<string[]>([]);
+    const [ownSelectedKeys, setOwnSelectedKeys] = React.useState<string[]>([]);
+    const [loadingKeys, setLoadingKeys] = React.useState<string[]>([]);
+
+    const expanded = expandedKeys ?? ownExpandedKeys;
+    const selected = selectedKeys ?? ownSelectedKeys;
+
+    const toggle = (node: TreeNode) => {
+      const isOpen = expanded.includes(node.key);
+      const next = isOpen
+        ? expanded.filter((k) => k !== node.key)
+        : [...expanded, node.key];
+      setOwnExpandedKeys(next);
+      onExpand?.(next);
+
+      // antd fetches a node's children on first expand only — `children`
+      // being set is what marks it already loaded.
+      if (isOpen || node.children || !loadData) {
+        return;
+      }
+      setLoadingKeys((keys) => [...keys, node.key]);
+      Promise.resolve(loadData(node))
+        .catch(() => {
+          // The call-site surfaces its own load error; this only clears the
+          // spinner so the switcher does not stay stuck.
+        })
+        .finally(() => {
+          setLoadingKeys((keys) => keys.filter((k) => k !== node.key));
+        });
+    };
+
+    const select = (node: TreeNode) => {
+      const next = [node.key];
+      setOwnSelectedKeys(next);
+      onSelect?.(next, { node });
+    };
+
+    const renderNodes = (nodes: TreeNode[], depth = 0): React.ReactNode =>
+      nodes.map((node) => {
+        const isOpen = expanded.includes(node.key);
+        const isSelected = selected.includes(node.key);
+        return (
+          <div key={String(node.key)}>
+            <div
+              role="treeitem"
+              tabIndex={0}
+              aria-selected={isSelected}
+              aria-expanded={node.isLeaf ? undefined : isOpen}
+              className={cn(
+                "flex cursor-pointer items-center gap-1 rounded py-0.5 pe-1 text-sm hover:bg-accent",
+                isSelected && "bg-accent text-accent-foreground",
+              )}
+              style={{ paddingInlineStart: depth * 12 + 4 }}
+              onClick={() => {
+                select(node);
+                if (expandAction === "click" && !node.isLeaf) {
+                  toggle(node);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  select(node);
+                }
+              }}
+            >
+              {node.isLeaf ? (
+                <span className="size-[18px] shrink-0" />
+              ) : (
+                <button
+                  type="button"
+                  aria-label={isOpen ? "Collapse" : "Expand"}
+                  className={cn(
+                    "flex size-[18px] shrink-0 items-center justify-center transition-transform",
+                    !isOpen && "-rotate-90",
+                  )}
+                  onClick={(e) => {
+                    // Without this the row handler also fires and, when
+                    // `expandAction` is "click", immediately toggles back.
+                    e.stopPropagation();
+                    toggle(node);
+                  }}
+                >
+                  {loadingKeys.includes(node.key) ? (
+                    <LoaderCircle className="size-3 animate-spin" />
+                  ) : (
+                    (switcherIcon ?? <ChevronDown className="size-3" />)
+                  )}
+                </button>
+              )}
+              {node.icon ? (
+                <span className="flex size-4 shrink-0 items-center justify-center">
+                  {node.icon}
+                </span>
+              ) : null}
+              {/* min-w-0 so the name column's `ellipsis` has something to
+                  shrink against instead of overflowing the panel. */}
+              <span className="min-w-0 flex-1">{node.title}</span>
+            </div>
+            {/* role="group" so children report their real depth; without it
+                every row is announced as level 1 regardless of nesting. */}
+            {isOpen && node.children ? (
+              <div role="group">{renderNodes(node.children, depth + 1)}</div>
+            ) : null}
+          </div>
+        );
+      });
+
+    return (
+      <div
+        ref={ref}
+        role="tree"
+        className={cn(rootClassName, className)}
+        {...props}
+      >
+        {renderNodes(treeData)}
+      </div>
+    );
+  },
+);
 
 /** One `<Descriptions.Item>`, however the call-site supplied it. */
 type DescriptionEntry = NonNullable<DescriptionsProps["items"]>[number];
@@ -2002,6 +2311,8 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
 
 const Card = Object.assign(CardBase, { Meta: CardMeta });
 const Tabs = Object.assign(TabsBase, { TabPane });
+const Tree = Object.assign(TreeBase, { DirectoryTree });
+const Steps = Object.assign(StepsBase, { Step });
 const List = Object.assign(ListBase, {
   Item: Object.assign(ListItem, { Meta: ListItemMeta }),
 });

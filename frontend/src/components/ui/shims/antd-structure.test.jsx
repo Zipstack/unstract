@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,9 +21,11 @@ import {
   Segmented,
   Skeleton,
   Statistic,
+  Steps,
   Table,
   Tabs,
   Transfer,
+  Tree,
   Upload,
 } from "@/components/ui/shims/antd-structure";
 
@@ -1066,6 +1075,285 @@ describe("antd-compatible structural shims (P4)", () => {
     it("renders items that carry no icon", () => {
       render(<Menu items={[{ key: "1", label: "Plain" }]} />);
       expect(screen.getByText("Plain")).toBeInTheDocument();
+    });
+  });
+
+  /*
+   * The Configure Connector modal's file browser. `Tree.DirectoryTree` was
+   * undefined, so picking any FILESYSTEM connector rendered `undefined` as an
+   * element type and React #130 took down the whole workflow page.
+   */
+  describe("Tree.DirectoryTree", () => {
+    const treeData = [
+      { key: "docs", title: "docs", isLeaf: false },
+      { key: "a.pdf", title: "a.pdf", isLeaf: true },
+    ];
+
+    it("is defined — a bare Tree has no directory browser", () => {
+      expect(Tree.DirectoryTree).toBeDefined();
+    });
+
+    it("renders a row per node", () => {
+      render(<Tree.DirectoryTree treeData={treeData} />);
+      expect(screen.getByText("docs")).toBeInTheDocument();
+      expect(screen.getByText("a.pdf")).toBeInTheDocument();
+    });
+
+    it("gives directories a switcher and leaves none", () => {
+      render(<Tree.DirectoryTree treeData={treeData} />);
+      expect(screen.getAllByRole("button", { name: "Expand" })).toHaveLength(1);
+    });
+
+    it("reports the expanded keys to onExpand", () => {
+      const onExpand = vi.fn();
+      render(<Tree.DirectoryTree treeData={treeData} onExpand={onExpand} />);
+      fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+      expect(onExpand).toHaveBeenCalledWith(["docs"]);
+    });
+
+    it("passes the node to onSelect so the call-site can read isLeaf", () => {
+      const onSelect = vi.fn();
+      render(<Tree.DirectoryTree treeData={treeData} onSelect={onSelect} />);
+      fireEvent.click(screen.getByText("a.pdf"));
+      expect(onSelect).toHaveBeenCalledWith(
+        ["a.pdf"],
+        expect.objectContaining({
+          node: expect.objectContaining({ key: "a.pdf", isLeaf: true }),
+        }),
+      );
+    });
+
+    /*
+     * The connector browser lists one directory at a time: folders arrive
+     * without `children` and are fetched on first expand. Without this the
+     * tree is a flat list of directories that never open.
+     */
+    it("calls loadData when a childless directory is expanded", async () => {
+      const loadData = vi.fn().mockResolvedValue(undefined);
+      render(<Tree.DirectoryTree treeData={treeData} loadData={loadData} />);
+      fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+      // Awaited: the switcher's loading state clears when loadData settles,
+      // which is a state update after the click returns.
+      await waitFor(() => {
+        expect(loadData).toHaveBeenCalledWith(
+          expect.objectContaining({ key: "docs" }),
+        );
+      });
+    });
+
+    it("does not re-fetch a directory whose children are already loaded", () => {
+      const loadData = vi.fn().mockResolvedValue(undefined);
+      render(
+        <Tree.DirectoryTree
+          treeData={[
+            {
+              key: "docs",
+              title: "docs",
+              children: [{ key: "docs/a.pdf", title: "a.pdf", isLeaf: true }],
+            },
+          ]}
+          loadData={loadData}
+        />,
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+      expect(loadData).not.toHaveBeenCalled();
+    });
+
+    it("hides children until the directory is expanded", () => {
+      const nested = [
+        {
+          key: "docs",
+          title: "docs",
+          children: [{ key: "docs/a.pdf", title: "a.pdf", isLeaf: true }],
+        },
+      ];
+      render(<Tree.DirectoryTree treeData={nested} />);
+      expect(screen.queryByText("a.pdf")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+      expect(screen.getByText("a.pdf")).toBeInTheDocument();
+    });
+
+    it("honours controlled expandedKeys", () => {
+      const nested = [
+        {
+          key: "docs",
+          title: "docs",
+          children: [{ key: "docs/a.pdf", title: "a.pdf", isLeaf: true }],
+        },
+      ];
+      render(<Tree.DirectoryTree treeData={nested} expandedKeys={["docs"]} />);
+      expect(screen.getByText("a.pdf")).toBeInTheDocument();
+    });
+
+    /*
+     * FileExplorer passes `expandAction={false}` so that clicking a folder
+     * selects it as the destination without also opening it. If the row
+     * handler still toggled, choosing a folder would expand it every time.
+     */
+    it("expandAction={false} keeps a row click from expanding", () => {
+      const onExpand = vi.fn();
+      render(
+        <Tree.DirectoryTree
+          treeData={treeData}
+          expandAction={false}
+          onExpand={onExpand}
+        />,
+      );
+      fireEvent.click(screen.getByText("docs"));
+      expect(onExpand).not.toHaveBeenCalled();
+    });
+
+    // The switcher sits inside the clickable row; without stopPropagation the
+    // row handler fires too and (under the default expandAction) toggles back.
+    it("expands exactly once when the switcher is clicked", () => {
+      const onExpand = vi.fn();
+      render(<Tree.DirectoryTree treeData={treeData} onExpand={onExpand} />);
+      fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+      expect(onExpand).toHaveBeenCalledTimes(1);
+      expect(onExpand).toHaveBeenCalledWith(["docs"]);
+    });
+  });
+
+  describe("Steps", () => {
+    it("renders titles from the `items` data prop", () => {
+      render(
+        <Steps current={0} items={[{ title: "One" }, { title: "Two" }]} />,
+      );
+      expect(screen.getByText("One")).toBeInTheDocument();
+      expect(screen.getByText("Two")).toBeInTheDocument();
+    });
+
+    // CreateApiDeploymentFromPromptStudio uses `const { Step } = Steps`.
+    it("renders the legacy <Steps.Step> children form", () => {
+      render(
+        <Steps current={0}>
+          <Steps.Step title="Deployment Details" />
+          <Steps.Step title="Tool Settings" />
+        </Steps>,
+      );
+      expect(screen.getByText("Deployment Details")).toBeInTheDocument();
+      expect(screen.getByText("Tool Settings")).toBeInTheDocument();
+    });
+
+    // antd's token, not a DOM attribute — forwarding it warns and does nothing.
+    it("does not forward `size` to the DOM", () => {
+      const { container } = render(
+        <Steps current={0} size="small" items={[{ title: "One" }]} />,
+      );
+      expect(container.querySelector("ol")).not.toHaveAttribute("size");
+    });
+
+    /*
+     * The cloud Agentic Prompt Studio onboarding stepper is a navigation
+     * control: each step jumps to its tab. The shim dropped `onChange`, so
+     * every step rendered as inert text and the guide could not be used to
+     * navigate at all.
+     */
+    it("makes steps clickable when onChange is given", async () => {
+      const onChange = vi.fn();
+      render(
+        <Steps
+          current={1}
+          onChange={onChange}
+          items={[{ title: "One" }, { title: "Two" }, { title: "Three" }]}
+        />,
+      );
+
+      await userEvent.click(screen.getByRole("button", { name: /Three/ }));
+      expect(onChange).toHaveBeenCalledWith(2);
+    });
+
+    it("leaves steps inert when onChange is omitted", () => {
+      render(
+        <Steps current={0} items={[{ title: "One" }, { title: "Two" }]} />,
+      );
+      expect(screen.queryAllByRole("button")).toHaveLength(0);
+    });
+
+    it("keeps a disabled step unclickable", () => {
+      const onChange = vi.fn();
+      render(
+        <Steps
+          current={0}
+          onChange={onChange}
+          items={[{ title: "One" }, { title: "Two", disabled: true }]}
+        />,
+      );
+      expect(screen.getAllByRole("button")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: /One/ })).toBeInTheDocument();
+    });
+
+    /*
+     * The onboarding stepper passes an explicit status per item. Ignoring it
+     * left every completed step looking identical to the current one, so the
+     * guide gave no read on progress.
+     */
+    it("marks a finished step done and the current one active", () => {
+      render(
+        <Steps
+          current={1}
+          items={[
+            { title: "One", status: "finish" },
+            { title: "Two", status: "process" },
+            { title: "Three", status: "wait" },
+          ]}
+        />,
+      );
+
+      const [one, two, three] = screen.getAllByRole("listitem");
+      // finish renders a check rather than its number.
+      expect(within(one).queryByText("1")).not.toBeInTheDocument();
+      expect(within(two).getByText("2")).toBeInTheDocument();
+      expect(within(three).getByText("3")).toBeInTheDocument();
+      expect(
+        within(two).getByText("Two").closest("[aria-current]"),
+      ).toHaveAttribute("aria-current", "step");
+    });
+
+    it("derives status from `current` when items carry none", () => {
+      render(
+        <Steps current={1} items={[{ title: "One" }, { title: "Two" }]} />,
+      );
+      const [one, two] = screen.getAllByRole("listitem");
+      // index 0 < current ⇒ finish ⇒ check instead of "1".
+      expect(within(one).queryByText("1")).not.toBeInTheDocument();
+      expect(within(two).getByText("2")).toBeInTheDocument();
+    });
+
+    // The top-level `status` prop applies to the current step only.
+    it("applies the top-level status to the current step", () => {
+      render(
+        <Steps
+          current={1}
+          status="error"
+          items={[{ title: "One" }, { title: "Two" }]}
+        />,
+      );
+      const [, two] = screen.getAllByRole("listitem");
+      expect(within(two).queryByText("2")).not.toBeInTheDocument();
+      expect(within(two).getByText("Two")).toHaveClass("text-destructive");
+    });
+
+    it("renders item descriptions", () => {
+      render(
+        <Steps
+          current={0}
+          items={[{ title: "One", description: "Pick a doc" }]}
+        />,
+      );
+      expect(screen.getByText("Pick a doc")).toBeInTheDocument();
+    });
+
+    it("carries status and disabled through the <Steps.Step> children form", () => {
+      const onChange = vi.fn();
+      render(
+        <Steps current={1} onChange={onChange}>
+          <Steps.Step title="One" status="finish" />
+          <Steps.Step title="Two" disabled />
+        </Steps>,
+      );
+      expect(screen.getAllByRole("button")).toHaveLength(1);
+      expect(screen.getByRole("button", { name: /One/ })).toBeInTheDocument();
     });
   });
 });
