@@ -659,6 +659,23 @@ body {
   word-break: break-all;
 }
 
+/* Sonner's viewport is an ordinary body-level element, so the
+ * `pointer-events: none` Radix puts on <body> while a modal Dialog is open
+ * inherits straight into it and the toasts stop taking clicks — their own
+ * close buttons included. An open modal is exactly when error toasts pile up
+ * (a rejected form re-renders the dialog and toasts the backend error), so the
+ * stack has to stay operable through one. Same reasoning as
+ * `.notification-clear-all` below.
+ *
+ * `auto` here only restores sonner's own default; the <ol> is 0px tall
+ * (toasts inside it are absolutely positioned), so this adds no dead zone over
+ * the page. App.jsx wraps the toaster in a DismissableLayer.Branch so the
+ * clicks it regains are not read as "outside" and dismiss the dialog under it.
+ */
+[data-sonner-toaster] {
+  pointer-events: auto;
+}
+
 /* Sits in the band `<Toaster offset>` reserves above the toast stack (App.jsx);
  * the offset and this `top` are a pair. Sonner's viewport is z-index
  * 999999999, so this has to clear it to stay clickable. */

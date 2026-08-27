@@ -1,5 +1,6 @@
 import axios from "axios";
 import { ThemeProvider, useTheme } from "next-themes";
+import { DismissableLayer } from "radix-ui/internal";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
@@ -106,12 +107,21 @@ function App() {
           <PostHogPageviewTracker />
           <PageTitle title={"Unstract"} />
           {GoogleTagManagerHelper && <GoogleTagManagerHelper />}
-          {/* top-right matches where antd's notification stack used to
-              appear; sonner defaults to bottom-right (C4). The 56px offset
-              reserves a band above the stack for the "Clear all" control —
-              see `.notification-clear-all`, which pins itself into it. */}
-          <Toaster position="top-right" offset={56} closeButton richColors />
-          <NotificationClearAll />
+          {/* Branch, so the toast stack is exempt from outside-dismissal:
+              Radix would otherwise read a click on a toast as an interaction
+              outside whatever layer is open and close it — dismissing an error
+              toast would take the dialog that raised it, and the user's typed
+              input, with it. The matching half of the fix is the
+              `[data-sonner-toaster]` pointer-events rule in index.css, without
+              which those clicks never land at all. */}
+          <DismissableLayer.Branch>
+            {/* top-right matches where antd's notification stack used to
+                appear; sonner defaults to bottom-right (C4). The 56px offset
+                reserves a band above the stack for the "Clear all" control —
+                see `.notification-clear-all`, which pins itself into it. */}
+            <Toaster position="top-right" offset={56} closeButton richColors />
+            <NotificationClearAll />
+          </DismissableLayer.Branch>
           {/* Mounted once here so a confirm dialog outlives whatever opened
               it — Delete sits inside a dropdown that unmounts on click. */}
           <ConfirmHost />
