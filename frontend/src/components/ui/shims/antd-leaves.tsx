@@ -75,14 +75,21 @@ interface TagProps extends React.HTMLAttributes<HTMLDivElement> {
   bordered?: boolean;
 }
 
-interface SpinProps extends React.HTMLAttributes<HTMLSpanElement> {
+interface SpinProps extends React.HTMLAttributes<HTMLElement> {
   size?: "small" | "default" | "large";
   /** Caption rendered beside the spinner. */
   tip?: React.ReactNode;
+  /**
+   * Wrapper form only. antd defaults it to `true`, so `<Spin>{children}</Spin>`
+   * with no `spinning` shows the overlay.
+   */
+  spinning?: boolean;
 }
 
-interface AlertProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+interface AlertProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   message?: React.ReactNode;
   description?: React.ReactNode;
   type?: AlertType;
@@ -94,8 +101,10 @@ interface AlertProps
   action?: React.ReactNode;
 }
 
-interface ImageProps
-  extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, "width" | "height"> {
+interface ImageProps extends Omit<
+  React.ImgHTMLAttributes<HTMLImageElement>,
+  "width" | "height"
+> {
   width?: number | string;
   height?: number | string;
   /** antd opens a lightbox; accepted so call-sites keep compiling. */
@@ -113,8 +122,10 @@ interface EmptyProps extends React.HTMLAttributes<HTMLDivElement> {
   image?: React.ReactNode;
 }
 
-interface AvatarProps
-  extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
+interface AvatarProps extends Omit<
+  React.HTMLAttributes<HTMLSpanElement>,
+  "children"
+> {
   /** A token, or an explicit pixel size. */
   size?: "small" | "default" | "large" | number;
   shape?: "circle" | "square";
@@ -184,7 +195,18 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(function Tag(
     <Badge
       ref={ref}
       variant="secondary"
-      className={cn("ant-tag gap-1 border font-normal", className)}
+      /*
+       * `[&>svg]:size-3` sizes the `icon` prop. antd's icons were a font and
+       * inherited the tag's font-size; lucide ships SVGs that carry
+       * width/height 24, and index.css's inline-icon rule cannot reach them
+       * because Badge is `inline-flex` (that rule deliberately skips flex
+       * parents). Without this a `<Tag icon={…}>` renders a 24px glyph beside
+       * 12px text — e.g. the HITL reviewer chip in FetchSpecificModal.
+       */
+      className={cn(
+        "ant-tag gap-1 border font-normal [&>svg]:size-3",
+        className,
+      )}
       style={
         preset
           ? {
@@ -220,26 +242,77 @@ const Tag = React.forwardRef<HTMLDivElement, TagProps>(function Tag(
   );
 });
 
-/** antd `<Spin>`. Only the bare indicator form is used in this codebase. */
-const Spin = React.forwardRef<HTMLSpanElement, SpinProps>(function Spin(
-  { size, tip, className, ...props },
+/**
+ * antd `<Spin>`, in both of its forms.
+ *
+ * This shim used to handle only the bare indicator and said so in a comment.
+ * That was wrong: three plugins use the WRAPPER form,
+ * `<Spin spinning={loading}>{content}</Spin>`, and because the old body
+ * destructured `{size, tip, className, ...props}` and then supplied its own
+ * JSX children, `props.children` was silently discarded — the content it
+ * wrapped never rendered at all. FetchSpecificModal showed a permanently
+ * spinning dialog with no document list and no empty state; `spinning` also
+ * leaked onto the DOM as an unknown attribute. Hence the explicit `children`
+ * binding below, which is what makes the drop impossible to reintroduce.
+ *
+ * Class names follow antd's real structure: `ant-spin-nested-loading` on the
+ * outer box and `ant-spin-container` on the child that gets blurred. The old
+ * code put `ant-spin-container` on the bare indicator, which is neither
+ * antd's meaning nor something any stylesheet relied on.
+ */
+const Spin = React.forwardRef<HTMLElement, SpinProps>(function Spin(
+  { size, tip, spinning = true, className, children, ...props },
   ref,
 ) {
   const mapped = size === "large" ? "lg" : size === "small" ? "sm" : "default";
-  return (
-    <span
-      ref={ref}
-      className={cn(
-        "ant-spin-container inline-flex items-center gap-2",
-        className,
-      )}
-      {...props}
-    >
+  const indicator = (
+    <>
       <Spinner size={mapped} />
       {tip ? (
         <span className="text-sm text-muted-foreground">{tip}</span>
       ) : null}
-    </span>
+    </>
+  );
+
+  if (children === undefined) {
+    return (
+      <span
+        ref={ref as React.Ref<HTMLSpanElement>}
+        className={cn("inline-flex items-center gap-2", className)}
+        {...props}
+      >
+        {indicator}
+      </span>
+    );
+  }
+
+  return (
+    <div
+      ref={ref as React.Ref<HTMLDivElement>}
+      className={cn("ant-spin-nested-loading relative", className)}
+      {...props}
+    >
+      {spinning ? (
+        <span className="absolute inset-0 z-10 flex items-center justify-center gap-2">
+          {indicator}
+        </span>
+      ) : null}
+      {/*
+       * antd dims and freezes the wrapped content rather than unmounting it,
+       * so scroll position and focus survive a reload. `aria-busy` is what
+       * tells a screen reader the region is stale, since the spinner itself
+       * carries no text.
+       */}
+      <div
+        className={cn(
+          "ant-spin-container",
+          spinning && "pointer-events-none select-none opacity-50",
+        )}
+        aria-busy={spinning}
+      >
+        {children}
+      </div>
+    </div>
   );
 });
 

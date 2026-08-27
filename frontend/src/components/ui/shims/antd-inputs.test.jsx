@@ -139,6 +139,30 @@ describe("antd-compatible input shims (P3-03)", () => {
     expect(onSearch).toHaveBeenCalled();
   });
 
+  /*
+   * Search does not delegate to InputBase, so it needed its own `allowClear`
+   * binding — otherwise the prop reached the DOM and React warned on every
+   * render of the HITL queue search box.
+   */
+  it("Input.Search keeps allowClear off the DOM and clears through onChange", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { container } = render(
+      <Input.Search allowClear value="Amex" onChange={onChange} />,
+    );
+    expect(container.querySelector("[allowClear]")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ target: { value: "" } }),
+    );
+  });
+
+  it("Input.Search hides the clear button when there is nothing to clear", () => {
+    render(<Input.Search allowClear value="" onChange={() => {}} />);
+    expect(screen.queryByRole("button", { name: "Clear" })).toBeNull();
+  });
+
   // antd hands InputNumber a NUMBER, not an event.
   it("InputNumber calls onChange with a number, not an event", async () => {
     const user = userEvent.setup();

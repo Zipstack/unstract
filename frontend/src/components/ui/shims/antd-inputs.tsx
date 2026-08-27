@@ -4,6 +4,7 @@ import {
   Eye,
   EyeOff,
   Search as SearchIcon,
+  X,
 } from "lucide-react";
 import * as React from "react";
 
@@ -90,7 +91,8 @@ interface CountProps {
 }
 
 interface AntInputProps
-  extends Omit<
+  extends
+    Omit<
       React.InputHTMLAttributes<HTMLInputElement>,
       // `size` is a number on the DOM input and a token in antd; `prefix` is
       // the RDFa string attribute on HTMLAttributes and a ReactNode in antd.
@@ -113,8 +115,7 @@ interface AntInputProps
 }
 
 interface AntTextAreaProps
-  extends React.TextareaHTMLAttributes<HTMLTextAreaElement>,
-    CountProps {
+  extends React.TextareaHTMLAttributes<HTMLTextAreaElement>, CountProps {
   /** antd accepts `true` or a { minRows, maxRows } pair. */
   autoSize?: boolean | { minRows?: number; maxRows?: number };
   /** See AntInputProps.variant — EditableText drives prompt VALUES through this. */
@@ -127,19 +128,26 @@ interface AntTextAreaProps
   size?: "small" | "middle" | "large";
 }
 
-interface AntSearchProps
-  extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "size"> {
+interface AntSearchProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "size"
+> {
   /** Not forwarded to the DOM: the native `size` is a character count. */
   /** Fired on Enter, with the current input value. */
   onSearch?: (value: string) => void;
   size?: SizeToken;
+  /**
+   * As on AntInputProps. Declared here too because Search does not delegate to
+   * InputBase — without it `allowClear` reached the DOM and React warned on
+   * every render of the HITL queue search box.
+   */
+  allowClear?: boolean;
 }
 
-interface AntInputNumberProps
-  extends Omit<
-    React.InputHTMLAttributes<HTMLInputElement>,
-    "onChange" | "size"
-  > {
+interface AntInputNumberProps extends Omit<
+  React.InputHTMLAttributes<HTMLInputElement>,
+  "onChange" | "size"
+> {
   /** antd hands over the numeric VALUE, not the event; null when cleared. */
   onChange?: (value: number | null) => void;
   size?: SizeToken;
@@ -560,15 +568,22 @@ const Password = React.forwardRef<
   );
 });
 
-/** antd `<Input.Search onSearch />`. */
+/** antd `<Input.Search onSearch allowClear />`. */
 const Search = React.forwardRef<HTMLInputElement, AntSearchProps>(
-  function Search({ onSearch, className, size: _size, ...props }, ref) {
+  function Search(
+    { onSearch, allowClear, className, size: _size, ...props },
+    ref,
+  ) {
+    // antd only draws the clear affordance once there is something to clear.
+    const showClear =
+      allowClear && props.value !== undefined && props.value !== "";
+
     return (
       <div className="relative flex items-center">
         <SearchIcon className="absolute left-2 size-4 text-muted-foreground" />
         <ShadcnInput
           ref={ref}
-          className={cn("pl-8", className)}
+          className={cn("pl-8", showClear && "pr-8", className)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               onSearch?.((e.target as HTMLInputElement).value);
@@ -577,6 +592,26 @@ const Search = React.forwardRef<HTMLInputElement, AntSearchProps>(
           }}
           {...props}
         />
+        {showClear ? (
+          <button
+            type="button"
+            aria-label="Clear"
+            className="absolute right-2 cursor-pointer text-muted-foreground hover:text-foreground"
+            onClick={() =>
+              /*
+               * `{ target: { value: "" } }` is the ChangeEventLike shape the
+               * other controlled shims in this file emit — enough for a
+               * handler reading e.target.value, which is what antd call-sites
+               * do, without faking a whole SyntheticEvent.
+               */
+              props.onChange?.({
+                target: { value: "" },
+              } as React.ChangeEvent<HTMLInputElement>)
+            }
+          >
+            <X className="size-4" />
+          </button>
+        ) : null}
       </div>
     );
   },

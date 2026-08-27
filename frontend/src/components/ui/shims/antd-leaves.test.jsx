@@ -73,6 +73,48 @@ describe("antd-compatible leaf shims (P1-06)", () => {
     expect(screen.getByText("Loading data")).toBeInTheDocument();
   });
 
+  /*
+   * The wrapper form used to drop its children outright, which blanked the
+   * document list in FetchSpecificModal. Both spinning states are asserted:
+   * the content must survive either way, since antd dims it rather than
+   * unmounting it.
+   */
+  it("renders Spin's children in the wrapper form while spinning", () => {
+    render(
+      <Spin spinning={true}>
+        <div>Wrapped content</div>
+      </Spin>,
+    );
+    expect(screen.getByText("Wrapped content")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+  });
+
+  it("drops the indicator but keeps the children once spinning is false", () => {
+    render(
+      <Spin spinning={false}>
+        <div>Wrapped content</div>
+      </Spin>,
+    );
+    expect(screen.getByText("Wrapped content")).toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("keeps `spinning` off the DOM", () => {
+    const { container } = render(
+      <Spin spinning={false}>
+        <div>Wrapped content</div>
+      </Spin>,
+    );
+    expect(container.querySelector("[spinning]")).toBeNull();
+  });
+
+  it("sizes a Tag's icon down to the chip's text", () => {
+    const { container } = render(
+      <Tag icon={<svg data-testid="tag-icon" />}>Reviewer</Tag>,
+    );
+    expect(container.firstChild).toHaveClass("[&>svg]:size-3");
+  });
+
   it("renders Alert message and description", () => {
     render(<Alert message="Heads up" description="More detail" />);
     expect(screen.getByText("Heads up")).toBeInTheDocument();
