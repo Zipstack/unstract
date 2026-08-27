@@ -696,8 +696,8 @@ function ListItemMeta({
 /**
  * antd `<Layout>` and its slots.
  *
- * Two behaviours here are load-bearing, and both caused real breakage when
- * they were missing:
+ * Three behaviours here are load-bearing, and all three caused real breakage
+ * when they were missing:
  *
  * 1. `flex-auto` — antd's Layout is `flex: auto`, so a nested Layout grows to
  *    fill its parent. Without it the element computes `flex: 0 1 auto`, gets
@@ -709,6 +709,17 @@ function ListItemMeta({
  *    distinction matters: here the sider is rendered inside `<SideNavBar>`,
  *    so no amount of `React.Children` inspection can see it. A Sider therefore
  *    registers itself with the nearest Layout through context on mount.
+ *
+ * 3. `min-w-0` — the horizontal twin of the `min-h-0` beside it. A Layout is
+ *    itself a flex item, and a flex item's automatic minimum size is its
+ *    CONTENT's max-content width, so any page wide enough to overflow pushes
+ *    the Layout past its track instead of scrolling inside it. That is not a
+ *    few stray pixels: the agentic Prompt Studio nests percentage-width panes
+ *    (`.pd-left-panel { width: 50% }`) around a table the DataTable gives
+ *    `min-width: max-content` (antd `scroll={{ x: true }}`), and the two
+ *    resolve against each other until the shell measures ~500,000px wide.
+ *    Everything right of the viewport — the Export button, the PDF pane, five
+ *    of the six status columns — was rendered, just off-screen.
  */
 const SiderRegistryContext = React.createContext<(() => () => void) | null>(
   null,
@@ -730,7 +741,7 @@ const LayoutBase = React.forwardRef<HTMLDivElement, LayoutProps>(
         <div
           ref={ref}
           className={cn(
-            "flex min-h-0 flex-auto",
+            "flex min-h-0 min-w-0 flex-auto",
             isRow ? "flex-row" : "flex-col",
             className,
           )}
@@ -1150,7 +1161,12 @@ const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
               data-testid={testId ? `${testId}-option-${val}` : undefined}
               onClick={() => onChange?.(val)}
               className={cn(
-                "ant-segmented-item cursor-pointer rounded px-3 py-1 text-sm disabled:cursor-not-allowed",
+                // `whitespace-nowrap`: antd segments never wrap. Without it a
+                // two-word label breaks mid-control the moment the segmented
+                // sits in a tight row — the agentic Prompt Studio's document
+                // pane rendered "Raw Text" as "Raw" over "Text", stacking the
+                // whole toolbar to two lines.
+                "ant-segmented-item cursor-pointer whitespace-nowrap rounded px-3 py-1 text-sm disabled:cursor-not-allowed",
                 String(value) === String(val)
                   ? "bg-background shadow-sm"
                   : "text-muted-foreground",
