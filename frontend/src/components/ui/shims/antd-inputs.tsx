@@ -12,6 +12,7 @@ import { Input as ShadcnInput } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
@@ -216,14 +217,20 @@ interface AntSelectProps {
   popupRender?: (menu: React.ReactNode) => React.ReactNode;
   dropdownRender?: (menu: React.ReactNode) => React.ReactNode;
   /**
-   * antd's `tags` mode is a FREE-TEXT multi-value input: the user types a
-   * value, presses Enter, and it becomes a removable chip. Radix's Select is
-   * single-select over a fixed option list and cannot express this at all, so
-   * tags mode renders a dedicated chip editor instead (see TagsInput below).
-   * Custom Synonyms is the only call-site, and it was unusable without this:
-   * the dropdown opened with no options and no way to type.
+   * antd's `tags` mode is a multi-value input that is BOTH a chip editor and a
+   * picker: the user types a value and presses Enter, or takes one from the
+   * `options` dropdown, and either way it becomes a removable chip. Radix's
+   * Select is single-select over a fixed option list and cannot express this
+   * at all, so tags mode renders a dedicated control instead (see TagsInput
+   * below). Custom Synonyms was unusable without it — the dropdown opened
+   * with no options and no way to type.
    */
   mode?: "tags" | "multiple";
+  /**
+   * Caps how many entries `tags` mode accepts. The prompt card's Document Type
+   * and Filter Strategy pass 1 to mean "pick exactly one from the list".
+   */
+  maxCount?: number;
   variant?: string;
   /**
    * Forwarded to the TRIGGER, not to Radix's Root (which renders nothing).
@@ -621,6 +628,15 @@ const InputNumber = React.forwardRef<HTMLInputElement, AntInputNumberProps>(
  * rendered a trigger that opened an EMPTY dropdown with no text input, leaving
  * the feature unusable (a row could be added and its word typed, but never a
  * synonym). This is a purpose-built replacement rather than a Radix wrapper.
+ *
+ * antd's tags mode is a picker AS WELL as a text box — it still drops down its
+ * `options` — and several call-sites lean on the list rather than on free text.
+ * Configure Connector's "File types to process" is an enum the user is meant
+ * to choose from, and its ArrayField silently drops anything typed that the
+ * enum does not contain, so with the options hidden there was no way to fill
+ * the field in at all. Same reason for the border: a chip row with no chrome
+ * reads as static text rather than as a control, which is how that field and
+ * "Folders to process" both looked once `mode` reached here.
  */
 function TagsInput({
   value,
@@ -628,6 +644,13 @@ function TagsInput({
   placeholder,
   disabled,
   className,
+  style,
+  options,
+  filterOption,
+  optionFilterProp,
+  optionRender,
+  notFoundContent,
+  maxCount,
   "data-testid": testId,
 }: {
   value?: string[];
@@ -635,31 +658,73 @@ function TagsInput({
   placeholder?: React.ReactNode;
   disabled?: boolean;
   className?: string;
+  style?: React.CSSProperties;
+  options?: SelectOption[];
+  filterOption?: AntSelectProps["filterOption"];
+  optionFilterProp?: string;
+  optionRender?: (option: SelectOption) => React.ReactNode;
+  notFoundContent?: React.ReactNode;
+  maxCount?: number;
   "data-testid"?: string;
 }) {
   const [draft, setDraft] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const [active, setActive] = React.useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
   const tags = React.useMemo(
     () => (Array.isArray(value) ? value : value == null ? [] : [String(value)]),
     [value],
   );
 
-  const commit = () => {
-    const next = draft.trim();
+  const items = React.useMemo(
+    () => normaliseOptions(options, undefined),
+    [options],
+  );
+  /** antd stops accepting entries at `maxCount`; the prompt card uses it as "pick one". */
+  const full = maxCount != null && tags.length >= maxCount;
+  // Chosen options drop out of the list and the draft filters it, as antd does.
+  const visible = items.filter(
+    (o) =>
+      !tags.includes(String(o.value)) &&
+      matchesQuery(o, draft, filterOption, optionFilterProp),
+  );
+
+  const add = (next: string) => {
     // antd de-duplicates and ignores an empty entry.
-    if (next && !tags.includes(next)) {
-      onChange?.([...tags, next]);
+    if (!next || tags.includes(next) || full) {
+      return;
     }
-    setDraft("");
+    onChange?.([...tags, next]);
   };
 
-  return (
+  const commit = (entry: string) => {
+    add(entry);
+    setDraft("");
+    setActive(0);
+  };
+
+  const box = (
     <div
       data-testid={testId}
+      style={style}
       className={cn(
-        "flex min-h-8 flex-wrap items-center gap-1 rounded-md px-2 py-1",
-        disabled && "cursor-not-allowed opacity-50",
+        "ant-select-selector flex min-h-8 w-full flex-wrap items-center gap-1 rounded-md border border-input bg-transparent px-2 py-1 focus-within:ring-1 focus-within:ring-ring",
+        disabled ? "cursor-not-allowed opacity-50" : "cursor-text",
         className,
       )}
+      // antd puts the caret in the box wherever inside it the user clicks; the
+      // guard is so a click ON the input keeps the caret where it was put.
+      onMouseDown={(event) => {
+        if (disabled || event.target === inputRef.current) {
+          return;
+        }
+        event.preventDefault();
+        inputRef.current?.focus();
+        if (items.length) {
+          setOpen(true);
+        }
+      }}
     >
       {tags.map((tag) => (
         <span
@@ -680,25 +745,117 @@ function TagsInput({
         </span>
       ))}
       <input
+        ref={inputRef}
         type="text"
         className="min-w-24 flex-1 bg-transparent text-sm outline-none"
         placeholder={tags.length ? undefined : (placeholder as string)}
         value={draft}
         disabled={disabled}
-        onChange={(e) => setDraft(e.target.value)}
+        onFocus={() => items.length && setOpen(true)}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setActive(0);
+          if (items.length) {
+            setOpen(true);
+          }
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === ",") {
             // Enter would otherwise submit the surrounding antd Form.
             e.preventDefault();
-            commit();
+            // With the list open Enter takes the highlighted option, as antd
+            // does; otherwise it commits whatever has been typed.
+            commit(
+              open && visible[active]
+                ? String(visible[active].value)
+                : draft.trim(),
+            );
+          } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            if (!items.length) {
+              return;
+            }
+            e.preventDefault();
+            if (!open) {
+              setOpen(true);
+              return;
+            }
+            if (visible.length) {
+              const step = e.key === "ArrowDown" ? 1 : -1;
+              setActive((i) => (i + step + visible.length) % visible.length);
+            }
+          } else if (e.key === "Escape" && open) {
+            e.preventDefault();
+            /*
+             * Radix listens for Escape on the document, so both this popup and
+             * the modal these fields sit in would dismiss on one press. Closing
+             * the popup here and stopping the key at the React root leaves the
+             * modal open, which is what antd does.
+             */
+            e.stopPropagation();
+            setOpen(false);
           } else if (e.key === "Backspace" && !draft && tags.length) {
             onChange?.(tags.slice(0, -1));
           }
         }}
         // antd also commits the pending entry when focus leaves.
-        onBlur={commit}
+        onBlur={() => commit(draft.trim())}
       />
+      {items.length > 0 && (
+        <ChevronDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
+      )}
     </div>
+  );
+
+  // Free-text-only call-sites (Custom Synonyms, the table headers) have no
+  // list to show, and antd renders no dropdown for them either.
+  if (!items.length) {
+    return box;
+  }
+
+  return (
+    <Popover open={open && !disabled} onOpenChange={setOpen}>
+      <PopoverAnchor asChild>{box}</PopoverAnchor>
+      <PopoverContent
+        align="start"
+        className={cn(
+          selectContentClassName,
+          "w-[var(--radix-popover-trigger-width)] max-h-[min(16rem,var(--radix-popover-content-available-height))] overflow-y-auto p-1",
+        )}
+        // The caret belongs in the box — this popup is typed INTO, not tabbed
+        // to, and pulling focus out of the input would commit the draft.
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <div role="listbox" aria-multiselectable="true">
+          {visible.length === 0 ? (
+            <div className="px-2 py-1.5 text-sm text-muted-foreground">
+              {notFoundContent ?? "No data"}
+            </div>
+          ) : (
+            visible.map((o, i) => (
+              <div
+                key={String(o.value)}
+                role="option"
+                aria-selected={false}
+                aria-disabled={o.disabled || full || undefined}
+                className={cn(
+                  selectItemClassName,
+                  i === active && "bg-accent text-accent-foreground",
+                  (o.disabled || full) && "pointer-events-none opacity-50",
+                )}
+                onPointerMove={() => setActive(i)}
+                // Keep the caret in the box: blurring the input would commit
+                // the draft as a tag of its own before this click landed.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => commit(String(o.value))}
+              >
+                {optionRender ? optionRender(o.data) : o.display}
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
@@ -1092,6 +1249,7 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
       popupRender,
       dropdownRender,
       mode,
+      maxCount,
       // antd styling prop; consumed so it cannot land on the DOM
       variant,
       size,
@@ -1116,10 +1274,9 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
      * ONLY `tags`. antd's `multiple` is a fixed-option multi-select over
      * `options` with NO free text, and the two call-sites that use it
      * (GroupMemberManager, FileHistoryModal) pick from a known list — routing
-     * them here would replace a picker with an arbitrary-text box and hide
-     * the options entirely. They still need a real multi-select; until that
-     * exists they keep the single-select fallback below, which at least shows
-     * the options.
+     * them here would let a member or a file name be invented by typing one.
+     * They keep the single-select fallback below, which at least shows the
+     * options, until a mode that suppresses the free text exists.
      */
     if (mode === "tags") {
       return (
@@ -1131,6 +1288,13 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
           placeholder={placeholder}
           disabled={disabled}
           className={className}
+          style={style}
+          options={options}
+          filterOption={filterOption}
+          optionFilterProp={optionFilterProp}
+          optionRender={optionRender}
+          notFoundContent={notFoundContent}
+          maxCount={maxCount}
           data-testid={testId}
         />
       );

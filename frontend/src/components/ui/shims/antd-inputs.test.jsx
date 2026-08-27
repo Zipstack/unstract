@@ -355,6 +355,108 @@ describe("antd-compatible input shims (P3-03)", () => {
     });
 
     /*
+     * antd's tags mode drops down its `options` as well as taking free text,
+     * and Configure Connector's "File types to process" is an enum the user is
+     * meant to PICK from — its ArrayField drops anything typed that the enum
+     * does not contain, so with the list hidden the field could not be filled
+     * in at all. It rendered as bare text, which is also why the box is drawn
+     * with the same border as a Select trigger.
+     */
+    it("drops down the options and adds the chosen one as a chip", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="tags"
+          value={[]}
+          onChange={onChange}
+          options={[{ value: "pdf" }, { value: "txt" }]}
+          placeholder="Please select"
+        />,
+      );
+      await user.click(screen.getByPlaceholderText("Please select"));
+      await user.click(screen.getByRole("option", { name: "pdf" }));
+      expect(onChange).toHaveBeenCalledWith(["pdf"]);
+    });
+
+    it("filters the options by what has been typed", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          mode="tags"
+          value={[]}
+          onChange={vi.fn()}
+          options={[{ value: "pdf" }, { value: "txt" }]}
+        />,
+      );
+      await user.type(screen.getByRole("textbox"), "pd");
+      expect(screen.getByRole("option", { name: "pdf" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "txt" })).toBeNull();
+    });
+
+    it("hides options that are already chosen", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          mode="tags"
+          value={["pdf"]}
+          onChange={vi.fn()}
+          options={[{ value: "pdf" }, { value: "txt" }]}
+        />,
+      );
+      await user.click(screen.getByRole("textbox"));
+      expect(screen.getByRole("option", { name: "txt" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "pdf" })).toBeNull();
+    });
+
+    /*
+     * Picking an option blurs the input, and the blur handler commits whatever
+     * is in the box — so a filtered pick used to add the typed fragment as a
+     * tag of its own alongside the option.
+     */
+    it("does not also commit the typed fragment when an option is picked", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="tags"
+          value={[]}
+          onChange={onChange}
+          options={[{ value: "pdf" }, { value: "txt" }]}
+        />,
+      );
+      await user.type(screen.getByRole("textbox"), "pd");
+      await user.click(screen.getByRole("option", { name: "pdf" }));
+      expect(onChange).toHaveBeenCalledTimes(1);
+      expect(onChange).toHaveBeenCalledWith(["pdf"]);
+    });
+
+    /* The prompt card's Document Type passes `maxCount={1}` for "pick one". */
+    it("stops accepting entries once maxCount is reached", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="tags"
+          value={["pdf"]}
+          onChange={onChange}
+          options={[{ value: "pdf" }, { value: "txt" }]}
+          maxCount={1}
+        />,
+      );
+      await user.type(screen.getByRole("textbox"), "txt{enter}");
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    /* No options means no list to open — Custom Synonyms is free text only. */
+    it("renders no dropdown when the call-site supplies no options", async () => {
+      const user = userEvent.setup();
+      render(<Select mode="tags" value={[]} onChange={vi.fn()} />);
+      await user.click(screen.getByRole("textbox"));
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
+
+    /*
      * antd's `multiple` is a FIXED-OPTION multi-select with no free text.
      * GroupMemberManager and FileHistoryModal use it to pick from a known
      * list, so routing it to the tag editor would replace a picker with an
