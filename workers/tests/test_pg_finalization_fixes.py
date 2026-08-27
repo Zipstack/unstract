@@ -117,6 +117,57 @@ class TestRecoverStuckClientResponseShape:
 
 
 _RECOVERY_ENV = "WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED"
+_RECOVERY_SECONDS_ENV = "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS"
+
+
+class TestStuckRecoveryWindowDefault:
+    """The window must be a DEFAULT, not something an operator sets.
+
+    It used to inherit the barrier stuck-timeout (~2.5 h), which answers a different
+    question: that one bounds how long a batch may make no progress, where a single
+    file legitimately can take hours. This one only needs to outlast a callback that
+    is about to fire — seconds.
+
+    The threshold is not what makes recovery safe; the endpoint skips unless EVERY
+    file is terminal, so a running execution is never a candidate however short this
+    is. Inheriting hours therefore bought nothing and left a stranded execution dead
+    for ~2.5 h — the common shape being a Celery run whose callback worker was removed
+    by a deploy (300 s grace, against file-processing's 7200 s).
+
+    Pinned as a default because production and on-prem have **no operator and no
+    Flipt**: a value that only exists as an env override is one those environments
+    never receive, and they are precisely the ones that cannot diagnose a hung
+    execution themselves.
+    """
+
+    def _seconds(self, monkeypatch, value=None):
+        from queue_backend.pg_queue import reaper as R
+
+        monkeypatch.delenv(_RECOVERY_SECONDS_ENV, raising=False)
+        if value is not None:
+            monkeypatch.setenv(_RECOVERY_SECONDS_ENV, value)
+        return R._positive_duration_from_env(
+            _RECOVERY_SECONDS_ENV, R._DEFAULT_STUCK_RECOVERY_SECONDS, int
+        )
+
+    def test_default_is_ten_minutes(self, monkeypatch):
+        assert self._seconds(monkeypatch) == 600
+
+    def test_default_is_NOT_the_barrier_stuck_timeout(self, monkeypatch):
+        """The regression this replaces. Any multi-hour value here means a stranded
+        execution stays dead for hours in an environment with nobody to notice."""
+        assert self._seconds(monkeypatch) < 3600
+
+    def test_env_still_overrides_for_tuning(self, monkeypatch):
+        assert self._seconds(monkeypatch, "120") == 120
+
+    def test_a_nonsense_value_raises_rather_than_silently_defaulting(self, monkeypatch):
+        """Loud-on-misconfig, matching the other duration knobs: silently falling back
+        would hide a typo'd ConfigMap behind behaviour that looks deliberate."""
+        import pytest
+
+        with pytest.raises(ValueError):
+            self._seconds(monkeypatch, "not-a-number")
 
 
 class TestStuckRecoveryDefaultOn:
