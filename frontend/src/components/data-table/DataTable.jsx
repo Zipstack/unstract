@@ -219,8 +219,21 @@ function DataTable({
   bordered = false,
   className,
   emptyText = "No data",
+  /**
+   * antd's `locale={{ emptyText }}` — the spelling six call-sites actually use.
+   *
+   * Declared for the same reason as `onRow`, `showHeader`, `scroll` and
+   * `bordered` above, and it failed both ways at once: the custom empty state
+   * was silently replaced by the bare "No data" default, AND the object landed
+   * on the wrapper <div> as `locale="[object Object]"`. The agentic Prompt
+   * Studio's status table is the visible casualty — a project with no
+   * documents showed an empty box where "No documents in this project yet …
+   * click Manage Documents to upload PDFs" should be.
+   */
+  locale,
   ...props
 }) {
+  const empty = locale?.emptyText ?? emptyText;
   const [sorting, setSorting] = React.useState([]);
   const [selection, setSelection] = React.useState({});
 
@@ -503,10 +516,10 @@ function DataTable({
                    * empty state. A caller that passes its own node (an
                    * <Empty> with a custom image, say) still gets it as-is.
                    */}
-                  {typeof emptyText === "string" ? (
-                    <Empty description={emptyText} />
+                  {typeof empty === "string" ? (
+                    <Empty description={empty} />
                   ) : (
-                    emptyText
+                    empty
                   )}
                 </TableCell>
               </TableRow>
