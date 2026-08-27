@@ -1,19 +1,15 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DatePicker } from "@/components/ui/shims/antd-datetime";
-import { Form } from "@/components/ui/shims/antd-form";
-import { Input, Radio, Select } from "@/components/ui/shims/antd-inputs";
-import { Collapse, Dropdown, Modal } from "@/components/ui/shims/antd-overlays";
-import {
-  Card,
-  Layout,
-  List,
-  Skeleton,
-  Table,
-  Tabs,
-} from "@/components/ui/shims/antd-structure";
-import { Typography } from "@/components/ui/shims/antd-typography";
+import * as antdButton from "@/components/ui/shims/antd-button";
+import * as antdDatetime from "@/components/ui/shims/antd-datetime";
+import * as antdForm from "@/components/ui/shims/antd-form";
+import * as antdInputs from "@/components/ui/shims/antd-inputs";
+import * as antdLayout from "@/components/ui/shims/antd-layout";
+import * as antdLeaves from "@/components/ui/shims/antd-leaves";
+import * as antdOverlays from "@/components/ui/shims/antd-overlays";
+import * as antdStructure from "@/components/ui/shims/antd-structure";
+import * as antdTypography from "@/components/ui/shims/antd-typography";
 
 /**
  * Guard against the failure mode that took down Prompt Studio in the dev
@@ -26,23 +22,29 @@ import { Typography } from "@/components/ui/shims/antd-typography";
  * asserts the shims actually expose it.
  */
 
-const SHIMS = {
-  Card,
-  Collapse,
-  Dropdown,
-  Modal,
-  DatePicker,
-  Form,
-  Input,
-  Layout,
-  List,
-  Radio,
-  Select,
-  Skeleton,
-  Table,
-  Tabs,
-  Typography,
-};
+/*
+ * Built from every shim module's exports rather than hand-listed. The listed
+ * form is opt-in coverage, and what it omits it omits silently: `Tree` and
+ * `Steps` were both missing, so `<Tree.DirectoryTree>` — undefined, and the
+ * whole Configure Connector modal throwing #130 the moment a connector was
+ * picked — passed this guard. Adding a shim component must not also require
+ * remembering to add it here.
+ */
+const SHIMS = Object.fromEntries(
+  [
+    antdButton,
+    antdDatetime,
+    antdForm,
+    antdInputs,
+    antdLayout,
+    antdLeaves,
+    antdOverlays,
+    antdStructure,
+    antdTypography,
+  ].flatMap((mod) =>
+    Object.entries(mod).filter(([name]) => /^[A-Z]/.test(name)),
+  ),
+);
 
 /** Every `<Foo.Bar …>` in the app source, excluding the shims themselves. */
 function collectSubComponentUsages() {
@@ -102,6 +104,23 @@ function collectSubComponentUsages() {
       // on click rather than at render, so they are just as fatal.
       for (const m of src.matchAll(/\b([A-Z]\w+)\.(\w+)\s*\(/g)) {
         found.add(`${m[1]}.${m[2]}`);
+      }
+      /*
+       * `const { Bar } = Foo;` — the form antd's own docs use, and the one
+       * that hid the DirectoryTree break: FileSystem.jsx lifts the static out
+       * at module scope and renders a bare `<DirectoryTree>`, so neither
+       * pattern above ever sees a `Tree.` prefix to check. It read as covered
+       * because `<Tabs.TabPane>` happens to appear inline somewhere else.
+       */
+      for (const m of src.matchAll(
+        /const\s*\{([^}]*)\}\s*=\s*([A-Z]\w+)\s*;/g,
+      )) {
+        for (const part of m[1].split(",")) {
+          const key = part.split(/[:=]/)[0].trim();
+          if (key) {
+            found.add(`${m[2]}.${key}`);
+          }
+        }
       }
     }
   };
