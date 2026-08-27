@@ -8,6 +8,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Result } from "@/components/ui/shims/antd-structure";
 
+import "@react-pdf-viewer/core/lib/styles/index.css";
+import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
 import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
