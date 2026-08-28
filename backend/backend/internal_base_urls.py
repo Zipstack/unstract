@@ -246,6 +246,12 @@ urlpatterns = [
         include("api_v2.internal_urls"),
         name="api_deployments_internal",
     ),
+    # Agent-KV stage-report and finalize APIs for the cloud executor
+    path(
+        "v1/agent-kv/",
+        include("agent_kv.internal_urls"),
+        name="agent_kv_internal",
+    ),
     # Platform configuration and settings APIs
     path(
         "v1/platform-settings/",
