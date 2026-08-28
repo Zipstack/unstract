@@ -1411,6 +1411,21 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
         value={toValue(value)}
         defaultValue={toValue(defaultValue)}
         onValueChange={(v) => {
+          /*
+           * Radix reserves "" and rejects a `SelectItem` carrying it, so this
+           * can never be a user selection — it is Radix announcing its own
+           * uncontrolled-to-controlled switch. `toValue` maps antd's "nothing
+           * selected" to undefined, which leaves Radix uncontrolled until a
+           * real value arrives; forwarding the "" it then emits wrote that
+           * emptiness straight back over the value that had just landed.
+           *
+           * Prompt Studio's Limit-to Section blanked out on every edit for
+           * exactly this: the profile's "Default" reached the field and was
+           * wiped in the same tick.
+           */
+          if (v === "") {
+            return;
+          }
           const match = items.find((o) => String(o.value) === v);
           onChange?.(...toChangeArgs(match, v, labelInValue));
         }}
