@@ -42,6 +42,7 @@ test-rig = [
 ]
 
 [tool.uv.sources]
+unstract-agent-kv-schema = { path = "./unstract/agent-kv-schema", editable = true }
 unstract-filesystem = { path = "./unstract/filesystem", editable = true }
 unstract-workflow-execution = { path = "./unstract/workflow-execution", editable = true }
 unstract-tool-sandbox = { path = "./unstract/tool-sandbox", editable = true }

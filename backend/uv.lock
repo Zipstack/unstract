@@ -3689,6 +3689,11 @@ wheels = [
 ]
 
 [[package]]
+name = "unstract-agent-kv-schema"
+version = "0.1.0"
+source = { editable = "../unstract/agent-kv-schema" }
+
+[[package]]
 name = "unstract-backend"
 version = "0.0.1"
 source = { virtual = "." }
@@ -3721,6 +3726,7 @@ dependencies = [
     { name = "social-auth-app-django" },
     { name = "social-auth-core" },
     { name = "stripe" },
+    { name = "unstract-agent-kv-schema" },
     { name = "unstract-connectors" },
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
@@ -3788,6 +3794,7 @@ requires-dist = [
     { name = "social-auth-app-django", specifier = "==5.3.0" },
     { name = "social-auth-core", specifier = "==4.4.2" },
     { name = "stripe", specifier = ">=12.5.1" },
+    { name = "unstract-agent-kv-schema", editable = "../unstract/agent-kv-schema" },
     { name = "unstract-connectors", editable = "../unstract/connectors" },
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },

@@ -40,6 +40,7 @@ dependencies = [
     "django-filter>=24.3",
     "httpx>=0.27.0",
     # Hence required to add all indirect local dependencies too here.
+    "unstract-agent-kv-schema",
     "unstract-connectors",
     "unstract-core",
     "unstract-filesystem",
@@ -88,6 +89,7 @@ deploy = [
 ]
 
 [tool.uv.sources]
+unstract-agent-kv-schema = { path = "../unstract/agent-kv-schema", editable = true }
 unstract-connectors = { path = "../unstract/connectors", editable = true }
 unstract-core = { path = "../unstract/core", editable = true }
 unstract-filesystem = { path = "../unstract/filesystem", editable = true }

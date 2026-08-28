@@ -1,0 +1,13 @@
+[project]
+name = "unstract-agent-kv-schema"
+version = "0.1.0"
+description = "Agent-KV keys.json schema compiler — single source of truth for API validation and the extraction engine"
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unstract"]
