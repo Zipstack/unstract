@@ -1,0 +1,49 @@
+"""Object-store staging/results for agent-kv (spec §5.4, §6.4).
+
+Paths are the contract: org/{org_id}/agent_kv/{job_id}/input{ext} and
+.../result.json. No document bytes ever ride the broker.
+"""
+
+import logging
+import os
+
+from unstract.filesystem import FileStorageType, FileSystem
+
+logger = logging.getLogger(__name__)
+
+
+def _fs():
+    return FileSystem(FileStorageType.AGENT_KV).get_file_storage()
+
+
+def _base(org_id: str, job_id: str) -> str:
+    return f"org/{org_id}/agent_kv/{job_id}"
+
+
+def stage_input(org_id: str, job_id: str, uploaded_file) -> str:
+    ext = os.path.splitext(uploaded_file.name or "")[1].lower() or ".bin"
+    ref = f"{_base(org_id, job_id)}/input{ext}"
+    data = b"".join(chunk for chunk in uploaded_file.chunks())
+    _fs().write(path=ref, mode="wb", data=data)
+    return ref
+
+
+def write_result(org_id: str, job_id: str, result: dict) -> str:
+    ref = f"{_base(org_id, job_id)}/result.json"
+    _fs().json_dump(path=ref, data=result)
+    return ref
+
+
+def read_result(result_ref: str) -> dict:
+    return _fs().json_load(path=result_ref)
+
+
+def delete_job_files(job) -> None:
+    fh = _fs()
+    for ref in (job.input_ref, job.result_ref):
+        if not ref:
+            continue
+        try:
+            fh.rm(path=ref)
+        except Exception:
+            logger.warning("agent-kv cleanup: could not remove %s", ref)
