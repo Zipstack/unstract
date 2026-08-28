@@ -70,6 +70,9 @@ class WorkerRegistry:
         ),
         WorkerType.IDE_CALLBACK: WorkerQueueConfig(
             primary_queue=QueueName.IDE_CALLBACK,
+            # Agent-KV terminal callbacks (agent_kv_complete/agent_kv_error)
+            # ride the same worker on their own dedicated queue (spec §5.3).
+            additional_queues=[QueueName.AGENT_KV_CALLBACK],
         ),
     }
 
@@ -156,6 +159,8 @@ class WorkerRegistry:
                 TaskRoute("ide_prompt_complete", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_prompt_error", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
+                TaskRoute("agent_kv_complete", QueueName.AGENT_KV_CALLBACK),
+                TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
             ],
         ),
     }

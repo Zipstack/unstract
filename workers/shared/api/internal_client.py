@@ -1614,6 +1614,47 @@ class InternalAPIClient(CachedAPIClientMixin):
                 error=str(e),
             )
 
+    # Agent-KV client methods (spec §5.3/§5.4)
+    def agent_kv_finalize(
+        self,
+        job_id: str,
+        org_id: str,
+        success: bool,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+        usage_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Terminalize an Agent-KV job via the internal finalize endpoint (Task 11).
+
+        Idempotent server-side: a job already in a terminal state short-circuits
+        to ``{"finalized": False, ...}`` instead of rewriting its result.
+
+        Args:
+            job_id: Agent-KV job ID.
+            org_id: Organization ID (required by the endpoint's body, not the
+                URL — mirrors ``StageReportView``/``FinalizeView``).
+            success: Whether the executor run succeeded. Must be a real bool —
+                the endpoint 400s on a non-bool value.
+            result: Engine result to persist as the job's output (success only).
+            error: Failure reason to persist (failure only).
+            usage_summary: Optional usage/cost summary to persist (success only).
+
+        Returns:
+            Backend response: ``{"finalized": bool, "webhook_url": str, "status": str}``.
+        """
+        payload: dict[str, Any] = {"org_id": org_id, "success": success}
+        if success:
+            payload["result"] = result or {}
+            if usage_summary is not None:
+                payload["usage_summary"] = usage_summary
+        else:
+            payload["error"] = error
+        return self.post(
+            f"v1/agent-kv/jobs/{job_id}/finalize/",
+            data=payload,
+            organization_id=org_id,
+        )
+
     # Usage client methods (delegate to UsageAPIClient)
     def get_aggregated_token_count(
         self, file_execution_id: str, organization_id: str | None = None

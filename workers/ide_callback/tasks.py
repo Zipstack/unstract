@@ -688,3 +688,19 @@ def extraction_error(
                 source,
                 file_id,
             )
+
+
+# ------------------------------------------------------------------
+# Agent-KV terminal callbacks (spec §5.3)
+#
+# ``workers/worker.py``'s ``load_worker_tasks()`` registers this worker
+# type's tasks by loading THIS file directly (by path, under the bare
+# module name ``"tasks"``) rather than importing the ``ide_callback``
+# package -- so ``agent_kv_complete``/``agent_kv_error`` only bind to the
+# Celery app if something imports them as a side effect of importing this
+# module. Import at the bottom (not the top) to avoid a circular import:
+# ``agent_kv_tasks`` doesn't currently import back from here, but keeping
+# task-module imports last matches this file's own load-bearing position
+# in the worker boot sequence.
+# ------------------------------------------------------------------
+from ide_callback import agent_kv_tasks  # noqa: E402, F401
