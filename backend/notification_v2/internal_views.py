@@ -6,6 +6,7 @@ import logging
 import uuid
 from typing import Any
 
+import requests
 from celery import current_app as celery_app
 from celery.result import AsyncResult
 from django.utils import timezone
@@ -346,8 +347,6 @@ class WebhookTestAPIView(APIView):
                     {"error": "URL must resolve to a public address."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
-            import requests
 
             try:
                 response = requests.post(

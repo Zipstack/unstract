@@ -229,6 +229,8 @@ def test_normalization_agrees_with_the_transport(host):
         "https://0177.0.0.1/hook",  # octal dotted
         "https://127.1/hook",  # short form
         "https://localhost/hook",  # RFC 6761, no lookup needed
+        "https://api.localhost/hook",  # RFC 6761 reserves the whole subtree
+        "https://DB.LocalHost/hook",  # case-insensitive after normalization
     ],
 )
 def test_legacy_loopback_encodings_are_refused_without_dns(url):

@@ -194,7 +194,7 @@ def webhook_url_refusal(
         # hostname is accepted here and caught at the sink.
         if literal is not None and not _is_public(str(literal)):
             return REFUSED_INTERNAL_LITERAL
-        if host in _LOOPBACK_NAMES:
+        if host in _LOOPBACK_NAMES or host.endswith(".localhost"):
             return REFUSED_INTERNAL_LITERAL
         return None
 
