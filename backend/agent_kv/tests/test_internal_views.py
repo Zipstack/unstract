@@ -376,6 +376,36 @@ def test_finalize_success_writes_result_then_marks_terminal(
     )
 
 
+# (7b) finalize success deletes the staged input and blanks input_ref (spec
+# D10: "uploaded document deleted on job completion") -- the result file
+# itself is untouched by this.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_deletes_input_and_blanks_ref(
+    m_jobs, m_write, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_delete_input.assert_called_once_with(job)
+    m_jobs.filter.return_value.update.assert_called_once_with(input_ref="")
+
+
 # (8) duplicate finalize: the job is already terminal (guard excludes it),
 # so this is a no-op -- finalized:false and the result is NOT rewritten.
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
@@ -403,6 +433,33 @@ def test_finalize_duplicate_does_not_rewrite_result(
     assert not m_mark_terminal.called
 
 
+# (8b) duplicate finalize (guard-lost) never calls delete_input either --
+# either another writer already owns cleanup, or there's nothing new to
+# terminalize.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_duplicate_does_not_call_delete_input(
+    m_jobs, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.COMPLETED,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    assert not m_delete_input.called
+    assert not m_jobs.filter.return_value.update.called
+
+
 # (9) finalize failure records the error via mark_terminal(FAILED, ...).
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "mark_terminal")
@@ -428,6 +485,33 @@ def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_rele
     m_mark_terminal.assert_called_once_with(
         job_id, "org1", JobStatus.FAILED, error="LLM provider timed out"
     )
+
+
+# (9b) finalize failure also deletes the staged input and blanks input_ref
+# -- the run is over whether it completed or failed.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "delete_input")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_failure_deletes_input_and_blanks_ref(
+    m_jobs, m_delete_input, m_mark_terminal, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.RUNNING,
+        webhook_url="",
+        input_ref="org/o/agent_kv/j/input.pdf",
+    )
+    m_jobs.filter.return_value.first.return_value = job
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_delete_input.assert_called_once_with(job)
+    m_jobs.filter.return_value.update.assert_called_once_with(input_ref="")
 
 
 # (10) the concurrency slot is released on every finalize path -- including

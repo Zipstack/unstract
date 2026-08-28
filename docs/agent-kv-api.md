@@ -393,12 +393,29 @@ never read) live in `workers/shared/utils/webhook_notify.py::send_webhook`.
 
 ## 10. Retention and TTL
 
+- **Input deletion is completion-triggered, not TTL-based** (spec D10: "uploaded
+  document deleted on job completion"). `FinalizeView.post`
+  (`backend/agent_kv/internal_views.py`) deletes the staged input file and blanks
+  `input_ref` the instant a finalize call actually wins the terminal-state guard (the
+  job just became `COMPLETED` or `FAILED`), via `storage.delete_input` — which only
+  ever touches `input_ref`, never `result_ref`/the result file. A duplicate/late
+  finalize call (guard already lost, since the job is already terminal) never deletes
+  anything: either the winning call already did, or the job reached terminal some
+  other way (see next bullet).
+- **Cancelled jobs' inputs intentionally ride TTL instead.** `JobCancelView` marks a
+  job `CANCELLED` directly via `AgentKVJob.mark_terminal`, not through `FinalizeView`
+  — so cancellation never triggers the completion-time delete above. A late finalize
+  call against an already-`CANCELLED` job also no-ops (it loses the terminal guard,
+  same as any duplicate). A cancelled job's staged input is therefore cleaned up the
+  ordinary way: by the TTL sweep once `expires_at` passes, or by an explicit
+  `DELETE /agent-kv/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
-  engineering default) — results (and the residual staged input, if any) are
-  re-readable until then, then swept by the internal `ttl-cleanup` endpoint
-  ([§12](#12-deploy-checklist)). Both `input_ref` and `result_ref` are blanked
-  together at cleanup; the job row itself is never deleted (audit trail persists past
-  TTL, only the object-store payloads are dropped).
+  engineering default) — results are re-readable until then, then swept by the
+  internal `ttl-cleanup` endpoint ([§12](#12-deploy-checklist)), which blanks
+  `result_ref` (and `input_ref` too, covering the cancelled-job case above, or
+  defensively for any input that somehow outlives completion). The job row itself is
+  never deleted (audit trail persists past TTL, only the object-store payloads are
+  dropped).
 - **`expires_at` is stamped at submit time**, not at completion —
   `SubmitView.post` sets `expires_at = timezone.now() + timedelta(days=AGENT_KV_RESULT_TTL_DAYS)`
   before dispatch even runs. **This is a real divergence from spec D10's framing**
@@ -406,16 +423,6 @@ never read) live in `workers/shared/utils/webhook_notify.py::send_webhook`.
   its `timeout` ceiling, the effective post-completion retention window is slightly
   under the full 7 days. Documented here as shipped behavior, not silently
   reconciled — flagged for anyone tightening D10 later.
-- **Spec D10 also says "uploaded document deleted on job completion."** The shipped
-  code does **not** delete `input_ref` at completion — `FinalizeView`
-  (`backend/agent_kv/internal_views.py`) never touches `input_ref` at all. The staged
-  input is deleted only by an explicit `DELETE /agent-kv/{job_id}` call or by the TTL
-  sweep once `expires_at` passes — i.e., **the input persists for up to the full
-  retention window**, same as the result, not deleted early on completion. This is the
-  single largest doc-vs-spec drift found while writing this document; it is recorded
-  here as "document the code" per this task's brief, not fixed (out of scope for a
-  docs-only task) — worth a follow-up ticket if the early-deletion behavior in D10 is a
-  hard requirement.
 
 ## 11. When the engine is unavailable (501 behavior)
 
@@ -498,7 +505,7 @@ with the default shown:
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR page cap for PDFs/images (§6.1). |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
-| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result/input retention window, stamped at submit time (see [§10](#10-retention-and-ttl)). |
+| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§10](#10-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
 | `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace, fails open on Redis errors). |
 | `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate), fails open on Redis errors. |
@@ -508,5 +515,5 @@ with the default shown:
 `AGENT_KV_FILE_STORAGE_CREDENTIALS` is looked up via
 `FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING[FileStorageType.AGENT_KV]`
 (`unstract/filesystem/src/unstract/filesystem/file_storage_config.py`) and is required
-for `stage_input`/`write_result`/`read_result`/`delete_job_files`
+for `stage_input`/`write_result`/`read_result`/`delete_job_files`/`delete_input`
 (`backend/agent_kv/storage.py`) to have anywhere to write to.

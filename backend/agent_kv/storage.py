@@ -47,3 +47,20 @@ def delete_job_files(job) -> None:
             fh.rm(path=ref)
         except Exception:
             logger.warning("agent-kv cleanup: could not remove %s", ref)
+
+
+def delete_input(job) -> None:
+    """Delete only the staged input file (spec D10: "uploaded document
+    deleted on job completion"), tolerant of it being missing already.
+
+    Deliberately narrower than ``delete_job_files``: it never touches
+    ``result_ref``/the result file. ``FinalizeView`` calls this right after
+    a job is fully terminalized, in the same request that may have just
+    written the result -- that file must be left completely alone.
+    """
+    if not job.input_ref:
+        return
+    try:
+        _fs().rm(path=job.input_ref)
+    except Exception:
+        logger.warning("agent-kv cleanup: could not remove %s", job.input_ref)

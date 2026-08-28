@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
-from agent_kv.storage import delete_job_files, write_result
+from agent_kv.storage import delete_input, delete_job_files, write_result
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,14 @@ class FinalizeView(APIView):
     finalize (success, duplicate no-op, or an exception raised while
     finalizing) -- but never on a 400 for a malformed body, since nothing
     was finalized (and therefore nothing had a slot to release yet).
+
+    Also deletes the staged input the moment ``mark_terminal`` actually
+    wins (spec D10: "uploaded document deleted on job completion") -- the
+    run is over either way, whether it completed or failed, so the input is
+    no longer needed; the result file (if any, just written moments
+    earlier in this same request) is left completely untouched. Never runs
+    on the duplicate/guard-lost path, since either another writer already
+    owns cleanup or there's nothing new to terminalize.
     """
 
     authentication_classes: list = []
@@ -176,6 +184,19 @@ class FinalizeView(APIView):
                     )
                     if finalized:
                         job.status = JobStatus.FAILED
+
+                if finalized:
+                    # A CANCELLED job never reaches here: cancel goes
+                    # through JobCancelView/mark_terminal directly, not
+                    # this finalize path, and a late finalize call against
+                    # an already-CANCELLED job loses the terminal guard
+                    # above -- so a cancelled job's input intentionally
+                    # rides the normal TTL sweep instead of being deleted
+                    # here.
+                    delete_input(job)
+                    AgentKVJob.objects.filter(id=job_id, organization_id=org_id).update(
+                        input_ref=""
+                    )
         finally:
             AgentKVConcurrencyLimiter.release(org_id, str(job_id))
 
