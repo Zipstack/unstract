@@ -304,6 +304,12 @@ interface AntRadioProps {
   checked?: boolean;
   onClick?: (e: React.MouseEvent<HTMLElement>) => void;
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  /**
+   * Declared explicitly: React's `HTMLAttributes` does not carry `data-*` at
+   * all — JSX lets them through on intrinsic elements only — so a call-site
+   * passing one is a type error without this line.
+   */
+  "data-testid"?: string;
 }
 
 interface AntRadioGroupProps {

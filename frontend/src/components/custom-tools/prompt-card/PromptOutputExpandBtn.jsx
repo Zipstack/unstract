@@ -15,11 +15,13 @@ function PromptOutputExpandBtn({
   tableSettings,
   openExpandModal,
   setOpenExpandModal,
+  testId,
 }) {
   return (
     <>
       <Tooltip title="Expand">
         <Button
+          data-testid={testId}
           size="small"
           type="text"
           className="prompt-card-action-button"
@@ -53,6 +55,7 @@ PromptOutputExpandBtn.propTypes = {
   promptRunStatus: PropTypes.object.isRequired,
   openExpandModal: PropTypes.bool.isRequired,
   setOpenExpandModal: PropTypes.func.isRequired,
+  testId: PropTypes.string,
 };
 
 export { PromptOutputExpandBtn };

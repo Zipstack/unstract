@@ -268,6 +268,7 @@ function PromptOutput({
               }}
             />
             <PromptOutputExpandBtn
+              testId={`ps-prompt-expand-output-${promptDetails?.prompt_id}`}
               promptId={promptDetails?.prompt_id}
               llmProfiles={llmProfileDetails}
               enforceType={enforceType}
@@ -292,6 +293,11 @@ function PromptOutput({
           const promptId = promptDetails?.prompt_id;
           const docId = selectedDoc?.document_id;
           const profileId = profile?.profile_id;
+          // Every control below repeats once per prompt AND per profile, so
+          // both ids are needed to address one of them uniquely. Ids go last,
+          // per the Test IDs convention in FRONTEND_DEV_GUIDE.md.
+          const profileTestId = (action) =>
+            `ps-prompt-profile-${action}-${promptId}-${profileId}`;
           const tokenUsageId = promptId + "__" + docId + "__" + profileId;
           let promptOutputData = {};
           if (promptOutputs && Object.keys(promptOutputs)) {
@@ -358,10 +364,14 @@ function PromptOutput({
                     <div className="llm-info-right">
                       <Space>
                         <Tooltip title={tooltipContent(profile?.conf)}>
-                          <Info className="prompt-card-actions-head" />
+                          <Info
+                            data-testid={profileTestId("info")}
+                            className="prompt-card-actions-head"
+                          />
                         </Tooltip>
                         <Tooltip title="Chunk used">
                           <Database
+                            data-testid={profileTestId("chunk")}
                             onClick={() => {
                               setIsIndexOpen(true);
                               setOpenIndexProfile(promptOutputData?.context);
@@ -381,6 +391,7 @@ function PromptOutput({
                         {isNotSingleLlmProfile && (
                           <Tooltip title="Select Default">
                             <Radio
+                              data-testid={profileTestId("select-default")}
                               checked={profileId === selectedLlmProfileId}
                               onChange={() => handleSelectDefaultLLM(profileId)}
                               disabled={isPublicSource}
@@ -416,6 +427,7 @@ function PromptOutput({
                   <div className="prompt-info">
                     <Tooltip title="Run LLM for current document">
                       <Button
+                        data-testid={profileTestId("run-doc")}
                         size="small"
                         type="text"
                         className="prompt-card-action-button"
@@ -438,6 +450,7 @@ function PromptOutput({
                     </Tooltip>
                     <Tooltip title="Run LLM for all documents">
                       <Button
+                        data-testid={profileTestId("run-all-docs")}
                         size="small"
                         type="text"
                         className="prompt-card-action-button"
@@ -461,6 +474,7 @@ function PromptOutput({
                       </Button>
                     </Tooltip>
                     <PromptOutputExpandBtn
+                      testId={profileTestId("expand")}
                       promptId={promptDetails?.prompt_id}
                       llmProfiles={llmProfileDetails}
                       enforceType={enforceType}

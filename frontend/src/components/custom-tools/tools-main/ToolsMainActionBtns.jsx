@@ -134,6 +134,7 @@ function ToolsMainActionBtns() {
         {!singlePassExtractMode && <RunAllPrompts />}
         <Tooltip title="Output Analyzer">
           <Button
+            data-testid="ps-output-analyzer-btn"
             icon={<ChartColumn />}
             onClick={handleOutputAnalyzerBtnClick}
             disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
@@ -141,6 +142,7 @@ function ToolsMainActionBtns() {
         </Tooltip>
         <Tooltip title="Reorder the list of prompts">
           <Button
+            data-testid="ps-reorder-prompts-btn"
             icon={<List />}
             onClick={() => setOpenReorderModal(true)}
             loading={isNewOrderLoading}

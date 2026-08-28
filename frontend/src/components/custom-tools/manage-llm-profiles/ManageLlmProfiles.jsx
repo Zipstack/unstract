@@ -114,6 +114,9 @@ function ManageLlmProfiles() {
 
   useEffect(() => {
     const modifiedRows = llmProfiles.map((item) => {
+      // One id per profile — every action below repeats once per table row.
+      const rowTestId = (action) =>
+        `ps-llm-profile-${action}-${item?.profile_id}`;
       return {
         key: item?.profile_id,
         name: item?.profile_name || "",
@@ -125,12 +128,14 @@ function ManageLlmProfiles() {
           <div className="action-buttons-container">
             <Tooltip title="Copy Profile ID">
               <Button
+                data-testid={rowTestId("copy-id")}
                 size="small"
                 icon={<Copy />}
                 onClick={() => copyProfileId(item?.profile_id)}
               />
             </Tooltip>
             <Button
+              data-testid={rowTestId("edit")}
               size="small"
               icon={<Pencil />}
               disabled={isPublicSource}
@@ -147,6 +152,7 @@ function ManageLlmProfiles() {
                 }
               >
                 <Button
+                  data-testid={rowTestId("delete")}
                   size="small"
                   icon={<Trash2 />}
                   disabled={
@@ -159,6 +165,7 @@ function ManageLlmProfiles() {
         ),
         select: (
           <Radio
+            data-testid={rowTestId("select-default")}
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
             disabled={isPublicSource}

@@ -402,6 +402,7 @@ function Header({
               title={runGate?.reason || "Run all LLMs for current document"}
             >
               <Button
+                data-testid={`ps-prompt-run-doc-${promptDetails?.prompt_id}`}
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
@@ -430,6 +431,7 @@ function Header({
               title={runGate?.reason || "Run all LLMs for all documents"}
             >
               <Button
+                data-testid={`ps-prompt-run-all-docs-${promptDetails?.prompt_id}`}
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
@@ -462,7 +464,11 @@ function Header({
             </Tooltip>
           </>
         )}
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        <ExpandCardBtn
+          expandCard={expandCard}
+          setExpandCard={setExpandCard}
+          testId={`ps-prompt-expand-${promptDetails?.prompt_id}`}
+        />
         {PromptChangeIndicator && (
           <PromptChangeIndicator
             promptDetails={promptDetails}
@@ -481,6 +487,7 @@ function Header({
         )}
         <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
           <Button
+            data-testid={`ps-prompt-menu-${promptDetails?.prompt_id}`}
             size="small"
             type="text"
             className="prompt-card-action-button"

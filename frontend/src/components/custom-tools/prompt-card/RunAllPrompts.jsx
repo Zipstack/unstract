@@ -15,6 +15,7 @@ function RunAllPrompts() {
     <Space>
       <Tooltip title="Run all prompts for all LLMs and current document">
         <Button
+          data-testid="ps-run-all-prompts-one-doc-btn"
           icon={<CirclePlay className="prompt-card-actions-head" />}
           onClick={() =>
             handlePromptRunRequest(
@@ -29,6 +30,7 @@ function RunAllPrompts() {
       </Tooltip>
       <Tooltip title="Run all prompts for all LLMs and documents">
         <Button
+          data-testid="ps-run-all-prompts-all-docs-btn"
           // All-documents runs use FastForward; the single-document button
           // beside it keeps CirclePlay, so the two are told apart at a glance.
           icon={<FastForward className="prompt-card-actions-head" />}

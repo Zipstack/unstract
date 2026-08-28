@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
-function ExpandCardBtn({ expandCard, setExpandCard }) {
+function ExpandCardBtn({ expandCard, setExpandCard, testId }) {
   const [icon, setIcon] = useState(null);
   const [tooltip, setTooltip] = useState("");
 
@@ -25,6 +25,7 @@ function ExpandCardBtn({ expandCard, setExpandCard }) {
   return (
     <Tooltip title={tooltip}>
       <Button
+        data-testid={testId}
         size="small"
         type="text"
         className="prompt-card-action-button"
@@ -39,6 +40,7 @@ function ExpandCardBtn({ expandCard, setExpandCard }) {
 ExpandCardBtn.propTypes = {
   expandCard: PropTypes.bool.isRequired,
   setExpandCard: PropTypes.func.isRequired,
+  testId: PropTypes.string,
 };
 
 export { ExpandCardBtn };
