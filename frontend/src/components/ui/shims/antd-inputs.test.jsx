@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -512,6 +513,186 @@ describe("antd-compatible input shims (P3-03)", () => {
       );
       await user.type(screen.getByRole("textbox"), "gamma{enter}");
       expect(onSubmit).not.toHaveBeenCalled();
+    });
+  });
+
+  /*
+   * antd's `multiple`: a fixed-option multi-select whose value is an ARRAY.
+   *
+   * These guard a shape, not a look. Before MultiSelect existed the mode fell
+   * through to the single-select path, which renders a perfectly usable-looking
+   * control and calls onChange with ONE bare value — so Global API Deployment
+   * Keys posted a string to a DRF `PrimaryKeyRelatedField(many=True)` and got
+   * `Expected a list of items but got type "str"` back, with no way to pick a
+   * second deployment either.
+   */
+  describe("Select mode='multiple'", () => {
+    const OPTIONS = [
+      { value: "a", label: "Alpha" },
+      { value: "b", label: "Bravo" },
+    ];
+
+    it("hands the call-site an ARRAY, never a bare value", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="multiple"
+          value={[]}
+          onChange={onChange}
+          options={OPTIONS}
+          placeholder="Pick some"
+        />,
+      );
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Alpha" }));
+      expect(onChange).toHaveBeenCalledWith(
+        ["a"],
+        [{ value: "a", label: "Alpha" }],
+      );
+    });
+
+    /* The single-select path closes on choose, which caps the mode at one. */
+    it("keeps the dropdown open so a second option can be picked", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      function Harness() {
+        const [value, setValue] = useState([]);
+        return (
+          <Select
+            mode="multiple"
+            value={value}
+            onChange={(next) => {
+              setValue(next);
+              onChange(next);
+            }}
+            options={OPTIONS}
+          />
+        );
+      }
+      render(<Harness />);
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Alpha" }));
+      await user.click(screen.getByRole("option", { name: "Bravo" }));
+      expect(onChange).toHaveBeenLastCalledWith(["a", "b"]);
+    });
+
+    it("deselects an option that is picked again", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="multiple"
+          value={["a", "b"]}
+          onChange={onChange}
+          options={OPTIONS}
+        />,
+      );
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Alpha" }));
+      expect(onChange).toHaveBeenCalledWith(
+        ["b"],
+        [{ value: "b", label: "Bravo" }],
+      );
+    });
+
+    it("shows the selection as chips and removes one without opening the list", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="multiple"
+          value={["a", "b"]}
+          onChange={onChange}
+          options={OPTIONS}
+        />,
+      );
+      expect(screen.getByText("Alpha")).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Remove Alpha" }));
+      expect(onChange).toHaveBeenCalledWith(
+        ["b"],
+        [{ value: "b", label: "Bravo" }],
+      );
+      // The chip sits inside the popover trigger; the remove must not open it.
+      expect(screen.queryByRole("listbox")).toBeNull();
+    });
+
+    /*
+     * The shim compares on strings because ids arrive as both, but what goes
+     * BACK must be the option's own value — an API told `"12"` where it
+     * expects `12` fails the same way the bare-string bug did.
+     */
+    it("returns the option's original value type", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="multiple"
+          value={[]}
+          onChange={onChange}
+          options={[{ value: 12, label: "Twelve" }]}
+        />,
+      );
+      await user.click(screen.getByRole("combobox"));
+      await user.click(screen.getByRole("option", { name: "Twelve" }));
+      expect(onChange.mock.calls[0][0]).toEqual([12]);
+    });
+
+    /* Global API Deployment Keys builds its list as Select.Option children. */
+    it("accepts Select.Option children and filters them by optionFilterProp", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          mode="multiple"
+          value={[]}
+          onChange={vi.fn()}
+          showSearch
+          optionFilterProp="children"
+        >
+          <Select.Option value="a">Alpha</Select.Option>
+          <Select.Option value="b">Bravo</Select.Option>
+        </Select>,
+      );
+      await user.click(screen.getByRole("combobox"));
+      await user.type(screen.getByRole("searchbox"), "brav");
+      expect(screen.getByRole("option", { name: "Bravo" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: "Alpha" })).toBeNull();
+    });
+
+    it("clears the whole selection under allowClear", async () => {
+      const user = userEvent.setup();
+      const onChange = vi.fn();
+      render(
+        <Select
+          mode="multiple"
+          value={["a", "b"]}
+          onChange={onChange}
+          options={OPTIONS}
+          allowClear
+        />,
+      );
+      await user.click(screen.getByRole("button", { name: "Clear" }));
+      expect(onChange).toHaveBeenCalledWith([], []);
+    });
+
+    /*
+     * A <div> trigger has no `disabled` attribute, so this is the only thing
+     * standing between a disabled picker and an open dropdown — the deployment
+     * scope field disables itself whenever "allow all" is ticked.
+     */
+    it("does not open while disabled", async () => {
+      const user = userEvent.setup();
+      render(
+        <Select
+          mode="multiple"
+          value={[]}
+          onChange={vi.fn()}
+          options={OPTIONS}
+          disabled
+        />,
+      );
+      await user.click(screen.getByRole("combobox"));
+      expect(screen.queryByRole("listbox")).toBeNull();
     });
   });
 

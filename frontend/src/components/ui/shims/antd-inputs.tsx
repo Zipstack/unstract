@@ -166,15 +166,18 @@ interface LabelInValue {
 }
 
 interface AntSelectProps {
-  value?: string | number | string[] | LabelInValue;
+  /** An array under `mode`; a single entry otherwise. */
+  value?: string | number | LabelInValue | (string | number | LabelInValue)[];
   defaultValue?: string | number;
   /**
    * Receives the ORIGINAL option value, so non-string values survive — or a
-   * `{ value, label }` pair when `labelInValue` is set, as antd does.
+   * `{ value, label }` pair when `labelInValue` is set, as antd does. Under
+   * `mode="multiple"`/`"tags"` it is the whole selection as an array, which
+   * is the shape every call-site of those modes stores and posts.
    */
   onChange?: (
-    value: string | number | string[] | LabelInValue,
-    option?: SelectOption,
+    value: string | number | LabelInValue | (string | number | LabelInValue)[],
+    option?: SelectOption | SelectOption[],
   ) => void;
   options?: SelectOption[];
   placeholder?: React.ReactNode;
@@ -224,18 +227,26 @@ interface AntSelectProps {
   popupRender?: (menu: React.ReactNode) => React.ReactNode;
   dropdownRender?: (menu: React.ReactNode) => React.ReactNode;
   /**
-   * antd's `tags` mode is a multi-value input that is BOTH a chip editor and a
-   * picker: the user types a value and presses Enter, or takes one from the
-   * `options` dropdown, and either way it becomes a removable chip. Radix's
-   * Select is single-select over a fixed option list and cannot express this
-   * at all, so tags mode renders a dedicated control instead (see TagsInput
-   * below). Custom Synonyms was unusable without it — the dropdown opened
-   * with no options and no way to type.
+   * Both of antd's multi-value modes, neither of which Radix's single-select
+   * can express — each renders a purpose-built control instead:
+   *
+   *   - `tags` is BOTH a chip editor and a picker: the user types a value and
+   *     presses Enter, or takes one from the `options` dropdown, and either
+   *     way it becomes a removable chip (see TagsInput). Custom Synonyms was
+   *     unusable without it — the dropdown opened with no options and no way
+   *     to type.
+   *   - `multiple` is a fixed-option multi-select with no free text (see
+   *     MultiSelect).
+   *
+   * Both hand `onChange` an ARRAY. That is why neither can quietly fall
+   * through to the single-select path: the control looks fine and the value
+   * is the wrong shape.
    */
   mode?: "tags" | "multiple";
   /**
-   * Caps how many entries `tags` mode accepts. The prompt card's Document Type
-   * and Filter Strategy pass 1 to mean "pick exactly one from the list".
+   * Caps how many entries the multi-value modes accept. The prompt card's
+   * Document Type and Filter Strategy pass 1 to mean "pick exactly one from
+   * the list".
    */
   maxCount?: number;
   variant?: string;
@@ -963,6 +974,25 @@ function normaliseOptions(
     }));
 }
 
+/**
+ * The multi-value modes' `value`, flattened to plain strings.
+ *
+ * Stringified because every comparison downstream is `includes`/`===` against
+ * an option's value, and those two are routinely different types: `options`
+ * carry numeric ids while the stored selection came back from JSON as
+ * strings, and `12 === "12"` is false. The object case is `labelInValue`.
+ */
+function toValueStrings(source: AntSelectProps["value"]): string[] {
+  const list = Array.isArray(source)
+    ? source
+    : source == null || source === ""
+      ? []
+      : [source];
+  return list.map((v) =>
+    v != null && typeof v === "object" ? String(v.value) : String(v),
+  );
+}
+
 /** antd's onChange arguments: `{ value, label }` under labelInValue, else the raw value. */
 function toChangeArgs(
   match: NormalisedOption | undefined,
@@ -1270,6 +1300,384 @@ const SearchableSelect = React.forwardRef<
   );
 });
 
+/**
+ * antd `<Select mode="multiple">` — a fixed-option multi-select.
+ *
+ * Radix's Select is single-select, and `multiple` used to fall through to the
+ * single-select paths below. That failed by SHAPE rather than visibly: the
+ * control rendered and looked usable, but handed the call-site one bare value
+ * where it expected an array, and offered no way to pick a second entry.
+ * Global API Deployment Keys posts that field straight to DRF's
+ * `PrimaryKeyRelatedField(many=True)`, which rejected it with
+ * `Expected a list of items but got type "str"`.
+ *
+ * Same `aria-activedescendant` combobox pattern as SearchableSelect (see the
+ * note there for why Radix's Select cannot host a search box), with the three
+ * differences that are the point of the mode: the popup stays open across
+ * selections, the trigger shows the chosen options as removable chips, and
+ * the change handler always emits an array.
+ *
+ * Deliberately NOT the tag editor above: `multiple` has no free text, so
+ * routing it there would let a member or a deployment be invented by typing a
+ * name matching no option.
+ */
+interface MultiSelectProps {
+  items: NormalisedOption[];
+  /** Already unwrapped from labelInValue and stringified, so `includes` works. */
+  values: string[];
+  onValuesChange: (next: string[]) => void;
+  placeholder?: React.ReactNode;
+  disabled?: boolean;
+  allowClear?: boolean;
+  size?: SizeToken;
+  className?: string;
+  style?: React.CSSProperties;
+  filterOption?: AntSelectProps["filterOption"];
+  optionFilterProp?: string;
+  notFoundContent?: React.ReactNode;
+  optionRender?: (option: SelectOption) => React.ReactNode;
+  renderPopup?: (menu: React.ReactNode) => React.ReactNode;
+  maxCount?: number;
+  /** Honoured so a call-site (or a test) can force the popup open, as antd allows. */
+  open?: boolean;
+  "data-testid"?: string;
+}
+
+function MultiSelect({
+  items,
+  values,
+  onValuesChange,
+  placeholder,
+  disabled,
+  allowClear,
+  size,
+  className,
+  style,
+  filterOption,
+  optionFilterProp,
+  notFoundContent,
+  optionRender,
+  renderPopup,
+  maxCount,
+  open: openProp,
+  "data-testid": testId,
+}: MultiSelectProps) {
+  const [uncontrolledOpen, setUncontrolledOpen] = React.useState(false);
+  const open = openProp ?? uncontrolledOpen;
+  const [query, setQuery] = React.useState("");
+  const [activeIndex, setActiveIndex] = React.useState(0);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const listId = React.useId();
+
+  const visible = items.filter((o) =>
+    matchesQuery(o, query, filterOption, optionFilterProp),
+  );
+  // Clamped, not reset, for the same reason as SearchableSelect: the query
+  // changes on every keystroke and a stale index would make Enter a no-op.
+  const active = Math.min(activeIndex, Math.max(visible.length - 1, 0));
+  /** antd stops accepting new entries at `maxCount`; removals stay available. */
+  const full = maxCount != null && values.length >= maxCount;
+
+  const setOpen = (next: boolean) => {
+    /*
+     * The one place `disabled` is enforced. A <div> trigger has no `disabled`
+     * attribute, and the greyed-out styling below is CSS the pointer obeys but
+     * the keyboard does not — so without this, tabbing to a disabled picker
+     * and pressing Enter still opened it.
+     */
+    if (disabled && next) {
+      return;
+    }
+    setUncontrolledOpen(next);
+    if (!next) {
+      // antd drops the query when the dropdown closes, so reopening shows the
+      // full list rather than the last search.
+      setQuery("");
+    }
+  };
+
+  const toggle = (item: NormalisedOption | undefined) => {
+    if (!item || item.disabled) {
+      return;
+    }
+    const raw = String(item.value);
+    if (values.includes(raw)) {
+      onValuesChange(values.filter((v) => v !== raw));
+      return;
+    }
+    if (full) {
+      return;
+    }
+    onValuesChange([...values, raw]);
+    /*
+     * antd clears the search once an entry is taken but leaves the dropdown
+     * open — picking a second option needs neither a reopen nor a manual
+     * delete of what was typed for the first.
+     */
+    setQuery("");
+    setActiveIndex(0);
+  };
+
+  const move = (delta: number) => {
+    if (!visible.length) {
+      return;
+    }
+    let next = active;
+    // Skip disabled rows, and stop rather than wrap once the ends are reached.
+    for (let step = 0; step < visible.length; step++) {
+      next += delta;
+      if (next < 0 || next >= visible.length) {
+        return;
+      }
+      if (!visible[next].disabled) {
+        setActiveIndex(next);
+        return;
+      }
+    }
+  };
+
+  /*
+   * A selected value with no matching option still has to render something.
+   * These pickers fill their `options` from a fetch, so an edit form seeded
+   * with stored ids paints before the list arrives and would otherwise show a
+   * row of blank chips.
+   */
+  const displayFor = (raw: string) =>
+    items.find((o) => String(o.value) === raw)?.display ?? raw;
+
+  const remove = (raw: string) =>
+    onValuesChange(values.filter((v) => v !== raw));
+
+  const menu = (
+    <div
+      role="listbox"
+      aria-multiselectable="true"
+      id={listId}
+      className="max-h-64 overflow-y-auto overflow-x-hidden p-1"
+    >
+      {visible.length === 0 ? (
+        <div className="px-2 py-4 text-center text-sm text-muted-foreground">
+          {notFoundContent ?? "No results"}
+        </div>
+      ) : (
+        visible.map((o, i) => {
+          const raw = String(o.value);
+          const checked = values.includes(raw);
+          return (
+            // Not focusable and no key handler of its own: this is the
+            // `aria-activedescendant` pattern, so focus stays in the search
+            // box and its onKeyDown drives the same `toggle` this calls.
+            <div // NOSONAR
+              key={raw}
+              id={`${listId}-${i}`}
+              role="option"
+              aria-selected={checked}
+              aria-disabled={o.disabled || (full && !checked) || undefined}
+              className={cn(
+                selectItemClassName,
+                i === active && "bg-accent text-accent-foreground",
+                (o.disabled || (full && !checked)) &&
+                  "pointer-events-none opacity-50",
+              )}
+              onPointerMove={() => setActiveIndex(i)}
+              onClick={() => toggle(o)}
+            >
+              {checked && (
+                <span className="absolute right-2 flex h-3.5 w-3.5 items-center justify-center">
+                  <Check className="h-4 w-4" />
+                </span>
+              )}
+              {optionRender ? optionRender(o.data) : o.display}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <div
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-disabled={disabled || undefined}
+          tabIndex={disabled ? -1 : 0}
+          data-testid={testId}
+          style={style}
+          // Radix's Select marks an empty trigger this way and the shared
+          // class string greys the placeholder off it.
+          data-placeholder={values.length ? undefined : ""}
+          className={cn(
+            selectTriggerClassName,
+            /*
+             * The shared trigger is a fixed-height, no-wrap single line; a
+             * chip row wraps and grows with the selection. The disabled
+             * styling is cosmetic — `setOpen` is what actually enforces it.
+             */
+            "ant-select-selector h-auto min-h-8 flex-wrap justify-start gap-1 whitespace-normal py-1",
+            size === "small" && "text-sm",
+            disabled && "pointer-events-none opacity-50",
+            className,
+          )}
+          onKeyDown={(event) => {
+            /*
+             * Radix opens its trigger from a click, and a <div> gets none from
+             * the keyboard — so the combobox keys are wired up by hand, or the
+             * control is unreachable without a mouse.
+             */
+            if (
+              event.key === "Enter" ||
+              event.key === " " ||
+              event.key === "ArrowDown"
+            ) {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+        >
+          {values.length === 0 ? (
+            <span className="truncate">{placeholder}</span>
+          ) : (
+            values.map((raw) => (
+              <span
+                key={raw}
+                className="inline-flex max-w-full items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-xs"
+              >
+                <span className="truncate">{displayFor(raw)}</span>
+                {!disabled && (
+                  <button
+                    type="button"
+                    aria-label={`Remove ${optionText(displayFor(raw)) || raw}`}
+                    className="cursor-pointer leading-none opacity-60 hover:opacity-100"
+                    /*
+                     * The chip sits INSIDE the popover trigger, so both events
+                     * have to be stopped: mousedown is what Radix opens on,
+                     * and the click would reach the trigger behind it.
+                     */
+                    onMouseDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      remove(raw);
+                    }}
+                  >
+                    ×
+                  </button>
+                )}
+              </span>
+            ))
+          )}
+          {allowClear && values.length > 0 && !disabled ? (
+            <button
+              type="button"
+              aria-label="Clear"
+              className="ml-auto cursor-pointer opacity-50 hover:opacity-100"
+              onMouseDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation();
+                onValuesChange([]);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : (
+            <ChevronDown className="ml-auto h-4 w-4 shrink-0 opacity-50" />
+          )}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className={cn(
+          selectContentClassName,
+          // The LIST scrolls, not the surface — otherwise the search box
+          // scrolls away from the results it is filtering.
+          "w-[var(--radix-popover-trigger-width)] max-h-none overflow-hidden p-0",
+        )}
+        // Focus belongs in the search box, not on the surface Radix would
+        // otherwise focus; without this the first keystroke goes nowhere.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          inputRef.current?.focus();
+        }}
+      >
+        <div className="flex items-center gap-2 border-b px-3">
+          <SearchIcon className="h-4 w-4 shrink-0 opacity-50" />
+          {/*
+           * Unconditional, unlike the single-select path which gates on
+           * `showSearch`: antd defaults that flag to true in multiple mode, so
+           * FileHistoryModal's status filter — which omits the prop — is
+           * filterable today and would quietly lose it if this were gated.
+           */}
+          <input
+            ref={inputRef}
+            type="text"
+            role="searchbox"
+            aria-controls={listId}
+            aria-activedescendant={
+              visible.length ? `${listId}-${active}` : undefined
+            }
+            className="h-9 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            placeholder={
+              typeof placeholder === "string" ? placeholder : "Search"
+            }
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setActiveIndex(0);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown") {
+                event.preventDefault();
+                move(1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                move(-1);
+              } else if (event.key === "Enter") {
+                // Would otherwise submit the antd Form these sit in.
+                event.preventDefault();
+                toggle(visible[active]);
+              } else if (event.key === "Backspace" && !query && values.length) {
+                onValuesChange(values.slice(0, -1));
+              }
+            }}
+          />
+        </div>
+        {/*
+         * No close-on-click wrapper here, unlike the two single-select paths:
+         * staying open across selections is the whole point of the mode. A
+         * `popupRender` footer therefore has to close itself, which no
+         * call-site combines with `multiple` today.
+         */}
+        {renderPopup ? renderPopup(menu) : menu}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** antd's multiple-mode onChange arguments: the values ARRAY, plus the options. */
+function toMultiChangeArgs(
+  raw: string[],
+  items: NormalisedOption[],
+  labelInValue: boolean | undefined,
+): [(string | number | LabelInValue)[], SelectOption[]] {
+  const matched = raw.map((r) => items.find((o) => String(o.value) === r));
+  return [
+    /*
+     * The ORIGINAL option value, not the string MultiSelect compares on: a
+     * numeric id handed back as "12" is a different value to an API. An entry
+     * matching no option keeps its raw string — the options may still be
+     * loading (see `displayFor`).
+     */
+    raw.map((r, i) =>
+      labelInValue
+        ? { value: matched[i]?.value ?? r, label: matched[i]?.display }
+        : (matched[i]?.value ?? r),
+    ),
+    matched.filter((m): m is NormalisedOption => Boolean(m)).map((m) => m.data),
+  ];
+}
+
 const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
   function Select(
     {
@@ -1312,18 +1720,15 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
      * Free-text multi-value entry; Radix's Select cannot express it.
      *
      * ONLY `tags`. antd's `multiple` is a fixed-option multi-select over
-     * `options` with NO free text, and the two call-sites that use it
-     * (GroupMemberManager, FileHistoryModal) pick from a known list — routing
-     * them here would let a member or a file name be invented by typing one.
-     * They keep the single-select fallback below, which at least shows the
-     * options, until a mode that suppresses the free text exists.
+     * `options` with NO free text, and its call-sites (GroupMemberManager,
+     * FileHistoryModal, Global API Deployment Keys) pick from a known list —
+     * routing them here would let a member, a file status or a deployment be
+     * invented by typing one. They go to MultiSelect below instead.
      */
     if (mode === "tags") {
       return (
         <TagsInput
-          value={
-            Array.isArray(value) ? value : value == null ? [] : [String(value)]
-          }
+          value={toValueStrings(value)}
           onChange={(next) => onChange?.(next)}
           placeholder={placeholder}
           disabled={disabled}
@@ -1343,14 +1748,46 @@ const SelectBase = React.forwardRef<HTMLButtonElement, AntSelectProps>(
     const items = normaliseOptions(options, children);
 
     /*
+     * antd's fixed-option multi-select. Placed ahead of both single-select
+     * paths below because falling through to them is not a degraded picker,
+     * it is the wrong VALUE: they call onChange with one bare entry where the
+     * call-site holds — and posts — an array.
+     */
+    if (mode === "multiple") {
+      return (
+        <MultiSelect
+          items={items}
+          // `toMultiChangeArgs` restores the original value type on the way
+          // back out, so the stringification stops at this boundary.
+          values={toValueStrings(value ?? defaultValue)}
+          onValuesChange={(next) =>
+            onChange?.(...toMultiChangeArgs(next, items, labelInValue))
+          }
+          placeholder={placeholder}
+          disabled={disabled}
+          allowClear={allowClear}
+          size={size}
+          className={className}
+          style={style}
+          filterOption={filterOption}
+          optionFilterProp={optionFilterProp}
+          notFoundContent={notFoundContent}
+          optionRender={optionRender}
+          renderPopup={popupRender ?? dropdownRender}
+          maxCount={maxCount}
+          open={(props as { open?: boolean }).open}
+          data-testid={testId}
+        />
+      );
+    }
+
+    /*
      * antd treats "" as "nothing selected" and shows the placeholder; several
      * call-sites seed their state with `useState("")`. Radix reserves the
      * empty string internally, so passing it through leaves the trigger blank
      * AND suppresses the placeholder. Map it back to undefined.
      */
-    const toValue = (
-      v: string | number | string[] | LabelInValue | undefined,
-    ) => {
+    const toValue = (v: AntSelectProps["value"]) => {
       /*
        * Under `labelInValue` the call-site holds `{ value, label }`, and
        * `String()`-ing that yields "[object Object]", which matches no item:
