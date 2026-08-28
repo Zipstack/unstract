@@ -6,21 +6,26 @@ classes and instead require ``org_id`` in the body of every request.
 """
 
 import logging
+from datetime import timedelta
 
-from django.db.models import F, JSONField, Value
+from django.conf import settings
+from django.db.models import F, JSONField, Q, Value
 from django.db.models.expressions import CombinedExpression
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
-from agent_kv.storage import write_result
+from agent_kv.storage import delete_job_files, write_result
 
 logger = logging.getLogger(__name__)
 
 _VALID_STAGE_STATUSES = frozenset({"running", "done"})
 _RESERVED_STAGE_ENTRY_KEYS = frozenset({"status", "seconds"})
 _SCALAR_COUNTER_TYPES = (str, int, float, bool)
+_TTL_CLEANUP_BATCH_LIMIT = 500
+_NEVER_DISPATCHED_ERROR = "Job was never dispatched"
 
 
 def _sanitize_counters(counters) -> dict:
@@ -178,3 +183,98 @@ class FinalizeView(APIView):
                 "status": job.status.lower() if job else "",
             }
         )
+
+
+class SweepView(APIView):
+    """Terminalize PENDING jobs that were never dispatched (spec §5.4).
+
+    Mirrors ``workflow_manager``'s undispatched-execution sweep: the submit
+    endpoint commits a PENDING row before dispatch runs, and an abort in
+    between (client disconnect, worker crash, pod eviction) can leave it
+    stranded with no owner -- ``PENDING`` is not a terminal state, and
+    nothing else recovers a job that was never queued. ``dispatched_at`` is
+    stamped as a positive fact at dispatch time, so PENDING + older than the
+    grace + ``dispatched_at IS NULL`` means the dispatch never happened.
+
+    Platform-wide by design (no ``org_id`` in the body, unlike every other
+    view in this module) -- it is invoked by a periodic maintenance
+    mechanism (spec §5.4), not the cloud executor acting on one job/org.
+
+    Idempotent: ``mark_terminal``'s guarded UPDATE only terminalizes a row
+    still in a non-terminal state, so a job already swept (or one that
+    legitimately dispatched/finalized/was cancelled since the candidate
+    query ran) is left alone by a repeat call. ``swept`` counts guard
+    successes, not candidates, so a race against a concurrent
+    finalize/cancel/duplicate sweep is reflected accurately instead of
+    double-counted.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request, *args, **kwargs):
+        cutoff = timezone.now() - timedelta(seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS)
+        candidates = AgentKVJob.objects.filter(
+            status=JobStatus.PENDING,
+            created_at__lt=cutoff,
+            dispatched_at__isnull=True,
+        )
+
+        swept = 0
+        for job in candidates:
+            org_id = job.organization_id
+            won = AgentKVJob.mark_terminal(
+                job.id,
+                org_id,
+                JobStatus.FAILED,
+                error=_NEVER_DISPATCHED_ERROR,
+            )
+            if won:
+                swept += 1
+                # Only a job this call actually terminalized held a slot
+                # worth releasing here -- one a concurrent finalize/cancel
+                # won instead already released its own slot on that path.
+                AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+        return Response({"swept": swept})
+
+
+class TTLCleanupView(APIView):
+    """Delete staged files for expired jobs and blank their refs (spec §5.4).
+
+    The job row itself is retained (audit trail) -- only the object-store
+    paths are dropped, once nothing can read them any more (the status/
+    result endpoints already 404 past ``expires_at`` -- Task 9). Blanking
+    both refs after deletion is what makes a repeat call a no-op: the
+    filter below only matches rows still carrying a non-blank ref, so a job
+    already cleaned (or one that never staged an input/produced a result)
+    drops out of the candidate set on the next pass.
+
+    Platform-wide by design, same as :class:`SweepView`.
+
+    Batch-capped at ``_TTL_CLEANUP_BATCH_LIMIT`` so one call can't hold a
+    long-running request open against a large expired backlog; ordered by
+    ``expires_at`` (indexed on this model) so the most-overdue rows drain
+    first and the rest are left for the next call rather than starving
+    behind an arbitrary slice.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    def post(self, request, *args, **kwargs):
+        candidates = (
+            AgentKVJob.objects.filter(expires_at__lt=timezone.now())
+            .filter(Q(input_ref__gt="") | Q(result_ref__gt=""))
+            .order_by("expires_at")[:_TTL_CLEANUP_BATCH_LIMIT]
+        )
+
+        cleaned = 0
+        for job in candidates:
+            delete_job_files(job)
+            # Targeted single-row update (not a queryset-wide `.update()`):
+            # each job's refs must be blanked only after ITS OWN files are
+            # deleted, so a delete_job_files failure for one job can't blank
+            # another job's still-undeleted refs.
+            AgentKVJob.objects.filter(id=job.id).update(input_ref="", result_ref="")
+            cleaned += 1
+        return Response({"cleaned": cleaned})
