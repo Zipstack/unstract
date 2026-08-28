@@ -2,7 +2,10 @@
 
 Mounted under ``/internal/v1/agent-kv/`` and guarded ambiently by
 ``InternalAPIAuthMiddleware`` -- these views take empty auth/permission
-classes and instead require ``org_id`` in the body of every request.
+classes. Most require ``org_id`` in the body of every request (they act on
+one job belonging to one org); the two maintenance views, ``SweepView`` and
+``TTLCleanupView``, are the exception -- they are platform-wide and take no
+``org_id`` at all, since they sweep across every org in one call.
 """
 
 import logging
@@ -24,7 +27,7 @@ logger = logging.getLogger(__name__)
 _VALID_STAGE_STATUSES = frozenset({"running", "done"})
 _RESERVED_STAGE_ENTRY_KEYS = frozenset({"status", "seconds"})
 _SCALAR_COUNTER_TYPES = (str, int, float, bool)
-_TTL_CLEANUP_BATCH_LIMIT = 500
+_MAINTENANCE_BATCH_LIMIT = 500
 _NEVER_DISPATCHED_ERROR = "Job was never dispatched"
 
 
@@ -207,6 +210,13 @@ class SweepView(APIView):
     successes, not candidates, so a race against a concurrent
     finalize/cancel/duplicate sweep is reflected accurately instead of
     double-counted.
+
+    Batch-capped at ``_MAINTENANCE_BATCH_LIMIT`` (oldest-created first) so a
+    large PENDING backlog -- exactly what a dispatch-path infra incident
+    produces, which is also when this sweep matters most -- can't load
+    unbounded into memory or hold this request open through a long loop.
+    Idempotency (above) is what makes this safe to cap: whatever a call
+    doesn't reach is still there, unchanged, for the scheduler's next tick.
     """
 
     authentication_classes: list = []
@@ -218,10 +228,15 @@ class SweepView(APIView):
             status=JobStatus.PENDING,
             created_at__lt=cutoff,
             dispatched_at__isnull=True,
-        )
+        ).order_by("created_at")[:_MAINTENANCE_BATCH_LIMIT]
 
         swept = 0
         for job in candidates:
+            # Per-job isolation is structural, not a try/except here:
+            # mark_terminal is a guarded UPDATE that can't raise on a
+            # normal outcome, and release() has its own internal
+            # try/except (rate_limiter.py) -- so one job's failure can't
+            # abort the loop for the rest of the batch.
             org_id = job.organization_id
             won = AgentKVJob.mark_terminal(
                 job.id,
@@ -251,11 +266,11 @@ class TTLCleanupView(APIView):
 
     Platform-wide by design, same as :class:`SweepView`.
 
-    Batch-capped at ``_TTL_CLEANUP_BATCH_LIMIT`` so one call can't hold a
-    long-running request open against a large expired backlog; ordered by
-    ``expires_at`` (indexed on this model) so the most-overdue rows drain
-    first and the rest are left for the next call rather than starving
-    behind an arbitrary slice.
+    Batch-capped at ``_MAINTENANCE_BATCH_LIMIT`` (shared with
+    :class:`SweepView`) so one call can't hold a long-running request open
+    against a large expired backlog; ordered by ``expires_at`` (indexed on
+    this model) so the most-overdue rows drain first and the rest are left
+    for the next call rather than starving behind an arbitrary slice.
     """
 
     authentication_classes: list = []
@@ -265,7 +280,7 @@ class TTLCleanupView(APIView):
         candidates = (
             AgentKVJob.objects.filter(expires_at__lt=timezone.now())
             .filter(Q(input_ref__gt="") | Q(result_ref__gt=""))
-            .order_by("expires_at")[:_TTL_CLEANUP_BATCH_LIMIT]
+            .order_by("expires_at")[:_MAINTENANCE_BATCH_LIMIT]
         )
 
         cleaned = 0

@@ -48,14 +48,19 @@ def _post(path, body=None):
 # (1) the candidate query is exactly PENDING + older than the grace +
 # dispatched_at IS NULL -- assert the filter kwargs directly (this IS the
 # proof that "only PENDING+old+undispatched" are swept; nothing else does
-# a real DB round trip in this suite).
+# a real DB round trip in this suite) -- and, per the task-14-review ruling,
+# oldest-created-first and capped at 500: an unbounded queryset would load
+# a whole infra-incident backlog into memory and hold the request open
+# through it, exactly when the sweep matters most.
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
 def test_sweep_queries_pending_older_than_grace_and_undispatched(
     m_objects, m_mark_terminal
 ):
     frozen_now = timezone.now()
-    m_objects.filter.return_value = []
+    m_qs = m_objects.filter.return_value
+    m_ordered_qs = m_qs.order_by.return_value
+    m_ordered_qs.__getitem__.return_value = []
 
     with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
@@ -68,7 +73,16 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
     assert filter_kwargs["created_at__lt"] == frozen_now - iv.timedelta(
         seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
     )
+    m_qs.order_by.assert_called_once_with("created_at")
+    m_ordered_qs.__getitem__.assert_called_once_with(slice(None, 500, None))
     assert not m_mark_terminal.called
+
+
+def _sweep_candidates(m_objects, jobs):
+    """Wire the SweepView candidate chain -- filter().order_by()[:500] --
+    to return ``jobs``, mirroring the real queryset chain post-fix.
+    """
+    m_objects.filter.return_value.order_by.return_value.__getitem__.return_value = jobs
 
 
 # (2) each candidate is terminalized via mark_terminal(FAILED, "Job was
@@ -80,7 +94,7 @@ def test_sweep_terminalizes_each_candidate_as_failed_never_dispatched(
     m_objects, m_mark_terminal, m_release
 ):
     job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
-    m_objects.filter.return_value = [job]
+    _sweep_candidates(m_objects, [job])
     m_mark_terminal.return_value = True
 
     resp = iv.SweepView.as_view()(_post("/x"))
@@ -100,7 +114,7 @@ def test_sweep_releases_the_concurrency_slot_of_each_swept_job(
     m_objects, m_mark_terminal, m_release
 ):
     job = AgentKVJob(id=uuid.uuid4(), organization_id="org7")
-    m_objects.filter.return_value = [job]
+    _sweep_candidates(m_objects, [job])
     m_mark_terminal.return_value = True
 
     iv.SweepView.as_view()(_post("/x"))
@@ -120,7 +134,7 @@ def test_sweep_count_reflects_guard_outcomes_not_candidate_count(
 ):
     won_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
     lost_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
-    m_objects.filter.return_value = [won_job, lost_job]
+    _sweep_candidates(m_objects, [won_job, lost_job])
     m_mark_terminal.side_effect = [True, False]
 
     resp = iv.SweepView.as_view()(_post("/x"))
@@ -135,7 +149,7 @@ def test_sweep_count_reflects_guard_outcomes_not_candidate_count(
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
 def test_sweep_with_no_candidates_is_a_pure_noop(m_objects, m_mark_terminal, m_release):
-    m_objects.filter.return_value = []
+    _sweep_candidates(m_objects, [])
 
     resp = iv.SweepView.as_view()(_post("/x"))
 
