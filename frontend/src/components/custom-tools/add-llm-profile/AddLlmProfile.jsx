@@ -407,9 +407,13 @@ function AddLlmProfile({
     setTokenSize(tokenSize);
   };
 
+  // UN-3137: chunk_size is a TOKEN count -- it is handed straight to
+  // LlamaIndex's SentenceSplitter, whose chunk_size is documented as "the
+  // token chunk size for each chunk". The old maths divided by 4 (a
+  // characters-per-token estimate) and then by 1024, so the hint under the
+  // field under-reported the real size by ~4096x.
   function calcTokenSize(chunkSize) {
-    const tokenSize = (chunkSize / 4 / 1024).toFixed(1);
-    return tokenSize;
+    return Number(chunkSize) || 0;
   }
 
   const handleRetrievalModalOpen = () => {
@@ -504,7 +508,7 @@ function AddLlmProfile({
                 <Form.Item
                   label={
                     <>
-                      Chunk Size
+                      Chunk Size (tokens)
                       <Typography.Text type="secondary">
                         {" "}
                         (Set to 0 if documents are small)
@@ -524,7 +528,7 @@ function AddLlmProfile({
                       : ""
                   }
                   help={getBackendErrorDetail("chunk_size", backendErrors)}
-                  extra={`~= ${tokenSize}k tokens, Max: ${maxTokenSize}`}
+                  extra={`${tokenSize} tokens, Max: ${maxTokenSize}`}
                 >
                   <Input type="number" onChange={handleChunkSizeChange} />
                 </Form.Item>
