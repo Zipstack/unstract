@@ -7,6 +7,7 @@ from django.utils import timezone
 from plugins import get_plugin
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from unstract.agent_kv_schema.compile import SchemaError, compile_schema
 
 from agent_kv.constants import STAGE_NAMES
 from agent_kv.dispatch import DispatchError, dispatch_job
@@ -184,6 +185,32 @@ class SubmitView(APIView):
                 "created_at": job.created_at.isoformat(),
             },
             status=202,
+        )
+
+
+class ValidateView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    @AgentKVKeyValidator.validate_api_key
+    def post(self, request, *args, agent_kv_key=None, **kwargs):
+        if not check_key_rate(str(agent_kv_key.id)):
+            raise RateLimited()
+        spec = request.data.get("keys")
+        if spec is None:
+            return Response({"detail": "body must include 'keys'"}, status=400)
+        try:
+            compiled = compile_schema(spec)
+        except SchemaError as e:
+            return Response({"valid": False, "error": str(e)}, status=200)
+        return Response(
+            {
+                "valid": True,
+                "leaves": len(compiled.key_specs),
+                "arrays": len(compiled.array_specs),
+                "constraints": len(compiled.constraints),
+            },
+            status=200,
         )
 
 
