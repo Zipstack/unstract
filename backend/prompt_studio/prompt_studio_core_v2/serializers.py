@@ -18,6 +18,9 @@ from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.constants import ToolStudioKeys as TSKeys
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
+from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
+    PromptStudioVariableService,
+)
 from prompt_studio.prompt_studio_output_manager_v2.output_manager_util import (
     OutputManagerUtils,
 )
@@ -226,6 +229,19 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
             # Add coverage to serialized data
             serialized_data["coverage"] = coverage
+
+            # UN-2900: warn (do not block) when a prompt uses variables that
+            # cannot resolve under single pass. Surfaced per prompt so the user
+            # sees it while authoring instead of discovering it as a degraded
+            # answer after paying for the run.
+            serialized_data["single_pass_unresolvable_variables"] = (
+                PromptStudioVariableService.find_unresolvable_single_pass_variables(
+                    prompt=prompt.prompt
+                )
+                if instance.single_pass_extraction_mode and prompt.prompt
+                else []
+            )
+
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output

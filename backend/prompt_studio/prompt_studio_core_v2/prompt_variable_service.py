@@ -65,6 +65,41 @@ class PromptStudioVariableService:
         return variable_type
 
     @staticmethod
+    def find_unresolvable_single_pass_variables(prompt: str) -> list[str]:
+        """Variables in ``prompt`` that cannot resolve under single-pass extraction.
+
+        UN-2900. Single pass builds ONE combined prompt — every field is declared
+        up front in a single JSON schema and answered in one LLM call — so no
+        prompt's output exists to feed another prompt's variable. The runtime
+        reflects this: the enterprise ``single_pass_extraction`` plugin calls the
+        shared replacement service with ``structured_output={}``, and both
+        ``replace_static_variable`` and ``replace_dynamic_variable`` return the
+        prompt UNCHANGED when their lookup misses. The literal ``{{...}}`` is then
+        sent to the LLM, silently degrading the answer.
+
+        CUSTOM_DATA is the one exception: it is resolved from the tool's own
+        ``custom_data`` and never consults the variable map, so it works
+        identically in both modes and is not reported here.
+
+        Returns the offending variable strings, in prompt order, or an empty list.
+
+        NOTE: classification pairs with ``VariableReplacementService`` in the
+        worker (``executor/executors/variable_replacement.py``), which keeps its
+        own copy of these regexes. If one side's patterns change, this validation
+        and the runtime behaviour will disagree.
+        """
+        unresolvable: list[str] = []
+        for variable in PromptStudioVariableService.extract_variables_from_prompt(
+            prompt=prompt
+        ):
+            variable_type = PromptStudioVariableService.identify_variable_type(
+                variable=variable
+            )
+            if variable_type != VariableType.CUSTOM_DATA:
+                unresolvable.append(variable)
+        return unresolvable
+
+    @staticmethod
     def extract_variables_from_prompt(prompt: str) -> list[str]:
         variable: list[str] = []
         variable = re.findall(VariableConstants.VARIABLE_REGEX, prompt)
