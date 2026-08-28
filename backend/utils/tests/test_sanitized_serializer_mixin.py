@@ -62,7 +62,7 @@ class TestSanitizedSerializerMixin:
         class SnakeCaseSerializer(Serializer):
             prompt_key = drf.CharField()
 
-        s = SnakeCaseSerializer(data={"prompt_key": "<h1>x</h1>"})
+        s = SnakeCaseSerializer(data={"prompt_key": "<script>x</script>"})
         assert not s.is_valid()
         msg = str(s.errors["prompt_key"][0])
         assert msg.startswith("Prompt key ")
