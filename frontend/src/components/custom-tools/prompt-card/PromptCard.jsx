@@ -217,12 +217,15 @@ const PromptCard = memo(
             setUpdateStatus,
           );
         })
-        .catch(() => {
+        .catch((err) => {
           handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
           if (!handledInline) {
             // Roll back only the field that failed, for the same reason.
             setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
           }
+          // Callers keeping their own copy of the value (Header's webhook and
+          // toggle state) roll back off this rejection.
+          throw err;
         })
         .finally(() => {
           if (isUpdateStatus) {
@@ -235,11 +238,12 @@ const PromptCard = memo(
 
     const handleSelectDefaultLLM = (llmProfileId) => {
       setSelectedLlmProfileId(llmProfileId);
+      // Error already surfaced by handleChange; no local copy to roll back.
       handleChange(
         llmProfileId,
         promptDetailsState?.prompt_id,
         "profile_manager",
-      );
+      ).catch(() => {});
     };
 
     const addCoordsToFlattened = (coords, flattened) => {
@@ -321,7 +325,12 @@ const PromptCard = memo(
         setAlertDetails({ type: "error", content: block.reason });
         return;
       }
-      handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
+      handleChange(
+        value,
+        promptDetailsState?.prompt_id,
+        "enforce_type",
+        true,
+      ).catch(() => {});
     };
 
     const handleSpsLoading = (docId, isLoadingStatus) => {
