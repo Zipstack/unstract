@@ -97,3 +97,15 @@ def test_timeout_bounds():
 def test_page_range_validation():
     s = SubmitSerializer(data=_data(page_start=5, page_end=2))
     assert not s.is_valid()
+
+
+def test_unreadable_pdf_is_field_error_and_stream_is_rewound():
+    bad = SimpleUploadedFile("doc.pdf", b"not a pdf", content_type="application/pdf")
+    s = SubmitSerializer(data=_data(file=bad))
+    assert not s.is_valid()
+    assert "file" in s.errors
+    # The `finally: f.seek(0)` in validate() must run on the error path too,
+    # so a downstream reader (e.g. the view persisting the upload) still sees
+    # the whole stream from the start.
+    assert bad.tell() == 0
+    assert bad.read() == b"not a pdf"
