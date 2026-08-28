@@ -12,12 +12,23 @@ const PopoverAnchor = PopoverPrimitive.Anchor;
 const PopoverContent = React.forwardRef<
   React.ComponentRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>
->(({ className, align = "center", sideOffset = 4, ...props }, ref) => (
+>(({ className, align = "center", sideOffset = 4, onWheel, ...props }, ref) => (
   <PopoverPrimitive.Portal>
     <PopoverPrimitive.Content
       ref={ref}
       align={align}
       sideOffset={sideOffset}
+      // A popover open inside a Modal is portalled to `document.body`, so it
+      // sits outside both Radix's scroll lock and the dialog content it
+      // shards — and react-remove-scroll cancels every `wheel` it sees on
+      // `document` from anywhere else. That left popover lists scrollable by
+      // dragging the scrollbar but dead to the mouse wheel. Its listener is
+      // on `document` and not capturing, so stopping propagation here keeps
+      // it from ever running; the browser still scrolls natively.
+      onWheel={(event) => {
+        onWheel?.(event);
+        event.stopPropagation();
+      }}
       className={cn(
         // `max-h` + scroll: Radix measures the space actually available on
         // the chosen side and exposes it as this variable. Without it a tall
