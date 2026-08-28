@@ -13,6 +13,7 @@ from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
+    BigQueryValueException,
     ColumnMissingException,
 )
 from unstract.connectors.databases.sql_safety import (
@@ -321,6 +322,17 @@ class BigQuery(UnstractDB):
                 detail=e.message, table_name=table_name
             ) from e
         except google.api_core.exceptions.BadRequest as e:
+            # UN-3176: BigQuery returns BadRequest for VALUE-level failures as
+            # well as for schema mismatches. Mapping them all to
+            # ColumnMissingException told users to check their columns when the
+            # columns were fine (e.g. a float that will not round-trip through
+            # PARSE_JSON), which misdirects the investigation. Discriminate
+            # before wrapping.
+            if BigQuery._is_value_error(e):
+                logger.error(f"Value rejected by BigQuery on insert: {str(e)}")
+                raise BigQueryValueException(
+                    detail=e.message, table_name=table_name
+                ) from e
             logger.error(f"Column missing in inserting data: {str(e)}")
             db, schema, table = table_name.split(".")
             raise ColumnMissingException(
@@ -329,6 +341,36 @@ class BigQuery(UnstractDB):
                 schema=schema,
                 table_name=table,
             ) from e
+
+    @staticmethod
+    def _is_value_error(e: Any) -> bool:
+        """True if a BigQuery BadRequest is about the DATA, not the schema.
+
+        UN-3176. Prefers the structured ``errors`` payload (a list of
+        ``{reason, message}``), because ``invalidQuery`` covers the value-level
+        rejections we care about here, and falls back to the message text for
+        the signatures BigQuery does not tag -- notably the PARSE_JSON
+        round-trip failure in this ticket. Unknown shapes fall through to the
+        existing column-missing behaviour, so this only ever narrows a message
+        that was already wrong for these cases.
+        """
+        value_error_markers = (
+            "parse_json",
+            "round-trip through string representation",
+            "invalid json",
+            "cannot round-trip",
+            "failed to parse json",
+        )
+        text = f"{getattr(e, 'message', '') or ''} {str(e)}".lower()
+        if any(marker in text for marker in value_error_markers):
+            return True
+        for error in getattr(e, "errors", None) or []:
+            if not isinstance(error, dict):
+                continue
+            message = str(error.get("message", "")).lower()
+            if any(marker in message for marker in value_error_markers):
+                return True
+        return False
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
         """Function to generate information schema of the big query table.
