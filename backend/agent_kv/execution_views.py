@@ -19,6 +19,26 @@ from agent_kv.storage import stage_input
 logger = logging.getLogger(__name__)
 
 
+def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Response:
+    """Shared cleanup for any post-acquire submit failure (spec §5.3/§5.4).
+
+    Always releases the concurrency slot acquired earlier in the request.
+    Only calls ``mark_terminal`` when a job row may actually exist — calling
+    it against a job_id with no row is harmless (the guarded UPDATE just
+    matches zero rows), but ``job_saved`` keeps the write guard's intent
+    (only terminalize rows that exist) obvious at the call site.
+    """
+    if job_saved:
+        AgentKVJob.mark_terminal(
+            job.id, job.organization_id, JobStatus.FAILED, error=message
+        )
+    AgentKVConcurrencyLimiter.release(org_id, str(job.id))
+    return Response(
+        {"job_id": str(job.id), "status": JobStatus.FAILED, "error": message},
+        status=500,
+    )
+
+
 class SubmitView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -51,8 +71,19 @@ class SubmitView(APIView):
         if not AgentKVConcurrencyLimiter.check_and_acquire(org_id, str(job.id)):
             raise RateLimited("Concurrent job limit reached")
 
-        job.input_ref = stage_input(org_id, str(job.id), v["file"])
-        job.save()
+        job_saved = False
+        try:
+            job.input_ref = stage_input(org_id, str(job.id), v["file"])
+            job.save()
+            job_saved = True
+        except Exception:
+            logger.error("agent-kv staging/save failed for job %s", job.id, exc_info=True)
+            return _fail_job_response(
+                job,
+                org_id,
+                "Job could not be accepted; nothing was billed.",
+                job_saved=job_saved,
+            )
 
         options = {
             k: v[k]
@@ -72,20 +103,27 @@ class SubmitView(APIView):
             dispatch_job(job, schema=v["keys"], options=options)
         except DispatchError:
             logger.error("agent-kv dispatch failed for job %s", job.id, exc_info=True)
-            AgentKVJob.mark_terminal(
-                job.id,
-                job.organization_id,
-                JobStatus.FAILED,
-                error="Job could not be dispatched; nothing was billed.",
+            return _fail_job_response(
+                job,
+                org_id,
+                "Job could not be dispatched; nothing was billed.",
+                job_saved=True,
             )
-            AgentKVConcurrencyLimiter.release(org_id, str(job.id))
-            return Response(
-                {
-                    "job_id": str(job.id),
-                    "status": JobStatus.FAILED,
-                    "error": "Job could not be dispatched; nothing was billed.",
-                },
-                status=500,
+        except Exception:
+            # Belt-and-braces: dispatch_job wraps its own internal failures
+            # as DispatchError, but nothing here may rely on that alone —
+            # any other exception must still terminalize the job and
+            # release the slot rather than escape as an unhandled 500.
+            logger.error(
+                "agent-kv dispatch raised unexpectedly for job %s",
+                job.id,
+                exc_info=True,
+            )
+            return _fail_job_response(
+                job,
+                org_id,
+                "Job could not be dispatched; nothing was billed.",
+                job_saved=True,
             )
 
         wait = v["timeout"]

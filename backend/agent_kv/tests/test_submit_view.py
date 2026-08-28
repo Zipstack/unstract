@@ -120,6 +120,42 @@ def test_concurrency_limited_429s_with_no_job_row(
 
 
 # ---------------------------------------------------------------------------
+# Staging/save failure: the concurrency slot must be released and the
+# client gets a user-safe 500 — no leaked exception text, no stuck slot.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_stage_input_failure_releases_slot_and_500s_with_safe_body(
+    m_keys, m_plugin, m_rate, m_serializer_cls, m_stage, m_limiter
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    _mock_serializer(m_serializer_cls)
+    m_limiter.check_and_acquire.return_value = True
+    m_stage.side_effect = OSError("object store unreachable: leaked-secret-bucket-key")
+
+    with mock.patch.object(AgentKVJob, "mark_terminal") as m_mark_terminal:
+        resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 500
+    # The internal exception text must never reach the client.
+    assert "leaked-secret-bucket-key" not in str(resp.data)
+    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["error"] == "Job could not be accepted; nothing was billed."
+    assert "job_id" in resp.data
+
+    # stage_input raised before job.save() ever ran: no row exists, so
+    # mark_terminal must not be called against a nonexistent job.
+    assert not m_mark_terminal.called
+    assert m_limiter.release.called
+    released_job_id = m_limiter.release.call_args.args[1]
+    assert released_job_id == resp.data["job_id"]
+
+
+# ---------------------------------------------------------------------------
 # Happy path: 202 with job_id/status/status_url; staging + dispatch happen;
 # job is persisted.
 # ---------------------------------------------------------------------------
@@ -215,6 +251,93 @@ def test_dispatch_failure_marks_job_failed_releases_slot_and_500s(
     assert m_limiter.release.called
     released_job_id = m_limiter.release.call_args.args[1]
     assert released_job_id == str(call.args[0])
+
+
+# ---------------------------------------------------------------------------
+# Belt-and-braces: a raw (non-DispatchError) exception out of dispatch_job
+# must get IDENTICAL cleanup to a DispatchError — nothing may escape
+# unhandled.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_dispatch_job_raising_non_dispatch_error_is_still_caught_and_cleaned_up(
+    m_keys,
+    m_plugin,
+    m_rate,
+    m_serializer_cls,
+    m_stage,
+    m_save,
+    m_dispatch,
+    m_mark_terminal,
+    m_limiter,
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    _mock_serializer(m_serializer_cls)
+    m_limiter.check_and_acquire.return_value = True
+    m_dispatch.side_effect = RuntimeError("unexpected: leaked-secret-abc")
+
+    resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 500
+    assert "leaked-secret-abc" not in str(resp.data)
+    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["error"] == "Job could not be dispatched; nothing was billed."
+
+    assert m_mark_terminal.called
+    assert m_mark_terminal.call_args.args[2] == JobStatus.FAILED
+    assert m_limiter.release.called
+
+
+# ---------------------------------------------------------------------------
+# End-to-end regression for the widened dispatch.py try: a raw RuntimeError
+# from the platform-key lookup deep inside the REAL dispatch_job must still
+# result in mark_terminal + release + a safe 500 at the view layer.
+# ---------------------------------------------------------------------------
+@mock.patch("agent_kv.dispatch._platform_api_key")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
+    m_keys,
+    m_plugin,
+    m_rate,
+    m_serializer_cls,
+    m_stage,
+    m_save,
+    m_limiter,
+    m_mark_terminal,
+    m_platform_key,
+):
+    # ev.dispatch_job is intentionally left real here — only the platform-key
+    # lookup deep inside it is mocked to raise, proving the widened
+    # dispatch.py try (Fix 2a) plus the view's cleanup (Fix 2b) work together.
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    _mock_serializer(m_serializer_cls)
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+    m_platform_key.side_effect = RuntimeError("platform db down: leaked-secret-xyz")
+
+    resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 500
+    assert "leaked-secret-xyz" not in str(resp.data)
+    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["error"] == "Job could not be dispatched; nothing was billed."
+
+    assert m_mark_terminal.called
+    assert m_limiter.release.called
 
 
 # ---------------------------------------------------------------------------

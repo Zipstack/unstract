@@ -41,24 +41,29 @@ def _platform_api_key(org_id: str) -> str:
 
 def dispatch_job(job, *, schema: dict, options: dict) -> None:
     org_id = str(job.organization_id)
-    job.task_id = uuid.uuid4()
-    context = ExecutionContext(
-        executor_name=EXECUTOR_NAME,
-        operation=OPERATION_KV_EXTRACT,
-        run_id=str(job.id),
-        execution_source=EXECUTION_SOURCE,
-        organization_id=org_id,
-        executor_params={
-            "job_id": str(job.id),
-            "input_ref": job.input_ref,
-            "schema": schema,
-            "options": options,
-            "platform_api_key": _platform_api_key(org_id),
-            "max_pages": job.pages_total,
-        },
-    )
-    cb_kwargs = {"callback_kwargs": {"job_id": str(job.id), "org_id": org_id}}
+    # Everything that can fail — platform-key lookup, context construction,
+    # and the enqueue call itself — lives inside this try so no internal
+    # failure (e.g. a transient DB error resolving the platform key) can
+    # escape as a raw, uncaught exception. Only the post-success bookkeeping
+    # below runs outside it.
     try:
+        job.task_id = uuid.uuid4()
+        context = ExecutionContext(
+            executor_name=EXECUTOR_NAME,
+            operation=OPERATION_KV_EXTRACT,
+            run_id=str(job.id),
+            execution_source=EXECUTION_SOURCE,
+            organization_id=org_id,
+            executor_params={
+                "job_id": str(job.id),
+                "input_ref": job.input_ref,
+                "schema": schema,
+                "options": options,
+                "platform_api_key": _platform_api_key(org_id),
+                "max_pages": job.pages_total,
+            },
+        )
+        cb_kwargs = {"callback_kwargs": {"job_id": str(job.id), "org_id": org_id}}
         _dispatcher().dispatch_with_callback(
             context,
             on_success=signature(
@@ -67,6 +72,8 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
             on_error=signature("agent_kv_error", kwargs=cb_kwargs, queue=CALLBACK_QUEUE),
             task_id=str(job.task_id),
         )
+    except DispatchError:
+        raise
     except Exception as e:
         raise DispatchError(str(e)) from e
     job.status = JobStatus.DISPATCHED

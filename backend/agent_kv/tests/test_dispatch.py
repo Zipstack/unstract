@@ -104,3 +104,21 @@ def test_platform_api_key_raises_dispatch_error_when_absent():
     ):
         with pytest.raises(dispatch.DispatchError):
             dispatch._platform_api_key("org1")
+
+
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(dispatch, "_platform_api_key")
+def test_raw_exception_from_platform_key_lookup_is_wrapped_as_dispatch_error(
+    m_key, m_disp
+):
+    """Regression: platform-key lookup and context construction must live
+    inside dispatch_job's try — a raw (non-DispatchError) exception there
+    (e.g. a transient DB error) must not escape uncaught.
+    """
+    m_key.side_effect = RuntimeError("platform db down")
+
+    with pytest.raises(dispatch.DispatchError):
+        dispatch.dispatch_job(_job(), schema={}, options={})
+
+    # Never got far enough to enqueue.
+    assert not m_disp.return_value.dispatch_with_callback.called
