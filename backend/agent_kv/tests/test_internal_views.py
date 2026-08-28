@@ -19,6 +19,56 @@ def _post(path, body):
     return APIRequestFactory().post(path, body, format="json")
 
 
+def _merge_payload(update_call):
+    """Unwrap a ``stages=`` jsonb-merge expression's {stage: entry} payload.
+
+    Also pins the expression's shape: a ``||`` (jsonb concatenation)
+    ``CombinedExpression`` over the ``stages`` column, not a plain dict --
+    the whole point of the DB-side merge is that ``.update()`` never
+    receives a Python-computed full-column dict.
+    """
+    expr = update_call.kwargs["stages"]
+    assert not isinstance(expr, dict), "stages must be a jsonb-merge expression"
+    assert expr.connector == "||"
+    assert expr.lhs.name == "stages"
+    return expr.rhs.value
+
+
+# ---------------------------------------------------------------------------
+# _stage_merge_expression / _sanitize_counters (expression-builder unit tests)
+# ---------------------------------------------------------------------------
+
+
+# (u1) the expression builder produces a single-entry {stage: entry} jsonb
+# merge payload over the `stages` column via the `||` connector.
+def test_stage_merge_expression_builds_single_entry_jsonb_merge():
+    expr = iv._stage_merge_expression("extraction", {"status": "running"})
+
+    assert expr.connector == "||"
+    assert expr.lhs.name == "stages"
+    assert expr.rhs.value == {"extraction": {"status": "running"}}
+
+
+# (u2) counters colliding with reserved keys are dropped.
+def test_sanitize_counters_drops_reserved_keys():
+    assert iv._sanitize_counters({"status": "done", "seconds": 999, "pages": 3}) == {
+        "pages": 3
+    }
+
+
+# (u3) non-scalar counter values (dict/list) are dropped; scalars pass through.
+def test_sanitize_counters_drops_non_scalar_values():
+    assert iv._sanitize_counters(
+        {"pages": 3, "nested": {"a": 1}, "arr": [1, 2], "ok": "yes", "flag": True}
+    ) == {"pages": 3, "ok": "yes", "flag": True}
+
+
+# (u4) a non-dict counters payload (e.g. a string or list) sanitizes to {}.
+def test_sanitize_counters_non_dict_input_is_empty():
+    assert iv._sanitize_counters("not-a-dict") == {}
+    assert iv._sanitize_counters(None) == {}
+
+
 # ---------------------------------------------------------------------------
 # StageReportView
 # ---------------------------------------------------------------------------
@@ -33,8 +83,33 @@ def test_stage_report_missing_org_id_is_400():
     assert resp.status_code == 400
 
 
+# (1b) missing `stage` -> 400.
+def test_stage_report_missing_stage_is_400():
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "status": "running"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp.status_code == 400
+
+
+# (1c) missing/invalid `status` -> 400 (must be exactly "running" or "done").
+def test_stage_report_invalid_status_is_400():
+    resp = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "stage": "extraction", "status": "bogus"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp.status_code == 400
+
+    resp_missing = iv.StageReportView.as_view()(
+        _post("/x", {"org_id": "org1", "stage": "extraction"}),
+        job_id=uuid.uuid4(),
+    )
+    assert resp_missing.status_code == 400
+
+
 # (2) first stage report on a PENDING job flips it to RUNNING exactly once,
-# merges the stage entry, and sets `stage`.
+# and merges the stage entry via a DB-side jsonb `||` expression (not a
+# plain dict) targeting only the reported stage's key.
 @mock.patch.object(AgentKVJob, "objects")
 def test_stage_report_flips_pending_to_running_once(m_jobs):
     job = AgentKVJob(status=JobStatus.PENDING, stages={})
@@ -54,11 +129,11 @@ def test_stage_report_flips_pending_to_running_once(m_jobs):
     )
 
     assert resp.status_code == 200
-    qs.update.assert_called_once_with(
-        stages={"extraction": {"status": "running"}},
-        stage="extraction",
-        status=JobStatus.RUNNING,
-    )
+    qs.update.assert_called_once()
+    call = qs.update.call_args
+    assert _merge_payload(call) == {"extraction": {"status": "running"}}
+    assert call.kwargs["stage"] == "extraction"
+    assert call.kwargs["status"] == JobStatus.RUNNING
 
 
 # (2b) a stage report on an already-RUNNING job does NOT re-flip status --
@@ -80,8 +155,9 @@ def test_stage_report_on_running_job_does_not_touch_status(m_jobs):
     )
 
     assert resp.status_code == 200
-    update_kwargs = qs.update.call_args.kwargs
-    assert "status" not in update_kwargs
+    call = qs.update.call_args
+    assert "status" not in call.kwargs
+    assert _merge_payload(call) == {"extraction": {"status": "done", "seconds": 1.5}}
 
 
 # (3) stage report on a CANCELLED (terminal) job -- the update queryset
@@ -102,8 +178,10 @@ def test_stage_report_on_cancelled_job_is_200_noop(m_jobs):
 
 
 # (4) duplicate stage report (same stage name posted twice) overwrites the
-# entry rather than appending -- stages is a dict keyed by stage name, so
-# this falls out of the merge naturally, but pin it down explicitly.
+# entry rather than appending. With the DB-side jsonb `||` merge this falls
+# out structurally: the merge payload always carries exactly one key (the
+# reported stage), so the jsonb `||` operator replaces that key's value on
+# the second call instead of stacking a second version alongside it.
 @mock.patch.object(AgentKVJob, "objects")
 def test_stage_report_duplicate_overwrites_not_appends(m_jobs):
     job = AgentKVJob(
@@ -128,16 +206,17 @@ def test_stage_report_duplicate_overwrites_not_appends(m_jobs):
     )
 
     assert resp.status_code == 200
-    qs.update.assert_called_once_with(
-        stages={"extraction": {"status": "done", "seconds": 2.0, "pages": 3}},
-        stage="extraction",
-    )
+    call = qs.update.call_args
+    payload = _merge_payload(call)
+    assert list(payload.keys()) == ["extraction"]
+    assert payload == {"extraction": {"status": "done", "seconds": 2.0, "pages": 3}}
+    assert call.kwargs["stage"] == "extraction"
 
 
 # (5) the stage-report endpoint is the write gate for job.stages -- only the
-# defined shape (status, optional seconds, flat counters) is ever persisted;
-# unexpected top-level body keys (e.g. a stray "evil") must not leak into the
-# stored entry.
+# defined shape (status, optional seconds, sanitized flat counters) is ever
+# persisted; unexpected top-level body keys (e.g. a stray "evil") must not
+# leak into the stored entry.
 @mock.patch.object(AgentKVJob, "objects")
 def test_stage_report_ignores_unexpected_top_level_keys(m_jobs):
     job = AgentKVJob(status=JobStatus.RUNNING, stages={})
@@ -159,8 +238,59 @@ def test_stage_report_ignores_unexpected_top_level_keys(m_jobs):
     )
 
     assert resp.status_code == 200
-    stored_entry = qs.update.call_args.kwargs["stages"]["extraction"]
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
     assert stored_entry == {"status": "running"}
+
+
+# (5b) a counter named "status" or "seconds" cannot clobber the endpoint's
+# own reserved fields.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_counters_cannot_override_reserved_keys(m_jobs):
+    job = AgentKVJob(status=JobStatus.RUNNING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+                "counters": {"status": "done", "seconds": 999, "pages": 3},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
+    assert stored_entry == {"status": "running", "pages": 3}
+
+
+# (5c) a nested-dict (or list) counter value is dropped rather than stored.
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_counters_drops_nested_values(m_jobs):
+    job = AgentKVJob(status=JobStatus.RUNNING, stages={})
+    qs = m_jobs.filter.return_value.exclude.return_value
+    qs.first.return_value = job
+
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "extraction",
+                "status": "running",
+                "counters": {"pages": 3, "nested": {"a": 1}, "arr": [1, 2]},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 200
+    stored_entry = _merge_payload(qs.update.call_args)["extraction"]
+    assert stored_entry == {"status": "running", "pages": 3}
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +302,29 @@ def test_stage_report_ignores_unexpected_top_level_keys(m_jobs):
 def test_finalize_missing_org_id_is_400():
     resp = iv.FinalizeView.as_view()(_post("/x", {"success": True}), job_id=uuid.uuid4())
     assert resp.status_code == 400
+
+
+# (6b) missing `success` -> 400, and no slot is released (nothing was
+# finalized).
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+def test_finalize_missing_success_is_400(m_release):
+    resp = iv.FinalizeView.as_view()(_post("/x", {"org_id": "org1"}), job_id=uuid.uuid4())
+    assert resp.status_code == 400
+    assert not m_release.called
+
+
+# (6c) a non-bool `success` (e.g. a truthy string) -> 400 rather than
+# silently falling through to the failure branch and persisting a FAILED
+# job with an empty error.
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+def test_finalize_non_bool_success_is_400(m_release, m_mark_terminal):
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": "true"}), job_id=uuid.uuid4()
+    )
+    assert resp.status_code == 400
+    assert not m_release.called
+    assert not m_mark_terminal.called
 
 
 # (7) finalize success: writes the result THEN marks the job terminal (order
