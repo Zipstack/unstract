@@ -840,6 +840,137 @@ describe("antd-compatible structural shims (P4)", () => {
       );
     });
 
+    /*
+     * antd's `beforeUpload` returning false cancels only the UPLOAD — the
+     * file still enters fileList and onChange still fires. The shim returned
+     * early instead, so Import Project's fileList stayed empty and clicking
+     * Import answered "Please select a file to import" for the JSON the user
+     * had just picked.
+     */
+    it("still reports the file when beforeUpload returns false", async () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <Upload.Dragger beforeUpload={() => false} onChange={onChange}>
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      const file = new File(["{}"], "project.json", {
+        type: "application/json",
+      });
+      fireEvent.change(container.querySelector("input[type='file']"), {
+        target: { files: [file] },
+      });
+
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+      const info = onChange.mock.calls.at(-1)[0];
+      expect(info.fileList).toHaveLength(1);
+      expect(info.fileList[0].originFileObj).toBe(file);
+      expect(info.fileList[0].name).toBe("project.json");
+      // `false` is not an upload, so it must not be reported as a completed one.
+      expect(info.file.status).toBeUndefined();
+    });
+
+    it("appends to the fileList the call-site already holds", async () => {
+      const onChange = vi.fn();
+      const held = [{ uid: "a", name: "first.json" }];
+      const { container } = render(
+        <Upload.Dragger
+          multiple
+          fileList={held}
+          beforeUpload={() => false}
+          onChange={onChange}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      fireEvent.change(container.querySelector("input[type='file']"), {
+        target: { files: [new File(["{}"], "second.json")] },
+      });
+
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)[0].fileList.map((f) => f.name)).toEqual(
+        ["first.json", "second.json"],
+      );
+    });
+
+    it("replaces rather than queues under maxCount={1}", async () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <Upload.Dragger
+          maxCount={1}
+          fileList={[{ uid: "a", name: "first.json" }]}
+          beforeUpload={() => false}
+          onChange={onChange}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      fireEvent.change(container.querySelector("input[type='file']"), {
+        target: { files: [new File(["{}"], "second.json")] },
+      });
+
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)[0].fileList.map((f) => f.name)).toEqual(
+        ["second.json"],
+      );
+    });
+
+    /*
+     * `Upload.LIST_IGNORE` was undefined, so a call-site returning it (Look-up
+     * Studio's oversize-file veto) did not match `=== false` and fell through
+     * to the success path — a rejected file reported as uploaded.
+     */
+    it("drops the file entirely when beforeUpload returns LIST_IGNORE", async () => {
+      const onChange = vi.fn();
+      const { container } = render(
+        <Upload.Dragger
+          beforeUpload={() => Upload.LIST_IGNORE}
+          onChange={onChange}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      fireEvent.change(container.querySelector("input[type='file']"), {
+        target: { files: [new File(["x"], "huge.pdf")] },
+      });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(onChange).not.toHaveBeenCalled();
+    });
+
+    /*
+     * With beforeUpload returning false nothing else on screen changes, so
+     * the list is the only sign the file registered at all.
+     */
+    it("lists the staged files and removes one on demand", async () => {
+      const onChange = vi.fn();
+      render(
+        <Upload.Dragger
+          fileList={[{ uid: "a", name: "project.json" }]}
+          beforeUpload={() => false}
+          onChange={onChange}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      expect(screen.getByText("project.json")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /Remove project/i }));
+      await vi.waitFor(() => expect(onChange).toHaveBeenCalled());
+      expect(onChange.mock.calls.at(-1)[0].fileList).toEqual([]);
+    });
+
+    it("honours showUploadList={false}", () => {
+      render(
+        <Upload.Dragger
+          showUploadList={false}
+          fileList={[{ uid: "a", name: "project.json" }]}
+        >
+          <p>drop here</p>
+        </Upload.Dragger>,
+      );
+      expect(screen.queryByText("project.json")).toBeNull();
+    });
+
     it("does not accept drops while disabled", () => {
       const beforeUpload = vi.fn();
       const { container } = render(

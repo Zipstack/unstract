@@ -1,6 +1,6 @@
 import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Upload } from "@/components/ui/shims/antd-structure";
 import { Text } from "@/components/ui/shims/antd-typography";
@@ -15,6 +15,17 @@ function ImportTool({ open, setOpen, onImport, loading }) {
   const [projectData, setProjectData] = useState(null);
   const [showAdapterSelection, setShowAdapterSelection] = useState(false);
   const [parseLoading, setParseLoading] = useState(false);
+
+  // The parent closes the modal itself once an import succeeds, so without
+  // this the next Import Project opens with the previous file still staged.
+  useEffect(() => {
+    if (!open) {
+      setFileList([]);
+      setProjectData(null);
+      setShowAdapterSelection(false);
+      setParseLoading(false);
+    }
+  }, [open]);
 
   const handleUploadChange = (info) => {
     setFileList(info.fileList);
@@ -79,6 +90,9 @@ function ImportTool({ open, setOpen, onImport, loading }) {
   const uploadProps = {
     name: "file",
     multiple: false,
+    // Only one project is imported at a time, so a second pick replaces the
+    // first rather than queueing behind it.
+    maxCount: 1,
     accept: ".json",
     beforeUpload: () => false, // Prevent automatic upload
     fileList,

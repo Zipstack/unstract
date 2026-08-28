@@ -6,6 +6,7 @@ import {
   CircleCheck,
   CircleX,
   LoaderCircle,
+  Paperclip,
   Upload as UploadIcon,
   X,
 } from "lucide-react";
@@ -167,6 +168,10 @@ interface UploadProps
   multiple?: boolean;
   showUploadList?: boolean;
   fileList?: UploadFile[];
+  /** antd truncates the list to this; `1` REPLACES rather than truncates. */
+  maxCount?: number;
+  /** Returning false (or rejecting) vetoes the removal, as antd does. */
+  onRemove?: (file: UploadFile) => boolean | void | Promise<unknown>;
   disabled?: boolean;
 }
 
@@ -875,6 +880,17 @@ function Footer({ className, ...p }: React.HTMLAttributes<HTMLElement>) {
   return <footer className={className} {...p} />;
 }
 
+/**
+ * antd's sentinel for "reject this file AND keep it out of the list", as
+ * opposed to `false`, which only cancels the upload. Same literal antd uses,
+ * so a call-site importing either one behaves identically.
+ */
+const LIST_IGNORE = "__LIST_IGNORE__";
+
+/** Stable enough to key the rendered list and to match on removal. */
+const fileUid = (file: File) =>
+  `${file.name}-${file.size}-${file.lastModified}`;
+
 /** antd `<Upload beforeUpload customRequest action>` over a hidden file input. */
 const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
   {
@@ -888,6 +904,8 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
     multiple,
     showUploadList,
     fileList,
+    maxCount,
+    onRemove,
     disabled,
     children,
     className,
@@ -942,7 +960,37 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
     }
   };
 
+  /**
+   * antd's `maxCount`: a limit of 1 REPLACES the selection rather than
+   * truncating it, which is what Verticals' request body relies on to let a
+   * second pick swap the attached file.
+   */
+  const capped = (list: UploadFile[]) => {
+    if (!maxCount) {
+      return list;
+    }
+    return maxCount === 1 ? list.slice(-1) : list.slice(0, maxCount);
+  };
+
+  /**
+   * Record a file the call-site will upload itself, and tell it so.
+   *
+   * antd's fileList is cumulative across selections, so a batch starts from
+   * whatever the call-site is already holding rather than replacing it.
+   */
+  const stage = (staged: UploadFile[], file: File) => {
+    const entry: UploadFile = {
+      uid: fileUid(file),
+      name: file.name,
+      originFileObj: file,
+    };
+    const next = capped([...staged, entry]);
+    onChange?.({ file: entry, fileList: next });
+    return next;
+  };
+
   const handleFiles = async (files: File[]) => {
+    let staged: UploadFile[] = [...(fileList ?? [])];
     for (const file of files) {
       // antd aborts the upload when beforeUpload returns false, and equally
       // when the promise it returned rejects — Manage Documents rejects to
@@ -956,7 +1004,29 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
           continue;
         }
       }
+      /*
+       * antd has two distinct ways of saying no, and the shim honoured
+       * neither correctly. `LIST_IGNORE` drops the file outright; anything
+       * else that is not `false` means "go ahead and upload". Without the
+       * constant, `Upload.LIST_IGNORE` was `undefined` at the call-site, so
+       * Look-up Studio's oversize-file veto fell through to the success path
+       * and reported a file it had just rejected as uploaded.
+       */
+      if (proceed === LIST_IGNORE) {
+        continue;
+      }
       if (proceed === false) {
+        /*
+         * `false` cancels only the UPLOAD — antd still adds the file to
+         * fileList and still fires onChange. Import Project, Verticals'
+         * request body and Simple Prompt Studio all veto the automatic
+         * upload and submit the file themselves, so this onChange is the
+         * ONLY way they ever learn a file was picked. Returning early here
+         * left their fileList permanently empty: Import Project answered
+         * "Please select a file to import" for the file the user had just
+         * chosen, so the JSON could never be imported at all.
+         */
+        staged = stage(staged, file);
         continue;
       }
       if (customRequest) {
@@ -974,6 +1044,25 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
         });
       }
     }
+  };
+
+  /** antd's remove button: `onRemove` may veto, otherwise the file drops out. */
+  const removeFile = async (file: UploadFile) => {
+    if (onRemove) {
+      let keep: unknown;
+      try {
+        keep = await onRemove(file);
+      } catch {
+        return;
+      }
+      if (keep === false) {
+        return;
+      }
+    }
+    onChange?.({
+      file: { ...file, status: "removed" },
+      fileList: (fileList ?? []).filter((f) => f.uid !== file.uid),
+    });
   };
 
   return (
@@ -1028,6 +1117,39 @@ const UploadBase = React.forwardRef<HTMLElement, UploadProps>(function Upload(
           <Button icon={<UploadIcon className="size-4" />}>Upload</Button>
         )}
       </span>
+      {/*
+       * antd's `.ant-upload-list`, on by default. It is the only feedback the
+       * manual-submit call-sites give: with `beforeUpload` returning false
+       * nothing else on screen changes when a file is picked, so Import
+       * Project looked like it had ignored the JSON entirely.
+       *
+       * Rendered OUTSIDE the trigger span above — inside it, clicking the
+       * remove button would also reopen the file picker.
+       */}
+      {showUploadList !== false && (fileList?.length ?? 0) > 0 && (
+        <span className="ant-upload-list mt-2 block space-y-1 text-left">
+          {fileList?.map((file) => (
+            <span
+              key={file.uid ?? file.name}
+              className={cn(
+                "flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-muted/60",
+                file.status === "error" && "text-destructive",
+              )}
+            >
+              <Paperclip className="size-4 shrink-0 text-muted-foreground" />
+              <span className="truncate">{file.name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${file.name ?? "file"}`}
+                className="ml-auto shrink-0 text-muted-foreground hover:text-destructive"
+                onClick={() => removeFile(file)}
+              >
+                <X className="size-4" />
+              </button>
+            </span>
+          ))}
+        </span>
+      )}
     </span>
   );
 });
@@ -2322,7 +2444,7 @@ const Layout = Object.assign(LayoutBase, {
   Sider,
   Footer,
 });
-const Upload = Object.assign(UploadBase, { Dragger });
+const Upload = Object.assign(UploadBase, { Dragger, LIST_IGNORE });
 const Menu = Object.assign(MenuBase, {
   Item: MenuItem,
   ItemGroup: MenuItemGroup,
