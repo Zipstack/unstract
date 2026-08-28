@@ -3,19 +3,32 @@
 A route, serializer or schema-annotation change that is not regenerated ships a
 spec describing an API the server no longer serves, so drift fails here rather
 than in a client repo.
+
+Drift alone would pass on a spec that is uniformly wrong, so the tests below
+also anchor the parts a client breaks on -- the upload encoding, the nullable
+result, the error body -- to the code that produces them.
 """
 
 import dataclasses
 import json
 
+import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.urls import resolve, reverse
-from drf_spectacular.drainage import GENERATOR_STATS
+from drf_spectacular.drainage import warn
+from drf_spectacular.generators import SchemaGenerator
+from middleware.exception import drf_logging_exc_handler
+from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.test import APIRequestFactory
+from workflow_manager.endpoint_v2.dto import FileExecutionResult
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
 from api_v2.management.commands.generate_docstudio_spec import (
     DEFAULT_OUT,
     DOWNSTREAM,
     REGENERATE,
+    SpecGenerationFailed,
     render_spec,
 )
 from api_v2.serializers import APIExecutionResponseSerializer
@@ -24,9 +37,17 @@ from api_v2.serializers import APIExecutionResponseSerializer
 #: `summary`, vendor extensions -- describe the path, not a call.
 _METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
 
+#: Documented on a file result but absent from the DTO: the workflow copies it
+#: up from the extraction metadata when the request asks for it.
+_PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
+
 
 def _committed() -> dict:
     return json.loads(DEFAULT_OUT.read_text())
+
+
+def _schema(name: str) -> dict:
+    return _committed()["components"]["schemas"][name]
 
 
 def _operations(spec: dict) -> list[tuple[str, str, dict]]:
@@ -35,12 +56,14 @@ def _operations(spec: dict) -> list[tuple[str, str, dict]]:
     The spec grows an endpoint at a time, and a check written against exactly
     one of them fails on the next addition without anything being wrong.
     """
-    return [
+    operations = [
         (path, method, operation)
         for path, path_item in spec["paths"].items()
         for method, operation in path_item.items()
         if method in _METHODS
     ]
+    assert operations, "the spec documents no operation at all"
+    return operations
 
 
 def test_committed_spec_matches_the_code() -> None:
@@ -51,13 +74,19 @@ def test_committed_spec_matches_the_code() -> None:
     )
 
 
-def test_generation_reports_no_diagnostics() -> None:
-    """A warned-about operation is published with guessed request and response
-    shapes, and the drift comparison certifies the guess.
+def test_a_generator_diagnostic_fails_generation(monkeypatch) -> None:
+    """An operation spectacular could not resolve is published empty rather
+    than dropped, so the drift comparison would certify the gap.
     """
-    render_spec()
-    assert not GENERATOR_STATS._error_cache
-    assert not GENERATOR_STATS._warn_cache
+
+    def guessing_generator(self, request=None, public=False) -> dict:
+        warn("unable to guess serializer")
+        return {"openapi": "3.0.3", "paths": {}}
+
+    monkeypatch.setattr(SchemaGenerator, "get_schema", guessing_generator)
+
+    with pytest.raises(SpecGenerationFailed, match="unable to guess serializer"):
+        render_spec()
 
 
 def test_spec_paths_are_the_urls_the_server_serves() -> None:
@@ -100,9 +129,23 @@ def test_operations_require_the_deployment_key() -> None:
 
 def test_clients_can_branch_on_every_failure_they_will_see() -> None:
     for path, method, operation in _operations(_committed()):
-        assert {"400", "401", "403", "404", "429", "500"} <= set(
+        assert {"400", "401", "403", "404", "500"} <= set(
             operation["responses"]
         ), f"{method} {path}"
+
+
+def test_only_the_execution_endpoint_documents_the_statuses_only_it_returns() -> None:
+    """Fetching a document and taking a rate-limit slot happen on the execute
+    call alone, so declaring them on the status read hands clients branches
+    that can never be taken.
+    """
+    fetch_and_rate_limit = {"413", "429", "502", "504"}
+    for _, _, operation in _operations(_committed()):
+        declared = fetch_and_rate_limit & set(operation["responses"])
+        if operation["operationId"] == "execute":
+            assert declared == fetch_and_rate_limit
+        else:
+            assert not declared
 
 
 def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
@@ -118,15 +161,96 @@ def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
     assert reads
     for status_op in reads:
         assert "one-shot" in status_op["description"]
+        # A pending poll answers 422, so a client that raises on non-2xx needs
+        # to be told before it wraps this endpoint in a loop.
+        assert "422" in status_op["description"]
         assert status_op["responses"]["406"]["description"].strip()
 
 
+def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
+    """A bare DRF FileField documents as `format: uri`, which generators turn
+    into a string parameter and no multipart upload.
+    """
+    files = _schema("ExecuteRequest")["properties"]["files"]
+
+    assert files["items"] == {"type": "string", "format": "binary"}
+
+
+def test_the_result_a_pending_execution_omits_is_documented_nullable() -> None:
+    """Both endpoints send `result: null` until the execution finishes, and a
+    generated deserialiser iterates that field.
+    """
+    assert _schema("ExecutionMessage")["properties"]["result"]["nullable"] is True
+    assert _schema("StatusResponse")["properties"]["message"]["nullable"] is True
+
+
 def test_the_documented_response_fields_are_ones_the_code_produces() -> None:
-    """The view returns the execution DTO as a dict rather than through this
-    serializer, so a renamed DTO field would otherwise reach clients as a field
-    the server never sends.
+    """`APIExecutionResponseSerializer` builds the live execute response, so a
+    field documented here that the DTO no longer carries reaches clients as a
+    field the server never sends.
     """
     documented = set(APIExecutionResponseSerializer().get_fields())
     produced = {field.name for field in dataclasses.fields(ExecutionResponse)}
 
     assert documented <= produced, documented - produced
+
+
+def test_the_documented_file_result_fields_are_ones_the_code_produces() -> None:
+    documented = set(_schema("FileResult")["properties"])
+    produced = {
+        field.name for field in dataclasses.fields(FileExecutionResult)
+    } | _PROMOTED_FILE_RESULT_FIELDS
+
+    assert documented <= produced, documented - produced
+
+
+def test_the_status_read_documents_the_two_keys_it_returns() -> None:
+    """The status view builds its body literally, so the spec is the only
+    place the pair is written down.
+    """
+    status_response = _schema("StatusResponse")
+
+    assert set(status_response["properties"]) == {"status", "message"}
+    assert status_response["properties"]["message"]["items"]["$ref"].endswith(
+        "/FileResult"
+    )
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [APIException("Unauthorized"), ValidationError("at least one file is required")],
+)
+def test_the_documented_error_body_is_the_one_the_handler_sends(exc) -> None:
+    """The error shape comes from the project-wide exception handler, not from
+    any view, so nothing else in the spec moves when that handler changes.
+    """
+    request = APIRequestFactory().post("/deployment/api/org/api/")
+    response = drf_logging_exc_handler(exc=exc, context={"request": request})
+
+    error_response = _schema("ErrorResponse")
+    error_detail = _schema("ErrorDetail")
+
+    assert set(response.data) == set(error_response["required"])
+    assert response.data["type"] in _schema("ErrorType")["enum"]
+    for error in response.data["errors"]:
+        assert set(error) == set(error_detail["required"])
+
+
+def test_the_check_flag_passes_on_the_committed_spec() -> None:
+    call_command("generate_docstudio_spec", "--check")
+
+
+def test_the_check_flag_fails_on_a_drifted_spec(tmp_path) -> None:
+    drifted = tmp_path / "drifted.json"
+    drifted.write_text("{}\n")
+
+    with pytest.raises(CommandError, match="out of date"):
+        call_command("generate_docstudio_spec", "--check", "--out", str(drifted))
+
+
+def test_writing_the_spec_reproduces_the_committed_file(tmp_path) -> None:
+    written = tmp_path / "nested" / "spec.json"
+
+    call_command("generate_docstudio_spec", "--out", str(written))
+
+    assert written.read_text() == DEFAULT_OUT.read_text()

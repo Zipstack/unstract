@@ -650,7 +650,10 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
     "VERSION_PARAM": "version",
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+    # The standardized-errors variant, because EXCEPTION_HANDLER above
+    # delegates to that package: it is the schema class that knows the error
+    # bodies these views actually return.
+    "DEFAULT_SCHEMA_CLASS": "drf_standardized_errors.openapi.AutoSchema",
 }
 
 # Read only while generating the OpenAPI spec
@@ -671,6 +674,9 @@ SPECTACULAR_SETTINGS = {
             }
         }
     },
+    # Without this the enum component is named after the field that holds it,
+    # and generated clients get a class called `TypeEnum`.
+    "ENUM_NAME_OVERRIDES": {"ErrorType": "api_v2.openapi_schema.ERROR_TYPES"},
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
     "TAGS": [

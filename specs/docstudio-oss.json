@@ -1,16 +1,73 @@
 {
   "components": {
     "schemas": {
-      "ErrorResponse": {
+      "AcknowledgedResponse": {
+        "description": "The execution's result was handed to an earlier call and discarded.",
         "properties": {
           "message": {
-            "nullable": true
+            "type": "string"
           },
           "status": {
             "type": "string"
           }
         },
+        "required": [
+          "message",
+          "status"
+        ],
         "type": "object"
+      },
+      "ErrorDetail": {
+        "description": "One problem found with the request.",
+        "properties": {
+          "attr": {
+            "description": "The request field the problem belongs to, when it belongs to one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "code": {
+            "description": "Machine-readable problem identifier.",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Human-readable description.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attr",
+          "code",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "The body of a rejected request.\n\nProduced by the project-wide exception handler, so its shape is the same\nfor every failure listed against an operation.",
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ErrorType"
+          }
+        },
+        "required": [
+          "errors",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ErrorType": {
+        "description": "* `validation_error` - validation_error\n* `client_error` - client_error\n* `server_error` - server_error",
+        "enum": [
+          "validation_error",
+          "client_error",
+          "server_error"
+        ],
+        "type": "string"
       },
       "ExecuteRequest": {
         "description": "The documents to run, and the options that shape the result.\n\nSupply `files`, `presigned_urls`, or both.",
@@ -26,10 +83,12 @@
             "type": "array"
           },
           "hitl_packet_id": {
+            "description": "Groups documents reviewed together into one packet. Requires the enterprise manual-review capability; an installation without it rejects the request with 400.",
             "nullable": true,
             "type": "string"
           },
           "hitl_queue_name": {
+            "description": "Document class name for the manual review queue. Requires the enterprise manual-review capability; an installation without it rejects the request with 400.",
             "nullable": true,
             "type": "string"
           },
@@ -89,6 +148,7 @@
         "description": "The execution's identity and, once it has finished, its per-file\nresults.",
         "properties": {
           "error": {
+            "nullable": true,
             "type": "string"
           },
           "execution_id": {
@@ -105,20 +165,25 @@
             "type": "array"
           },
           "status_api": {
+            "nullable": true,
             "type": "string"
           }
         },
         "required": [
-          "error",
           "execution_id",
-          "execution_status",
-          "status_api"
+          "execution_status"
         ],
         "type": "object"
       },
       "FileResult": {
+        "description": "One input document's outcome.\n\nEvery key is present on every item; the ones that depend on the request\noptions or on the outcome are sent as `null` when they do not apply.",
         "properties": {
           "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "extracted_text": {
+            "description": "The document's full extracted text. Sent only when the request set `include_extracted_text`.",
             "nullable": true,
             "type": "string"
           },
@@ -126,11 +191,15 @@
             "type": "string"
           },
           "file_execution_id": {
+            "nullable": true,
             "type": "string"
           },
-          "metadata": {},
-          "metrics": {},
-          "result": {},
+          "metadata": {
+            "nullable": true
+          },
+          "result": {
+            "nullable": true
+          },
           "status": {
             "type": "string"
           }
@@ -175,7 +244,7 @@
   "paths": {
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
-        "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.",
+        "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
         "operationId": "status",
         "parameters": [
           {
@@ -256,38 +325,106 @@
           "401": {
             "content": {
               "application/json": {
+                "examples": {
+                  "AuthenticationFailed": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "authentication_failed",
+                          "detail": "Incorrect authentication credentials."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  },
+                  "NotAuthenticated": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_authenticated",
+                          "detail": "Authentication credentials were not provided."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "The API key is not valid."
+            "description": "No usable API key was supplied for the deployment."
           },
           "403": {
             "content": {
               "application/json": {
+                "examples": {
+                  "PermissionDenied": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "permission_denied",
+                          "detail": "You do not have permission to perform this action."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "No API key was supplied."
+            "description": "The request was refused as unauthorized."
           },
           "404": {
             "content": {
               "application/json": {
+                "examples": {
+                  "NotFound": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_found",
+                          "detail": "Not found."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "No such active deployment."
+            "description": "No active deployment, or a referenced document, was found."
           },
           "406": {
             "content": {
               "application/json": {
+                "examples": {
+                  "NotAcceptable": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_acceptable",
+                          "detail": "Could not satisfy the request Accept header."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/AcknowledgedResponse"
                 }
               }
             },
@@ -301,27 +438,31 @@
                 }
               }
             },
-            "description": ""
-          },
-          "429": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "Too many concurrent executions; retry later."
+            "description": "The execution is still running, or it finished with an error; read `status` to tell them apart."
           },
           "500": {
             "content": {
               "application/json": {
+                "examples": {
+                  "APIException": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "error",
+                          "detail": "A server error occurred."
+                        }
+                      ],
+                      "type": "server_error"
+                    }
+                  }
+                },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/StatusResponse"
                 }
               }
             },
-            "description": ""
+            "description": "The execution could not be completed; the body carries its last known state."
           }
         },
         "security": [
@@ -391,34 +532,88 @@
           "401": {
             "content": {
               "application/json": {
+                "examples": {
+                  "AuthenticationFailed": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "authentication_failed",
+                          "detail": "Incorrect authentication credentials."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  },
+                  "NotAuthenticated": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_authenticated",
+                          "detail": "Authentication credentials were not provided."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "The API key is not valid."
+            "description": "No usable API key was supplied for the deployment."
           },
           "403": {
             "content": {
               "application/json": {
+                "examples": {
+                  "PermissionDenied": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "permission_denied",
+                          "detail": "You do not have permission to perform this action."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "No API key was supplied."
+            "description": "The request was refused as unauthorized."
           },
           "404": {
             "content": {
               "application/json": {
+                "examples": {
+                  "NotFound": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_found",
+                          "detail": "Not found."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": "No such active deployment."
+            "description": "No active deployment, or a referenced document, was found."
           },
-          "409": {
+          "413": {
             "content": {
               "application/json": {
                 "schema": {
@@ -426,7 +621,7 @@
                 }
               }
             },
-            "description": "The deployment has no active API key."
+            "description": "A referenced document is larger than the limit."
           },
           "422": {
             "content": {
@@ -436,11 +631,25 @@
                 }
               }
             },
-            "description": ""
+            "description": "The execution finished with an error."
           },
           "429": {
             "content": {
               "application/json": {
+                "examples": {
+                  "Throttled": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "throttled",
+                          "detail": "Request was throttled."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
@@ -451,12 +660,46 @@
           "500": {
             "content": {
               "application/json": {
+                "examples": {
+                  "APIException": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "error",
+                          "detail": "A server error occurred."
+                        }
+                      ],
+                      "type": "server_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": "The deployment could not be run; the body carries the execution that failed."
+          },
+          "502": {
+            "content": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
-            "description": ""
+            "description": "A referenced document could not be fetched."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Fetching a referenced document timed out."
           }
         },
         "security": [

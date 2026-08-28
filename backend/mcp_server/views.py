@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 
 # MCP speaks JSON-RPC over one POST, so it has no REST surface worth
-# describing; leaving it in would publish guessed request and response shapes
-# to every client generated from the spec.
+# describing; leaving it in would fail spec generation, which treats any
+# generator diagnostic as fatal and cannot resolve a serializer for this view.
 @extend_schema(exclude=True)
 class MCPServerView(BaseMCPView):
     """MCP JSON-RPC endpoint for a single API deployment.

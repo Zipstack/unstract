@@ -7,9 +7,10 @@ serializer or the schema annotation, and regenerate in the same PR.
     uv run python manage.py generate_docstudio_spec           # from backend/
     uv run python manage.py generate_docstudio_spec --check   # no write, drift is an error
 
-The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX``, so regenerate in an
-environment that does not override it — the committed artifact describes the
-deployment as it is served publicly, not as one installation mounts it.
+The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX``, so generation refuses
+to produce a spec mounted anywhere but the public default: the committed
+artifact describes the deployment as it is served publicly, not as one
+installation chooses to mount it.
 """
 
 import json
@@ -19,10 +20,15 @@ from typing import Any
 from django.core.management.base import BaseCommand, CommandError
 from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
+from drf_spectacular.validation import validate_schema
 
 DEFAULT_OUT = Path(__file__).resolve().parents[4] / "specs" / "docstudio-oss.json"
 URLCONF = "api_v2.deployment_spec_urls"
 REGENERATE = "uv run python manage.py generate_docstudio_spec"
+# The mount the deployment is served at publicly. `API_DEPLOYMENT_PATH_PREFIX`
+# can move it per installation, and a spec carrying a private prefix would send
+# every generated client to a URL only that installation answers.
+PUBLISHED_PATH_PREFIX = "deployment"
 # Named in every failure message: the repos that regenerate from this file are
 # the ones a spec change actually breaks, and nothing there watches this repo.
 DOWNSTREAM = (
@@ -45,9 +51,11 @@ def render_spec() -> str:
     GENERATOR_STATS.reset()
     schema = SchemaGenerator(urlconf=URLCONF).get_schema(request=None, public=True)
     if GENERATOR_STATS:
-        # spectacular downgrades "unable to guess serializer" to a warning and
-        # writes a plausible, wrong operation. Nothing downstream can tell that
-        # apart from an annotation that is simply thin.
+        # An operation spectacular could not resolve is published with no
+        # request body and an empty response rather than dropped, which reads
+        # downstream as an annotation that is simply thin. Both caches are
+        # drained because the severity a given diagnostic carries is
+        # spectacular's choice, not something to rely on.
         diagnostics = "\n".join(
             f"  {severity}: {message}"
             for severity, cache in (
@@ -60,6 +68,26 @@ def render_spec() -> str:
             f"The generator reported problems, so the spec would describe an "
             f"API nobody implements:\n{diagnostics}"
         )
+
+    off_prefix = [
+        path
+        for path in schema["paths"]
+        if not path.startswith(f"/{PUBLISHED_PATH_PREFIX}/")
+    ]
+    if off_prefix:
+        raise SpecGenerationFailed(
+            f"Generated paths are not under /{PUBLISHED_PATH_PREFIX}/: "
+            f"{', '.join(sorted(off_prefix))}. Unset API_DEPLOYMENT_PATH_PREFIX "
+            f"and regenerate."
+        )
+
+    # Hand-written fragments (path parameter schemas, security schemes) reach
+    # the output verbatim, so nothing above would notice a typo in one.
+    try:
+        validate_schema(schema)
+    except Exception as error:
+        raise SpecGenerationFailed(f"The generated spec is not valid OpenAPI: {error}")
+
     # Sorted keys are what make the committed artifact a usable drift signal.
     return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 
