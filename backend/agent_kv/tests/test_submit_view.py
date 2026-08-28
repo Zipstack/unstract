@@ -375,3 +375,55 @@ def test_timeout_zero_returns_immediately_without_polling(
     assert resp.status_code == 202
     assert not m_sleep.called
     assert not m_refresh.called
+
+
+# ---------------------------------------------------------------------------
+# Sync-wait regression (spec §7.3 controller ruling on task-9-report.md
+# concern 3): if the job fails during the wait window, the inline
+# synchronous response must still be a 200 carrying the failure body -- not
+# a 404. Before the fix, ``result_payload`` raised ``JobNotFound`` for any
+# terminal-but-not-COMPLETED job (blank ``result_ref``), which escaped this
+# view as an unhandled 404. Uses the real (unmocked) ``result_payload`` so
+# the fix is exercised end-to-end, not just at the unit level.
+# ---------------------------------------------------------------------------
+@mock.patch("agent_kv.execution_views.time.sleep")
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
+    m_keys,
+    m_plugin,
+    m_rate,
+    m_serializer_cls,
+    m_limiter,
+    m_stage,
+    m_save,
+    m_dispatch,
+    m_sleep,
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    _mock_serializer(m_serializer_cls, timeout=5)
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    def _refresh_side_effect(job, *args, **kwargs):
+        job.status = JobStatus.FAILED
+        job.error = "LLM provider timed out"
+
+    with mock.patch.object(
+        AgentKVJob, "refresh_from_db", autospec=True, side_effect=_refresh_side_effect
+    ):
+        resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "success": False,
+        "status": "failed",
+        "error": "LLM provider timed out",
+    }
+    assert not m_sleep.called

@@ -73,7 +73,8 @@ def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jo
 
 
 # ---------------------------------------------------------------------------
-# (3) result before completion -> 409 with current status.
+# (3) result before completion (non-terminal, e.g. RUNNING) -> 409 with the
+# current status, lowercased (spec §7.3 controller ruling).
 # ---------------------------------------------------------------------------
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
@@ -85,7 +86,7 @@ def test_result_before_completion_is_409_with_current_status(m_keys, m_jobs):
     resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
 
     assert resp.status_code == 409
-    assert resp.data == {"status": JobStatus.RUNNING}
+    assert resp.data == {"status": "running"}
 
 
 # ---------------------------------------------------------------------------
@@ -129,6 +130,83 @@ def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
     assert resp.status_code == 200
     assert resp.data == {"success": True, "fields": {}}
     m_read.assert_called_once_with(job.result_ref)
+
+
+# ---------------------------------------------------------------------------
+# (5b) result for a FAILED job -> 200 with a success:false body carrying the
+# job's own (user-safe) error -- spec §7.3: "Failed jobs: {success: false,
+# error, timing} with a user-safe error". This also covers the SubmitView
+# sync-wait fix: that branch reuses this exact function unconditionally for
+# any terminal job, so it now gets a correct 200 body instead of a 404.
+# ---------------------------------------------------------------------------
+@mock.patch.object(evr, "read_result")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_result_for_failed_job_is_200_with_success_false_and_error(
+    m_keys, m_jobs, m_read
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(
+        status=JobStatus.FAILED,
+        error="LLM provider timed out",
+        expires_at=timezone.now() + timedelta(days=1),
+    )
+    m_jobs.get.return_value = job
+
+    resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert resp.data == {
+        "success": False,
+        "status": "failed",
+        "error": "LLM provider timed out",
+    }
+    assert not m_read.called
+
+
+# ---------------------------------------------------------------------------
+# (5c) result for a CANCELLED job -> 200 with a fixed success:false/cancelled
+# body (spec §7.3 controller ruling).
+# ---------------------------------------------------------------------------
+@mock.patch.object(evr, "read_result")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_read):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(
+        status=JobStatus.CANCELLED,
+        expires_at=timezone.now() + timedelta(days=1),
+    )
+    m_jobs.get.return_value = job
+
+    resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert resp.data == {"success": False, "status": "cancelled"}
+    assert not m_read.called
+
+
+# ---------------------------------------------------------------------------
+# (5d) result for a COMPLETED job with a blank result_ref (files already
+# swept by TTL cleanup, row not yet expired) -> 404, same as the expired
+# case -- exercises the new blank-ref branch distinctly from expiry.
+# ---------------------------------------------------------------------------
+@mock.patch.object(evr, "read_result")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_result_completed_with_blank_ref_is_404(m_keys, m_jobs, m_read):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(
+        status=JobStatus.COMPLETED,
+        result_ref="",
+        expires_at=timezone.now() + timedelta(days=1),
+    )
+    m_jobs.get.return_value = job
+
+    resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
+
+    assert resp.status_code == 404
+    assert not m_read.called
 
 
 # ---------------------------------------------------------------------------

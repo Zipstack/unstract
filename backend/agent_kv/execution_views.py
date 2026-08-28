@@ -227,8 +227,15 @@ class JobResultView(APIView):
     @AgentKVKeyValidator.validate_api_key
     def get(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
         job = _get_job(agent_kv_key, job_id)
-        if job.status != JobStatus.COMPLETED:
-            return Response({"status": job.status}, status=409)
+        if job.status not in AgentKVJob.TERMINAL:
+            return Response({"status": job.status.lower()}, status=409)
+        # A job's row outlives its result by design (audit trail after TTL
+        # cleanup blanks the refs) -- expired or a COMPLETED job whose
+        # result was already swept both mean "nothing left to serve".
+        if (job.expires_at and job.expires_at < timezone.now()) or (
+            job.status == JobStatus.COMPLETED and not job.result_ref
+        ):
+            raise JobNotFound()
         return Response(result_payload(job), status=200)
 
 
