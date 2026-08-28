@@ -24,11 +24,15 @@ def test_terminal_set_is_exactly_the_three_states():
 def test_mark_terminal_excludes_terminal_rows_and_reports_success(m_objects):
     m_qs = m_objects.filter.return_value.exclude.return_value
     m_qs.update.return_value = 1
+    job_id = uuid.uuid4()
     ok = AgentKVJob.mark_terminal(
-        job_id=uuid.uuid4(), organization_id="org1",
+        job_id=job_id, organization_id="org1",
         new_status=JobStatus.FAILED, error="boom",
     )
     assert ok is True
+    filter_kwargs = m_objects.filter.call_args.kwargs
+    assert filter_kwargs["id"] == job_id
+    assert filter_kwargs["organization_id"] == "org1"
     _, exclude_kwargs = m_objects.filter.return_value.exclude.call_args
     assert set(exclude_kwargs["status__in"]) == set(AgentKVJob.TERMINAL)
     update_kwargs = m_qs.update.call_args.kwargs
