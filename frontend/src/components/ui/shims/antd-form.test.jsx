@@ -287,6 +287,66 @@ describe("Form.Item accepts antd's array NamePath", () => {
       expect(item.getAttribute("validateStatus")).toBeNull();
       expect(item.getAttribute("help")).toBeNull();
     });
+
+    /*
+     * `extra` is antd's static hint under a control — the token estimate under
+     * Chunk Size, the slug rules under an API name. It used to fall into the
+     * rest-props and land on the wrapper div as a stray attribute, so every
+     * one of those hints rendered nowhere while looking wired up in the JSX.
+     */
+    it("renders extra as a hint rather than leaking it onto the DOM", () => {
+      const { container } = render(
+        <Form layout="vertical">
+          <Form.Item label="Chunk Size" name="chunk_size" extra="~= 2k tokens">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      const hint = screen.getByText("~= 2k tokens");
+      expect(hint).toBeInTheDocument();
+      expect(hint.className).toContain("text-muted-foreground");
+      expect(
+        container.querySelector(".ant-form-item").getAttribute("extra"),
+      ).toBeNull();
+    });
+
+    // antd shows both at once, error first: the hint explains the field, the
+    // message explains the rejection, and losing the hint on error is a
+    // regression the "renders extra" case above cannot catch on its own.
+    it("shows extra alongside an error message", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item
+            label="Chunk Size"
+            name="chunk_size"
+            validateStatus="error"
+            help="Chunk size is too large"
+            extra="~= 2k tokens"
+          >
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.getByText("Chunk size is too large").className).toContain(
+        "text-destructive",
+      );
+      expect(screen.getByText("~= 2k tokens").className).toContain(
+        "text-muted-foreground",
+      );
+    });
+
+    // The no-`name` branch is a separate return path in FormItem, and layout
+    // Form.Items carry hints too.
+    it("renders extra on a layout-only item with no name", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item label="Standalone" extra="hint text">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.getByText("hint text")).toBeInTheDocument();
+    });
   });
 });
 

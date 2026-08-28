@@ -89,8 +89,10 @@ interface FormInstance {
   getFieldsError: () => Array<[string, unknown]>;
 }
 
-interface AntFormProps
-  extends Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit"> {
+interface AntFormProps extends Omit<
+  React.FormHTMLAttributes<HTMLFormElement>,
+  "onSubmit"
+> {
   form?: FormInstance;
   layout?: "horizontal" | "vertical" | "inline";
   onFinish?: (values: FormValues) => void;
@@ -100,8 +102,10 @@ interface AntFormProps
   onValuesChange?: (changed: FormValues, all: FormValues) => void;
 }
 
-interface FormItemProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
+interface FormItemProps extends Omit<
+  React.HTMLAttributes<HTMLDivElement>,
+  "children"
+> {
   name?: NamePath;
   label?: React.ReactNode;
   rules?: AntdRule[];
@@ -117,6 +121,8 @@ interface FormItemProps
   /** antd's server-error channel, paired with `help`. */
   validateStatus?: "error" | "warning" | "success" | "validating";
   help?: React.ReactNode;
+  /** antd's always-on hint below the control, independent of `help`. */
+  extra?: React.ReactNode;
   children?: React.ReactNode;
 }
 
@@ -374,6 +380,13 @@ function FormItem({
    */
   validateStatus,
   help,
+  /*
+   * antd's static hint, shown under the control whether or not the field is
+   * errored — the token estimate under Chunk Size, the slug rules under an API
+   * name. It was falling into `...props` and reaching the DOM as a stray
+   * attribute on the wrapper div, so every one of these hints was invisible.
+   */
+  extra,
   className,
   children,
   ...props
@@ -397,6 +410,11 @@ function FormItem({
             )}
           >
             {help}
+          </p>
+        ) : null}
+        {extra ? (
+          <p className="ant-form-item-extra text-sm text-muted-foreground">
+            {extra}
           </p>
         ) : null}
       </div>
@@ -494,6 +512,12 @@ function FormItem({
                 )}
               >
                 {message}
+              </p>
+            ) : null}
+            {/* After the error message, the way antd orders explain > extra. */}
+            {extra ? (
+              <p className="ant-form-item-extra text-sm text-muted-foreground">
+                {extra}
               </p>
             ) : null}
           </div>
