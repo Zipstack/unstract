@@ -8,15 +8,54 @@ from plugins import get_plugin
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from agent_kv.constants import STAGE_NAMES
 from agent_kv.dispatch import DispatchError, dispatch_job
-from agent_kv.exceptions import EngineUnavailable, RateLimited
+from agent_kv.exceptions import EngineUnavailable, JobNotFound, RateLimited
 from agent_kv.execution_serializers import SubmitSerializer
+from agent_kv.execution_views_result import result_payload
 from agent_kv.key_validator import AgentKVKeyValidator
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter, check_key_rate
-from agent_kv.storage import stage_input
+from agent_kv.storage import delete_job_files, stage_input
 
 logger = logging.getLogger(__name__)
+
+
+def _get_job(agent_kv_key, job_id):
+    """Org-scoped lookup used by every job-scoped endpoint (spec §5.4).
+
+    Unknown job_id and a job that belongs to a different org must be
+    indistinguishable to the caller, so both funnel through the same
+    ``DoesNotExist`` -> ``JobNotFound`` (404) path.
+    """
+    try:
+        return AgentKVJob.objects.get(
+            id=job_id, organization_id=agent_kv_key.organization_id
+        )
+    except AgentKVJob.DoesNotExist:
+        raise JobNotFound()
+
+
+def _status_document(job) -> dict:
+    """Build the status document per spec §7.2."""
+    stages_json = job.stages or {}
+    doc = {
+        "job_id": str(job.id),
+        "status": job.status.lower(),
+        "stage": job.stage,
+        "stages": [
+            {"name": name, **stages_json[name]}
+            for name in STAGE_NAMES
+            if name in stages_json
+        ],
+        "created_at": job.created_at.isoformat() if job.created_at else None,
+        "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "pages_total": job.pages_total,
+    }
+    if job.status == JobStatus.FAILED:
+        doc["error"] = job.error
+    return doc
 
 
 def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Response:
@@ -146,3 +185,61 @@ class SubmitView(APIView):
             },
             status=202,
         )
+
+
+class JobStatusView(APIView):
+    """GET status document; DELETE purges the job's staged/result files.
+
+    DELETE is merged onto this class (rather than a standalone
+    ``JobDeleteView``) because both share the ``<uuid:job_id>`` URL — Django
+    matches a URL pattern once per request regardless of HTTP method, so two
+    separate ``path()`` entries for the same literal path can't coexist.
+    ``JobDeleteView`` below is kept as a name alias for this same class.
+    """
+
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    @AgentKVKeyValidator.validate_api_key
+    def get(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
+        job = _get_job(agent_kv_key, job_id)
+        return Response(_status_document(job), status=200)
+
+    @AgentKVKeyValidator.validate_api_key
+    def delete(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
+        job = _get_job(agent_kv_key, job_id)
+        delete_job_files(job)
+        job.input_ref = ""
+        job.result_ref = ""
+        job.save(update_fields=["input_ref", "result_ref"])
+        return Response(status=204)
+
+
+# Alias kept for a descriptive import name; there is no separate URL route
+# (see the JobStatusView docstring above) — DELETE rides JobStatusView's URL.
+JobDeleteView = JobStatusView
+
+
+class JobResultView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    @AgentKVKeyValidator.validate_api_key
+    def get(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
+        job = _get_job(agent_kv_key, job_id)
+        if job.status != JobStatus.COMPLETED:
+            return Response({"status": job.status}, status=409)
+        return Response(result_payload(job), status=200)
+
+
+class JobCancelView(APIView):
+    authentication_classes: list = []
+    permission_classes: list = []
+
+    @AgentKVKeyValidator.validate_api_key
+    def post(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
+        job = _get_job(agent_kv_key, job_id)
+        won = AgentKVJob.mark_terminal(job.id, job.organization_id, JobStatus.CANCELLED)
+        if won:
+            return Response({"status": "cancelled"}, status=200)
+        return Response({"status": job.status}, status=409)
