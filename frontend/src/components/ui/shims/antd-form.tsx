@@ -89,10 +89,8 @@ interface FormInstance {
   getFieldsError: () => Array<[string, unknown]>;
 }
 
-interface AntFormProps extends Omit<
-  React.FormHTMLAttributes<HTMLFormElement>,
-  "onSubmit"
-> {
+interface AntFormProps
+  extends Omit<React.FormHTMLAttributes<HTMLFormElement>, "onSubmit"> {
   form?: FormInstance;
   layout?: "horizontal" | "vertical" | "inline";
   onFinish?: (values: FormValues) => void;
@@ -102,10 +100,8 @@ interface AntFormProps extends Omit<
   onValuesChange?: (changed: FormValues, all: FormValues) => void;
 }
 
-interface FormItemProps extends Omit<
-  React.HTMLAttributes<HTMLDivElement>,
-  "children"
-> {
+interface FormItemProps
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "children"> {
   name?: NamePath;
   label?: React.ReactNode;
   rules?: AntdRule[];
