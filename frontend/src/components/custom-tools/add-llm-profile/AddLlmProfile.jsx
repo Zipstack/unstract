@@ -7,6 +7,7 @@ import { Input, Select } from "@/components/ui/shims/antd-inputs";
 import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
 import { Collapse } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { cn } from "@/lib/utils";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
@@ -223,7 +224,6 @@ function AddLlmProfile({
     {
       key: "1",
       label: "Advanced Settings",
-      className: "add-llm-profile-panel",
       children: (
         <div>
           <Form.Item
@@ -361,7 +361,14 @@ function AddLlmProfile({
   };
 
   const handleCaretIcon = (isActive) => {
-    return <ChevronRight rotate={isActive ? 90 : 0} />;
+    // `rotate` was an antd icon-font prop; lucide ships SVGs and ignores it, so
+    // the caret stayed pointing right and the panel read as collapsed while
+    // open. Tailwind's transform does what the prop used to.
+    return (
+      <ChevronRight
+        className={cn("transition-transform", isActive && "rotate-90")}
+      />
+    );
   };
 
   const handleLlmChangeForTokens = async (value) => {
@@ -613,6 +620,7 @@ function AddLlmProfile({
               />
             </Form.Item>
             <Collapse
+              className="add-llm-profile-advanced"
               expandIcon={({ isActive }) => handleCaretIcon(isActive)}
               size="small"
               style={{

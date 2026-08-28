@@ -24,8 +24,26 @@
   width: 100%;
 }
 
-.add-llm-profile-panel {
+/* The Form shim spaces its items with `space-y-*` on the <form> element, and
+ * that only reaches direct children. Every field here sits a level or two
+ * deeper — SpaceWrapper > div, Row > Col, the Advanced Settings body — so they
+ * came out flush, each label pressed against the input above it. Give the
+ * items their own rhythm, matching the shim's 16px vertical form gap. */
+.add-llm-profile-body .ant-form-item {
   margin-bottom: 16px;
+}
+
+/* The sticky footer stays flush to the bottom edge. It renders through
+ * FormItem's no-`name` branch, which emits no `.ant-form-item`, so the rule
+ * above misses it today — this outranks that rule either way. */
+.add-llm-profile-body .add-llm-profile-footer {
+  margin-bottom: 0;
+}
+
+/* Separates the "Advanced Settings" header from the last field above it. */
+.add-llm-profile-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
 }
 
 .retrieval-strategy-selector {
