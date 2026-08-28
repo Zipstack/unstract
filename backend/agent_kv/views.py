@@ -1,6 +1,5 @@
 import uuid
 
-from global_api_deployment_key.permissions import IsOrganizationAdmin
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
@@ -8,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import BaseSerializer
 
 from agent_kv.models import AgentKVKey
+from agent_kv.permissions import IsOrganizationAdmin
 from agent_kv.serializers import AgentKVKeySerializer, AgentKVKeyWriteSerializer
 
 
