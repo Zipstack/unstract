@@ -178,6 +178,9 @@ AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
     os.environ.get("AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE", 60)
 )
 AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS", 3600))
+AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
+)
 
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")

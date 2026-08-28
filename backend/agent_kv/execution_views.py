@@ -235,6 +235,16 @@ class JobStatusView(APIView):
     @AgentKVKeyValidator.validate_api_key
     def delete(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
         job = _get_job(agent_kv_key, job_id)
+        if job.status not in AgentKVJob.TERMINAL:
+            # Cancel BEFORE deleting files: a still-running job would
+            # otherwise keep running after its files are gone, and its
+            # eventual finalize call would write a fresh result_ref onto a
+            # job the caller already asked to delete -- resurrecting a
+            # result they explicitly discarded. Terminalizing first closes
+            # that window; a finalize call that still lands late loses the
+            # terminal-state guard and, on the success path, cleans up its
+            # own now-orphaned write (FinalizeView, storage.delete_result_file).
+            AgentKVJob.mark_terminal(job.id, job.organization_id, JobStatus.CANCELLED)
         delete_job_files(job)
         job.input_ref = ""
         job.result_ref = ""

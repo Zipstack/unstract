@@ -1655,6 +1655,35 @@ class InternalAPIClient(CachedAPIClientMixin):
             organization_id=org_id,
         )
 
+    def agent_kv_sweep(self) -> dict[str, Any]:
+        """Trigger the Agent-KV maintenance sweep via the internal endpoint
+        (spec §5.4, Fix 5/Fix 8).
+
+        Platform-wide, like the endpoint itself (``SweepView``): no
+        ``org_id`` -- it terminalizes never-dispatched ``PENDING`` jobs and
+        stuck ``DISPATCHED``/``RUNNING`` jobs across every org in one call.
+        Idempotent and batch-capped server-side, so safe to call on a tight
+        schedule.
+
+        Returns:
+            Backend response: ``{"swept": int, "timed_out": int}``.
+        """
+        return self.post("v1/agent-kv/sweep/", data={})
+
+    def agent_kv_ttl_cleanup(self) -> dict[str, Any]:
+        """Trigger the Agent-KV TTL cleanup via the internal endpoint
+        (spec §5.4, Fix 5).
+
+        Platform-wide, like the endpoint itself (``TTLCleanupView``): no
+        ``org_id`` -- it deletes staged input/result files for jobs past
+        ``expires_at`` and blanks their refs, across every org in one call.
+        Idempotent and batch-capped server-side.
+
+        Returns:
+            Backend response: ``{"cleaned": int}``.
+        """
+        return self.post("v1/agent-kv/ttl-cleanup/", data={})
+
     # Usage client methods (delegate to UsageAPIClient)
     def get_aggregated_token_count(
         self, file_execution_id: str, organization_id: str | None = None

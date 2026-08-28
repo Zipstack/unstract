@@ -406,6 +406,61 @@ def test_finalize_success_deletes_input_and_blanks_ref(
     m_jobs.filter.return_value.update.assert_called_once_with(input_ref="")
 
 
+# (7c) success finalize whose guard is LOST right after the write (e.g. a
+# cancel raced in between the read and mark_terminal's guarded UPDATE) --
+# the just-written result file has no ref anywhere pointing at it, so it's
+# cleaned up immediately rather than orphaned forever.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_guard_loss_deletes_orphaned_result(
+    m_jobs, m_write, m_mark_terminal, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "success": True, "result": {"foo": "bar"}},
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    assert resp.data["finalized"] is False
+    m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7d) success finalize that WINS the guard never deletes the result it just
+# wrote -- only a guard-LOSS orphan triggers cleanup.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_success_guard_win_does_not_delete_result(
+    m_jobs, m_write, m_mark_terminal, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "success": True, "result": {"foo": "bar"}},
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert not m_delete_result.called
+
+
 # (8) duplicate finalize: the job is already terminal (guard excludes it),
 # so this is a no-op -- finalized:false and the result is NOT rewritten.
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")

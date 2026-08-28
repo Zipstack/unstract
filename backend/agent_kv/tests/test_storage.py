@@ -114,3 +114,26 @@ def test_delete_input_skips_blank_ref(m_fs):
     job = AgentKVJob(input_ref="")
     storage.delete_input(job)
     assert not fh.rm.called
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_result_file_removes_the_given_ref(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    storage.delete_result_file("org/o/agent_kv/j/result.json")
+    fh.rm.assert_called_once_with(path="org/o/agent_kv/j/result.json")
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_result_file_tolerates_missing_file(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    fh.rm.side_effect = FileNotFoundError("gone")
+    # Must not raise.
+    storage.delete_result_file("org/o/agent_kv/j/result.json")
+    assert fh.rm.call_count == 1
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_result_file_skips_blank_ref(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    storage.delete_result_file("")
+    assert not fh.rm.called

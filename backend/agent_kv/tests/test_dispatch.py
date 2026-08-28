@@ -10,6 +10,7 @@ if not apps.ready:
     django.setup()
 
 import pytest  # noqa: E402
+from django.conf import settings  # noqa: E402
 
 from agent_kv import dispatch  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
@@ -24,8 +25,8 @@ def _job():
 
 @mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
 @mock.patch.object(dispatch, "_dispatcher")
-@mock.patch.object(AgentKVJob, "save")
-def test_dispatch_success_stamps_job(m_save, m_disp, m_key):
+@mock.patch.object(AgentKVJob, "objects")
+def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
     job = _job()
     dispatch.dispatch_job(job, schema={"a": {"description": "d"}}, options={"qa": True})
 
@@ -40,7 +41,10 @@ def test_dispatch_success_stamps_job(m_save, m_disp, m_key):
     assert ctx.executor_params["schema"] == {"a": {"description": "d"}}
     assert ctx.executor_params["options"] == {"qa": True}
     assert ctx.executor_params["platform_api_key"] == "pk"
-    assert ctx.executor_params["max_pages"] == 3
+    # max_pages is the CAP the engine must enforce, not the measured count
+    # (job.pages_total, which rides separately and is None for Excel).
+    assert ctx.executor_params["max_pages"] == settings.AGENT_KV_MAX_PAGES
+    assert ctx.executor_params["pages_total"] == 3
 
     kw = m_disp.return_value.dispatch_with_callback.call_args.kwargs
     assert kw["on_success"].task == "agent_kv_complete"
@@ -56,14 +60,40 @@ def test_dispatch_success_stamps_job(m_save, m_disp, m_key):
 
     assert job.status == JobStatus.DISPATCHED
     assert job.dispatched_at is not None
-    assert m_save.called
-    save_kwargs = m_save.call_args.kwargs
-    assert set(save_kwargs["update_fields"]) == {
-        "task_id",
-        "status",
-        "dispatched_at",
-        "modified_at",
-    }
+    # Guarded queryset UPDATE (not job.save()): only a still-PENDING row may
+    # be advanced to DISPATCHED.
+    m_objects.filter.assert_called_once_with(id=job.id, status=JobStatus.PENDING)
+    m_objects.filter.return_value.update.assert_called_once_with(
+        task_id=job.task_id,
+        status=JobStatus.DISPATCHED,
+        dispatched_at=job.dispatched_at,
+    )
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
+    m_objects, m_disp, m_key
+):
+    """Regression for the un-terminalize bug: if the row already raced to a
+    terminal status (e.g. FAILED, via an instant-failure finalize callback
+    that beat this post-enqueue bookkeeping), the guarded UPDATE's WHERE
+    clause (status=PENDING) structurally cannot match it -- 0 rows update,
+    and the row's real status is left untouched. Proven the same way
+    ``AgentKVJob.mark_terminal``'s own guard is proven (test_models.py): by
+    pinning the exact WHERE-clause kwargs and simulating the "no rows
+    matched" outcome, since this suite runs with no real DB.
+    """
+    m_objects.filter.return_value.update.return_value = 0  # simulates a FAILED row
+    job = _job()
+
+    # Must not raise -- dispatch_job doesn't (and can't meaningfully) act on
+    # the update's row count; it already told the caller it dispatched.
+    dispatch.dispatch_job(job, schema={}, options={})
+
+    filter_kwargs = m_objects.filter.call_args.kwargs
+    assert filter_kwargs == {"id": job.id, "status": JobStatus.PENDING}
 
 
 @mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
@@ -86,7 +116,7 @@ def test_dispatch_job_uses_platform_api_key_lookup(m_disp):
         return_value=mock.Mock(key="the-real-key"),
     ):
         job = _job()
-        with mock.patch.object(AgentKVJob, "save"):
+        with mock.patch.object(AgentKVJob, "objects"):
             dispatch.dispatch_job(job, schema={}, options={})
         ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
         assert ctx.executor_params["platform_api_key"] == "the-real-key"

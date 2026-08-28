@@ -43,14 +43,31 @@ def _post(path, body=None):
 # ---------------------------------------------------------------------------
 # SweepView
 # ---------------------------------------------------------------------------
+#
+# SweepView runs two independent phases per call -- never-dispatched PENDING
+# jobs, then stuck DISPATCHED/RUNNING jobs -- each its own
+# filter().order_by()[:500] chain against the same (mocked) AgentKVJob.objects
+# manager. ``_wire_sweep_phases`` gives each phase call its own Mock object
+# (via `side_effect`, keyed on call ORDER: phase 1 first, then phase 2) so a
+# test can assert on -- and control the candidates of -- one phase without the
+# other phase's identical-shaped chain aliasing it.
 
 
-# (1) the candidate query is exactly PENDING + older than the grace +
-# dispatched_at IS NULL -- assert the filter kwargs directly (this IS the
-# proof that "only PENDING+old+undispatched" are swept; nothing else does
-# a real DB round trip in this suite) -- and, per the task-14-review ruling,
-# oldest-created-first and capped at 500: an unbounded queryset would load
-# a whole infra-incident backlog into memory and hold the request open
+def _wire_sweep_phases(m_objects, never_dispatched=(), stuck=()):
+    phase1_qs = mock.MagicMock()
+    phase1_qs.order_by.return_value.__getitem__.return_value = list(never_dispatched)
+    phase2_qs = mock.MagicMock()
+    phase2_qs.order_by.return_value.__getitem__.return_value = list(stuck)
+    m_objects.filter.side_effect = [phase1_qs, phase2_qs]
+    return phase1_qs, phase2_qs
+
+
+# (1) the never-dispatched-phase candidate query is exactly PENDING + older
+# than the grace + dispatched_at IS NULL -- assert the filter kwargs directly
+# (this IS the proof that "only PENDING+old+undispatched" are swept; nothing
+# else does a real DB round trip in this suite) -- and, per the task-14-review
+# ruling, oldest-created-first and capped at 500: an unbounded queryset would
+# load a whole infra-incident backlog into memory and hold the request open
 # through it, exactly when the sweep matters most.
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
@@ -58,35 +75,29 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
     m_objects, m_mark_terminal
 ):
     frozen_now = timezone.now()
-    m_qs = m_objects.filter.return_value
-    m_ordered_qs = m_qs.order_by.return_value
-    m_ordered_qs.__getitem__.return_value = []
+    phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
 
     with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0}
-    filter_kwargs = m_objects.filter.call_args.kwargs
+    assert resp.data == {"swept": 0, "timed_out": 0}
+    filter_kwargs = m_objects.filter.call_args_list[0].kwargs
     assert filter_kwargs["status"] == JobStatus.PENDING
     assert filter_kwargs["dispatched_at__isnull"] is True
     assert filter_kwargs["created_at__lt"] == frozen_now - iv.timedelta(
         seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
     )
-    m_qs.order_by.assert_called_once_with("created_at")
-    m_ordered_qs.__getitem__.assert_called_once_with(slice(None, 500, None))
+    phase1_qs.order_by.assert_called_once_with("created_at")
+    phase1_qs.order_by.return_value.__getitem__.assert_called_once_with(
+        slice(None, 500, None)
+    )
     assert not m_mark_terminal.called
 
 
-def _sweep_candidates(m_objects, jobs):
-    """Wire the SweepView candidate chain -- filter().order_by()[:500] --
-    to return ``jobs``, mirroring the real queryset chain post-fix.
-    """
-    m_objects.filter.return_value.order_by.return_value.__getitem__.return_value = jobs
-
-
-# (2) each candidate is terminalized via mark_terminal(FAILED, "Job was
-# never dispatched") -- the guarded write, not a raw .update().
+# (2) each never-dispatched candidate is terminalized via
+# mark_terminal(FAILED, "Job was never dispatched") -- the guarded write, not
+# a raw .update().
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
@@ -94,7 +105,7 @@ def test_sweep_terminalizes_each_candidate_as_failed_never_dispatched(
     m_objects, m_mark_terminal, m_release
 ):
     job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
-    _sweep_candidates(m_objects, [job])
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
     m_mark_terminal.return_value = True
 
     resp = iv.SweepView.as_view()(_post("/x"))
@@ -114,7 +125,7 @@ def test_sweep_releases_the_concurrency_slot_of_each_swept_job(
     m_objects, m_mark_terminal, m_release
 ):
     job = AgentKVJob(id=uuid.uuid4(), organization_id="org7")
-    _sweep_candidates(m_objects, [job])
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
     m_mark_terminal.return_value = True
 
     iv.SweepView.as_view()(_post("/x"))
@@ -134,29 +145,143 @@ def test_sweep_count_reflects_guard_outcomes_not_candidate_count(
 ):
     won_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
     lost_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
-    _sweep_candidates(m_objects, [won_job, lost_job])
+    _wire_sweep_phases(m_objects, never_dispatched=[won_job, lost_job])
     m_mark_terminal.side_effect = [True, False]
 
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 1}
+    assert resp.data == {"swept": 1, "timed_out": 0}
     m_release.assert_called_once_with("org1", str(won_job.id))
 
 
-# (5) no candidates -> {"swept": 0}, and no terminalize/release side effects.
+# (5) no candidates -> {"swept": 0, "timed_out": 0}, and no terminalize/
+# release side effects.
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
 def test_sweep_with_no_candidates_is_a_pure_noop(m_objects, m_mark_terminal, m_release):
-    _sweep_candidates(m_objects, [])
+    _wire_sweep_phases(m_objects)
 
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0}
+    assert resp.data == {"swept": 0, "timed_out": 0}
     assert not m_mark_terminal.called
     assert not m_release.called
+
+
+# ---------------------------------------------------------------------------
+# SweepView -- stuck-job (phase 2) terminalizer (Fix 8)
+# ---------------------------------------------------------------------------
+
+
+# (5a) the stuck-job-phase candidate query is exactly
+# DISPATCHED/RUNNING + dispatched_at older than the stuck grace, ordered
+# oldest-dispatched-first and capped at 500 -- same batch-safety rationale as
+# phase 1.
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
+    m_objects, m_mark_terminal
+):
+    frozen_now = timezone.now()
+    phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
+
+    with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
+        resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 0}
+    filter_kwargs = m_objects.filter.call_args_list[1].kwargs
+    assert set(filter_kwargs["status__in"]) == {JobStatus.DISPATCHED, JobStatus.RUNNING}
+    assert filter_kwargs["dispatched_at__lt"] == frozen_now - iv.timedelta(
+        seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
+    )
+    phase2_qs.order_by.assert_called_once_with("dispatched_at")
+    phase2_qs.order_by.return_value.__getitem__.assert_called_once_with(
+        slice(None, 500, None)
+    )
+    assert not m_mark_terminal.called
+
+
+# (5b) each stuck candidate is terminalized via mark_terminal(FAILED,
+# "Job timed out") -- distinct error text from the never-dispatched phase.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_terminalizes_each_candidate_as_failed_timed_out(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org1", status=JobStatus.RUNNING)
+    _wire_sweep_phases(m_objects, stuck=[job])
+    m_mark_terminal.return_value = True
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 1}
+    m_mark_terminal.assert_called_once_with(
+        job.id, "org1", JobStatus.FAILED, error="Job timed out"
+    )
+
+
+# (5c) a stuck job the guard wins gets its concurrency slot released.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_releases_the_concurrency_slot_of_each_timed_out_job(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org9", status=JobStatus.DISPATCHED)
+    _wire_sweep_phases(m_objects, stuck=[job])
+    m_mark_terminal.return_value = True
+
+    iv.SweepView.as_view()(_post("/x"))
+
+    m_release.assert_called_once_with("org9", str(job.id))
+
+
+# (5d) a stuck candidate that LOSES the guard (raced to terminal by a
+# concurrent finalize/cancel/duplicate sweep) is not counted as timed_out and
+# its slot is not released here.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_count_reflects_guard_outcomes_not_candidate_count(
+    m_objects, m_mark_terminal, m_release
+):
+    won_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    lost_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, stuck=[won_job, lost_job])
+    m_mark_terminal.side_effect = [True, False]
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 1}
+    m_release.assert_called_once_with("org1", str(won_job.id))
+
+
+# (5e) the two phases' counts are independent -- a hit in one phase doesn't
+# affect the other's count, and both run on the same call.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_reports_both_phase_counts_independently(
+    m_objects, m_mark_terminal, m_release
+):
+    never_dispatched_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    stuck_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(
+        m_objects, never_dispatched=[never_dispatched_job], stuck=[stuck_job]
+    )
+    m_mark_terminal.return_value = True
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 1, "timed_out": 1}
 
 
 # ---------------------------------------------------------------------------

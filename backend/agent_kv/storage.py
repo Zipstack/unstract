@@ -49,6 +49,26 @@ def delete_job_files(job) -> None:
             logger.warning("agent-kv cleanup: could not remove %s", ref)
 
 
+def delete_result_file(result_ref: str) -> None:
+    """Best-effort delete of a result file that was just written but never
+    got a ref persisted onto the job row.
+
+    ``FinalizeView`` writes the result *before* attempting the terminal-
+    state guard (spec §5.4); if the guard loses the race -- a concurrent
+    cancel or a duplicate finalize won instead -- the file this call just
+    wrote is orphaned: nothing anywhere points at it, so it would otherwise
+    sit in object storage forever, past even TTL cleanup (which only acts on
+    a job's *stored* ``result_ref``). Tolerant of the file being missing
+    already, mirroring ``delete_input``/``delete_job_files``.
+    """
+    if not result_ref:
+        return
+    try:
+        _fs().rm(path=result_ref)
+    except Exception:
+        logger.warning("agent-kv cleanup: could not remove orphaned %s", result_ref)
+
+
 def delete_input(job) -> None:
     """Delete only the staged input file (spec D10: "uploaded document
     deleted on job completion"), tolerant of it being missing already.

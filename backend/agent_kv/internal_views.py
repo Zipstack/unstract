@@ -20,7 +20,12 @@ from rest_framework.views import APIView
 
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
-from agent_kv.storage import delete_input, delete_job_files, write_result
+from agent_kv.storage import (
+    delete_input,
+    delete_job_files,
+    delete_result_file,
+    write_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +34,7 @@ _RESERVED_STAGE_ENTRY_KEYS = frozenset({"status", "seconds"})
 _SCALAR_COUNTER_TYPES = (str, int, float, bool)
 _MAINTENANCE_BATCH_LIMIT = 500
 _NEVER_DISPATCHED_ERROR = "Job was never dispatched"
+_STUCK_JOB_ERROR = "Job timed out"
 
 
 def _sanitize_counters(counters) -> dict:
@@ -134,13 +140,21 @@ class FinalizeView(APIView):
     finalizing) -- but never on a 400 for a malformed body, since nothing
     was finalized (and therefore nothing had a slot to release yet).
 
+    On the success path, ``write_result`` unavoidably runs *before* the
+    ``mark_terminal`` guard (the result has to exist to get a ``result_ref``
+    to pass into it) -- so a guard-loss right after the write (a concurrent
+    cancel/duplicate finalize won instead) leaves a result file on disk with
+    no ref anywhere pointing at it. That orphan is cleaned up immediately via
+    ``storage.delete_result_file`` rather than left to leak past even TTL
+    cleanup (which only ever acts on a job's *stored* ``result_ref``).
+
     Also deletes the staged input the moment ``mark_terminal`` actually
     wins (spec D10: "uploaded document deleted on job completion") -- the
     run is over either way, whether it completed or failed, so the input is
-    no longer needed; the result file (if any, just written moments
-    earlier in this same request) is left completely untouched. Never runs
-    on the duplicate/guard-lost path, since either another writer already
-    owns cleanup or there's nothing new to terminalize.
+    no longer needed; the result file this same request may have just
+    *successfully* written (guard won) is left completely untouched. Never
+    runs on the duplicate/guard-lost path, since either another writer
+    already owns cleanup or there's nothing new to terminalize.
     """
 
     authentication_classes: list = []
@@ -175,6 +189,13 @@ class FinalizeView(APIView):
                     )
                     if finalized:
                         job.status = JobStatus.COMPLETED
+                    else:
+                        # Guard lost after the write above (e.g. a cancel
+                        # raced in between the read and mark_terminal's
+                        # guarded UPDATE): the result we just wrote has no
+                        # ref anywhere -- unreachable forever unless cleaned
+                        # up here. Best-effort; never blocks the response.
+                        delete_result_file(result_ref)
                 else:
                     finalized = AgentKVJob.mark_terminal(
                         job_id,
@@ -210,15 +231,29 @@ class FinalizeView(APIView):
 
 
 class SweepView(APIView):
-    """Terminalize PENDING jobs that were never dispatched (spec §5.4).
+    """Terminalize PENDING-never-dispatched AND stuck jobs (spec §5.4).
 
-    Mirrors ``workflow_manager``'s undispatched-execution sweep: the submit
-    endpoint commits a PENDING row before dispatch runs, and an abort in
-    between (client disconnect, worker crash, pod eviction) can leave it
-    stranded with no owner -- ``PENDING`` is not a terminal state, and
-    nothing else recovers a job that was never queued. ``dispatched_at`` is
-    stamped as a positive fact at dispatch time, so PENDING + older than the
-    grace + ``dispatched_at IS NULL`` means the dispatch never happened.
+    Two independent phases, run every call, each capped and counted
+    separately:
+
+    **Phase 1 -- never dispatched.** Mirrors ``workflow_manager``'s
+    undispatched-execution sweep: the submit endpoint commits a PENDING row
+    before dispatch runs, and an abort in between (client disconnect, worker
+    crash, pod eviction) can leave it stranded with no owner -- ``PENDING``
+    is not a terminal state, and nothing else recovers a job that was never
+    queued. ``dispatched_at`` is stamped as a positive fact at dispatch
+    time, so PENDING + older than the grace + ``dispatched_at IS NULL``
+    means the dispatch never happened.
+
+    **Phase 2 -- stuck in flight.** A job that *did* dispatch can still
+    never terminalize: the executor pod can be killed, its callback queue
+    can be lost, or the cloud engine itself can hang -- none of which
+    ``mark_terminal`` ever sees, so a DISPATCHED/RUNNING row can sit
+    forever holding a concurrency slot with no path back to terminal.
+    ``dispatched_at`` (stamped positively at dispatch, spec §5.3/Fix 1) older
+    than ``AGENT_KV_STUCK_JOB_GRACE_SECONDS`` is the only signal available --
+    there is no heartbeat -- so this phase force-fails anything past that
+    grace, same as the workflow reaper's stuck-execution recovery.
 
     Platform-wide by design (no ``org_id`` in the body, unlike every other
     view in this module) -- it is invoked by a periodic maintenance
@@ -227,13 +262,14 @@ class SweepView(APIView):
     Idempotent: ``mark_terminal``'s guarded UPDATE only terminalizes a row
     still in a non-terminal state, so a job already swept (or one that
     legitimately dispatched/finalized/was cancelled since the candidate
-    query ran) is left alone by a repeat call. ``swept`` counts guard
-    successes, not candidates, so a race against a concurrent
+    query ran) is left alone by a repeat call. ``swept``/``timed_out`` each
+    count guard successes, not candidates, so a race against a concurrent
     finalize/cancel/duplicate sweep is reflected accurately instead of
     double-counted.
 
-    Batch-capped at ``_MAINTENANCE_BATCH_LIMIT`` (oldest-created first) so a
-    large PENDING backlog -- exactly what a dispatch-path infra incident
+    Each phase is independently batch-capped at ``_MAINTENANCE_BATCH_LIMIT``
+    (oldest-first by its own ordering key) so a large backlog in either
+    phase -- exactly what a dispatch-path or executor-fleet infra incident
     produces, which is also when this sweep matters most -- can't load
     unbounded into memory or hold this request open through a long loop.
     Idempotency (above) is what makes this safe to cap: whatever a call
@@ -244,15 +280,19 @@ class SweepView(APIView):
     permission_classes: list = []
 
     def post(self, request, *args, **kwargs):
-        cutoff = timezone.now() - timedelta(seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS)
-        candidates = AgentKVJob.objects.filter(
+        now = timezone.now()
+
+        never_dispatched_cutoff = now - timedelta(
+            seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
+        )
+        never_dispatched_candidates = AgentKVJob.objects.filter(
             status=JobStatus.PENDING,
-            created_at__lt=cutoff,
+            created_at__lt=never_dispatched_cutoff,
             dispatched_at__isnull=True,
         ).order_by("created_at")[:_MAINTENANCE_BATCH_LIMIT]
 
         swept = 0
-        for job in candidates:
+        for job in never_dispatched_candidates:
             # Per-job isolation is structural, not a try/except here:
             # mark_terminal is a guarded UPDATE that can't raise on a
             # normal outcome, and release() has its own internal
@@ -271,7 +311,29 @@ class SweepView(APIView):
                 # worth releasing here -- one a concurrent finalize/cancel
                 # won instead already released its own slot on that path.
                 AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
-        return Response({"swept": swept})
+
+        stuck_cutoff = now - timedelta(
+            seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
+        )
+        stuck_candidates = AgentKVJob.objects.filter(
+            status__in=[JobStatus.DISPATCHED, JobStatus.RUNNING],
+            dispatched_at__lt=stuck_cutoff,
+        ).order_by("dispatched_at")[:_MAINTENANCE_BATCH_LIMIT]
+
+        timed_out = 0
+        for job in stuck_candidates:
+            org_id = job.organization_id
+            won = AgentKVJob.mark_terminal(
+                job.id,
+                org_id,
+                JobStatus.FAILED,
+                error=_STUCK_JOB_ERROR,
+            )
+            if won:
+                timed_out += 1
+                AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+
+        return Response({"swept": swept, "timed_out": timed_out})
 
 
 class TTLCleanupView(APIView):

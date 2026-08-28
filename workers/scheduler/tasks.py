@@ -24,6 +24,10 @@ from queue_backend.fairness import WorkloadType
 #      worker at flag-off, where PG is not even involved).
 # `/app` is on PYTHONPATH (run-worker-docker.sh), so `scheduler.` resolves under both.
 from scheduler import dashboard_metrics_tasks  # noqa: F401, E402  (side-effect import)
+
+# Same two-mechanism reasoning as the dashboard-metrics import immediately above --
+# registers the Agent-KV sweep/TTL-cleanup periodics (spec §5.4) on this worker type.
+from scheduler import agent_kv_tasks  # noqa: F401, E402  (side-effect import)
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig

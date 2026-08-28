@@ -282,6 +282,60 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
 
 
 # ---------------------------------------------------------------------------
+# (8b) delete on a non-terminal (RUNNING) job cancels it FIRST, before the
+# files are deleted -- a still-running job that finalizes late would
+# otherwise write a fresh result onto a job the caller just deleted.
+# ---------------------------------------------------------------------------
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_on_running_job_cancels_before_deleting_files(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    manager = mock.Mock()
+    manager.attach_mock(m_mark_terminal, "mark_terminal")
+    manager.attach_mock(m_delete_files, "delete_job_files")
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    m_mark_terminal.assert_called_once_with(job.id, "org1", JobStatus.CANCELLED)
+    m_delete_files.assert_called_once_with(job)
+    assert [c[0] for c in manager.mock_calls] == ["mark_terminal", "delete_job_files"]
+
+
+# ---------------------------------------------------------------------------
+# (8c) delete on an already-terminal job never attempts to cancel it again --
+# unchanged behavior for the terminal case.
+# ---------------------------------------------------------------------------
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_on_terminal_job_does_not_call_mark_terminal(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(status=JobStatus.COMPLETED)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert not m_mark_terminal.called
+    m_delete_files.assert_called_once_with(job)
+
+
+# ---------------------------------------------------------------------------
 # (9) every job-scoped endpoint 401s (403, per Forbidden.status_code)
 # without a key (spec §6.8 regression).
 #

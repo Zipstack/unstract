@@ -4,11 +4,12 @@ import logging
 import uuid
 
 from celery import signature
+from django.conf import settings
 from django.utils import timezone
 from unstract.sdk1.execution.context import ExecutionContext
 
 from agent_kv.constants import EXECUTION_SOURCE, EXECUTOR_NAME, OPERATION_KV_EXTRACT
-from agent_kv.models import JobStatus
+from agent_kv.models import AgentKVJob, JobStatus
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,13 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
                 "schema": schema,
                 "options": options,
                 "platform_api_key": _platform_api_key(org_id),
-                "max_pages": job.pages_total,
+                # The CAP the engine must enforce (spec §6.1/§6.6), not the
+                # measured count -- job.pages_total is None for Excel (no
+                # pre-OCR page concept), which would otherwise leave the
+                # engine with nothing to check the post-OCR virtual-page cap
+                # against. The measured count still rides along separately.
+                "max_pages": settings.AGENT_KV_MAX_PAGES,
+                "pages_total": job.pages_total,
             },
         )
         cb_kwargs = {"callback_kwargs": {"job_id": str(job.id), "org_id": org_id}}
@@ -78,4 +85,19 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
         raise DispatchError(str(e)) from e
     job.status = JobStatus.DISPATCHED
     job.dispatched_at = timezone.now()
-    job.save(update_fields=["task_id", "status", "dispatched_at", "modified_at"])
+    # Guarded queryset UPDATE, not job.save(): a plain save would blindly
+    # overwrite whatever status this job already raced to. Concretely: the
+    # executor can fail (or the job be cancelled) essentially instantly
+    # after enqueue, and its finalize callback can land -- marking the row
+    # FAILED/CANCELLED -- before this post-enqueue bookkeeping runs. An
+    # unconditional save() here would rewrite that terminal status back to
+    # DISPATCHED, un-terminalizing the job forever (nothing else ever
+    # revisits a DISPATCHED row). Only a still-PENDING row is advanced; a
+    # row this UPDATE doesn't match is left exactly as the winning writer
+    # left it. `modified_at` is stamped automatically by
+    # BaseModelQuerySet.update() (utils/models/base_model.py).
+    AgentKVJob.objects.filter(id=job.id, status=JobStatus.PENDING).update(
+        task_id=job.task_id,
+        status=job.status,
+        dispatched_at=job.dispatched_at,
+    )

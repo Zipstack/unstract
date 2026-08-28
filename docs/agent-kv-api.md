@@ -383,13 +383,39 @@ curl -X DELETE https://api.unstract.example/agent-kv/5b6e9b0a-.../ \
 ## 9. Webhook delivery
 
 `webhook_url` (if given at submit) receives exactly one terminal-state POST:
-`{"job_id": "...", "status": "completed"|"failed"|"cancelled"}` — no result payload
-(spec §6.7, §7.1). Delivered from the `ide_callback` worker
+`{"job_id": "...", "status": "completed"|"failed"|"cancelled"}` — a fixed payload
+shape, no result content (spec §6.7, §7.1). Delivered from the `ide_callback` worker
 (`workers/ide_callback/agent_kv_tasks.py::_maybe_webhook`) only on a *fresh* finalize
-(a duplicate/late finalize for an already-terminal job never re-fires it). SSRF
-controls (private/link-local/loopback/metadata-range refusal re-checked at connect
-time, scheme allowlist, no redirects, short timeout, bounded retries, response body
-never read) live in `workers/shared/utils/webhook_notify.py::send_webhook`.
+(a duplicate/late finalize for an already-terminal job never re-fires it).
+
+**SSRF controls, as actually implemented** (`workers/shared/utils/webhook_notify.py`,
+function `send_webhook`) — this corrects an earlier draft of this document, which
+claimed connect-time re-checking and bounded retries; the code does neither, and its
+own module docstring says so:
+
+- **Resolution-time check only.** The host is resolved once via `socket.getaddrinfo`
+  and every returned address is checked against private/loopback/link-local/
+  reserved/multicast/unspecified ranges *before* the request is made
+  (`_host_is_public`). It is **not** re-checked at connect time — the subsequent
+  `requests.post` call performs its own, independent DNS resolution, and nothing
+  pins that second resolution to the address(es) just validated.
+- **Residual risk, accepted for v1: DNS-rebinding TOCTOU.** An attacker whose DNS
+  answer changes between the pre-check's resolution and `requests`' own resolution
+  a moment later (serving a public IP to the first, a private/internal IP to the
+  second) slips through this gap. The module's own docstring names this as a known,
+  accepted risk. **Fast-follow, not shipped:** IP-pinning the validated address into
+  the actual connection, so the two resolutions can never disagree.
+- **Scheme: https-only**, in this feature's actual usage. `send_webhook` exposes a
+  generic `allow_http` escape hatch (for explicitly configured dev environments
+  elsewhere), but the Agent-KV caller (`_maybe_webhook`) never passes it — every
+  Agent-KV webhook is https-only in practice.
+- **No redirects** (`allow_redirects=False`).
+- **Fixed, minimal payload** (`{job_id, status}` only — see above) and the
+  **response body is never read** — only the status code is inspected.
+- **Short timeout** (10 seconds).
+- **No retries.** One POST attempt only; any failure (host refused by the
+  pre-check, timeout, connection error, non-2xx status) is logged and swallowed —
+  there is no retry loop anywhere in this delivery path.
 
 ## 10. Retention and TTL
 
@@ -448,6 +474,39 @@ with HTTP `501`. `/validate`, key management, status/result/cancel/delete on
 *already-existing* jobs are unaffected by this gate — only `SubmitView` probes it,
 since only submit needs the engine.
 
+### 11a. The cancel-at-pickup contract (internal API — frozen; build the cloud engine against this)
+
+Spec §7.4 states that "a job not yet picked up is dropped at pickup," but leaves the
+actual mechanism unspecified. This is it, and it is load-bearing enough that it is
+recorded here explicitly rather than left to be inferred from the internal-API code:
+
+`POST /internal/v1/agent-kv/jobs/{job_id}/stage/` — the stage-report endpoint
+(`StageReportView`, `backend/agent_kv/internal_views.py`) — no-ops with
+`{"ok": true, "noop": true}` whenever the target job is already terminal (its
+candidate query excludes `AgentKVJob.TERMINAL`, so a terminal job's row is simply
+never found). **That response body *is* the drop signal.** The FIRST stage report an
+executor makes for a job it has just picked up doubles as a liveness check against a
+job that was cancelled (or otherwise reached a terminal state) in the window between
+dispatch and pickup — since there is no task-revocation machinery anywhere in the
+platform (spec §7.4) to stop a picked-up job any other way.
+
+On `noop: true`, the executor **must**:
+
+1. Stop doing any further work on that job immediately.
+2. **Still call `FinalizeView`** (`POST .../jobs/{job_id}/finalize/`) with whatever
+   outcome it has — success or failure, it does not matter which, since the write is
+   going to no-op either way.
+
+Step 2 is not optional. `FinalizeView`'s terminal-state guard (spec §5.4) correctly
+no-ops the status write for an already-terminal job — but its concurrency-slot
+release (`AgentKVConcurrencyLimiter.release`) lives in a `finally`, unconditional on
+whether the guard actually won ([§10](#10-retention-and-ttl) covers the input-deletion
+side of this same guard). An executor that treats `noop: true` as "nothing left to do
+here" and skips the finalize call entirely leaks that job's concurrency slot for the
+rest of the limiter's TTL (6 hours) instead of releasing it immediately. This is the
+entire mechanism behind a pre-pickup cancel actually being observed and cleaned up
+promptly — there is no other signal.
+
 ## 12. Deploy checklist
 
 Everything below is required (or worth checking) to run this feature for real,
@@ -472,20 +531,32 @@ beyond `docker compose up`:
    `workers/run-worker.sh` (`WORKER_QUEUES["ide_callback"] = "ide_callback,agent_kv_callback"`)
    — nothing to configure for a standard deployment; see the note already in
    `docker/sample.env` under "IDE Callback Worker."
-4. **Internal periodic maintenance — not wired up yet.** Two internal endpoints exist
-   and are fully functional (`backend/agent_kv/internal_urls.py`,
-   `internal_views.py::SweepView`/`TTLCleanupView`) but **nothing currently calls them
-   on a schedule** — there is no PG-scheduler/Beat registration for either, unlike the
-   dashboard-metrics periodics (`workers/scheduler/dashboard_metrics_tasks.py`), which
-   this feature was designed to follow (spec §5.4). A production deployment must
-   register both as periodic tasks before relying on TTL cleanup or stuck-job recovery:
-   - `POST /internal/v1/agent-kv/sweep/` — terminalizes `PENDING` jobs never dispatched
-     within `AGENT_KV_SWEEP_GRACE_SECONDS` (default 1 hour). Suggested cadence: every
-     few minutes.
-   - `POST /internal/v1/agent-kv/ttl-cleanup/` — deletes staged input/result files past
-     `expires_at`. Suggested cadence: hourly or daily (retention is measured in days).
-   Both are idempotent, batch-capped at 500 rows per call, and safe to call more often
-   than needed.
+4. **Internal periodic maintenance — proxy tasks now exist; nothing schedules them
+   yet.** Two internal endpoints do the real work
+   (`backend/agent_kv/internal_urls.py`, `internal_views.py::SweepView`/
+   `TTLCleanupView`), and thin scheduler-side proxy tasks now call them —
+   `workers/scheduler/agent_kv_tasks.py::agent_kv_sweep`/`agent_kv_ttl_cleanup`,
+   registered under the wire names `agent_kv.sweep`/`agent_kv.ttl_cleanup` — mirroring
+   the dashboard-metrics periodics (`workers/scheduler/dashboard_metrics_tasks.py`)
+   this feature was designed to follow (spec §5.4), except the call goes through the
+   shared `InternalAPIClient` facade (`agent_kv_sweep`/`agent_kv_ttl_cleanup` methods on
+   `workers/shared/api/internal_client.py`) rather than a second bespoke HTTP client.
+   **Nothing calls these tasks on a schedule yet** — an operator must register both as
+   periodic tasks via the same PG-scheduler mechanism the dashboard-metrics periodics
+   use: a `PgPeriodicTask` row per task (`name`, `task_name` = the wire name above,
+   `queue`, `cron_string`, `enabled=True`, `pg_owned=True` once ready to go live — see
+   `backend/dashboard_metrics/migrations/0004_pg_periodic_tasks.py` for the exact row
+   shape this mirrors) before relying on TTL cleanup or stuck-job recovery:
+   - `agent_kv.sweep` → `POST /internal/v1/agent-kv/sweep/` — terminalizes `PENDING`
+     jobs never dispatched within `AGENT_KV_SWEEP_GRACE_SECONDS` (default 1 hour)
+     **and** `DISPATCHED`/`RUNNING` jobs stuck past `AGENT_KV_STUCK_JOB_GRACE_SECONDS`
+     (default 6 hours) — two independent phases per call, response
+     `{"swept": N, "timed_out": M}`. Suggested cadence: every few minutes.
+   - `agent_kv.ttl_cleanup` → `POST /internal/v1/agent-kv/ttl-cleanup/` — deletes
+     staged input/result files past `expires_at`. Suggested cadence: hourly or daily
+     (retention is measured in days).
+   Both endpoints are idempotent, batch-capped at 500 rows per phase per call, and
+   safe to call more often than needed.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
    see [§13](#13-environment-reference) and `docker/sample.env`.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
@@ -510,6 +581,7 @@ with the default shown:
 | `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace, fails open on Redis errors). |
 | `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate), fails open on Redis errors. |
 | `AGENT_KV_SWEEP_GRACE_SECONDS` | `3600` | Age (from `created_at`) before a never-dispatched `PENDING` job is eligible for the sweep. |
+| `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
 | `AGENT_KV_FILE_STORAGE_CREDENTIALS` | *(none — must be set)* | JSON credentials for the `AGENT_KV` `FileStorageType` (`unstract/filesystem`), same shape as `WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS`: `{"provider": "minio", "credentials": {"endpoint_url": "...", "key": "...", "secret": "..."}}`. |
 
 `AGENT_KV_FILE_STORAGE_CREDENTIALS` is looked up via
