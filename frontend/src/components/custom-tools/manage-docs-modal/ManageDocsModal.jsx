@@ -24,6 +24,9 @@ import "./ManageDocsModal.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
+// UN-3507: how often to re-check index status when websocket updates stall.
+const INDEX_STATUS_POLL_INTERVAL_MS = 5000;
+
 let SummarizeStatusTitle = null;
 try {
   const mod = await import(
@@ -188,6 +191,33 @@ function ManageDocsModal({
     summarizeLlmProfile,
     defaultLlmProfile,
     open,
+  ]);
+
+  // UN-3507: index status is refreshed only when `indexDocs` changes, which is
+  // driven by websocket log messages. When those messages are dropped the
+  // backend still finishes indexing but the UI spins forever. Poll the
+  // document-index endpoint while anything is indexing so the status recovers
+  // without the socket. The poll stops as soon as indexDocs empties.
+  useEffect(() => {
+    if (!open || indexDocs?.length === 0) {
+      return undefined;
+    }
+
+    const intervalId = setInterval(() => {
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+      const summarizeProfileId =
+        summarizeLlmProfile || (summarizeLlmAdapter ? defaultLlmProfile : null);
+      handleGetIndexStatus(summarizeProfileId, indexTypes.summarize);
+    }, INDEX_STATUS_POLL_INTERVAL_MS);
+
+    return () => clearInterval(intervalId);
+  }, [
+    open,
+    indexDocs,
+    rawLlmProfile,
+    summarizeLlmProfile,
+    summarizeLlmAdapter,
+    defaultLlmProfile,
   ]);
 
   useEffect(() => {
