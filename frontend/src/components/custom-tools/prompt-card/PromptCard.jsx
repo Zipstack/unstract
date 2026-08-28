@@ -171,6 +171,18 @@ const PromptCard = memo(
             prev[promptId] = data;
             return prev;
           });
+          // UN-2900: the save response recomputes
+          // single_pass_unresolvable_variables for the text just saved. Fold it
+          // back in so the warning tracks the edit instead of going stale until
+          // the next full tool fetch. Only this field is taken -- the rest of
+          // the optimistic state stays as the user typed it.
+          if (data?.single_pass_unresolvable_variables !== undefined) {
+            setPromptDetailsState((prev) => ({
+              ...prev,
+              single_pass_unresolvable_variables:
+                data.single_pass_unresolvable_variables,
+            }));
+          }
           handleUpdateStatus(
             isUpdateStatus,
             promptId,

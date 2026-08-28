@@ -319,6 +319,18 @@ function ToolIde() {
 
     return axiosPrivate(requestOptions)
       .then((res) => {
+        // UN-2900: a tool PATCH re-serialises every prompt, so the response
+        // carries freshly computed single_pass_unresolvable_variables. Toggling
+        // single pass on must make all affected prompts warn at once, and the
+        // toggle itself is an enterprise plugin that only calls this function --
+        // so fold the recomputed prompts back into the store here, where both
+        // the plugin toggle and any other tool update pass through.
+        const updatedPrompts = res?.data?.prompts;
+        if (Array.isArray(updatedPrompts)) {
+          updateCustomTool({
+            details: { ...details, ...res.data },
+          });
+        }
         return res;
       })
       .catch((err) => {
