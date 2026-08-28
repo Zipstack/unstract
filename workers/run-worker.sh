@@ -157,7 +157,10 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
-    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    # agent_kv_callback carries the Agent-KV terminal callbacks
+    # (agent_kv_complete/agent_kv_error, spec §5.3) dispatched by
+    # backend/agent_kv/dispatch.py; ide_callback owns both queues.
+    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE},agent_kv_callback"
     # The PG queue (in pg_queue_message) this consumer polls — exported as
     # WORKER_PG_QUEUE_CONSUMER_QUEUE, not a Celery --queues value.
     ["$PG_QUEUE_CONSUMER_TYPE"]="notifications"
