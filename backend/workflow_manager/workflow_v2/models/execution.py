@@ -9,7 +9,6 @@ from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from tenant_account_v2.organization_member_service import OrganizationMemberService
-from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
@@ -35,8 +34,8 @@ class WorkflowExecutionManager(BaseModelManager):
         """Filter user's workflow executions with proper access control.
 
         Returns executions where the user has access to:
-        - The workflow (created by user OR shared with user) AND/OR
-        - The pipeline/API deployment (created by user OR shared with user)
+        - The workflow AND/OR
+        - The pipeline/API deployment
 
         This handles independent sharing scenarios:
         1. Workflow shared but not API deployment -> User can see workflow-only executions
@@ -44,7 +43,9 @@ class WorkflowExecutionManager(BaseModelManager):
         3. Both shared -> User can see all executions
         4. Neither shared -> User cannot see executions
 
-        Service accounts see all executions (org-scoped by view).
+        Service accounts and org admins see every execution in the current
+        organization. This manager is the only org scoping on that path — the
+        view drops the organization filter backend.
 
         Args:
             user: The user to filter executions for
@@ -53,34 +54,21 @@ class WorkflowExecutionManager(BaseModelManager):
             QuerySet of executions that the user has permission to access
         """
         if getattr(user, "is_service_account", False):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("service account", user)
 
         if OrganizationMemberService.is_user_organization_admin(user):
-            org = UserContext.get_organization()
-            if org:
-                return self.filter(workflow__organization=org)
-            return self.all()
+            return self._org_scoped("org admin", user)
 
-        # Filter for workflow access (owner or direct viewer via membership).
-        # ``created_by`` is audit-only (UN-2202); VIEWER rows replaced shared_users.
-        # ``object_id`` is varchar, so resolve the ids via the cast helper rather
-        # than a ``memberships`` JOIN (Postgres refuses ``uuid = varchar``).
-        workflow_filter = Q(
-            workflow_id__in=resources_visible_via_memberships(Workflow, user)
-        )
+        # Defer to each resource's own ``for_user`` so execution visibility matches
+        # the resource lists (UN-2651). Those managers scope by the org in
+        # context, so call this from a request, not a worker.
+        workflow_filter = Q(workflow_id__in=Workflow.objects.for_user(user).values("pk"))
 
         # Filter for API deployments the user can access
-        api_filter = Q(
-            pipeline_id__in=resources_visible_via_memberships(APIDeployment, user)
-        )
+        api_filter = Q(pipeline_id__in=APIDeployment.objects.for_user(user).values("pk"))
 
         # Filter for Pipelines the user can access
-        pipeline_filter = Q(
-            pipeline_id__in=resources_visible_via_memberships(Pipeline, user)
-        )
+        pipeline_filter = Q(pipeline_id__in=Pipeline.objects.for_user(user).values("pk"))
 
         # Combine deployment filters
         deployment_filter = api_filter | pipeline_filter
@@ -91,6 +79,23 @@ class WorkflowExecutionManager(BaseModelManager):
         final_filter = (workflow_filter & Q(pipeline_id__isnull=True)) | deployment_filter
 
         return self.filter(final_filter).distinct()
+
+    def _org_scoped(self, actor: str, user) -> QuerySet:
+        """Every execution in the current organization, for the bypass roles.
+
+        Fails closed with no organization in context, rather than returning
+        every tenant's executions.
+        """
+        org = UserContext.get_organization()
+        if org:
+            return self.filter(workflow__organization=org)
+        logger.warning(
+            "for_user called with no organization in context (%s, user=%s); "
+            "returning no executions",
+            actor,
+            getattr(user, "id", None),
+        )
+        return self.none()
 
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.
@@ -208,6 +213,17 @@ class WorkflowExecution(BaseModel):
         db_comment="Details of encountered errors",
     )
     attempts = models.IntegerField(default=0, db_comment="number of attempts taken")
+    dispatched_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Set when the orchestrator task was handed to its transport. NULL means "
+            "never dispatched. The POSITIVE fact the undispatched sweep needs: absent "
+            "task_id/queue_message_id also occurs for executions that ARE running, "
+            "because three paths in workflow_helper return without recording a handle "
+            "after the message is already enqueued."
+        ),
+    )
     execution_time = models.FloatField(default=0, db_comment="execution time in seconds")
     tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
@@ -233,6 +249,28 @@ class WorkflowExecution(BaseModel):
                 fields=["workflow_id"],
                 name="we_active_by_workflow_idx",
                 condition=~Q(status__in=["COMPLETED", "STOPPED", "ERROR"]),
+            ),
+            # Partial index over UNDISPATCHED executions — see migration 0026.
+            # Serves the undispatched-execution sweep (undispatched_sweep.py), which
+            # terminalises rows left PENDING because the request died between
+            # create_workflow_execution and execute_workflow_async. Effectively EMPTY
+            # in steady state: an execution leaves PENDING within seconds, and one of
+            # task_id / queue_message_id is stamped the moment dispatch succeeds — so
+            # it costs almost nothing and only grows when something is wrong.
+            # we_active_by_workflow_idx above is *usable* for the same predicate
+            # (PENDING implies NOT IN terminal) but is keyed on workflow_id, which the
+            # sweep does not filter on — so without this the sweep falls back to a full
+            # scan of that index. Literals are frozen in the migration and tied to
+            # ExecutionStatus by tests/test_undispatched_execution_index.py.
+            models.Index(
+                fields=["created_at"],
+                name="we_undispatched_dispatch_idx",
+                condition=Q(
+                    status="PENDING",
+                    dispatched_at__isnull=True,
+                    task_id__isnull=True,
+                    queue_message_id__isnull=True,
+                ),
             ),
         ]
 

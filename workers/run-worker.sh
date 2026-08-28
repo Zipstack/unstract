@@ -57,6 +57,7 @@ readonly PG_ROLE_FILEPROC="pg-fileproc"
 readonly PG_ROLE_CALLBACK="pg-callback"
 readonly PG_ROLE_SCHEDULER="pg-scheduler"
 readonly PG_ROLE_EXECUTOR="pg-executor"
+readonly PG_ROLE_METRICS="pg-metrics"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
@@ -70,6 +71,14 @@ declare -rA PG_CONSUMER_ROLES=(
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
     ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table"
+    # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
+    # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
+    # role rather than a queue bolted onto pg-scheduler: the consumer's health
+    # heartbeat freezes for the duration of a task, so HEALTH_STALE is an upper
+    # bound on one task's wall clock. The aggregation runs for minutes; sharing
+    # pg-scheduler's tight 240s bound would restart that pod and take in-flight
+    # pipeline triggers down with it. Sized in docker-compose.yaml.
+    ["$PG_ROLE_METRICS"]="scheduler;dashboard_metric_events"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -80,6 +89,7 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_CALLBACK"]=1
     ["$PG_ROLE_SCHEDULER"]=1
     ["$PG_ROLE_EXECUTOR"]=1
+    ["$PG_ROLE_METRICS"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
@@ -119,6 +129,7 @@ declare -A WORKERS=(
     ["$PG_ROLE_CALLBACK"]="$PG_ROLE_CALLBACK"
     ["$PG_ROLE_SCHEDULER"]="$PG_ROLE_SCHEDULER"
     ["$PG_ROLE_EXECUTOR"]="$PG_ROLE_EXECUTOR"
+    ["$PG_ROLE_METRICS"]="$PG_ROLE_METRICS"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"
