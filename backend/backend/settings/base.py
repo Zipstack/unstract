@@ -688,6 +688,9 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # own API key rather than a session.
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
+# Agent-KV public API: bearer-key auth happens in the views.
+WHITELISTED_PATHS.append(f"/{AGENT_KV_PATH_PREFIX}")
+
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 

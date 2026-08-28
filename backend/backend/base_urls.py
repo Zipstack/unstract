@@ -22,6 +22,8 @@ urlpatterns = [
         f"{settings.API_DEPLOYMENT_PATH_PREFIX}/pipeline/",
         include("pipeline_v2.public_api_urls"),
     ),
+    # Agent-KV product API (views own auth; prefix is middleware-whitelisted)
+    path(f"{settings.AGENT_KV_PATH_PREFIX}/", include("agent_kv.execution_urls")),
     path("", include("health.urls")),
     # Internal API for worker communication
     path("internal/", include("backend.internal_base_urls")),
