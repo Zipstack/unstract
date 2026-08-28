@@ -39,17 +39,32 @@ def _get_api_client():
     return InternalAPIClient()
 
 
-def _resolve_error(failed_task_id: str) -> str:
-    """Look up the failed task's real exception via the Celery result backend.
+def _resolve_error(failed_task_id: str, explicit: str | None = None) -> str:
+    """Resolve the real error text for the ``agent_kv_error`` link_error callback.
 
-    Mirrors ``ide_callback.tasks._get_task_error``'s ``AsyncResult`` lookup:
-    the ``agent_kv_error`` link_error callback only ever receives the failed
-    task's ID (see ``ExecutionDispatcher.dispatch_with_callback``'s
-    docstring: "Receives (failed_task_uuid,) as first positional arg"), never
-    the exception itself, so the real message has to be fetched from the
-    result backend. Falls back to ``_UNKNOWN`` if the backend has no result
-    (e.g. an eager/self-chained run) or the lookup itself errors.
+    Mirrors ``ide_callback.tasks._get_task_error``'s precedence exactly:
+    prefer ``explicit`` when the caller already has it. The PG-queue
+    transport's self-chained error path (``queue_backend/pg_queue/consumer.py``'s
+    ``_chain_continuation``) hands the real exception through
+    ``callback_kwargs["error"]`` -- on that path the executor ran eagerly and
+    never wrote a Celery result backend entry under ``failed_task_id``, so
+    the ``AsyncResult`` lookup below would come back empty. The Celery
+    ``link_error`` path (``agent_kv.dispatch.dispatch_job``) passes no
+    explicit error and relies on the result backend, then ``_UNKNOWN``.
+
+    Kept as a sibling implementation rather than importing
+    ``ide_callback.tasks._get_task_error`` directly: ``ide_callback/tasks.py``
+    already imports *this* module at its own bottom (so both of
+    ``workers/worker.py``'s task-loading mechanisms register
+    ``agent_kv_complete``/``agent_kv_error`` -- see that file's comment).
+    Importing back from ``tasks.py`` here would still resolve (Python
+    tolerates the resulting redundant re-import under the two different
+    ``sys.modules`` names that mechanism ends up using), but it adds a
+    two-way coupling between the modules for ~10 lines of small, stable
+    logic that isn't worth the added complexity to reason about.
     """
+    if explicit is not None:
+        return explicit
     try:
         from celery import current_app as app
         from celery.result import AsyncResult
@@ -81,43 +96,57 @@ def agent_kv_complete(
     org_id = cb.get("org_id", "")
     api = _get_api_client()
 
-    if not result_dict.get("success", False):
-        error = result_dict.get("error") or _UNKNOWN
-        logger.error(
-            "agent_kv executor reported failure: job_id=%s error=%s", job_id, error
-        )
-        out = api.agent_kv_finalize(job_id, org_id, success=False, error=error)
-    else:
-        data = result_dict.get("data") or {}
-        out = api.agent_kv_finalize(
-            job_id,
-            org_id,
-            success=True,
-            result=data.get("output") or {},
-            usage_summary=data.get("usage_summary"),
-        )
+    try:
+        if not result_dict.get("success", False):
+            error = result_dict.get("error") or _UNKNOWN
+            logger.error(
+                "agent_kv executor reported failure: job_id=%s error=%s", job_id, error
+            )
+            out = api.agent_kv_finalize(job_id, org_id, success=False, error=error)
+        else:
+            data = result_dict.get("data") or {}
+            out = api.agent_kv_finalize(
+                job_id,
+                org_id,
+                success=True,
+                result=data.get("output") or {},
+                usage_summary=data.get("usage_summary"),
+            )
 
-    _maybe_webhook(out, job_id)
-    return {"job_id": job_id, "finalized": out.get("finalized", False)}
+        _maybe_webhook(out, job_id)
+        return {"job_id": job_id, "finalized": out.get("finalized", False)}
+
+    except Exception:
+        logger.exception(
+            "agent_kv_complete callback failed: job_id=%s org_id=%s", job_id, org_id
+        )
+        raise
 
 
 @worker_task(name="agent_kv_error")
 def agent_kv_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     """Celery link_error callback when the agent-kv executor task raises."""
     cb = callback_kwargs or {}
     job_id = cb.get("job_id", "")
     org_id = cb.get("org_id", "")
     api = _get_api_client()
 
-    error = _resolve_error(failed_task_id)
-    logger.error("agent_kv executor task failed: job_id=%s error=%s", job_id, error)
-    out = api.agent_kv_finalize(job_id, org_id, success=False, error=error)
+    try:
+        error = _resolve_error(failed_task_id, explicit=cb.get("error"))
+        logger.error("agent_kv executor task failed: job_id=%s error=%s", job_id, error)
+        out = api.agent_kv_finalize(job_id, org_id, success=False, error=error)
 
-    _maybe_webhook(out, job_id)
-    return {"job_id": job_id, "finalized": out.get("finalized", False)}
+        _maybe_webhook(out, job_id)
+        return {"job_id": job_id, "finalized": out.get("finalized", False)}
+
+    except Exception:
+        logger.exception(
+            "agent_kv_error callback failed: job_id=%s org_id=%s", job_id, org_id
+        )
+        return None
 
 
 def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:

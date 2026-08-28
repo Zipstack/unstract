@@ -148,6 +148,26 @@ class TestAgentKvComplete:
 
         assert result == {"job_id": "job-1", "finalized": False}
 
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
+    def test_finalize_raising_is_logged_and_reraised(
+        self, mock_get_client, mock_send_webhook, cb_kwargs, caplog
+    ):
+        """agent_kv_complete mirrors ide_index_complete: log, then re-raise."""
+        import logging
+
+        api = MagicMock()
+        api.agent_kv_finalize.side_effect = RuntimeError("backend unreachable")
+        mock_get_client.return_value = api
+        result_dict = {"success": True, "data": {"output": {}}, "error": None}
+
+        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
+            with pytest.raises(RuntimeError, match="backend unreachable"):
+                self._call(result_dict, cb_kwargs)
+
+        assert "agent_kv_complete callback failed" in caplog.text
+        mock_send_webhook.assert_not_called()
+
 
 # ---------------------------------------------------------------------------
 # agent_kv_error
@@ -221,6 +241,53 @@ class TestAgentKvError:
             "", "", success=False, error=_UNKNOWN
         )
         assert result["job_id"] == ""
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
+    def test_pg_transport_explicit_error_preferred_over_async_result(
+        self, mock_get_client, mock_send_webhook, mock_api
+    ):
+        """PG-queue self-chained path: callback_kwargs carries the real error.
+
+        ``queue_backend/pg_queue/consumer.py``'s ``_chain_continuation`` injects
+        the executor's real error into ``callback_kwargs["error"]`` because the
+        PG path runs the executor eagerly and never writes a Celery result
+        backend entry under ``failed_task_id`` -- so this must be preferred
+        over (and must skip) the ``AsyncResult`` lookup entirely.
+        """
+        mock_get_client.return_value = mock_api
+        pg_cb_kwargs = {"job_id": "job-1", "org_id": "org-1", "error": "real cause"}
+
+        with patch(_PATCH_ASYNC_RESULT) as mock_async_result_cls:
+            result = self._call("failed-task-pg-1", pg_cb_kwargs)
+
+        mock_async_result_cls.assert_not_called()
+        mock_api.agent_kv_finalize.assert_called_once_with(
+            "job-1", "org-1", success=False, error="real cause"
+        )
+        assert result == {"job_id": "job-1", "finalized": True}
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
+    def test_finalize_raising_is_swallowed_and_logged(
+        self, mock_get_client, mock_send_webhook, cb_kwargs, caplog
+    ):
+        """agent_kv_error mirrors ide_index_error: swallow, log, don't raise."""
+        import logging
+
+        api = MagicMock()
+        api.agent_kv_finalize.side_effect = RuntimeError("backend unreachable")
+        mock_get_client.return_value = api
+
+        with (
+            patch(_PATCH_ASYNC_RESULT, return_value=MagicMock(result=None)),
+            caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"),
+        ):
+            result = self._call("failed-task-6", cb_kwargs)
+
+        assert result is None
+        assert "agent_kv_error callback failed" in caplog.text
+        mock_send_webhook.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
