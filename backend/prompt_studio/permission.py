@@ -16,8 +16,9 @@ class PromptAcesssToUser(permissions.BasePermission):
 
     A user qualifies when they own the parent ``CustomTool``, are a direct
     viewer (VIEWER membership, UN-2202), reach the project via group sharing
-    (``ResourceGroupShare`` on the parent tool), or are an org admin
-    (org-wide admin override, UN-3479).
+    (``ResourceGroupShare`` on the parent tool), reach it because the parent
+    tool is shared with the whole org (``shared_to_org``, UN-3315), or are an
+    org admin (org-wide admin override, UN-3479).
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
@@ -27,6 +28,12 @@ class PromptAcesssToUser(permissions.BasePermission):
         if _is_resource_owner(request.user, tool):
             return True
         if _is_resource_viewer(request.user, tool):
+            return True
+        # UN-3315: "Share with everyone" sets shared_to_org on the parent tool.
+        # IsOwnerOrSharedUserOrSharedToOrg already honours it, so a project
+        # shared this way was visible but its prompts stayed read-only for
+        # everyone except the owner.
+        if getattr(tool, "shared_to_org", False):
             return True
         if has_group_access(request.user, tool):
             return True
