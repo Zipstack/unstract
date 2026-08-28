@@ -58,3 +58,29 @@ def test_non_uuid_key_is_forbidden_without_db_hit(m_objects):
 def test_prefix_is_whitelisted():
     from django.conf import settings
     assert f"/{settings.AGENT_KV_PATH_PREFIX}" in settings.WHITELISTED_PATHS
+
+
+def test_public_url_wiring_and_decorator_enforced():
+    """Regression pin for the two failure modes the decorator-only tests above
+    can't catch (they exercise the hand-built `_wrapped()` helper, not the
+    real view or URLconf):
+
+    (a) dropping `include("agent_kv.execution_urls")` from base_urls.py, and
+    (b) dropping `@AgentKVKeyValidator.validate_api_key` from SubmitView.post.
+
+    This drives the real URL resolution and class-based view dispatch path
+    instead: (a) breaks `resolve(...)`, and (b) makes the stub answer with
+    501 for every request instead of 403 for an unauthenticated one.
+    """
+    from django.conf import settings
+    from django.urls import resolve
+    from rest_framework.test import APIRequestFactory
+
+    from agent_kv.execution_views import SubmitView
+
+    resolved = resolve(f"/{settings.AGENT_KV_PATH_PREFIX}/")
+    assert resolved.func.cls is SubmitView
+
+    request = APIRequestFactory().post(f"/{settings.AGENT_KV_PATH_PREFIX}/")
+    response = SubmitView.as_view()(request)
+    assert response.status_code == 403
