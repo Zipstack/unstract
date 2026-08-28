@@ -51,8 +51,7 @@ ORG_PATH_OVERRIDES: dict[str, str] = {
         "tool_id__organization"
     ),
     # ToolStudioPrompt.tool_id is nullable — prompts orphaned from their tool
-    # are excluded. This is the path already in force, pinned as-is rather
-    # than changed under a security fix.
+    # are excluded. This is the path already in force.
     "prompt_studio_v2.ToolStudioPrompt": "tool_id__organization",
     # Deliberately not prompt_studio_tool__organization: that FK is nullable,
     # so it would drop tool-less profiles. vector_store is non-null and

@@ -104,18 +104,20 @@ class CrossOrgIsolationTest(TestCase):
     """Org A must not reach org B's prompt-studio rows through any manager."""
 
     def setUp(self) -> None:
+        # Registered before anything can raise, and not in tearDown: UserContext
+        # is thread-local, so TestCase's transaction rollback does not clear it,
+        # and unittest skips tearDown when setUp fails. OrgFixture sets the
+        # identifier as its second statement and then makes eight create()
+        # calls, any of which can raise — without this the worker process would
+        # keep an identifier pointing at a rolled-back organization and quietly
+        # change manager behaviour for every later test.
+        self.addCleanup(UserContext.set_organization_identifier, None)
         self.a = OrgFixture(f"org-a-{secrets.token_hex(3)}")
         self.b = OrgFixture(f"org-b-{secrets.token_hex(3)}")
         # End state: acting as org A, as a request would.
         UserContext.set_organization_identifier(self.a.org.organization_id)
 
-    def tearDown(self) -> None:
-        # UserContext is thread-local, not DB state, so TestCase's transaction
-        # rollback does not clear it. Tests below deliberately switch org and
-        # would otherwise leak that into whatever runs next.
-        UserContext.set_organization_identifier(None)
-
-    # --- manager scoping: the default-deny layer (A-1) --------------------
+    # --- manager scoping: the default-deny layer ---------------------------
 
     def test_document_of_other_org_is_not_gettable(self):
         """A document id from another org must not resolve."""
@@ -151,46 +153,136 @@ class CrossOrgIsolationTest(TestCase):
         assert IndexManager.objects.filter(document_manager=self.a.document).exists()
 
     def test_no_org_context_is_unfiltered(self):
-        """Management commands and shell keep full access (fail-open)."""
+        """Management commands and shell keep full access (fail-open).
+
+        Pinned deliberately: no identifier means no request to take one from,
+        which is a different state from the one below.
+        """
         UserContext.set_organization_identifier(None)
         assert DocumentManager.objects.filter(
             pk=self.b.document.document_id
         ).exists()
 
+    def test_unresolvable_org_context_is_empty(self):
+        """An identifier that resolves to no row must not fall back to open.
+
+        ``UserContext.get_organization()`` flattens three states to ``None``:
+        no identifier, ``Organization.DoesNotExist`` and ``ProgrammingError``.
+        The last two happen inside a request, so treating them like the first
+        one would serve every organization's rows to a caller whose own
+        organization could not be looked up.
+        """
+        UserContext.set_organization_identifier("org-that-does-not-exist")
+        assert not DocumentManager.objects.filter(
+            pk=self.b.document.document_id
+        ).exists()
+        assert not DocumentManager.objects.exists()
+
     def test_worker_context_sees_its_own_org(self):
-        """B1 — workers do run with org context set, so the manager filters
-        there too. Indexing must still find its own org's rows."""
+        """Workers do run with org context set, so the manager filters there
+        too. Indexing must still find its own org's rows."""
         UserContext.set_organization_identifier(self.b.org.organization_id)
         assert IndexManager.objects.filter(
             document_manager=self.b.document
         ).exists()
         assert DocumentManager.objects.get(pk=self.b.document.document_id)
 
-    # --- explicit scoping at the reported call sites (A-3, A-5) -----------
+    # --- explicit scoping in delete_for_ide and make_profile_default ------
 
-    def test_delete_for_ide_lookup_is_tool_scoped(self):
-        """A doc id from another tool in the *same* org is refused too."""
-        sibling = CustomTool.objects.create(
-            tool_name="sibling",
+    def _sibling_tool_in_org_a(self):
+        """A second tool in org A, with its own default profile and document.
+
+        Org scope cannot distinguish these from ``self.a.tool``'s own rows, so
+        they are what makes the per-tool predicates observable. A cross-org id
+        would 404 on org scope alone and pass even with the predicate removed.
+        """
+        tool = CustomTool.objects.create(
+            tool_name=f"sibling-{secrets.token_hex(3)}",
             description="second tool, same org",
             organization=self.a.org,
             created_by=self.a.user,
         )
-        with self.assertRaises(DocumentManager.DoesNotExist):
-            DocumentManager.objects.get(
-                pk=self.a.document.document_id, tool=sibling
-            )
+        profile = ProfileManager.objects.create(
+            profile_name=f"sibling-profile-{secrets.token_hex(3)}",
+            vector_store=self.a.profile.vector_store,
+            embedding_model=self.a.profile.embedding_model,
+            llm=self.a.profile.llm,
+            x2text=self.a.profile.x2text,
+            chunk_size=0,
+            chunk_overlap=0,
+            section="Default",
+            retrieval_strategy="simple",
+            similarity_top_k=3,
+            prompt_studio_tool=tool,
+            is_default=True,
+            created_by=self.a.user,
+        )
+        document = DocumentManager.objects.create(
+            document_name=f"sibling-{secrets.token_hex(3)}.pdf",
+            tool=tool,
+            created_by=self.a.user,
+        )
+        return tool, profile, document
 
-    def test_make_profile_default_lookup_is_tool_scoped(self):
-        """This lookup runs after ``get_object()`` has already passed authz on
-        the caller's own tool, so org scope alone does not constrain it."""
-        with self.assertRaises(ProfileManager.DoesNotExist):
-            ProfileManager.objects.get(
-                pk=self.b.profile.profile_id, prompt_studio_tool=self.a.tool
-            )
-        # Victim's default flag untouched.
-        UserContext.set_organization_identifier(self.b.org.organization_id)
-        assert ProfileManager.objects.get(pk=self.b.profile.profile_id).is_default
+    def _delete_for_ide(self, tool, document_id):
+        """DELETE prompt-studio/file/<tool> as the owner of ``tool``."""
+        ResourceMembership.objects.get_or_create(
+            user=self.a.user,
+            role=ResourceRole.OWNER,
+            content_type=ContentType.objects.get_for_model(CustomTool),
+            object_id=str(tool.tool_id),
+        )
+        view = PromptStudioCoreView.as_view({"delete": "delete_for_ide"})
+        request = APIRequestFactory().delete(
+            f"/prompt-studio/file/{tool.tool_id}",
+            {"document_id": str(document_id)},
+            format="json",
+        )
+        # The view reads the org off the session; the factory builds a bare
+        # request, so nothing else populates it.
+        request.session = {"organization": self.a.org.organization_id}
+        force_authenticate(request, user=self.a.user)
+        return view(request, pk=str(tool.tool_id))
+
+    def test_make_profile_default_refuses_a_sibling_tool_profile(self):
+        """Same org, different tool: org scope cannot catch this one.
+
+        Driven through the view because the control is the ``prompt_studio_tool``
+        predicate on the lookup, not anything the ORM does on its own. Removing
+        that predicate lets the owner of one tool flip another tool's default
+        profile within the same organization.
+        """
+        sibling_tool, sibling_profile, _ = self._sibling_tool_in_org_a()
+
+        response = self._make_profile_default(self.a.tool, sibling_profile.profile_id)
+
+        assert response.status_code == 404, response.data
+        sibling_profile.refresh_from_db()
+        assert sibling_profile.is_default, "sibling tool's default was altered"
+        assert (
+            ProfileManager.objects.filter(
+                prompt_studio_tool=sibling_tool, is_default=True
+            ).count()
+            == 1
+        )
+
+    def test_delete_for_ide_refuses_a_sibling_tool_document(self):
+        """Same org, different tool: the ``tool=`` predicate is the only guard.
+
+        Without it the lookup is a bare pk fetch, which both deletes another
+        tool's document and raises an unhandled ``DoesNotExist`` (500) when the
+        id is unknown.
+        """
+        _, _, sibling_document = self._sibling_tool_in_org_a()
+
+        response = self._delete_for_ide(self.a.tool, sibling_document.document_id)
+
+        # Row first: the delete lands before the file-store call, so without
+        # the predicate this is what actually goes missing.
+        assert DocumentManager.objects.filter(
+            pk=sibling_document.document_id
+        ).exists(), "sibling tool's document was deleted"
+        assert response.status_code == 404, getattr(response, "data", response)
 
     # --- the ordering fix, driven through the view ------------------------
 
@@ -276,7 +368,7 @@ class CrossOrgIsolationTest(TestCase):
         self.a.profile.refresh_from_db()
         assert self.a.profile.is_default
 
-    # --- A-4: the dead, state-changing-over-GET route is gone -------------
+    # --- the dead, state-changing-over-GET route is gone -------------------
 
     def test_file_delete_route_removed(self):
         """Removed rather than fixed: no caller, and it deleted over GET."""

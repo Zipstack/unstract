@@ -69,11 +69,13 @@ class OrgAwareManager(BaseModelManager):
             # OrganizationFilterBackend is the primary boundary and fails
             # closed independently at the view layer.
             #
-            # The RuntimeError arm is broader than its stated cause —
-            # StateStore.get raises it for any unrecognised CONCURRENCY_MODE
-            # — so log it. This path is rare (startup, migrations, tests), so
-            # a line here is signal rather than noise, and it is the only way
-            # an unexpected fail-open becomes visible.
+            # The RuntimeError arm is broader than its stated cause:
+            # StateStore compares an env string against a ConcurrencyMode
+            # member, which never matches, so it raises whenever
+            # CONCURRENCY_MODE is set at all — including to the documented
+            # "thread". Hence the log line. This path is rare (startup,
+            # migrations, tests), so it is signal rather than noise, and it is
+            # the only way an unexpected fail-open becomes visible.
             logger.warning(
                 "OrgAwareManager: no organization context for %s (%s: %s); "
                 "returning an unfiltered queryset.",
@@ -84,9 +86,22 @@ class OrgAwareManager(BaseModelManager):
             return qs
 
         if org is None:
-            # No request context: Celery, management commands, shell. Not
-            # logged — this is the normal state for every query those make,
-            # and a line per queryset would drown the case above.
+            if UserContext.get_organization_identifier():
+                # An identifier is set but did not resolve to a row —
+                # Organization.DoesNotExist or ProgrammingError inside
+                # get_organization(), both of which it flattens to None. That
+                # happens *inside* a request, so returning everything here
+                # would cross tenants. Only the no-identifier case below is
+                # the "no request context" one.
+                logger.warning(
+                    "OrgAwareManager: organization identifier is set but did "
+                    "not resolve for %s; returning an empty queryset.",
+                    self.model._meta.label,
+                )
+                return qs.none()
+            # No request context at all: Celery, management commands, shell.
+            # Not logged — this is the normal state for every query those
+            # make, and a line per queryset would drown the cases above.
             return qs
 
         path = get_org_path(self.model)

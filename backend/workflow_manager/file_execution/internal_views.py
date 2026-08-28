@@ -30,9 +30,8 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
     serializer_class = WorkflowFileExecutionSerializer
     lookup_field = "id"
     # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
-    # filter_queryset_by_organization. That helper fails closed, so a worker
-    # calling without X-Organization-ID now gets zero rows rather than every
-    # organization's — the header is required in practice, not optional.
+    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
+    # therefore required in practice: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_object(self):

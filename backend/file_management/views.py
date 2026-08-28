@@ -26,10 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class FileManagementViewSet(viewsets.ModelViewSet):
-    """FileManagement view.
-
-    Handles GET, POST, PUT and PATCH
-    """
+    """FileManagement view."""
 
     versioning_class = URLPathVersioning
 

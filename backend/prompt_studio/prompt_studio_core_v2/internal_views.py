@@ -199,11 +199,12 @@ def extraction_status(request):
     try:
         from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
+            ExtractionStatusResult,
             PromptStudioIndexHelper,
         )
 
         profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
-        success = PromptStudioIndexHelper.mark_extraction_status(
+        result = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
             x2text_config_hash=x2text_config_hash,
@@ -211,23 +212,35 @@ def extraction_status(request):
             extracted=extracted,
             error_message=error_message,
         )
-        if not success:
+        if result is not ExtractionStatusResult.OK:
             # A 200 here is indistinguishable from a write that landed: the
             # worker only wraps this call in try/except and never reads the
             # body, so the status would be silently dropped and every later
             # Answer Prompt would re-run the full extraction. Non-2xx makes
             # the worker's existing handler log it.
+            #
+            # The two failures need different statuses. The client retries
+            # {500, 502, 503, 504} three times with a 1s backoff factor, so a
+            # document that is gone would burn four round trips and ~7s of
+            # worker sleep on a condition no retry can change. 404 is outside
+            # that set.
+            missing = result is ExtractionStatusResult.DOCUMENT_MISSING
             logger.error(
-                "extraction_status not recorded for document %s profile %s",
+                "extraction_status not recorded for document %s profile %s (%s)",
                 document_id,
                 profile_manager_id,
+                result.value,
             )
             return JsonResponse(
                 {
                     "success": False,
-                    "error": "Extraction status could not be recorded",
+                    "error": "Document not found"
+                    if missing
+                    else "Extraction status could not be recorded",
                 },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                status=status.HTTP_404_NOT_FOUND
+                if missing
+                else status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return JsonResponse({"success": True})

@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Any
 
+from account_v2.models import Organization
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status, viewsets
@@ -29,10 +30,10 @@ from .models import PromptStudioOutputManager
 logger = logging.getLogger(__name__)
 
 
-def _validated_tool_id(raw: Any) -> uuid.UUID:
-    """A query-string ``tool_id`` as a UUID, or a 400.
+def _validated_uuid(raw: Any, field_name: str) -> uuid.UUID:
+    """A query-string id as a UUID, or a 400 naming the field.
 
-    ``CustomTool.tool_id`` is a UUID primary key, so a non-UUID value makes
+    These columns are UUID primary/foreign keys, so a non-UUID value makes
     ``filter()`` raise Django's ``ValidationError`` while the query is being
     *built*. drf_standardized_errors maps only ``Http404`` and Django's
     ``PermissionDenied``, so that surfaced as a 500 rather than a 400.
@@ -40,16 +41,17 @@ def _validated_tool_id(raw: Any) -> uuid.UUID:
     try:
         return uuid.UUID(str(raw))
     except (ValueError, AttributeError, TypeError):
-        raise ValidationError(detail="'tool_id' must be a valid UUID.")
+        raise ValidationError(detail=f"'{field_name}' must be a valid UUID.")
 
 
-def _required_organization(tool_id: Any) -> Any:
+def _required_organization(tool_id: uuid.UUID) -> Organization:
     """The request's organization, refusing to proceed without one.
 
     ``UserContext.get_organization()`` returns None on both
     ``Organization.DoesNotExist`` and ``ProgrammingError``, neither logged. A
-    None here compiles to ``organization_id IS NULL``, which matches nothing
-    whatever the tool id — downstream every output renders as ``""`` and the
+    None here compiles to ``organization_id IS NULL``, which matches only rows
+    whose organization was never set and never the caller's tool — downstream
+    every output renders as ``""`` and the
     user sees a blank project that has real persisted outputs, with nothing to
     correlate in logs. These endpoints are only routed under
     ``/api/v1/unstract/<org>/``, so a null org is a bug, not a state to serve.
@@ -84,6 +86,18 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, "false"
         )
 
+        # Same 500-on-bad-UUID as the detail actions: build_filter_args copies
+        # query params straight through, and all four of these are UUID
+        # columns, so `?tool_id=abc` raises while the query is being built.
+        for key in (
+            PromptStudioOutputManagerKeys.TOOL_ID,
+            PromptStudioOutputManagerKeys.PROMPT_ID,
+            PromptStudioOutputManagerKeys.PROFILE_MANAGER,
+            PromptStudioOutputManagerKeys.DOCUMENT_MANAGER,
+        ):
+            if key in filter_args:
+                filter_args[key] = _validated_uuid(filter_args[key], key)
+
         # Convert the string representation to a boolean value
         is_single_pass_extract = CommonUtils.str_to_bool(is_single_pass_extract_param)
 
@@ -114,7 +128,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
-        tool_id = _validated_tool_id(tool_id)
+        tool_id = _validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
 
         # A raw .objects query is not routed through filter_queryset(), so
         # OrganizationFilterBackend does not see it — scope explicitly.
@@ -160,7 +174,20 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not tool_id:
             raise ValidationError(detail=tool_validation_message)
 
-        tool_id = _validated_tool_id(tool_id)
+        tool_id = _validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
+        # Same column type, same failure: this one reaches
+        # PromptStudioOutputManager.objects.filter(document_manager_id=...) in
+        # the helper below. Required, not optional — absent it stays None and
+        # compiles to `document_manager_id IS NULL`, which matches nothing and
+        # renders every prompt as "", so the project looks empty while holding
+        # real outputs. The only caller always sends it.
+        if not document_manager_id:
+            raise ValidationError(
+                detail="'document_manager' is required and must be a valid UUID."
+            )
+        document_manager_id = _validated_uuid(
+            document_manager_id, PromptStudioOutputManagerKeys.DOCUMENT_MANAGER
+        )
         organization = _required_organization(tool_id)
 
         # Fetch ToolStudioPrompt records based on tool_id.

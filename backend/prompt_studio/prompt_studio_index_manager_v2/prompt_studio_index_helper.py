@@ -1,5 +1,6 @@
 import json
 import logging
+from enum import Enum
 
 from django.core.exceptions import ImproperlyConfigured
 from django.db import DatabaseError, transaction
@@ -11,6 +12,19 @@ from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManag
 from .models import IndexManager
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractionStatusResult(Enum):
+    """Why ``mark_extraction_status`` did or did not write.
+
+    A plain bool collapsed "the document is gone" into "the write failed",
+    and the internal API turned both into a 500 — which the worker's client
+    retries. A missing document never becomes present on retry.
+    """
+
+    OK = "ok"
+    DOCUMENT_MISSING = "document_missing"
+    WRITE_FAILED = "write_failed"
 
 
 class PromptStudioIndexHelper:
@@ -76,7 +90,7 @@ class PromptStudioIndexHelper:
         enable_highlight: bool,
         extracted: bool = True,
         error_message: str | None = None,
-    ) -> bool:
+    ) -> ExtractionStatusResult:
         """Marks the extraction status for a given document.
 
         Uses x2text_config_hash (hash of X2Text config metadata) as the key.
@@ -91,7 +105,10 @@ class PromptStudioIndexHelper:
             error_message (str | None): Error message if extraction failed.
 
         Returns:
-            bool: True if the status is successfully updated, False otherwise.
+            ExtractionStatusResult: OK on success; DOCUMENT_MISSING when the
+                document is gone or hidden by the org scope; WRITE_FAILED for
+                a genuine write error. Callers that only need "did it write"
+                compare against OK.
 
         """
         try:
@@ -111,15 +128,7 @@ class PromptStudioIndexHelper:
                 # Lock the row (or create an empty one) so concurrent callers
                 # merge into the same dict rather than clobbering each other.
                 # of=("self",) keeps the lock on index_manager rows only.
-                #
-                # _base_manager, not objects: Django applies a manager's filter
-                # to the get half of get_or_create but not to the create half.
-                # Through the org-scoped manager, a row the filter hides makes
-                # get miss and create insert, which violates
-                # unique_document_manager_profile_manager_index. The document
-                # above was already fetched org-scoped, so the scope is checked
-                # either way and this only removes the failure mode.
-                index_manager, created = IndexManager._base_manager.select_for_update(
+                index_manager, created = IndexManager.objects.select_for_update(
                     of=("self",)
                 ).get_or_create(
                     document_manager=document,
@@ -157,29 +166,28 @@ class PromptStudioIndexHelper:
                         f"Error: {error_message}"
                     )
 
-            return True
+            return ExtractionStatusResult.OK
 
         except DocumentManager.DoesNotExist:
-            # Now reachable two ways: the row is genuinely gone, or the
-            # org-scoped manager hid it from this caller. Both mean the status
-            # was not written, which is what the caller has to act on.
+            # Two ways to get here: the row is gone, or the org-scoped manager
+            # hides it from this caller. Both mean the status was not written,
+            # and neither is fixed by trying again.
             logger.error(
                 "Document %s not found or not visible in the current "
                 "organization; extraction status not recorded.",
                 document_id,
             )
-            return False
+            return ExtractionStatusResult.DOCUMENT_MISSING
 
         except (DatabaseError, TypeError, ImproperlyConfigured):
             # DatabaseError covers IntegrityError/OperationalError, TypeError a
             # malformed extraction_status payload, ImproperlyConfigured a bad
-            # org path pin. Narrowed from a bare `except Exception` so an
-            # unexpected type propagates instead of being reported as "no such
-            # document".
+            # org path pin. Anything else propagates rather than being
+            # reported as a write failure it is not.
             logger.exception(
                 "Failed to mark extraction status for document %s", document_id
             )
-            return False
+            return ExtractionStatusResult.WRITE_FAILED
 
     @staticmethod
     def check_extraction_status(

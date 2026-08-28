@@ -7,7 +7,6 @@ from django.db.models import Q
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel
 from utils.models.org_aware_manager import OrgAwareManager
-from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -17,31 +16,32 @@ class ProfileManagerModelManager(OrgAwareManager):
     def for_user(self, user):
         """Read visibility: profile's own share fields OR parent CustomTool sharing.
 
-        Org-scoped via the parent (no ``organization`` FK on this model).
+        Sharing only. Organization scoping comes from ``get_queryset``, which
+        every branch here builds on, and which scopes through
+        ``vector_store__organization``. This method used to AND on
+        ``prompt_studio_tool__organization`` as well; that is a second,
+        narrower org join that drops tool-less profiles and contradicts the
+        null policy in ``get_queryset``.
+
         The parent-tool branch lets shared-project users see existing
         profiles so ``IsOwner`` on the viewset returns 403 on mutation
         instead of DRF raising 404 first. Mutation gating lives on the
         viewset; this method governs read visibility only.
         """
-        org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
-
         if getattr(user, "is_service_account", False):
-            return self.filter(org_scope)
+            return self.all()
 
         if OrganizationMemberService.is_user_organization_admin(user):
-            return self.filter(org_scope)
+            return self.all()
 
         # Union the legacy own-share branches with the parent-tool branch
         # so any row visible before the UN-2977 fix stays visible.
         accessible_tools = CustomTool.objects.for_user(user)
         return self.filter(
-            org_scope
-            & (
-                Q(created_by=user)
-                | Q(shared_users=user)
-                | Q(shared_to_org=True)
-                | Q(prompt_studio_tool__in=accessible_tools)
-            )
+            Q(created_by=user)
+            | Q(shared_users=user)
+            | Q(shared_to_org=True)
+            | Q(prompt_studio_tool__in=accessible_tools)
         ).distinct()
 
 

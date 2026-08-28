@@ -391,10 +391,10 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
-        # Validate before looking anything up. A missing key raised KeyError
-        # and a non-UUID value raised Django's ValidationError; neither is
-        # mapped by drf_standardized_errors, so both surfaced as 500s next to
-        # the 404 this action already returns for a valid-but-unmatched id.
+        # Validate before looking anything up. drf_standardized_errors maps
+        # neither the KeyError of a missing key nor the Django ValidationError
+        # a non-UUID raises while the query is built, so without this both are
+        # 500s next to the 404 a valid-but-unmatched id returns.
         default_profile = request.data.get("default_profile")
         if not default_profile:
             raise ValidationError(detail="'default_profile' is required.")
@@ -403,10 +403,12 @@ class PromptStudioCoreView(
         except (ValueError, AttributeError, TypeError):
             raise ValidationError(detail="'default_profile' must be a valid UUID.")
 
-        # Resolve the target before clearing anything: the id comes straight
-        # from the request body, and clearing first would leave the tool with no
-        # default at all when it does not match. Scoped to the same tool the
-        # caller already passed authz on, so another tool's id is a 404.
+        # Resolve the target before clearing anything. The transaction below
+        # is what actually guarantees the tool never ends up with zero
+        # defaults — a 404 raised inside it rolls the clear back — so this
+        # ordering is the second of two independent guards, not the only one.
+        # Scoped to the same tool the caller already passed authz on, so
+        # another tool's id is a 404.
         profile_manager = get_object_or_404(
             ProfileManager,
             pk=default_profile,
@@ -1171,17 +1173,23 @@ class PromptStudioCoreView(
             # Delete indexed flags in redis
             index_managers = IndexManager.objects.filter(document_manager=document_id)
             if not index_managers.exists():
-                # Empty means either "never indexed" or "the org filter hid the
-                # rows". In the second case the Redis indexing flags outlive the
-                # document, and a re-upload of the same file is treated as
-                # already indexed — with a 200 telling the user it all worked.
-                logger.warning(
-                    "No index managers visible for document %s (tool %s, org %s); "
-                    "deleting without clearing Redis indexing flags.",
-                    document_id,
-                    custom_tool.tool_id,
-                    org_id,
-                )
+                # Empty is almost always "never indexed", which is an ordinary
+                # delete and not worth a line. The case worth warning about is
+                # "the org filter hid the rows": there the Redis indexing flags
+                # outlive the document, and a re-upload of the same file is
+                # treated as already indexed. Only the unscoped probe can tell
+                # them apart, and it only runs on this already-empty path.
+                if IndexManager._base_manager.filter(
+                    document_manager=document_id
+                ).exists():
+                    logger.warning(
+                        "Index managers for document %s (tool %s) are not "
+                        "visible in org %s; deleting without clearing Redis "
+                        "indexing flags.",
+                        document_id,
+                        custom_tool.tool_id,
+                        org_id,
+                    )
             for index_manager in index_managers:
                 raw_index_id = index_manager.raw_index_id
                 DocumentIndexingService.remove_document_indexing(

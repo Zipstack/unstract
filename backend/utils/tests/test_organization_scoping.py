@@ -1,8 +1,8 @@
 """``filter_queryset_by_organization`` must fail closed.
 
-Every caller reaches it with OrganizationFilterBackend either disabled
-(``skip_org_filter = True``) or absent — the function-based internal handlers
-have no filter backend at all — so this helper is their only tenant boundary.
+Every caller reaches it with OrganizationFilterBackend inert, either by opting
+out with ``skip_org_filter = True`` or by being on a view class that declares
+no filter backends at all, so this helper is their only tenant boundary.
 Returning the queryset unfiltered when there is no organization context
 therefore returns every organization's rows, and the absent-header case is
 reachable: the internal auth middleware warns and continues rather than
@@ -18,11 +18,17 @@ from utils.organization_utils import filter_queryset_by_organization
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
+_ABSENT = object()
+
+
 class _Request:
     """Stands in for the request object the helper reads context off."""
 
-    def __init__(self, organization_id=None, path="/internal/test/"):
-        if organization_id is not None:
+    def __init__(self, organization_id=_ABSENT, path="/internal/test/"):
+        # Two distinct shapes reach production, which reads the attribute with
+        # getattr(..., None): the attribute missing entirely, and the attribute
+        # present and None. Defaulting to None would collapse them.
+        if organization_id is not _ABSENT:
             self.organization_id = organization_id
         self.path = path
 

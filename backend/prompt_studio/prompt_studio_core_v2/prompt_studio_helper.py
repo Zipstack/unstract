@@ -70,6 +70,7 @@ from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
 )
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (  # noqa: E501
+    ExtractionStatusResult,
     PromptStudioIndexHelper,
 )
 from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
@@ -2535,7 +2536,7 @@ class PromptStudioHelper:
         result = dispatcher.dispatch(extract_context)
         if not result.success:
             msg = result.error or "Unknown extraction error"
-            success = PromptStudioIndexHelper.mark_extraction_status(
+            result = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 x2text_config_hash=x2text_config_hash,
@@ -2543,7 +2544,7 @@ class PromptStudioHelper:
                 extracted=False,
                 error_message=msg,
             )
-            if not success:
+            if result is not ExtractionStatusResult.OK:
                 logger.warning(
                     f"Failed to mark extraction failure for document {document_id}. "
                     f"Extraction failed but status not saved."
@@ -2553,13 +2554,13 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
-        success = PromptStudioIndexHelper.mark_extraction_status(
+        result = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
             x2text_config_hash=x2text_config_hash,
             enable_highlight=enable_highlight,
         )
-        if not success:
+        if result is not ExtractionStatusResult.OK:
             logger.warning(
                 f"Failed to mark extraction success for document {document_id}. "
                 f"Extraction completed but status not saved."
