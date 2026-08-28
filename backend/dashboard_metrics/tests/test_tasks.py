@@ -1,10 +1,16 @@
 """Unit tests for Dashboard Metrics Celery tasks."""
 
+import json
 from datetime import date, datetime, timedelta
+from importlib import import_module
 from unittest.mock import patch
 
+from django.apps import apps
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from django_celery_beat.models import PeriodicTask
 
 from account_v2.models import Organization
 from dashboard_metrics.models import (
@@ -13,6 +19,10 @@ from dashboard_metrics.models import (
     EventMetricsMonthly,
     MetricType,
 )
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 from dashboard_metrics.tasks import (
     DASHBOARD_RECONCILE_WINDOW_DAYS,
     DASHBOARD_SOURCE_WINDOW_DAYS,
@@ -325,6 +335,37 @@ class TestMonthlyRollup(TestCase):
         assert months == [date(2024, 1, 1), date(2024, 3, 1)]
 
 
+class TestRollupQueryShape(TestCase):
+    """The monthly rollup must not read the raw source tables."""
+
+    def test_monthly_rollup_never_touches_source_tables(self):
+        """This is the saving: monthly reads the daily tier and nothing else."""
+        EventMetricsDaily._base_manager.create(
+            organization=Organization.objects.create(
+                organization_id="shape-org", name="shape", display_name="Shape"
+            ),
+            date=date(2024, 3, 5),
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=10,
+            metric_count=2,
+            project="default",
+            tag="",
+        )
+
+        with CaptureQueriesContext(connection) as captured:
+            _rollup_monthly_from_daily(date(2024, 3, 1))
+
+        sql = " ".join(q["sql"] for q in captured.captured_queries).lower()
+        assert "event_metrics_daily" in sql
+        for source_table in (
+            "workflow_file_execution",
+            "workflow_execution",
+            "page_usage",
+        ):
+            assert source_table not in sql, f"monthly rollup read {source_table}"
+
+
 class TestSourceWindow(TestCase):
     """Tests for the per-run source window and the reconciliation pass."""
 
@@ -370,3 +411,122 @@ class TestSourceWindow(TestCase):
         with patch("dashboard_metrics.tasks._run_aggregation") as mock_run:
             aggregate_metrics_from_sources(source_window_days=7)
             mock_run.assert_called_once_with(7)
+
+    def _seed_file(
+        self, days_ago: int, status: ExecutionStatus = ExecutionStatus.COMPLETED
+    ) -> date:
+        """Seed one file execution dated days_ago, return its date."""
+        workflow = Workflow.objects.create(
+            workflow_name=f"recon-wf-{days_ago}", organization=self.org
+        )
+        execution = WorkflowExecution.objects.create(
+            workflow=workflow, status=ExecutionStatus.COMPLETED
+        )
+        file_execution = WorkflowFileExecution.objects.create(
+            workflow_execution=execution,
+            file_name="a.pdf",
+            status=status.value,
+        )
+
+        stamp = timezone.now() - timedelta(days=days_ago)
+        # created_at is auto_now_add; a queryset update is what bypasses it
+        WorkflowFileExecution.objects.filter(pk=file_execution.pk).update(
+            created_at=stamp
+        )
+        WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+        return stamp.date()
+
+    def test_reconciliation_recovers_a_day_the_narrow_window_missed(self):
+        """A row outside the per-run window is picked up by the wider pass."""
+        day = self._seed_file(days_ago=5)
+
+        _run_aggregation()
+        assert not EventMetricsDaily._base_manager.filter(date=day).exists()
+
+        result = _run_aggregation(source_window_days=DASHBOARD_RECONCILE_WINDOW_DAYS)
+
+        row = EventMetricsDaily._base_manager.get(
+            date=day, metric_name="documents_processed"
+        )
+        assert row.metric_value == 1
+        assert result["errors"] == 0
+
+    def test_late_terminal_status_does_not_re_enter_the_narrow_window(self):
+        """Finishing after the window moved on does not bring a row back."""
+        day = self._seed_file(days_ago=3, status=ExecutionStatus.PENDING)
+
+        # Still running: nothing to count yet.
+        _run_aggregation()
+        assert not EventMetricsDaily._base_manager.filter(date=day).exists()
+
+        # It finishes. status turns terminal; created_at does not move.
+        WorkflowFileExecution.objects.update(status=ExecutionStatus.COMPLETED.value)
+
+        # The per-run window no longer reaches its created_at, so it stays missed.
+        _run_aggregation()
+        assert not EventMetricsDaily._base_manager.filter(date=day).exists()
+
+        # Only the wider pass recovers it.
+        _run_aggregation(source_window_days=DASHBOARD_RECONCILE_WINDOW_DAYS)
+        assert EventMetricsDaily._base_manager.filter(
+            date=day, metric_name="documents_processed"
+        ).exists()
+
+    def test_gap_older_than_the_reconcile_window_needs_a_manual_backfill(self):
+        """Neither scheduled pass reaches a day beyond the reconcile window."""
+        old_day = self._seed_file(days_ago=62)
+        recent_day = self._seed_file(days_ago=0)
+
+        _run_aggregation()
+        _run_aggregation(source_window_days=DASHBOARD_RECONCILE_WINDOW_DAYS)
+
+        # The run worked — it just cannot reach that far back.
+        assert EventMetricsDaily._base_manager.filter(date=recent_day).exists()
+        assert not EventMetricsDaily._base_manager.filter(date=old_day).exists()
+
+
+class TestReconciliationSchedule(TestCase):
+    """Migration 0004 schedules the once-daily reconciliation pass.
+
+    The suite runs with --no-migrations, so the migration's function is called
+    directly rather than relying on it having been applied.
+    """
+
+    def setUp(self):
+        """Load the data migration module."""
+        self.migration = import_module(
+            "dashboard_metrics.migrations.0004_add_reconciliation_task"
+        )
+
+    def _task(self):
+        return PeriodicTask.objects.get(name=self.migration.RECONCILE_TASK_NAME)
+
+    def test_migration_schedules_the_pass_at_0400_with_a_7_day_window(self):
+        """The beat row lands enabled, at 04:00 UTC, carrying the wider window."""
+        self.migration.create_reconciliation_task(apps, None)
+
+        task = self._task()
+        assert task.task == "dashboard_metrics.aggregate_from_sources"
+        assert task.enabled
+        assert task.queue == "dashboard_metric_events"
+        assert json.loads(task.kwargs) == {
+            "source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS
+        }
+        assert (task.crontab.hour, task.crontab.minute) == ("4", "0")
+
+    def test_migration_is_idempotent_and_reversible(self):
+        """Re-running leaves one row; the reverse function removes it."""
+        self.migration.create_reconciliation_task(apps, None)
+        self.migration.create_reconciliation_task(apps, None)
+
+        assert (
+            PeriodicTask.objects.filter(
+                name=self.migration.RECONCILE_TASK_NAME
+            ).count()
+            == 1
+        )
+
+        self.migration.remove_reconciliation_task(apps, None)
+        assert not PeriodicTask.objects.filter(
+            name=self.migration.RECONCILE_TASK_NAME
+        ).exists()

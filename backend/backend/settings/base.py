@@ -55,6 +55,10 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
+ENV_FILE = find_dotenv()
+if ENV_FILE:
+    load_dotenv(ENV_FILE)
+
 # Celery Broker Configuration
 CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
 CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
@@ -64,10 +68,6 @@ CELERY_BROKER_URL = str(
         username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
     )
 )
-
-ENV_FILE = find_dotenv()
-if ENV_FILE:
-    load_dotenv(ENV_FILE)
 
 # Loading environment variables
 
