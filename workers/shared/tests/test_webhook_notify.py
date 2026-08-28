@@ -45,3 +45,69 @@ def test_delivery_error_returns_false_never_raises(m_gai, m_requests):
     m_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
     m_requests.post.side_effect = Exception("boom")
     assert wn.send_webhook("https://example.com/hook", {}) is False
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_ipv6_loopback_refused(m_gai, m_requests):
+    """Pins the 4-tuple IPv6 sockaddr shape: (addr, port, flowinfo, scope_id)."""
+    m_gai.return_value = [(wn.socket.AF_INET6, 1, 6, "", ("::1", 443, 0, 0))]
+    assert wn.send_webhook("https://v6.example/x", {}) is False
+    assert not m_requests.post.called
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_ipv6_public_posted(m_gai, m_requests):
+    m_gai.return_value = [
+        (wn.socket.AF_INET6, 1, 6, "", ("2606:4700::1111", 443, 0, 0))
+    ]
+    m_requests.post.return_value.status_code = 200
+    assert wn.send_webhook("https://v6.example/hook", {}) is True
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_empty_resolution_refused(m_gai, m_requests):
+    m_gai.return_value = []
+    assert wn.send_webhook("https://nowhere.example/x", {}) is False
+    assert not m_requests.post.called
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_multi_record_any_unsafe_refuses(m_gai, m_requests):
+    """One public + one private record for the same host: must refuse (ALL
+    resolved addresses must be public, not just the first).
+    """
+    m_gai.return_value = [
+        (2, 1, 6, "", ("93.184.216.34", 443)),
+        (2, 1, 6, "", ("10.0.0.5", 443)),
+    ]
+    assert wn.send_webhook("https://mixed.example/x", {}) is False
+    assert not m_requests.post.called
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_server_error_status_returns_false(m_gai, m_requests):
+    m_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+    m_requests.post.return_value.status_code = 500
+    assert wn.send_webhook("https://example.com/hook", {}) is False
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_not_found_status_returns_false(m_gai, m_requests):
+    m_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+    m_requests.post.return_value.status_code = 404
+    assert wn.send_webhook("https://example.com/hook", {}) is False
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_allow_http_true_posts_public_host(m_gai, m_requests):
+    m_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 80))]
+    m_requests.post.return_value.status_code = 200
+    assert wn.send_webhook("http://example.com/hook", {}, allow_http=True) is True
+    assert m_requests.post.called
