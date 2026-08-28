@@ -61,7 +61,7 @@ function EditableText({
     if (!triggerHandleChange) {
       return;
     }
-    handleChange(text, promptId, name, true, false);
+    handleChange(text, promptId, name, true, false).catch(() => {});
     setTriggerHandleChange(false);
   }, [triggerHandleChange]);
 
