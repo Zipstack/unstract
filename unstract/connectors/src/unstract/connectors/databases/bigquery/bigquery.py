@@ -106,13 +106,16 @@ class BigQuery(UnstractDB):
             if data == 0:
                 return 0.0
 
-            # Limit total significant figures to 15 for IEEE 754 compatibility
-            # BigQuery PARSE_JSON requires values that round-trip cleanly
-            # For large numbers (like Unix timestamps), this reduces decimal precision
-            # For small numbers (like costs), full precision is preserved
-            magnitude = math.floor(math.log10(abs(data))) + 1
-            safe_decimals = max(0, 15 - magnitude)
-            return float(f"{data:.{safe_decimals}f}")
+            # Limit total significant figures to 15 for IEEE 754 compatibility.
+            # BigQuery PARSE_JSON requires values that round-trip cleanly.
+            #
+            # UN-3176: the previous form derived a DECIMAL-place count from the
+            # magnitude, which only matches "15 significant figures" for values
+            # >= 1. For a value like 0.0053325 the magnitude is -2, giving 17
+            # decimals -- more precision than the safe zone allows, so the
+            # value was passed through unchanged. Formatting with `g` applies
+            # the significant-figure limit directly, for any magnitude.
+            return float(f"{data:.15g}")
 
         elif isinstance(data, dict):
             return {k: BigQuery._sanitize_for_bigquery(v) for k, v in data.items()}
