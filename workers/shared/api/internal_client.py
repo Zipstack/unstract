@@ -1655,6 +1655,45 @@ class InternalAPIClient(CachedAPIClientMixin):
             organization_id=org_id,
         )
 
+    def agent_kv_stage_report(
+        self,
+        job_id: str,
+        org_id: str,
+        stage: str,
+        status: str,
+        seconds: float | None = None,
+        counters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Report a pipeline stage for an Agent-KV job via the internal
+        stage-report endpoint (spec §5.3/§5.4).
+
+        Idempotent server-side, mirroring ``agent_kv_finalize``: a job already
+        in a terminal state short-circuits to ``{"ok": True, "noop": True}``
+        instead of recording the stage.
+
+        Args:
+            job_id: Agent-KV job ID.
+            org_id: Organization ID (required by the endpoint's body, not the
+                URL — mirrors ``StageReportView``/``FinalizeView``).
+            stage: Pipeline stage name (e.g. ``"extract"``).
+            status: Stage status (e.g. ``"started"``, ``"completed"``).
+            seconds: Optional stage duration in seconds.
+            counters: Optional stage counters to record.
+
+        Returns:
+            Backend response: ``{"ok": True}`` or ``{"ok": True, "noop": True}``.
+        """
+        payload: dict[str, Any] = {"org_id": org_id, "stage": stage, "status": status}
+        if seconds is not None:
+            payload["seconds"] = seconds
+        if counters:
+            payload["counters"] = counters
+        return self.post(
+            f"v1/agent-kv/jobs/{job_id}/stage/",
+            data=payload,
+            organization_id=org_id,
+        )
+
     def agent_kv_sweep(self) -> dict[str, Any]:
         """Trigger the Agent-KV maintenance sweep via the internal endpoint
         (spec §5.4, Fix 5/Fix 8).
