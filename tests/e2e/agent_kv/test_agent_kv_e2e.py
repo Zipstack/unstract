@@ -23,12 +23,17 @@ config returns, not real answers -- assertions here deliberately check
 *structure* (the requested keys are present) rather than field values, for
 both the mock and a real-key run, to keep this lane's outcome independent of
 model behavior.
+
+Test order matters: the concurrency scenario is deliberately defined LAST
+(see its own docstring) and ``tests/groups.yaml``'s ``e2e-agent-kv`` entry
+pins ``parallel: false`` for the same reason -- see that scenario for why.
 """
 
 from __future__ import annotations
 
 import concurrent.futures
 import os
+import time
 
 import pytest
 import requests
@@ -231,50 +236,7 @@ def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 6. Concurrency
-# ---------------------------------------------------------------------------
-
-
-def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
-    limit = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", "5"))
-    n = limit + 1
-
-    def _submit(_i: int):
-        return submit_raw(
-            agent_kv_key,
-            _INVOICE_BYTES,
-            "invoice.pdf",
-            invoice_schema(),
-            qa=False,
-            challenge=False,
-        )
-
-    accepted_job_ids: list[str] = []
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
-            responses = list(pool.map(_submit, range(n)))
-
-        statuses = [r.status_code for r in responses]
-        assert 429 in statuses, (
-            f"submitting {n} concurrent jobs against a limit of {limit} "
-            f"produced no 429: {statuses}"
-        )
-        for r in responses:
-            if r.status_code == 202:
-                accepted_job_ids.append(r.json()["job_id"])
-        assert len(accepted_job_ids) <= limit, accepted_job_ids
-    finally:
-        # Best-effort: free the concurrency slots for later tests instead of
-        # waiting out the limiter's 6h TTL.
-        for job_id in accepted_job_ids:
-            try:
-                cancel(agent_kv_key, job_id)
-            except Exception:  # noqa: BLE001 - cleanup only, never fail the test on it
-                pass
-
-
-# ---------------------------------------------------------------------------
-# 7. Delete
+# 6. Delete
 # ---------------------------------------------------------------------------
 
 
@@ -300,7 +262,7 @@ def test_delete_completed_job_then_result_404(
 
 
 # ---------------------------------------------------------------------------
-# 8. Page cap
+# 7. Page cap
 # ---------------------------------------------------------------------------
 
 
@@ -317,3 +279,97 @@ def test_page_cap_rejects_oversized_document(agent_kv_key: AgentKVAuth) -> None:
     assert resp.status_code == 400, resp.text
     body = resp.json()
     assert "file" in body, body
+
+
+# ---------------------------------------------------------------------------
+# 8. Concurrency -- deliberately LAST (see docstring)
+# ---------------------------------------------------------------------------
+
+# Bounded wait, in the cleanup below, for the org's saturated concurrency
+# slots to free up again before the test returns control.
+_SLOT_DRAIN_TIMEOUT_S = 120
+_SLOT_DRAIN_POLL_INTERVAL_S = 3
+
+
+def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
+    """Saturate the org's concurrency limiter; every other submit-based
+    scenario in this module runs before this one, and ``tests/groups.yaml``
+    pins this whole group ``parallel: false`` -- both for the same reason:
+
+    ``JobCancelView`` marks a job ``CANCELLED`` directly via
+    ``AgentKVJob.mark_terminal`` and never touches
+    ``AgentKVConcurrencyLimiter`` -- only a job's own *finalize* call
+    releases its slot (in a ``finally``, unconditional on whether the
+    terminal-state guard actually won -- docs/agent-kv-api.md §11a), and
+    that only happens once the executor that picked the job up actually
+    runs it to completion/failure and calls back. So immediately after this
+    test oversaturates the limiter, the org's concurrency budget stays
+    genuinely exhausted for however long those accepted jobs take to
+    finalize -- anywhere from seconds to the executor's task time limit.
+    Any sibling submit-based test running concurrently with, or soon after,
+    this one would risk being 429'd by *this* test's saturation rather than
+    by anything it did itself. Running this scenario last (and the group
+    serially) removes that risk entirely for this module; the cleanup below
+    is a courtesy for whatever runs against this org after it, not a
+    correctness requirement for this test itself -- the limiter's own 6h
+    slot TTL (``AgentKVConcurrencyLimiter._SLOT_TTL_SECONDS``) is the
+    ultimate backstop either way.
+    """
+    limit = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", "5"))
+    n = limit + 1
+
+    def _submit(_i: int):
+        return submit_raw(
+            agent_kv_key,
+            _INVOICE_BYTES,
+            "invoice.pdf",
+            invoice_schema(),
+            qa=False,
+            challenge=False,
+        )
+
+    accepted_job_ids: list[str] = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+            responses = list(pool.map(_submit, range(n)))
+
+        statuses = [r.status_code for r in responses]
+        assert all(s in (202, 429) for s in statuses), (
+            f"unexpected status among {n} concurrent submits "
+            f"(only 202/429 are valid outcomes here): {statuses}"
+        )
+        assert 429 in statuses, (
+            f"submitting {n} concurrent jobs against a limit of {limit} "
+            f"produced no 429: {statuses}"
+        )
+        for r in responses:
+            if r.status_code == 202:
+                accepted_job_ids.append(r.json()["job_id"])
+        assert len(accepted_job_ids) <= limit, accepted_job_ids
+    finally:
+        # Cancelling stops each job's eventual result from ever being
+        # readable, but -- per the docstring above -- does NOT itself free
+        # its concurrency slot; only that job's own finalize call does.
+        for job_id in accepted_job_ids:
+            try:
+                cancel(agent_kv_key, job_id)
+            except Exception:  # noqa: BLE001 - cleanup only, never fail the test on it
+                pass
+
+        # Best-effort drain: keep probing with a cheap submission until one
+        # is actually accepted again (proof a slot freed up) or the bounded
+        # wait runs out. Either way this never fails the test -- see the
+        # 6h-TTL backstop note in the docstring above.
+        deadline = time.monotonic() + _SLOT_DRAIN_TIMEOUT_S
+        while time.monotonic() < deadline:
+            try:
+                probe = _submit(-1)
+            except Exception:  # noqa: BLE001 - cleanup only
+                break
+            if probe.status_code == 202:
+                try:
+                    cancel(agent_kv_key, probe.json()["job_id"])
+                except Exception:  # noqa: BLE001 - cleanup only
+                    pass
+                break
+            time.sleep(_SLOT_DRAIN_POLL_INTERVAL_S)

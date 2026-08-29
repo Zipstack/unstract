@@ -252,3 +252,10 @@ groups:
     depends_on: [e2e-smoke]
     optional: true
     timeout_seconds: 1200
+    # Serial, not xdist-parallel: the concurrency scenario deliberately
+    # saturates the org's AgentKVConcurrencyLimiter slots, which
+    # JobCancelView never releases (only a finalize callback does, by
+    # design -- see the scenario's own docstring). Running sibling
+    # submit-based tests on other xdist workers at the same moment would
+    # let that saturation 429 them too.
+    parallel: false
