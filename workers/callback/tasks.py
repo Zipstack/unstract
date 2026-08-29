@@ -258,9 +258,7 @@ _EXECUTION_ERROR_MAX_LENGTH = 256
 _MAX_ERRORS_IN_SUMMARY = 3
 
 
-def _summarize_file_errors(
-    aggregated_results: dict[str, Any], total_files: int
-) -> str:
+def _summarize_file_errors(aggregated_results: dict[str, Any], total_files: int) -> str:
     """Build an execution-level reason from the per-file errors.
 
     The execution row previously recorded ERROR with a blank error_message,
