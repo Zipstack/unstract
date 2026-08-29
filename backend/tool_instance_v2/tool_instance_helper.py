@@ -490,9 +490,7 @@ class ToolInstanceHelper:
             if llm.is_enabled and llm.adapter_id:
                 adapter_id = tool_meta.get(llm.adapter_id)
             elif llm.is_enabled:
-                adapter_id = tool_meta.get(
-                    AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID
-                )
+                adapter_id = tool_meta.get(AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID)
 
             # UN-2953: a tool instance may carry "" for an adapter id.
             # Adding it made the schema validator compare "" against the
@@ -532,9 +530,7 @@ class ToolInstanceHelper:
             if text_extractor.is_enabled and text_extractor.adapter_id:
                 adapter_id = tool_meta.get(text_extractor.adapter_id)
             elif text_extractor.is_enabled:
-                adapter_id = tool_meta.get(
-                    AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID
-                )
+                adapter_id = tool_meta.get(AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID)
 
             # UN-2953: a tool instance may carry "" for an adapter id.
             # Adding it made the schema validator compare "" against the
