@@ -63,9 +63,20 @@ class SubmitSerializer(serializers.Serializer):
         return f
 
     def validate_calculations(self, v):
+        if v and not settings.AGENT_KV_CALCULATIONS_ENABLED:
+            raise serializers.ValidationError(
+                "calculations is not available on this deployment yet"
+            )
         if len(v.encode("utf-8")) > settings.AGENT_KV_MAX_CALCULATIONS_BYTES:
             raise serializers.ValidationError(
                 f"calculations exceeds {settings.AGENT_KV_MAX_CALCULATIONS_BYTES} bytes"
+            )
+        return v
+
+    def validate_structured_output(self, v):
+        if v and not settings.AGENT_KV_STRUCTURED_OUTPUT_ENABLED:
+            raise serializers.ValidationError(
+                "structured_output is not available on this deployment yet"
             )
         return v
 

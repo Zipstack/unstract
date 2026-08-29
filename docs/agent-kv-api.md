@@ -161,12 +161,12 @@ notes after the table for two spec-vs-code nuances worth flagging).
 | `keys` | yes | `keys.json` (file part or inline JSON string). Compiled synchronously; invalid ⇒ 400, nothing billed. |
 | `document_class` | no | Free-text hint (as CLI). |
 | `key_notes` | no | Free-text notes appended to the prompt (as CLI). |
-| `calculations` | no | Post-processing instructions; opt-in codegen. |
+| `calculations` | no | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `page_start`, `page_end` | no | 1-based inclusive range. |
 | `qa` | no | Default **on**. |
 | `challenge` | no | Default **on** (~doubles LLM spend; meter records what ran). |
 | `extraction_mode` | no | `whole-doc` (default) \| `per-page`. |
-| `structured_output` | no | Default off. |
+| `structured_output` | no | Disabled by default; enabled per deployment via `AGENT_KV_STRUCTURED_OUTPUT_ENABLED`. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
 | `tags`, `custom_data` | no | Echoed through. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. |
@@ -563,6 +563,11 @@ beyond `docker compose up`:
    in production (defaults to the same shared MinIO instance as workflow execution).
    Paths are org-prefixed (`org/{org_id}/agent_kv/{job_id}/input{ext}`,
    `.../result.json`) — no document bytes ever ride the message broker.
+7. **Feature flags — `calculations` and `structured_output`**: the cloud engine
+   cannot execute these yet, so submit rejects them with a 400 until the flags are
+   flipped. Both `AGENT_KV_CALCULATIONS_ENABLED` and
+   `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` default `false`; set either to `true` only
+   once the executor side has shipped support for it.
 
 ## 13. Environment reference
 
@@ -582,6 +587,8 @@ with the default shown:
 | `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate), fails open on Redis errors. |
 | `AGENT_KV_SWEEP_GRACE_SECONDS` | `3600` | Age (from `created_at`) before a never-dispatched `PENDING` job is eligible for the sweep. |
 | `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
+| `AGENT_KV_CALCULATIONS_ENABLED` | `false` | Gates the submit `calculations` field; the engine cannot execute it yet, so submit 400s while this is off. |
+| `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` | `false` | Gates the submit `structured_output` field; the engine cannot execute it yet, so submit 400s while this is off. |
 | `AGENT_KV_FILE_STORAGE_CREDENTIALS` | *(none — must be set)* | JSON credentials for the `AGENT_KV` `FileStorageType` (`unstract/filesystem`), same shape as `WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS`: `{"provider": "minio", "credentials": {"endpoint_url": "...", "key": "...", "secret": "..."}}`. |
 
 `AGENT_KV_FILE_STORAGE_CREDENTIALS` is looked up via

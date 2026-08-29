@@ -181,6 +181,12 @@ AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS"
 AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
     os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
 )
+AGENT_KV_CALCULATIONS_ENABLED = (
+    os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
+)
+AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
+    os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
+)
 
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")

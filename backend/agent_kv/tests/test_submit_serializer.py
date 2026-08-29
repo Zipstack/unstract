@@ -28,6 +28,17 @@ def _data(**over):
     return d
 
 
+def _defaults(m):
+    """Set every AGENT_KV_* attribute the serializer reads to its production default."""
+    m.AGENT_KV_MAX_FILE_SIZE_MB = 50
+    m.AGENT_KV_MAX_PAGES = 100
+    m.AGENT_KV_MAX_SCHEMA_BYTES = 262_144
+    m.AGENT_KV_MAX_CALCULATIONS_BYTES = 20_000
+    m.AGENT_KV_MAX_TIMEOUT_SECONDS = 300
+    m.AGENT_KV_CALCULATIONS_ENABLED = False
+    m.AGENT_KV_STRUCTURED_OUTPUT_ENABLED = False
+
+
 def test_valid_submit_compiles_and_counts_pages():
     s = SubmitSerializer(data=_data())
     assert s.is_valid(), s.errors
@@ -47,11 +58,8 @@ def test_disallowed_extension_rejected():
 
 def test_oversize_file_rejected():
     with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
         m.AGENT_KV_MAX_FILE_SIZE_MB = 0
-        m.AGENT_KV_MAX_PAGES = 100
-        m.AGENT_KV_MAX_SCHEMA_BYTES = 262_144
-        m.AGENT_KV_MAX_CALCULATIONS_BYTES = 20_000
-        m.AGENT_KV_MAX_TIMEOUT_SECONDS = 300
         s = SubmitSerializer(data=_data())
         assert not s.is_valid()
         assert "file" in s.errors
@@ -59,11 +67,8 @@ def test_oversize_file_rejected():
 
 def test_page_cap_rejected():
     with mock.patch("agent_kv.execution_serializers.settings") as m:
-        m.AGENT_KV_MAX_FILE_SIZE_MB = 50
+        _defaults(m)
         m.AGENT_KV_MAX_PAGES = 1
-        m.AGENT_KV_MAX_SCHEMA_BYTES = 262_144
-        m.AGENT_KV_MAX_CALCULATIONS_BYTES = 20_000
-        m.AGENT_KV_MAX_TIMEOUT_SECONDS = 300
         s = SubmitSerializer(data=_data())
         assert not s.is_valid()
         assert "pages" in str(s.errors).lower()
@@ -109,3 +114,31 @@ def test_unreadable_pdf_is_field_error_and_stream_is_rewound():
     # the whole stream from the start.
     assert bad.tell() == 0
     assert bad.read() == b"not a pdf"
+
+
+def test_calculations_rejected_when_disabled():
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m); m.AGENT_KV_CALCULATIONS_ENABLED = False
+        s = SubmitSerializer(data=_data(calculations="annualize rent"))
+        assert not s.is_valid()
+        assert "not available" in str(s.errors["calculations"])
+
+
+def test_calculations_accepted_when_enabled():
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m); m.AGENT_KV_CALCULATIONS_ENABLED = True
+        assert SubmitSerializer(data=_data(calculations="annualize rent")).is_valid()
+
+
+def test_structured_output_rejected_when_disabled():
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m); m.AGENT_KV_STRUCTURED_OUTPUT_ENABLED = False
+        s = SubmitSerializer(data=_data(structured_output=True))
+        assert not s.is_valid()
+        assert "structured_output" in s.errors
+
+
+def test_empty_calculations_and_false_structured_output_pass_when_disabled():
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        assert SubmitSerializer(data=_data()).is_valid()
