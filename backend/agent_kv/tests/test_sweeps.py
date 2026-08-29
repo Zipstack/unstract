@@ -14,10 +14,18 @@ mock can't literally execute against a database:
   filter the candidate query is built with: a row TTLCleanupView just
   blanked no longer satisfies that predicate, so it drops out of the next
   call's candidate set.
+
+These tests exercise the two-phase sweep and TTL-cleanup logic through the
+(now-thin) ``SweepView``/``TTLCleanupView`` -- the logic itself lives in
+``agent_kv.maintenance`` (moved there so the ``agent_kv_sweep``/
+``agent_kv_ttl_cleanup`` management commands can share it), which is why
+``delete_job_files`` is patched on the ``maintenance`` module below rather
+than on ``internal_views``.
 """
 
 import os
 import uuid
+from datetime import timedelta
 from unittest import mock
 
 import django
@@ -33,6 +41,7 @@ from django.utils import timezone  # noqa: E402
 from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import internal_views as iv  # noqa: E402
+from agent_kv import maintenance  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
@@ -77,7 +86,7 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
     frozen_now = timezone.now()
     phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
 
-    with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
@@ -85,7 +94,7 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
     filter_kwargs = m_objects.filter.call_args_list[0].kwargs
     assert filter_kwargs["status"] == JobStatus.PENDING
     assert filter_kwargs["dispatched_at__isnull"] is True
-    assert filter_kwargs["created_at__lt"] == frozen_now - iv.timedelta(
+    assert filter_kwargs["created_at__lt"] == frozen_now - timedelta(
         seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
     )
     phase1_qs.order_by.assert_called_once_with("created_at")
@@ -188,14 +197,14 @@ def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
     frozen_now = timezone.now()
     phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
 
-    with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
     assert resp.data == {"swept": 0, "timed_out": 0}
     filter_kwargs = m_objects.filter.call_args_list[1].kwargs
     assert set(filter_kwargs["status__in"]) == {JobStatus.DISPATCHED, JobStatus.RUNNING}
-    assert filter_kwargs["dispatched_at__lt"] == frozen_now - iv.timedelta(
+    assert filter_kwargs["dispatched_at__lt"] == frozen_now - timedelta(
         seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
     )
     phase2_qs.order_by.assert_called_once_with("dispatched_at")
@@ -294,7 +303,7 @@ def test_sweep_reports_both_phase_counts_independently(
 # This is what proves BOTH "non-expired untouched" (the expires_at__lt
 # half) and "blank-ref rows excluded / second run is a no-op" (the Q half:
 # a row TTLCleanupView just blanked no longer satisfies `__gt=""`).
-@mock.patch.object(iv, "delete_job_files")
+@mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delete):
     frozen_now = timezone.now()
@@ -303,7 +312,7 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
     m_ordered_qs = m_ref_qs.order_by.return_value
     m_ordered_qs.__getitem__.return_value = []
 
-    with mock.patch.object(iv.timezone, "now", return_value=frozen_now):
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
@@ -319,7 +328,7 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
 
 # (7) files are deleted BEFORE the refs are blanked -- order matters: a
 # delete failure must not blank a ref pointing at a file that's still there.
-@mock.patch.object(iv, "delete_job_files")
+@mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
     job_id = uuid.uuid4()
@@ -344,7 +353,7 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
 # (8) both refs are blanked via `.update()` (not `job.save()`), targeting
 # exactly this job's row, and the row itself is left in place (no .delete()
 # call is ever made on the queryset).
-@mock.patch.object(iv, "delete_job_files")
+@mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
     job_id = uuid.uuid4()
@@ -361,7 +370,7 @@ def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
 
 # (9) `cleaned` counts jobs actually processed this call, across multiple
 # candidates.
-@mock.patch.object(iv, "delete_job_files")
+@mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
     job1 = AgentKVJob(id=uuid.uuid4(), input_ref="a", result_ref="")
@@ -383,7 +392,7 @@ def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
 # also the concrete shape of a "second run over the same set" once every
 # candidate from the first run has had its refs blanked: the (mocked)
 # candidate query simply returns nothing.
-@mock.patch.object(iv, "delete_job_files")
+@mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
     m_qs = m_objects.filter.return_value

@@ -557,6 +557,19 @@ beyond `docker compose up`:
      (retention is measured in days).
    Both endpoints are idempotent, batch-capped at 500 rows per phase per call, and
    safe to call more often than needed.
+
+   **Cloud mechanism — Kubernetes CronJobs, not the PG-scheduler.** The sweep and
+   TTL-cleanup logic itself lives in `backend/agent_kv/maintenance.py::run_sweep`/
+   `run_ttl_cleanup` — `SweepView`/`TTLCleanupView` above are now thin wrappers
+   around it. Two Django management commands wrap the same functions —
+   `python manage.py agent_kv_sweep` and `python manage.py agent_kv_ttl_cleanup`
+   (`backend/agent_kv/management/commands/`) — each printing the JSON counts
+   (`{"swept": N, "timed_out": M}` / `{"cleaned": N}`) and exiting 0. In the cloud
+   deployment, a Kubernetes CronJob runs each command on the cadences above instead
+   of registering a `PgPeriodicTask` row. The scheduler proxy tasks
+   (`agent_kv.sweep`/`agent_kv.ttl_cleanup`) and their PG-scheduler registration
+   remain the mechanism for OSS/self-hosted deployments, which have no CronJob
+   equivalent to drive from.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
    see [§13](#13-environment-reference) and `docker/sample.env`.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
