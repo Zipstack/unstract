@@ -1,0 +1,319 @@
+"""E2E: the Agent-KV product API against a real running platform.
+
+This lane needs the cloud ``agentic_kv`` executor plugin (docs/agent-kv-api.md
+§11) -- an OSS-only deployment 501s every submit, so it is NOT part of a plain
+OSS e2e sweep. The whole module skips unless both:
+
+- ``UNSTRACT_BACKEND_URL`` is set (the usual e2e platform-URL gate every
+  other lane in this tree relies on), AND
+- ``AGENT_KV_E2E=1`` is set explicitly -- so this lane never runs by
+  accident just because a platform happens to be up; it must be opted into
+  for a run that actually ships the plugin.
+
+A second, narrower gate (the ``require_llm`` fixture below) applies only to
+the two scenarios whose assertions depend on a job actually reaching
+COMPLETED (real extraction happened): either ``AGENT_KV_LLM_API_KEY`` or
+``UNSTRACT_LLM_MOCK_RESPONSE`` must be set. Every other scenario here is
+gated purely by request-time checks (auth, schema compile, the concurrency
+limiter, the pre-OCR page cap) that resolve before any LLM call, so they
+don't need either.
+
+Values extracted under ``UNSTRACT_LLM_MOCK_RESPONSE`` are whatever the mock
+config returns, not real answers -- assertions here deliberately check
+*structure* (the requested keys are present) rather than field values, for
+both the mock and a real-key run, to keep this lane's outcome independent of
+model behavior.
+"""
+
+from __future__ import annotations
+
+import concurrent.futures
+import os
+
+import pytest
+import requests
+
+from tests.e2e.agent_kv.conftest import (
+    INVOICE_FIELDS,
+    INVOICE_PDF,
+    AgentKVAuth,
+    cancel,
+    delete,
+    invalid_schema,
+    invoice_schema,
+    poll,
+    result,
+    submit,
+    submit_raw,
+)
+
+if not (os.environ.get("UNSTRACT_BACKEND_URL") and os.environ.get("AGENT_KV_E2E") == "1"):
+    pytest.skip(
+        "agent-kv e2e lane needs UNSTRACT_BACKEND_URL and AGENT_KV_E2E=1 "
+        "(this lane requires the cloud agentic_kv executor plugin -- see "
+        "docs/agent-kv-api.md §11)",
+        allow_module_level=True,
+    )
+
+pytestmark = [pytest.mark.e2e]
+
+_INVOICE_BYTES = INVOICE_PDF.read_bytes()
+
+
+@pytest.fixture()
+def require_llm() -> None:
+    """Skip a scenario that needs a job to actually reach COMPLETED.
+
+    Every other scenario in this module resolves before any LLM call
+    (auth/schema/limiter/page-cap checks); only the two that poll a job all
+    the way to a genuine COMPLETED result need this.
+    """
+    has_key = os.environ.get("AGENT_KV_LLM_API_KEY")
+    has_mock = os.environ.get("UNSTRACT_LLM_MOCK_RESPONSE")
+    if not (has_key or has_mock):
+        pytest.skip(
+            "needs AGENT_KV_LLM_API_KEY or UNSTRACT_LLM_MOCK_RESPONSE so the "
+            "job can actually reach COMPLETED"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 1. Auth
+# ---------------------------------------------------------------------------
+
+
+def test_submit_without_key_is_403(agent_kv_key: AgentKVAuth) -> None:
+    resp = requests.post(
+        agent_kv_key.exec_url,
+        files={"file": ("invoice.pdf", _INVOICE_BYTES, "application/pdf")},
+        data={"keys": '{"total": {"description": "Grand total"}}'},
+        timeout=30,
+    )
+    assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# 2. Validate
+# ---------------------------------------------------------------------------
+
+
+def test_validate_good_and_bad_schema(agent_kv_key: AgentKVAuth) -> None:
+    good = requests.post(
+        f"{agent_kv_key.base}/agent-kv/validate",
+        headers=agent_kv_key.headers,
+        json={"keys": invoice_schema()},
+        timeout=30,
+    )
+    assert good.status_code == 200, good.text
+    good_body = good.json()
+    assert good_body["valid"] is True, good_body
+    assert good_body["leaves"] == len(INVOICE_FIELDS), good_body
+
+    bad = requests.post(
+        f"{agent_kv_key.base}/agent-kv/validate",
+        headers=agent_kv_key.headers,
+        json={"keys": invalid_schema()},
+        timeout=30,
+    )
+    # A compile-rejected schema is still a 200 -- it's a validation *result*,
+    # not a request error (docs §6).
+    assert bad.status_code == 200, bad.text
+    bad_body = bad.json()
+    assert bad_body["valid"] is False, bad_body
+    assert "error" in bad_body, bad_body
+
+
+# ---------------------------------------------------------------------------
+# 3. Happy path
+# ---------------------------------------------------------------------------
+
+
+def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> None:
+    job_id, status_url = submit(
+        agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema()
+    )
+    assert status_url.endswith(job_id), status_url
+
+    status_doc = poll(agent_kv_key, job_id, timeout_s=600)
+    assert status_doc["status"] == "completed", status_doc
+
+    stages_by_name = {s["name"]: s for s in status_doc["stages"]}
+    for expected in ("document_processing", "extraction"):
+        assert expected in stages_by_name, status_doc["stages"]
+        assert stages_by_name[expected]["status"] == "done", stages_by_name[expected]
+
+    resp = result(agent_kv_key, job_id)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is True, body
+
+    record = body["record"]
+    for field in INVOICE_FIELDS:
+        assert field in record, (field, record)
+
+    assert isinstance(body.get("keys"), list) and body["keys"], body
+    audited_paths = {entry["path"] for entry in body["keys"]}
+    assert set(INVOICE_FIELDS) <= audited_paths, (audited_paths, body["keys"])
+
+    # usage_summary-derived fields, per docs §5.
+    assert "cost_summary" in body, body
+    assert "timing" in body, body
+
+    # Re-readable until TTL (D11) -- a second GET must still be a 200, not an
+    # acknowledged-and-gone 4xx like the one-shot api-deployment result.
+    again = result(agent_kv_key, job_id)
+    assert again.status_code == 200, again.text
+    assert again.json() == body, "result must be byte-for-byte stable on re-read"
+
+
+# ---------------------------------------------------------------------------
+# 4. Failure body (submit-time rejection)
+# ---------------------------------------------------------------------------
+
+
+def test_submit_unreadable_pdf_is_400(agent_kv_key: AgentKVAuth) -> None:
+    """A ``.pdf``-named file that isn't a real PDF is rejected before dispatch.
+
+    This is the submit-serializer's own page-count check
+    (``pdfplumber.open()`` raising -> ``{"file": "Unreadable PDF"}``), which
+    is deterministic and needs no LLM/engine work to reach. The executor's
+    own FAILED-terminal path (a job that *dispatches* successfully but the
+    engine later fails) has no deterministic trigger reachable without a
+    real key/schema combination that's guaranteed to fail -- that path is
+    covered by the unit suites instead (e.g.
+    ``backend/agent_kv/tests/test_job_views.py``,
+    ``backend/agent_kv/tests/test_dispatch.py``).
+    """
+    garbage = b"this is not a pdf file, just garbage bytes" * 20
+    resp = submit_raw(agent_kv_key, garbage, "garbage.pdf", invoice_schema())
+    assert resp.status_code == 400, (
+        f"expected 400 (a 501 here means the agent-kv engine plugin isn't "
+        f"installed on this deployment): {resp.text}"
+    )
+    body = resp.json()
+    assert "file" in body, body
+
+
+# ---------------------------------------------------------------------------
+# 5. Cancel
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
+    job_id, _ = submit(
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
+    )
+    cancel_resp = cancel(agent_kv_key, job_id)
+    # Either cancel won the race (200) or the job was already terminal by the
+    # time it landed (409) -- both are correct per docs §7; either way the
+    # status endpoint must agree with what cancel just reported.
+    assert cancel_resp.status_code in (200, 409), cancel_resp.text
+    cancel_body = cancel_resp.json()
+
+    status_resp = requests.get(
+        agent_kv_key.job_url(job_id), headers=agent_kv_key.headers, timeout=30
+    )
+    assert status_resp.status_code == 200, status_resp.text
+    final_status = status_resp.json()["status"]  # lowercased, per docs §4
+
+    if cancel_resp.status_code == 200:
+        assert cancel_body == {"status": "cancelled"}, cancel_body
+        assert final_status == "cancelled", status_resp.json()
+    else:
+        # docs §7: the 409 body's status is the RAW uppercase enum value,
+        # unlike every other status field in this API.
+        assert cancel_body["status"] == final_status.upper(), (cancel_body, final_status)
+
+
+# ---------------------------------------------------------------------------
+# 6. Concurrency
+# ---------------------------------------------------------------------------
+
+
+def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
+    limit = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", "5"))
+    n = limit + 1
+
+    def _submit(_i: int):
+        return submit_raw(
+            agent_kv_key,
+            _INVOICE_BYTES,
+            "invoice.pdf",
+            invoice_schema(),
+            qa=False,
+            challenge=False,
+        )
+
+    accepted_job_ids: list[str] = []
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=n) as pool:
+            responses = list(pool.map(_submit, range(n)))
+
+        statuses = [r.status_code for r in responses]
+        assert 429 in statuses, (
+            f"submitting {n} concurrent jobs against a limit of {limit} "
+            f"produced no 429: {statuses}"
+        )
+        for r in responses:
+            if r.status_code == 202:
+                accepted_job_ids.append(r.json()["job_id"])
+        assert len(accepted_job_ids) <= limit, accepted_job_ids
+    finally:
+        # Best-effort: free the concurrency slots for later tests instead of
+        # waiting out the limiter's 6h TTL.
+        for job_id in accepted_job_ids:
+            try:
+                cancel(agent_kv_key, job_id)
+            except Exception:  # noqa: BLE001 - cleanup only, never fail the test on it
+                pass
+
+
+# ---------------------------------------------------------------------------
+# 7. Delete
+# ---------------------------------------------------------------------------
+
+
+def test_delete_completed_job_then_result_404(
+    agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
+    job_id, _ = submit(
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
+    )
+    status_doc = poll(agent_kv_key, job_id, timeout_s=600)
+    assert status_doc["status"] == "completed", status_doc
+
+    del_resp = delete(agent_kv_key, job_id)
+    assert del_resp.status_code == 204, del_resp.text
+
+    after = result(agent_kv_key, job_id)
+    assert after.status_code == 404, after.text
+
+
+# ---------------------------------------------------------------------------
+# 8. Page cap
+# ---------------------------------------------------------------------------
+
+
+def test_page_cap_rejects_oversized_document(agent_kv_key: AgentKVAuth) -> None:
+    fixture_pages = 2  # fixtures/invoice.pdf
+    cap_raw = os.environ.get("AGENT_KV_MAX_PAGES")
+    if cap_raw is None or int(cap_raw) > fixture_pages:
+        pytest.skip(
+            f"AGENT_KV_MAX_PAGES={cap_raw!r} exceeds the fixture's "
+            f"{fixture_pages} pages; set AGENT_KV_MAX_PAGES<={fixture_pages} "
+            "on the backend service to exercise the cap"
+        )
+    resp = submit_raw(agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema())
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
+    assert "file" in body, body

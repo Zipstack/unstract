@@ -10,6 +10,10 @@ services:
       # Workers ask the backend for this, so this is the value that normally
       # takes effect for fan-out.
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
+      # Lets the agent-kv e2e lane's page-cap scenario set a cap smaller than
+      # its 2-page fixture (default matches AGENT_KV_MAX_PAGES's own default
+      # in docker/sample.env; the test skips unless this is overridden <=2).
+      - AGENT_KV_MAX_PAGES=${AGENT_KV_MAX_PAGES:-100}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -21,6 +25,21 @@ services:
   worker-executor-v2:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
+      # Add the agent-kv executor's queue to the default set (docs/agent-kv-api.md
+      # §12 item 2) without dropping the queues other e2e lanes' tools dispatch
+      # to on this same worker -- this is a superset of docker-compose.yaml's
+      # own default, not a replacement for it.
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table,celery_executor_agentic_kv}
+      # Agent-KV engine config, read by the cloud `agentic_kv` executor plugin
+      # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.
+      # `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of `anthropic`|`openai`.
+      # Model names have no safe default -- Task 13b must supply real ones.
+      - AGENT_KV_LLM_PROVIDER=${AGENT_KV_LLM_PROVIDER:-anthropic}
+      - AGENT_KV_LITE_MODEL=${AGENT_KV_LITE_MODEL:-}
+      - AGENT_KV_ADVANCED_MODEL=${AGENT_KV_ADVANCED_MODEL:-}
+      - AGENT_KV_LLM_API_KEY=${AGENT_KV_LLM_API_KEY:-}
+      - AGENT_KV_LLMWHISPERER_API_KEY=${AGENT_KV_LLMWHISPERER_API_KEY:-}
+      - AGENT_KV_LLMWHISPERER_BASE_URL=${AGENT_KV_LLMWHISPERER_BASE_URL:-https://llmwhisperer-api.us-central.unstract.com/api/v2}
 
   worker-file-processing-v2:
     environment:

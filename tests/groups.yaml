@@ -236,3 +236,19 @@ groups:
     requires_platform: true
     depends_on: [e2e-smoke]
     optional: true
+
+  # Agent-KV product API (/agent-kv/...). Needs the cloud `agentic_kv`
+  # executor plugin installed (docs/agent-kv-api.md §11) -- an OSS-only image
+  # 501s every submit, so this is optional: an OSS-only CI run must not go
+  # red just because the plugin isn't there. The module itself additionally
+  # self-gates on AGENT_KV_E2E=1 so it never runs by accident even when the
+  # platform happens to be up (see tests/e2e/agent_kv/test_agent_kv_e2e.py).
+  # Longer budget than the other platform groups: the happy-path and delete
+  # scenarios poll a real extraction job through to COMPLETED.
+  e2e-agent-kv:
+    tier: e2e
+    paths: [tests/e2e/agent_kv]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    optional: true
+    timeout_seconds: 1200
