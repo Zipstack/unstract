@@ -624,21 +624,41 @@ beyond `docker compose up`:
    flipped. Both `AGENT_KV_CALCULATIONS_ENABLED` and
    `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` default `false`; set either to `true` only
    once the executor side has shipped support for it.
-8. **Executor time limit — worst case is close to the default.** At the 100-page cap
-   (`AGENT_KV_MAX_PAGES`) with `extraction_mode="per-page"`, `parallel_pages=4`, and
-   both QA and challenge enabled (the worst-case option combination), the arithmetic
-   is: each of `key_extractor` → `kv_qa` → `kv_challenger` fans 100 pages across 4
-   workers (25 sequential rounds), each round up to ~99s if its slowest call needs a
-   full retry backoff (`SDKLLMClient`'s `_DEFAULT_MAX_RETRIES=8`) — 25 × 99s = 2,475s
-   per stage, and the three stages run sequentially per the extraction DAG: 3 × 2,475s
-   = **7,425s**. That's **225s over the Celery `task_time_limit` default of 7,200s**,
-   and does not include `array_extractor` (when the schema has array specs) or
-   OCR/document-processing time on top — both push the real worst case higher still.
-   Recommend deploying with `task_time_limit=9000` (2.5h) for the executor fleet as a
-   safe floor with headroom, rather than the 7,200s default; short of that, monitor
-   real per-job durations and raise it before a run at or near the page cap times out
-   mid-flight (a mid-flight kill on a non-idempotent, costly LLM pipeline is expensive
-   to just retry from scratch).
+8. **Executor time limit — the real baseline is 3,600s, not 7,200s.** The executor
+   fleet (`workerExecutorV2`/`workerPgExecutor`) is not a `FILE_PROCESSING` worker —
+   `WorkerConfig._get_worker_specific_timeout_defaults()`
+   (`workers/shared/models/worker_models.py`) falls through to the "conservative
+   defaults for other workers" branch for `WorkerType.EXECUTOR`: **1 hour / 3,600s**
+   hard limit, 3,300s soft. The chart's bare `TASK_TIME_LIMIT: "3600"` ConfigMap key
+   is inert — `get_celery_setting`'s 4-tier resolution (cmdline →
+   `{WORKER_TYPE}_{SETTING}` → `CELERY_{SETTING}` → default) means only
+   **`EXECUTOR_TASK_TIME_LIMIT`** (worker-specific) or `CELERY_TASK_TIME_LIMIT`
+   (global) actually override it; see the comment on `workerExecutorV2`'s
+   `terminationGracePeriodSeconds` in `charts/unstract-platform/values.yaml`, which
+   already documents this ("Its ceiling is task_time_limit=3600s... note the chart's
+   bare TASK_TIME_LIMIT is NOT read; only EXECUTOR_TASK_TIME_LIMIT / CELERY_*").
+   At the 100-page cap (`AGENT_KV_MAX_PAGES`) with `extraction_mode="per-page"`,
+   `parallel_pages=4`, and both QA and challenge enabled (the worst-case option
+   combination), the arithmetic worked out in Task 9's report is: each of
+   `key_extractor` → `kv_qa` → `kv_challenger` fans 100 pages across 4 workers (25
+   sequential rounds), each round up to ~99s if its slowest call needs a *full* retry
+   backoff (`SDKLLMClient`'s `_DEFAULT_MAX_RETRIES=8`) — 25 × 99s = 2,475s per stage,
+   3 stages sequential = **7,425s**, a gap of **3,825s (over 2x)** against the real
+   3,600s baseline, not the 225s a 7,200s baseline would suggest. That 7,425s figure
+   assumes every single call across all 300 (100 pages × 3 stages) hits the full
+   8-retry backoff, which is not realistic — a real call is ~10-30s, so a full run at
+   the page cap is closer to **~2,000-2,500s** in practice; the 7,425s number is a
+   theoretical ceiling for capacity planning, not an expected duration.
+   **Recommendation: do not raise the fleet-wide time limit preemptively.**
+   `EXECUTOR_TASK_TIME_LIMIT` is fleet-wide — every executor task (every plugin, not
+   just Agent-KV) inherits it, and it's coupled to `workerPgExecutor`'s PG-visibility
+   lease/`vt` and `terminationGracePeriodSeconds` (raising one without the others
+   reintroduces the mid-flight-SIGKILL/silent-redelivery risk `UN-3964`'s comment on
+   `workerExecutorV2` already guards against). Measure real per-page timings from the
+   Task 13 integration run first, then either raise `EXECUTOR_TASK_TIME_LIMIT` (and
+   `terminationGracePeriodSeconds`/the PG lease together, not alone) or lower
+   `AGENT_KV_MAX_PAGES` for deployments that see per-page-heavy, near-cap documents in
+   practice.
 9. **Testing lanes — Docker-free unit gate, Docker-required integration lane.** The
    cloud rig's `unit-agentic-kv` group (`tests/groups.cloud.yaml`, cloud repo) runs the
    executor plugin's own test suite in an isolated venv with no `requires_services` —
