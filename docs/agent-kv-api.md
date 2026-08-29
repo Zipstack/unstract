@@ -516,21 +516,34 @@ beyond `docker compose up`:
    (probed via `plugins.get_plugin("agent_kv")`) — without it, submit always 501s
    ([§11](#11-when-the-engine-is-unavailable-501-behavior)). This repo ships gated
    dark by design; nothing to do for an OSS-only deployment except accept the 501.
+   The marker the probe keys off is the mere presence of
+   `backend/plugins/agent_kv/__init__.py` — a cloud image ships it (via the
+   plugin-copy step), an OSS-only build does not.
 2. **Executor worker fleet queue**: the executor dispatch derives its Celery queue name
    from the executor name as `celery_executor_{executor_name}` — for Agent-KV that's
    **`celery_executor_agentic_kv`** (`unstract/sdk1/src/unstract/sdk1/execution/dispatcher.py`).
    `workers/run-worker.sh`'s executor role default queue list
    (`celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table`)
-   does **not** include it yet — a deployment running the cloud `agentic_kv` executor
-   plugin must add `celery_executor_agentic_kv` to that worker's consumed queues
-   (`CELERY_QUEUES_EXECUTOR` on the Docker path, or the equivalent `run-worker.sh`
-   queue map entry) or dispatched jobs will never be picked up.
+   does **not** include it — a self-hosted/OSS-only deployment running the cloud
+   `agentic_kv` executor plugin must add `celery_executor_agentic_kv` to that worker's
+   consumed queues (`CELERY_QUEUES_EXECUTOR` on the Docker path, or the equivalent
+   `run-worker.sh` queue map entry) or dispatched jobs will never be picked up.
+   **The cloud Helm chart already wires this**: both `workerExecutorV2.args`
+   (`--queues=...,celery_executor_agentic_kv`) and
+   `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` include it, and both fleets
+   carry `additionalConfigs: [..., agentKv]` (`charts/unstract-platform/values.yaml`,
+   cloud repo) so the executor pods get the `AGENT_KV_*` LLM/LLMWhisperer env alongside
+   the queue wiring.
 3. **Callback queue**: the `ide_callback` worker must consume `agent_kv_callback`
    alongside its own `ide_callback` queue, or jobs dispatch but never finalize. This is
    already the hardcoded default in both `workers/run-worker-docker.sh` and
    `workers/run-worker.sh` (`WORKER_QUEUES["ide_callback"] = "ide_callback,agent_kv_callback"`)
    — nothing to configure for a standard deployment; see the note already in
-   `docker/sample.env` under "IDE Callback Worker."
+   `docker/sample.env` under "IDE Callback Worker." The cloud Helm chart matches:
+   `workerIdeCallbackV2.args` (`--queues=ide_callback,agent_kv_callback`) and
+   `workerPgIdeCallback.env.WORKER_PG_QUEUE_CONSUMER_QUEUE`
+   (`"ide_callback,agent_kv_callback"`) both already include it
+   (`charts/unstract-platform/values.yaml`, cloud repo).
 4. **Internal periodic maintenance — proxy tasks now exist; nothing schedules them
    yet.** Two internal endpoints do the real work
    (`backend/agent_kv/internal_urls.py`, `internal_views.py::SweepView`/
@@ -570,17 +583,70 @@ beyond `docker compose up`:
    (`agent_kv.sweep`/`agent_kv.ttl_cleanup`) and their PG-scheduler registration
    remain the mechanism for OSS/self-hosted deployments, which have no CronJob
    equivalent to drive from.
+
+   **Chart keys (cloud repo)**: `backend.agentKvCronJobs` in
+   `charts/unstract-platform/values.yaml` — `enabled: false` there (on-prem never runs
+   it), flipped to `enabled: true` in `charts/cloud-deployment-values/cloud.values.yaml`.
+   Its `jobs` list is the two commands above with concrete schedules:
+   `{name: sweep, command: agent_kv_sweep, schedule: "*/15 * * * *"}` and
+   `{name: ttl-cleanup, command: agent_kv_ttl_cleanup, schedule: "17 * * * *"}` — offset
+   from sweep's :00/:15/:30/:45 ticks so the two CronJobs never contend on the same
+   rows. Neither job needs the `agentKv` shared-config group (LLM/LLMWhisperer
+   creds — only the executor touches those): sweep only needs `database`/`redis`,
+   ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
+   (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
-   see [§13](#13-environment-reference) and `docker/sample.env`.
+   see [§13](#13-environment-reference) and `docker/sample.env`. The executor-side vars
+   (read by the cloud `agentic_kv` plugin, not by the backend settings in §13) are a
+   separate chart group: `global.sharedConfigs.agentKv`
+   (`charts/unstract-platform/values.yaml`, cloud repo) —
+   `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`, `AGENT_KV_ADVANCED_MODEL`,
+   `AGENT_KV_LLM_API_KEY`, `AGENT_KV_LLMWHISPERER_API_KEY`,
+   `AGENT_KV_LLMWHISPERER_BASE_URL`, `AGENT_KV_MAX_TOKENS`, `AGENT_KV_PARALLEL_PAGES`,
+   `AGENT_KV_ENGINE_VERSION`. Of those, two are ESO (External Secrets Operator)
+   secrets rather than plain values — `AGENT_KV_LLM_API_KEY` and
+   `AGENT_KV_LLMWHISPERER_API_KEY`, mapped in `global.externalSecrets.groups.agentKv`
+   to the GCP Secret Manager suffixes `agent-kv-llm-api-key` /
+   `agent-kv-llmwhisperer-api-key`. `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of
+   two values — `anthropic` and `openai` (`SUPPORTED_PROVIDERS` in the executor's LLM
+   adapter) — anything else raises `ConfigError` at dispatch, before any LLM call.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
    in production (defaults to the same shared MinIO instance as workflow execution).
    Paths are org-prefixed (`org/{org_id}/agent_kv/{job_id}/input{ext}`,
-   `.../result.json`) — no document bytes ever ride the message broker.
+   `.../result.json`) — no document bytes ever ride the message broker. Chart key:
+   `global.sharedConfigs.storage.AGENT_KV_FILE_STORAGE_CREDENTIALS`
+   (`charts/unstract-platform/values.yaml`, cloud repo) — derived from
+   `fileStorageCredentials`/`MINIO_CREDS` unless set explicitly, the same fan-out
+   pattern as its three siblings (`WORKFLOW_EXECUTION_`, `API_`,
+   `HITL_FILES_FILE_STORAGE_CREDENTIALS`).
 7. **Feature flags — `calculations` and `structured_output`**: the cloud engine
    cannot execute these yet, so submit rejects them with a 400 until the flags are
    flipped. Both `AGENT_KV_CALCULATIONS_ENABLED` and
    `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` default `false`; set either to `true` only
    once the executor side has shipped support for it.
+8. **Executor time limit — worst case is close to the default.** At the 100-page cap
+   (`AGENT_KV_MAX_PAGES`) with `extraction_mode="per-page"`, `parallel_pages=4`, and
+   both QA and challenge enabled (the worst-case option combination), the arithmetic
+   is: each of `key_extractor` → `kv_qa` → `kv_challenger` fans 100 pages across 4
+   workers (25 sequential rounds), each round up to ~99s if its slowest call needs a
+   full retry backoff (`SDKLLMClient`'s `_DEFAULT_MAX_RETRIES=8`) — 25 × 99s = 2,475s
+   per stage, and the three stages run sequentially per the extraction DAG: 3 × 2,475s
+   = **7,425s**. That's **225s over the Celery `task_time_limit` default of 7,200s**,
+   and does not include `array_extractor` (when the schema has array specs) or
+   OCR/document-processing time on top — both push the real worst case higher still.
+   Recommend deploying with `task_time_limit=9000` (2.5h) for the executor fleet as a
+   safe floor with headroom, rather than the 7,200s default; short of that, monitor
+   real per-job durations and raise it before a run at or near the page cap times out
+   mid-flight (a mid-flight kill on a non-idempotent, costly LLM pipeline is expensive
+   to just retry from scratch).
+9. **Testing lanes — Docker-free unit gate, Docker-required integration lane.** The
+   cloud rig's `unit-agentic-kv` group (`tests/groups.cloud.yaml`, cloud repo) runs the
+   executor plugin's own test suite in an isolated venv with no `requires_services` —
+   no Docker needed, and it's what `tox -e unit` (CI's unit-tier matrix leg) runs. The
+   integration tier is the one that needs Docker: it authenticates to the container
+   registry and boots a mock Auth0 sidecar (`.github/workflows/ci-test.yaml`, cloud
+   repo) for the cross-service suites. A local `unit-agentic-kv` run needs neither
+   Docker nor the platform stack up.
 
 ## 13. Environment reference
 
