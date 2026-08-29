@@ -309,10 +309,25 @@ curl https://api.unstract.example/agent-kv/5b6e9b0a-.../result \
   "qa_passed": true,
   "challenge_passed": true,
   "consistency_violations": [],
-  "cost_summary": {"extractor": {"tokens": 3120, "usd": 0.014}},
+  "cost_summary": {
+    "total_cost": 0.0,
+    "input_tokens": 3120,
+    "output_tokens": 480,
+    "agents": {
+      "kv_extractor": {"input_tokens": 2400, "output_tokens": 360, "cost": 0.0},
+      "kv_qa": {"input_tokens": 720, "output_tokens": 120, "cost": 0.0}
+    }
+  },
   "timing": {"document_processing": 6.2, "extraction": 11.4}
 }
 ```
+
+**`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
+zeroes the engine's per-token price fields (they were stale hardcoded list prices), so
+`total_cost` and every per-agent `cost` come back `0.0` — metering is what bills, from
+the SDK's own litellm-priced usage records. Read `cost_summary` for its token/agent
+breakdown only. `agents` is omitted entirely when no agent recorded usage (a full
+cache hit).
 
 (The exact result shape beyond `success` is the cloud engine's contract — spec §4 — not
 re-specified or validated by this repo.)
@@ -610,6 +625,25 @@ beyond `docker compose up`:
    `agent-kv-llmwhisperer-api-key`. `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of
    two values — `anthropic` and `openai` (`SUPPORTED_PROVIDERS` in the executor's LLM
    adapter) — anything else raises `ConfigError` at dispatch, before any LLM call.
+
+   **Rollout order is strict, and getting it wrong takes down the whole executor
+   fleet.** Both executor fleets mount this group with `envFrom: secretRef:
+   <release>-agent-kv`, so no executor pod of any kind — not just Agent-KV ones —
+   can start until that Secret exists: enabling the group ahead of its contents
+   leaves `workerExecutorV2` and `workerPgExecutor` in `CreateContainerConfigError`.
+   Per environment, in this order: (1) create the two GCP Secret Manager secrets
+   `<externalSecrets.prefix>-agent-kv-llm-api-key` and
+   `<externalSecrets.prefix>-agent-kv-llmwhisperer-api-key`; (2) set the three
+   non-secret keys — `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`,
+   `AGENT_KV_ADVANCED_MODEL` — in that environment's own values file (under ESO they
+   are emitted as inline literals in the ExternalSecret's `target.template`, and a nil
+   value is silently **dropped**, so leaving them unset ships a Secret without them and
+   every Agent-KV job then fails at dispatch with `ConfigError: Missing required
+   Agent-KV env vars`); (3) only then roll the fleets out. `cloud.values.yaml` enables
+   the group fleet-wide, so step 2 is a per-environment prerequisite, not an optional
+   extra. In inline (non-ESO) mode the same three keys are enforced at render time by a
+   `fail` guard in `charts/unstract-platform/templates/shared/agent-kv-secret.yaml`, so
+   a mistake there is a loud deploy-time failure instead of a per-job runtime one.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
    in production (defaults to the same shared MinIO instance as workflow execution).
    Paths are org-prefixed (`org/{org_id}/agent_kv/{job_id}/input{ext}`,
@@ -659,6 +693,17 @@ beyond `docker compose up`:
    `terminationGracePeriodSeconds`/the PG lease together, not alone) or lower
    `AGENT_KV_MAX_PAGES` for deployments that see per-page-heavy, near-cap documents in
    practice.
+
+   **What actually happens at each limit.** At the **soft** limit (3,300s) Celery raises
+   `SoftTimeLimitExceeded` into the task; the executor catches it, sets a run-level stop
+   signal that makes every in-flight LLM retry loop abort at its next backoff instead of
+   sleeping through the remaining ladder (up to ~30s per attempt × 8 attempts), flushes
+   the usage records accrued so far, and finalizes the job `failed` with the user-safe
+   error `"timed out"`. At the **hard** limit (3,600s) the worker is SIGKILLed: usage
+   records still held in memory are lost, so that run's LLM spend goes **unmetered**
+   (page usage, posted per-OCR-call, is unaffected). That gap is the reason the soft
+   limit now stops retries promptly — it is what keeps a slow run from crossing into the
+   hard kill.
 9. **Testing lanes — Docker-free unit gate, Docker-required integration lane.** The
    cloud rig's `unit-agentic-kv` group (`tests/groups.cloud.yaml`, cloud repo) runs the
    executor plugin's own test suite in an isolated venv with no `requires_services` —

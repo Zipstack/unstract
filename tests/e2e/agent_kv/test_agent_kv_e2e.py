@@ -27,6 +27,24 @@ model behavior.
 Test order matters: the concurrency scenario is deliberately defined LAST
 (see its own docstring) and ``tests/groups.yaml``'s ``e2e-agent-kv`` entry
 pins ``parallel: false`` for the same reason -- see that scenario for why.
+
+**A third, operator-driven gate: ``AGENT_KV_E2E_BAD_KEY_JOB=1``.** One
+scenario here (``test_bad_llm_key_ends_failed``) needs a *dispatched* job to
+end FAILED, which no request-time check can produce -- the only deterministic
+way to get there is to run the platform with a deliberately invalid
+``AGENT_KV_LLM_API_KEY`` so the executor's LLM calls all fail. That is a
+whole-stack configuration, not something a test can arrange, so the scenario
+skips unless an operator sets ``AGENT_KV_E2E_BAD_KEY_JOB=1`` to declare "this
+stack is running with a bad Agent-KV LLM key on purpose". Note that every
+other scenario in this module that needs a job to COMPLETE will (correctly)
+fail on such a stack -- run this one on its own, e.g.::
+
+    AGENT_KV_E2E=1 AGENT_KV_E2E_BAD_KEY_JOB=1 pytest tests/e2e/agent_kv -k bad_llm_key
+
+What it asserts is the *shape* of the failure, not its text: the job reaches
+``failed`` and the ``error`` the customer sees is user-safe -- no filesystem
+paths, no ``Permission denied``, no provider response body (spec Sec 8's
+``"<stage> failed: <class>"`` contract).
 """
 
 from __future__ import annotations
@@ -63,6 +81,52 @@ if not (os.environ.get("UNSTRACT_BACKEND_URL") and os.environ.get("AGENT_KV_E2E"
 pytestmark = [pytest.mark.e2e]
 
 _INVOICE_BYTES = INVOICE_PDF.read_bytes()
+
+# Bounded wait for the org's concurrency slots to free up again. Used by the
+# cancel scenario (a cancelled job must not leak its slot) and by the
+# concurrency scenario's own cleanup.
+_SLOT_DRAIN_TIMEOUT_S = 120
+_SLOT_DRAIN_POLL_INTERVAL_S = 3
+
+
+def _cheap_submit(auth: AgentKVAuth) -> requests.Response:
+    """One raw submit with QA and challenge off -- the cheapest job this API
+    will accept, used purely to occupy/probe a concurrency slot.
+    """
+    return submit_raw(
+        auth,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
+    )
+
+
+def _drain_until_slot_free(auth: AgentKVAuth, timeout_s: float = _SLOT_DRAIN_TIMEOUT_S) -> bool:
+    """Probe with cheap submits until one is ACCEPTED (proof a slot is free)
+    or the bounded wait runs out. Any accepted probe is cancelled again so it
+    doesn't hold the slot it just proved was available.
+
+    Returns True if a probe was accepted, False if the window expired or the
+    probes stopped being answerable. Never raises -- callers decide whether a
+    False is an assertion failure (the cancel scenario) or merely a
+    best-effort cleanup giving up (the concurrency scenario).
+    """
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        try:
+            probe = _cheap_submit(auth)
+        except Exception:  # noqa: BLE001 - probing only
+            return False
+        if probe.status_code == 202:
+            try:
+                cancel(auth, probe.json()["job_id"])
+            except Exception:  # noqa: BLE001 - cleanup only
+                pass
+            return True
+        time.sleep(_SLOT_DRAIN_POLL_INTERVAL_S)
+    return False
 
 
 @pytest.fixture()
@@ -235,6 +299,46 @@ def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
         assert cancel_body["status"] == final_status.upper(), (cancel_body, final_status)
 
 
+def test_cancelled_job_does_not_leak_its_concurrency_slot(
+    agent_kv_key: AgentKVAuth,
+) -> None:
+    """A cancelled job must give its concurrency slot back.
+
+    ``JobCancelView`` marks the job ``CANCELLED`` directly and never touches
+    ``AgentKVConcurrencyLimiter``; the slot is released by the job's own
+    *finalize* call, in a ``finally`` (docs/agent-kv-api.md §11a). So the
+    release is asynchronous -- it lands whenever the executor that picked the
+    job up notices the cancellation and calls back -- which is exactly the
+    kind of path where a leak hides: nothing in the cancel request itself
+    would fail if the release were dropped, and the only other backstop is
+    the limiter's 6-hour slot TTL.
+
+    This is a bounded probe, not a saturation test: it proves the limiter is
+    still handing out slots after a cancel (i.e. a cancel cannot wedge it),
+    and it reuses the same drain helper the concurrency scenario ends with.
+    It deliberately does NOT saturate the org first -- doing so here would
+    make every scenario defined after it flaky, which is why the one
+    saturating scenario in this module is defined last. The saturated form of
+    this check is that last scenario's own drain.
+    """
+    job_id, _ = submit(
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
+    )
+    cancel_resp = cancel(agent_kv_key, job_id)
+    assert cancel_resp.status_code in (200, 409), cancel_resp.text
+
+    assert _drain_until_slot_free(agent_kv_key), (
+        f"no submit was accepted within {_SLOT_DRAIN_TIMEOUT_S}s of cancelling "
+        f"job {job_id}; the limiter is refusing new work, which means a slot "
+        f"was leaked rather than released by finalize"
+    )
+
+
 # ---------------------------------------------------------------------------
 # 6. Delete
 # ---------------------------------------------------------------------------
@@ -282,13 +386,129 @@ def test_page_cap_rejects_oversized_document(agent_kv_key: AgentKVAuth) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 8. Concurrency -- deliberately LAST (see docstring)
+# 8. Executor-side failure (operator-configured bad LLM key)
 # ---------------------------------------------------------------------------
 
-# Bounded wait, in the cleanup below, for the org's saturated concurrency
-# slots to free up again before the test returns control.
-_SLOT_DRAIN_TIMEOUT_S = 120
-_SLOT_DRAIN_POLL_INTERVAL_S = 3
+
+def _assert_user_safe_error(error: str) -> None:
+    """No internals in a customer-visible error string (spec §8)."""
+    lowered = error.lower()
+    for leak in ("permission denied", "traceback", "errno", "sk-", "api_key"):
+        assert leak not in lowered, f"internal detail {leak!r} leaked into: {error!r}"
+    # No filesystem paths: the engine's own text used to carry the executor's
+    # tempfile/page-image directories verbatim.
+    for leak in ("/app/", "/tmp/", "/var/", "storage/processing", "\\"):
+        assert leak not in error, f"a filesystem path leaked into: {error!r}"
+
+
+def test_bad_llm_key_ends_failed(agent_kv_key: AgentKVAuth) -> None:
+    """A job that DISPATCHES and then fails in the executor ends ``failed``
+    with a user-safe error.
+
+    Every other failure scenario in this module is a request-time rejection
+    (400/403/429) that never reaches the engine. This one covers the other
+    half of the contract -- the terminal FAILED path -- and it needs the whole
+    stack to be running with a deliberately invalid ``AGENT_KV_LLM_API_KEY``,
+    which no test can arrange for itself. Hence the explicit operator gate
+    (see the module docstring for how to run it).
+
+    The assertion is about SHAPE, not text: whatever went wrong inside the
+    engine, the customer-visible ``error`` must not carry a filesystem path, a
+    ``Permission denied``, or a provider response body -- spec §8 mandates the
+    user-safe ``"<stage> failed: <class>"`` form (or one of the fixed strings
+    ``cancelled`` / ``timed out``), which is what the executor now builds from
+    the node listener's exception rather than echoing the engine's own text.
+    """
+    if os.environ.get("AGENT_KV_E2E_BAD_KEY_JOB") != "1":
+        pytest.skip(
+            "needs a platform deliberately configured with an INVALID "
+            "AGENT_KV_LLM_API_KEY; set AGENT_KV_E2E_BAD_KEY_JOB=1 to declare "
+            "that this stack is running that way (see the module docstring)"
+        )
+
+    job_id, _ = submit(
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
+    )
+
+    status_doc = poll(agent_kv_key, job_id, timeout_s=600)
+    assert status_doc["status"] == "failed", status_doc
+    assert "error" in status_doc, status_doc
+    error = status_doc["error"]
+    assert isinstance(error, str) and error, status_doc
+
+    _assert_user_safe_error(error)
+
+    # The result endpoint reports the same failure, in the docs §5 shape.
+    resp = result(agent_kv_key, job_id)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["success"] is False, body
+    assert body["status"] == "failed", body
+    _assert_user_safe_error(body["error"])
+
+
+# ---------------------------------------------------------------------------
+# 9. Document cache (spec §6.5 document tier)
+# ---------------------------------------------------------------------------
+
+
+def test_resubmit_same_document_hits_document_cache(
+    agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
+    """Re-submitting identical bytes must serve OCR from the document cache.
+
+    The cache is org-scoped and keyed on the document's sha256 plus the engine
+    version and OCR-config hash (``DocumentCache.key_for``), so a second
+    submit of the same PDF skips the LLMWhisperer round trip entirely. That
+    round trip dominates ``document_processing``; on a hit the stage is only
+    the local PDF-to-PNG render, which is sub-second for this 2-page fixture.
+
+    Both jobs are run to a terminal state before asserting: the cache is
+    written by the FIRST job's OCR call, so the second submit only sees a warm
+    cache once the first has actually got there.
+    """
+    first_id, _ = submit(
+        agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema(),
+        qa=False, challenge=False,
+    )
+    first_doc = poll(agent_kv_key, first_id, timeout_s=600)
+    assert first_doc["status"] == "completed", first_doc
+
+    second_id, _ = submit(
+        agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema(),
+        qa=False, challenge=False,
+    )
+    assert second_id != first_id
+    second_doc = poll(agent_kv_key, second_id, timeout_s=600)
+    assert second_doc["status"] == "completed", second_doc
+
+    def _stage_seconds(status_doc: dict) -> float:
+        stages = {s["name"]: s for s in status_doc["stages"]}
+        stage = stages.get("document_processing")
+        assert stage is not None, status_doc["stages"]
+        assert stage["status"] == "done", stage
+        assert "seconds" in stage, stage
+        return float(stage["seconds"])
+
+    first_seconds = _stage_seconds(first_doc)
+    second_seconds = _stage_seconds(second_doc)
+
+    assert second_seconds < 1.0, (
+        f"document_processing took {second_seconds}s on the RE-submit of an "
+        f"identical document (first run: {first_seconds}s) -- a cache hit "
+        f"skips the OCR round trip and leaves only the local page render, so "
+        f"anything approaching the cold time means the document cache missed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 10. Concurrency -- deliberately LAST (see docstring)
+# ---------------------------------------------------------------------------
 
 
 def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
@@ -319,14 +539,7 @@ def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
     n = limit + 1
 
     def _submit(_i: int):
-        return submit_raw(
-            agent_kv_key,
-            _INVOICE_BYTES,
-            "invoice.pdf",
-            invoice_schema(),
-            qa=False,
-            challenge=False,
-        )
+        return _cheap_submit(agent_kv_key)
 
     accepted_job_ids: list[str] = []
     try:
@@ -358,18 +571,7 @@ def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
 
         # Best-effort drain: keep probing with a cheap submission until one
         # is actually accepted again (proof a slot freed up) or the bounded
-        # wait runs out. Either way this never fails the test -- see the
-        # 6h-TTL backstop note in the docstring above.
-        deadline = time.monotonic() + _SLOT_DRAIN_TIMEOUT_S
-        while time.monotonic() < deadline:
-            try:
-                probe = _submit(-1)
-            except Exception:  # noqa: BLE001 - cleanup only
-                break
-            if probe.status_code == 202:
-                try:
-                    cancel(agent_kv_key, probe.json()["job_id"])
-                except Exception:  # noqa: BLE001 - cleanup only
-                    pass
-                break
-            time.sleep(_SLOT_DRAIN_POLL_INTERVAL_S)
+        # wait runs out. The RESULT is deliberately ignored here -- see the
+        # 6h-TTL backstop note in the docstring above; this is a courtesy for
+        # whatever runs next, not a correctness requirement for this test.
+        _drain_until_slot_free(agent_kv_key)
