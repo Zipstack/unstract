@@ -252,12 +252,59 @@ def _get_performance_stats() -> dict:
     return stats
 
 
+# WorkflowExecution.error_message is a CharField(256) that truncates SILENTLY,
+# so the summary is capped here instead of losing its tail in the database.
+_EXECUTION_ERROR_MAX_LENGTH = 256
+_MAX_ERRORS_IN_SUMMARY = 3
+
+
+def _summarize_file_errors(
+    aggregated_results: dict[str, Any], total_files: int
+) -> str:
+    """Build an execution-level reason from the per-file errors.
+
+    The execution row previously recorded ERROR with a blank error_message,
+    leaving users with a failed run and no explanation (UN-3016). The per-file
+    errors are already aggregated as {file_name: error}; surface them here.
+    """
+    errors: dict[str, Any] = aggregated_results.get("errors") or {}
+    if not errors:
+        return f"All {total_files} file(s) failed."
+
+    # Report the distinct reasons rather than repeating an identical message
+    # once per file; cap the detail so a large batch cannot bloat the column.
+    seen: list[str] = []
+    for file_name, error in errors.items():
+        detail = str(error).strip() if error else ""
+        if not detail:
+            continue
+        entry = f"{file_name}: {detail}"
+        if entry not in seen:
+            seen.append(entry)
+
+    if not seen:
+        return f"All {total_files} file(s) failed."
+
+    summary = f"All {total_files} file(s) failed. "
+    shown = seen[:_MAX_ERRORS_IN_SUMMARY]
+    summary += " | ".join(shown)
+    remaining = len(seen) - len(shown)
+    if remaining > 0:
+        summary += f" | (+{remaining} more)"
+
+    if len(summary) > _EXECUTION_ERROR_MAX_LENGTH:
+        # Trim with an explicit ellipsis so a cut message is visibly incomplete
+        # rather than silently losing its tail in the database.
+        summary = summary[: _EXECUTION_ERROR_MAX_LENGTH - 3] + "..."
+    return summary
+
+
 def _determine_execution_status_unified(
     file_batch_results: list[dict[str, Any]],
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
-) -> tuple[dict[str, Any], str, int]:
+) -> tuple[dict[str, Any], str, int, str | None]:
     """Unified status determination logic with timeout detection for all callback types.
 
     This function combines the logic from both process_batch_callback_api and
@@ -271,7 +318,9 @@ def _determine_execution_status_unified(
         organization_id: Organization context
 
     Returns:
-        Tuple of (aggregated_results, final_status, expected_files)
+        Tuple of (aggregated_results, final_status, expected_files, error_message).
+        error_message is None unless final_status is ERROR, in which case it
+        summarises why so the execution row records a reason instead of a blank.
     """
     # Step 1: Aggregate results from all file batches using existing helper
     aggregated_results = aggregate_file_batch_results(file_batch_results)
@@ -328,9 +377,15 @@ def _determine_execution_status_unified(
         total_files == 0 and total_files_processed == 0 and expected_files > 0
     )
 
+    error_message: str | None = None
+
     if has_timeout_failure:
         # Timeout or complete failure - mark as ERROR
         final_status = ExecutionStatus.ERROR.value
+        error_message = (
+            f"Expected {expected_files} file(s) but none were processed "
+            f"(likely a timeout or worker failure)."
+        )
         logger.error(
             f"Execution {execution_id} failed - expected {expected_files} files "
             f"but processed 0 (likely timeout/failure)"
@@ -338,6 +393,7 @@ def _determine_execution_status_unified(
     elif failed_files > 0 and failed_files == total_files:
         # ALL processed files failed - mark as ERROR
         final_status = ExecutionStatus.ERROR.value
+        error_message = _summarize_file_errors(aggregated_results, total_files)
         logger.error(f"Execution {execution_id} failed - all {total_files} files failed")
     else:
         # Some or all files succeeded, or legitimate empty batch - mark as COMPLETED
@@ -355,7 +411,7 @@ def _determine_execution_status_unified(
                 f"Execution {execution_id} completed successfully - {successful_files} files processed"
             )
 
-    return aggregated_results, final_status, expected_files
+    return aggregated_results, final_status, expected_files, error_message
 
 
 def _update_execution_status_unified(
@@ -1470,7 +1526,7 @@ def _process_batch_callback_core(
 
             try:
                 # Use unified status determination with timeout detection (shared with API callback)
-                aggregated_results, execution_status, expected_files = (
+                aggregated_results, execution_status, expected_files, status_error = (
                     _determine_execution_status_unified(
                         file_batch_results=results,
                         api_client=context.api_client,
@@ -1485,7 +1541,7 @@ def _process_batch_callback_core(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=context.organization_id,
-                    error_message=None,
+                    error_message=status_error,
                     is_pg=is_pg,
                 )
                 # Handle pipeline updates using unified function (non-API deployment)
@@ -1540,7 +1596,7 @@ def _process_batch_callback_core(
                         workflow_id=context.workflow_id,
                         pipeline_name=context.pipeline_name,
                         pipeline_type=context.pipeline_type,
-                        error_message=None,
+                        error_message=status_error,
                     )
                     callback_result["notification_result"] = notification_result
                 except Exception as notif_error:
@@ -1730,7 +1786,7 @@ def process_batch_callback_api(
                         pipeline_type = PipelineType.API.value
 
                 # Use unified status determination with timeout detection
-                aggregated_results, execution_status, expected_files = (
+                aggregated_results, execution_status, expected_files, status_error = (
                     _determine_execution_status_unified(
                         file_batch_results=file_batch_results,
                         api_client=api_client,
@@ -1746,6 +1802,7 @@ def process_batch_callback_api(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
+                    error_message=status_error,
                     is_pg=is_pg,
                 )
 
@@ -1806,7 +1863,7 @@ def process_batch_callback_api(
                     workflow_id=workflow_id,
                     pipeline_name=pipeline_name,
                     pipeline_type=pipeline_type,
-                    error_message=None,
+                    error_message=status_error,
                 )
 
                 callback_result = {
