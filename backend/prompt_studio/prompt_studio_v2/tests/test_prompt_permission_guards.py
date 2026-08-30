@@ -39,6 +39,7 @@ from typing import Any
 from unittest.mock import patch
 
 import pytest
+from django.http import Http404
 from rest_framework.exceptions import ValidationError
 
 from prompt_studio.permission import IsPromptParentToolOwner, PromptAcesssToUser
@@ -197,13 +198,91 @@ class TestSyncPromptsIsOwnerOnly:
             "IsOwner list lets an org-shared member wipe the project"
         )
 
-    def test_reads_are_not_owner_gated(self) -> None:
-        """The paired direction -- sharing must still reach ordinary reads."""
+    @pytest.mark.parametrize(
+        "action", ["retrieve", "create_profile_manager", "make_profile_default"]
+    )
+    def test_other_actions_are_not_owner_gated(self, action: str) -> None:
+        """The over-restriction tripwire, asserting CURRENT behaviour.
+
+        Sharing must still reach ordinary reads, and the two profile routes
+        remain share-permissive by decision -- an org-shared member may create
+        a profile and change which one is default. Gating them was proposed
+        and deliberately reversed, so this pins the reversal: a future edit
+        cannot quietly sweep every action to owner-only.
+        """
         from permissions.permission import IsOwnerOrSharedUserOrSharedToOrg
 
-        permissions = _permission_for(PromptStudioCoreView, "retrieve")
+        permissions = _permission_for(PromptStudioCoreView, action)
 
         assert any(isinstance(p, IsOwnerOrSharedUserOrSharedToOrg) for p in permissions)
+
+
+class TestMakeProfileDefaultIsScopedToItsTool:
+    """Promoting a default must not reach across tools.
+
+    ``make_profile_default`` clears ``is_default`` across the target tool's
+    profiles and then promotes one. Resolved unscoped, a profile belonging to
+    another tool could be promoted -- and since the clear had already run, the
+    tool was left with no default of its own and a foreign profile marked
+    default for it.
+    """
+
+    @staticmethod
+    def _call(view: Any, request: Any) -> Any:
+        return PromptStudioCoreView.make_profile_default(view, request)
+
+    def test_profile_from_another_tool_is_not_promotable(self) -> None:
+        """The cross-tool promotion this fix closes."""
+        view = SimpleNamespace(get_object=lambda: "tool-A")
+        request = SimpleNamespace(data={"default_profile": "profile-of-tool-B"})
+        module = "prompt_studio.prompt_studio_core_v2.views"
+
+        with (
+            patch(f"{module}.get_object_or_404", side_effect=Http404) as lookup,
+            patch(f"{module}.ProfileManager") as profile_manager,
+        ):
+            with pytest.raises(Http404):
+                self._call(view, request)
+
+        # Scoped to the parent tool -- an unscoped lookup would have found it.
+        assert lookup.call_args.kwargs["prompt_studio_tool"] == "tool-A"
+        (
+            profile_manager.objects.filter.return_value.update.assert_not_called(),
+            (
+                "nothing may be modified when the promotion is refused -- the "
+                "is_default clear must not run ahead of a failed lookup"
+            ),
+        )
+
+    def test_same_tool_profile_is_promoted(self) -> None:
+        """The happy path still works, and still clears the old default."""
+        view = SimpleNamespace(get_object=lambda: "tool-A")
+        request = SimpleNamespace(data={"default_profile": "profile-of-tool-A"})
+        promoted = SimpleNamespace(is_default=False, profile_id="profile-of-tool-A")
+        module = "prompt_studio.prompt_studio_core_v2.views"
+
+        with (
+            patch(f"{module}.get_object_or_404", return_value=promoted),
+            patch(f"{module}.ProfileManager") as profile_manager,
+        ):
+            promoted.save = lambda: None
+            response = self._call(view, request)
+
+        assert promoted.is_default is True
+        profile_manager.objects.filter.assert_called_once_with(
+            prompt_studio_tool="tool-A"
+        )
+        profile_manager.objects.filter.return_value.update.assert_called_once_with(
+            is_default=False
+        )
+        assert response.data == {"default_profile": "profile-of-tool-A"}
+
+    def test_missing_default_profile_is_a_400_not_a_500(self) -> None:
+        """``request.data["default_profile"]`` was a bare KeyError."""
+        view = SimpleNamespace(get_object=lambda: "tool-A")
+
+        with pytest.raises(ValidationError):
+            self._call(view, SimpleNamespace(data={}))
 
 
 class TestReorderPromptsIsGated:
