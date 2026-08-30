@@ -3171,18 +3171,6 @@ class PromptStudioHelper:
         prompts_data = import_data.get("prompts", [])
         tool_settings = import_data.get("tool_settings", {})
 
-        # Refuse an empty payload before anything is deleted. This is a
-        # rip-and-replace, but the replace half is a loop over prompts_data
-        # that simply does not run when the list is empty -- so an empty or
-        # missing "prompts" wiped every prompt (and its outputs, via CASCADE)
-        # and reported success. Must stay ahead of the transaction: rolling
-        # back is not the same as never executing the delete.
-        if not prompts_data:
-            raise ValueError(
-                "No prompts found in the sync payload. Syncing an empty "
-                "prompt list would delete every prompt in the project."
-            )
-
         # Get the target tool's default profile
         default_profile = ProfileManager.objects.filter(
             prompt_studio_tool=tool, is_default=True

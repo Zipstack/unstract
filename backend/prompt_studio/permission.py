@@ -25,25 +25,25 @@ class PromptAcesssToUser(permissions.BasePermission):
     only, never mutate"): a Prompt Studio share confers *edit* rights on the
     project's prompts, matching ``CustomToolViewSet``, which already routes
     ``update``/``partial_update`` on the tool itself through
-    ``IsOwnerOrSharedUserOrSharedToOrg``. Note the nearer sibling leans the
-    other way: ``ProfileManagerView`` routes ``update``/``partial_update``/
-    ``destroy`` through ``IsParentToolOwner``. That is narrower than it looks,
-    though -- ``IsParentToolOwner`` implements only ``has_object_permission``,
-    which DRF never calls for the object-less ``create``, and the
-    ``create_profile_manager`` / ``make_profile_default`` routes on
-    ``PromptStudioCoreView`` admit org-shared users too. So profiles are not
-    the owner-only counterexample they first appear to be.
+    ``IsOwnerOrSharedUserOrSharedToOrg``. The nearer sibling goes the other
+    way: ``ProfileManagerView`` routes every mutation through
+    ``IsParentToolOwner``, so a shared user can edit a project's prompts but
+    not its profiles. That asymmetry is deliberate but unexplained by anything
+    in the code -- treat it as a question for product, not a rule to copy.
 
     ``destroy`` on ``ToolStudioPromptView`` is gated by
     :class:`IsPromptParentToolOwner` instead, so this class does not confer
     per-prompt deletion. The bulk ``sync_prompts`` route on
-    ``PromptStudioCoreView`` is likewise ``IsOwner``-gated, so a shared user
-    cannot reach either deletion path with their session.
+    ``PromptStudioCoreView`` is likewise ``IsOwner``-gated.
 
-    A ``read_write`` platform API key can still call ``sync_prompts`` and
-    replace a project's prompts wholesale: service accounts short-circuit
-    ahead of every check here, and that route declares no DELETE-tier
-    requirement. Known and accepted (UN-3315).
+    Two deletion paths remain open to a non-owner, both known and accepted
+    (UN-3315). A ``read_write`` platform API key reaches ``sync_prompts``:
+    service accounts short-circuit ahead of every check here, and that route
+    declares no DELETE-tier requirement. And ``sync_prompts`` with an empty
+    ``prompts`` list clears a project's prompts by design -- supported
+    behaviour, asserted by
+    ``test_sync_prompts_clear_bumps_tool_modified_at`` -- so the owner gate,
+    not payload validation, is what stands between a share and that wipe.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
