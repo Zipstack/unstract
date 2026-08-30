@@ -110,12 +110,10 @@ class BigQuery(UnstractDB):
             # Limit total significant figures to 15 for IEEE 754 compatibility.
             # BigQuery PARSE_JSON requires values that round-trip cleanly.
             #
-            # UN-3176: the previous form asked for `15 - magnitude` DECIMAL
-            # places. Below 10^15 that happens to equal 15 significant figures,
-            # but above it the count floors at 0 and the full integer part was
-            # emitted -- more precision than the safe zone allows. Formatting
-            # with `g` applies the significant-figure limit directly, at any
-            # magnitude.
+            # UN-3176: `g` asks for significant figures directly. The previous
+            # form asked for a DECIMAL-place count derived from the magnitude,
+            # which is not the same quantity and drifted from 15 sig figs at
+            # both ends of the range.
             return float(f"{data:.15g}")
 
         elif isinstance(data, dict):
@@ -348,10 +346,13 @@ class BigQuery(UnstractDB):
 
         UN-3176. Matches known value-level signatures -- notably the PARSE_JSON
         round-trip failure in this ticket -- against the exception's own text
-        and then against each entry of its structured ``errors`` payload, which
-        ``str(e)`` does not include. Unknown shapes fall through to the existing
-        column-missing behaviour, so this only ever narrows a message that was
-        already wrong for these cases.
+        and then against each entry of its structured ``errors`` payload. The
+        payload is checked separately because BigQuery's REST path fills it
+        with plain dicts, and ``GoogleAPICallError.__str__`` folds an entry
+        into the string only when it exposes ``.code``/``.message`` attributes.
+        Unknown shapes fall through to the existing column-missing behaviour,
+        so this only ever narrows a message that was already wrong for these
+        cases.
         """
         value_error_markers = (
             "parse_json",
