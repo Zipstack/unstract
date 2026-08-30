@@ -41,8 +41,8 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         # Reads and edits honour project sharing (UN-3315); deleting a prompt
         # requires ownership of the parent tool, matching CustomToolViewSet,
         # whose own `destroy` is IsOwner-gated. The bulk `sync_prompts` route
-        # there is IsOwner-gated too. A read_write API key still reaches both
-        # -- see PromptAcesssToUser's docstring.
+        # there is IsOwner-gated too. A read_write API key still reaches
+        # sync_prompts (a POST) -- see PromptAcesssToUser's docstring.
         if self.action == "destroy":
             return [IsPromptParentToolOwner()]
         return [PromptAcesssToUser()]
