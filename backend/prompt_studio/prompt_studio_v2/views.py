@@ -35,10 +35,11 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
     serializer_class = ToolStudioPromptSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Reads and edits honour project sharing (UN-3315); deletion requires
-        # ownership of the parent tool, matching CustomToolViewSet, whose own
-        # `destroy` is IsOwner-gated. A shared project's prompts are editable
-        # by the org, not deletable by it.
+        # Reads and edits honour project sharing (UN-3315); deleting a prompt
+        # requires ownership of the parent tool, matching CustomToolViewSet,
+        # whose own `destroy` is IsOwner-gated. This closes per-prompt DELETE
+        # only -- the bulk `sync_prompts` route on PromptStudioCoreView still
+        # lets an org-shared user wipe every prompt in the project.
         if self.action == "destroy":
             return [IsPromptParentToolOwner()]
         return [PromptAcesssToUser()]

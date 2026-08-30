@@ -25,10 +25,18 @@ class PromptAcesssToUser(permissions.BasePermission):
     only, never mutate"): a Prompt Studio share confers *edit* rights on the
     project's prompts, matching ``CustomToolViewSet``, which already routes
     ``update``/``partial_update`` on the tool itself through
-    ``IsOwnerOrSharedUserOrSharedToOrg``.
+    ``IsOwnerOrSharedUserOrSharedToOrg``. Note the nearer sibling chose the
+    other way: ``ProfileManagerView`` gates every mutation behind
+    ``IsParentToolOwner``, so a shared user can edit a project's prompts but
+    not its profiles.
 
-    **Deletion is not included.** ``destroy`` is gated by
-    :class:`IsPromptParentToolOwner` instead -- see ``ToolStudioPromptView``.
+    ``destroy`` on ``ToolStudioPromptView`` is gated by
+    :class:`IsPromptParentToolOwner` instead, so this class does not confer
+    per-prompt deletion. It is **not** the only way to delete a project's
+    prompts: the bulk ``sync_prompts`` route on ``PromptStudioCoreView`` still
+    admits org-shared users and rip-and-replaces every prompt in the project
+    (``prompt_studio_core_v2/views.py`` -- only ``destroy`` and the co-owner
+    actions are ``IsOwner``-gated there).
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
@@ -44,10 +52,10 @@ class PromptAcesssToUser(permissions.BasePermission):
         # only access came from that flag (no VIEWER row, no group share, not an
         # admin) could not reach the project's prompts at all.
         #
-        # Read directly rather than via getattr: ``tool`` is always a
-        # ``CustomTool``, where ``shared_to_org`` is a non-nullable
-        # BooleanField, so a default would only mask a renamed field by
-        # silently denying access. Matches IsOwnerOrSharedUserOrSharedToOrg.
+        # Read directly rather than via getattr: on a CustomTool the field is
+        # a non-nullable BooleanField, so a default would only mask a renamed
+        # field by silently denying access. Matches
+        # IsOwnerOrSharedUserOrSharedToOrg, which also reads it directly.
         if tool.shared_to_org:
             return True
         if has_group_access(request.user, tool):
