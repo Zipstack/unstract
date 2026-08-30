@@ -12,13 +12,23 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 
 
 class PromptAcesssToUser(permissions.BasePermission):
-    """Is the crud to Prompt/Notes allowed to user.
+    """Read and edit access to a Prompt/Note, inherited from the parent tool.
 
     A user qualifies when they own the parent ``CustomTool``, are a direct
     viewer (VIEWER membership, UN-2202), reach the project via group sharing
     (``ResourceGroupShare`` on the parent tool), reach it because the parent
     tool is shared with the whole org (``shared_to_org``, UN-3315), or are an
     org admin (org-wide admin override, UN-3479).
+
+    Deliberately broader than the workflow rule stated in
+    ``permissions.permission.is_workflow_mutator`` ("shared access grants read
+    only, never mutate"): a Prompt Studio share confers *edit* rights on the
+    project's prompts, matching ``CustomToolViewSet``, which already routes
+    ``update``/``partial_update`` on the tool itself through
+    ``IsOwnerOrSharedUserOrSharedToOrg``.
+
+    **Deletion is not included.** ``destroy`` is gated by
+    :class:`IsPromptParentToolOwner` instead -- see ``ToolStudioPromptView``.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
@@ -30,12 +40,46 @@ class PromptAcesssToUser(permissions.BasePermission):
         if _is_resource_viewer(request.user, tool):
             return True
         # UN-3315: "Share with everyone" sets shared_to_org on the parent tool.
-        # IsOwnerOrSharedUserOrSharedToOrg already honours it, so a project
-        # shared this way was visible but its prompts stayed read-only for
-        # everyone except the owner.
-        if getattr(tool, "shared_to_org", False):
+        # IsOwnerOrSharedUserOrSharedToOrg already honours it, so a user whose
+        # only access came from that flag (no VIEWER row, no group share, not an
+        # admin) could not reach the project's prompts at all.
+        #
+        # Read directly rather than via getattr: ``tool`` is always a
+        # ``CustomTool``, where ``shared_to_org`` is a non-nullable
+        # BooleanField, so a default would only mask a renamed field by
+        # silently denying access. Matches IsOwnerOrSharedUserOrSharedToOrg.
+        if tool.shared_to_org:
             return True
         if has_group_access(request.user, tool):
+            return True
+        return OrganizationMemberService.is_user_organization_admin(request.user)
+
+
+class IsPromptParentToolOwner(permissions.BasePermission):
+    """Deletion gate for Prompt Studio prompts/notes.
+
+    Mirrors ``permissions.permission.IsParentToolOwner``, which does the same
+    for ``ProfileManager``, but reads the parent through ``ToolStudioPrompt``'s
+    own FK name (``tool_id``) rather than ``prompt_studio_tool``. Kept as a
+    separate class rather than teaching the shared one to juggle both attribute
+    names: a shared authorization class that accumulates per-caller special
+    cases is how these gates drift apart.
+
+    Exists because the parent ``CustomTool``'s own ``destroy`` is owner-only
+    (``IsOwner`` in ``CustomToolViewSet.get_permissions``). Without this,
+    UN-3315's org-wide share would let any org member delete every prompt
+    inside a project they cannot themselves delete.
+
+    ``tool_id`` is nullable (``SET_NULL``), so an orphaned prompt whose parent
+    tool was deleted falls back to the org-admin check -- it has no owner to
+    inherit from.
+    """
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
+        tool = obj.tool_id
+        if tool is not None and _is_resource_owner(request.user, tool):
             return True
         return OrganizationMemberService.is_user_organization_admin(request.user)
 

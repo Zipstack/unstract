@@ -1,3 +1,5 @@
+from typing import Any
+
 from django.db.models import QuerySet
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -6,7 +8,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
-from prompt_studio.permission import PromptAcesssToUser
+from prompt_studio.permission import IsPromptParentToolOwner, PromptAcesssToUser
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio_v2.controller import PromptStudioController
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
@@ -32,7 +34,14 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ToolStudioPromptSerializer
 
-    permission_classes: list[type[PromptAcesssToUser]] = [PromptAcesssToUser]
+    def get_permissions(self) -> list[Any]:
+        # Reads and edits honour project sharing (UN-3315); deletion requires
+        # ownership of the parent tool, matching CustomToolViewSet, whose own
+        # `destroy` is IsOwner-gated. A shared project's prompts are editable
+        # by the org, not deletable by it.
+        if self.action == "destroy":
+            return [IsPromptParentToolOwner()]
+        return [PromptAcesssToUser()]
 
     def get_serializer_class(self):
         if self.action == "list":
