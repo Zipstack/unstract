@@ -182,11 +182,17 @@ internal API), `pages_total`, `input_ref` (object-store path), `result_ref`,
 callback or stage report may overwrite (this is what makes cancel and at-least-once
 delivery safe).
 
-Documents stage in org-prefixed object-store paths (`org/{org_id}/agent_kv/{job_id}/`)
+Documents stage in prefix- and org-rooted object-store paths
+(`{AGENT_KV_STORAGE_DIR_PREFIX}/{org_id}/{job_id}/`, default prefix `unstract/agent_kv`;
+the engine's OCR cache shares the root as `{AGENT_KV_STORAGE_DIR_PREFIX}/{org_id}/cache/`)
 via a new `FileStorageType.AGENT_KV` in the shared `unstract/filesystem` package with its
 own creds env mapping — a small cross-package change; the existing types and path helpers
-are workflow-coupled. Queue payloads carry references, never bytes. Results persist to
-the object store with a DB pointer (not Redis-only), enabling D11 re-reads.
+are workflow-coupled. The prefix is bucket-rooted like
+`WORKFLOW_EXECUTION_DIR_PREFIX`/`API_EXECUTION_DIR_PREFIX`: s3fs/gcsfs read the first
+segment as the bucket, so a bucket-less root fails every write with `NoSuchBucket`, and
+backend and executor must be configured with the same value. Queue payloads carry
+references, never bytes. Results persist to the object store with a DB pointer (not
+Redis-only), enabling D11 re-reads.
 
 Stage progress: the executor reports stage transitions through the existing internal API
 pattern (workers → `/internal/v1/agent-kv/...`, guarded by `InternalAPIAuthMiddleware`),

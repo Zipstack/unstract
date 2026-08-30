@@ -1,11 +1,20 @@
 """Object-store staging/results for agent-kv (spec §5.4, §6.4).
 
-Paths are the contract: org/{org_id}/agent_kv/{job_id}/input{ext} and
-.../result.json. No document bytes ever ride the broker.
+Paths are the contract: {AGENT_KV_STORAGE_DIR_PREFIX}/{org_id}/{job_id}/input{ext}
+and .../result.json. No document bytes ever ride the broker.
+
+The prefix is bucket-rooted (default ``unstract/agent_kv``) like
+``WORKFLOW_EXECUTION_DIR_PREFIX``/``API_EXECUTION_DIR_PREFIX``: s3fs/gcsfs read
+the first path segment as the *bucket*, so a bucket-less root (the old
+``org/{org_id}/...``) makes every write fail with ``NoSuchBucket``. The cloud
+executor keys its OCR cache under the same root
+(``{prefix}/{org_id}/cache/...``), so both sides must be configured alike.
 """
 
 import logging
 import os
+
+from django.conf import settings
 
 from unstract.filesystem import FileStorageType, FileSystem
 
@@ -17,7 +26,7 @@ def _fs():
 
 
 def _base(org_id: str, job_id: str) -> str:
-    return f"org/{org_id}/agent_kv/{job_id}"
+    return f"{settings.AGENT_KV_STORAGE_DIR_PREFIX}/{org_id}/{job_id}"
 
 
 def stage_input(org_id: str, job_id: str, uploaded_file) -> str:

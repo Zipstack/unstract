@@ -165,6 +165,14 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
 
 # Agent-KV API
 AGENT_KV_PATH_PREFIX = os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv")
+# Bucket-rooted object-store root for staged inputs/results, mirroring
+# WORKFLOW_EXECUTION_DIR_PREFIX / API_EXECUTION_DIR_PREFIX: the FIRST segment is
+# the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
+# the cloud executor's AGENT_KV_STORAGE_DIR_PREFIX -- the executor keys its OCR
+# cache under the same root.
+AGENT_KV_STORAGE_DIR_PREFIX = os.environ.get(
+    "AGENT_KV_STORAGE_DIR_PREFIX", "unstract/agent_kv"
+).rstrip("/")
 AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
 AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
 AGENT_KV_MAX_CALCULATIONS_BYTES = int(

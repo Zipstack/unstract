@@ -304,7 +304,7 @@ curl https://api.unstract.example/agent-kv/5b6e9b0a-.../result \
   "record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
   "normalized_record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
   "keys": [
-    {"path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
+    {"key_path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
   ],
   "qa_passed": true,
   "challenge_passed": true,
@@ -328,6 +328,13 @@ zeroes the engine's per-token price fields (they were stale hardcoded list price
 the SDK's own litellm-priced usage records. Read `cost_summary` for its token/agent
 breakdown only. `agents` is omitted entirely when no agent recorded usage (a full
 cache hit).
+
+**The per-field audit entries in `keys[]` are keyed `key_path`, not `path`.** A live
+entry carries more than the example above shows — this one is verbatim from a real run:
+`{"key_path": "invoice_number", "value": "INV-…", "found": true, "qa_status":
+"unchecked", "qa_attempts": 0, "line_start": 5, "line_end": 5, "normalized_value":
+"INV-…"}` (`qa_status` is `"unchecked"` with `qa_attempts: 0` when the job ran with
+`qa=false`).
 
 (The exact result shape beyond `success` is the cloud engine's contract — spec §4 — not
 re-specified or validated by this repo.)
@@ -646,19 +653,31 @@ beyond `docker compose up`:
    a mistake there is a loud deploy-time failure instead of a per-job runtime one.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
    in production (defaults to the same shared MinIO instance as workflow execution).
-   Paths are org-prefixed (`org/{org_id}/agent_kv/{job_id}/input{ext}`,
-   `.../result.json`) — no document bytes ever ride the message broker. Chart key:
+   Paths are prefix- and org-rooted
+   (`{AGENT_KV_STORAGE_DIR_PREFIX}/{org_id}/{job_id}/input{ext}`, `.../result.json`) —
+   no document bytes ever ride the message broker. Chart key:
    `global.sharedConfigs.storage.AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (`charts/unstract-platform/values.yaml`, cloud repo) — derived from
    `fileStorageCredentials`/`MINIO_CREDS` unless set explicitly, the same fan-out
    pattern as its three siblings (`WORKFLOW_EXECUTION_`, `API_`,
    `HITL_FILES_FILE_STORAGE_CREDENTIALS`).
-7. **Feature flags — `calculations` and `structured_output`**: the cloud engine
+7. **`AGENT_KV_STORAGE_DIR_PREFIX` — must be set on the backend *and* the executor
+   fleet, to the same value** (default `unstract/agent_kv`). The **first segment is the
+   bucket** — s3fs/gcsfs read it that way — so it must be a bucket that already exists
+   (the MinIO dev bootstrap creates `unstract`); a bucket-less prefix makes every submit
+   fail `NoSuchBucket` and return a 500 with nothing billed. The executor reads the
+   backend-staged `input_ref` and keys its OCR cache under the same root
+   (`{prefix}/{org_id}/cache/…`), so a mismatch silently splits the cache and breaks
+   result read-back. Unlike the executor-only group in item 5, this one has to reach
+   **both** sides, so in the chart (cloud repo) it must be fanned out to the backend
+   *and* to `workerExecutorV2`/`workerPgExecutor` from a single source of truth — never
+   set independently per fleet, where the two can drift apart unnoticed.
+8. **Feature flags — `calculations` and `structured_output`**: the cloud engine
    cannot execute these yet, so submit rejects them with a 400 until the flags are
    flipped. Both `AGENT_KV_CALCULATIONS_ENABLED` and
    `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` default `false`; set either to `true` only
    once the executor side has shipped support for it.
-8. **Executor time limit — the real baseline is 3,600s, not 7,200s.** The executor
+9. **Executor time limit — the real baseline is 3,600s, not 7,200s.** The executor
    fleet (`workerExecutorV2`/`workerPgExecutor`) is not a `FILE_PROCESSING` worker —
    `WorkerConfig._get_worker_specific_timeout_defaults()`
    (`workers/shared/models/worker_models.py`) falls through to the "conservative
@@ -704,14 +723,24 @@ beyond `docker compose up`:
    (page usage, posted per-OCR-call, is unaffected). That gap is the reason the soft
    limit now stops retries promptly — it is what keeps a slow run from crossing into the
    hard kill.
-9. **Testing lanes — Docker-free unit gate, Docker-required integration lane.** The
-   cloud rig's `unit-agentic-kv` group (`tests/groups.cloud.yaml`, cloud repo) runs the
-   executor plugin's own test suite in an isolated venv with no `requires_services` —
-   no Docker needed, and it's what `tox -e unit` (CI's unit-tier matrix leg) runs. The
-   integration tier is the one that needs Docker: it authenticates to the container
-   registry and boots a mock Auth0 sidecar (`.github/workflows/ci-test.yaml`, cloud
-   repo) for the cross-service suites. A local `unit-agentic-kv` run needs neither
-   Docker nor the platform stack up.
+10. **Testing lanes — Docker-free unit gate, Docker-required integration lane.** The
+    cloud rig's `unit-agentic-kv` group (`tests/groups.cloud.yaml`, cloud repo) runs the
+    executor plugin's own test suite in an isolated venv with no `requires_services` —
+    no Docker needed, and it's what `tox -e unit` (CI's unit-tier matrix leg) runs. The
+    integration tier is the one that needs Docker: it authenticates to the container
+    registry and boots a mock Auth0 sidecar (`.github/workflows/ci-test.yaml`, cloud
+    repo) for the cross-service suites. A local `unit-agentic-kv` run needs neither
+    Docker nor the platform stack up.
+
+    **A real-key Agent-KV e2e run cannot go through `tests.rig run`.** Whenever a
+    selected group needs the platform, the rig sets `UNSTRACT_LLM_MOCK_RESPONSE`
+    to `MOCK_LLM_OK` (`tests/rig/cli.py`) — and an exported *empty* value counts as
+    unset, so there is no way to opt out from inside the rig; the lane then exercises
+    the mock, not a provider. To run it against real LLMWhisperer/LLM keys, boot the
+    stack first (`python -m tests.rig platform up`, or `docker compose` with
+    `tests/compose/docker-compose.test.yaml`) and then invoke pytest directly with
+    `UNSTRACT_BACKEND_URL`, `AGENT_KV_E2E=1` and the `AGENT_KV_*` keys exported:
+    `AGENT_KV_E2E=1 UNSTRACT_BACKEND_URL=http://localhost:8000 pytest tests/e2e/agent_kv`.
 
 ## 13. Environment reference
 
@@ -733,6 +762,7 @@ with the default shown:
 | `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
 | `AGENT_KV_CALCULATIONS_ENABLED` | `false` | Gates the submit `calculations` field; the engine cannot execute it yet, so submit 400s while this is off. |
 | `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` | `false` | Gates the submit `structured_output` field; the engine cannot execute it yet, so submit 400s while this is off. |
+| `AGENT_KV_STORAGE_DIR_PREFIX` | `unstract/agent_kv` | Bucket-rooted object-store root for staged inputs/results (`{prefix}/{org_id}/{job_id}/…`), mirroring `WORKFLOW_EXECUTION_DIR_PREFIX`/`API_EXECUTION_DIR_PREFIX`. The **first segment is the bucket** and must already exist. The cloud executor reads the same variable and keys its OCR cache under `{prefix}/{org_id}/cache/…`, so both fleets must agree. Trailing `/` is stripped. |
 | `AGENT_KV_FILE_STORAGE_CREDENTIALS` | *(none — must be set)* | JSON credentials for the `AGENT_KV` `FileStorageType` (`unstract/filesystem`), same shape as `WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS`: `{"provider": "minio", "credentials": {"endpoint_url": "...", "key": "...", "secret": "..."}}`. |
 
 `AGENT_KV_FILE_STORAGE_CREDENTIALS` is looked up via

@@ -2,11 +2,15 @@ import os
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
+
+from django.conf import settings  # noqa: E402
+from django.test import override_settings  # noqa: E402
 
 from agent_kv import storage  # noqa: E402
 from agent_kv.models import AgentKVJob  # noqa: E402
@@ -19,10 +23,10 @@ def test_stage_input_path_and_write(m_fs):
     up.name = "invoice.PDF"
     up.chunks.return_value = [b"a", b"b"]
     ref = storage.stage_input("org1", "job1", up)
-    assert ref == "org/org1/agent_kv/job1/input.pdf"
+    assert ref == "unstract/agent_kv/org1/job1/input.pdf"
     assert fh.write.called
     kwargs = fh.write.call_args.kwargs
-    assert kwargs["path"] == "org/org1/agent_kv/job1/input.pdf"
+    assert kwargs["path"] == "unstract/agent_kv/org1/job1/input.pdf"
     assert kwargs["data"] == b"ab"
 
 
@@ -32,14 +36,14 @@ def test_stage_input_defaults_extension_when_missing(m_fs):
     up.name = "noext"
     up.chunks.return_value = [b"x"]
     ref = storage.stage_input("org1", "job1", up)
-    assert ref == "org/org1/agent_kv/job1/input.bin"
+    assert ref == "unstract/agent_kv/org1/job1/input.bin"
 
 
 @mock.patch.object(storage, "FileSystem")
 def test_write_and_read_result_roundtrip_path(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     ref = storage.write_result("org1", "job1", {"success": True})
-    assert ref == "org/org1/agent_kv/job1/result.json"
+    assert ref == "unstract/agent_kv/org1/job1/result.json"
     fh.json_dump.assert_called_once()
     assert fh.json_dump.call_args.kwargs["path"] == ref
     assert fh.json_dump.call_args.kwargs["data"] == {"success": True}
@@ -49,9 +53,9 @@ def test_write_and_read_result_roundtrip_path(m_fs):
 def test_read_result_returns_parsed_json(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     fh.json_load.return_value = {"success": True}
-    out = storage.read_result("org/org1/agent_kv/job1/result.json")
+    out = storage.read_result("unstract/agent_kv/org1/job1/result.json")
     assert out == {"success": True}
-    fh.json_load.assert_called_once_with(path="org/org1/agent_kv/job1/result.json")
+    fh.json_load.assert_called_once_with(path="unstract/agent_kv/org1/job1/result.json")
 
 
 @mock.patch.object(storage, "FileSystem")
@@ -137,3 +141,33 @@ def test_delete_result_file_skips_blank_ref(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     storage.delete_result_file("")
     assert not fh.rm.called
+
+
+def test_default_storage_prefix_is_bucket_rooted():
+    """The shipped default roots every path in a real bucket (13b F1).
+
+    s3fs/gcsfs read the first path segment as the bucket, so a prefix without
+    one (the old ``org/{org_id}/...``) makes every write fail ``NoSuchBucket``.
+    The default must therefore stay ``unstract/agent_kv`` -- bucket ``unstract``
+    (created by the MinIO dev bootstrap), directory ``agent_kv`` -- and must
+    match the cloud executor's ``AGENT_KV_STORAGE_DIR_PREFIX``.
+    """
+    if "AGENT_KV_STORAGE_DIR_PREFIX" in os.environ:
+        pytest.skip("AGENT_KV_STORAGE_DIR_PREFIX is overridden in this environment")
+    assert settings.AGENT_KV_STORAGE_DIR_PREFIX == "unstract/agent_kv"
+    bucket, _, rest = settings.AGENT_KV_STORAGE_DIR_PREFIX.partition("/")
+    assert bucket and rest
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_paths_are_rooted_at_the_configured_prefix(m_fs):
+    up = mock.Mock()
+    up.name = "invoice.pdf"
+    up.chunks.return_value = [b"x"]
+    with override_settings(AGENT_KV_STORAGE_DIR_PREFIX="mybucket/kv-root"):
+        input_ref = storage.stage_input("org1", "job1", up)
+        result_ref = storage.write_result("org1", "job1", {"success": True})
+    assert input_ref.startswith("mybucket/kv-root/")
+    assert result_ref.startswith("mybucket/kv-root/")
+    assert input_ref == "mybucket/kv-root/org1/job1/input.pdf"
+    assert result_ref == "mybucket/kv-root/org1/job1/result.json"

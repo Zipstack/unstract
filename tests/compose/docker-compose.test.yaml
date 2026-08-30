@@ -14,6 +14,11 @@ services:
       # its 2-page fixture (default matches AGENT_KV_MAX_PAGES's own default
       # in docker/sample.env; the test skips unless this is overridden <=2).
       - AGENT_KV_MAX_PAGES=${AGENT_KV_MAX_PAGES:-100}
+      # Bucket-rooted object-store root for staged inputs/results; the first
+      # segment is the bucket and must exist. Must be identical to the value
+      # given to worker-executor-v2 below -- the executor reads back what the
+      # backend staged and caches OCR under the same root.
+      - AGENT_KV_STORAGE_DIR_PREFIX=${AGENT_KV_STORAGE_DIR_PREFIX:-unstract/agent_kv}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -40,6 +45,10 @@ services:
       - AGENT_KV_LLM_API_KEY=${AGENT_KV_LLM_API_KEY:-}
       - AGENT_KV_LLMWHISPERER_API_KEY=${AGENT_KV_LLMWHISPERER_API_KEY:-}
       - AGENT_KV_LLMWHISPERER_BASE_URL=${AGENT_KV_LLMWHISPERER_BASE_URL:-https://llmwhisperer-api.us-central.unstract.com/api/v2}
+      # Same root the backend stages into (see `backend` above) -- the executor
+      # reads `input_ref` from it and keys its OCR cache under
+      # `{prefix}/{org_id}/cache/`. Both sides MUST agree.
+      - AGENT_KV_STORAGE_DIR_PREFIX=${AGENT_KV_STORAGE_DIR_PREFIX:-unstract/agent_kv}
 
   worker-file-processing-v2:
     environment:

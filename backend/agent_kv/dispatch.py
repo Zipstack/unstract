@@ -27,16 +27,23 @@ def _dispatcher():
     return get_executor_dispatcher(celery_app=celery_app)
 
 
-def _platform_api_key(org_id: str) -> str:
+def _platform_api_key(job) -> str:
     # Lazy import: avoids Django app registry init order (mirrors
     # PromptStudioHelper._get_platform_api_key).
     from platform_settings_v2.platform_auth_service import (
         PlatformAuthenticationService,
     )
 
-    platform_key = PlatformAuthenticationService.get_active_platform_key(org_id)
+    # ``get_active_platform_key`` takes the org's public *slug*
+    # (``Organization.organization_id``, e.g. ``org_abc123``) and resolves it
+    # via ``get_organization_by_org_id`` -- NOT the row's UUID primary key that
+    # ``job.organization_id`` holds. Passing the PK here silently resolves to
+    # no organization and every dispatch fails with ``ActiveKeyNotFound``
+    # (caught live in the Task 13b integration run).
+    org_slug = job.organization.organization_id
+    platform_key = PlatformAuthenticationService.get_active_platform_key(org_slug)
     if not platform_key:
-        raise DispatchError(f"No active platform key for org {org_id}")
+        raise DispatchError(f"No active platform key for org {org_slug}")
     return str(platform_key.key)
 
 
@@ -60,7 +67,7 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
                 "input_ref": job.input_ref,
                 "schema": schema,
                 "options": options,
-                "platform_api_key": _platform_api_key(org_id),
+                "platform_api_key": _platform_api_key(job),
                 # The CAP the engine must enforce (spec §6.1/§6.6), not the
                 # measured count -- job.pages_total is None for Excel (no
                 # pre-OCR page concept), which would otherwise leave the

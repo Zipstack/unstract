@@ -89,6 +89,34 @@ _SLOT_DRAIN_TIMEOUT_S = 120
 _SLOT_DRAIN_POLL_INTERVAL_S = 3
 
 
+def _validation_error_attrs(body: object) -> set[str]:
+    """The field names a 400 body blames, across BOTH error envelopes.
+
+    This lane runs against whichever deployment is up, and the two differ:
+
+    - OSS DRF default -- ``{"file": ["Unreadable PDF"]}``: the field names are
+      the top-level keys.
+    - Cloud (``drf-standardized-errors``) --
+      ``{"type": "validation_error", "errors": [{"code": "invalid",
+      "detail": "Unreadable PDF", "attr": "file"}]}``: the field names are the
+      ``attr`` of each entry under ``errors``.
+
+    Returns an empty set for anything that is neither shape, so a caller's
+    ``assert "file" in _validation_error_attrs(body), body`` fails loudly with
+    the real body rather than raising a ``KeyError``/``TypeError``.
+    """
+    if not isinstance(body, dict):
+        return set()
+    errors = body.get("errors")
+    if isinstance(errors, list):
+        return {
+            entry["attr"]
+            for entry in errors
+            if isinstance(entry, dict) and isinstance(entry.get("attr"), str)
+        }
+    return {key for key in body if isinstance(key, str)}
+
+
 def _cheap_submit(auth: AgentKVAuth) -> requests.Response:
     """One raw submit with QA and challenge off -- the cheapest job this API
     will accept, used purely to occupy/probe a concurrency slot.
@@ -188,6 +216,9 @@ def test_validate_good_and_bad_schema(agent_kv_key: AgentKVAuth) -> None:
     # not a request error (docs §6).
     assert bad.status_code == 200, bad.text
     bad_body = bad.json()
+    # Not an error envelope: this 200 body is the view's own validation
+    # *result* payload, identical on OSS and cloud, so unlike the 400 bodies
+    # elsewhere in this module it needs no ``_validation_error_attrs`` shim.
     assert bad_body["valid"] is False, bad_body
     assert "error" in bad_body, bad_body
 
@@ -221,7 +252,9 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
         assert field in record, (field, record)
 
     assert isinstance(body.get("keys"), list) and body["keys"], body
-    audited_paths = {entry["path"] for entry in body["keys"]}
+    # Each audit entry is keyed ``key_path`` (what the engine and the result
+    # serializer emit), NOT ``path``.
+    audited_paths = {entry["key_path"] for entry in body["keys"]}
     assert set(INVOICE_FIELDS) <= audited_paths, (audited_paths, body["keys"])
 
     # usage_summary-derived fields, per docs §5.
@@ -260,7 +293,7 @@ def test_submit_unreadable_pdf_is_400(agent_kv_key: AgentKVAuth) -> None:
         f"installed on this deployment): {resp.text}"
     )
     body = resp.json()
-    assert "file" in body, body
+    assert "file" in _validation_error_attrs(body), body
 
 
 # ---------------------------------------------------------------------------
@@ -382,7 +415,7 @@ def test_page_cap_rejects_oversized_document(agent_kv_key: AgentKVAuth) -> None:
     resp = submit_raw(agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema())
     assert resp.status_code == 400, resp.text
     body = resp.json()
-    assert "file" in body, body
+    assert "file" in _validation_error_attrs(body), body
 
 
 # ---------------------------------------------------------------------------

@@ -17,8 +17,14 @@ from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
 def _job():
+    from account_v2.models import Organization
+
     j = AgentKVJob(id=uuid.uuid4(), input_ref="org/o/agent_kv/j/input.pdf")
-    j.organization_id = "org1"
+    # Unsaved related org with an explicit PK: assigning it caches the
+    # instance on the job (so ``job.organization`` never hits the DB) and
+    # sets ``job.organization_id`` to 7; the slug is deliberately different
+    # from the PK so a test can tell them apart.
+    j.organization = Organization(id=7, organization_id="org_slug_1")  # PK 7
     j.pages_total = 3
     return j
 
@@ -35,7 +41,7 @@ def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
     assert ctx.operation == "kv_extract"
     assert ctx.run_id == str(job.id)
     assert ctx.execution_source == "agent_kv_api"
-    assert ctx.organization_id == "org1"
+    assert ctx.organization_id == "7"
     assert ctx.executor_params["job_id"] == str(job.id)
     assert ctx.executor_params["input_ref"] == job.input_ref
     assert ctx.executor_params["schema"] == {"a": {"description": "d"}}
@@ -49,12 +55,12 @@ def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
     kw = m_disp.return_value.dispatch_with_callback.call_args.kwargs
     assert kw["on_success"].task == "agent_kv_complete"
     assert kw["on_success"].kwargs == {
-        "callback_kwargs": {"job_id": str(job.id), "org_id": "org1"}
+        "callback_kwargs": {"job_id": str(job.id), "org_id": "7"}
     }
     assert kw["on_success"].options.get("queue") == "agent_kv_callback"
     assert kw["on_error"].task == "agent_kv_error"
     assert kw["on_error"].kwargs == {
-        "callback_kwargs": {"job_id": str(job.id), "org_id": "org1"}
+        "callback_kwargs": {"job_id": str(job.id), "org_id": "7"}
     }
     assert kw["task_id"] == str(job.task_id)
 
@@ -120,6 +126,11 @@ def test_dispatch_job_uses_platform_api_key_lookup(m_disp):
             dispatch.dispatch_job(job, schema={}, options={})
         ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
         assert ctx.executor_params["platform_api_key"] == "the-real-key"
+        # The lookup takes the org's public slug, never the row PK (13b F6).
+        PlatformAuthenticationService.get_active_platform_key.assert_called_once_with(
+            "org_slug_1"
+        )
+        assert ctx.organization_id == "7"
 
 
 def test_platform_api_key_raises_dispatch_error_when_absent():
@@ -133,7 +144,7 @@ def test_platform_api_key_raises_dispatch_error_when_absent():
         return_value=None,
     ):
         with pytest.raises(dispatch.DispatchError):
-            dispatch._platform_api_key("org1")
+            dispatch._platform_api_key(_job())
 
 
 @mock.patch.object(dispatch, "_dispatcher")
