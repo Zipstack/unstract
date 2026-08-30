@@ -110,12 +110,12 @@ class BigQuery(UnstractDB):
             # Limit total significant figures to 15 for IEEE 754 compatibility.
             # BigQuery PARSE_JSON requires values that round-trip cleanly.
             #
-            # UN-3176: the previous form derived a DECIMAL-place count from the
-            # magnitude, which only matches "15 significant figures" for values
-            # >= 1. For a value like 0.0053325 the magnitude is -2, giving 17
-            # decimals -- more precision than the safe zone allows, so the
-            # value was passed through unchanged. Formatting with `g` applies
-            # the significant-figure limit directly, for any magnitude.
+            # UN-3176: the previous form asked for `15 - magnitude` DECIMAL
+            # places. Below 10^15 that happens to equal 15 significant figures,
+            # but above it the count floors at 0 and the full integer part was
+            # emitted -- more precision than the safe zone allows. Formatting
+            # with `g` applies the significant-figure limit directly, at any
+            # magnitude.
             return float(f"{data:.15g}")
 
         elif isinstance(data, dict):
@@ -346,13 +346,12 @@ class BigQuery(UnstractDB):
     def _is_value_error(e: Any) -> bool:
         """True if a BigQuery BadRequest is about the DATA, not the schema.
 
-        UN-3176. Prefers the structured ``errors`` payload (a list of
-        ``{reason, message}``), because ``invalidQuery`` covers the value-level
-        rejections we care about here, and falls back to the message text for
-        the signatures BigQuery does not tag -- notably the PARSE_JSON
-        round-trip failure in this ticket. Unknown shapes fall through to the
-        existing column-missing behaviour, so this only ever narrows a message
-        that was already wrong for these cases.
+        UN-3176. Matches known value-level signatures -- notably the PARSE_JSON
+        round-trip failure in this ticket -- against the exception's own text
+        and then against each entry of its structured ``errors`` payload, which
+        ``str(e)`` does not include. Unknown shapes fall through to the existing
+        column-missing behaviour, so this only ever narrows a message that was
+        already wrong for these cases.
         """
         value_error_markers = (
             "parse_json",

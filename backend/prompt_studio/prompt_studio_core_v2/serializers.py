@@ -232,7 +232,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
             # Add coverage to serialized data
             serialized_data["coverage"] = coverage
-
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
