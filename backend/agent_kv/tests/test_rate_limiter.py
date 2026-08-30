@@ -8,51 +8,57 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from django.conf import settings  # noqa: E402
+
 from agent_kv import rate_limiter as rl  # noqa: E402
 
 
 @mock.patch.object(rl, "_redis")
-def test_acquire_under_limit(m_redis):
+@mock.patch.object(rl.time, "time", return_value=1_700_000_000.0)
+def test_acquire_under_limit(m_time, m_redis):
+    """Acquire is ONE atomic server-side script call (trim, count, add,
+    expire) -- never a client-side ``ZCARD`` followed by ``ZADD``, which is a
+    check-then-act race that let 6 concurrent submits through a limit of 5
+    in the 13b integration run. The e2e concurrency scenario is the real
+    proof; this pins the script's inputs.
+    """
     mock_redis = m_redis.return_value
-    mock_redis.zcard.return_value = 2
+    mock_redis.eval.return_value = 1
 
     assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is True
 
     key = "agent_kv:inflight:org1"
-
-    assert mock_redis.zremrangebyscore.call_args[0][0] == key
-    assert mock_redis.zcard.call_args[0][0] == key
-    zadd_args = mock_redis.zadd.call_args[0]
-    assert zadd_args[0] == key
-    assert "job1" in zadd_args[1]
-
-    # Self-heal-before-check-before-acquire ordering is a constraint.
-    call_names = [c[0] for c in mock_redis.method_calls]
-    assert (
-        call_names.index("zremrangebyscore")
-        < call_names.index("zcard")
-        < call_names.index("zadd")
-    )
+    mock_redis.eval.assert_called_once()
+    args = mock_redis.eval.call_args[0]
+    script, numkeys, called_key, member, now, ttl_cut, limit, expire = args
+    assert script is rl.AgentKVConcurrencyLimiter._ACQUIRE_SCRIPT
+    assert (numkeys, called_key, member) == (1, key, "job1")
+    assert now == 1_700_000_000.0
+    assert ttl_cut == 1_700_000_000.0 - rl._SLOT_TTL_SECONDS
+    assert limit == settings.AGENT_KV_CONCURRENT_LIMIT
+    assert expire == rl._SLOT_TTL_SECONDS
+    # No client-side check-then-act calls remain.
+    assert not mock_redis.zcard.called and not mock_redis.zadd.called
+    # Self-heal-before-check-before-acquire ordering lives inside the script.
+    body = script
+    assert body.index("ZREMRANGEBYSCORE") < body.index("ZCARD") < body.index("ZADD")
 
 
 @mock.patch.object(rl, "_redis")
 def test_acquire_at_limit_refused(m_redis):
-    m_redis.return_value.zcard.return_value = 5
+    m_redis.return_value.eval.return_value = 0
     assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is False
-    assert not m_redis.return_value.zadd.called
 
 
 @mock.patch.object(rl, "_redis")
 def test_release_removes_member(m_redis):
     rl.AgentKVConcurrencyLimiter.release("org1", "job1")
-    m_redis.return_value.zrem.assert_called_once_with(
-        "agent_kv:inflight:org1", "job1"
-    )
+    m_redis.return_value.zrem.assert_called_once_with("agent_kv:inflight:org1", "job1")
 
 
 @mock.patch.object(rl, "_redis")
 def test_redis_error_fails_open(m_redis):
-    m_redis.return_value.zcard.side_effect = ConnectionError("down")
+    m_redis.return_value.eval.side_effect = ConnectionError("down")
     assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is True
 
 

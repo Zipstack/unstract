@@ -22,18 +22,40 @@ class AgentKVConcurrencyLimiter:
     def _key(organization_id: str) -> str:
         return f"agent_kv:inflight:{organization_id}"
 
+    # Trim stale slots, count, and claim a slot in ONE atomic server-side
+    # step. A client-side ``ZCARD`` followed by ``ZADD`` is a check-then-act
+    # race: N simultaneous submits all observe ``count < limit`` and all get
+    # accepted (caught live in the Task 13b run: 6 concurrent submits against
+    # a limit of 5 produced six 202s). Redis runs a script atomically, so at
+    # most ``limit`` members can ever be added.
+    _ACQUIRE_SCRIPT = """
+local key = KEYS[1]
+redis.call('ZREMRANGEBYSCORE', key, 0, ARGV[3])
+if redis.call('ZCARD', key) >= tonumber(ARGV[4]) then
+  return 0
+end
+redis.call('ZADD', key, ARGV[2], ARGV[1])
+redis.call('EXPIRE', key, ARGV[5])
+return 1
+"""
+
     @classmethod
     def check_and_acquire(cls, organization_id: str, job_id: str) -> bool:
         try:
             r = _redis()
             now = time.time()
             key = cls._key(organization_id)
-            r.zremrangebyscore(key, 0, now - _SLOT_TTL_SECONDS)
-            if r.zcard(key) >= settings.AGENT_KV_CONCURRENT_LIMIT:
-                return False
-            r.zadd(key, {job_id: now})
-            r.expire(key, _SLOT_TTL_SECONDS)
-            return True
+            acquired = r.eval(
+                cls._ACQUIRE_SCRIPT,
+                1,
+                key,
+                job_id,
+                now,
+                now - _SLOT_TTL_SECONDS,
+                settings.AGENT_KV_CONCURRENT_LIMIT,
+                _SLOT_TTL_SECONDS,
+            )
+            return bool(int(acquired))
         except Exception:
             logger.warning("agent-kv concurrency limiter failing open", exc_info=True)
             return True
