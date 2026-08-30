@@ -170,9 +170,10 @@ AGENT_KV_PATH_PREFIX = os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv")
 # the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
 # the cloud executor's AGENT_KV_STORAGE_DIR_PREFIX -- the executor keys its OCR
 # cache under the same root.
-AGENT_KV_STORAGE_DIR_PREFIX = os.environ.get(
-    "AGENT_KV_STORAGE_DIR_PREFIX", "unstract/agent_kv"
-).rstrip("/")
+AGENT_KV_STORAGE_DIR_PREFIX = (
+    os.environ.get("AGENT_KV_STORAGE_DIR_PREFIX", "unstract/agent_kv").strip().strip("/")
+    or "unstract/agent_kv"
+)  # same normalisation as the cloud executor's reader (whitespace, edge slashes)
 AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
 AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
 AGENT_KV_MAX_CALCULATIONS_BYTES = int(

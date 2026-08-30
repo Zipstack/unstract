@@ -171,3 +171,24 @@ def test_paths_are_rooted_at_the_configured_prefix(m_fs):
     assert result_ref.startswith("mybucket/kv-root/")
     assert input_ref == "mybucket/kv-root/org1/job1/input.pdf"
     assert result_ref == "mybucket/kv-root/org1/job1/result.json"
+
+
+def test_storage_prefix_normalisation_matches_executor(monkeypatch):
+    """A sloppy operator value must resolve to the same root on both sides:
+    the cloud executor strips whitespace and edge slashes before keying its
+    OCR cache, so the backend must too, else inputs and cache split roots.
+    """
+    import importlib
+
+    monkeypatch.setenv("AGENT_KV_STORAGE_DIR_PREFIX", "  /unstract/agent_kv/ ")
+    from backend.settings import base
+
+    importlib.reload(base)
+    try:
+        assert base.AGENT_KV_STORAGE_DIR_PREFIX == "unstract/agent_kv"
+        monkeypatch.setenv("AGENT_KV_STORAGE_DIR_PREFIX", "   ")
+        importlib.reload(base)
+        assert base.AGENT_KV_STORAGE_DIR_PREFIX == "unstract/agent_kv"
+    finally:
+        monkeypatch.delenv("AGENT_KV_STORAGE_DIR_PREFIX", raising=False)
+        importlib.reload(base)
