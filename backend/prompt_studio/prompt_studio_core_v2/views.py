@@ -153,7 +153,16 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
+        # sync_prompts is a rip-and-replace: it deletes every prompt in the
+        # project before importing. That is owner-level destruction, so it
+        # belongs here rather than falling through to the share-aware class
+        # (UN-3315: a share grants view + edit, not delete).
+        if self.action in [
+            "destroy",
+            "add_co_owner",
+            "remove_co_owner",
+            "sync_prompts",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]

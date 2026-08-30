@@ -36,11 +36,14 @@ class PromptAcesssToUser(permissions.BasePermission):
 
     ``destroy`` on ``ToolStudioPromptView`` is gated by
     :class:`IsPromptParentToolOwner` instead, so this class does not confer
-    per-prompt deletion. It is **not** the only way to delete a project's
-    prompts: the bulk ``sync_prompts`` route on ``PromptStudioCoreView`` still
-    admits org-shared users and rip-and-replaces every prompt in the project
-    (``prompt_studio_core_v2/views.py`` -- only ``destroy`` and the co-owner
-    actions are ``IsOwner``-gated there).
+    per-prompt deletion. The bulk ``sync_prompts`` route on
+    ``PromptStudioCoreView`` is likewise ``IsOwner``-gated, so a shared user
+    cannot reach either deletion path with their session.
+
+    A ``read_write`` platform API key can still call ``sync_prompts`` and
+    replace a project's prompts wholesale: service accounts short-circuit
+    ahead of every check here, and that route declares no DELETE-tier
+    requirement. Known and accepted (UN-3315).
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
