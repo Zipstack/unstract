@@ -25,10 +25,14 @@ class PromptAcesssToUser(permissions.BasePermission):
     only, never mutate"): a Prompt Studio share confers *edit* rights on the
     project's prompts, matching ``CustomToolViewSet``, which already routes
     ``update``/``partial_update`` on the tool itself through
-    ``IsOwnerOrSharedUserOrSharedToOrg``. Note the nearer sibling chose the
-    other way: ``ProfileManagerView`` gates every mutation behind
-    ``IsParentToolOwner``, so a shared user can edit a project's prompts but
-    not its profiles.
+    ``IsOwnerOrSharedUserOrSharedToOrg``. Note the nearer sibling leans the
+    other way: ``ProfileManagerView`` routes ``update``/``partial_update``/
+    ``destroy`` through ``IsParentToolOwner``. That is narrower than it looks,
+    though -- ``IsParentToolOwner`` implements only ``has_object_permission``,
+    which DRF never calls for the object-less ``create``, and the
+    ``create_profile_manager`` / ``make_profile_default`` routes on
+    ``PromptStudioCoreView`` admit org-shared users too. So profiles are not
+    the owner-only counterexample they first appear to be.
 
     ``destroy`` on ``ToolStudioPromptView`` is gated by
     :class:`IsPromptParentToolOwner` instead, so this class does not confer
