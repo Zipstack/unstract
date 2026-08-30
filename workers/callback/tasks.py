@@ -270,27 +270,19 @@ def _summarize_file_errors(aggregated_results: dict[str, Any], total_files: int)
     errors are already aggregated as {file_name: error}; surface them here.
     """
     errors: dict[str, Any] = aggregated_results.get("errors") or {}
-    if not errors:
+    # `errors` is keyed by file name, so every entry is distinct already; the
+    # cap is what keeps a large batch from bloating the column.
+    entries = [
+        f"{file_name}: {str(error).strip()}"
+        for file_name, error in errors.items()
+        if error and str(error).strip()
+    ]
+    if not entries:
         return f"All {total_files} file(s) failed."
 
-    # Report the distinct reasons rather than repeating an identical message
-    # once per file; cap the detail so a large batch cannot bloat the column.
-    seen: list[str] = []
-    for file_name, error in errors.items():
-        detail = str(error).strip() if error else ""
-        if not detail:
-            continue
-        entry = f"{file_name}: {detail}"
-        if entry not in seen:
-            seen.append(entry)
-
-    if not seen:
-        return f"All {total_files} file(s) failed."
-
-    summary = f"All {total_files} file(s) failed. "
-    shown = seen[:_MAX_ERRORS_IN_SUMMARY]
-    summary += " | ".join(shown)
-    remaining = len(seen) - len(shown)
+    shown = entries[:_MAX_ERRORS_IN_SUMMARY]
+    summary = f"All {total_files} file(s) failed. " + " | ".join(shown)
+    remaining = len(entries) - len(shown)
     if remaining > 0:
         summary += f" | (+{remaining} more)"
 

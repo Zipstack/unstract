@@ -2,36 +2,27 @@
 
 The execution row used to be written with status=ERROR and a blank
 error_message, so a failed run gave the user no reason at all. These tests
-pin the summary helper that now supplies that reason.
+pin the summary helper that now supplies that reason, and assert the reason
+survives the call that builds it.
 
-The helper is extracted with `ast` rather than imported, because importing
-workers.callback.tasks pulls in celery and the whole worker runtime.
+conftest loads .env.test before collection, so importing callback.tasks here
+works the same way it does in test_pg_callback_duplicate_guard.py.
 """
 
-import ast
-from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-_TASKS = Path(__file__).resolve().parents[1] / "callback" / "tasks.py"
-
-
-def _load_helper():
-    """Exec just the helper and its constants out of callback/tasks.py."""
-    tree = ast.parse(_TASKS.read_text())
-    ns: dict = {"Any": object}
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and any(
-            getattr(t, "id", "").startswith(("_MAX_ERRORS", "_EXECUTION_ERROR"))
-            for t in node.targets
-        ):
-            exec(compile(ast.Module([node], []), "<helper>", "exec"), ns)
-        elif isinstance(node, ast.FunctionDef) and node.name == "_summarize_file_errors":
-            exec(compile(ast.Module([node], []), "<helper>", "exec"), ns)
-    return ns["_summarize_file_errors"], ns["_EXECUTION_ERROR_MAX_LENGTH"]
-
-
-summarize, MAX_LEN = _load_helper()
+import callback.tasks as _tasks_module
+from callback.tasks import (
+    _EXECUTION_ERROR_MAX_LENGTH as MAX_LEN,
+)
+from callback.tasks import (
+    _determine_execution_status_unified,
+)
+from callback.tasks import (
+    _summarize_file_errors as summarize,
+)
 
 
 def test_real_un3016_error_is_surfaced():
@@ -84,20 +75,48 @@ def test_fits_the_database_column():
     assert result.endswith("...")
 
 
+def _all_failed_batch():
+    """One batch, one file, that file errored — the UN-3016 shape."""
+    return [
+        {
+            "total_files": 1,
+            "successful_files": 0,
+            "failed_files": 1,
+            "execution_time": 1.0,
+            "file_results": [
+                {
+                    "status": "error",
+                    "file_name": "Villa Bella.xlsm",
+                    "error": "Workflow error: Execution: unstract/api/org_x/e/x.xlsm",
+                }
+            ],
+        }
+    ]
+
+
 def test_status_function_returns_a_reason():
-    """_determine_execution_status_unified must return a 4-tuple."""
-    tree = ast.parse(_TASKS.read_text())
-    fn = next(
-        n
-        for n in ast.walk(tree)
-        if isinstance(n, ast.FunctionDef)
-        and n.name == "_determine_execution_status_unified"
-    )
-    returns = [n for n in ast.walk(fn) if isinstance(n, ast.Return)]
-    assert returns, "function must return"
-    assert all(
-        isinstance(r.value, ast.Tuple) and len(r.value.elts) == 4 for r in returns
-    ), "every return must carry (results, status, expected_files, error_message)"
+    """The real call must hand back a non-blank reason, not just a 4-tuple.
+
+    This is what the defect actually was: the tuple gained a fourth slot but
+    an always-None fourth slot would still leave the execution row blank, so
+    assert on the value rather than on the shape.
+    """
+    api_client = MagicMock()
+    with patch(
+        "callback.tasks.WallClockTimeCalculator.calculate_execution_time",
+        return_value=1.0,
+    ):
+        _, final_status, _, error_message = _determine_execution_status_unified(
+            file_batch_results=_all_failed_batch(),
+            api_client=api_client,
+            execution_id="e-1",
+            organization_id="org-1",
+        )
+
+    assert final_status == "ERROR"
+    assert error_message, "an ERROR execution must carry a reason (UN-3016)"
+    assert "Villa Bella.xlsm" in error_message
+    assert len(error_message) <= MAX_LEN
 
 
 def test_no_caller_passes_a_hardcoded_none_error():
@@ -108,8 +127,16 @@ def test_no_caller_passes_a_hardcoded_none_error():
     elsewhere in the module cannot trip it. Detects the literal `error_message=None`
     keyword only — a positional None, an indirected variable, or a `**kwargs`
     splat would pass; all three defect sites were the literal form.
+
+    Source-shape rather than behavioural because it guards the *call sites*:
+    the behavioural cover for the value itself is
+    test_status_function_returns_a_reason above.
     """
-    tree = ast.parse(_TASKS.read_text())
+    import ast
+    from pathlib import Path
+
+    tasks_py = Path(_tasks_module.__file__)
+    tree = ast.parse(tasks_py.read_text())
     callers = [
         n
         for n in ast.walk(tree)

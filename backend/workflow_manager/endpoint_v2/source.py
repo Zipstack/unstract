@@ -1222,9 +1222,9 @@ class SourceConnector(BaseConnector):
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
-        # UN-3016: files rejected for an unsupported MIME type, kept only to
-        # report them; they are never staged and never handed to a worker.
-        skipped_files: dict[str, str] = {}
+        # UN-3016: files rejected for an unsupported MIME type, pre-formatted
+        # for the error below; they are never staged and never handed to a worker.
+        skipped_files: list[str] = []
         connection_type = WorkflowEndpoint.ConnectionType.API
         for file in file_objs:
             file_name = file.name
@@ -1252,7 +1252,7 @@ class SourceConnector(BaseConnector):
                     f"'{mime_type}'. It will not be processed."
                 )
                 workflow_log.log_error(logger=logger, message=log_message)
-                skipped_files[file_name] = mime_type
+                skipped_files.append(f"'{file_name}' ({mime_type})")
                 continue
 
             file_system = FileSystem(FileStorageType.API_EXECUTION)
@@ -1292,11 +1292,9 @@ class SourceConnector(BaseConnector):
         # which would otherwise finish as a vacuous success and leave the user
         # wondering why nothing happened.
         if skipped_files and not file_hashes:
-            details = ", ".join(
-                f"'{name}' ({mime})" for name, mime in skipped_files.items()
-            )
             raise UnsupportedMimeTypeError(
-                f"No files could be processed. Unsupported file type(s): {details}"
+                "No files could be processed. Unsupported file type(s): "
+                + ", ".join(skipped_files)
             )
 
         return file_hashes
