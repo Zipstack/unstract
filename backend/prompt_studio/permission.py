@@ -33,13 +33,21 @@ class PromptAcesssToUser(permissions.BasePermission):
     share-permissive and unaddressed here.
 
     This class does not confer deletion; ``destroy`` is gated by
-    :class:`IsPromptParentToolOwner`.
+    :class:`IsPromptParentToolOwner`, and the bulk ``sync_prompts`` route on
+    ``PromptStudioCoreView`` is likewise ``IsOwner``-gated.
 
     One deletion path remains open to a non-owner, known and accepted
     (UN-3315): a ``read_write`` platform API key reaches ``sync_prompts``.
     Service accounts short-circuit ahead of every check here, and being a POST
     that route is not covered by the DELETE tier that guards per-prompt
     ``destroy``.
+
+    Separately, and not a hole: ``sync_prompts`` with an empty ``prompts``
+    list clears a project's prompts by design -- supported behaviour, asserted
+    by ``test_sync_prompts_clear_bumps_tool_modified_at``. Do not "fix" it with
+    a payload guard; that breaks a published contract and its own test. The
+    owner gate, not payload validation, is what stands between a share and
+    that wipe.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
