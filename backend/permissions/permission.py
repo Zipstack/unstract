@@ -2,7 +2,6 @@ import logging
 from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
-from django.core.exceptions import ValidationError
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
@@ -158,45 +157,7 @@ class IsParentToolOwner(permissions.BasePermission):
     (UN-2202). Falls back to the object's own owner when it has no parent tool
     (``prompt_studio_tool`` is nullable) to preserve legacy behaviour for
     orphan rows.
-
-    ``has_permission`` exists because DRF never calls ``has_object_permission``
-    for ``create`` -- there is no object yet -- so listing ``create`` in a
-    viewset's ``get_permissions`` bought nothing, and the "mutations require
-    ownership of the parent tool" guarantee was simply false for creates
-    (UN-3315). It reads the parent from the request payload instead, applying
-    the same ownership test.
     """
-
-    def has_permission(self, request: Request, view: APIView) -> bool:
-        """Collection-level gate, for ``create`` (no object exists yet)."""
-        if _is_service_account(request):
-            return True
-        if _is_organization_admin(request):
-            return True
-
-        # Non-create actions resolve their parent through get_object(), which
-        # runs has_object_permission below; nothing to check here.
-        if getattr(view, "action", None) != "create":
-            return True
-
-        # ``request.data`` may be a QueryDict, a list, or unparsed garbage.
-        # A malformed or absent parent is not this gate's error to report --
-        # deny, and let the serializer raise the 400 it would have raised.
-        if not isinstance(request.data, dict):
-            return False
-        tool_id = request.data.get("prompt_studio_tool")
-        if not tool_id:
-            return False
-
-        from prompt_studio.prompt_studio_core_v2.models import CustomTool
-
-        try:
-            tool = CustomTool.objects.get(pk=tool_id)
-        except (CustomTool.DoesNotExist, ValidationError, ValueError, TypeError):
-            # Unknown or unparseable pk (the field is a UUID). Deny rather
-            # than 500; the serializer surfaces the validation error.
-            return False
-        return _is_resource_owner(request.user, tool)
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
