@@ -388,7 +388,7 @@ function AddLlmProfile({
         const data = res?.data;
         const contextWindowSize = data.context_window_size;
         const chunkSize = form.getFieldValue("chunk_size");
-        setTokenSize(chunkSize > 0 ? calcTokenSize(chunkSize) : 0);
+        setTokenSize(toTokenSize(chunkSize));
         setMaxTokenSize(contextWindowSize);
       })
       .catch((err) => {
@@ -402,18 +402,18 @@ function AddLlmProfile({
   };
 
   const handleChunkSizeChange = async (event) => {
-    const value = event.target.value;
-    const tokenSize = calcTokenSize(value);
-    setTokenSize(tokenSize);
+    setTokenSize(toTokenSize(event.target.value));
   };
 
   // UN-3137: chunk_size is a TOKEN count -- it is handed straight to
   // LlamaIndex's SentenceSplitter, whose chunk_size is documented as "the
   // token chunk size for each chunk". The old maths divided by 4 (a
   // characters-per-token estimate) and then by 1024, so the hint under the
-  // field under-reported the real size by ~4096x.
-  function calcTokenSize(chunkSize) {
-    return Number(chunkSize) || 0;
+  // field under-reported the real size by ~4096x. No conversion is needed now;
+  // this only coerces the form's string value and rejects non-numeric input.
+  // The field has no `min`, so a typed negative is clamped rather than shown.
+  function toTokenSize(chunkSize) {
+    return Math.max(0, Number(chunkSize) || 0);
   }
 
   const handleRetrievalModalOpen = () => {

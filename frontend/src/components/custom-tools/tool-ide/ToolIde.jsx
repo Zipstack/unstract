@@ -317,25 +317,16 @@ function ToolIde() {
       data: body,
     };
 
-    return axiosPrivate(requestOptions)
-      .then((res) => {
-        // UN-2900: a tool PATCH re-serialises every prompt, so the response
-        // carries freshly computed single_pass_unresolvable_variables. Toggling
-        // single pass on must make all affected prompts warn at once, and the
-        // toggle itself is an enterprise plugin that only calls this function --
-        // so fold the recomputed prompts back into the store here, where both
-        // the plugin toggle and any other tool update pass through.
-        const updatedPrompts = res?.data?.prompts;
-        if (Array.isArray(updatedPrompts)) {
-          updateCustomTool({
-            details: { ...details, ...res.data },
-          });
-        }
-        return res;
-      })
-      .catch((err) => {
-        throw err;
-      });
+    // UN-2900: a tool PATCH re-serialises every prompt, so the response carries
+    // freshly computed single_pass_unresolvable_variables. Callers that need
+    // those refreshed prompts already apply the response themselves -- the
+    // single-pass toggle and handleDocChange below both do
+    // `updateCustomTool({ details: res.data })` in their own `.then()`. Writing
+    // the store here as well would be a second, racing write built from a
+    // `details` captured when the PATCH was issued, so an edit made while the
+    // request was in flight would be silently discarded. Leave the response to
+    // the caller.
+    return axiosPrivate(requestOptions);
   };
 
   const handleDocChange = (doc) => {

@@ -99,6 +99,7 @@ function ManageDocsModal({
     isSinglePassExtractLoading,
     isPublicSource,
     adapters = [],
+    deleteIndexDoc,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -197,17 +198,31 @@ function ManageDocsModal({
   // driven by websocket log messages. When those messages are dropped the
   // backend still finishes indexing but the UI spins forever. Poll the
   // document-index endpoint while anything is indexing so the status recovers
-  // without the socket. The poll stops as soon as indexDocs empties.
+  // without the socket.
+  //
+  // `indexDocs` empties only via `deleteIndexDoc`, which is called from the
+  // websocket handlers -- so on the very path this poll exists for (socket
+  // dead) nothing else will ever clear it. The poll therefore has to retire a
+  // document itself: when the polled status says a doc is indexed, drop it from
+  // `indexDocs`. That both stops the spinner and lets this effect tear its own
+  // interval down once the last one finishes, instead of running forever.
+  //
+  // Errors are swallowed here rather than alerted. handleGetIndexStatus is
+  // shared with the user-initiated calls above, where a toast is right; on a
+  // 5s timer a failing endpoint would otherwise raise two toasts per tick for
+  // as long as the modal stays open.
   useEffect(() => {
     if (!open || indexDocs?.length === 0) {
       return undefined;
     }
 
     const intervalId = setInterval(() => {
-      handleGetIndexStatus(rawLlmProfile, indexTypes.raw);
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw, { silent: true });
       const summarizeProfileId =
         summarizeLlmProfile || (summarizeLlmAdapter ? defaultLlmProfile : null);
-      handleGetIndexStatus(summarizeProfileId, indexTypes.summarize);
+      handleGetIndexStatus(summarizeProfileId, indexTypes.summarize, {
+        silent: true,
+      });
     }, INDEX_STATUS_POLL_INTERVAL_MS);
 
     return () => clearInterval(intervalId);
@@ -310,7 +325,10 @@ function ManageDocsModal({
     return isIndexed;
   };
 
-  const handleGetIndexStatus = (llmProfileId, indexType) => {
+  // `silent` is set by the UN-3507 poll: it suppresses the failure toast (which
+  // would otherwise repeat every 5s) and retires any document the server now
+  // reports as indexed, which is what lets the poll stop on its own.
+  const handleGetIndexStatus = (llmProfileId, indexType, { silent } = {}) => {
     if (!llmProfileId) {
       handleIndexStatus(indexType, []);
       return;
@@ -336,8 +354,19 @@ function ManageDocsModal({
         });
 
         handleIndexStatus(indexType, indexStatus);
+
+        if (silent) {
+          for (const item of indexStatus) {
+            if (item?.isIndexed && indexDocs.includes(item?.docId)) {
+              deleteIndexDoc(item.docId);
+            }
+          }
+        }
       })
       .catch((err) => {
+        if (silent) {
+          return;
+        }
         setAlertDetails(handleException(err, "Failed to get index status"));
       })
       .finally(() => {
