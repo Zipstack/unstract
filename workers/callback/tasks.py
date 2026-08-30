@@ -254,6 +254,10 @@ def _get_performance_stats() -> dict:
 
 # WorkflowExecution.error_message is a CharField(256) that truncates SILENTLY,
 # so the summary is capped here instead of losing its tail in the database.
+# Must match EXECUTION_ERROR_LENGTH in
+# backend/workflow_manager/workflow_v2/models/execution.py; workers cannot
+# import backend models across the service boundary, so the value is duplicated
+# deliberately (same convention as backend/.../workflow_v2/undispatched_sweep.py).
 _EXECUTION_ERROR_MAX_LENGTH = 256
 _MAX_ERRORS_IN_SUMMARY = 3
 

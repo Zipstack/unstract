@@ -101,6 +101,34 @@ def test_status_function_returns_a_reason():
 
 
 def test_no_caller_passes_a_hardcoded_none_error():
-    """Regression guard: the blank error_message was the UN-3016 defect."""
-    source = _TASKS.read_text()
-    assert "error_message=None" not in source
+    """Regression guard: the blank error_message was the UN-3016 defect.
+
+    Scoped to the two callback bodies that consume the status tuple, and matched
+    on the AST rather than on the source text, so an unrelated keyword default
+    elsewhere in the module cannot trip it. Detects the literal `error_message=None`
+    keyword only — a positional None, an indirected variable, or a `**kwargs`
+    splat would pass; all three defect sites were the literal form.
+    """
+    tree = ast.parse(_TASKS.read_text())
+    callers = [
+        n
+        for n in ast.walk(tree)
+        if isinstance(n, ast.FunctionDef)
+        and n.name in {"_process_batch_callback_core", "process_batch_callback_api"}
+    ]
+    assert len(callers) == 2, "both callback entry points must exist"
+
+    offenders = [
+        f"{fn.name}:{kw.value.lineno}"
+        for fn in callers
+        for call in ast.walk(fn)
+        if isinstance(call, ast.Call)
+        for kw in call.keywords
+        if kw.arg == "error_message"
+        and isinstance(kw.value, ast.Constant)
+        and kw.value.value is None
+    ]
+    assert not offenders, (
+        f"error_message=None reintroduced at {offenders}; the execution row would "
+        "record ERROR with no reason (UN-3016)"
+    )
