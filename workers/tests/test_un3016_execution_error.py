@@ -119,6 +119,37 @@ def test_status_function_returns_a_reason():
     assert len(error_message) <= MAX_LEN
 
 
+def test_timeout_failure_also_returns_a_reason():
+    """The other ERROR branch must carry a reason too.
+
+    _determine_execution_status_unified marks ERROR from two places; a blank
+    error_message from either one is the UN-3016 defect. This covers the
+    timeout branch: files were expected but no batch result came back at all.
+    """
+    api_client = MagicMock()
+    api_client.get_workflow_execution.return_value.success = True
+    api_client.get_workflow_execution.return_value.data = {"total_files": 3}
+
+    with patch(
+        "callback.tasks.WallClockTimeCalculator.calculate_execution_time",
+        return_value=0.0,
+    ):
+        _, final_status, expected_files, error_message = (
+            _determine_execution_status_unified(
+                file_batch_results=[],
+                api_client=api_client,
+                execution_id="e-2",
+                organization_id="org-1",
+            )
+        )
+
+    assert final_status == "ERROR"
+    assert expected_files == 3
+    assert error_message, "a timed-out execution must carry a reason (UN-3016)"
+    assert "3" in error_message
+    assert len(error_message) <= MAX_LEN
+
+
 def test_no_caller_passes_a_hardcoded_none_error():
     """Regression guard: the blank error_message was the UN-3016 defect.
 
