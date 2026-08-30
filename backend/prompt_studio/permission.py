@@ -32,41 +32,30 @@ class PromptAcesssToUser(permissions.BasePermission):
     org-shared users, as does ``make_profile_default``. That surface is
     share-permissive and unaddressed here.
 
-    ``destroy`` on ``ToolStudioPromptView`` is gated by
-    :class:`IsPromptParentToolOwner` instead, so this class does not confer
-    per-prompt deletion. The bulk ``sync_prompts`` route on
-    ``PromptStudioCoreView`` is likewise ``IsOwner``-gated.
+    This class does not confer deletion; ``destroy`` is gated by
+    :class:`IsPromptParentToolOwner`.
 
     One deletion path remains open to a non-owner, known and accepted
     (UN-3315): a ``read_write`` platform API key reaches ``sync_prompts``.
-    Service accounts short-circuit ahead of every check here, and that route
-    declares no DELETE-tier requirement -- being a POST, it is not covered by
-    the DELETE tier that guards per-prompt ``destroy``.
-
-    Separately, and not a hole: ``sync_prompts`` with an empty ``prompts``
-    list clears a project's prompts by design -- supported behaviour, asserted
-    by ``test_sync_prompts_clear_bumps_tool_modified_at``. The owner gate, not
-    payload validation, is what stands between a share and that wipe.
+    Service accounts short-circuit ahead of every check here, and being a POST
+    that route is not covered by the DELETE tier that guards per-prompt
+    ``destroy``.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if getattr(request.user, "is_service_account", False):
             return True
         tool = obj.tool_id
+        # UN-3315: "Share with everyone" sets shared_to_org on the parent tool.
+        # Checked first among the grant paths because it is a free attribute
+        # read, while every branch below it runs a query -- and it is the path
+        # UN-3315 exists to serve. Order is not otherwise observable: these are
+        # side-effect-free predicates OR'd together.
+        if tool.shared_to_org:
+            return True
         if _is_resource_owner(request.user, tool):
             return True
         if _is_resource_viewer(request.user, tool):
-            return True
-        # UN-3315: "Share with everyone" sets shared_to_org on the parent tool.
-        # IsOwnerOrSharedUserOrSharedToOrg already honours it, so a user whose
-        # only access came from that flag (no VIEWER row, no group share, not an
-        # admin) could not reach the project's prompts at all.
-        #
-        # Read directly rather than via getattr: on a CustomTool the field is
-        # a non-nullable BooleanField, so a default would only mask a renamed
-        # field by silently denying access. Matches
-        # IsOwnerOrSharedUserOrSharedToOrg, which also reads it directly.
-        if tool.shared_to_org:
             return True
         if has_group_access(request.user, tool):
             return True

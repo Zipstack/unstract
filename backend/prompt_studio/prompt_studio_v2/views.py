@@ -41,8 +41,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         # Reads and edits honour project sharing (UN-3315); deleting a prompt
         # requires ownership of the parent tool, matching CustomToolViewSet,
         # whose own `destroy` is IsOwner-gated. The bulk `sync_prompts` route
-        # there is IsOwner-gated too. A read_write API key still reaches
-        # sync_prompts (a POST) -- see PromptAcesssToUser's docstring.
+        # there is IsOwner-gated too. API-key gap: see PromptAcesssToUser.
         if self.action == "destroy":
             return [IsPromptParentToolOwner()]
         return [PromptAcesssToUser()]
@@ -87,11 +86,13 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         # ToolStudioPrompt carries no organization of its own -- it is a plain
         # BaseModel -- so scope through the parent tool, whose for_user()
         # queryset is org-bound. A cross-org or invisible id 404s here rather
-        # than reaching the permission check.
+        # than reaching the permission check. select_related because the
+        # permission class immediately dereferences the tool_id FK, and the
+        # parent is already joined by the filter above.
         prompt = get_object_or_404(
             ToolStudioPrompt.objects.filter(
                 tool_id__in=CustomTool.objects.for_user(request.user)
-            ),
+            ).select_related("tool_id"),
             pk=prompt_id,
         )
         self.check_object_permissions(request, prompt)

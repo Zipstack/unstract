@@ -26,12 +26,7 @@ method bodies with ``tests_common.source_extraction``, as the sibling
 ``test_registry_tool_delete_guards.py`` does. That technique's own docstring
 records the blind spot: bodies are ``exec``-ed out of context, so *unreachable*
 code is indistinguishable from wired code -- and "the hook is never reached" is
-precisely the bug mechanism 3 fixes. A source-extracted test of
-``PromptAcesssToUser.has_object_permission`` would have passed both before and
-after that fix. The same docstring notes the premise behind extraction no
-longer holds: Django is importable in this tier. Importing also avoids its two
-other sharp edges (a decorator above a definition truncates the extracted
-slice; a cosmetic annotation change breaks the marker match).
+precisely the bug mechanism 3 fixes.
 
 No database is touched. ``get_permissions()`` is pure, and the collaborators
 that would hit the ORM are patched.
@@ -237,7 +232,6 @@ class TestReorderPromptsIsGated:
         """
         view = ToolStudioPromptView()
         view.action = "reorder_prompts"
-        view.request = None
         prompt = _prompt(_tool(owner=OWNER, shared_to_org=True))
         request = SimpleNamespace(user=SHARED_MEMBER, data={"prompt_id": "p-1"})
 
@@ -261,7 +255,6 @@ class TestReorderPromptsIsGated:
         """Order matters: a denial must stop the reorder, not follow it."""
         view = ToolStudioPromptView()
         view.action = "reorder_prompts"
-        view.request = None
         prompt = _prompt(_tool(owner=OWNER, shared_to_org=False))
         request = SimpleNamespace(user=SHARED_MEMBER, data={"prompt_id": "p-1"})
 
@@ -286,7 +279,6 @@ class TestReorderPromptsIsGated:
     def test_missing_prompt_id_is_a_400_not_a_crash(self) -> None:
         view = ToolStudioPromptView()
         view.action = "reorder_prompts"
-        view.request = None
 
         with pytest.raises(ValidationError):
             view.reorder_prompts(SimpleNamespace(user=SHARED_MEMBER, data={}))
