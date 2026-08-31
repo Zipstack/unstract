@@ -459,7 +459,17 @@ const Empty = React.forwardRef<HTMLDivElement, EmptyProps>(function Empty(
 
 const AVATAR_SIZE = { small: "size-6", default: "size-8", large: "size-10" };
 
-/** antd `<Avatar size shape src icon />`. */
+/**
+ * antd `<Avatar size shape src icon />`.
+ *
+ * `inline-flex align-middle`, not the primitive's `flex`. antd's `.ant-avatar`
+ * is `display: inline-block`, so `<Avatar /> name` renders on ONE line and
+ * call-sites rely on that: Share access and Co-owners both pass
+ * `<><Avatar /><Typography.Text /></>` as a single `List.Item.Meta` title and
+ * get an avatar stacked ABOVE the email with `flex`, because a block-level box
+ * cannot share a line with the text beside it. Blockified inside a flex parent
+ * anyway, so rows that already lay their children out are unaffected.
+ */
 const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
   {
     size = "default",
@@ -481,7 +491,12 @@ const Avatar = React.forwardRef<HTMLSpanElement, AvatarProps>(function Avatar(
   return (
     <ShadcnAvatar
       ref={ref}
-      className={cn(sizeClass, shape === "square" && "rounded-md", className)}
+      className={cn(
+        "inline-flex align-middle",
+        sizeClass,
+        shape === "square" && "rounded-md",
+        className,
+      )}
       style={
         typeof size === "number" ? { width: size, height: size } : undefined
       }
