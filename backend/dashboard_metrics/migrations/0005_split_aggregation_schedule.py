@@ -78,31 +78,36 @@ def split_schedules(apps, schema_editor):
         kwargs = {"tier": spec["tier"]}
 
         if spec["exists"]:
-            # Keep the existing IntervalSchedule — only the payload changes.
+            # Update ONLY the payload. `enabled` and `pg_owned` say which scheduler
+            # currently fires this row, and converge_pg_scheduler owns them: adopting
+            # a row on PG disables its Beat twin. Rewriting either here would hand the
+            # row back to a scheduler that is no longer running it — or, on an adopted
+            # row, to neither. Its cadence does not change, so nothing else needs to.
             PeriodicTask.objects.filter(name=spec["name"]).update(
                 kwargs=json.dumps(kwargs), description=spec["description"]
             )
-        else:
-            schedule, _ = CrontabSchedule.objects.get_or_create(
-                minute=spec["crontab"]["minute"],
-                hour=spec["crontab"]["hour"],
-                day_of_week="*",
-                day_of_month="*",
-                month_of_year="*",
-                defaults={"timezone": "UTC"},
-            )
-            PeriodicTask.objects.update_or_create(
-                name=spec["name"],
-                defaults={
-                    "task": AGGREGATE_TASK_NAME,
-                    "crontab": schedule,
-                    "queue": AGGREGATE_QUEUE,
-                    "kwargs": json.dumps(kwargs),
-                    "enabled": True,
-                    "description": spec["description"],
-                },
-            )
+            PgPeriodicTask.objects.filter(name=spec["name"]).update(task_kwargs=kwargs)
+            continue
 
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute=spec["crontab"]["minute"],
+            hour=spec["crontab"]["hour"],
+            day_of_week="*",
+            day_of_month="*",
+            month_of_year="*",
+            defaults={"timezone": "UTC"},
+        )
+        PeriodicTask.objects.update_or_create(
+            name=spec["name"],
+            defaults={
+                "task": AGGREGATE_TASK_NAME,
+                "crontab": schedule,
+                "queue": AGGREGATE_QUEUE,
+                "kwargs": json.dumps(kwargs),
+                "enabled": True,
+                "description": spec["description"],
+            },
+        )
         PgPeriodicTask.objects.update_or_create(
             name=spec["name"],
             defaults={
@@ -119,7 +124,12 @@ def split_schedules(apps, schema_editor):
 
 
 def merge_schedules(apps, schema_editor):
-    """Restore the single every-15-minutes row that writes all three tiers."""
+    """Restore the single every-15-minutes row that writes all three tiers.
+
+    Symmetric with the forward direction: the added rows go, and the surviving row
+    gets its payload back. `enabled` / `pg_owned` are left alone in both directions,
+    so whichever scheduler was firing the aggregation before the rollback still is.
+    """
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
     PgPeriodicTask = apps.get_model("pg_queue", "PgPeriodicTask")
 

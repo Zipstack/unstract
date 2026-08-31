@@ -458,6 +458,132 @@ def _aggregate_llm_combined(
             _upsert_agg(monthly_agg, key, metric_type, value)
 
 
+# Metric definitions: (name, query_method, is_histogram)
+# Note: llm_calls, challenges, summarization_calls, and llm_usage are
+# handled separately via get_llm_metrics_combined (1 query instead of 4).
+METRIC_CONFIGS = [
+    ("documents_processed", MetricsQueryService.get_documents_processed, False),
+    ("pages_processed", MetricsQueryService.get_pages_processed, True),
+    ("deployed_api_requests", MetricsQueryService.get_deployed_api_requests, False),
+    ("etl_pipeline_executions", MetricsQueryService.get_etl_pipeline_executions, False),
+    ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
+    ("failed_pages", MetricsQueryService.get_failed_pages, True),
+    ("hitl_reviews", MetricsQueryService.get_hitl_reviews, False),
+    ("hitl_completions", MetricsQueryService.get_hitl_completions, False),
+]
+
+# LLM metrics combined via conditional aggregation (4 metrics in 1 query).
+# Maps combined query field -> (metric_name, metric_type)
+LLM_COMBINED_FIELDS = {
+    "llm_calls": ("llm_calls", MetricType.COUNTER),
+    "challenges": ("challenges", MetricType.COUNTER),
+    "summarization_calls": ("summarization_calls", MetricType.COUNTER),
+    "llm_usage": ("llm_usage", MetricType.HISTOGRAM),
+}
+
+
+def _collect_org_metrics(
+    org: Organization,
+    hourly_start: datetime,
+    daily_start: datetime,
+    monthly_start: datetime,
+    end_date: datetime,
+    tier: AggregationTier,
+) -> tuple[dict, dict, dict, int]:
+    """Query every metric for one org into per-tier aggregate dicts.
+
+    A failing metric is logged and counted, not raised: one bad query should not
+    cost the org its other metrics.
+
+    Returns:
+        (hourly_agg, daily_agg, monthly_agg, error_count)
+    """
+    org_id = str(org.id)
+    hourly_agg: dict[tuple, dict] = {}
+    daily_agg: dict[tuple, dict] = {}
+    monthly_agg: dict[tuple, dict] = {}
+    errors = 0
+
+    for metric_name, query_method, is_histogram in METRIC_CONFIGS:
+        metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
+
+        # Pass org_identifier to PageUsage-based metrics to
+        # avoid redundant Organization lookups per call.
+        extra_kwargs = {}
+        if metric_name == "pages_processed":
+            extra_kwargs["org_identifier"] = org.organization_id
+
+        try:
+            _aggregate_single_metric(
+                query_method,
+                metric_name,
+                metric_type,
+                org_id,
+                hourly_start,
+                daily_start,
+                monthly_start,
+                end_date,
+                hourly_agg,
+                daily_agg,
+                monthly_agg,
+                tier,
+                extra_kwargs,
+            )
+        except Exception:
+            logger.exception("Error querying %s for org %s", metric_name, org_id)
+            errors += 1
+
+    # Combined LLM metrics: 1 query per granularity instead of 4
+    try:
+        _aggregate_llm_combined(
+            org_id,
+            hourly_start,
+            daily_start,
+            monthly_start,
+            end_date,
+            hourly_agg,
+            daily_agg,
+            monthly_agg,
+            LLM_COMBINED_FIELDS,
+            tier,
+        )
+    except Exception:
+        logger.exception("Error querying combined LLM metrics for org %s", org_id)
+        errors += 1
+
+    return hourly_agg, daily_agg, monthly_agg, errors
+
+
+def _aggregate_org(
+    org: Organization,
+    hourly_start: datetime,
+    daily_start: datetime,
+    monthly_start: datetime,
+    end_date: datetime,
+    tier: AggregationTier,
+    stats: dict[str, Any],
+) -> None:
+    """Aggregate one organization and upsert the tiers this run writes."""
+    try:
+        hourly_agg, daily_agg, monthly_agg, errors = _collect_org_metrics(
+            org, hourly_start, daily_start, monthly_start, end_date, tier
+        )
+        stats["errors"] += errors
+
+        # Bulk upsert each populated tier (single INSERT...ON CONFLICT each)
+        if hourly_agg:
+            stats["hourly"]["upserted"] += _bulk_upsert_hourly(hourly_agg)
+        if daily_agg:
+            stats["daily"]["upserted"] += _bulk_upsert_daily(daily_agg)
+        if monthly_agg:
+            stats["monthly"]["upserted"] += _bulk_upsert_monthly(monthly_agg)
+
+        stats["orgs_processed"] += 1
+    except Exception:
+        logger.exception("Error processing org %s", org.id)
+        stats["errors"] += 1
+
+
 def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, Any]:
     """Execute the actual aggregation logic.
 
@@ -486,33 +612,6 @@ def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, A
         monthly_start = end_date.replace(
             month=end_date.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0
         )
-
-    # Metric definitions: (name, query_method, is_histogram)
-    # Note: llm_calls, challenges, summarization_calls, and llm_usage are
-    # handled separately via get_llm_metrics_combined (1 query instead of 4).
-    metric_configs = [
-        ("documents_processed", MetricsQueryService.get_documents_processed, False),
-        ("pages_processed", MetricsQueryService.get_pages_processed, True),
-        ("deployed_api_requests", MetricsQueryService.get_deployed_api_requests, False),
-        (
-            "etl_pipeline_executions",
-            MetricsQueryService.get_etl_pipeline_executions,
-            False,
-        ),
-        ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
-        ("failed_pages", MetricsQueryService.get_failed_pages, True),
-        ("hitl_reviews", MetricsQueryService.get_hitl_reviews, False),
-        ("hitl_completions", MetricsQueryService.get_hitl_completions, False),
-    ]
-
-    # LLM metrics combined via conditional aggregation (4 metrics in 1 query).
-    # Maps combined query field -> (metric_name, metric_type)
-    llm_combined_fields = {
-        "llm_calls": ("llm_calls", MetricType.COUNTER),
-        "challenges": ("challenges", MetricType.COUNTER),
-        "summarization_calls": ("summarization_calls", MetricType.COUNTER),
-        "llm_usage": ("llm_usage", MetricType.HISTOGRAM),
-    }
 
     stats = {
         "hourly": {"upserted": 0},
@@ -560,75 +659,9 @@ def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, A
     )
 
     for org in organizations:
-        org_id = str(org.id)
-        org_identifier = org.organization_id  # Pre-resolved for PageUsage queries
-        hourly_agg: dict[tuple, dict] = {}
-        daily_agg: dict[tuple, dict] = {}
-        monthly_agg: dict[tuple, dict] = {}
-
-        try:
-            for metric_name, query_method, is_histogram in metric_configs:
-                metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
-
-                # Pass org_identifier to PageUsage-based metrics to
-                # avoid redundant Organization lookups per call.
-                extra_kwargs = {}
-                if metric_name == "pages_processed":
-                    extra_kwargs["org_identifier"] = org_identifier
-
-                try:
-                    _aggregate_single_metric(
-                        query_method,
-                        metric_name,
-                        metric_type,
-                        org_id,
-                        hourly_start,
-                        daily_start,
-                        monthly_start,
-                        end_date,
-                        hourly_agg,
-                        daily_agg,
-                        monthly_agg,
-                        tier,
-                        extra_kwargs,
-                    )
-                except Exception:
-                    logger.exception("Error querying %s for org %s", metric_name, org_id)
-                    stats["errors"] += 1
-
-            # Combined LLM metrics: 1 query per granularity instead of 4
-            try:
-                _aggregate_llm_combined(
-                    org_id,
-                    hourly_start,
-                    daily_start,
-                    monthly_start,
-                    end_date,
-                    hourly_agg,
-                    daily_agg,
-                    monthly_agg,
-                    llm_combined_fields,
-                    tier,
-                )
-            except Exception:
-                logger.exception("Error querying combined LLM metrics for org %s", org_id)
-                stats["errors"] += 1
-
-            # Bulk upsert all three tiers (single INSERT...ON CONFLICT each)
-            if hourly_agg:
-                stats["hourly"]["upserted"] += _bulk_upsert_hourly(hourly_agg)
-
-            if daily_agg:
-                stats["daily"]["upserted"] += _bulk_upsert_daily(daily_agg)
-
-            if monthly_agg:
-                stats["monthly"]["upserted"] += _bulk_upsert_monthly(monthly_agg)
-
-            stats["orgs_processed"] += 1
-
-        except Exception:
-            logger.exception("Error processing org %s", org_id)
-            stats["errors"] += 1
+        _aggregate_org(
+            org, hourly_start, daily_start, monthly_start, end_date, tier, stats
+        )
 
     logger.info(
         f"Aggregation completed ({tier.value}): {stats['orgs_processed']} orgs, "
