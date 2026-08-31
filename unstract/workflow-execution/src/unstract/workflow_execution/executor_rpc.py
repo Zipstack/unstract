@@ -39,7 +39,6 @@ from unstract.core.execution_dispatch import DispatchHandle, signature_to_contin
 from unstract.sdk1.execution.result import ExecutionResult
 
 if TYPE_CHECKING:
-
     from unstract.core.data_models import ContinuationSpec
     from unstract.core.execution_dispatch import CallbackSignature
     from unstract.sdk1.execution.context import ExecutionContext

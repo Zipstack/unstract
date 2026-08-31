@@ -6,7 +6,7 @@ decision (PG enqueue vs Celery send), the bare-msg_id task-id contract, the
 WorkloadType value, and the two org sentinels.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from utils.constants import CeleryQueue
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper

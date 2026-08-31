@@ -19,7 +19,6 @@ from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-
 from ..data.models import APIResponse
 from ..enums import HTTPMethod
 from ..infrastructure.config.worker_config import WorkerConfig

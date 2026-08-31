@@ -17,6 +17,9 @@ import logging
 from typing import TYPE_CHECKING
 
 from django.db import close_old_connections
+
+from pg_queue.models import PgTaskResult
+from pg_queue.producer import enqueue_task
 from unstract.core.polling import poll_for_row
 from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
@@ -24,9 +27,6 @@ from unstract.workflow_execution.executor_rpc import (
     PgExecutionDispatcher,
     QueueTransport,
 )
-
-from pg_queue.models import PgTaskResult
-from pg_queue.producer import enqueue_task
 
 if TYPE_CHECKING:
     from unstract.core.data_models import ContinuationSpec

@@ -713,8 +713,8 @@ class WorkflowHelper:
                 # it never raised; this generic handler covers any stray case.)
                 logger.exception(
                     f"[{org_schema}] Post-dispatch bookkeeping failed for execution "
-                    f"'{execution_id}' (orchestrator already dispatched on "
-                    f"{transport}); not marking ERROR"
+                    f"'{execution_id}' (orchestrator already enqueued on the PG "
+                    f"queue); not marking ERROR"
                 )
                 return ExecutionResponse(
                     workflow_id, execution_id, ExecutionStatus.EXECUTING.value
