@@ -1,6 +1,7 @@
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Radio, Select } from "@/components/ui/shims/antd-inputs";
 import { Avatar } from "@/components/ui/shims/antd-leaves";
 import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
@@ -115,9 +116,18 @@ function ExportTool({
                     icon={<CircleHelp />}
                     onConfirm={(event) => handleDeleteUser(item?.id)}
                   >
-                    <Typography.Text>
-                      <Trash2 className="action-icon-buttons" />
-                    </Typography.Text>
+                    {/*
+                     * A real button with a name: the icon on its own put
+                     * nothing in the accessibility tree, so the only way to
+                     * un-share was unreachable by keyboard and unnameable by
+                     * a screen reader. Matches CoOwnerManagement.
+                     */}
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Trash2 className="action-icon-buttons" />}
+                      aria-label={`Remove ${item?.email}`}
+                    />
                   </Popconfirm>
                 </div>
               }
