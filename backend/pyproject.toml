@@ -27,7 +27,9 @@ dependencies = [
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
-    "drf-yasg>=1.21.8", # For API docs
+    # Pinned: its rendering is the committed spec, so an upgrade rewrites the
+    # contract published clients are generated from.
+    "drf-spectacular==0.30.0",
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.2.2",
     "python-magic==0.4.27", # For file upload/download
