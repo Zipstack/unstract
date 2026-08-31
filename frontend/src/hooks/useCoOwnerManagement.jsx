@@ -2,14 +2,47 @@ import { useCallback, useRef, useState } from "react";
 
 import { useExceptionHandler } from "./useExceptionHandler";
 
+/**
+ * Summarize one Apply into a single alert.
+ *
+ * Failures carry the user object rather than the id, so an owner who has since
+ * left the org — and is therefore missing from the org member list — is still
+ * named by email.
+ */
+function buildApplyAlert(
+  addUsers,
+  removeUsers,
+  failed,
+  lastError,
+  handleException,
+) {
+  const total = addUsers.length + removeUsers.length;
+  if (failed.length === total) {
+    return handleException(lastError, "Unable to update co-owners");
+  }
+  const failedIds = new Set(failed.map((user) => String(user?.id)));
+  const done = (users) =>
+    users.filter((user) => !failedIds.has(String(user?.id))).length;
+  const parts = [];
+  if (done(addUsers)) {
+    parts.push(`${done(addUsers)} added`);
+  }
+  if (done(removeUsers)) {
+    parts.push(`${done(removeUsers)} removed`);
+  }
+  const summary = `Co-owners updated: ${parts.join(", ")}`;
+  if (failed.length === 0) {
+    return { type: "success", content: summary };
+  }
+  const failedNames = failed.map((user) => user?.email || user?.id).join(", ");
+  return { type: "warning", content: `${summary}. Failed for: ${failedNames}` };
+}
+
 function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const handleException = useExceptionHandler();
 
   const [coOwnerOpen, setCoOwnerOpen] = useState(false);
-  const [coOwnerData, setCoOwnerData] = useState({
-    coOwners: [],
-    createdBy: null,
-  });
+  const [coOwnerData, setCoOwnerData] = useState({ coOwners: [] });
   const [coOwnerLoading, setCoOwnerLoading] = useState(false);
   const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
   const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
@@ -21,14 +54,13 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     // branch) after the user has moved to a different resource. Mutation
     // callers pass the token captured BEFORE their POSTs so a modal switch
     // during the mutation itself is caught too, not just one mid-refresh.
+    // Returns true when the resource turned out to be gone, so the caller can
+    // leave that alert standing instead of overwriting it with its own.
     async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
         if (latestRequestRef.current !== requestId) return;
-        setCoOwnerData({
-          coOwners: res.data?.co_owners || [],
-          createdBy: res.data?.created_by || null,
-        });
+        setCoOwnerData({ coOwners: res.data?.co_owners || [] });
       } catch (err) {
         if (latestRequestRef.current !== requestId) return;
         if (err?.response?.status === 404) {
@@ -39,7 +71,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
             content:
               "This resource is no longer accessible. It may have been removed or your access has been revoked.",
           });
-          return;
+          return true;
         }
         setAlertDetails(
           handleException(err, "Unable to refresh co-owner data"),
@@ -74,7 +106,6 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         setCoOwnerAllUsers(userList);
         setCoOwnerData({
           coOwners: sharedUsersResponse.data?.co_owners || [],
-          createdBy: sharedUsersResponse.data?.created_by || null,
         });
       } catch (err) {
         if (latestRequestRef.current !== requestId) return;
@@ -91,73 +122,45 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     [service, setAlertDetails, handleException],
   );
 
-  const onAddCoOwner = useCallback(
-    async (resourceId, userIdOrIds) => {
+  const onApplyCoOwners = useCallback(
+    async (resourceId, { addUsers = [], removeUsers = [] }) => {
       const requestId = latestRequestRef.current;
-      const isBatch = Array.isArray(userIdOrIds);
-      const userIds = isBatch ? userIdOrIds : [userIdOrIds];
-      // Attempt every id independently — a mid-batch failure must not drop the
-      // remaining ids or contradict the refreshed modal state.
-      const failedIds = [];
+      // Attempt every user independently — one rejection must not drop the rest
+      // or leave the modal contradicting the server.
+      const failed = [];
       let lastError = null;
-      for (const userId of userIds) {
-        try {
-          await service.addCoOwner(resourceId, userId);
-        } catch (err) {
-          failedIds.push(userId);
-          lastError = err;
+      const run = async (users, call) => {
+        for (const user of users) {
+          try {
+            await call(user.id);
+          } catch (err) {
+            failed.push(user);
+            lastError = err;
+          }
         }
-      }
+      };
+      // Adds first: the backend rejects removing the last owner, so a one-shot
+      // owner swap has to grow the roster before it shrinks it.
+      await run(addUsers, (id) => service.addCoOwner(resourceId, id));
+      await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
       // Reconverge the modal on true server state regardless of partial outcome.
-      await refreshCoOwnerData(resourceId, requestId);
+      const gone = await refreshCoOwnerData(resourceId, requestId);
+      if (gone) {
+        // The refresh already closed the modal, refreshed the list and raised
+        // its own alert — an apply summary on top of it would only mislead.
+        return true;
+      }
       onListRefresh?.();
-
-      const succeeded = userIds.length - failedIds.length;
-      if (failedIds.length === 0) {
-        setAlertDetails({
-          type: "success",
-          content: isBatch
-            ? "Co-owners added successfully"
-            : "Co-owner added successfully",
-        });
-      } else if (succeeded === 0) {
-        setAlertDetails(handleException(lastError, "Unable to add co-owner"));
-      } else {
-        const failedEmails = coOwnerAllUsers
-          .filter((user) => failedIds.includes(user.id))
-          .map((user) => user.email);
-        setAlertDetails({
-          type: "warning",
-          content: `Added ${succeeded} of ${userIds.length} co-owners. Failed for: ${
-            failedEmails.join(", ") || failedIds.join(", ")
-          }`,
-        });
-      }
-    },
-    [
-      service,
-      refreshCoOwnerData,
-      onListRefresh,
-      setAlertDetails,
-      handleException,
-      coOwnerAllUsers,
-    ],
-  );
-
-  const onRemoveCoOwner = useCallback(
-    async (resourceId, userId) => {
-      const requestId = latestRequestRef.current;
-      try {
-        await service.removeCoOwner(resourceId, userId);
-        setAlertDetails({
-          type: "success",
-          content: "Co-owner removed successfully",
-        });
-        await refreshCoOwnerData(resourceId, requestId);
-        onListRefresh?.();
-      } catch (err) {
-        setAlertDetails(handleException(err, "Unable to remove co-owner"));
-      }
+      setAlertDetails(
+        buildApplyAlert(
+          addUsers,
+          removeUsers,
+          failed,
+          lastError,
+          handleException,
+        ),
+      );
+      return failed.length === 0;
     },
     [
       service,
@@ -176,8 +179,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     coOwnerAllUsers,
     coOwnerResourceId,
     handleCoOwner,
-    onAddCoOwner,
-    onRemoveCoOwner,
+    onApplyCoOwners,
   };
 }
 
