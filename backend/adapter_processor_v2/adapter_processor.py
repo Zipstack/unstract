@@ -13,6 +13,7 @@ from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
 from adapter_processor_v2.deprecated_adapters import (
     get_deprecation_message,
     is_adapter_deprecated,
+    is_adapter_selectable,
 )
 from adapter_processor_v2.exceptions import (
     AdapterNotFound,
@@ -211,6 +212,14 @@ class AdapterProcessor:
         return [iterate for iterate in adapters if iterate[key] == value]
 
     @staticmethod
+    def _resolve_selectable_adapter(adapter_pk: str) -> AdapterInstance:
+        """Adapter for ``adapter_pk``, refusing one that can no longer be chosen."""
+        adapter = AdapterInstance.objects.get(pk=adapter_pk)
+        if not is_adapter_selectable(adapter):
+            raise DeprecatedAdapter(get_deprecation_message(adapter.adapter_id))
+        return adapter
+
+    @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
         try:
             organization_member = OrganizationMemberService.get_user_by_id(user.id)
@@ -222,26 +231,30 @@ class AdapterProcessor:
             )
 
             if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
-                user_default_adapter.default_llm_adapter = AdapterInstance.objects.get(
-                    pk=default_triad[AdapterKeys.LLM_DEFAULT]
+                user_default_adapter.default_llm_adapter = (
+                    AdapterProcessor._resolve_selectable_adapter(
+                        default_triad[AdapterKeys.LLM_DEFAULT]
+                    )
                 )
             if default_triad.get(AdapterKeys.EMBEDDING_DEFAULT, None):
                 user_default_adapter.default_embedding_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.EMBEDDING_DEFAULT]
+                    AdapterProcessor._resolve_selectable_adapter(
+                        default_triad[AdapterKeys.EMBEDDING_DEFAULT]
                     )
                 )
 
             if default_triad.get(AdapterKeys.VECTOR_DB_DEFAULT, None):
                 user_default_adapter.default_vector_db_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.VECTOR_DB_DEFAULT]
+                    AdapterProcessor._resolve_selectable_adapter(
+                        default_triad[AdapterKeys.VECTOR_DB_DEFAULT]
                     )
                 )
 
             if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
-                user_default_adapter.default_x2text_adapter = AdapterInstance.objects.get(
-                    pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
+                user_default_adapter.default_x2text_adapter = (
+                    AdapterProcessor._resolve_selectable_adapter(
+                        default_triad[AdapterKeys.X2TEXT_DEFAULT]
+                    )
                 )
 
             user_default_adapter.save()
@@ -249,7 +262,7 @@ class AdapterProcessor:
             logger.info("Changed defaults successfully")
         except Exception as e:
             logger.error(f"Unable to save defaults because: {e}")
-            if isinstance(e, InValidAdapterId):
+            if isinstance(e, (InValidAdapterId, DeprecatedAdapter)):
                 raise e
             else:
                 raise InternalServiceError()

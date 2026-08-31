@@ -3,7 +3,6 @@ import { Button, Select, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { usableAdapters } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -67,7 +66,7 @@ function DefaultTriad() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
     })
       .then((adapters) => {
-        setAdapterList(usableAdapters(adapters));
+        setAdapterList(adapters);
       })
       .catch((err) => {
         setAlertDetails(
@@ -203,8 +202,14 @@ function DefaultTriad() {
                     {dropdownData
                       .filter((data) => data?.adapter_type === type)
                       .map((data) => (
-                        <Option key={data?.id} value={data?.id}>
-                          {data?.adapter_name}
+                        <Option
+                          key={data?.id}
+                          value={data?.id}
+                          disabled={data?.is_deprecated}
+                        >
+                          {data?.is_deprecated
+                            ? `${data?.adapter_name} (deprecated)`
+                            : data?.adapter_name}
                         </Option>
                       ))}
                   </Select>

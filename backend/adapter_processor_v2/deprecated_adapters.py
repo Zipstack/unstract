@@ -40,6 +40,22 @@ def get_deprecation_metadata(adapter_id: str | None) -> dict[str, Any] | None:
     return dict(metadata) if metadata else None
 
 
+def is_adapter_selectable(adapter: Any) -> bool:
+    """Whether an ``AdapterInstance`` may back a new profile, default or config.
+
+    Covers the three ways an adapter stops being a valid choice: usage
+    exhausted (``is_usable``), withdrawn from the SDK (``is_available``), and
+    deprecated here. Existing selections are not re-validated against this —
+    they stay readable so users can see what to migrate off.
+    """
+    return bool(
+        adapter is not None
+        and adapter.is_usable
+        and adapter.is_available
+        and not is_adapter_deprecated(adapter.adapter_id)
+    )
+
+
 def get_deprecation_message(adapter_id: str | None) -> str:
     """User-facing reason ``adapter_id`` can no longer be used."""
     metadata = get_deprecation_metadata(adapter_id)

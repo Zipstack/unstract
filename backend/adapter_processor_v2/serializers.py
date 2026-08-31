@@ -5,7 +5,7 @@ from account_v2.serializer import UserSerializer
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
-from rest_framework.serializers import ModelSerializer
+from rest_framework.serializers import ModelSerializer, ValidationError
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     serialize_owner_refs,
@@ -15,6 +15,7 @@ from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
     get_deprecation_metadata,
     is_adapter_deprecated,
 )
@@ -94,6 +95,19 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
     Used for CRUD other than listing
     """
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Reject a deprecated adapter_id.
+
+        Sits on the serializer rather than the create view because
+        ``adapter_id`` is writable, so update/partial_update reach it too.
+        """
+        adapter_id = attrs.get(AdapterKeys.ADAPTER_ID)
+        if is_adapter_deprecated(adapter_id):
+            raise ValidationError(
+                {AdapterKeys.ADAPTER_ID: get_deprecation_message(adapter_id)}
+            )
+        return attrs
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if data.get(AdapterKeys.ADAPTER_METADATA, None):

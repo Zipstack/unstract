@@ -253,10 +253,9 @@ class AdapterInstanceViewSet(
         ):
             use_platform_unstract_key = True
 
+        # Deprecated adapter_ids are rejected in AdapterInstanceSerializer.validate,
+        # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
-        adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
-        if is_adapter_deprecated(adapter_id):
-            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
         self._enforce_llm_creation_restriction(request, adapter_type)
 
