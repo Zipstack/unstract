@@ -548,11 +548,11 @@ def _org_identifier(org_pk: int) -> str | None:
     if org_string_id is None:
         # Sentry-routed (logger.error): a live buffer row with no org is a data
         # anomaly (dangling FK / corruption) that shouldn't happen under the
-        # CASCADE constraint, not routine noise. Routing still fails closed to
-        # Celery in resolve_transport.
+        # CASCADE constraint, not routine noise. The enqueue still succeeds — it
+        # just carries an empty org id, so the row loses fairness attribution.
         logger.error(
             "metric=notification_org_identifier_missing_total org_pk=%s "
-            "(dangling FK; notification routing falls back to Celery)",
+            "(dangling FK; enqueued without fairness attribution)",
             org_pk,
         )
     return org_string_id

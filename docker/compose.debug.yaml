@@ -73,17 +73,16 @@ services:
     ports:
       - "5682:5682"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5682 -m celery
-        -A worker worker
-        --queues=file_processing,api_file_processing,file_processing_priority
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5682 -m pg_queue_consumer"
     ]
 
   worker-pg-callback:
@@ -91,17 +90,16 @@ services:
     ports:
       - "5683:5683"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5683 -m celery
-        -A worker worker
-        --queues=file_processing_callback,api_file_processing_callback
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5683 -m pg_queue_consumer"
     ]
 
   worker-pg-orchestrator-api:
@@ -109,17 +107,16 @@ services:
     ports:
       - "5684:5684"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5684 -m celery
-        -A worker worker
-        --queues=celery_api_deployments
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5684 -m pg_queue_consumer"
     ]
 
   worker-pg-orchestrator-general:
@@ -127,17 +124,16 @@ services:
     ports:
       - "5685:5685"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5685 -m celery
-        -A worker worker
-        --queues=celery
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5685 -m pg_queue_consumer"
     ]
 
   worker-pg-notification:
@@ -145,17 +141,16 @@ services:
     ports:
       - "5686:5686"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5686 -m celery
-        -A worker worker
-        --queues=notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5686 -m pg_queue_consumer"
     ]
 
   worker-log-stream-consumer:
@@ -163,17 +158,16 @@ services:
     ports:
       - "5687:5687"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5687 -m celery
-        -A worker worker
-        --queues=celery_log_task_queue,celery_periodic_logs
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5687 -m log_consumer.redis_stream_consumer"
     ]
 
   worker-pg-scheduler:
@@ -181,15 +175,14 @@ services:
     ports:
       - "5688:5688"
     entrypoint: ["bash", "-c"]
+    # Wrap the PG consumer, NOT `celery -A worker worker` (UN-4046). This
+    # override REPLACES the base file's command, so a Celery invocation here
+    # turns the service into a RabbitMQ worker while the backend enqueues to
+    # Postgres — the debug stack then accepts work and runs none of it.
+    #
+    # Queue set and worker type are deliberately NOT repeated: the module reads
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE / _WORKER_TYPE from the base file's
+    # environment. Restating them here is what let this file drift out of sync.
     command: [
-      "uv run python -m debugpy --listen 0.0.0.0:5688 -m celery
-        -A worker worker
-        --queues=scheduler
-        --loglevel=INFO
-        --pool=threads
-        --concurrency=2
-        --prefetch-multiplier=1
-        --without-gossip
-        --without-mingle
-        --without-heartbeat"
+      "uv run python -m debugpy --listen 0.0.0.0:5688 -m pg_queue_consumer"
     ]

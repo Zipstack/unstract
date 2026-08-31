@@ -11,17 +11,16 @@ Doing both in one transaction is what makes "never double-fires" real (it was
 *conditional* on this slice): a ``pg_owned`` row always has its Beat
 ``PeriodicTask`` disabled, so the two can't both fire.
 
-**Two gates, and both must be on.** ``PG_SCHEDULER_ENABLED`` (env, default off) comes
-first; the ``pg_queue_enabled`` Flipt flag then decides per schedule, failing closed to
-Beat on a blind Flipt or any error.
+**One gate, and it defaults ON.** ``PG_SCHEDULER_ENABLED`` (env) is the whole decision.
+UN-4046 removed the second one — the per-schedule ``pg_queue_enabled`` Flipt flag that
+used to fail closed to Beat — and flipped this env's default from ``false`` to ``true``.
 
-They are separate because Beat stays the **sole scheduler for the whole PG rollout**:
-pipelines already reach PG without this module (``execute_pipeline_task_v2`` →
-``complete_execution`` → ``execute_workflow_async`` → ``resolve_transport``), so the PG
-scheduler exists only to retire the Beat *deployment* — a later, deliberate step. While
-the env gate is off this module writes **nothing at all**, so Beat's tables are untouched
-for the entire rollout and turning the flag off again is a pure Flipt flip with nothing
-to restore.
+The consequence is the opposite of what this docstring said before, so it is worth
+stating plainly: on a default deployment this module DOES write, on every schedule save
+and on every ``--migrate`` start, handing pipelines to PG and disabling Beat's
+``PeriodicTask`` rows. Rolling back is not a flag flip with nothing to restore — it is
+``PG_SCHEDULER_ENABLED=false`` **plus** a ``converge_pg_scheduler`` run to release the
+rows already adopted. Beat coming back does not re-enable rows this module disabled.
 """
 
 from __future__ import annotations
@@ -106,7 +105,7 @@ def reconcile_ownership_for(
     window where both fire. On rollback (``pg_owned`` → False) ``next_run_at`` is
     also cleared so a later re-hand-over re-enters the PG tick's NULL baseline
     (no burst). ``organization_id`` is the org *identifier* string (what the
-    mirror stores), used for Flipt per-org segmenting. ``active`` is keyword-only
+    mirror stores), carried for logging/traceability. ``active`` is keyword-only
     (a fire/don't-fire boolean trap otherwise).
 
     Best-effort: a DB failure is logged and swallowed so it can never break the

@@ -36,7 +36,7 @@ class QueueBackend(StrEnum):
 
     ``StrEnum`` (3.11+) is inherited for symmetry with ``BarrierBackend``,
     but unlike that enum this one is never read from / written to env —
-    only the task-name allow-list is. So callers MUST compare by identity
+    it is never read from env at all. So callers MUST compare by identity
     (``backend is QueueBackend.PG``), never ``== "pg"``: ``StrEnum`` makes a
     typo'd ``== "cellery"`` a silent ``False`` rather than an error.
     """
@@ -62,7 +62,7 @@ def select_backend(task_name: str) -> QueueBackend:
 def resolve_backend(task_name: str, override: QueueBackend | None) -> QueueBackend:
     """Resolve the transport for a dispatch, applying the per-call override.
 
-    The single home for the override-wins-else-allow-list precedence so the
+    The single home for the override-wins-else-``select_backend`` precedence so the
     rule reads in one place (and ``dispatch()`` plus the call sites
     share it):
 

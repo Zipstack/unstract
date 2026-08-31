@@ -45,8 +45,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The single PG-queue rollout flag — the same key execution and the scheduler read,
-# so one flip turns the whole PG-queue feature on/off.
 EXECUTE_TASK = "execute_extraction"
 # Mirror the SDK's queue-per-executor convention so the PG executor queue name
 # matches the Celery one (the worker-pg-executor consumer subscribes to these).
@@ -146,8 +144,11 @@ class PgExecutionDispatcher:
         callers branch on ``result.success`` identically on either transport.
 
         No ``headers`` on any PG dispatch method: the PG path carries org/routing in
-        the enqueue payload, not Celery headers, so the ``RoutingExecutionDispatcher``
-        does not forward fairness headers to the PG path.
+        the enqueue payload (``transport.enqueue(..., org_id=...)``), not Celery
+        headers. This method takes no ``headers`` argument: callers must not pass
+        one. The routing dispatcher that used to absorb a ``headers=`` kwarg went
+        with the flag in UN-4046, and three call sites kept passing it — every
+        extraction raised ``TypeError`` until they were fixed.
         """
         timeout = _resolve_timeout(timeout)
         reply_key = str(uuid.uuid4())

@@ -92,16 +92,11 @@ def dispatch(
 
     ``backend`` is a per-call transport override (see
     :func:`~queue_backend.routing.resolve_backend` for the precedence). When
-    ``None`` (the default, and every call site today) the transport is the env
-    allow-list decision via ``select_backend`` — behaviour is unchanged. When
-    set, it wins over the allow-list: this is the seam the execution-level PG
-    pipeline uses to route a whole execution's header/callback
-    dispatches onto PG without opting their task *names* into
-    ``WORKER_PG_QUEUE_ENABLED_TASKS``. (The allow-list is for *leaf* tasks; the
-    coupled pipeline's migration unit is the whole execution — its transport is
-    resolved once at creation and travels on the execution's task kwargs onto
-    ``WorkflowContextData.transport``.) The override only forces the *transport*; it does not
-    bypass ``_enqueue_pg``'s no-silent-fallback contract.
+    ``None`` — the default, and every call site today — ``select_backend`` decides,
+    and since UN-4046 it returns PG unconditionally. The override is therefore the
+    only remaining dial, and nothing in production passes one. It forces the
+    *transport* only; it does not bypass ``_enqueue_pg``'s no-silent-fallback
+    contract.
     """
     if resolve_backend(task_name, backend) is QueueBackend.PG:
         return _enqueue_pg(task_name, args, kwargs, queue, fairness)
@@ -134,12 +129,6 @@ def _enqueue_pg(
         # true regardless of send outcome, so a first-dispatch failure
         # (DB down / unmigrated) must not suppress the one announcement.
         # INFO so it survives a default log config; once-per-task bounds it.
-        # NOTE: keyed on task name only, not on *why* it routed to PG. If a name
-        # is first PG-routed via a ``backend=`` override and the operator later
-        # adds it to the allow-list, the allow-list cutover won't re-announce
-        # (already in the set). Benign given the usage split (override = pipeline
-        # headers, allow-list = leaf tasks, so no overlap expected); the
-        # allow-list config itself is still announced by _log_allow_list_once.
         _pg_routing_logged.add(task_name)
         logger.info(
             "PG-queue: routing task=%r to Postgres (queue=%r). Requires the "

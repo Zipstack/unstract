@@ -60,6 +60,15 @@ services:
       # generated, and copy_or_merge_envs only merges new keys on --only-env or
       # --update, so an existing checkout would silently keep the old default.
       - LOG_TRANSPORT=redis
+      # Adopt the non-pipeline periodics (dashboard_metrics.*) onto the PG
+      # scheduler (UN-4046). converge_pg_scheduler only adopts them with
+      # --periodics, which entrypoint.sh derives from this variable — and it was
+      # set NOWHERE. This stack deletes celery-beat and worker-metrics, so
+      # without it those rows stay Beat-owned (pg_owned=false) with Beat gone:
+      # nothing fires them, worker-pg-metrics idles on an empty queue, and there
+      # is no error, no queue depth and no failed pod. The cloud chart refuses
+      # this combination at render time; compose has no equivalent guard.
+      - PG_SCHEDULER_ADOPT_PERIODICS=true
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
@@ -427,7 +436,9 @@ services:
   # LOG_TRANSPORT must be set to "redis" on every PUBLISHER too or this drains an
   # empty list while logs keep going to RabbitMQ — where, since UN-4046 removed
   # worker-log-consumer-v2 from this stack, nothing reads them. Set on backend and
-  # runner in their own environment blocks, and on every worker via essentials.env.
+  # runner in their own environment blocks, and in each worker's own environment
+  # block too — deliberately NOT essentials.env (that file is git-ignored and
+  # generated, so an existing checkout only picks up new keys on --update).
   worker-log-stream-consumer:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-stream-consumer
@@ -455,8 +466,8 @@ services:
   # work from Postgres and writes the ExecutionResult to pg_task_result for the
   # blocking caller. Same heavy executor runtime as the file-processing consumer (tool
   # execution → platform-service / adapters / file storage), but broker-free: it
-  # is the terminal of the RPC and dispatches nothing onward to Celery. Dark
-  # until the backend pg_queue_enabled gate is flipped.
+  # is the terminal of the RPC and dispatches nothing onward to Celery. It is the
+  # ONLY executor since UN-4046 — scaling it to zero stops all tool execution.
   worker-pg-executor:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-executor

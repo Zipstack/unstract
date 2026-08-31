@@ -293,12 +293,16 @@ services:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
-  # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
+  # PG consumer for the dashboard_metrics.* periodics fired by the PG scheduler
+  # tick. Must build the WORKER image: the base file runs `pg-queue-consumer`,
+  # which the backend image's entrypoint rejects outright ("Unknown argument"),
+  # so building backend.Dockerfile here crash-loops the pod and leaves
+  # dashboard_metric_events with no consumer. No `command:` override either —
+  # the base file's is correct.
   worker-pg-metrics:
     build:
-      dockerfile: docker/dockerfiles/backend.Dockerfile
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
-    command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=2,1"
     develop:
       watch:
         - action: sync+restart

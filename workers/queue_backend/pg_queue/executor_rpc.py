@@ -1,15 +1,15 @@
 """Executor-RPC for the PG path — workers (psycopg2) transport adapter.
 
-The gate + reply_key/timeout orchestration + routing live ONCE in
+The reply_key/timeout orchestration lives ONCE in
 ``unstract.workflow_execution.executor_rpc`` (shared with the backend). This module
 is the thin psycopg2 half: a :class:`PgClientQueueTransport` that enqueues via
 :class:`~queue_backend.pg_queue.client.PgQueueClient` and polls via
 :class:`~queue_backend.pg_queue.result_backend.PgResultBackend`, plus the
 :func:`get_executor_dispatcher` factory.
 
-Zero-regression: with the ``pg_queue_enabled`` Flipt flag off the routing dispatcher
-delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
-``pg_task_result`` row is created.
+Since UN-4046 the factory returns the PG dispatcher unconditionally: there is no
+gate, no routing dispatcher and no Celery fall-through, so a ``pg_task_result``
+row is written on every request-reply dispatch.
 """
 
 from __future__ import annotations

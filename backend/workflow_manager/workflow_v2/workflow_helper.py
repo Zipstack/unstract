@@ -1020,7 +1020,11 @@ class WorkflowHelper:
                     workflow_id=workflow.id, single_step=True
                 )
             try:
-                workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+                # Existence probe only — the branch below raises unconditionally,
+                # so the result is deliberately not bound. The query is still
+                # load-bearing: its DoesNotExist selects the create-a-new-execution
+                # path in the except.
+                WorkflowExecution.objects.get(pk=execution_id)
                 # Single-step is the one entry path that never moved onto PG. Its
                 # only fan-out is the Celery chord in `process_input_files` — the
                 # normal path's PG fan-out lives in the general worker instead —
