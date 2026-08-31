@@ -9,6 +9,7 @@ Tasks:
 import logging
 import time
 from datetime import datetime, timedelta
+from enum import StrEnum
 from typing import Any
 
 from account_v2.models import Organization
@@ -204,16 +205,46 @@ def _bulk_upsert_monthly(aggregations: dict) -> int:
     return len(objects)
 
 
-AGGREGATION_LOCK_KEY = "dashboard_metrics:aggregation_lock"
-AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
+class AggregationTier(StrEnum):
+    """Which metric tiers a single aggregation run writes.
+
+    The hourly tier needs 15-minute freshness; the daily and monthly tiers do not,
+    so they run on separate schedules. Daily and monthly stay together because one
+    DAY-granularity query feeds both.
+    """
+
+    HOURLY = "hourly"
+    DAILY_MONTHLY = "daily_monthly"
+    ALL = "all"
 
 
-def _acquire_aggregation_lock() -> bool:
+# Per-tier so the 15-minute hourly run and the hourly daily/monthly run — which
+# collide at the top of every hour — do not starve each other.
+AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
+AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches the fastest task schedule)
+
+
+def _writes_hourly(tier: AggregationTier) -> bool:
+    return tier in (AggregationTier.HOURLY, AggregationTier.ALL)
+
+
+def _writes_daily_monthly(tier: AggregationTier) -> bool:
+    return tier in (AggregationTier.DAILY_MONTHLY, AggregationTier.ALL)
+
+
+def _aggregation_lock_key(tier: AggregationTier) -> str:
+    return f"{AGGREGATION_LOCK_KEY_PREFIX}:{tier.value}"
+
+
+def _acquire_aggregation_lock(lock_key: str) -> bool:
     """Acquire the distributed aggregation lock with self-healing.
 
     Stores a Unix timestamp as the lock value. If a previous run crashed
     (OOM kill, SIGKILL) without releasing the lock, the next run detects
     that the lock is older than AGGREGATION_LOCK_TIMEOUT and reclaims it.
+
+    Args:
+        lock_key: Cache key to lock on — one per tier, see _aggregation_lock_key
 
     Returns:
         True if lock was acquired, False if another run is legitimately active.
@@ -221,32 +252,35 @@ def _acquire_aggregation_lock() -> bool:
     now = time.time()
 
     # Fast path: lock is free
-    if cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT):
+    if cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT):
         return True
 
     # Lock exists — check if it's stale (previous run died without releasing)
-    lock_value = cache.get(AGGREGATION_LOCK_KEY)
+    lock_value = cache.get(lock_key)
     if lock_value is None:
         # Expired between our check and get — lock is now free, try to acquire it
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     try:
         lock_time = float(lock_value)
     except (TypeError, ValueError):
         # Corrupted value (e.g. old "running" string) — reclaim it
-        logger.warning("Reclaiming aggregation lock with invalid value: %s", lock_value)
-        cache.delete(AGGREGATION_LOCK_KEY)
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        logger.warning(
+            "Reclaiming aggregation lock %s with invalid value: %s", lock_key, lock_value
+        )
+        cache.delete(lock_key)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     age = now - lock_time
     if age > AGGREGATION_LOCK_TIMEOUT:
         logger.warning(
-            "Reclaiming stale aggregation lock (age=%.0fs, timeout=%ds)",
+            "Reclaiming stale aggregation lock %s (age=%.0fs, timeout=%ds)",
+            lock_key,
             age,
             AGGREGATION_LOCK_TIMEOUT,
         )
-        cache.delete(AGGREGATION_LOCK_KEY)
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        cache.delete(lock_key)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     return False
 
@@ -260,13 +294,14 @@ def _acquire_aggregation_lock() -> bool:
     retry_backoff=True,
     retry_backoff_max=300,
 )
-def aggregate_metrics_from_sources() -> dict[str, Any]:
-    """Aggregate metrics from source tables into hourly, daily, and monthly tables.
+def aggregate_metrics_from_sources(
+    tier: str = AggregationTier.ALL,
+) -> dict[str, Any]:
+    """Aggregate metrics from source tables into the hourly/daily/monthly tables.
 
-    This task runs periodically (every 15 minutes) to query metrics from
-    source tables (Usage, PageUsage, WorkflowExecution, etc.) and aggregate
-    them into EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
-    tables for fast dashboard queries at different granularities.
+    Two schedules call this with different tiers: the hourly tier every 15 minutes,
+    the daily and monthly tiers hourly. Each tier locks separately so the two never
+    block each other.
 
     Uses a Redis distributed lock with self-healing to prevent overlapping
     runs. If a previous run was killed without releasing the lock, the next
@@ -277,17 +312,33 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     - Daily: Last 7 days (ensures we capture late-arriving data)
     - Monthly: Last 2 months (current + previous month)
 
+    Args:
+        tier: Which tiers to write, an AggregationTier value. Defaults to all,
+            so a caller that omits it gets the pre-split behaviour rather than
+            silently writing nothing.
+
     Returns:
-        Dict with aggregation summary for all three tiers
+        Dict with aggregation summary for the tiers that ran
+
+    Raises:
+        ValueError: tier is not a recognised AggregationTier
     """
-    if not _acquire_aggregation_lock():
-        logger.info("Skipping aggregation — another run is in progress")
-        return {"success": True, "skipped": True, "reason": "lock_held"}
+    tier = AggregationTier(tier)
+    lock_key = _aggregation_lock_key(tier)
+
+    if not _acquire_aggregation_lock(lock_key):
+        logger.info("Skipping %s aggregation — another run is in progress", tier.value)
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "lock_held",
+            "tier": tier.value,
+        }
 
     try:
-        return _run_aggregation()
+        return _run_aggregation(tier)
     finally:
-        cache.delete(AGGREGATION_LOCK_KEY)
+        cache.delete(lock_key)
 
 
 def _aggregate_single_metric(
@@ -302,29 +353,36 @@ def _aggregate_single_metric(
     hourly_agg: dict,
     daily_agg: dict,
     monthly_agg: dict,
+    tier: AggregationTier,
     extra_kwargs: dict | None = None,
 ) -> None:
-    """Run a single metric query at all 3 granularities and populate agg dicts.
+    """Run a single metric query at the requested granularities and populate agg dicts.
 
     Uses 2 queries instead of 3: the daily query is widened to monthly_start
     and its results are split into both daily_agg and monthly_agg in Python.
     This is the same pattern proven in the backfill management command.
+
+    Each query is skipped when its tier is not in scope for this run.
     """
     extra_kwargs = extra_kwargs or {}
 
     # === HOURLY (last 24h) ===
-    for row in query_method(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-        **extra_kwargs,
-    ):
-        hour_ts = _truncate_to_hour(row["period"])
-        key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
-        _upsert_agg(hourly_agg, key, metric_type, row["value"] or 0)
+    if _writes_hourly(tier):
+        for row in query_method(
+            org_id,
+            hourly_start,
+            end_date,
+            granularity=Granularity.HOUR,
+            **extra_kwargs,
+        ):
+            hour_ts = _truncate_to_hour(row["period"])
+            key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
+            _upsert_agg(hourly_agg, key, metric_type, row["value"] or 0)
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
+    if not _writes_daily_monthly(tier):
+        return
+
     for row in query_method(
         org_id,
         monthly_start,
@@ -354,8 +412,9 @@ def _aggregate_llm_combined(
     daily_agg: dict,
     monthly_agg: dict,
     llm_combined_fields: dict,
+    tier: AggregationTier,
 ) -> None:
-    """Run the combined LLM metrics query at all granularities.
+    """Run the combined LLM metrics query at the requested granularities.
 
     Issues 2 queries total (hourly + daily/monthly) instead of 3.
     The DAY-granularity query is widened to monthly_start and results are
@@ -363,18 +422,22 @@ def _aggregate_llm_combined(
     by month) in Python. Same pattern as _aggregate_single_metric.
     """
     # === HOURLY (last 24h) ===
-    for row in MetricsQueryService.get_llm_metrics_combined(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-    ):
-        ts_str = _truncate_to_hour(row["period"]).isoformat()
-        for field, (metric_name, metric_type) in llm_combined_fields.items():
-            key = (org_id, ts_str, metric_name, "default", "")
-            _upsert_agg(hourly_agg, key, metric_type, row[field] or 0)
+    if _writes_hourly(tier):
+        for row in MetricsQueryService.get_llm_metrics_combined(
+            org_id,
+            hourly_start,
+            end_date,
+            granularity=Granularity.HOUR,
+        ):
+            ts_str = _truncate_to_hour(row["period"]).isoformat()
+            for field, (metric_name, metric_type) in llm_combined_fields.items():
+                key = (org_id, ts_str, metric_name, "default", "")
+                _upsert_agg(hourly_agg, key, metric_type, row[field] or 0)
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
+    if not _writes_daily_monthly(tier):
+        return
+
     for row in MetricsQueryService.get_llm_metrics_combined(
         org_id,
         monthly_start,
@@ -395,7 +458,7 @@ def _aggregate_llm_combined(
             _upsert_agg(monthly_agg, key, metric_type, value)
 
 
-def _run_aggregation() -> dict[str, Any]:
+def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, Any]:
     """Execute the actual aggregation logic.
 
     Separated from the task function to keep the lock management clean.
@@ -474,7 +537,8 @@ def _run_aggregation() -> dict[str, Any]:
     )
     total_orgs = Organization.objects.count()
     logger.info(
-        "Aggregation: %d active orgs out of %d total",
+        "Aggregation (%s): %d active orgs out of %d total",
+        tier.value,
         len(active_org_ids),
         total_orgs,
     )
@@ -482,6 +546,7 @@ def _run_aggregation() -> dict[str, Any]:
     if not active_org_ids:
         return {
             "success": True,
+            "tier": tier.value,
             "organizations_processed": 0,
             "hourly": stats["hourly"],
             "daily": stats["daily"],
@@ -524,6 +589,7 @@ def _run_aggregation() -> dict[str, Any]:
                         hourly_agg,
                         daily_agg,
                         monthly_agg,
+                        tier,
                         extra_kwargs,
                     )
                 except Exception:
@@ -542,6 +608,7 @@ def _run_aggregation() -> dict[str, Any]:
                     daily_agg,
                     monthly_agg,
                     llm_combined_fields,
+                    tier,
                 )
             except Exception:
                 logger.exception("Error querying combined LLM metrics for org %s", org_id)
@@ -564,25 +631,37 @@ def _run_aggregation() -> dict[str, Any]:
             stats["errors"] += 1
 
     logger.info(
-        f"Aggregation completed: {stats['orgs_processed']} orgs, "
+        f"Aggregation completed ({tier.value}): {stats['orgs_processed']} orgs, "
         f"hourly={stats['hourly']['upserted']}, "
         f"daily={stats['daily']['upserted']}, "
         f"monthly={stats['monthly']['upserted']}, "
         f"errors={stats['errors']}"
     )
 
+    # Only the windows this run actually queried — a period reported for a tier that
+    # was skipped reads as work that happened.
+    period = {}
+    if _writes_hourly(tier):
+        period["hourly"] = {
+            "start": hourly_start.isoformat(),
+            "end": end_date.isoformat(),
+        }
+    if _writes_daily_monthly(tier):
+        period["daily"] = {"start": daily_start.isoformat(), "end": end_date.isoformat()}
+        period["monthly"] = {
+            "start": monthly_start.isoformat(),
+            "end": end_date.isoformat(),
+        }
+
     return {
         "success": True,
+        "tier": tier.value,
         "organizations_processed": stats["orgs_processed"],
         "hourly": stats["hourly"],
         "daily": stats["daily"],
         "monthly": stats["monthly"],
         "errors": stats["errors"],
-        "period": {
-            "hourly": {"start": hourly_start.isoformat(), "end": end_date.isoformat()},
-            "daily": {"start": daily_start.isoformat(), "end": end_date.isoformat()},
-            "monthly": {"start": monthly_start.isoformat(), "end": end_date.isoformat()},
-        },
+        "period": period,
     }
 
 

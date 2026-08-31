@@ -91,10 +91,17 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
 
     Calls the Celery task body verbatim, Redis lock included — this endpoint exists
     only because the PG consumer has no Django, not to change what the job does.
+
+    Optional ``tier`` in the body selects which metric tiers to write; omitting it
+    writes all of them, matching the task's own default. An unrecognised value is a
+    400 rather than a silent no-op.
     """
 
     def post(self, request: Request) -> Response:
-        return self._run(aggregate_metrics_from_sources)
+        tier = request.data.get("tier") if isinstance(request.data, dict) else None
+        if tier is None:
+            return self._run(aggregate_metrics_from_sources)
+        return self._run(aggregate_metrics_from_sources, tier=tier)
 
 
 class CleanupHourlyMetricsAPIView(_MetricsTaskAPIView):

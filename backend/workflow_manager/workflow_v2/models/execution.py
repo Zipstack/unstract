@@ -272,6 +272,13 @@ class WorkflowExecution(BaseModel):
                     queue_message_id__isnull=True,
                 ),
             ),
+            # Unqualified created_at range — see migration 0029. The two indexes
+            # above lead with workflow_id / pipeline_id, so they are date-ordered
+            # only *within* one workflow and cannot serve a bare date window; the
+            # partial index above is empty in steady state. The dashboard metrics
+            # cron's active-org prefilter asks exactly that bare question and
+            # currently full-scans the table for it.
+            models.Index(fields=["created_at"], name="we_created_at_idx"),
         ]
 
     @property
