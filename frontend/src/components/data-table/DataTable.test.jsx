@@ -742,3 +742,648 @@ describe("DataTable bordered", () => {
     ).toBeNull();
   });
 });
+
+/**
+ * antd's column filters. The shim used to drop `filters`, `filterDropdown`,
+ * `filterIcon`, `onFilter` and `filteredValue` on the floor, which is what
+ * stripped the Execution ID search, the file-name search and the Status filter
+ * off the Execution Logs screens during the shadcn migration.
+ */
+describe("DataTable column filters", () => {
+  const typed = [
+    { id: 1, name: "Row 1", type: "LOG" },
+    { id: 2, name: "Row 2", type: "NOTIFICATION" },
+  ];
+
+  const typeColumn = (extra = {}) => ({
+    title: "Type",
+    dataIndex: "type",
+    key: "type",
+    filters: [
+      { text: "LOG", value: "LOG" },
+      { text: "NOTIFICATION", value: "NOTIFICATION" },
+    ],
+    ...extra,
+  });
+
+  async function openFilter(label = "Filter by Type") {
+    await userEvent.click(screen.getByLabelText(label));
+  }
+
+  // The option labels double as cell values, so every query inside the panel
+  // has to be scoped to it or it matches the table body too.
+  const panel = () =>
+    within(document.querySelector(".ant-table-filter-dropdown"));
+
+  it("renders a filter trigger for a column that declares filters", () => {
+    render(
+      <DataTable columns={[...columns, typeColumn()]} dataSource={typed} />,
+    );
+    expect(screen.getByLabelText("Filter by Type")).toBeInTheDocument();
+  });
+
+  it("renders no trigger on a column with no filter at all", () => {
+    render(<DataTable columns={columns} dataSource={typed} />);
+    expect(screen.queryByLabelText("Filter by Name")).not.toBeInTheDocument();
+  });
+
+  it("applies onFilter locally once the selection is confirmed", async () => {
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          typeColumn({ onFilter: (value, record) => record.type === value }),
+        ]}
+        dataSource={typed}
+      />,
+    );
+    expect(screen.getByText("Row 2")).toBeInTheDocument();
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+    expect(screen.queryByText("Row 2")).not.toBeInTheDocument();
+  });
+
+  /*
+   * antd holds the draft until OK: ticking a box must not filter the table
+   * underneath the open panel.
+   */
+  it("leaves the rows alone until OK is pressed", async () => {
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          typeColumn({ onFilter: (value, record) => record.type === value }),
+        ]}
+        dataSource={typed}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    expect(screen.getByText("Row 2")).toBeInTheDocument();
+  });
+
+  it("puts every row back when the filter is reset", async () => {
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          typeColumn({ onFilter: (value, record) => record.type === value }),
+        ]}
+        dataSource={typed}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    expect(screen.queryByText("Row 2")).not.toBeInTheDocument();
+    await openFilter();
+    await userEvent.click(panel().getByRole("button", { name: "Reset" }));
+    expect(screen.getByText("Row 2")).toBeInTheDocument();
+  });
+
+  /*
+   * `filters` with no `onFilter` is antd's server-side filter — the Execution
+   * Logs status filter. Applying it locally would hide rows the server was
+   * about to replace.
+   */
+  it("does not filter locally when the column has no onFilter", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[...columns, typeColumn()]}
+        dataSource={typed}
+        onChange={onChange}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    expect(screen.getByText("Row 2")).toBeInTheDocument();
+    expect(onChange).toHaveBeenCalledWith(
+      expect.anything(),
+      { type: ["LOG"] },
+      {},
+    );
+  });
+
+  it("sends the reader back to the first page when a filter changes", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[...columns, typeColumn()]}
+        dataSource={typed}
+        pagination={{ current: 4, pageSize: 10, total: 40 }}
+        onChange={onChange}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    expect(onChange.mock.calls[0][0]).toMatchObject({ current: 1 });
+  });
+
+  it("reports null rather than an empty list for an untouched filters column", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          typeColumn(),
+          typeColumn({ title: "Level", key: "level" }),
+        ]}
+        dataSource={typed}
+        onChange={onChange}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    // Every filterable column gets an entry, active or not: LogModal indexes
+    // straight into `filters.level[0]` and a missing key is a TypeError.
+    expect(onChange.mock.calls[0][1]).toEqual({ type: ["LOG"], level: null });
+  });
+
+  it("selects only one option at a time when filterMultiple is false", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[...columns, typeColumn({ filterMultiple: false })]}
+        dataSource={typed}
+        onChange={onChange}
+      />,
+    );
+    await openFilter();
+    await userEvent.click(panel().getByText("LOG"));
+    await userEvent.click(panel().getByText("NOTIFICATION"));
+    await userEvent.click(panel().getByRole("button", { name: "OK" }));
+    expect(onChange.mock.calls[0][1]).toEqual({ type: ["NOTIFICATION"] });
+  });
+
+  it("narrows the option list when filterSearch is on", async () => {
+    render(
+      <DataTable
+        columns={[...columns, typeColumn({ filterSearch: true })]}
+        dataSource={typed}
+      />,
+    );
+    await openFilter();
+    await userEvent.type(
+      panel().getByPlaceholderText("Search in filters"),
+      "NOTIF",
+    );
+    expect(panel().queryByText("LOG")).not.toBeInTheDocument();
+    expect(panel().getByText("NOTIFICATION")).toBeInTheDocument();
+  });
+
+  it("seeds the selection from defaultFilteredValue", async () => {
+    render(
+      <DataTable
+        columns={[
+          ...columns,
+          typeColumn({
+            defaultFilteredValue: ["LOG"],
+            onFilter: (value, record) => record.type === value,
+          }),
+        ]}
+        dataSource={typed}
+      />,
+    );
+    expect(screen.queryByText("Row 2")).not.toBeInTheDocument();
+  });
+
+  it("marks the trigger active while a filter is applied", async () => {
+    render(
+      <DataTable
+        columns={[...columns, typeColumn({ filteredValue: ["LOG"] })]}
+        dataSource={typed}
+      />,
+    );
+    expect(screen.getByLabelText("Filter by Type")).toHaveAttribute(
+      "data-filtered",
+      "true",
+    );
+  });
+});
+
+describe("DataTable custom filterDropdown", () => {
+  const rows = [{ id: 1, name: "Row 1" }];
+
+  /*
+   * LogsTable passes the execution-ID search box as a NODE, not a function: it
+   * owns its own state and never calls back through the table at all.
+   */
+  it("renders a filterDropdown passed as a node", async () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Execution ID",
+            dataIndex: "name",
+            key: "executionId",
+            filterDropdown: <input placeholder="Search execution ID" />,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Execution ID"));
+    expect(
+      screen.getByPlaceholderText("Search execution ID"),
+    ).toBeInTheDocument();
+  });
+
+  /*
+   * LogModal's level filter calls `setSelectedKeys([...])` and `confirm()` back
+   * to back in one handler, so `confirm` has to publish the keys just set
+   * rather than the ones React has yet to re-render with.
+   */
+  it("publishes keys set immediately before confirm in the same handler", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            filterDropdown: ({ setSelectedKeys, confirm }) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedKeys(["ERROR"]);
+                  confirm();
+                }}
+              >
+                Pick ERROR
+              </button>
+            ),
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Level"));
+    await userEvent.click(screen.getByRole("button", { name: "Pick ERROR" }));
+    expect(onChange.mock.calls[0][1]).toEqual({ level: ["ERROR"] });
+  });
+
+  /*
+   * antd reports a filterDropdown column's raw keys, so a cleared one is `[]`
+   * and not `null` — LogModal reads `filters.level[0]`, which throws on null.
+   */
+  it("reports an empty list, not null, for a cleared filterDropdown column", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            filterDropdown: ({ clearFilters }) => (
+              <button type="button" onClick={clearFilters}>
+                Clear
+              </button>
+            ),
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Level"));
+    await userEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(onChange.mock.calls[0][1]).toEqual({ level: [] });
+    expect(onChange.mock.calls[0][1].level[0]).toBeUndefined();
+  });
+
+  it("hands filterIcon the filtered flag as antd does", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            filteredValue: ["ERROR"],
+            filterDropdown: <div />,
+            filterIcon: (filtered) => <span>{filtered ? "on" : "off"}</span>,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    expect(screen.getByText("on")).toBeInTheDocument();
+  });
+
+  /*
+   * The sort handler sits on the <th>, so a click on the icon nested inside it
+   * would otherwise re-sort the column under the panel that just opened.
+   */
+  it("does not sort the column when the filter icon is clicked", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            sorter: true,
+            filterDropdown: <div />,
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Level"));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * antd reads the sorter's shape: a function sorts locally with that
+ * comparator, `sorter: true` means the SERVER sorts and the table should only
+ * report the click. Both used to sort locally with a guessed comparator.
+ */
+describe("DataTable sorting", () => {
+  const rows = [
+    { id: 1, name: "beta", size: 2 },
+    { id: 2, name: "alpha", size: 10 },
+  ];
+
+  const bodyText = () =>
+    Array.from(document.querySelectorAll("tbody tr")).map(
+      (tr) => tr.querySelector("td").textContent,
+    );
+
+  it("sorts with the comparator the column supplied", async () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Name",
+            dataIndex: "name",
+            key: "name",
+            sorter: (a, b) => a.name.localeCompare(b.name),
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    expect(bodyText()).toEqual(["beta", "alpha"]);
+    await userEvent.click(screen.getByText("Name"));
+    expect(bodyText()).toEqual(["alpha", "beta"]);
+  });
+
+  it("sorts ascending on the first click, as antd does", async () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Size",
+            dataIndex: "size",
+            key: "size",
+            sorter: (a, b) => a.size - b.size,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    await userEvent.click(screen.getByText("Size"));
+    expect(bodyText()).toEqual(["2", "10"]);
+  });
+
+  /*
+   * The rows on screen are one server page. Reordering them locally made the
+   * Execution Logs list look sorted while the rows that belonged at the top
+   * stayed on page two.
+   */
+  it("leaves a server-sorted column's rows in the order they arrived", async () => {
+    render(
+      <DataTable
+        columns={[
+          { title: "Name", dataIndex: "name", key: "name", sorter: true },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    await userEvent.click(screen.getByText("Name"));
+    expect(bodyText()).toEqual(["beta", "alpha"]);
+  });
+
+  it("reports the sorted column through antd's onChange", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Executed At",
+            dataIndex: "executedAt",
+            key: "executedAt",
+            sorter: true,
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByText("Executed At"));
+    expect(onChange.mock.calls[0][2]).toMatchObject({
+      field: "executedAt",
+      columnKey: "executedAt",
+      order: "ascend",
+    });
+    await userEvent.click(screen.getByText("Executed At"));
+    expect(onChange.mock.calls[1][2]).toMatchObject({ order: "descend" });
+  });
+
+  it("reports an empty sorter once sorting is cleared", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          { title: "Name", dataIndex: "name", key: "name", sorter: true },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    const header = screen.getByText("Name");
+    await userEvent.click(header);
+    await userEvent.click(header);
+    await userEvent.click(header);
+    expect(onChange.mock.calls[2][2]).toEqual({});
+  });
+});
+
+/**
+ * antd's `sortDirections`. All four Execution Logs tables pass
+ * `["ascend", "descend", "ascend"]` — the idiom for "never cycle back to
+ * unsorted" — and the prop was landing on the wrapper <div> instead, where
+ * React warned about an unrecognised DOM attribute on every render.
+ */
+describe("DataTable sortDirections", () => {
+  const rows = [{ id: 1, name: "a" }];
+  const sortable = [
+    { title: "Name", dataIndex: "name", key: "name", sorter: true },
+  ];
+
+  it("keeps cycling between ascend and descend when a direction repeats", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={sortable}
+        dataSource={rows}
+        sortDirections={["ascend", "descend", "ascend"]}
+        onChange={onChange}
+      />,
+    );
+    const header = screen.getByText("Name");
+    await userEvent.click(header);
+    await userEvent.click(header);
+    await userEvent.click(header);
+    // A third click returns to ascend rather than clearing the sort.
+    expect(onChange.mock.calls[2][2]).toMatchObject({ order: "ascend" });
+  });
+
+  it("leaves the prop off the DOM", () => {
+    const { container } = render(
+      <DataTable
+        columns={sortable}
+        dataSource={rows}
+        sortDirections={["ascend", "descend"]}
+      />,
+    );
+    expect(
+      container.querySelector("[sortdirections], [sortDirections]"),
+    ).toBeNull();
+  });
+});
+
+/**
+ * A CONTROLLED filter column — one passing `filteredValue` — still has to
+ * report the keys the user just picked, not the value its parent is currently
+ * holding. Echoing `filteredValue` back is how the parent learns nothing
+ * changed, which left LogModal's level filter permanently stuck.
+ */
+describe("DataTable controlled filters", () => {
+  const rows = [{ id: 1, name: "Row 1" }];
+
+  it("reports the newly picked keys, not the parent's stale filteredValue", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            // The parent holds "no level selected" while the user picks ERROR.
+            filteredValue: [],
+            filterDropdown: ({ setSelectedKeys, confirm }) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedKeys(["ERROR"]);
+                  confirm();
+                }}
+              >
+                Pick ERROR
+              </button>
+            ),
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Level"));
+    await userEvent.click(screen.getByRole("button", { name: "Pick ERROR" }));
+    expect(onChange.mock.calls[0][1]).toEqual({ level: ["ERROR"] });
+  });
+
+  it("drives the parent's state through a full controlled round trip", async () => {
+    function Harness() {
+      const [level, setLevel] = useState(null);
+      return (
+        <>
+          <span data-testid="level">{level ?? "none"}</span>
+          <DataTable
+            columns={[
+              {
+                title: "Level",
+                dataIndex: "name",
+                key: "level",
+                filteredValue: level ? [level] : [],
+                filterDropdown: ({ setSelectedKeys, confirm }) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedKeys(["ERROR"]);
+                      confirm();
+                    }}
+                  >
+                    Pick ERROR
+                  </button>
+                ),
+              },
+            ]}
+            dataSource={rows}
+            onChange={(_p, filters) => setLevel(filters.level[0] ?? null)}
+          />
+        </>
+      );
+    }
+    render(<Harness />);
+    await userEvent.click(screen.getByLabelText("Filter by Level"));
+    await userEvent.click(screen.getByRole("button", { name: "Pick ERROR" }));
+    expect(screen.getByTestId("level")).toHaveTextContent("ERROR");
+  });
+
+  it("leaves the other columns' reported values alone", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Level",
+            dataIndex: "name",
+            key: "level",
+            filteredValue: ["INFO"],
+            filterDropdown: <div />,
+          },
+          {
+            title: "Stage",
+            dataIndex: "name",
+            key: "stage",
+            filters: [{ text: "RUN", value: "RUN" }],
+            filterDropdown: ({ setSelectedKeys, confirm }) => (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedKeys(["RUN"]);
+                  confirm();
+                }}
+              >
+                Pick RUN
+              </button>
+            ),
+          },
+        ]}
+        dataSource={rows}
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByLabelText("Filter by Stage"));
+    await userEvent.click(screen.getByRole("button", { name: "Pick RUN" }));
+    expect(onChange.mock.calls[0][1]).toEqual({
+      level: ["INFO"],
+      stage: ["RUN"],
+    });
+  });
+});

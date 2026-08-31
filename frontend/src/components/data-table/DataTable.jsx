@@ -12,7 +12,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import * as React from "react";
-
+import { ColumnFilter, columnKey } from "@/components/data-table/ColumnFilter";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Empty } from "@/components/ui/shims/antd-leaves";
 import { Spinner } from "@/components/ui/spinner";
@@ -54,7 +54,14 @@ import { cn } from "@/lib/utils";
  */
 function toColumn(c, path) {
   const id = String(c.key ?? c.dataIndex ?? path);
-  const meta = { align: c.align, width: c.width, className: c.className };
+  // `column` rides along so the header can render antd's filter affordance,
+  // which is declared on the antd def and has no TanStack equivalent.
+  const meta = {
+    align: c.align,
+    width: c.width,
+    className: c.className,
+    column: c,
+  };
 
   if (c.children?.length) {
     return {
@@ -72,6 +79,20 @@ function toColumn(c, path) {
     accessorKey: c.dataIndex,
     header: c.title,
     enableSorting: Boolean(c.sorter),
+    /*
+     * antd reads the sorter's SHAPE: a function is a local comparator, while
+     * `sorter: true` means "the server sorts this — just tell me it was
+     * clicked". Both used to sort locally with TanStack's guessed comparator,
+     * which got it wrong in both directions. A `localeCompare` sorter was
+     * replaced by a generic one, and — worse — every `sorter: true` column
+     * reordered the ten rows already on screen while the parent's `onChange`
+     * never fired, so the Execution Logs list looked sorted and wasn't: the
+     * rows it should have pulled from page two stayed on page two.
+     */
+    sortingFn:
+      typeof c.sorter === "function"
+        ? (a, b) => c.sorter(a.original, b.original)
+        : () => 0,
     meta,
     cell: ({ row }) => {
       const value = c.dataIndex ? row.original?.[c.dataIndex] : undefined;
@@ -110,6 +131,55 @@ function toColumns(antdColumns = [], rowSelection) {
     },
     ...cols,
   ];
+}
+
+/** Every leaf antd column, flattened out of any banded headers. */
+function leafColumns(antdColumns = []) {
+  return antdColumns
+    .filter(Boolean)
+    .flatMap((c) => (c.children?.length ? leafColumns(c.children) : [c]));
+}
+
+/** Does this column offer a filter at all? */
+function isFilterable(c) {
+  return Boolean(c.filters || c.filterDropdown);
+}
+
+/**
+ * antd's `onChange` hands back a `filters` object with an entry for EVERY
+ * filterable column, not just the active ones — LogModal indexes straight into
+ * `filters.level[0]`, so a missing key is a TypeError rather than "no filter".
+ *
+ * The null-vs-empty split is antd's own: a column driving its own
+ * `filterDropdown` reports its raw keys (`[]` when cleared), while a
+ * `filters`-list column reports `null` once nothing is ticked.
+ */
+function toFilterInfo(cols, keysFor) {
+  const info = {};
+  for (const c of cols) {
+    if (!isFilterable(c)) {
+      continue;
+    }
+    const keys = keysFor(c);
+    info[columnKey(c)] = c.filterDropdown ? keys : keys.length ? keys : null;
+  }
+  return info;
+}
+
+/** A TanStack sort entry in the shape antd's `onChange` promises. */
+function toSorterInfo(sortEntry, cols) {
+  if (!sortEntry) {
+    return {};
+  }
+  const column = cols.find(
+    (c) => String(c.key ?? c.dataIndex) === sortEntry.id,
+  );
+  return {
+    column,
+    columnKey: column?.key,
+    field: column?.dataIndex,
+    order: sortEntry.desc ? "descend" : "ascend",
+  };
 }
 
 /** One 24px square in antd's pager: a page number, an arrow, or the ellipsis. */
@@ -244,17 +314,67 @@ function DataTable({
    * click Manage Documents to upload PDFs" should be.
    */
   locale,
+  /**
+   * antd's `sortDirections`: the orders a header cycles through.
+   *
+   * Declared for the same reason as `onRow`, `showHeader`, `scroll`, `bordered`
+   * and `locale` above — undeclared it fell into `...props` and onto the
+   * wrapper <div>, where React warned "does not recognize the `sortDirections`
+   * prop on a DOM element" on every render of all four Execution Logs tables.
+   * All four pass `["ascend", "descend", "ascend"]`, antd's idiom for "never
+   * cycle back to unsorted": a repeated entry is what removes the third,
+   * order-less state.
+   */
+  sortDirections,
   ...props
 }) {
   const empty = locale?.emptyText ?? emptyText;
   const [sorting, setSorting] = React.useState([]);
   const [selection, setSelection] = React.useState({});
 
-  const data = React.useMemo(() => dataSource ?? [], [dataSource]);
+  const rows = React.useMemo(() => dataSource ?? [], [dataSource]);
   const cols = React.useMemo(
     () => toColumns(columns, rowSelection),
     [columns, rowSelection],
   );
+  const leaves = React.useMemo(() => leafColumns(columns), [columns]);
+
+  /*
+   * Committed filters, keyed by antd column key. Only the uncontrolled ones
+   * live here: a column passing `filteredValue` is driven by its parent, and a
+   * column passing only `defaultFilteredValue` seeds from that until the user
+   * touches it. Resolving all three in one place means the rest of the
+   * component never has to know which kind it is looking at.
+   */
+  const [filterState, setFilterState] = React.useState({});
+  const keysFor = React.useCallback(
+    (c) => {
+      if (c.filteredValue !== undefined) {
+        return c.filteredValue ?? [];
+      }
+      const committed = filterState[columnKey(c)];
+      return committed ?? c.defaultFilteredValue ?? [];
+    },
+    [filterState],
+  );
+
+  /*
+   * antd applies `onFilter` itself: OR across the keys ticked within one
+   * column, AND across columns. A column with `filters` but NO `onFilter` is
+   * asking the server to do it, so it must not also be applied here — that is
+   * the Execution Logs status filter, which pages on the server.
+   */
+  const data = React.useMemo(() => {
+    const active = leaves.filter(
+      (c) => typeof c.onFilter === "function" && keysFor(c).length > 0,
+    );
+    if (active.length === 0) {
+      return rows;
+    }
+    return rows.filter((record) =>
+      active.every((c) => keysFor(c).some((v) => c.onFilter(v, record))),
+    );
+  }, [rows, leaves, keysFor]);
 
   // antd reads `scroll.x === true` as "as wide as the content needs".
   const scrollX = scroll?.x === true ? "max-content" : scroll?.x;
@@ -295,12 +415,78 @@ function DataTable({
     if (pagination?.current === undefined) {
       setInternalPage(next);
     }
-    onChange?.({ ...pagination, current: next, pageSize, total }, {}, {});
+    onChange?.(
+      { ...pagination, current: next, pageSize, total },
+      toFilterInfo(leaves, keysFor),
+      toSorterInfo(sorting[0], leaves),
+    );
+  };
+
+  /*
+   * Sorting and filtering both report through antd's single
+   * `onChange(pagination, filters, sorter)`, and both used to report nothing at
+   * all: `onSortingChange` went straight to `setSorting`, and filters had no
+   * state to change. Every server-sorted and server-filtered list was inert.
+   */
+  const handleSortingChange = (updater) => {
+    const next = typeof updater === "function" ? updater(sorting) : updater;
+    setSorting(next);
+    onChange?.(
+      { ...pagination, current: currentPage, pageSize, total },
+      toFilterInfo(leaves, keysFor),
+      toSorterInfo(next[0], leaves),
+    );
+  };
+
+  const commitFilter = (c, keys) => {
+    const next = { ...filterState, [columnKey(c)]: keys };
+    setFilterState(next);
+    /*
+     * The column being committed reports the keys the user just picked — even
+     * when it is CONTROLLED. `filteredValue` is the parent's current value,
+     * which is exactly the stale one here: reporting it back is how the parent
+     * would learn nothing changed. LogModal's level filter is controlled on
+     * `selectedLogLevel` and sets it from this callback, so echoing its own
+     * `filteredValue` left the filter permanently stuck on "no level".
+     * Every OTHER column still reports its own controlled or committed value.
+     */
+    const committedKey = columnKey(c);
+    const nextKeysFor = (col) => {
+      if (columnKey(col) === committedKey) {
+        return keys;
+      }
+      return col.filteredValue !== undefined
+        ? (col.filteredValue ?? [])
+        : (next[columnKey(col)] ?? col.defaultFilteredValue ?? []);
+    };
+    if (pagination?.current === undefined) {
+      setInternalPage(1);
+    }
+    onChange?.(
+      // antd sends the user back to the first page when the filter changes:
+      // page 4 of the old result set means nothing in the new one.
+      { ...pagination, current: 1, pageSize, total },
+      toFilterInfo(leaves, nextKeysFor),
+      toSorterInfo(sorting[0], leaves),
+    );
   };
 
   const table = useReactTable({
     data,
     columns: cols,
+    // A repeat in the list means the cycle never reaches "unsorted"; a list
+    // that leads with "descend" means the first click sorts that way.
+    enableSortingRemoval: sortDirections
+      ? new Set(sortDirections).size === sortDirections.length
+      : true,
+    /*
+     * antd's first click is always ascending unless `sortDirections` leads
+     * with "descend". Set here rather than per column because TanStack lets a
+     * column def override the table option, and its own default is
+     * descending-first for numeric columns — which silently reversed the first
+     * click on every numeric column.
+     */
+    sortDescFirst: sortDirections?.[0] === "descend",
     state: {
       sorting,
       rowSelection: selection,
@@ -310,7 +496,7 @@ function DataTable({
         ? { pagination: { pageIndex: currentPage - 1, pageSize } }
         : {}),
     },
-    onSortingChange: setSorting,
+    onSortingChange: handleSortingChange,
     onRowSelectionChange: setSelection,
     /*
      * The pager below is the only thing that may change the page, so TanStack
@@ -457,6 +643,7 @@ function DataTable({
                 >
                   {hg.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
+                    const antdColumn = header.column.columnDef.meta?.column;
                     // A banded column's own row: antd centres the band title
                     // over the leaves it covers.
                     const isBand = header.subHeaders.length > 0;
@@ -518,6 +705,15 @@ function DataTable({
                             ) : null}
                             {sorted === "desc" ? (
                               <ChevronDown className="size-3" />
+                            ) : null}
+                            {antdColumn && isFilterable(antdColumn) ? (
+                              <ColumnFilter
+                                column={antdColumn}
+                                selectedKeys={keysFor(antdColumn)}
+                                onConfirm={(keys) =>
+                                  commitFilter(antdColumn, keys)
+                                }
+                              />
                             ) : null}
                           </span>
                         )}
