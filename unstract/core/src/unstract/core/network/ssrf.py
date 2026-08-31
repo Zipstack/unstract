@@ -1,34 +1,16 @@
 """Shared egress guard for user-supplied webhook URLs.
 
-Both webhook sinks — prompt postprocessing and pipeline notifications — take a
-URL from a tenant and hand it to ``requests``. This module is the single place
-that decides whether such a URL may be dialled, so a new sink does not have to
-carry its own copy of the rules.
+Both webhook sinks — prompt postprocessing and pipeline notifications — hand a
+tenant-supplied URL to ``requests``. This module is the single place that
+decides whether one may be dialled, so a new sink does not carry its own copy
+of the rules.
 
-Three things are checked, in the order the code runs them:
-
-1. **Scheme and userinfo.** Anything outside the caller's allowlist is refused,
-   as is a URL carrying credentials.
-2. **Parser agreement.** This module reads the URL with ``urllib.parse`` while
-   the transport underneath ``requests`` resolves it with ``urllib3``. The two
-   do not always agree on the host, and where they disagree the URL is refused,
-   because the host approved here is not the host the socket connects to.
-   Comparing the two parsers is an invariant rather than a list of characters to
-   reject, so it holds as either parser changes — provided both sides normalize
-   the same way, which is why ``_normalize_host`` mirrors urllib3's encoder
-   rather than reaching for the stdlib ``idna`` codec.
-3. **Resolved address**, when ``resolve`` is set. Every address the host
-   resolves to must be publicly routable. Loopback, private, link-local (which
-   covers the cloud metadata endpoints), reserved and multicast ranges are all
-   refused.
-
-Every refusal carries a reason. ``is_safe_webhook_url`` answers the yes/no
-question and logs the reason; ``webhook_url_refusal`` returns it, so a sink can
-tell a transient resolver failure (retryable) from a URL that will never be
-allowed (not retryable).
+``is_safe_webhook_url`` answers the yes/no question and logs the reason;
+``webhook_url_refusal`` returns the reason, so a sink can tell a resolver
+outage (retryable) from a URL that will never be allowed.
 
 Note the ceiling: resolve-then-connect cannot cover a name that is re-resolved
-to an internal address between this check and the socket. The control for that
+to an internal address between the check and the socket. The control for that
 is an egress policy on the worker pods, not application code.
 """
 
@@ -61,6 +43,14 @@ REFUSED_NON_PUBLIC = "non-public-address"
 # RFC 6761 reserves these to loopback, so no lookup is needed to know where
 # they point.
 _LOOPBACK_NAMES = ("localhost",)
+
+# Ranges IANA marks as not globally reachable that ``is_global`` still admits,
+# because the stdlib's copy of the registries predates them or omits them.
+# Multicast is handled separately in ``_is_public`` via ``is_multicast``.
+_NOT_GLOBALLY_REACHABLE = (
+    ipaddress.ip_network("192.88.99.0/24"),  # 6to4 relay anycast, deprecated
+    ipaddress.ip_network("5f00::/16"),  # SRv6 SIDs
+)
 
 
 def _normalize_host(host: str | None) -> str:
@@ -131,16 +121,21 @@ def _resolve(host: str) -> set[str]:
 def _is_public(addr: str) -> bool:
     """Whether an address is globally routable.
 
-    ``is_global`` is an allowlist maintained against the IANA special-purpose
-    registries, so it stays correct as ranges are added. Enumerating the
-    negative flags instead misses ranges that belong to none of them — RFC 6598
-    shared address space (100.64.0.0/10) is private in practice but is not
-    ``is_private``, ``is_reserved`` or any of the rest.
+    ``is_global`` is the base check because it is an allowlist maintained
+    against the IANA registries; enumerating the negative flags instead misses
+    ranges that belong to none of them, such as RFC 6598 shared address space.
+    It is not sufficient alone — it reports multicast and the
+    ``_NOT_GLOBALLY_REACHABLE`` ranges as global, so those are refused here.
     """
     try:
-        return ipaddress.ip_address(addr).is_global
+        ip = ipaddress.ip_address(addr)
     except ValueError:
         return False
+    if not ip.is_global or ip.is_multicast:
+        return False
+    return not any(
+        net.version == ip.version and ip in net for net in _NOT_GLOBALLY_REACHABLE
+    )
 
 
 def webhook_url_refusal(
@@ -178,6 +173,11 @@ def webhook_url_refusal(
         # would connect.
         return REFUSED_UNPARSEABLE
 
+    # ``urlparse`` decided the host above; urllib3 is what the transport under
+    # ``requests`` actually dials. Where the two disagree, the host approved
+    # here is not the host the socket connects to. Comparing them is an
+    # invariant rather than a list of characters to reject, so it holds as
+    # either parser changes.
     host = _normalize_host(parsed.hostname)
     if host != _normalize_host(transport_host):
         return REFUSED_PARSER_DISAGREEMENT
@@ -217,21 +217,11 @@ def is_safe_webhook_url(
 ) -> bool:
     """Whether ``url`` may be dialled from inside the network.
 
-    Args:
-        url: The tenant-supplied URL.
-        allowed_schemes: Schemes to accept. Callers that already require TLS
-            should pass ``("https",)`` rather than widening to the default.
-        resolve: Whether to resolve the host and check every address. Leave it
-            on at the sinks — that is the real control. Turn it off on request
-            handling threads: ``socket.getaddrinfo`` honours no timeout, so a
-            slow or hostile resolver would stall the worker serving the
-            request. With it off, the syntactic checks still run and an address
-            literal is still refused; a *hostname* that resolves internally is
-            accepted here and caught at the sink instead.
-
-    Returns:
-        True only if the URL is well-formed, unambiguous to both parsers, and
-        (when ``resolve`` is set) maps entirely to public addresses.
+    Leave ``resolve`` on at the sinks — that is the real control. Turn it off on
+    request-handling threads: ``socket.getaddrinfo`` honours no timeout, so a
+    slow or hostile resolver would stall the worker serving the request. With it
+    off the syntactic checks still run and an address literal is still refused,
+    but a hostname that resolves inward is accepted here and caught at the sink.
     """
     reason = webhook_url_refusal(url, allowed_schemes=allowed_schemes, resolve=resolve)
     if reason is None:

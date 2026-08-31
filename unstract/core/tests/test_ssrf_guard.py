@@ -91,6 +91,24 @@ def test_internal_targets_are_refused(url):
 @pytest.mark.parametrize(
     "url",
     [
+        # IANA marks all of these as not globally reachable, but
+        # ``ipaddress.is_global`` reports them as global on CPython 3.12, so
+        # the guard has to refuse them itself. If a future CPython folds one of
+        # these in, this test keeps passing.
+        "https://224.0.0.1/hook",  # IPv4 multicast, all-hosts
+        "https://239.255.255.250/hook",  # IPv4 multicast, SSDP
+        "https://[ff02::1]/hook",  # IPv6 multicast, all-nodes
+        "https://192.88.99.1/hook",  # 6to4 relay anycast
+        "https://[5f00::1]/hook",  # SRv6 SIDs
+    ],
+)
+def test_ranges_the_stdlib_calls_global_are_still_refused(url):
+    assert is_safe_webhook_url(url) is False
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
         "ftp://example.com/hook",
         "file:///etc/passwd",
         "gopher://example.com/",
