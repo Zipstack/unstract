@@ -30,17 +30,13 @@ from flipt_grpc.client import FliptGrpcClient, GrpcClientOptions
 # Create a client
 client = FliptGrpcClient(
     opts=GrpcClientOptions(
-        address="localhost:9000",
-        namespace_key="default",
-        environment_key="production"
+        address="localhost:9000", namespace_key="default", environment_key="production"
     )
 )
 
 # Evaluate a boolean flag
 result = client.evaluate_boolean(
-    flag_key="my-feature",
-    entity_id="user-123",
-    context={"region": "us-west"}
+    flag_key="my-feature", entity_id="user-123", context={"region": "us-west"}
 )
 
 print(f"Feature enabled: {result.enabled}")
@@ -72,7 +68,7 @@ client = FliptGrpcClient(opts=GrpcClientOptions(address="localhost:9000"))
 result = client.evaluate_boolean(
     flag_key="enable-feature-x",
     entity_id="user-456",
-    context={"plan": "premium", "region": "us-east"}
+    context={"plan": "premium", "region": "us-east"},
 )
 
 print(f"Enabled: {result.enabled}")
@@ -86,9 +82,7 @@ client.close()
 
 ```python
 result = client.evaluate_variant(
-    flag_key="color-theme",
-    entity_id="user-789",
-    context={"device": "mobile"}
+    flag_key="color-theme", entity_id="user-789", context={"device": "mobile"}
 )
 
 print(f"Variant: {result.variant_key}")
@@ -112,25 +106,21 @@ Evaluate multiple flags in a single request:
 
 ```python
 batch_requests = [
-    {
-        "flag_key": "feature-a",
-        "entity_id": "user-123",
-        "context": {"role": "admin"}
-    },
-    {
-        "flag_key": "feature-b",
-        "entity_id": "user-123",
-        "context": {"role": "admin"}
-    }
+    {"flag_key": "feature-a", "entity_id": "user-123", "context": {"role": "admin"}},
+    {"flag_key": "feature-b", "entity_id": "user-123", "context": {"role": "admin"}},
 ]
 
 result = client.evaluate_batch(requests=batch_requests)
 
 for response in result.responses:
     if response.HasField("boolean_response"):
-        print(f"Flag: {response.boolean_response.flag_key}, Enabled: {response.boolean_response.enabled}")
+        print(
+            f"Flag: {response.boolean_response.flag_key}, Enabled: {response.boolean_response.enabled}"
+        )
     elif response.HasField("variant_response"):
-        print(f"Flag: {response.variant_response.flag_key}, Variant: {response.variant_response.variant_key}")
+        print(
+            f"Flag: {response.variant_response.flag_key}, Variant: {response.variant_response.variant_key}"
+        )
 ```
 
 ### Context Manager
@@ -152,7 +142,7 @@ client = FliptGrpcClient(
         address="flipt.example.com:443",
         namespace_key="production",
         secure=True,
-        client_token="your-client-token"
+        client_token="your-client-token",
     )
 )
 
@@ -165,9 +155,7 @@ client.close()
 ```python
 client = FliptGrpcClient(
     opts=GrpcClientOptions(
-        address="flipt.internal:9000",
-        secure=True,
-        ssl_cert_path="/path/to/ca-cert.pem"
+        address="flipt.internal:9000", secure=True, ssl_cert_path="/path/to/ca-cert.pem"
     )
 )
 ```
@@ -245,6 +233,7 @@ Then fix the imports in the generated `*_grpc.py` files to use relative imports:
 ```python
 # Change this:
 from flipt import flipt_simple_pb2
+
 # To this:
 from . import flipt_simple_pb2
 ```

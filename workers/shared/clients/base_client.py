@@ -17,9 +17,8 @@ from typing import Any
 import requests
 from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
 from unstract.flags.feature_flag import check_feature_flag_status
+from urllib3.util.retry import Retry
 
 from ..data.models import APIResponse
 from ..enums import HTTPMethod

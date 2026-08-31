@@ -37,7 +37,6 @@ from typing import Any
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogProcessingTask
 

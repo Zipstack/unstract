@@ -683,8 +683,7 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "deployment",
             "description": (
-                "Run an API deployment against one or more documents and poll "
-                "the result."
+                "Run an API deployment against one or more documents and poll the result."
             ),
         }
     ],

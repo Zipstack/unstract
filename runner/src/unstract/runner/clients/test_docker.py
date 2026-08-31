@@ -3,7 +3,6 @@ import os
 from unittest.mock import MagicMock
 
 import pytest
-
 from docker.errors import ImageNotFound
 from unstract.runner.constants import Env
 

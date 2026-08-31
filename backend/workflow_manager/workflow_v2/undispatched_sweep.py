@@ -43,7 +43,6 @@ import logging
 import os
 
 from django.utils import timezone
-
 from unstract.core.data_models import ExecutionStatus
 
 logger = logging.getLogger(__name__)
