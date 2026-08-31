@@ -198,6 +198,14 @@ class WorkflowFileExecution(BaseModel):
                 ],
                 name="wf_provider_uuid_path_stat_idx",
             ),
+            # Every index above leads with workflow_execution, so the dashboard
+            # metrics cron's "files in status X within a date window" filter has no
+            # entry point here and the planner drives from workflow_execution
+            # instead — a full scan of it. See migration 0007.
+            models.Index(
+                fields=["status", "created_at"],
+                name="wfe_status_created_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
