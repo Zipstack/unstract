@@ -220,6 +220,15 @@ function ColumnFilter({ column, selectedKeys, onConfirm }) {
           data-filtered={filtered ? "true" : undefined}
           className={cn(
             "ant-table-filter-trigger inline-flex cursor-pointer items-center rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground",
+            /*
+             * The trigger sizes its icon rather than trusting the call site to,
+             * exactly as antd does (`.ant-table-filter-trigger .anticon` is a
+             * 12px font-size). Every custom `filterIcon` in the app — the two
+             * Search boxes and the two Filter menus — is a bare lucide icon, so
+             * all four came out at lucide's 24px default and towered over both
+             * the header text and the sort carets beside them.
+             */
+            "[&_svg]:size-3.5",
             filtered && "active text-primary hover:text-primary",
           )}
           /*

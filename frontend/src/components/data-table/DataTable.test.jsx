@@ -1222,6 +1222,140 @@ describe("DataTable sorting", () => {
 });
 
 /**
+ * The header's affordances: what a column ADVERTISES before it is touched, and
+ * where the advertisement sits.
+ *
+ * Both were wrong on Execution Logs. A sortable column drew nothing at all
+ * until it was sorted, so "Executed At" and "Execution Time" looked inert; and
+ * the sorter and filter icons trailed the title inline, landing wherever each
+ * title happened to end rather than on the right-hand rule antd puts them on.
+ */
+describe("DataTable header affordances", () => {
+  const rows = [{ id: 1, name: "a" }];
+
+  const sorterIn = (title) =>
+    screen
+      .getByText(title)
+      .closest("th")
+      .querySelector(".ant-table-column-sorter");
+
+  it("shows a sortable column's sorter before it is sorted", () => {
+    render(
+      <DataTable
+        columns={[
+          { title: "Sortable", dataIndex: "name", key: "name", sorter: true },
+          { title: "Plain", dataIndex: "name", key: "plain" },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    // Two carets, so the column reads as "sorts, currently unsorted" rather
+    // than as an ordinary column.
+    expect(sorterIn("Sortable").querySelectorAll("svg")).toHaveLength(2);
+    // An unsortable column must not grow one.
+    expect(sorterIn("Plain")).toBeNull();
+  });
+
+  it("marks the applied direction and only that one", async () => {
+    render(
+      <DataTable
+        columns={[
+          { title: "Sortable", dataIndex: "name", key: "name", sorter: true },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    const highlighted = () =>
+      Array.from(sorterIn("Sortable").querySelectorAll("svg")).map((svg) =>
+        svg.classList.contains("text-primary"),
+      );
+
+    expect(highlighted()).toEqual([false, false]);
+    await userEvent.click(screen.getByText("Sortable"));
+    expect(highlighted()).toEqual([true, false]);
+    await userEvent.click(screen.getByText("Sortable"));
+    expect(highlighted()).toEqual([false, true]);
+  });
+
+  it("puts the sorter and the filter after the title, not around it", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Both",
+            dataIndex: "name",
+            key: "name",
+            sorter: true,
+            filters: [{ text: "a", value: "a" }],
+            onFilter: () => true,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    /*
+     * The order in the DOM is what the right-hand alignment rests on: title
+     * first in a flex row that grows, then the icon cluster pushed to the
+     * cell's trailing edge.
+     */
+    const th = screen.getByText("Both").closest("th");
+    const cluster = th.querySelector(".ant-table-column-sorter").parentElement;
+    expect(cluster.querySelector(".ant-table-filter-trigger")).not.toBeNull();
+    expect(
+      screen.getByText("Both").compareDocumentPosition(cluster) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps a centred sortable column's title centred", () => {
+    // Three columns in the app are both aligned and sortable; antd centres the
+    // title in the space the sorter leaves rather than flushing it left.
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Errors",
+            dataIndex: "name",
+            key: "name",
+            align: "center",
+            sorter: true,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    const th = screen.getByText("Errors").closest("th");
+    expect(th.className).toContain("text-center");
+    // The title box grows, so the inherited text-align has room to act on.
+    expect(screen.getByText("Errors").className).toContain("flex-1");
+  });
+
+  it("sizes a call-site's own filter icon rather than trusting it to", () => {
+    // Every filterIcon in the app is a bare lucide icon, which defaults to
+    // 24px and dwarfed both the title and the carets beside it.
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Filtered",
+            dataIndex: "name",
+            key: "name",
+            filters: [{ text: "a", value: "a" }],
+            filterIcon: () => <svg data-testid="custom-icon" />,
+            onFilter: () => true,
+          },
+        ]}
+        dataSource={rows}
+      />,
+    );
+    expect(
+      screen.getByTestId("custom-icon").closest(".ant-table-filter-trigger")
+        .className,
+    ).toContain("[&_svg]:size-3.5");
+  });
+});
+
+/**
  * antd's `sortDirections`. All four Execution Logs tables pass
  * `["ascend", "descend", "ascend"]` — the idiom for "never cycle back to
  * unsorted" — and the prop was landing on the wrapper <div> instead, where

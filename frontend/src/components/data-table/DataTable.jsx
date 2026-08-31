@@ -146,6 +146,41 @@ function isFilterable(c) {
 }
 
 /**
+ * antd's sorter affordance: a caret pair, ALWAYS on for a sortable column.
+ *
+ * Only the active direction used to render, so an unsorted column looked
+ * exactly like an unsortable one — on Execution Logs neither "Executed At" nor
+ * "Execution Time" advertised that they sort at all, and the single chevron
+ * that appeared after a click read as decoration rather than as state. antd
+ * shows both carets greyed and lights the applied one, which is what makes the
+ * column both discoverable and self-describing once sorted.
+ */
+function SortCarets({ sorted }) {
+  return (
+    <span
+      className="ant-table-column-sorter inline-flex flex-col items-center justify-center leading-none"
+      aria-hidden="true"
+    >
+      <ChevronUp
+        className={cn(
+          // The pair has to read as one control, so the carets overlap: two
+          // 12px lucide icons stacked at their natural height sit a header row
+          // apart.
+          "-mb-[3px] size-3",
+          sorted === "asc" ? "text-primary" : "text-muted-foreground/40",
+        )}
+      />
+      <ChevronDown
+        className={cn(
+          "size-3",
+          sorted === "desc" ? "text-primary" : "text-muted-foreground/40",
+        )}
+      />
+    </span>
+  );
+}
+
+/**
  * antd's `onChange` hands back a `filters` object with an entry for EVERY
  * filterable column, not just the active ones — LogModal indexes straight into
  * `filters.level[0]`, so a missing key is a TypeError rather than "no filter".
@@ -644,6 +679,11 @@ function DataTable({
                   {hg.headers.map((header) => {
                     const sorted = header.column.getIsSorted();
                     const antdColumn = header.column.columnDef.meta?.column;
+                    const filterable = Boolean(
+                      antdColumn && isFilterable(antdColumn),
+                    );
+                    const hasAffordance =
+                      header.column.getCanSort() || filterable;
                     // A banded column's own row: antd centres the band title
                     // over the leaves it covers.
                     const isBand = header.subHeaders.length > 0;
@@ -695,25 +735,56 @@ function DataTable({
                         onClick={header.column.getToggleSortingHandler()}
                       >
                         {header.isPlaceholder ? null : (
-                          <span className="inline-flex items-center gap-1">
-                            {flexRender(
-                              header.column.columnDef.header,
-                              header.getContext(),
+                          /*
+                           * antd pins a column's affordances to the RIGHT edge
+                           * of its header cell (`.ant-table-column-sorters` is
+                           * `justify-content: space-between`), so a row of
+                           * headers puts its sorters and filter icons on one
+                           * vertical rule. Laying them inline after the title
+                           * instead left them ragged — each one wherever its
+                           * own text happened to end.
+                           *
+                           * The flex row is conditional because it is not free:
+                           * `w-full` on a plain title would defeat the
+                           * `text-center` / `text-right` alignment above.
+                           */
+                          <span
+                            className={cn(
+                              "items-center gap-1",
+                              hasAffordance
+                                ? "flex w-full justify-between"
+                                : "inline-flex",
                             )}
-                            {sorted === "asc" ? (
-                              <ChevronUp className="size-3" />
-                            ) : null}
-                            {sorted === "desc" ? (
-                              <ChevronDown className="size-3" />
-                            ) : null}
-                            {antdColumn && isFilterable(antdColumn) ? (
-                              <ColumnFilter
-                                column={antdColumn}
-                                selectedKeys={keysFor(antdColumn)}
-                                onConfirm={(keys) =>
-                                  commitFilter(antdColumn, keys)
-                                }
-                              />
+                          >
+                            {/*
+                             * `flex-1` so a centred or right-aligned column
+                             * still aligns its title — within the space the
+                             * icon cluster leaves, which is what antd does
+                             * (`.ant-table-column-title { flex: 1 }`). Without
+                             * it the title would bunch against the left edge
+                             * of every aligned sortable column.
+                             */}
+                            <span className="min-w-0 flex-1">
+                              {flexRender(
+                                header.column.columnDef.header,
+                                header.getContext(),
+                              )}
+                            </span>
+                            {hasAffordance ? (
+                              <span className="inline-flex shrink-0 items-center gap-1">
+                                {header.column.getCanSort() ? (
+                                  <SortCarets sorted={sorted} />
+                                ) : null}
+                                {filterable ? (
+                                  <ColumnFilter
+                                    column={antdColumn}
+                                    selectedKeys={keysFor(antdColumn)}
+                                    onConfirm={(keys) =>
+                                      commitFilter(antdColumn, keys)
+                                    }
+                                  />
+                                ) : null}
+                              </span>
                             ) : null}
                           </span>
                         )}
