@@ -529,16 +529,16 @@ def _reclaim_stale_sending() -> int:
 def _org_identifier(org_pk: int) -> str | None:
     """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
 
-    ``resolve_transport`` keys its Flipt decision on the org's string identifier,
-    but the buffer stores/uses the Organization pk. One indexed pk lookup per
-    dispatch group (post-commit) — negligible relative to the downstream webhook
-    dispatch.
+    The PG queue row records the org's string identifier (used for per-org
+    fairness), but the buffer stores/uses the Organization pk. One indexed pk
+    lookup per dispatch group (post-commit) — negligible relative to the
+    downstream webhook dispatch.
 
     Data-anomaly guard: ``NotificationBuffer.organization`` is
     ``on_delete=CASCADE``, so a live buffer row with a missing org is unreachable
     in normal operation. A ``None`` here therefore signals a dangling FK — we log
-    it (the only org-traceable breadcrumb; resolve_transport's own warning is keyed
-    on the random dispatch uuid) and fail closed to Celery in resolve_transport.
+    it (the only org-traceable breadcrumb) and enqueue with an empty org id, which
+    dispatches correctly but without fairness attribution.
     """
     org_string_id = (
         Organization.objects.filter(pk=org_pk)

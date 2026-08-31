@@ -1,21 +1,25 @@
-"""Transport-agnostic task dispatch.
+"""Task dispatch onto the PG queue.
 
-Routes each task to its transport via :func:`resolve_backend` (which applies a
-per-call ``backend`` override, else defers to :func:`select_backend`):
+Routes each task via :func:`resolve_backend` (a per-call ``backend`` override,
+else :func:`select_backend`):
 
-- **Celery** (default) — a thin pass-through to ``current_app.send_task``.
-- **PG Queue** — when a task is opted into ``WORKER_PG_QUEUE_ENABLED_TASKS``
-  (or pinned via a ``backend=`` override), the task is serialised and enqueued
-  to ``pg_queue_message`` (9b); the PG consumer (9c) drains and runs it.
+- **PG Queue** (the only transport :func:`select_backend` returns since UN-4046)
+  — the task is serialised and enqueued to ``pg_queue_message``; the PG consumer
+  drains and runs it.
+- **Celery** — a thin pass-through to ``current_app.send_task``, reachable only
+  by an explicit ``backend=QueueBackend.CELERY`` override. Nothing passes one;
+  the branch goes with the rest of the Celery transport.
 
-The default (empty allow-list) routes everything to Celery, so dispatch is
-unchanged unless an operator explicitly opts a task in.
+This used to default to Celery and route to PG only for task names opted into
+``WORKER_PG_QUEUE_ENABLED_TASKS``. That allow-list was set nowhere, so the
+default sent everything to Celery; UN-4046 removed it along with the
+``pg_queue_enabled`` flag.
 
 .. warning::
-   A task opted into the PG queue **requires the PG consumer to be running**
-   — otherwise the message is durably enqueued but never executed. Only opt
-   in tasks once the consumer is deployed (and, per the migration-coherence
-   decision, only *leaf* tasks until execution-level routing exists).
+   Every PG queue **requires its consumer to be running** — otherwise the
+   message is durably enqueued and never executed, with no error at the
+   producer. ``validate-pg-worker-fleet.yaml`` in the chart refuses a partial
+   fleet at render time for exactly this reason.
 """
 
 from __future__ import annotations
