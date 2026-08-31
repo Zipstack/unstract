@@ -92,6 +92,13 @@ interface CardProps
   extra?: React.ReactNode;
   bordered?: boolean;
   size?: SizeToken;
+  /**
+   * antd's `hoverable`: the card is a click target, so it gets a pointer
+   * cursor and lifts on hover. Ten call sites pass it, and until it was
+   * declared here `...props` put it on the `<div>` as an unknown attribute --
+   * the cards read as inert.
+   */
+  hoverable?: boolean;
   /** antd v5 per-slot style overrides, e.g. `{ body: {...} }`. */
   styles?: { header?: React.CSSProperties; body?: React.CSSProperties };
 }
@@ -404,6 +411,7 @@ const CardBase = React.forwardRef<HTMLDivElement, CardProps>(function Card(
     extra,
     bordered = true,
     size,
+    hoverable = false,
     className,
     styles,
     children,
@@ -417,7 +425,13 @@ const CardBase = React.forwardRef<HTMLDivElement, CardProps>(function Card(
     // more on head/extra. Without them those rules silently stop applying.
     <ShadcnCard
       ref={ref}
-      className={cn("ant-card", !bordered && "border-0 shadow-none", className)}
+      className={cn(
+        "ant-card",
+        !bordered && "border-0 shadow-none",
+        hoverable &&
+          "cursor-pointer transition-shadow duration-200 hover:shadow-md",
+        className,
+      )}
       {...props}
     >
       {title || extra ? (

@@ -41,6 +41,23 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
   });
 
+  it("Card marks a `hoverable` card as a click target", () => {
+    const { container } = render(<Card hoverable>pick me</Card>);
+
+    const card = container.querySelector(".ant-card");
+    expect(card).toHaveClass("cursor-pointer");
+    // The prop is consumed, not forwarded as a stray DOM attribute.
+    expect(card).not.toHaveAttribute("hoverable");
+  });
+
+  it("Card leaves a plain card without a pointer cursor", () => {
+    const { container } = render(<Card>read me</Card>);
+
+    expect(container.querySelector(".ant-card")).not.toHaveClass(
+      "cursor-pointer",
+    );
+  });
+
   it("Tabs renders labels from the `items` data prop", () => {
     render(
       <Tabs
