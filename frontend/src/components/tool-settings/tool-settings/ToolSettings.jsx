@@ -35,9 +35,9 @@ const titles = {
 };
 
 const btnText = {
-  llm: "New LLM Profile",
-  vector_db: "New Vector DB Profile",
-  embedding: "New Embedding Profile",
+  llm: "New LLM",
+  vector_db: "New Vector DB",
+  embedding: "New Embedding",
   x2text: "New Text Extractor",
   ocr: "New OCR",
 };
@@ -361,7 +361,7 @@ function ToolSettings({ type }) {
         searchKey={type}
         onSearch={(value) => handleSearch(value)}
         customButtons={
-          // The label is `btnText[type]` — "New LLM Profile" on one route and
+          // The label is `btnText[type]` — "New LLM" on one route and
           // "New Text Extractor" on another — so it is not a stable handle.
           <CustomButton
             type="primary"
