@@ -4,7 +4,7 @@ from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -50,6 +50,47 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         if self.action == "list":
             return ToolStudioPromptListSerializer
         return ToolStudioPromptSerializer
+
+    def update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Gate a reparent on the parent the prompt is being moved OUT of.
+
+        ``PromptAcesssToUser`` admits org-shared members here, but
+        ``IsPromptParentToolOwner`` denies them ``destroy`` -- and that gate
+        reads the *stored* parent, which DRF loads before the update is
+        applied. So a writable ``tool_id`` let a denied user PATCH the prompt
+        into a tool they own and then delete it legitimately, in two requests
+        that each passed every check.
+
+        Moving a prompt out of a project removes it from that project, which
+        is a deletion from the losing side, so it requires what ``destroy``
+        requires -- checked against the EXISTING parent, not the new one. A
+        check against the new parent would pass trivially: the attacker's
+        destination is a tool they already own, and the harm is the prompt
+        leaving the original project regardless of where it lands.
+
+        A no-op ``tool_id`` (unchanged) stays allowed, so the UI's field-level
+        PATCH is unaffected. An owner reparenting between tools they own stays
+        allowed. ``null`` is treated as a reparent, not a no-op: orphaning the
+        row hides it from everyone, its owner and org admins included, once
+        the org filter's INNER JOIN excludes it.
+
+        This narrows the bypass; it does not make ``tool_id`` unwritable. The
+        complete fix is a read-only field on update, which changes what the
+        serializer accepts and was declined on API-contract grounds.
+        """
+        instance = self.get_object()
+        if ToolStudioPromptKeys.TOOL_ID in request.data:
+            requested = request.data[ToolStudioPromptKeys.TOOL_ID]
+            current = instance.tool_id_id
+            if requested is None or str(requested) != str(current):
+                if not IsPromptParentToolOwner().has_object_permission(
+                    request, self, instance
+                ):
+                    raise PermissionDenied(
+                        "Moving a prompt out of its project requires ownership "
+                        "of that project."
+                    )
+        return super().update(request, *args, **kwargs)
 
     def get_queryset(self) -> QuerySet | None:
         filter_args = FilterHelper.build_filter_args(
