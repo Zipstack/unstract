@@ -286,13 +286,23 @@ class QueueMessageState(StrEnum):
     set, mirroring the ``priority`` (fairness) precedent. ``str`` Enum → serialises
     to its value and compares equal to the bare string.
 
-    - ``READY``   — claimable: the dequeue's partial claim index holds only these.
-    - ``CLAIMED`` — in-flight: a consumer holds it, ``vt`` is its renewable lease;
+    - ``READY``     — claimable: the dequeue's partial claim index holds only these.
+    - ``CLAIMED``   — in-flight: a consumer holds it, ``vt`` is its renewable lease;
       re-armed back to ``READY`` by the reaper when the lease expires (crash).
+    - ``SCHEDULED`` — deferred (UN-3843): enqueued with a future ``available_at``
+      (Celery ``countdown``/``eta`` parity) and **deliberately absent from the claim
+      index**, so a not-yet-due row costs the hot claim path nothing. The reaper
+      promotes it to ``READY`` once ``available_at <= now()``
+      (``reaper.promote_due_scheduled``), which is why delivery is "not before
+      ``available_at``" rather than exactly at it — granularity is the reaper tick.
+      Filtering ``available_at`` in the claim instead would put every not-yet-due row
+      back inside ``pg_queue_message_claim_idx`` to be walked and discarded on every
+      claim — precisely the scan-past cost this enum exists to remove.
     """
 
     READY = "ready"
     CLAIMED = "claimed"
+    SCHEDULED = "scheduled"
 
 
 # Fairness L3 priority bounds (1..10, higher = claimed sooner). Single source of
