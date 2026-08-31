@@ -191,12 +191,28 @@ function Header({
       setWebhookUrl,
     );
   };
+  /*
+   * One effect per field, keyed on that field's own value. Keyed on the whole
+   * `promptDetails` object (plus `details`, which none of these fields read),
+   * the effect re-ran on every *unrelated* optimistic update and re-seeded all
+   * four from the last persisted prompt — so the webhook toggle's own save
+   * landing mid-keystroke blanked the URL input the user was still typing in.
+   */
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
+  }, [promptDetails?.prompt_id, promptDetails?.active]);
+
+  useEffect(() => {
     setRequired(promptDetails?.required);
+  }, [promptDetails?.prompt_id, promptDetails?.required]);
+
+  useEffect(() => {
     setWebhookEnabled(promptDetails?.enable_postprocessing_webhook || false);
+  }, [promptDetails?.prompt_id, promptDetails?.enable_postprocessing_webhook]);
+
+  useEffect(() => {
     setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
-  }, [promptDetails, details]);
+  }, [promptDetails?.prompt_id, promptDetails?.postprocessing_webhook_url]);
 
   /*
    * Derived, NOT state written from an effect. The webhook URL <Input> lives
