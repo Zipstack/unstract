@@ -26,7 +26,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -337,7 +336,7 @@ class PromptStudioHelper:
         """
         from pg_queue.executor_rpc import get_executor_dispatcher
 
-        return get_executor_dispatcher(celery_app=celery_app)
+        return get_executor_dispatcher()
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:

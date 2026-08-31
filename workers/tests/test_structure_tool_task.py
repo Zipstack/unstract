@@ -22,14 +22,13 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-
 from file_processing import structure_tool_task as st
 
 
 class TestDispatcherFactory:
     """Pin the call-site swap this PR makes: the impl builds its dispatcher via
-    ``get_executor_dispatcher(celery_app=app)`` (the gate-routed dispatcher), not
-    the raw SDK ``ExecutionDispatcher``. A mis-import or wrong arg would otherwise
+    ``get_executor_dispatcher()`` (the shared factory), not
+    the raw SDK ``ExecutionDispatcher``. A mis-import would otherwise
     silently bypass the PG routing with nothing failing.
     """
 
@@ -46,7 +45,7 @@ class TestDispatcherFactory:
             "execution_data_dir": "/data",
         }
 
-    def test_impl_builds_dispatcher_via_factory_with_app(self):
+    def test_impl_builds_dispatcher_via_factory(self):
         # Stub everything up to (and just past) the dispatcher construction, then
         # raise to stop before the heavy tool-metadata work runs.
         with (
@@ -59,7 +58,9 @@ class TestDispatcherFactory:
             params = self._params()
             with pytest.raises(RuntimeError, match="stop"):
                 st._execute_structure_tool_impl(params)
-        factory.assert_called_once_with(celery_app=st.app)
+        # No arguments since UN-4046 — the factory's accepted-and-ignored
+        # `celery_app` was removed once Sonar flagged it as an unused parameter.
+        factory.assert_called_once_with()
 
 
 if __name__ == "__main__":

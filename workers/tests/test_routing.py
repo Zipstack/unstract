@@ -47,8 +47,9 @@ def _mock_pg_client(monkeypatch, *, msg_id=99):
 
 class TestSelectBackend:
     def test_always_pg(self):
-        assert select_backend("anything") is QueueBackend.PG
-        assert select_backend("async_execute_bin") is QueueBackend.PG
+        # No argument since UN-4046 — the task name never mattered once the
+        # allow-list went, and Sonar flagged it as an unused parameter.
+        assert select_backend() is QueueBackend.PG
 
 
 class TestQueueBackendEnum:

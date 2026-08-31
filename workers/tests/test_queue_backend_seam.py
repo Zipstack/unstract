@@ -40,15 +40,10 @@ class TestNoCeleryProducer:
     """
 
     def test_select_backend_never_resolves_to_celery(self):
-        for name in (
-            "async_execute_bin",
-            "process_file_batch",
-            "process_batch_callback_api",
-            "send_webhook_notification",
-            "scheduler.tasks.execute_pipeline_task",
-            "anything_at_all",
-        ):
-            assert select_backend(name) is QueueBackend.PG, name
+        # `select_backend()` takes no argument since UN-4046: the answer cannot
+        # depend on the task name, so enumerating names proved nothing. (Sonar
+        # flagged the unused parameter; removing it makes that structural.)
+        assert select_backend() is QueueBackend.PG
 
     def test_resolve_backend_defaults_to_pg_without_an_override(self):
         assert resolve_backend("any_task", None) is QueueBackend.PG

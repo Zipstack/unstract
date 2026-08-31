@@ -94,14 +94,15 @@ class PgClientQueueTransport(QueueTransport):
         )
 
 
-def get_executor_dispatcher(
-    celery_app: object | None = None,
-) -> PgExecutionDispatcher:
+def get_executor_dispatcher() -> PgExecutionDispatcher:
     """Factory: the executor dispatcher.
 
-    ``celery_app`` is accepted and ignored. It fed the Celery branch of the
-    routing dispatcher, which went with the ``pg_queue_enabled`` flag (UN-4046);
-    the parameter is kept so the ~20 call sites across both repos do not all need
-    editing in the same change.
+    Takes no arguments. It used to accept a ``celery_app`` that fed the Celery
+    branch of the routing dispatcher; that branch went with the ``pg_queue_enabled``
+    flag (UN-4046), and the parameter was kept for a while so the call sites did not
+    all need editing at once. Keeping an ignored parameter made the signature
+    decoration rather than a contract — and it read as "this dispatcher may use
+    Celery", which is exactly the belief that left a ``headers=`` argument at three
+    call sites and broke every extraction. Removed.
     """
     return PgExecutionDispatcher(PgClientQueueTransport())

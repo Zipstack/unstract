@@ -16,6 +16,7 @@ from queue_backend.pg_queue.executor_rpc import (
     PgClientQueueTransport,
     get_executor_dispatcher,
 )
+
 from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
 from unstract.workflow_execution.executor_rpc import (
     ExecResultRow,
@@ -300,9 +301,9 @@ class TestWorkersAdapter:
         rb.forget.assert_not_called()
 
     def test_factory_wires_the_workers_transport(self):
-        # celery_app is accepted and ignored — the factory returns the PG
-        # dispatcher wired with the workers psycopg2 transport.
-        d = get_executor_dispatcher(celery_app="app")
+        # The factory takes no arguments (UN-4046) and returns the PG dispatcher
+        # wired with the workers psycopg2 transport.
+        d = get_executor_dispatcher()
         assert isinstance(d, PgExecutionDispatcher)
         assert isinstance(d._transport, PgClientQueueTransport)
 

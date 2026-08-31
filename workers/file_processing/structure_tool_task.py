@@ -22,7 +22,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-from file_processing.worker import app
 from queue_backend import worker_task
 from queue_backend.pg_queue.executor_rpc import (
     PgExecutionDispatcher,
@@ -268,7 +267,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     platform_helper = _create_platform_helper(shim, file_execution_id)
     # PG executor RPC. ``celery_app`` is accepted and ignored by the factory —
     # see executor_rpc.
-    dispatcher = get_executor_dispatcher(celery_app=app)
+    dispatcher = get_executor_dispatcher()
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----

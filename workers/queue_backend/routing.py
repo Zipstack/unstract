@@ -45,7 +45,7 @@ class QueueBackend(StrEnum):
     PG = "pg"
 
 
-def select_backend(task_name: str) -> QueueBackend:
+def select_backend() -> QueueBackend:
     """Return the transport a dispatch should ride: always ``PG``.
 
     This used to consult a ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list and fall
@@ -54,7 +54,7 @@ def select_backend(task_name: str) -> QueueBackend:
     RabbitMQ — which, with no Celery consumers, is a queue nothing drains
     (UN-4046). PG is the only transport now, so there is nothing to select.
 
-    ``task_name`` is retained for call-site compatibility and is unused.
+    Takes no argument: the answer no longer depends on the task. It used to.
     """
     return QueueBackend.PG
 
@@ -75,4 +75,4 @@ def resolve_backend(task_name: str, override: QueueBackend | None) -> QueueBacke
 
     Never raises — both branches resolve to a valid :class:`QueueBackend`.
     """
-    return override if override is not None else select_backend(task_name)
+    return override if override is not None else select_backend()

@@ -28,15 +28,15 @@ class TestResolveScheduleOwner:
 
     def test_defaults_to_pg(self, monkeypatch):
         monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
-        assert ownership.resolve_schedule_owner(_PID, _ORG) is True
+        assert ownership.resolve_schedule_owner() is True
 
     def test_env_gate_off_keeps_beat(self, monkeypatch):
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
-        assert ownership.resolve_schedule_owner(_PID, _ORG) is False
+        assert ownership.resolve_schedule_owner() is False
 
     def test_env_gate_on_is_pg(self, monkeypatch):
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
-        assert ownership.resolve_schedule_owner(_PID, _ORG) is True
+        assert ownership.resolve_schedule_owner() is True
 
 
 class TestReconcileOwnership:
@@ -190,7 +190,7 @@ class TestPgSchedulerGate:
     def test_owner_stays_beat_when_the_gate_is_off(self, monkeypatch):
         """A deployment that deliberately runs without worker-pg-scheduler."""
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
-        assert ownership.resolve_schedule_owner(_PID, _ORG) is False
+        assert ownership.resolve_schedule_owner() is False
 
     def test_reconcile_writes_NEITHER_beat_table(self, monkeypatch):
         """The regression this gate exists to prevent.

@@ -260,7 +260,7 @@ class Command(BaseCommand):
                 # Preview only — read the would-be owner (no DB write) so an
                 # operator can see how many a ramp change would hand to PG.
                 reconciled += 1
-                if resolve_schedule_owner(str(row.pipeline_id), row.organization_id):
+                if resolve_schedule_owner():
                     pg_owned += 1
                 continue
             # mirror.enabled tracks pipeline.active (dual-write); use it as the

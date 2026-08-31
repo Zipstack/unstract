@@ -4,7 +4,7 @@ from Celery Beat to the Postgres scheduler, per-schedule and reversibly.
 A schedule is owned by exactly one firer. ``reconcile_ownership_for``
 applies that decision atomically:
 
-    pg_periodic_schedule.pg_owned  = resolve_schedule_owner(...)   # PG fires it
+    pg_periodic_schedule.pg_owned  = resolve_schedule_owner()      # PG fires it
     PeriodicTask.enabled           = active AND NOT pg_owned       # Beat fires it
 
 Doing both in one transaction is what makes "never double-fires" real (it was
@@ -55,7 +55,7 @@ def pg_scheduler_enabled() -> bool:
     return os.environ.get(_PG_SCHEDULER_ENABLED_ENV, "true").strip().lower() == "true"
 
 
-def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
+def resolve_schedule_owner() -> bool:
     """True → the PG scheduler owns this schedule; False → Celery Beat does.
 
     Gated solely by ``PG_SCHEDULER_ENABLED``. This used to *also* require the
@@ -151,7 +151,7 @@ def reconcile_ownership_for(
         )
         pg_owned = False
     else:
-        pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
+        pg_owned = resolve_schedule_owner()
     try:
         with transaction.atomic():
             was_pg_owned = (
