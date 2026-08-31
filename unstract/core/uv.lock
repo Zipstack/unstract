@@ -266,6 +266,7 @@ dependencies = [
     { name = "kombu" },
     { name = "redis" },
     { name = "requests" },
+    { name = "urllib3" },
 ]
 
 [package.optional-dependencies]
@@ -281,6 +282,7 @@ requires-dist = [
     { name = "kombu", specifier = "~=5.5.3" },
     { name = "redis", specifier = "~=5.2.1" },
     { name = "requests", specifier = "==2.33.0" },
+    { name = "urllib3", specifier = ">=2.0" },
 ]
 provides-extras = ["flask"]
 
