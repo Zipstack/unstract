@@ -191,6 +191,20 @@ interface DrawerProps
   title?: React.ReactNode;
   placement?: "top" | "right" | "bottom" | "left";
   width?: number | string;
+  /** antd renders a top-right close button unless this is false. */
+  closable?: boolean;
+  /**
+   * antd's per-slot style overrides. Only `body` is honoured — no call-site
+   * uses the others, and silently accepting them would be worse than the
+   * type error.
+   */
+  styles?: { body?: React.CSSProperties };
+  /**
+   * Accepted and ignored: Radix already unmounts the panel on close, which is
+   * what antd's `destroyOnClose` asks for. Declared so it is consumed rather
+   * than spread onto the DOM node.
+   */
+  destroyOnClose?: boolean;
 }
 
 interface SegmentedOption {
@@ -1261,27 +1275,56 @@ const Drawer = React.forwardRef<HTMLDivElement, DrawerProps>(function Drawer(
     title,
     placement = "right",
     width,
+    closable = true,
+    styles,
+    // Consumed, not forwarded — see DrawerProps.
+    destroyOnClose: _destroyOnClose,
     className,
     children,
     ...props
   },
   ref,
 ) {
+  /*
+   * antd's `width` is the panel's actual width; mapping it to `max-width` left
+   * the Sheet on its `w-3/4` default, so `width="85%"` silently rendered 75%.
+   * `max-width: 100%` goes with it to beat the variant's `sm:max-w-sm` (384px),
+   * which would otherwise clamp any width past that. antd applies `width` to
+   * side drawers only — top/bottom ones are sized by `height`, which no
+   * call-site passes.
+   */
+  const isSideDrawer = placement === "left" || placement === "right";
+  const sizing =
+    width !== undefined && isSideDrawer
+      ? { width, maxWidth: "100%" as const }
+      : undefined;
+
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose?.()}>
       <SheetContent
         ref={ref}
         side={placement}
-        style={{ maxWidth: width }}
-        className={className}
+        showClose={closable}
+        style={sizing}
+        /*
+         * `p-0` + a padded body, rather than padding on the panel itself.
+         * antd pads the BODY, so a call-site clearing it (`styles.body`) gets a
+         * full-bleed panel; with the padding on the panel, a drawer whose
+         * header carries its own background floated inset with a 24px frame of
+         * page around it. `flex-col` + `flex-1` reproduces antd's scrolling
+         * body under a fixed header.
+         */
+        className={cn("flex flex-col gap-0 p-0", className)}
         {...props}
       >
         {title ? (
-          <SheetHeader>
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>{title}</SheetTitle>
           </SheetHeader>
         ) : null}
-        {children}
+        <div className="min-h-0 flex-1 overflow-auto p-6" style={styles?.body}>
+          {children}
+        </div>
       </SheetContent>
     </Sheet>
   );

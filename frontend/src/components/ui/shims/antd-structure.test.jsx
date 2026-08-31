@@ -516,6 +516,39 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("drawer body")).toBeInTheDocument();
   });
 
+  /*
+   * Regression: the Lookup drawer passes all three of these, and every one was
+   * dropped — `closable={false}` and `destroyOnClose` landed on the DOM node as
+   * attributes (React warned about both), the panel kept its own 24px padding
+   * so the drawer's full-bleed header floated inset, and `width` became
+   * `max-width`, leaving the Sheet on its `w-3/4` default.
+   */
+  it("Drawer honours closable, styles.body and width", () => {
+    const { container } = render(
+      <Drawer
+        open
+        closable={false}
+        destroyOnClose
+        width="85%"
+        styles={{ body: { padding: 0 } }}
+      >
+        drawer body
+      </Drawer>,
+    );
+    const panel = container.ownerDocument.querySelector('[role="dialog"]');
+
+    expect(screen.queryByText("Close")).not.toBeInTheDocument();
+    expect(panel).not.toHaveAttribute("destroyOnClose");
+    expect(panel).not.toHaveAttribute("closable");
+    expect(panel).toHaveStyle({ width: "85%", maxWidth: "100%" });
+    expect(screen.getByText("drawer body")).toHaveStyle({ padding: "0px" });
+  });
+
+  it("Drawer keeps the stock close button by default", () => {
+    render(<Drawer open>drawer body</Drawer>);
+    expect(screen.getByText("Close")).toBeInTheDocument();
+  });
+
   it("Transfer splits items across source and target by targetKeys", () => {
     render(
       <Transfer
