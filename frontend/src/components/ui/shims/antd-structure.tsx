@@ -228,10 +228,22 @@ interface SegmentedProps
 }
 
 interface MenuProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onSelect"> {
   items?: KeyedItem[];
   selectedKeys?: string[];
   onClick?: (info: { key: string }) => void;
+  /**
+   * antd fires `onSelect` alongside `onClick` whenever a selectable item is
+   * picked, and plenty of call sites listen on that one alone — the Output
+   * Analyzer's Document List does. Without it declared here the prop fell
+   * through to the <nav> as React's DOM `select` handler, which never fires
+   * on a click, so switching documents silently did nothing.
+   */
+  onSelect?: (info: {
+    key: string;
+    keyPath: string[];
+    selectedKeys: string[];
+  }) => void;
   mode?: "vertical" | "horizontal" | "inline";
 }
 
@@ -1413,7 +1425,15 @@ const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
 
 /** antd `<Menu items onClick>` — a simple vertical list. */
 const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
-  { items = [], selectedKeys = [], onClick, mode, className, ...props },
+  {
+    items = [],
+    selectedKeys = [],
+    onClick,
+    onSelect,
+    mode,
+    className,
+    ...props
+  },
   ref,
 ) {
   return (
@@ -1423,7 +1443,13 @@ const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
           key={String(item.key)}
           type="button"
           disabled={item.disabled}
-          onClick={() => onClick?.({ key: String(item.key) })}
+          onClick={() => {
+            const key = String(item.key);
+            onClick?.({ key });
+            // Single-select, as antd's Menu is by default: the new selection
+            // is just this key.
+            onSelect?.({ key, keyPath: [key], selectedKeys: [key] });
+          }}
           className={cn(
             "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed",
             /*

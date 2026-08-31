@@ -1300,6 +1300,46 @@ describe("antd-compatible structural shims (P4)", () => {
   });
 
   /*
+   * The Output Analyzer's Document List wires its handler to `onSelect`, not
+   * `onClick` — antd fires both. Unhandled, the prop landed on the <nav> as
+   * React's DOM `select` handler and picking another document did nothing.
+   */
+  describe("Menu onSelect", () => {
+    it("fires onSelect with the picked key", async () => {
+      const onSelect = vi.fn();
+      render(
+        <Menu
+          selectedKeys={["0"]}
+          items={[
+            { key: "0", label: "bank_citi.pdf" },
+            { key: "1", label: "BOFA_cc_statement.pdf" },
+          ]}
+          onSelect={onSelect}
+        />,
+      );
+      await userEvent.click(screen.getByText("BOFA_cc_statement.pdf"));
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "1", selectedKeys: ["1"] }),
+      );
+    });
+
+    it("fires onClick and onSelect together, as antd does", async () => {
+      const onClick = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <Menu
+          items={[{ key: "7", label: "Pick me" }]}
+          onClick={onClick}
+          onSelect={onSelect}
+        />,
+      );
+      await userEvent.click(screen.getByText("Pick me"));
+      expect(onClick).toHaveBeenCalledWith({ key: "7" });
+      expect(onSelect).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  /*
    * The Configure Connector modal's file browser. `Tree.DirectoryTree` was
    * undefined, so picking any FILESYSTEM connector rendered `undefined` as an
    * element type and React #130 took down the whole workflow page.
