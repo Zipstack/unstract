@@ -67,7 +67,6 @@ class InternalEndpoints:
     @staticmethod
     def webhook_send() -> str:
         """Webhook send endpoint."""
-        return build_internal_endpoint("webhook/send")
 
     @staticmethod
     def organization(org_id: str = "{org_id}") -> str:
