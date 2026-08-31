@@ -1,30 +1,13 @@
 """Split the metrics aggregation into two schedules by tier (UN-3974).
 
-Before this, one schedule ran every 15 minutes and wrote all three tiers. Dashboard
-daily and monthly figures do not need 15-minute freshness, so they move to hourly:
-96 runs a day becomes 24 for the expensive DAY-granularity half of the work, while the
-hourly tier keeps its 15-minute cadence.
+The hourly tier keeps its 15-minute cadence; the daily and monthly tiers move to
+hourly, taking the expensive DAY-granularity half of the work from 96 runs a day to
+24. Both rows run the same task and differ only in their ``tier`` kwargs — a second
+task name would need its own worker registration and internal endpoint.
 
-Both rows point at the SAME task (``dashboard_metrics.aggregate_from_sources``) and
-differ only in ``tier`` kwargs. A second task name would need its own worker-side
-registration and internal endpoint for the PG path; a kwarg needs neither.
-
-**Beat and PG rows are declared together here, from one spec.** ``0002_setup_periodic_tasks``
-(Beat) and ``0004_pg_periodic_tasks`` (PG) declare the same schedules in two places, and
-``tests/test_pg_periodic_task_declarations.py`` exists to catch them drifting apart. One
-spec written twice by the same function cannot drift, so this migration needs no such
-guard. ``AGGREGATION_SCHEDULES`` is module-level so a future test can import it.
-
-Rows land consistent with how each scheduler expects them:
-
-* Beat ``kwargs`` is a JSON *string*; ``PgPeriodicTask.task_kwargs`` is a JSONField, so
-  it is stored decoded.
-* The new PG row lands **inert** (``pg_owned=False``, ``next_run_at=NULL``) for the same
-  reason as ``0004`` — the PG scheduler skips rows it does not own, and a NULL
-  ``next_run_at`` records a baseline next tick rather than firing a catch-up burst.
-
-Reverse restores the pre-split state: the new rows are deleted and the aggregate row's
-kwargs are cleared, putting it back to writing all three tiers every 15 minutes.
+Beat and PG rows are declared here from one spec, so this pair cannot drift the way
+0002 and 0004 can. Beat stores kwargs as a JSON string, PgPeriodicTask decoded. The
+new PG row lands inert (``pg_owned=False``) like 0004's.
 """
 
 import json
@@ -39,8 +22,7 @@ AGGREGATE_QUEUE = "dashboard_metric_events"
 TIER_HOURLY = "hourly"
 TIER_DAILY_MONTHLY = "daily_monthly"
 
-# The row that already exists (created by 0002 / 0004); only its kwargs and
-# description change, its every-15-minutes schedule does not.
+# Created by 0002 / 0004; only its kwargs and description change here.
 EXISTING_AGGREGATE_ROW = "dashboard_metrics_aggregate_from_sources"
 
 AGGREGATION_SCHEDULES = [
@@ -78,11 +60,9 @@ def split_schedules(apps, schema_editor):
         kwargs = {"tier": spec["tier"]}
 
         if spec["exists"]:
-            # Update ONLY the payload. `enabled` and `pg_owned` say which scheduler
-            # currently fires this row, and converge_pg_scheduler owns them: adopting
-            # a row on PG disables its Beat twin. Rewriting either here would hand the
-            # row back to a scheduler that is no longer running it — or, on an adopted
-            # row, to neither. Its cadence does not change, so nothing else needs to.
+            # Payload only. `enabled` and `pg_owned` say which scheduler fires this
+            # row and belong to converge_pg_scheduler; rewriting them here can leave
+            # an adopted row with no firer. Its cadence does not change.
             PeriodicTask.objects.filter(name=spec["name"]).update(
                 kwargs=json.dumps(kwargs), description=spec["description"]
             )
@@ -126,9 +106,7 @@ def split_schedules(apps, schema_editor):
 def merge_schedules(apps, schema_editor):
     """Restore the single every-15-minutes row that writes all three tiers.
 
-    Symmetric with the forward direction: the added rows go, and the surviving row
-    gets its payload back. `enabled` / `pg_owned` are left alone in both directions,
-    so whichever scheduler was firing the aggregation before the rollback still is.
+    Leaves `enabled` / `pg_owned` alone, as the forward direction does.
     """
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
     PgPeriodicTask = apps.get_model("pg_queue", "PgPeriodicTask")

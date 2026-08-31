@@ -108,9 +108,8 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
 def dashboard_metrics_aggregate(tier: str | None = None) -> dict[str, Any]:
     """Aggregate source tables into the hourly/daily/monthly metrics tables.
 
-    ``tier`` comes from the schedule row's kwargs and selects which tiers to write —
-    the hourly tier and the daily/monthly pair run on separate schedules. Omitted
-    means all tiers, matching the backend task's default.
+    ``tier`` comes from the schedule row's kwargs and selects which tiers to write;
+    omitted means all of them.
     """
     body = {"tier": tier} if tier is not None else None
     result = _call_internal(_AGGREGATE_PATH, body=body)

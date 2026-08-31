@@ -93,8 +93,7 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
     only because the PG consumer has no Django, not to change what the job does.
 
     Optional ``tier`` in the body selects which metric tiers to write; omitting it
-    writes all of them, matching the task's own default. An unrecognised value is a
-    400 rather than a silent no-op.
+    writes all of them. An unrecognised value is a 400, not a silent no-op.
     """
 
     def post(self, request: Request) -> Response:

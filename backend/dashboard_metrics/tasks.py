@@ -206,11 +206,9 @@ def _bulk_upsert_monthly(aggregations: dict) -> int:
 
 
 class AggregationTier(StrEnum):
-    """Which metric tiers a single aggregation run writes.
+    """Which metric tiers one aggregation run writes.
 
-    The hourly tier needs 15-minute freshness; the daily and monthly tiers do not,
-    so they run on separate schedules. Daily and monthly stay together because one
-    DAY-granularity query feeds both.
+    Daily and monthly stay together because one DAY-granularity query feeds both.
     """
 
     HOURLY = "hourly"
@@ -218,8 +216,7 @@ class AggregationTier(StrEnum):
     ALL = "all"
 
 
-# Per-tier so the 15-minute hourly run and the hourly daily/monthly run — which
-# collide at the top of every hour — do not starve each other.
+# Keyed per tier: the two schedules collide hourly and must not block each other.
 AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
 AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches the fastest task schedule)
 
@@ -244,7 +241,7 @@ def _acquire_aggregation_lock(lock_key: str) -> bool:
     that the lock is older than AGGREGATION_LOCK_TIMEOUT and reclaims it.
 
     Args:
-        lock_key: Cache key to lock on — one per tier, see _aggregation_lock_key
+        lock_key: Cache key to lock on, one per tier
 
     Returns:
         True if lock was acquired, False if another run is legitimately active.
@@ -299,9 +296,8 @@ def aggregate_metrics_from_sources(
 ) -> dict[str, Any]:
     """Aggregate metrics from source tables into the hourly/daily/monthly tables.
 
-    Two schedules call this with different tiers: the hourly tier every 15 minutes,
-    the daily and monthly tiers hourly. Each tier locks separately so the two never
-    block each other.
+    Two schedules call this with different tiers: hourly every 15 minutes, daily
+    and monthly hourly. Each tier locks separately.
 
     Uses a Redis distributed lock with self-healing to prevent overlapping
     runs. If a previous run was killed without releasing the lock, the next
@@ -313,9 +309,8 @@ def aggregate_metrics_from_sources(
     - Monthly: Last 2 months (current + previous month)
 
     Args:
-        tier: Which tiers to write, an AggregationTier value. Defaults to all,
-            so a caller that omits it gets the pre-split behaviour rather than
-            silently writing nothing.
+        tier: An AggregationTier value. Defaults to all, so a caller that omits
+            it writes every tier rather than none.
 
     Returns:
         Dict with aggregation summary for the tiers that ran
@@ -492,8 +487,7 @@ def _collect_org_metrics(
 ) -> tuple[dict, dict, dict, int]:
     """Query every metric for one org into per-tier aggregate dicts.
 
-    A failing metric is logged and counted, not raised: one bad query should not
-    cost the org its other metrics.
+    A failing metric is counted, not raised, so it does not cost the org the rest.
 
     Returns:
         (hourly_agg, daily_agg, monthly_agg, error_count)
@@ -671,8 +665,7 @@ def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, A
         f"errors={stats['errors']}"
     )
 
-    # Only the windows this run actually queried — a period reported for a tier that
-    # was skipped reads as work that happened.
+    # Only the windows this run queried; a skipped tier reports no period.
     period = {}
     if _writes_hourly(tier):
         period["hourly"] = {
