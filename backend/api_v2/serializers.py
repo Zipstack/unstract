@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 
 from django.apps import apps
 from django.core.validators import RegexValidator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers
@@ -218,6 +220,13 @@ class APIKeySerializer(AuditSerializer):
         return representation
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class UploadField(FileField):
+    """A bare ``FileField`` maps to ``format: uri`` -- correct on output, wrong
+    for a multipart upload, and generators emit ``str`` for it.
+    """
+
+
 class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
@@ -256,8 +265,27 @@ class ExecutionRequestSerializer(TagParamsSerializer):
 
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
-    hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
-    hitl_packet_id = CharField(required=False, allow_null=True, allow_blank=True)
+    # Help text is published as the client-facing description of these fields.
+    hitl_queue_name = CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text=(
+            "Document class name for the manual review queue. Requires the "
+            "enterprise manual-review capability; an installation without it "
+            "rejects the request with 400."
+        ),
+    )
+    hitl_packet_id = CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text=(
+            "Groups documents reviewed together into one packet. Requires the "
+            "enterprise manual-review capability; an installation without it "
+            "rejects the request with 400."
+        ),
+    )
     custom_data = JSONField(required=False, allow_null=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
@@ -320,7 +348,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         return value
 
     files = ListField(
-        child=FileField(),
+        child=UploadField(),
         required=False,
         allow_empty=True,
     )
