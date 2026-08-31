@@ -155,6 +155,200 @@ describe("DataTable pagination", () => {
 });
 
 /*
+ * Server-side paging, which every resource list uses: the page fetches
+ * `?page=N&page_size=10` and hands this table ONE page of rows plus the real
+ * row count as `total`. Sizing the pager off `dataSource.length` instead makes
+ * every such list look like it has exactly one page — the LLM settings screen
+ * held 12 adapters and offered no way to reach the last two.
+ */
+describe("DataTable server-side pagination", () => {
+  const serverPage = (props) => (
+    <DataTable
+      columns={columns}
+      dataSource={rowsFor(10)}
+      rowKey="id"
+      pagination={{ current: 1, pageSize: 10, total: 12 }}
+      {...props}
+    />
+  );
+
+  it("sizes the pager from `total`, not from the rows it was handed", () => {
+    render(serverPage());
+    expect(within(pager()).getByLabelText("Page 2")).toBeInTheDocument();
+    expect(within(pager()).getByLabelText("Next page")).not.toBeDisabled();
+  });
+
+  /*
+   * antd slices `dataSource` only when it holds more rows than fit on a page,
+   * so a page of exactly `pageSize` rows must be rendered whole. Slicing it
+   * again would show 10 rows on "page 1" and nothing on "page 2".
+   */
+  it("renders the whole page it was given without re-slicing it", () => {
+    render(serverPage());
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+    expect(screen.getByText("Row 10")).toBeInTheDocument();
+  });
+
+  it("reports the requested page through antd's onChange", async () => {
+    const onChange = vi.fn();
+    render(serverPage({ onChange }));
+    await userEvent.click(within(pager()).getByLabelText("Page 2"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ current: 2, pageSize: 10, total: 12 }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  it("reports the requested page from the next arrow too", async () => {
+    const onChange = vi.fn();
+    render(serverPage({ onChange }));
+    await userEvent.click(within(pager()).getByLabelText("Next page"));
+    expect(onChange).toHaveBeenCalledWith(
+      expect.objectContaining({ current: 2 }),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
+
+  /*
+   * `current` makes the pager controlled: the parent refetches and feeds the
+   * new page back down. Moving locally would blank the body, because the rows
+   * for page 2 are not in `dataSource` yet.
+   */
+  it("stays on the parent's page until new rows arrive", async () => {
+    const onChange = vi.fn();
+    render(serverPage({ onChange }));
+    await userEvent.click(within(pager()).getByLabelText("Page 2"));
+    expect(within(pager()).getByLabelText("Page 1")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+  });
+
+  it("follows the parent to the page it fetched", () => {
+    const { rerender } = render(serverPage());
+    rerender(
+      serverPage({
+        dataSource: [{ id: 11, name: "Row 11" }, { id: 12, name: "Row 12" }],
+        pagination: { current: 2, pageSize: 10, total: 12 },
+      }),
+    );
+    expect(within(pager()).getByLabelText("Page 2")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByText("Row 11")).toBeInTheDocument();
+    expect(within(pager()).getByLabelText("Next page")).toBeDisabled();
+  });
+
+  /*
+   * ResourceTable passes `showTotal` to render "Page 1 of 2 · 12 items" beside
+   * the buttons; the pager read only `pageSize` off `pagination` and dropped it.
+   */
+  it("renders showTotal with the real count and range", () => {
+    render(
+      serverPage({
+        pagination: {
+          current: 1,
+          pageSize: 10,
+          total: 12,
+          showTotal: (total, range) =>
+            `${range[0]}-${range[1]} of ${total} items`,
+        },
+      }),
+    );
+    expect(within(pager()).getByText("1-10 of 12 items")).toBeInTheDocument();
+  });
+
+  /*
+   * The last page holds fewer rows than `pageSize`; the range must stop at the
+   * real count rather than at `current * pageSize`.
+   */
+  it("clamps the showTotal range on the last page", () => {
+    render(
+      serverPage({
+        dataSource: [{ id: 11, name: "Row 11" }, { id: 12, name: "Row 12" }],
+        pagination: {
+          current: 2,
+          pageSize: 10,
+          total: 12,
+          showTotal: (total, range) =>
+            `${range[0]}-${range[1]} of ${total} items`,
+        },
+      }),
+    );
+    expect(within(pager()).getByText("11-12 of 12 items")).toBeInTheDocument();
+  });
+
+  /*
+   * The whole loop, end to end, against a parent that behaves like ToolSettings:
+   * it answers `onChange` by fetching that page and feeding the rows back down.
+   *
+   * This is the one that catches the ping-pong. TanStack calls
+   * `resetPageIndex()` itself whenever `data` changes, so bridging its
+   * `onPaginationChange` back to the parent meant page 2's rows arriving
+   * immediately asked for page 1 — the pager snapped back within a frame and
+   * the last two adapters stayed just as unreachable as before the fix. Every
+   * assertion below still passed with that bridge in place; only driving a real
+   * round trip shows it.
+   */
+  it("settles on the fetched page instead of bouncing back to the first", async () => {
+    const pageOf = (n) =>
+      n === 1 ? rowsFor(10) : [{ id: 11, name: "Row 11" }];
+    const fetched = [];
+
+    function Harness() {
+      const [page, setPage] = useState(1);
+      return (
+        <DataTable
+          columns={columns}
+          dataSource={pageOf(page)}
+          rowKey="id"
+          pagination={{ current: page, pageSize: 10, total: 11 }}
+          onChange={(p) => {
+            fetched.push(p.current);
+            setPage(p.current);
+          }}
+        />
+      );
+    }
+
+    render(<Harness />);
+    await userEvent.click(within(pager()).getByLabelText("Page 2"));
+
+    await waitFor(() =>
+      expect(screen.getByText("Row 11")).toBeInTheDocument(),
+    );
+    expect(fetched).toEqual([2]);
+    expect(within(pager()).getByLabelText("Page 2")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.queryByText("Row 1")).not.toBeInTheDocument();
+  });
+
+  /*
+   * A search that narrows 12 rows to 3 leaves `current` at 2 for one render.
+   * Unclamped, the pager pointed past the end and the body went blank.
+   */
+  it("clamps a stale page past the end of a shrunken list", () => {
+    render(
+      serverPage({
+        dataSource: rowsFor(3),
+        pagination: { current: 2, pageSize: 10, total: 3 },
+      }),
+    );
+    expect(within(pager()).getByLabelText("Page 1")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByText("Row 1")).toBeInTheDocument();
+  });
+});
+
+/*
  * Two antd Table props this wrapper claims to support and silently did not.
  * Both failed the same way: undeclared, they fell into `...props` and were
  * spread onto the wrapper <div>, where React drops an unknown attribute without

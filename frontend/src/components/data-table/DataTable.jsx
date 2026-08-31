@@ -186,6 +186,19 @@ function DataTable({
    */
   onRow,
   /**
+   * antd's Table-level `onChange(pagination, filters, sorter)` — the callback a
+   * server-paged call-site listens to so it can fetch the page the user just
+   * clicked.
+   *
+   * Declared for the same reason as `onRow` above: undeclared it fell into
+   * `...props` and was spread onto the wrapper <div>, where React silently
+   * ignores an unknown `onChange` attribute. ResourceTable's `handleChange`
+   * therefore never ran, so on every server-paged list — LLMs, Vector DBs,
+   * Embeddings, Text Extractors, Connectors — clicking a page number did
+   * nothing whatsoever.
+   */
+  onChange,
+  /**
    * antd's `showHeader`, default true.
    *
    * Declared for the same reason as `onRow` above: undeclared, it fell into
@@ -250,17 +263,70 @@ function DataTable({
   // antd accepts `pagination={false}` to disable, or an object to configure.
   const paginated = pagination !== false;
   const pageSize = pagination?.pageSize ?? 10;
+  /*
+   * antd slices `dataSource` only when it holds MORE rows than fit on a page;
+   * otherwise it renders what it was handed and lets `total` drive the pager.
+   * That distinction IS server-side paging, and losing it broke every list that
+   * pages on the server. ToolSettings requests `?page=1&page_size=10`, so
+   * `dataSource` is 10 rows while the response's `count` — passed here as
+   * `total` — says 12. Deriving the page count from `data.length` collapsed the
+   * pager to a single page, so on the LLM settings screen two adapters the API
+   * had already advertised via its `next` link were simply unreachable.
+   */
+  const clientPaged = paginated && data.length > pageSize;
+  const total = pagination?.total ?? data.length;
+  const pageCount = Math.max(1, Math.ceil(total / (pageSize || 1)));
+  const [internalPage, setInternalPage] = React.useState(1);
+  /*
+   * antd: passing `current` makes the pager controlled — the parent refetches
+   * and feeds the new page back down. Without it the table owns its own page.
+   * Clamped so a shrinking list (a search, a delete) can't leave the pager
+   * pointing past the last page with a blank body under it.
+   */
+  const currentPage = Math.min(pagination?.current ?? internalPage, pageCount);
+
+  const goToPage = (page) => {
+    const next = Math.min(Math.max(1, page), pageCount);
+    if (next === currentPage) {
+      return;
+    }
+    // Controlled pagers move only when the parent says so; uncontrolled ones
+    // page themselves.
+    if (pagination?.current === undefined) {
+      setInternalPage(next);
+    }
+    onChange?.({ ...pagination, current: next, pageSize, total }, {}, {});
+  };
 
   const table = useReactTable({
     data,
     columns: cols,
-    state: { sorting, rowSelection: selection },
+    state: {
+      sorting,
+      rowSelection: selection,
+      // Only meaningful while we slice: a server-paged table is handed exactly
+      // one page and must not have it sliced a second time.
+      ...(clientPaged
+        ? { pagination: { pageIndex: currentPage - 1, pageSize } }
+        : {}),
+    },
     onSortingChange: setSorting,
     onRowSelectionChange: setSelection,
+    /*
+     * The pager below is the only thing that may change the page, so TanStack
+     * deliberately gets no `onPaginationChange`.
+     *
+     * Wiring one back to the parent looks right and ping-pongs: TanStack calls
+     * `resetPageIndex()` by itself every time `data` changes, so fetching page
+     * 2 delivered new rows, which reset the index to 0, which fetched page 1
+     * again — the table snapped back the instant it arrived. `autoResetPageIndex`
+     * is off for the same reason; the `currentPage` clamp above already covers
+     * the case it exists for, a page left pointing past a shrunken list.
+     */
+    autoResetPageIndex: false,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
-    ...(paginated ? { getPaginationRowModel: getPaginationRowModel() } : {}),
-    initialState: paginated ? { pagination: { pageSize } } : undefined,
+    ...(clientPaged ? { getPaginationRowModel: getPaginationRowModel() } : {}),
     getRowId: (row, index) =>
       typeof rowKey === "function"
         ? String(rowKey(row))
@@ -534,8 +600,7 @@ function DataTable({
        * one-row table in the reference and had none here. Hiding it also made
        * the modal's height jump as rows crossed the page-size boundary.
        */}
-      {paginated &&
-      table.getPageCount() > (pagination?.hideOnSinglePage ? 1 : 0) ? (
+      {paginated && pageCount > (pagination?.hideOnSinglePage ? 1 : 0) ? (
         /*
          * antd's pager is a 24px strip of square numbered buttons with 16px
          * margins, right-aligned. The "Previous / Page 1 of 1 / Next" text row
@@ -543,17 +608,28 @@ function DataTable({
          * beside the reference.
          */
         <div className="ant-pagination my-4 flex items-center justify-end gap-2 text-sm">
+          {/*
+           * antd renders `showTotal(total, range)` as a label beside the page
+           * buttons. ResourceTable passes one ("Page 1 of 2 · 12 items") and it
+           * never appeared, because this pager only ever read `pageSize` off
+           * the `pagination` object and ignored the rest of it.
+           */}
+          {pagination?.showTotal ? (
+            <span className="mr-2 text-muted-foreground">
+              {pagination.showTotal(total, [
+                total === 0 ? 0 : (currentPage - 1) * pageSize + 1,
+                Math.min(currentPage * pageSize, total),
+              ])}
+            </span>
+          ) : null}
           <PagerButton
             label="Previous page"
-            onClick={() => table.previousPage()}
-            disabled={!table.getCanPreviousPage()}
+            onClick={() => goToPage(currentPage - 1)}
+            disabled={currentPage <= 1}
           >
             <ChevronLeft className="size-3" />
           </PagerButton>
-          {pageNumbers(
-            table.getState().pagination.pageIndex + 1,
-            table.getPageCount(),
-          ).map((page, i) =>
+          {pageNumbers(currentPage, pageCount).map((page, i) =>
             page === "…" ? (
               // Keyed by position: the ellipsis carries no identity of its own.
               <span key={`gap-${i}`} className="w-6 text-center">
@@ -563,8 +639,8 @@ function DataTable({
               <PagerButton
                 key={page}
                 label={`Page ${page}`}
-                active={page === table.getState().pagination.pageIndex + 1}
-                onClick={() => table.setPageIndex(page - 1)}
+                active={page === currentPage}
+                onClick={() => goToPage(page)}
               >
                 {page}
               </PagerButton>
@@ -572,8 +648,8 @@ function DataTable({
           )}
           <PagerButton
             label="Next page"
-            onClick={() => table.nextPage()}
-            disabled={!table.getCanNextPage()}
+            onClick={() => goToPage(currentPage + 1)}
+            disabled={currentPage >= pageCount}
           >
             <ChevronRight className="size-3" />
           </PagerButton>
