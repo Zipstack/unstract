@@ -51,10 +51,10 @@ def _required_organization(tool_id: uuid.UUID) -> Organization:
     ``Organization.DoesNotExist`` and ``ProgrammingError``, neither logged. A
     None here compiles to ``organization_id IS NULL``, which matches only rows
     whose organization was never set and never the caller's tool — downstream
-    every output renders as ``""`` and the
-    user sees a blank project that has real persisted outputs, with nothing to
-    correlate in logs. These endpoints are only routed under
-    ``/api/v1/unstract/<org>/``, so a null org is a bug, not a state to serve.
+    every output renders as ``""`` and the user sees a blank project that has
+    real persisted outputs, with nothing to correlate in logs. These endpoints
+    are only routed under ``/api/v1/unstract/<org>/``, so a null org is a bug,
+    not a state to serve.
     """
     organization = UserContext.get_organization()
     if organization is None:
