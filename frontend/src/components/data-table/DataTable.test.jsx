@@ -231,7 +231,10 @@ describe("DataTable server-side pagination", () => {
     const { rerender } = render(serverPage());
     rerender(
       serverPage({
-        dataSource: [{ id: 11, name: "Row 11" }, { id: 12, name: "Row 12" }],
+        dataSource: [
+          { id: 11, name: "Row 11" },
+          { id: 12, name: "Row 12" },
+        ],
         pagination: { current: 2, pageSize: 10, total: 12 },
       }),
     );
@@ -269,7 +272,10 @@ describe("DataTable server-side pagination", () => {
   it("clamps the showTotal range on the last page", () => {
     render(
       serverPage({
-        dataSource: [{ id: 11, name: "Row 11" }, { id: 12, name: "Row 12" }],
+        dataSource: [
+          { id: 11, name: "Row 11" },
+          { id: 12, name: "Row 12" },
+        ],
         pagination: {
           current: 2,
           pageSize: 10,
@@ -318,9 +324,7 @@ describe("DataTable server-side pagination", () => {
     render(<Harness />);
     await userEvent.click(within(pager()).getByLabelText("Page 2"));
 
-    await waitFor(() =>
-      expect(screen.getByText("Row 11")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByText("Row 11")).toBeInTheDocument());
     expect(fetched).toEqual([2]);
     expect(within(pager()).getByLabelText("Page 2")).toHaveAttribute(
       "aria-current",
