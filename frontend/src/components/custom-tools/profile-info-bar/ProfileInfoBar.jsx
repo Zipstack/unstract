@@ -15,7 +15,8 @@ const ProfileInfoBar = ({ profiles, profileId }) => {
         <strong>Profile Name:</strong> {profile?.profile_name}
       </Tag>
       <Tag>
-        <strong>Chunk Size:</strong> {profile?.chunk_size}
+        <strong>Chunk Size:</strong>{" "}
+        {profile?.chunk_size == null ? "-" : `${profile.chunk_size} tokens`}
       </Tag>
       <Tag>
         <strong>Vector Store:</strong> {profile?.vector_store}

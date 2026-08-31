@@ -330,13 +330,25 @@ function ToolIde() {
       data: body,
     };
 
-    return axiosPrivate(requestOptions)
-      .then((res) => {
-        return res;
-      })
-      .catch((err) => {
-        throw err;
-      });
+    // UN-2900: a tool PATCH re-serialises every prompt, so the response carries
+    // freshly computed single_pass_unresolvable_variables. Deliberately do NOT
+    // write those back to the store here, for two independent reasons.
+    //
+    // It would not work: PromptCard seeds promptDetailsState from its prop once
+    // and latches `isPromptDetailsStateUpdated` (PromptCard.jsx:74-83), which is
+    // never reset, and DocumentParser's key={item.prompt_id} is stable, so no
+    // remount re-seeds it. The Header warning reads promptDetailsState, so a
+    // store-level write to details.prompts can never reach it. Per-prompt
+    // freshness comes from PromptCard's own fold-back on the save response.
+    //
+    // And it would be actively harmful: the write would be built from a
+    // `details` captured when the PATCH was issued, so a prompt added or
+    // deleted while the request was in flight would be silently discarded.
+    //
+    // Consequence worth stating: "toggle single pass -> every affected prompt
+    // warns at once" does NOT hold. Making it hold needs the consumer to accept
+    // updates after its first seed; that is a separate change.
+    return axiosPrivate(requestOptions);
   };
 
   const handleDocChange = (doc) => {

@@ -96,7 +96,23 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
           // Strip 5th element (confidence) if present, keep only first 4 elements
           const coordsOnly =
             innerArray.length >= 5 ? innerArray.slice(0, 4) : innerArray;
-          return coordsOnly.some((value) => value !== 0);
+          // UN-3355: entries are [pageNumber, y, height, pageHeight]. Empty
+          // pages in the document make LLMWhisperer emit a page number with
+          // y/height/pageHeight all zero. `some(v => v !== 0)` kept those,
+          // because the page number alone is non-zero -- the viewer then
+          // scrolled to the page and highlighted nothing. Require the
+          // geometry itself to be usable instead.
+          if (coordsOnly.length < 4) {
+            return false;
+          }
+          const [, y, height, pageHeight] = coordsOnly;
+          return (
+            Number.isFinite(y) &&
+            Number.isFinite(height) &&
+            Number.isFinite(pageHeight) &&
+            height > 0 &&
+            pageHeight > 0
+          );
         })
         .map((innerArray) => {
           // Return only the first 4 elements (strip confidence)

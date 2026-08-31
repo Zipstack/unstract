@@ -8,6 +8,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -108,6 +109,10 @@ function Header({
     details,
   } = useCustomToolStore();
   const runGate = usePromptRunGate(promptDetails);
+  // UN-2900: supplied by ToolStudioPromptSerializer on both the tool fetch and
+  // the prompt save response; empty unless single pass is enabled.
+  const unresolvableVariables =
+    promptDetails?.single_pass_unresolvable_variables || [];
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
@@ -387,6 +392,36 @@ function Header({
         />
       </Col>
       <Col span={12} className="display-flex-right">
+        {/*
+         * UN-2900: single pass builds one combined prompt, so a variable that
+         * refers to another prompt's output has nothing to resolve against and
+         * the literal {{...}} reaches the LLM. custom_data still resolves, so
+         * the backend excludes it. Warn per prompt rather than blocking.
+         */}
+        {unresolvableVariables?.length > 0 && (
+          <div>
+            <Tooltip
+              title={
+                `Single pass extraction cannot resolve ` +
+                `${unresolvableVariables.join(", ")}. ` +
+                `All prompts run in one call, so no prompt's output is ` +
+                `available to another. The text will be sent to the LLM as-is.`
+              }
+            >
+              <Tag
+                icon={<TriangleAlert />}
+                color="warning"
+                className="display-flex-align-center"
+              >
+                <div className="tag-max-width ellipsis">
+                  {unresolvableVariables.length === 1
+                    ? "1 unresolved variable"
+                    : `${unresolvableVariables.length} unresolved variables`}
+                </div>
+              </Tag>
+            </Tooltip>
+          </div>
+        )}
         <div>
           {progressMsg?.message && (
             <Tooltip title={progressMsg?.message || ""}>

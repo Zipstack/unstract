@@ -24,6 +24,9 @@ import "./ManageDocsModal.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
+// UN-3507: how often to re-check index status when websocket updates stall.
+const INDEX_STATUS_POLL_INTERVAL_MS = 5000;
+
 let SummarizeStatusTitle = null;
 try {
   const mod = await import(
@@ -96,6 +99,7 @@ function ManageDocsModal({
     isSinglePassExtractLoading,
     isPublicSource,
     adapters = [],
+    deleteIndexDoc,
   } = useCustomToolStore();
   const { messages } = useSocketCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
@@ -190,6 +194,66 @@ function ManageDocsModal({
     open,
   ]);
 
+  // UN-3507: index status is refreshed only when `indexDocs` changes, which is
+  // driven by websocket log messages. When those messages are dropped the
+  // backend still finishes indexing but the UI spins forever. Poll the
+  // document-index endpoint while anything is indexing so the status recovers
+  // without the socket.
+  //
+  // `indexDocs` empties only via `deleteIndexDoc`, which is called from the
+  // websocket handlers -- so on the very path this poll exists for (socket
+  // dead) nothing else will ever clear it. The poll therefore has to retire a
+  // document itself, which is what lets this effect tear its own interval down
+  // instead of running forever.
+  //
+  // Retiring on "has an index id" would be wrong: re-indexing an already
+  // indexed document leaves the previous id in place until the new run
+  // finishes, so the first tick would clear the spinner while indexing is
+  // still running. Compare against a fingerprint of the index row captured
+  // when the poll armed, and retire only once it actually changes.
+  //
+  // Errors are swallowed here rather than alerted. handleGetIndexStatus is
+  // shared with the user-initiated calls above, where a toast is right; on a
+  // 5s timer a failing endpoint would otherwise raise two toasts per tick for
+  // as long as the modal stays open.
+  useEffect(() => {
+    if (!open || indexDocs?.length === 0) {
+      return undefined;
+    }
+
+    // "<indexType>:<docId>" -> fingerprint of that row when the poll armed.
+    const baseline = new Map();
+
+    const poll = (recordBaselineOnly) => {
+      const opts = { silent: true, baseline, recordBaselineOnly };
+      handleGetIndexStatus(rawLlmProfile, indexTypes.raw, opts);
+      const summarizeProfileId =
+        summarizeLlmProfile || (summarizeLlmAdapter ? defaultLlmProfile : null);
+      handleGetIndexStatus(summarizeProfileId, indexTypes.summarize, opts);
+    };
+
+    // Record the starting state now, so the first tick can already detect a
+    // change rather than spending one learning it. This request races the
+    // interval only in the sense that a tick firing before it resolves finds
+    // an empty map and adopts what it sees as the baseline -- which is the
+    // same outcome, one tick later.
+    poll(true);
+
+    const intervalId = setInterval(
+      () => poll(false),
+      INDEX_STATUS_POLL_INTERVAL_MS,
+    );
+
+    return () => clearInterval(intervalId);
+  }, [
+    open,
+    indexDocs,
+    rawLlmProfile,
+    summarizeLlmProfile,
+    summarizeLlmAdapter,
+    defaultLlmProfile,
+  ]);
+
   useEffect(() => {
     // Reverse the array to have the latest logs at the beginning
     let newMessages = [...messages].reverse();
@@ -280,7 +344,27 @@ function ManageDocsModal({
     return isIndexed;
   };
 
-  const handleGetIndexStatus = (llmProfileId, indexType) => {
+  // Identifies one indexing run for a document. `modified_at` is bumped by
+  // BaseModel on every save, so it changes when a re-index completes even
+  // though the index id itself may be unchanged.
+  const indexFingerprint = (item, indexType) =>
+    [
+      indexType === indexTypes.raw
+        ? item?.raw_index_id
+        : item?.summarize_index_id,
+      item?.modified_at,
+    ].join("|");
+
+  // The UN-3507 poll passes `silent` to suppress the failure toast, which would
+  // otherwise repeat every 5s. `baseline` is a docId -> fingerprint map taken
+  // when the poll armed; a document is retired once its fingerprint moves off
+  // that baseline, which is what lets the poll stop on its own.
+  // `recordBaselineOnly` fills the map without retiring anything.
+  const handleGetIndexStatus = (
+    llmProfileId,
+    indexType,
+    { silent, baseline, recordBaselineOnly } = {},
+  ) => {
     if (!llmProfileId) {
       handleIndexStatus(indexType, []);
       return;
@@ -294,7 +378,11 @@ function ManageDocsModal({
       url,
     };
 
-    handleLoading(indexType, true);
+    // The poll re-reads status on a timer; only a user-initiated call should
+    // drive the column's loading indicator, or it flickers every tick.
+    if (!silent) {
+      handleLoading(indexType, true);
+    }
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
@@ -306,12 +394,47 @@ function ManageDocsModal({
         });
 
         handleIndexStatus(indexType, indexStatus);
+
+        if (!baseline) {
+          return;
+        }
+
+        for (const item of data) {
+          const docId = item?.document_manager;
+          const key = `${indexType}:${docId}`;
+          const fingerprint = indexFingerprint(item, indexType);
+
+          if (recordBaselineOnly) {
+            baseline.set(key, fingerprint);
+            continue;
+          }
+
+          // Unseen at arm time means this run started after the baseline was
+          // taken; adopt it now rather than retiring on the first sighting.
+          if (!baseline.has(key)) {
+            baseline.set(key, fingerprint);
+            continue;
+          }
+
+          if (
+            baseline.get(key) !== fingerprint &&
+            handleIsIndexed(indexType, item) &&
+            indexDocs.includes(docId)
+          ) {
+            deleteIndexDoc(docId);
+          }
+        }
       })
       .catch((err) => {
+        if (silent) {
+          return;
+        }
         setAlertDetails(handleException(err, "Failed to get index status"));
       })
       .finally(() => {
-        handleLoading(indexType, false);
+        if (!silent) {
+          handleLoading(indexType, false);
+        }
       });
   };
 
