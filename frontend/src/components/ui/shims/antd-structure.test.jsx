@@ -845,6 +845,48 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(container.firstChild.className).toContain("divide-separator");
   });
 
+  /*
+   * `extra` is antd's OTHER trailing slot, and dropping it is silent: an
+   * unknown prop on a <div> renders nothing and throws nothing. Share access
+   * puts its revoke-access delete icon there, so the modal listed who a
+   * resource was shared with and offered no way to un-share them.
+   */
+  it("List.Item renders the extra slot, not just actions", () => {
+    render(
+      <List
+        dataSource={[{ id: 1 }]}
+        renderItem={() => (
+          <List.Item extra={<button type="button">Revoke</button>}>
+            <span>nageshwaran@zipstack.com</span>
+          </List.Item>
+        )}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+  });
+
+  it("List.Item renders actions and extra together", () => {
+    render(
+      <List
+        dataSource={[{ id: 1 }]}
+        renderItem={() => (
+          <List.Item
+            actions={[
+              <button type="button" key="edit">
+                Edit
+              </button>,
+            ]}
+            extra={<button type="button">Revoke</button>}
+          >
+            <span>row</span>
+          </List.Item>
+        )}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+  });
+
   it("List still stacks when no grid prop is given", () => {
     const { container } = render(
       <List dataSource={[{ id: 1 }]} renderItem={(i) => <span>{i.id}</span>} />,

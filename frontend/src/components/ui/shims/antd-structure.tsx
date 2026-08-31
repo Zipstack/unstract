@@ -718,20 +718,39 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
   );
 });
 
+/**
+ * antd `<List.Item actions extra>`.
+ *
+ * BOTH trailing slots have to be honoured. antd's horizontal item renders
+ * `children`, then `actions`, then `extra`; call-sites pick whichever reads
+ * better and expect the same right-hand placement from either. Accepting only
+ * `actions` let `extra` fall into `...props` and land on the <div> as an
+ * unknown DOM attribute, so the node was dropped without an error — which is
+ * how Share access lost the delete icon that revokes a user's or group's
+ * access, leaving no way to un-share at all. Export Tool, Group members and
+ * Co-owners lost their row controls the same way.
+ */
 function ListItem({
   actions,
+  extra,
   children,
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & { actions?: React.ReactNode[] }) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  actions?: React.ReactNode[];
+  extra?: React.ReactNode;
+}) {
   return (
     <div
       className={cn("flex items-center justify-between gap-2", className)}
       {...props}
     >
       <div className="min-w-0 flex-1">{children}</div>
-      {actions?.length ? (
-        <div className="flex items-center gap-2">{actions}</div>
+      {actions?.length || extra ? (
+        <div className="flex items-center gap-2">
+          {actions}
+          {extra}
+        </div>
       ) : null}
     </div>
   );
