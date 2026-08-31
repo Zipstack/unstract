@@ -19,7 +19,10 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
+import {
+  getBackendErrorDetail,
+  usableAdapters,
+} from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -200,7 +203,7 @@ function AddLlmProfile({
         const embedding = [];
         const x2Text = [];
 
-        data.forEach((item) => {
+        usableAdapters(data).forEach((item) => {
           const option = { value: item?.id, label: item?.adapter_name };
           if (item?.adapter_type === "LLM") {
             llm.push(option);

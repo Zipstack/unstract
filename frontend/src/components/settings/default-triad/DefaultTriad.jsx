@@ -3,6 +3,7 @@ import { Button, Select, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
+import { usableAdapters } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -66,7 +67,7 @@ function DefaultTriad() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
     })
       .then((adapters) => {
-        setAdapterList(adapters);
+        setAdapterList(usableAdapters(adapters));
       })
       .catch((err) => {
         setAlertDetails(

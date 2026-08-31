@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import "./AdapterSelectionModal.css";
 
+import { usableAdapters } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -59,7 +60,12 @@ function AdapterSelectionModal({
 
       const [llm, embedding, vectorDb, x2text] = await Promise.all(requests);
 
-      setAdapters({ llm, embedding, vectorDb, x2text });
+      setAdapters({
+        llm: usableAdapters(llm),
+        embedding: usableAdapters(embedding),
+        vectorDb: usableAdapters(vectorDb),
+        x2text: usableAdapters(x2text),
+      });
     } catch (err) {
       setAlertDetails(
         handleException(err, "Failed to fetch available adapters"),

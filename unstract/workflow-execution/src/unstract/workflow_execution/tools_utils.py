@@ -46,12 +46,6 @@ class ToolsUtils:
         )
         self.x2text_host = ToolsUtils.get_env(ToolRV.X2TEXT_HOST, raise_exception=True)
         self.x2text_port = ToolsUtils.get_env(ToolRV.X2TEXT_PORT, raise_exception=True)
-        self.llmw_poll_interval = ToolsUtils.get_env(
-            ToolRV.ADAPTER_LLMW_POLL_INTERVAL, raise_exception=False
-        )
-        self.llmw_max_polls = ToolsUtils.get_env(
-            ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
-        )
         self.llmw_wait_timeout = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT, raise_exception=False
         )
@@ -242,10 +236,6 @@ class ToolsUtils:
             or "mymaster",
         }
         # For async LLM Whisperer extraction
-        if self.llmw_poll_interval:
-            platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
-        if self.llmw_max_polls:
-            platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
         if self.llmw_wait_timeout:
             platform_vars[ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT] = self.llmw_wait_timeout
         return platform_vars

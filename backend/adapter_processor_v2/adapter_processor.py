@@ -10,8 +10,13 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.exceptions import (
     AdapterNotFound,
+    DeprecatedAdapter,
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
@@ -39,6 +44,8 @@ class AdapterProcessor:
     def get_json_schema(adapter_id: str) -> dict[str, Any]:
         """Function to return JSON Schema for Adapters."""
         schema_details: dict[str, Any] = {}
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ID, adapter_id
         )
@@ -66,6 +73,8 @@ class AdapterProcessor:
         for each_adapter in updated_adapters:
             adapter_id = each_adapter.get(AdapterKeys.ID)
             if not is_special_user and adapter_id.startswith("noOp"):
+                continue
+            if is_adapter_deprecated(adapter_id):
                 continue
 
             supported_adapters.append(
@@ -112,7 +121,7 @@ class AdapterProcessor:
     @staticmethod
     def get_icon(adapter: AdapterInstance) -> str:
         """Registry icon for an adapter, or the warning icon if unresolvable."""
-        if not adapter.is_available:
+        if not adapter.is_available or is_adapter_deprecated(adapter.adapter_id):
             return AdapterKeys.UNAVAILABLE_ICON
         try:
             adapter_class = Adapterkit().get_adapter_class_by_adapter_id(

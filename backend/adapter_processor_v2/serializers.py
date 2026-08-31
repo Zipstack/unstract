@@ -14,6 +14,10 @@ from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_metadata,
+    is_adapter_deprecated,
+)
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 from unstract.sdk1.constants import AdapterTypes
@@ -26,6 +30,26 @@ class TestAdapterSerializer(serializers.Serializer):
     adapter_id = serializers.CharField(max_length=FLC.ADAPTER_ID_LENGTH)
     adapter_metadata = serializers.JSONField()
     adapter_type = serializers.JSONField()
+
+
+def _add_deprecation_info(rep: dict[str, Any], instance: AdapterInstance) -> bool:
+    """Stamp availability keys onto ``rep``; returns whether the adapter is usable.
+
+    The registry is consulted alongside the stored flag so a newly deprecated
+    adapter reads as deprecated before its backfill migration has run.
+    """
+    is_available = instance.is_available and not is_adapter_deprecated(
+        instance.adapter_id
+    )
+    rep[AdapterKeys.IS_AVAILABLE] = is_available
+    rep[AdapterKeys.IS_DEPRECATED] = not is_available
+    if not is_available:
+        metadata = (
+            get_deprecation_metadata(instance.adapter_id) or instance.deprecation_metadata
+        )
+        if metadata:
+            rep[AdapterKeys.DEPRECATION_METADATA] = metadata
+    return is_available
 
 
 class BaseAdapterSerializer(AuditSerializer):
@@ -99,15 +123,11 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
 
-        # Add deprecation information
-        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
-        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
-        if not instance.is_available and instance.deprecation_metadata:
-            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+        is_available = _add_deprecation_info(rep, instance)
 
         # Only retrieve context window and icon for available adapters
         # Avoid SDK calls for deprecated adapters
-        if instance.is_available:
+        if is_available:
             # Retrieve context window if adapter is a LLM
             # For other adapter types, context_window is not relevant.
             if instance.adapter_type == AdapterTypes.LLM.value:
@@ -178,11 +198,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
 
-        # Add deprecation information
-        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
-        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
-        if not instance.is_available and instance.deprecation_metadata:
-            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+        _add_deprecation_info(rep, instance)
 
         rep[common.ICON] = AdapterProcessor.get_icon(instance)
 
