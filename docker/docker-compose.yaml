@@ -924,6 +924,46 @@ services:
     profiles:
       - pg-queue
 
+  # Buffered webhook notifications. The backend's notification seam enqueues
+  # ``send_webhook_notification`` onto these queues unconditionally (UN-4046), so
+  # without this consumer every buffered webhook would sit undrained — nothing
+  # sweeps pg_queue_message.
+  worker-pg-notification:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-notification
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8104:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-notification
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=notification
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_NOTIFICATION_CONCURRENCY:-2}
+      # One outbound HTTP POST per task. VT sits above a slow subscriber so a
+      # sibling replica cannot re-claim mid-POST and double-deliver; health-stale
+      # above that. Mirrors the chart's workerPgNotification bounds.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_NOTIFICATION_VT_SECONDS:-300}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_NOTIFICATION_HEALTH_STALE_SECONDS:-360}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
+    profiles:
+      - pg-queue
+
   # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
   # elects a single leader via pg_orchestrator_lock; extra replicas idle as
   # standby). Besides barrier-orphan recovery it runs the PG scheduler tick

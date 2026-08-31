@@ -28,7 +28,6 @@ from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
-from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
 from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
@@ -586,12 +585,10 @@ def _send_clubbed(
     ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
-        # Flag-gated transport (UN-3753): PG queue when pg_queue_enabled for this
-        # org, else Celery (byte-identical to the prior send_task). resolve_transport
-        # keys on the org STRING id, but the buffer/worker contract below uses the
-        # org pk — hence _org_identifier(org_id) for routing, org_id in kwargs.
-        dispatched = dispatch_webhook_notification(
-            celery_app=celery_app,
+        # The queue row records the org STRING id, but the buffer/worker contract
+        # below uses the org pk — hence _org_identifier(org_id) on the row,
+        # org_id in kwargs. The two must not be conflated.
+        dispatch_task_id = dispatch_webhook_notification(
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
                 "max_retries": max_retries,
@@ -609,18 +606,14 @@ def _send_clubbed(
             queue="notifications",
             org_string_id=_org_identifier(org_id),
         )
-        # transport= makes the rollout answerable from the logs: during a percentage
-        # ramp the question is "are PG-routed notifications succeeding at the same
-        # rate as Celery-routed ones?", which result=success alone cannot answer.
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
-            "transport=%s org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
+            "org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
             platform,
-            dispatched.transport,
             org_id,
             webhook_url_hash(url),
             len(buffer_ids),
-            dispatched.task_id,
+            dispatch_task_id,
         )
     except PermanentDispatchError:
         # PG-ONLY permanent failure. From this path the only reachable cause is
