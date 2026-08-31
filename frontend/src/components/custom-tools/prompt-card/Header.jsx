@@ -235,12 +235,12 @@ function Header({
             {enforceType === "json" && (
               <>
                 {/*
-                  * Each checkbox is grouped with its own tooltip icon so the
-                  * two never separate, and the pairs share a row as they did
-                  * under antd. `required-checkbox-padding`, which used to sit
-                  * on the second checkbox, has no rule anywhere in the app —
-                  * the gap came from antd's own adjacent-wrapper margin.
-                  */}
+                 * Each checkbox is grouped with its own tooltip icon so the
+                 * two never separate, and the pairs share a row as they did
+                 * under antd. `required-checkbox-padding`, which used to sit
+                 * on the second checkbox, has no rule anywhere in the app —
+                 * the gap came from antd's own adjacent-wrapper margin.
+                 */}
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
                   <span className="inline-flex items-center gap-1">
                     <Checkbox
