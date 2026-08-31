@@ -117,8 +117,13 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         return visible.filter(**filter_args) if filter_args else visible
 
     @action(detail=True, methods=["post"])
-    def reorder_prompts(self, request: Request) -> Response:
+    def reorder_prompts(self, request: Request, **kwargs: Any) -> Response:
         """Reorder the sequence of prompts based on the provided data.
+
+        ``**kwargs`` absorbs the ``format`` argument that
+        ``format_suffix_patterns`` passes on the ``prompt/reorder.json``
+        variant of this route; the bare signature raised ``TypeError`` (500)
+        there. The DRF mixins take ``*args, **kwargs`` for the same reason.
 
         Routed at the collection path (``prompt/reorder/``) with the target
         taken from ``prompt_id`` in the body, so DRF never calls
