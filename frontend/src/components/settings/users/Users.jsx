@@ -97,47 +97,61 @@ function Users() {
   const isSsoLocalAuthz =
     !!sessionDetails?.provider && !!sessionDetails?.disableSsoIdpAuthorization;
 
-  const editItem = {
-    key: "1",
-    label: (
-      <Space
-        direction="horizontal"
-        className="action-items"
-        onClick={() =>
-          navigate(`/${sessionDetails?.orgName}/users/edit`, {
-            state: selectedUserEmail,
-          })
-        }
-      >
-        <div>
-          <Pencil />
-        </div>
-        <div>
-          <Typography.Text>Edit</Typography.Text>
-        </div>
-      </Space>
-    ),
-  };
+  /*
+   * The row each entry acts on is bound HERE, in the render closure, rather
+   * than recorded by an onClick on the kebab itself. The menu opens on
+   * pointerdown and then pins `pointer-events: none` on <body> while it is
+   * open, so the click that would have followed on the kebab never lands: the
+   * row stayed unrecorded, Edit navigated to /users/edit with no state, and
+   * the page bounced to the dashboard. The Delete modal named no user for the
+   * same reason.
+   */
+  const getActionItems = (record) => {
+    const editItem = {
+      key: "1",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            navigate(`/${sessionDetails?.orgName}/users/edit`, {
+              state: record,
+            })
+          }
+        >
+          <div>
+            <Pencil />
+          </div>
+          <div>
+            <Typography.Text>Edit</Typography.Text>
+          </div>
+        </Space>
+      ),
+    };
 
-  const deleteItem = {
-    key: "2",
-    label: (
-      <Space
-        direction="horizontal"
-        className="action-items"
-        onClick={showModal}
-      >
-        <div>
-          <Trash2 />
-        </div>
-        <div>
-          <Typography.Text>Delete</Typography.Text>
-        </div>
-      </Space>
-    ),
-  };
+    const deleteItem = {
+      key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => {
+            setSelectedUserEmail(record);
+            showModal();
+          }}
+        >
+          <div>
+            <Trash2 />
+          </div>
+          <div>
+            <Typography.Text>Delete</Typography.Text>
+          </div>
+        </Space>
+      ),
+    };
 
-  const actionItems = isSsoLocalAuthz ? [editItem] : [editItem, deleteItem];
+    return isSsoLocalAuthz ? [editItem] : [editItem, deleteItem];
+  };
 
   const baseColumns = [
     {
@@ -155,15 +169,11 @@ function Users() {
     align: "center",
     render: (_, record) => (
       <Dropdown
-        menu={{ items: actionItems }}
+        menu={{ items: getActionItems(record) }}
         trigger={["click"]}
         placement="bottomLeft"
       >
-        <Ellipsis
-          rotate={90}
-          style={{ cursor: "pointer" }}
-          onClick={() => setSelectedUserEmail(record)}
-        />
+        <Ellipsis rotate={90} style={{ cursor: "pointer" }} />
       </Dropdown>
     ),
   };
