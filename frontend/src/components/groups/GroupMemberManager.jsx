@@ -1,6 +1,7 @@
 import { CircleHelp, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Select } from "@/components/ui/shims/antd-inputs";
 import { Avatar } from "@/components/ui/shims/antd-leaves";
 import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
@@ -144,7 +145,17 @@ function GroupMemberManager({ open, group, onClose }) {
                     icon={<CircleHelp />}
                     onConfirm={() => handleRemove(item.user_id)}
                   >
-                    <Trash2 style={{ cursor: "pointer" }} />
+                    {/*
+                     * A named button, not a bare icon: the icon alone is
+                     * absent from the accessibility tree, leaving no way to
+                     * remove a member except with a mouse.
+                     */}
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Trash2 />}
+                      aria-label={`Remove ${item.email} from this group`}
+                    />
                   </Popconfirm>
                 }
               >

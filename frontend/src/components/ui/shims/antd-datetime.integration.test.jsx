@@ -127,4 +127,56 @@ describe("popover layout must not depend on viewport breakpoints", () => {
     expect(names.some((n) => /month/i.test(n))).toBe(true);
     expect(names.some((n) => /year/i.test(n))).toBe(true);
   });
+
+  /*
+   * react-day-picker renders a dropdown caption as a <select> PLUS a visible
+   * label span carrying the same text; the select is meant to lie invisibly
+   * over the span and take the clicks. Styling the select as the visible
+   * control drew both, so the header read "August August › 2026 2026 ›" and
+   * the doubled width slid under the nav arrows.
+   */
+  it("draws each dropdown caption once, not twice", async () => {
+    render(<RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    await screen.findAllByRole("grid");
+
+    const monthSelect = document.querySelector("select");
+    // Invisible, but still stacked over the label so it keeps the clicks.
+    expect(monthSelect.className).toContain("opacity-0");
+    expect(monthSelect.className).toContain("absolute");
+
+    // The caption text appears once per month, in the label the select covers.
+    const root = monthSelect.parentElement;
+    const label = root.querySelector("span[aria-hidden]");
+    expect(label.textContent).toBe("March");
+    expect(root.className).toContain("border");
+  });
+
+  it("points a dropdown's chevron down and a nav arrow sideways", async () => {
+    render(<RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    await screen.findAllByRole("grid");
+
+    const dir = (el) =>
+      el.getAttribute("class").match(/lucide-chevron-(\w+)/)?.[1] ?? "";
+    const chevrons = [...document.querySelectorAll("svg.rdp-chevron")];
+    // Four captions (month + year, twice) all point down; the two nav arrows
+    // point left and right. Falling through to a default gave every caption a
+    // rightward chevron, so none of them read as a dropdown.
+    const dirs = chevrons.map(dir);
+    expect(dirs.filter((d) => d === "down")).toHaveLength(4);
+    expect(dirs).toContain("left");
+    expect(dirs).toContain("right");
+  });
+
+  it("keeps the caption clear of the nav arrows", async () => {
+    render(<RangePicker value={[dayjs("2026-03-01"), dayjs("2026-03-31")]} />);
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    await screen.findAllByRole("grid");
+
+    // The arrows are absolutely positioned at the calendar's outer edges, so
+    // the caption reserves room for them rather than centring into them.
+    const caption = document.querySelector("select").closest(".justify-center");
+    expect(caption.className).toContain("px-8");
+  });
 });

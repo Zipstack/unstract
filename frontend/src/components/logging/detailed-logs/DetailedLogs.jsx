@@ -468,7 +468,7 @@ const DetailedLogs = () => {
         justify="space-between"
         className="detailed-logs-cards"
       >
-        <Flex className="pad-12">
+        <Flex className="detailed-logs-card-group">
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
               <Calendar className="logging-card-icons" />

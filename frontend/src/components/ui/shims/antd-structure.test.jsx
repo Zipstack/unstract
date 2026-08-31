@@ -41,6 +41,23 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByRole("button", { name: "More" })).toBeInTheDocument();
   });
 
+  it("Card marks a `hoverable` card as a click target", () => {
+    const { container } = render(<Card hoverable>pick me</Card>);
+
+    const card = container.querySelector(".ant-card");
+    expect(card).toHaveClass("cursor-pointer");
+    // The prop is consumed, not forwarded as a stray DOM attribute.
+    expect(card).not.toHaveAttribute("hoverable");
+  });
+
+  it("Card leaves a plain card without a pointer cursor", () => {
+    const { container } = render(<Card>read me</Card>);
+
+    expect(container.querySelector(".ant-card")).not.toHaveClass(
+      "cursor-pointer",
+    );
+  });
+
   it("Tabs renders labels from the `items` data prop", () => {
     render(
       <Tabs
@@ -500,6 +517,21 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("2").style.transform).toBe("translate(-2px, 12px)");
   });
 
+  /**
+   * The count is painted over the child, and `offset` routinely drags it across
+   * the child's middle. Left interactive it ate the child's clicks — and only
+   * once it grew wide enough to cover them, so a 1-digit count worked and
+   * `12` killed Prompt Studio's audit button outright.
+   */
+  it("Badge's count does not intercept clicks meant for its child", () => {
+    render(
+      <Badge count={12} offset={[-2, 12]}>
+        <button type="button">act</button>
+      </Badge>,
+    );
+    expect(screen.getByText("12")).toHaveClass("pointer-events-none");
+  });
+
   it("Badge hides a zero count unless showZero", () => {
     const { rerender } = render(<Badge count={0} />);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
@@ -514,6 +546,39 @@ describe("antd-compatible structural shims (P4)", () => {
       </Drawer>,
     );
     expect(screen.getByText("drawer body")).toBeInTheDocument();
+  });
+
+  /*
+   * Regression: the Lookup drawer passes all three of these, and every one was
+   * dropped — `closable={false}` and `destroyOnClose` landed on the DOM node as
+   * attributes (React warned about both), the panel kept its own 24px padding
+   * so the drawer's full-bleed header floated inset, and `width` became
+   * `max-width`, leaving the Sheet on its `w-3/4` default.
+   */
+  it("Drawer honours closable, styles.body and width", () => {
+    const { container } = render(
+      <Drawer
+        open
+        closable={false}
+        destroyOnClose
+        width="85%"
+        styles={{ body: { padding: 0 } }}
+      >
+        drawer body
+      </Drawer>,
+    );
+    const panel = container.ownerDocument.querySelector('[role="dialog"]');
+
+    expect(screen.queryByText("Close")).not.toBeInTheDocument();
+    expect(panel).not.toHaveAttribute("destroyOnClose");
+    expect(panel).not.toHaveAttribute("closable");
+    expect(panel).toHaveStyle({ width: "85%", maxWidth: "100%" });
+    expect(screen.getByText("drawer body")).toHaveStyle({ padding: "0px" });
+  });
+
+  it("Drawer keeps the stock close button by default", () => {
+    render(<Drawer open>drawer body</Drawer>);
+    expect(screen.getByText("Close")).toBeInTheDocument();
   });
 
   it("Transfer splits items across source and target by targetKeys", () => {
@@ -795,6 +860,48 @@ describe("antd-compatible structural shims (P4)", () => {
       />,
     );
     expect(container.firstChild.className).toContain("divide-separator");
+  });
+
+  /*
+   * `extra` is antd's OTHER trailing slot, and dropping it is silent: an
+   * unknown prop on a <div> renders nothing and throws nothing. Share access
+   * puts its revoke-access delete icon there, so the modal listed who a
+   * resource was shared with and offered no way to un-share them.
+   */
+  it("List.Item renders the extra slot, not just actions", () => {
+    render(
+      <List
+        dataSource={[{ id: 1 }]}
+        renderItem={() => (
+          <List.Item extra={<button type="button">Revoke</button>}>
+            <span>nageshwaran@zipstack.com</span>
+          </List.Item>
+        )}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
+  });
+
+  it("List.Item renders actions and extra together", () => {
+    render(
+      <List
+        dataSource={[{ id: 1 }]}
+        renderItem={() => (
+          <List.Item
+            actions={[
+              <button type="button" key="edit">
+                Edit
+              </button>,
+            ]}
+            extra={<button type="button">Revoke</button>}
+          >
+            <span>row</span>
+          </List.Item>
+        )}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Revoke" })).toBeInTheDocument();
   });
 
   it("List still stacks when no grid prop is given", () => {
@@ -1206,6 +1313,46 @@ describe("antd-compatible structural shims (P4)", () => {
     it("renders items that carry no icon", () => {
       render(<Menu items={[{ key: "1", label: "Plain" }]} />);
       expect(screen.getByText("Plain")).toBeInTheDocument();
+    });
+  });
+
+  /*
+   * The Output Analyzer's Document List wires its handler to `onSelect`, not
+   * `onClick` — antd fires both. Unhandled, the prop landed on the <nav> as
+   * React's DOM `select` handler and picking another document did nothing.
+   */
+  describe("Menu onSelect", () => {
+    it("fires onSelect with the picked key", async () => {
+      const onSelect = vi.fn();
+      render(
+        <Menu
+          selectedKeys={["0"]}
+          items={[
+            { key: "0", label: "bank_citi.pdf" },
+            { key: "1", label: "BOFA_cc_statement.pdf" },
+          ]}
+          onSelect={onSelect}
+        />,
+      );
+      await userEvent.click(screen.getByText("BOFA_cc_statement.pdf"));
+      expect(onSelect).toHaveBeenCalledWith(
+        expect.objectContaining({ key: "1", selectedKeys: ["1"] }),
+      );
+    });
+
+    it("fires onClick and onSelect together, as antd does", async () => {
+      const onClick = vi.fn();
+      const onSelect = vi.fn();
+      render(
+        <Menu
+          items={[{ key: "7", label: "Pick me" }]}
+          onClick={onClick}
+          onSelect={onSelect}
+        />,
+      );
+      await userEvent.click(screen.getByText("Pick me"));
+      expect(onClick).toHaveBeenCalledWith({ key: "7" });
+      expect(onSelect).toHaveBeenCalledTimes(1);
     });
   });
 

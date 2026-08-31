@@ -404,6 +404,88 @@ describe("antd-compatible overlay shims (P2)", () => {
   });
 
   /*
+   * Radix's menu owns the keyboard: printable keys reaching the content run its
+   * typeahead, which pulls focus onto the matching item, and Enter/Space on an
+   * item activate it. antd's Menu did neither, so antd call-sites put form
+   * fields straight into a menu entry — Prompt Studio's kebab holds the
+   * postprocessing webhook URL input. Under Radix, typing in it threw focus out
+   * of the field mid-word and dropped the characters that followed.
+   *
+   * These assert PROPAGATION rather than the resulting focus. Radix's typeahead
+   * and Enter-to-activate are what the keystroke reaching the menu turns into,
+   * and neither runs faithfully under jsdom — a focus assertion would pass
+   * against the unfixed shim too, for want of any typeahead to steal it.
+   */
+  describe("Dropdown with a field inside a menu item", () => {
+    // The menu content is portalled, but a portal still propagates events along
+    // the REACT tree, so this spy sees whatever escapes the menu entry.
+    const renderMenu = (label) => {
+      const onKeyDown = vi.fn();
+      render(
+        <div onKeyDown={onKeyDown}>
+          <Dropdown
+            menu={{
+              items: [
+                { key: "enable", label: "Enabled" },
+                { key: "field", label },
+                { key: "delete", label: "Delete" },
+              ],
+            }}
+          >
+            <button type="button">Open</button>
+          </Dropdown>
+        </div>,
+      );
+      fireEvent.pointerDown(screen.getByRole("button", { name: "Open" }), {
+        button: 0,
+        ctrlKey: false,
+        pointerType: "mouse",
+      });
+      return onKeyDown;
+    };
+
+    it("keeps a printable key typed in a field out of the menu", () => {
+      const onKeyDown = renderMenu(<input aria-label="Webhook URL" />);
+
+      // "d" is the first letter of "Delete": typeahead would jump to it.
+      fireEvent.keyDown(screen.getByLabelText("Webhook URL"), { key: "d" });
+
+      expect(onKeyDown).not.toHaveBeenCalled();
+    });
+
+    it("keeps Enter typed in a field out of the menu", () => {
+      const onKeyDown = renderMenu(<input aria-label="Webhook URL" />);
+
+      fireEvent.keyDown(screen.getByLabelText("Webhook URL"), { key: "Enter" });
+
+      expect(onKeyDown).not.toHaveBeenCalled();
+    });
+
+    it("still lets Escape through, so the menu can dismiss", () => {
+      const onKeyDown = renderMenu(<input aria-label="Webhook URL" />);
+
+      fireEvent.keyDown(screen.getByLabelText("Webhook URL"), {
+        key: "Escape",
+      });
+
+      expect(onKeyDown).toHaveBeenCalled();
+    });
+
+    // Scoped to text entry. A checkbox is not a place you type, and Space
+    // activates it exactly as it activates a menu entry, so the menu's own
+    // keyboard handling is left in place there.
+    it("leaves the menu's keyboard handling alone for a checkbox", () => {
+      const onKeyDown = renderMenu(
+        <input type="checkbox" aria-label="Required" />,
+      );
+
+      fireEvent.keyDown(screen.getByLabelText("Required"), { key: "d" });
+
+      expect(onKeyDown).toHaveBeenCalled();
+    });
+  });
+
+  /*
    * `activeKey` is antd's CONTROLLED open state, and it is the ONLY way any
    * call-site in this app opens a Collapse — the prompt card, the notes card
    * and the LLM-profile form all render their own chevron in a header row

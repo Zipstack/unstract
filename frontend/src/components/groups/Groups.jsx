@@ -1,4 +1,11 @@
-import { Ellipsis, Pencil, Plus, RotateCw, Trash2, Users } from "lucide-react";
+import {
+  EllipsisVertical,
+  Pencil,
+  Plus,
+  RotateCw,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
@@ -181,7 +188,19 @@ function Groups() {
           trigger={["click"]}
           placement="bottomLeft"
         >
-          <Ellipsis rotate={90} style={{ cursor: "pointer" }} />
+          {/*
+           * The trigger has to be a real, named button. A bare icon merged the
+           * Dropdown's trigger props onto the <svg>, which puts no node in the
+           * accessibility tree: the only way to reach Manage members / Edit /
+           * Delete was a mouse. `rotate` came across from antd's icon font and
+           * does nothing on a lucide SVG — EllipsisVertical is the glyph it
+           * was asking for, and the same one the card kebab menus use.
+           */}
+          <Button
+            type="text"
+            icon={<EllipsisVertical />}
+            aria-label={`Actions for ${record?.name}`}
+          />
         </Dropdown>
       ),
     },

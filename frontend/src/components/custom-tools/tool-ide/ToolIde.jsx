@@ -66,6 +66,19 @@ try {
   useLookupExportGate = mod.useLookupExportGate;
 } catch {}
 
+/*
+ * Cloud-only. Mounted here rather than beside either of its triggers: the
+ * kebab menu unmounts its contents on click and the prompt card body unmounts
+ * on collapse, so a drawer rendered in either was destroyed as it opened.
+ */
+let LookupDrawerHost;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupDrawerHost"
+  );
+  LookupDrawerHost = mod.LookupDrawerHost;
+} catch {}
+
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);
   const customToolStore = useCustomToolStore();
@@ -384,6 +397,7 @@ function ToolIde() {
         />
       )}
       {lookupGateModalEl}
+      {LookupDrawerHost && <LookupDrawerHost />}
       <Header
         handleUpdateTool={handleUpdateTool}
         setOpenSettings={setOpenSettings}

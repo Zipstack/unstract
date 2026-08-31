@@ -92,6 +92,13 @@ interface CardProps
   extra?: React.ReactNode;
   bordered?: boolean;
   size?: SizeToken;
+  /**
+   * antd's `hoverable`: the card is a click target, so it gets a pointer
+   * cursor and lifts on hover. Ten call sites pass it, and until it was
+   * declared here `...props` put it on the `<div>` as an unknown attribute --
+   * the cards read as inert.
+   */
+  hoverable?: boolean;
   /** antd v5 per-slot style overrides, e.g. `{ body: {...} }`. */
   styles?: { header?: React.CSSProperties; body?: React.CSSProperties };
 }
@@ -191,6 +198,20 @@ interface DrawerProps
   title?: React.ReactNode;
   placement?: "top" | "right" | "bottom" | "left";
   width?: number | string;
+  /** antd renders a top-right close button unless this is false. */
+  closable?: boolean;
+  /**
+   * antd's per-slot style overrides. Only `body` is honoured — no call-site
+   * uses the others, and silently accepting them would be worse than the
+   * type error.
+   */
+  styles?: { body?: React.CSSProperties };
+  /**
+   * Accepted and ignored: Radix already unmounts the panel on close, which is
+   * what antd's `destroyOnClose` asks for. Declared so it is consumed rather
+   * than spread onto the DOM node.
+   */
+  destroyOnClose?: boolean;
 }
 
 interface SegmentedOption {
@@ -214,10 +235,22 @@ interface SegmentedProps
 }
 
 interface MenuProps
-  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick"> {
+  extends Omit<React.HTMLAttributes<HTMLDivElement>, "onClick" | "onSelect"> {
   items?: KeyedItem[];
   selectedKeys?: string[];
   onClick?: (info: { key: string }) => void;
+  /**
+   * antd fires `onSelect` alongside `onClick` whenever a selectable item is
+   * picked, and plenty of call sites listen on that one alone — the Output
+   * Analyzer's Document List does. Without it declared here the prop fell
+   * through to the <nav> as React's DOM `select` handler, which never fires
+   * on a click, so switching documents silently did nothing.
+   */
+  onSelect?: (info: {
+    key: string;
+    keyPath: string[];
+    selectedKeys: string[];
+  }) => void;
   mode?: "vertical" | "horizontal" | "inline";
 }
 
@@ -378,6 +411,7 @@ const CardBase = React.forwardRef<HTMLDivElement, CardProps>(function Card(
     extra,
     bordered = true,
     size,
+    hoverable = false,
     className,
     styles,
     children,
@@ -391,7 +425,13 @@ const CardBase = React.forwardRef<HTMLDivElement, CardProps>(function Card(
     // more on head/extra. Without them those rules silently stop applying.
     <ShadcnCard
       ref={ref}
-      className={cn("ant-card", !bordered && "border-0 shadow-none", className)}
+      className={cn(
+        "ant-card",
+        !bordered && "border-0 shadow-none",
+        hoverable &&
+          "cursor-pointer transition-shadow duration-200 hover:shadow-md",
+        className,
+      )}
       {...props}
     >
       {title || extra ? (
@@ -704,20 +744,39 @@ const ListBase = React.forwardRef<HTMLDivElement, ListProps>(function List(
   );
 });
 
+/**
+ * antd `<List.Item actions extra>`.
+ *
+ * BOTH trailing slots have to be honoured. antd's horizontal item renders
+ * `children`, then `actions`, then `extra`; call-sites pick whichever reads
+ * better and expect the same right-hand placement from either. Accepting only
+ * `actions` let `extra` fall into `...props` and land on the <div> as an
+ * unknown DOM attribute, so the node was dropped without an error — which is
+ * how Share access lost the delete icon that revokes a user's or group's
+ * access, leaving no way to un-share at all. Export Tool, Group members and
+ * Co-owners lost their row controls the same way.
+ */
 function ListItem({
   actions,
+  extra,
   children,
   className,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & { actions?: React.ReactNode[] }) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  actions?: React.ReactNode[];
+  extra?: React.ReactNode;
+}) {
   return (
     <div
       className={cn("flex items-center justify-between gap-2", className)}
       {...props}
     >
       <div className="min-w-0 flex-1">{children}</div>
-      {actions?.length ? (
-        <div className="flex items-center gap-2">{actions}</div>
+      {actions?.length || extra ? (
+        <div className="flex items-center gap-2">
+          {actions}
+          {extra}
+        </div>
       ) : null}
     </div>
   );
@@ -1261,27 +1320,56 @@ const Drawer = React.forwardRef<HTMLDivElement, DrawerProps>(function Drawer(
     title,
     placement = "right",
     width,
+    closable = true,
+    styles,
+    // Consumed, not forwarded — see DrawerProps.
+    destroyOnClose: _destroyOnClose,
     className,
     children,
     ...props
   },
   ref,
 ) {
+  /*
+   * antd's `width` is the panel's actual width; mapping it to `max-width` left
+   * the Sheet on its `w-3/4` default, so `width="85%"` silently rendered 75%.
+   * `max-width: 100%` goes with it to beat the variant's `sm:max-w-sm` (384px),
+   * which would otherwise clamp any width past that. antd applies `width` to
+   * side drawers only — top/bottom ones are sized by `height`, which no
+   * call-site passes.
+   */
+  const isSideDrawer = placement === "left" || placement === "right";
+  const sizing =
+    width !== undefined && isSideDrawer
+      ? { width, maxWidth: "100%" as const }
+      : undefined;
+
   return (
     <Sheet open={open} onOpenChange={(next) => !next && onClose?.()}>
       <SheetContent
         ref={ref}
         side={placement}
-        style={{ maxWidth: width }}
-        className={className}
+        showClose={closable}
+        style={sizing}
+        /*
+         * `p-0` + a padded body, rather than padding on the panel itself.
+         * antd pads the BODY, so a call-site clearing it (`styles.body`) gets a
+         * full-bleed panel; with the padding on the panel, a drawer whose
+         * header carries its own background floated inset with a 24px frame of
+         * page around it. `flex-col` + `flex-1` reproduces antd's scrolling
+         * body under a fixed header.
+         */
+        className={cn("flex flex-col gap-0 p-0", className)}
         {...props}
       >
         {title ? (
-          <SheetHeader>
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>{title}</SheetTitle>
           </SheetHeader>
         ) : null}
-        {children}
+        <div className="min-h-0 flex-1 overflow-auto p-6" style={styles?.body}>
+          {children}
+        </div>
       </SheetContent>
     </Sheet>
   );
@@ -1351,7 +1439,15 @@ const Segmented = React.forwardRef<HTMLDivElement, SegmentedProps>(
 
 /** antd `<Menu items onClick>` — a simple vertical list. */
 const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
-  { items = [], selectedKeys = [], onClick, mode, className, ...props },
+  {
+    items = [],
+    selectedKeys = [],
+    onClick,
+    onSelect,
+    mode,
+    className,
+    ...props
+  },
   ref,
 ) {
   return (
@@ -1361,7 +1457,13 @@ const MenuBase = React.forwardRef<HTMLDivElement, MenuProps>(function Menu(
           key={String(item.key)}
           type="button"
           disabled={item.disabled}
-          onClick={() => onClick?.({ key: String(item.key) })}
+          onClick={() => {
+            const key = String(item.key);
+            onClick?.({ key });
+            // Single-select, as antd's Menu is by default: the new selection
+            // is just this key.
+            onSelect?.({ key, keyPath: [key], selectedKeys: [key] });
+          }}
           className={cn(
             "flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-left text-sm hover:bg-accent disabled:cursor-not-allowed",
             /*
@@ -2412,7 +2514,14 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
       {visible ? (
         <span
           className={cn(
-            "absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
+            // pointer-events-none: the count is decoration painted OVER the
+            // child, and `offset` routinely pulls it across the child's middle
+            // (PromptChangeIndicator uses [-2, 12] to dodge the prompt row's
+            // overflow clipping). Without this it swallows the clicks meant for
+            // the child, and worse, only once the count is wide enough to cover
+            // it -- a one-digit badge left the icon's centre reachable, two
+            // digits masked 85% of it and the button went dead.
+            "pointer-events-none absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
             dot && "size-2 p-0",
           )}
           style={{

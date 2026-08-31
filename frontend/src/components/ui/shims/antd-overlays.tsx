@@ -587,6 +587,48 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
 /* --------------------------------------------------------------- Dropdown */
 
 /**
+ * Radix's menu owns the keyboard: every printable keydown that reaches the
+ * content runs its typeahead, which pulls DOM focus onto the item whose label
+ * matches, and Enter/Space on an item activate it. antd's Menu did neither, so
+ * antd call-sites put form fields straight into a menu entry — Prompt Studio's
+ * kebab holds the postprocessing webhook URL `<Input>`. Typing in one under
+ * Radix dropped characters mid-word and threw focus out of the field.
+ *
+ * So keystrokes that start in a text-entry control are stopped before they
+ * bubble to the item (Enter/Space activation, arrow-key roving focus) or to the
+ * content (typeahead). Escape and Tab are let through: dismissal listens on
+ * document natively and is unaffected either way, and Tab should still leave.
+ */
+function isTextEntryTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.isContentEditable) {
+    return true;
+  }
+  const tag = target.tagName;
+  if (tag === "TEXTAREA" || tag === "SELECT") {
+    return true;
+  }
+  if (tag !== "INPUT") {
+    return false;
+  }
+  // Checkboxes and radios are keyboard-activated with Space, which is also how
+  // the menu activates an item; only free-text inputs need the menu muted.
+  const type = (target as HTMLInputElement).type;
+  return type !== "checkbox" && type !== "radio" && type !== "button";
+}
+
+function stopKeysFromFields(event: React.KeyboardEvent): void {
+  if (event.key === "Escape" || event.key === "Tab") {
+    return;
+  }
+  if (isTextEntryTarget(event.target)) {
+    event.stopPropagation();
+  }
+}
+
+/**
  * antd `<Dropdown menu={{ items }}>`. antd passes menu entries as data, so the
  * shim maps them onto Radix's composed children.
  */
@@ -679,6 +721,14 @@ const DropdownBase = React.forwardRef<HTMLDivElement, DropdownProps>(
                       // Only pads when the label is bare text, not an element.
                       "[&:not(:has(>*))]:px-2 [&:not(:has(>*))]:py-1.5",
                     )}
+                    /*
+                     * Held here rather than on the DropdownMenuItem: Radix
+                     * composes its own keydown handler onto the item element,
+                     * and stopPropagation cannot cancel a handler bound to the
+                     * same node. From a descendant it stops both the item's and
+                     * the content's.
+                     */
+                    onKeyDown={stopKeysFromFields}
                   >
                     {item?.label}
                   </span>

@@ -1,4 +1,9 @@
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronUp,
+} from "lucide-react";
 import * as React from "react";
 import { DayPicker } from "react-day-picker";
 
@@ -42,30 +47,51 @@ function Calendar({
          */
         months: "relative flex flex-row gap-4",
         month: "flex flex-col gap-4",
-        month_caption: "flex items-center justify-center pt-1",
-        caption_label: "text-sm font-medium",
+        /*
+         * `px-8` clears the nav arrows. They are absolutely positioned at the
+         * calendar's outer edges (below) while the caption centres itself in
+         * the month, so a wide caption slid straight under them.
+         */
+        month_caption: "flex h-7 items-center justify-center px-8",
+        caption_label: "inline-flex items-center gap-1 text-sm font-medium",
         /*
          * `captionLayout="dropdown"` swaps the caption for month/year selects
          * (antd's clickable month and year buttons). react-day-picker ships no
          * styles, so without these the selects render as raw browser controls.
+         *
+         * The shape it renders is a <select> AND a visible `caption_label`
+         * span holding the same text — the select is meant to lie invisibly
+         * over the span and take the clicks. Styling the SELECT as the visible
+         * control instead drew both, so every caption read "August August ›"
+         * and "2026 2026 ›" across two boxes and ran under the arrows.
+         *
+         * So: the root is the control users see, the select is a transparent
+         * overlay on top of it, and the span supplies the text.
          */
         dropdowns: "flex items-center gap-1 text-sm font-medium",
-        dropdown_root: "relative inline-flex items-center",
+        dropdown_root: cn(
+          "relative inline-flex items-center rounded-md border border-input",
+          "bg-transparent px-2 py-0.5",
+          "hover:bg-accent",
+          // The focus ring belongs to the border the user sees, but focus
+          // lands on the invisible <select> inside it.
+          "has-[:focus-visible]:ring-1 has-[:focus-visible]:ring-ring",
+        ),
         dropdown: cn(
-          "cursor-pointer appearance-none rounded-md border border-input",
-          "bg-transparent py-0.5 pl-1.5 pr-5 text-sm font-medium",
-          "hover:bg-accent focus-visible:outline-none focus-visible:ring-1",
-          "focus-visible:ring-ring",
+          "absolute inset-0 size-full cursor-pointer opacity-0",
+          // Safari renders a zero-opacity select as unclickable unless it is
+          // still laid out as a control.
+          "appearance-none bg-transparent",
         ),
         nav: "flex items-center gap-1",
         button_previous: cn(
-          "absolute left-1 top-3 z-10 inline-flex size-7 items-center justify-center",
+          "absolute left-0 top-0 z-10 inline-flex size-7 items-center justify-center",
           "rounded-md border border-input bg-transparent",
           "opacity-50 hover:opacity-100 hover:bg-accent hover:text-accent-foreground",
           "disabled:pointer-events-none disabled:opacity-25",
         ),
         button_next: cn(
-          "absolute right-1 top-3 z-10 inline-flex size-7 items-center justify-center",
+          "absolute right-0 top-0 z-10 inline-flex size-7 items-center justify-center",
           "rounded-md border border-input bg-transparent",
           "opacity-50 hover:opacity-100 hover:bg-accent hover:text-accent-foreground",
           "disabled:pointer-events-none disabled:opacity-25",
@@ -105,12 +131,21 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        Chevron: ({ orientation, ...rest }) =>
-          orientation === "left" ? (
-            <ChevronLeft className="size-4" {...rest} />
-          ) : (
-            <ChevronRight className="size-4" {...rest} />
-          ),
+        /*
+         * react-day-picker asks for four orientations, not two: the nav arrows
+         * are left/right, but the dropdown captions ask for "down". Falling
+         * through to ChevronRight gave the month and year controls a
+         * rightward chevron, so neither read as a dropdown.
+         */
+        Chevron: ({ orientation, ...rest }) => {
+          const Icon = {
+            left: ChevronLeft,
+            right: ChevronRight,
+            up: ChevronUp,
+            down: ChevronDown,
+          }[orientation ?? "right"];
+          return <Icon className="size-4" {...rest} />;
+        },
       }}
       {...props}
     />

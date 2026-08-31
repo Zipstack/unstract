@@ -1,3 +1,4 @@
+import { CircleHelp } from "lucide-react";
 import * as React from "react";
 import {
   Controller,
@@ -9,6 +10,12 @@ import {
 } from "react-hook-form";
 
 import { Label } from "@/components/ui/label";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 /**
@@ -114,6 +121,13 @@ interface FormItemProps
    * call-sites branch on `=== false` to tell "unchecked" from "not yet loaded".
    */
   initialValue?: unknown;
+  /**
+   * antd's hint beside the label: a bare node, or `{ title, icon }` to pick a
+   * different marker. Rendered as an icon that reveals `title` on hover/focus.
+   */
+  tooltip?:
+    | React.ReactNode
+    | { title?: React.ReactNode; icon?: React.ReactNode };
   /** antd's server-error channel, paired with `help`. */
   validateStatus?: "error" | "warning" | "success" | "validating";
   help?: React.ReactNode;
@@ -261,6 +275,24 @@ function useAntdForm(): [FormInstance] {
   return [instance];
 }
 
+/**
+ * antd's seed order: `initialValues` first, then whatever the store already
+ * holds on top. `undefined` entries are skipped so a field RHF has merely
+ * registered — value not yet supplied — doesn't blank out its initial value.
+ */
+function mergeOverInitialValues(
+  initialValues: FormValues,
+  current: FormValues,
+): FormValues {
+  const merged: FormValues = { ...initialValues };
+  for (const [key, value] of Object.entries(current ?? {})) {
+    if (value !== undefined) {
+      merged[key] = value;
+    }
+  }
+  return merged;
+}
+
 /** antd `<Form form layout onFinish initialValues onValuesChange>`. */
 const FormBase = React.forwardRef<HTMLFormElement, AntFormProps>(function Form(
   {
@@ -292,11 +324,21 @@ const FormBase = React.forwardRef<HTMLFormElement, AntFormProps>(function Form(
    * value it just reported — an infinite loop that clobbers typing mid-
    * keystroke. The ref makes it run once per mount, and `destroyOnClose`
    * remounts the modal so reopening still re-seeds.
+   *
+   * The seed goes UNDERNEATH anything already in the store, which is what
+   * antd does (`setValues({}, initialValues, this.store)` — the store wins).
+   * Modals that fetch before they render the form rely on it: Agentic Table
+   * Settings shows a spinner while it loads, calls `setFieldsValue(fetched)`
+   * from the response, and only then renders the `<Form>`. A plain
+   * `reset(initialValues)` discarded that write, so every reopen showed the
+   * defaults and the saved Lite LLM adapter came back blank.
    */
   const seeded = React.useRef(false);
   if (!seeded.current && initialValues) {
     seeded.current = true;
-    methods.reset(initialValues, { keepDefaultValues: false });
+    methods.reset(mergeOverInitialValues(initialValues, methods.getValues()), {
+      keepDefaultValues: false,
+    });
   }
 
   /*
@@ -353,6 +395,61 @@ function toFieldName(name?: NamePath): string | undefined {
   return Array.isArray(name) ? name.join(".") : name;
 }
 
+type ItemTooltip = FormItemProps["tooltip"];
+
+/** antd's `{ title, icon }` config form, as opposed to a bare node. */
+function isTooltipConfig(
+  tooltip: ItemTooltip,
+): tooltip is { title?: React.ReactNode; icon?: React.ReactNode } {
+  return (
+    typeof tooltip === "object" &&
+    tooltip !== null &&
+    !React.isValidElement(tooltip) &&
+    ("title" in tooltip || "icon" in tooltip)
+  );
+}
+
+/**
+ * antd's `<Form.Item tooltip>`: a marker after the label text that reveals the
+ * hint on hover or focus.
+ *
+ * It was not declared, so every use fell into `...props` and landed on the
+ * wrapper div — the icon never rendered and the object form (`tooltip={{
+ * title, icon }}`) reached the DOM as a stray attribute. The Agentic and
+ * Table Extraction settings modals lost all eleven of their field hints that
+ * way, and so did the manual-review rule editors.
+ *
+ * Focusable by keyboard, unlike a bare icon: Radix only opens on hover and
+ * focus, so a non-focusable trigger hides the hint from keyboard users.
+ */
+function renderLabelContent(label: React.ReactNode, tooltip: ItemTooltip) {
+  const title = isTooltipConfig(tooltip) ? tooltip.title : tooltip;
+  if (!title) {
+    return label;
+  }
+  const icon = isTooltipConfig(tooltip) ? tooltip.icon : undefined;
+
+  return (
+    <>
+      {label}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            type="button"
+            // antd's marker is decorative next to a label that already names
+            // the field; the accessible name says what activating it reveals.
+            aria-label="More info"
+            className="ant-form-item-tooltip ml-1 inline-flex cursor-help align-middle text-muted-foreground [&_svg]:size-3.5"
+          >
+            {icon ?? <CircleHelp />}
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">{title}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    </>
+  );
+}
+
 /**
  * antd `<Form.Item name label rules>`. Clones its single child and injects the
  * controlled `value`/`onChange`, which is how antd wires inputs too.
@@ -364,6 +461,7 @@ function FormItem({
   required,
   valuePropName = "value",
   initialValue,
+  tooltip,
   /*
    * antd's server-error channel. The call-sites do NOT validate on the client
    * before submitting — they post, catch the 400, and feed the response into
@@ -394,7 +492,7 @@ function FormItem({
   if (!name || !methods) {
     return (
       <div className={cn("space-y-2", className)} {...props}>
-        {label ? <Label>{label}</Label> : null}
+        {label ? <Label>{renderLabelContent(label, tooltip)}</Label> : null}
         {children}
         {help ? (
           <p
@@ -482,7 +580,7 @@ function FormItem({
             {label ? (
               <Label htmlFor={name}>
                 {required ? <span className="text-destructive">* </span> : null}
-                {label}
+                {renderLabelContent(label, tooltip)}
               </Label>
             ) : null}
             <div className="ant-form-item-control-input">

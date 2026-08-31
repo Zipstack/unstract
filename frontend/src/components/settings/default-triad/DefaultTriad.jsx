@@ -196,6 +196,7 @@ function DefaultTriad() {
                     {labelMap[type]}
                   </Typography>
                   <Select
+                    showSearch
                     placeholder={`Select ${labelMap[type]}`}
                     value={selectedValues[type] || undefined}
                     onChange={(value) => handleDropdownChange(type, value)}

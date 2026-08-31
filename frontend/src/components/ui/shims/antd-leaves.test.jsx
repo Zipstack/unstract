@@ -184,6 +184,18 @@ describe("antd-compatible leaf shims (P1-06)", () => {
     expect(container.firstChild.style.width).toBe("48px");
   });
 
+  /*
+   * antd's `.ant-avatar` is inline, and call-sites depend on it: Share access
+   * passes `<><Avatar /><Typography.Text /></>` as one List.Item.Meta title
+   * and expects avatar and email on the same line. The shadcn primitive is
+   * `flex`, which stacked the email under the avatar.
+   */
+  it("Avatar lays out inline so it shares a line with adjacent text", () => {
+    const { container } = render(<Avatar>Z</Avatar>);
+    expect(container.firstChild.className).toContain("inline-flex");
+    expect(container.firstChild.className).not.toMatch(/(^|\s)flex(\s|$)/);
+  });
+
   it("Progress shows the rounded percentage", () => {
     render(<Progress percent={42.6} />);
     expect(screen.getByText("43%")).toBeInTheDocument();
