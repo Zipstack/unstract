@@ -104,13 +104,13 @@ Debug ports per service:
 | platform-service | 5680 |
 | prompt-service | 5681 |
 | **V2 Workers** | |
-| worker-file-processing-v2 | 5682 |
-| worker-callback-v2 | 5683 |
-| worker-api-deployment-v2 | 5684 |
-| worker-general-v2 | 5685 |
-| worker-notification-v2 | 5686 |
-| worker-log-consumer-v2 | 5687 |
-| worker-scheduler-v2 | 5688 |
+| worker-pg-fileproc | 5682 |
+| worker-pg-callback | 5683 |
+| worker-pg-orchestrator-api | 5684 |
+| worker-pg-orchestrator-general | 5685 |
+| worker-pg-notification | 5686 |
+| worker-log-stream-consumer | 5687 |
+| worker-pg-scheduler | 5688 |
 
 ### VSCode Configuration
 
