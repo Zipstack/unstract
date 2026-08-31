@@ -10,7 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Checkbox, Input } from "@/components/ui/shims/antd-inputs";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
@@ -108,7 +108,6 @@ function Header({
     details,
   } = useCustomToolStore();
   const runGate = usePromptRunGate(promptDetails);
-  const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
@@ -199,7 +198,15 @@ function Header({
     setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
   }, [promptDetails, details]);
 
-  useEffect(() => {
+  /*
+   * Derived, NOT state written from an effect. The webhook URL <Input> lives
+   * inside these menu entries, so with `setItems` in an effect its `value` prop
+   * trailed `webhookUrl` by one render: the render right after a keystroke
+   * still carried the previous string, and React wrote that back onto the DOM
+   * input. Typing at speed therefore dropped characters. useMemo builds the
+   * entries in the same pass that updates the state they read.
+   */
+  const items = useMemo(() => {
     const dropdownItems = [
       {
         label: (
@@ -219,31 +226,49 @@ function Header({
               >
                 Value Required{" "}
                 <Tooltip title="Marks this as a required field. Saving this record won't be allowed in Human Quality Review should this field be empty.">
-                  <Info />
+                  <span>
+                    <Info />
+                  </span>
                 </Tooltip>
               </Checkbox>
             )}
             {enforceType === "json" && (
               <>
-                <Checkbox
-                  checked={required === "all"}
-                  onChange={() => handleRequiredChange("all")}
-                >
-                  All JSON Values Required
-                </Checkbox>
-                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
-                  <Info />
-                </Tooltip>
-                <Checkbox
-                  checked={required === "any"}
-                  onChange={() => handleRequiredChange("any")}
-                  className="required-checkbox-padding"
-                >
-                  At least 1 JSON Value Required
-                </Checkbox>
-                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
-                  <Info />
-                </Tooltip>
+                {/*
+                  * Each checkbox is grouped with its own tooltip icon so the
+                  * two never separate, and the pairs share a row as they did
+                  * under antd. `required-checkbox-padding`, which used to sit
+                  * on the second checkbox, has no rule anywhere in the app —
+                  * the gap came from antd's own adjacent-wrapper margin.
+                  */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="inline-flex items-center gap-1">
+                    <Checkbox
+                      checked={required === "all"}
+                      onChange={() => handleRequiredChange("all")}
+                    >
+                      All JSON Values Required
+                    </Checkbox>
+                    <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
+                      <span>
+                        <Info />
+                      </span>
+                    </Tooltip>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Checkbox
+                      checked={required === "any"}
+                      onChange={() => handleRequiredChange("any")}
+                    >
+                      At least 1 JSON Value Required
+                    </Checkbox>
+                    <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
+                      <span>
+                        <Info />
+                      </span>
+                    </Tooltip>
+                  </span>
+                </div>
                 <div
                   style={{
                     marginTop: "8px",
@@ -258,7 +283,9 @@ function Header({
                   >
                     Enable Postprocessing Webhook{" "}
                     <Tooltip title="Enable external webhook call to postprocess JSON responses before returning to user.">
-                      <Info />
+                      <span>
+                        <Info />
+                      </span>
                     </Tooltip>
                   </Checkbox>
                   {webhookEnabled && (
@@ -324,7 +351,8 @@ function Header({
       dropdownItems.splice(0, 1);
     }
 
-    setItems(dropdownItems);
+    return dropdownItems;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDisablePrompt, required, enforceType, webhookEnabled, webhookUrl]);
 
   return (
