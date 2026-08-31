@@ -3,7 +3,7 @@
 Each of these replaces a 500: a non-UUID id raises Django's ``ValidationError``
 while the query is being *built*, which drf_standardized_errors does not map;
 a missing organization compiles to ``IS NULL`` and serves a blank project that
-has real outputs; and a failed extraction-status write used to return 200.
+has real outputs; and a failed extraction-status write reports success.
 
 Every case here was checked against the unguarded code first — strip the guard
 and the case fails.
@@ -64,7 +64,7 @@ class OutputViewValidationTest(TestCase):
         assert response.status_code == 400, response.data
 
     def test_absent_document_manager_on_default_profile_is_400(self):
-        """Absent used to filter on NULL, which renders every prompt as "".
+        """An absent id would filter on NULL, rendering every prompt as "".
 
         A 200 with a blank body is indistinguishable from a project that has
         no outputs yet, so the caller has nothing to act on.
@@ -122,14 +122,18 @@ class ExtractionStatusEndpointTest(TestCase):
         request = APIRequestFactory().post(
             self.URL, json.dumps(payload), content_type="application/json"
         )
-        with patch.object(
-            internal_views, "_parse_json_body", return_value=(payload, None)
-        ), patch(
-            "prompt_studio.prompt_profile_manager_v2.models.ProfileManager.objects"
-        ) as profiles, patch(
-            "prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper"
-            ".PromptStudioIndexHelper.mark_extraction_status",
-            return_value=result,
+        with (
+            patch.object(
+                internal_views, "_parse_json_body", return_value=(payload, None)
+            ),
+            patch(
+                "prompt_studio.prompt_profile_manager_v2.models.ProfileManager.objects"
+            ) as profiles,
+            patch(
+                "prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper"
+                ".PromptStudioIndexHelper.mark_extraction_status",
+                return_value=result,
+            ),
         ):
             profiles.get.return_value = object()
             return internal_views.extraction_status(request)

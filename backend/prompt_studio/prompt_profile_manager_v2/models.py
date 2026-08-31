@@ -18,10 +18,10 @@ class ProfileManagerModelManager(OrgAwareManager):
 
         Sharing only. Organization scoping comes from ``get_queryset``, which
         every branch here builds on, and which scopes through
-        ``vector_store__organization``. This method used to AND on
-        ``prompt_studio_tool__organization`` as well; that is a second,
-        narrower org join that drops tool-less profiles and contradicts the
-        null policy in ``get_queryset``.
+        ``vector_store__organization``. Do not AND on
+        ``prompt_studio_tool__organization`` here: that FK is nullable, so a
+        second org join drops tool-less profiles and contradicts the null
+        policy in ``get_queryset``.
 
         The parent-tool branch lets shared-project users see existing
         profiles so ``IsOwner`` on the viewset returns 403 on mutation
