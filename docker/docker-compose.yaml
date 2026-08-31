@@ -50,6 +50,16 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
     environment:
       - APPLICATION_NAME=unstract-backend
+      # Redis log transport (UN-4046) — set on EVERY publisher: backend, runner
+      # and all twelve workers. worker-log-consumer-v2 is gone from this stack, so
+      # the "celery" default publishes execution logs to a RabbitMQ queue nothing
+      # drains; LogPublisher swallows its errors, so the only symptom is execution
+      # logs that stay empty while the queue grows.
+      #
+      # Deliberately here and not in essentials.env: that file is git-ignored and
+      # generated, and copy_or_merge_envs only merges new keys on --only-env or
+      # --update, so an existing checkout would silently keep the old default.
+      - LOG_TRANSPORT=redis
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
@@ -132,6 +142,11 @@ services:
       - 5002:5002
     env_file:
       - ../runner/.env
+    environment:
+      # Publisher side of the Redis log transport (UN-4046) — see the note on the
+      # backend service. runner matters most of the three: it forwards this to every
+      # tool sidecar it spawns, so a stale value here strands the tool logs too.
+      - LOG_TRANSPORT=redis
     volumes:
       - ./workflow_data:/data
       # Docker socket bind mount to spawn tool containers
@@ -158,6 +173,8 @@ services:
       - rabbitmq
     environment:
       - APPLICATION_NAME=unstract-worker-log-history-scheduler-v2
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Scheduler interval in seconds
       - LOG_HISTORY_CONSUMER_INTERVAL=${LOG_HISTORY_CONSUMER_INTERVAL:-5}
       # Override example: TASK_TRIGGER_COMMAND=/custom/trigger/script.sh
@@ -185,6 +202,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=api_deployment
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_api_deployments
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # async_execute_bin arms the barrier + dispatches batches, then returns — a
       # bounded-minutes orchestration, and idempotency-guarded (UN-3671) so a vt
       # overrun can't double-orchestrate. Without an explicit vt the consumer
@@ -219,6 +238,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=general
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Orchestration is bounded-minutes + claim-guarded (see orchestrator-api).
       # Without an explicit vt it defaults to 30s. 600/660 matches our k8s deployment defaults (workerPg* values, separate chart repo).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_ORCHESTRATOR_VT_SECONDS:-600}
@@ -251,6 +272,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=file_processing
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing,file_processing_priority,api_file_processing
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # UN-3606: prefork N consumer children so file batches run in parallel (the
       # PG analogue of the Celery worker's --concurrency). SKIP LOCKED distributes
       # batches across children + replicas; a single execution is still capped by
@@ -290,6 +313,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=callback
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing_callback,celery_callback,api_file_processing_callback
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # The aggregating callback (fan-in) runs after all batches: aggregate results,
       # update status, push destination, notify. Without an explicit vt it defaults
       # to 30s and a >30s callback redelivers — re-firing webhooks + subscription
@@ -327,6 +352,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=scheduler
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=scheduler
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Scheduled-trigger dispatch is quick (enqueue the execution). Without an
       # explicit vt it defaults to 30s. 180/240 matches our k8s deployment defaults (separate chart repo).
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_SCHEDULER_VT_SECONDS:-180}
@@ -378,6 +405,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=scheduler
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=dashboard_metric_events
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Sized for a minutes-long aggregation: stale > vt > the task's own ceiling.
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_METRICS_VT_SECONDS:-900}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_METRICS_HEALTH_STALE_SECONDS:-960}
@@ -392,11 +421,13 @@ services:
   # pg_queue_message: the log consumer's own sinks are already Redis (log_history_queue
   # + the Socket.IO emit), so routing through Postgres would detour a lossy, high-rate
   # stream through the platform's most contended resource to buy durability that logs
-  # explicitly discard at their 10k cap. It sits in the pg-queue profile because it is
-  # part of the same flag-on fleet, not because it speaks to Postgres.
+  # explicitly discard at their 10k cap. Despite the name it speaks to Redis, not
+  # Postgres; it is part of the PG-era fleet by association, not by transport.
   #
-  # LOG_TRANSPORT must be set to "redis" on every PUBLISHER too (backend, workers,
-  # runner) or this drains an empty list while logs keep going to RabbitMQ.
+  # LOG_TRANSPORT must be set to "redis" on every PUBLISHER too or this drains an
+  # empty list while logs keep going to RabbitMQ — where, since UN-4046 removed
+  # worker-log-consumer-v2 from this stack, nothing reads them. Set on backend and
+  # runner in their own environment blocks, and on every worker via essentials.env.
   worker-log-stream-consumer:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-stream-consumer
@@ -447,6 +478,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # The executor runs LLM inference — far longer than the consumer's 30s/60s
       # defaults. Set the visibility timeout AND the liveness stale-threshold
       # ABOVE the executor's hard per-task limit (EXECUTOR_TASK_TIME_LIMIT=3600s),
@@ -498,6 +531,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Callbacks are sub-second (ws emit + small API writes), so nowhere near the
       # executor's 1h limit — but set the visibility timeout above a slow internal
       # API write (backend under load) so a sibling replica can't re-claim mid-run
@@ -537,6 +572,8 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_NOTIFICATION_CONCURRENCY:-2}
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # One outbound HTTP POST per task. VT sits above a slow subscriber so a
       # sibling replica cannot re-claim mid-POST and double-deliver; health-stale
       # above that. Mirrors the chart's workerPgNotification bounds.
@@ -571,6 +608,8 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-reaper
       - WORKER_PG_REAPER_INTERVAL_SECONDS=${WORKER_PG_REAPER_INTERVAL_SECONDS:-5}
       - WORKER_PG_REAPER_HEALTH_PORT=8086
+      # Log publisher — see the note on the backend service (UN-4046).
+      - LOG_TRANSPORT=redis
       # Retention sweep (cadence-gated inside the leader's tick): drop expired
       # pg_task_result rows + orphaned pg_batch_dedup markers so neither grows
       # unbounded as the gate ramps. The dedup retention below (default 24h) should
