@@ -111,6 +111,21 @@ groups:
     install_editable: true
     coverage_source: src
 
+  # runner/tests was registered in NO group, so it was collected by nothing. Its
+  # only suite guards that LOG_TRANSPORT and LOG_STREAM_QUEUE_NAME reach the tool
+  # sidecar's hand-picked env allowlist — a list that drops anything not named in
+  # it, so a missing entry means the sidecar silently logs to the wrong transport.
+  # Nothing else covers that, and it went in alongside the Redis log transport.
+  # install_editable because the suite imports `unstract.runner`, which resolves
+  # only from this package's own src layout (packages = ["src/unstract"]).
+  unit-runner:
+    tier: unit
+    workdir: runner
+    paths: [tests]
+    uv_sync_group: test
+    install_editable: true
+    coverage_source: src
+
   # ── Integration tier: needs infra but not full platform ────────────────────
   integration-backend:
     tier: integration

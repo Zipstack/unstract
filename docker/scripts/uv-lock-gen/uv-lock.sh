@@ -61,6 +61,11 @@ directories=(
     "unstract/core"
     "unstract/flags"
     "unstract/connectors"
+    "unstract/sdk1"
+    "unstract/tool-registry"
+    "unstract/tool-sandbox"
+    "unstract/workflow-execution"
+    "tool-sidecar"
     "workers"
 )
 

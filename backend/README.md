@@ -175,11 +175,15 @@ psql -d unstract_db -U unstract_dev
 
 ## API Docs
 
-While running the backend server locally, access the API documentation that's auto generated at
-the backend endpoint `/api/v1/doc/`.
+The OpenAPI spec for the API deployment endpoints is committed at
+[`specs/docstudio-oss.json`](../specs/docstudio-oss.json) and is the contract the published
+clients and their generated SDKs are built from. It is not served at runtime — regenerate it in
+the same PR as any route, serializer or schema-annotation change:
 
-**NOTE:** There exists issues accessing this when the django server is run with gunicorn (in case of running with
-a container)
+```bash
+uv run python manage.py generate_docstudio_spec           # rewrite the committed spec
+uv run python manage.py generate_docstudio_spec --check   # no write, drift is an error
+```
 
 - [Account](account/api_doc.md)
 - [FileManagement](file_management/api_doc.md)
