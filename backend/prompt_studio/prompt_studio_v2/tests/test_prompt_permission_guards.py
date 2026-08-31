@@ -40,7 +40,7 @@ from unittest.mock import patch
 
 import pytest
 from django.http import Http404
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 
 from prompt_studio.permission import IsPromptParentToolOwner, PromptAcesssToUser
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
@@ -361,3 +361,178 @@ class TestReorderPromptsIsGated:
 
         with pytest.raises(ValidationError):
             view.reorder_prompts(SimpleNamespace(user=SHARED_MEMBER, data={}))
+
+    def test_format_suffix_route_does_not_crash(self) -> None:
+        """``prompt/reorder.json`` passes a ``format`` kwarg.
+
+        ``format_suffix_patterns`` generates the suffixed variant and DRF
+        forwards the captured kwarg to the handler; the bare signature raised
+        TypeError -- a 500 before the permission check was ever reached.
+        """
+        view = ToolStudioPromptView()
+        view.action = "reorder_prompts"
+        prompt = _prompt(_tool(owner=OWNER, shared_to_org=True))
+        request = SimpleNamespace(user=SHARED_MEMBER, data={"prompt_id": "p-1"})
+        module = "prompt_studio.prompt_studio_v2.views"
+
+        with (
+            patch(f"{module}.get_object_or_404", return_value=prompt),
+            patch(f"{module}.CustomTool"),
+            patch.object(ToolStudioPromptView, "check_object_permissions"),
+            patch(f"{module}.PromptStudioController") as controller,
+        ):
+            controller.return_value.reorder_prompts.return_value = "ok"
+            assert view.reorder_prompts(request, format="json") == "ok"
+
+
+class TestPromptListIsScopedToReachableTools:
+    """``list`` never calls ``get_object()``, so only the queryset gates it."""
+
+    @staticmethod
+    def _queryset_for(request: Any, filter_args: dict[str, Any]) -> Any:
+        view = ToolStudioPromptView()
+        view.action = "list"
+        view.request = request
+        module = "prompt_studio.prompt_studio_v2.views"
+
+        with (
+            patch(f"{module}.ToolStudioPrompt") as prompt_model,
+            patch(f"{module}.CustomTool") as custom_tool,
+            patch(f"{module}.FilterHelper") as filter_helper,
+        ):
+            filter_helper.build_filter_args.return_value = filter_args
+            view.get_queryset()
+
+        return prompt_model, custom_tool
+
+    def test_unfiltered_list_is_scoped_to_the_users_tools(self) -> None:
+        """The enumeration hole: `.all()` exposed every prompt in the org."""
+        request = SimpleNamespace(user=SHARED_MEMBER)
+
+        prompt_model, custom_tool = self._queryset_for(request, {})
+
+        custom_tool.objects.for_user.assert_called_once_with(SHARED_MEMBER)
+        prompt_model.objects.filter.assert_called_once_with(
+            tool_id__in=custom_tool.objects.for_user.return_value
+        )
+        (
+            prompt_model.objects.all.assert_not_called(),
+            (
+                "an unscoped .all() fallback lets any org member enumerate every "
+                "prompt in the organization"
+            ),
+        )
+
+    def test_filtered_list_is_scoped_too(self) -> None:
+        """``tool_id`` comes off the query string with no ownership check.
+
+        Scoping only the fallback would leave the filtered branch -- the one
+        the UI actually uses -- just as open.
+        """
+        request = SimpleNamespace(user=SHARED_MEMBER)
+
+        prompt_model, custom_tool = self._queryset_for(request, {"tool_id": "other"})
+
+        prompt_model.objects.filter.assert_called_once_with(
+            tool_id__in=custom_tool.objects.for_user.return_value
+        )
+        # The caller-supplied filter narrows the scoped set, never replaces it.
+        prompt_model.objects.filter.return_value.filter.assert_called_once_with(
+            tool_id="other"
+        )
+
+
+class TestReparentIsGatedOnTheOldParent:
+    """Moving a prompt OUT of a project needs what deleting it needs.
+
+    ``PromptAcesssToUser`` admits org-shared members to update, but
+    ``IsPromptParentToolOwner`` denies them destroy -- and that gate reads the
+    STORED parent, loaded before the update applies. A writable ``tool_id``
+    therefore let a denied user reparent into a tool they own and then delete
+    legitimately, two requests each passing every check.
+
+    The check is against the EXISTING parent. Checking the new one passes
+    trivially: the attacker's destination is a tool they already own, and the
+    harm is the prompt leaving the original project regardless of where it
+    lands.
+    """
+
+    MODULE = "prompt_studio.prompt_studio_v2.views"
+
+    def _update(self, *, stored: str, payload: dict, owner_allows: bool) -> Any:
+        view = ToolStudioPromptView()
+        view.action = "partial_update"
+        instance = SimpleNamespace(tool_id_id=stored)
+        request = SimpleNamespace(user=SHARED_MEMBER, data=payload)
+
+        with (
+            patch.object(ToolStudioPromptView, "get_object", return_value=instance),
+            patch(f"{self.MODULE}.IsPromptParentToolOwner") as gate,
+            patch(
+                "rest_framework.viewsets.ModelViewSet.update", return_value="updated"
+            ) as parent_update,
+        ):
+            gate.return_value.has_object_permission.return_value = owner_allows
+            try:
+                result = view.update(request)
+            except PermissionDenied:
+                return "denied", parent_update
+        return result, parent_update
+
+    def test_shared_member_cannot_reparent_out(self) -> None:
+        """The bypass: step one of reparent-then-delete is now refused."""
+        result, parent_update = self._update(
+            stored="tool-A", payload={"tool_id": "tool-B"}, owner_allows=False
+        )
+
+        assert result == "denied", (
+            "moving a prompt out of a project is a deletion from that "
+            "project's side and must require what destroy requires"
+        )
+        parent_update.assert_not_called(), "the move must not be applied"
+
+    def test_owner_may_reparent(self) -> None:
+        """The over-restriction guard: a legitimate move still works."""
+        result, parent_update = self._update(
+            stored="tool-A", payload={"tool_id": "tool-B"}, owner_allows=True
+        )
+
+        assert result == "updated"
+        parent_update.assert_called_once()
+
+    def test_same_tool_is_a_no_op_not_a_reparent(self) -> None:
+        """The UI PATCHes single fields; an unchanged tool_id must pass.
+
+        Denies at the gate to prove the no-op path never consults it.
+        """
+        result, parent_update = self._update(
+            stored="tool-A", payload={"tool_id": "tool-A"}, owner_allows=False
+        )
+
+        assert result == "updated", (
+            "an unchanged tool_id is not a reparent -- gating it would break "
+            "every field-level PATCH that echoes the parent back"
+        )
+        parent_update.assert_called_once()
+
+    def test_ordinary_field_edit_is_untouched(self) -> None:
+        """A payload with no tool_id never reaches the gate at all."""
+        result, parent_update = self._update(
+            stored="tool-A", payload={"prompt_key": "k"}, owner_allows=False
+        )
+
+        assert result == "updated"
+        parent_update.assert_called_once()
+
+    def test_null_tool_id_is_a_reparent(self) -> None:
+        """Orphaning is not a no-op.
+
+        ``{"tool_id": null}`` hides the row from everyone once the org
+        filter's INNER JOIN excludes it -- its owner and org admins included.
+        """
+        result, parent_update = self._update(
+            stored="tool-A", payload={"tool_id": None}, owner_allows=False
+        )
+
+        assert result == "denied", "null must be treated as a move, not a no-op"
+        parent_update.assert_not_called()
