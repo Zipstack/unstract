@@ -2455,7 +2455,14 @@ const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(function Badge(
       {visible ? (
         <span
           className={cn(
-            "absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
+            // pointer-events-none: the count is decoration painted OVER the
+            // child, and `offset` routinely pulls it across the child's middle
+            // (PromptChangeIndicator uses [-2, 12] to dodge the prompt row's
+            // overflow clipping). Without this it swallows the clicks meant for
+            // the child, and worse, only once the count is wide enough to cover
+            // it -- a one-digit badge left the icon's centre reachable, two
+            // digits masked 85% of it and the button went dead.
+            "pointer-events-none absolute -right-1 -top-1 inline-flex items-center justify-center rounded-full bg-destructive px-1.5 text-xs text-destructive-foreground",
             dot && "size-2 p-0",
           )}
           style={{

@@ -500,6 +500,21 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("2").style.transform).toBe("translate(-2px, 12px)");
   });
 
+  /**
+   * The count is painted over the child, and `offset` routinely drags it across
+   * the child's middle. Left interactive it ate the child's clicks — and only
+   * once it grew wide enough to cover them, so a 1-digit count worked and
+   * `12` killed Prompt Studio's audit button outright.
+   */
+  it("Badge's count does not intercept clicks meant for its child", () => {
+    render(
+      <Badge count={12} offset={[-2, 12]}>
+        <button type="button">act</button>
+      </Badge>,
+    );
+    expect(screen.getByText("12")).toHaveClass("pointer-events-none");
+  });
+
   it("Badge hides a zero count unless showZero", () => {
     const { rerender } = render(<Badge count={0} />);
     expect(screen.queryByText("0")).not.toBeInTheDocument();
