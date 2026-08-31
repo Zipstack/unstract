@@ -666,6 +666,28 @@ class WorkflowHelper:
             # the bookkeeping below must NOT flip the (now-running) row to ERROR.
             dispatched = True
 
+            # Record dispatch as a POSITIVE fact, before any bookkeeping that can
+            # fail. The undispatched sweep used to infer "never dispatched" from
+            # `task_id IS NULL AND queue_message_id IS NULL`, which the three paths
+            # below all reach on a RUNNING execution — the swallowed exception around
+            # _record_dispatch_handle, and its two early returns for an empty or
+            # unparseable handle. This single write sits upstream of all three, so the
+            # sweep can ask a question with a true answer instead of guessing.
+            #
+            # Its own try/except for the same reason the handle write has one: we are
+            # past the point of no return and nothing here may abort the caller. If it
+            # fails we are back to the old ambiguity for this one execution, which is
+            # strictly no worse than before.
+            try:
+                WorkflowExecutionServiceHelper.mark_dispatched(execution_id)
+            except Exception:
+                logger.exception(
+                    f"[{org_schema}] Failed to stamp dispatched_at for execution "
+                    f"'{execution_id}'; continuing — the orchestrator is already "
+                    "running. This row is now indistinguishable from an undispatched "
+                    "one and may be terminalised by the undispatched sweep."
+                )
+
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
@@ -1033,6 +1055,37 @@ class WorkflowHelper:
                 )
             try:
                 workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+                # Single-step is the one entry path that never moved onto PG. Its
+                # only fan-out is the Celery chord in `process_input_files` — the
+                # normal path's PG fan-out lives in the general worker instead, so
+                # nothing here is transport-gated. With the flag on and the Celery
+                # file_processing workers scaled to zero (the epic's acceptance
+                # gate), those batches would sit unconsumed and the execution would
+                # hang in EXECUTING, invisible to the PG reaper. Fail fast instead:
+                # a 500 with a stated cause beats a silent forever-EXECUTING row.
+                #
+                # Unreachable from the UI — the step buttons are gone and both live
+                # call sites pass isStepExecution=false, so `execution_action` is
+                # never sent (frontend Agency.jsx). This guards a direct API call.
+                #
+                # Resolved here rather than in `process_input_files` so the Celery
+                # path stays byte-identical and an already-resolved execution is
+                # never re-resolved. Step executions are created by
+                # `create_and_make_execution_response`, which resolves no transport,
+                # so this is their first and only resolution.
+                transport = resolve_transport(
+                    execution_id=execution_id,
+                    organization_id=workflow.organization.organization_id,
+                    workflow_id=workflow.id,
+                )
+                if is_pg_transport(transport):
+                    raise WorkflowExecutionError(
+                        "Single-step execution is not supported on the Postgres "
+                        "queue transport: it has no PG fan-out, and its Celery "
+                        "batches would never be consumed. Run the full workflow "
+                        "instead, or disable pg_queue_enabled for this "
+                        "organization."
+                    )
                 return WorkflowHelper.run_workflow(
                     workflow=workflow,
                     single_step=True,
