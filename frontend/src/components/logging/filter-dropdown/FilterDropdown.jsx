@@ -21,7 +21,11 @@ const FilterDropdown = ({
         setSelectedKeys(e.target.value ? [e.target.value] : []);
         confirm();
       }}
-      value={selectedKeys[0] || null}
+      // "" rather than null: Radix reads a nullish value as "uncontrolled", so
+      // picking the first level flipped the group from uncontrolled to
+      // controlled and React warned about it. An empty string is the
+      // controlled spelling of "nothing selected".
+      value={selectedKeys[0] ?? ""}
     >
       <Space direction="vertical">
         {filterOptions.map((filter) => (
@@ -36,7 +40,17 @@ const FilterDropdown = ({
       className="clear-button"
       type="primary"
       size="small"
-      onClick={() => handleClearFilter(confirm)}
+      /*
+       * Empty the draft BEFORE confirming. `confirm()` publishes whatever
+       * `setSelectedKeys` last set — it cannot see the parent state
+       * `handleClearFilter` is about to clear, because that re-render has not
+       * happened yet. Without this, Clear republished the level it was meant
+       * to remove and the log list stayed filtered.
+       */
+      onClick={() => {
+        setSelectedKeys([]);
+        handleClearFilter(confirm);
+      }}
     >
       Clear
     </Button>
