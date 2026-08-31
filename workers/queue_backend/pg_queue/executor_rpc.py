@@ -16,14 +16,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
     ExecResultRow,
     PgExecutionDispatcher,
     QueueTransport,
-    RoutingExecutionDispatcher,
-    resolve_pg_transport,
 )
 
 from .client import PgQueueClient
@@ -39,18 +36,8 @@ if TYPE_CHECKING:
 __all__ = [
     "PgClientQueueTransport",
     "PgExecutionDispatcher",
-    "RoutingExecutionDispatcher",
     "get_executor_dispatcher",
-    "resolve_executor_transport",
 ]
-
-
-def resolve_executor_transport(context: ExecutionContext) -> bool:
-    """True → route this executor dispatch over PG; False → Celery (default).
-
-    The single ``pg_queue_enabled`` Flipt flag (fail-closed).
-    """
-    return resolve_pg_transport(context)
 
 
 class PgClientQueueTransport(QueueTransport):
@@ -109,10 +96,12 @@ class PgClientQueueTransport(QueueTransport):
 
 def get_executor_dispatcher(
     celery_app: object | None = None,
-) -> RoutingExecutionDispatcher:
-    """Factory: the gate-routed executor dispatcher (PG when enabled, else Celery)."""
-    return RoutingExecutionDispatcher(
-        celery=ExecutionDispatcher(celery_app=celery_app),
-        pg=PgExecutionDispatcher(PgClientQueueTransport()),
-        resolve=resolve_executor_transport,
-    )
+) -> PgExecutionDispatcher:
+    """Factory: the executor dispatcher.
+
+    ``celery_app`` is accepted and ignored. It fed the Celery branch of the
+    routing dispatcher, which went with the ``pg_queue_enabled`` flag (UN-4046);
+    the parameter is kept so the ~20 call sites across both repos do not all need
+    editing in the same change.
+    """
+    return PgExecutionDispatcher(PgClientQueueTransport())
