@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import * as React from "react";
 import { describe, expect, it, vi } from "vitest";
 import { Input } from "@/components/ui/input";
 import { Form } from "@/components/ui/shims/antd-form";
@@ -226,6 +227,108 @@ describe("Form.Item accepts antd's array NamePath", () => {
         </Form>,
       );
       expect(screen.getByRole("textbox")).toHaveValue("typed");
+    });
+
+    it("keeps values set before the Form mounted, as antd does", async () => {
+      // Agentic Table Settings (and its sibling modals) fetch first and render
+      // a spinner meanwhile, so setFieldsValue lands while the <Form> is still
+      // unmounted. Seeding initialValues ON TOP of that write wiped it: the
+      // saved Lite LLM adapter came back blank on every reopen.
+      function LoadThenMount() {
+        const [form] = Form.useForm();
+        const [loading, setLoading] = React.useState(true);
+
+        React.useEffect(() => {
+          Promise.resolve({ tool_name: "saved" }).then((data) => {
+            form.setFieldsValue(data);
+            setLoading(false);
+          });
+        }, []);
+
+        if (loading) {
+          return <span>loading</span>;
+        }
+        return (
+          <Form form={form} layout="vertical" initialValues={{ tool_name: "" }}>
+            <Form.Item label="Name" name="tool_name">
+              <Input />
+            </Form.Item>
+          </Form>
+        );
+      }
+
+      render(<LoadThenMount />);
+      await waitFor(() =>
+        expect(screen.getByRole("textbox")).toHaveValue("saved"),
+      );
+    });
+
+    it("renders the label tooltip antd's `tooltip` prop asks for", async () => {
+      // Undeclared, `tooltip` fell into ...props and landed on the wrapper
+      // div: the marker never rendered, so the Agentic Table settings fields
+      // lost their hints and the object form leaked onto the DOM.
+      render(
+        <Form layout="vertical">
+          <Form.Item
+            label="Parallel Pages"
+            name="parallel_pages"
+            tooltip={{ title: "Pages processed in parallel." }}
+          >
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+
+      const trigger = screen.getByRole("button", { name: "More info" });
+      expect(trigger).toBeInTheDocument();
+      // The config object must not reach the DOM as an attribute.
+      expect(document.querySelector("[tooltip]")).toBeNull();
+
+      await userEvent.hover(trigger);
+      await waitFor(() =>
+        expect(
+          screen.getAllByText("Pages processed in parallel.").length,
+        ).toBeGreaterThan(0),
+      );
+    });
+
+    it("accepts the bare-node tooltip form the rule editors use", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item label="Percentage" name="pct" tooltip="0-100% of files">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(
+        screen.getByRole("button", { name: "More info" }),
+      ).toBeInTheDocument();
+    });
+
+    it("uses the icon a tooltip config supplies", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item
+            label="Start Page"
+            name="start_page"
+            tooltip={{ title: "1-indexed.", icon: <span>ICON</span> }}
+          >
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.getByText("ICON")).toBeInTheDocument();
+    });
+
+    it("renders no marker when there is nothing to explain", () => {
+      render(
+        <Form layout="vertical">
+          <Form.Item label="Name" name="tool_name">
+            <Input />
+          </Form.Item>
+        </Form>,
+      );
+      expect(screen.queryByRole("button", { name: "More info" })).toBeNull();
     });
 
     it("exposes form.setFields for clearing and setting errors", async () => {
