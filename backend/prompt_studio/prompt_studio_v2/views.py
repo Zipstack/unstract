@@ -38,10 +38,12 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
     serializer_class = ToolStudioPromptSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Reads and edits honour project sharing (UN-3315); deleting a prompt
-        # requires ownership of the parent tool, matching CustomToolViewSet,
-        # whose own `destroy` is IsOwner-gated. The bulk `sync_prompts` route
-        # there is IsOwner-gated too. API-key gap: see PromptAcesssToUser.
+        # Reads and edits honour project sharing (UN-3315), enforced on two
+        # levels: get_queryset scopes every action to the user's reachable
+        # tools, and these classes gate the object. Deleting a prompt requires
+        # ownership of the parent tool, matching CustomToolViewSet, whose own
+        # `destroy` is IsOwner-gated. The bulk `sync_prompts` route there is
+        # IsOwner-gated too. API-key gap: see PromptAcesssToUser.
         if self.action == "destroy":
             return [IsPromptParentToolOwner()]
         return [PromptAcesssToUser()]
@@ -93,15 +95,26 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         return super().update(request, *args, **kwargs)
 
     def get_queryset(self) -> QuerySet | None:
+        # Scope to tools the user can reach. `list` never calls get_object(),
+        # and neither permission class defines has_permission, so nothing
+        # object-level fires on it -- unscoped, any org member could enumerate
+        # every prompt in the organization. Both branches need this: the
+        # filtered one takes tool_id straight from the query string with no
+        # ownership check of its own, so it was equally open.
+        #
+        # ToolStudioPrompt has no organization field and no for_user manager,
+        # so the scoping goes through the parent, exactly as reorder_prompts
+        # does. for_user ORs in shared_to_org, so a shared member still
+        # reaches the prompt and still gets a real 403 (not a 404) from
+        # IsPromptParentToolOwner on destroy.
+        visible = ToolStudioPrompt.objects.filter(
+            tool_id__in=CustomTool.objects.for_user(self.request.user)
+        )
         filter_args = FilterHelper.build_filter_args(
             self.request,
             ToolStudioPromptKeys.TOOL_ID,
         )
-        if filter_args:
-            queryset = ToolStudioPrompt.objects.filter(**filter_args)
-        else:
-            queryset = ToolStudioPrompt.objects.all()
-        return queryset
+        return visible.filter(**filter_args) if filter_args else visible
 
     @action(detail=True, methods=["post"])
     def reorder_prompts(self, request: Request) -> Response:
