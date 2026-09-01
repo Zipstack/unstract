@@ -474,6 +474,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
+            "enable_header_mapping": at_settings.get(
+                "enable_header_mapping", False
+            ),
         }
         at_ctx = ExecutionContext(
             executor_name="agentic_table",
