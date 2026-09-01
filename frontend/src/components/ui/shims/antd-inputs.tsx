@@ -722,6 +722,9 @@ function TagsInput({
   const [open, setOpen] = React.useState(false);
   const [active, setActive] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  // Same `aria-activedescendant` wiring as SearchableSelect and the multiple
+  // variant below: the id links the input to the listbox and its options.
+  const listId = React.useId();
 
   const tags = React.useMemo(
     () => (Array.isArray(value) ? value : value == null ? [] : [String(value)]),
@@ -802,6 +805,13 @@ function TagsInput({
         placeholder={tags.length ? undefined : (placeholder as string)}
         value={draft}
         disabled={disabled}
+        // No `role="combobox"` here, matching the two sibling lists: it would
+        // displace the input's implicit `textbox` role, which call-sites and
+        // the shim's own tests select it by.
+        aria-controls={listId}
+        aria-activedescendant={
+          open && visible.length ? `${listId}-${active}` : undefined
+        }
         onFocus={() => items.length && setOpen(true)}
         onChange={(e) => {
           setDraft(e.target.value);
@@ -877,15 +887,22 @@ function TagsInput({
         onOpenAutoFocus={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => event.preventDefault()}
       >
-        <div role="listbox" aria-multiselectable="true">
+        <div role="listbox" id={listId} aria-multiselectable="true">
           {visible.length === 0 ? (
             <div className="px-2 py-1.5 text-sm text-muted-foreground">
               {notFoundContent ?? "No data"}
             </div>
           ) : (
             visible.map((o, i) => (
-              <div
+              // Options are deliberately not focusable and carry no key handler
+              // of their own: this is the `aria-activedescendant` combobox
+              // pattern, so focus stays in the draft input and its onKeyDown
+              // drives Arrow/Enter into the same `commit` this onClick calls. A
+              // handler here would be dead code — the element can never receive
+              // the event.
+              <div // NOSONAR
                 key={String(o.value)}
+                id={`${listId}-${i}`}
                 role="option"
                 aria-selected={false}
                 aria-disabled={o.disabled || full || undefined}
@@ -1217,6 +1234,9 @@ const SearchableSelect = React.forwardRef<
           type="button"
           role="combobox"
           aria-expanded={open}
+          // The listbox this trigger owns. It is only in the tree while the
+          // popover is open, which is what `aria-expanded` tells AT.
+          aria-controls={listId}
           disabled={disabled}
           data-testid={testId}
           style={style}
@@ -1501,6 +1521,9 @@ function MultiSelect({
         <div
           role="combobox"
           aria-expanded={open}
+          // The listbox this trigger owns. It is only in the tree while the
+          // popover is open, which is what `aria-expanded` tells AT.
+          aria-controls={listId}
           aria-haspopup="listbox"
           aria-disabled={disabled || undefined}
           tabIndex={disabled ? -1 : 0}
