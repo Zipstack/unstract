@@ -2,7 +2,7 @@
 
 .plt-set-layout {
   height: calc(100vh - 60px);
-  background-color: var(--page-bg-3);
+  background-color: var(--muted);
 }
 
 .plt-set-layout-2 {
@@ -10,10 +10,10 @@
 }
 
 .plt-set-head {
-  background-color: var(--white);
+  background-color: var(--card);
   padding: 14px;
   height: 60px;
-  border-bottom: 1px solid var(--border-color-1);
+  border-bottom: 1px solid var(--border);
 }
 
 .plt-set-head-typo {

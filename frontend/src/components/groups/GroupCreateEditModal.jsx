@@ -1,6 +1,8 @@
-import { Form, Input, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";

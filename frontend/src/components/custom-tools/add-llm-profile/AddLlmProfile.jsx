@@ -1,23 +1,13 @@
-import {
-  ArrowLeftOutlined,
-  CaretRightOutlined,
-  DownOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Collapse,
-  Form,
-  Input,
-  Row,
-  Select,
-  Space,
-  Typography,
-  theme,
-} from "antd";
+import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Collapse } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
+import { cn } from "@/lib/utils";
 
 import {
   getBackendErrorDetail,
@@ -61,7 +51,8 @@ function AddLlmProfile({
   const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const { token } = theme.useToken();
+  // P4: antd's theme token replaced by the Midnight Bloom CSS variable.
+  const token = { colorBgContainer: "var(--card)" };
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { getStrategies } = useRetrievalStrategies();
@@ -236,7 +227,6 @@ function AddLlmProfile({
     {
       key: "1",
       label: "Advanced Settings",
-      className: "add-llm-profile-panel",
       children: (
         <div>
           <Form.Item
@@ -271,11 +261,11 @@ function AddLlmProfile({
                   : "Select retrieval strategy"}
               </span>
               <div className="retrieval-strategy-actions">
-                <SettingOutlined
+                <Settings
                   className="retrieval-strategy-settings-icon"
                   title="Configure retrieval strategy"
                 />
-                <DownOutlined className="retrieval-strategy-dropdown-icon" />
+                <ChevronDown className="retrieval-strategy-dropdown-icon" />
               </div>
             </button>
           </Form.Item>
@@ -374,7 +364,14 @@ function AddLlmProfile({
   };
 
   const handleCaretIcon = (isActive) => {
-    return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
+    // `rotate` was an antd icon-font prop; lucide ships SVGs and ignores it, so
+    // the caret stayed pointing right and the panel read as collapsed while
+    // open. Tailwind's transform does what the prop used to.
+    return (
+      <ChevronRight
+        className={cn("transition-transform", isActive && "rotate-90")}
+      />
+    );
   };
 
   const handleLlmChangeForTokens = async (value) => {
@@ -458,7 +455,7 @@ function AddLlmProfile({
         <SpaceWrapper>
           <div>
             <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
-              <ArrowLeftOutlined />
+              <ArrowLeft />
             </Button>
             <Typography.Text className="add-cus-tool-header">
               {modalTitle}
@@ -499,6 +496,7 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
                   <Select
+                    showSearch
                     options={adapterOptions(llmItems, "llm")}
                     onSelect={handleLlmChangeForTokens}
                   />
@@ -555,6 +553,7 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("vector_store", backendErrors)}
                 >
                   <Select
+                    showSearch
                     options={adapterOptions(vectorDbItems, "vector_store")}
                   />
                 </Form.Item>
@@ -599,6 +598,7 @@ function AddLlmProfile({
               help={getBackendErrorDetail("embedding_model", backendErrors)}
             >
               <Select
+                showSearch
                 options={adapterOptions(embeddingItems, "embedding_model")}
               />
             </Form.Item>
@@ -617,9 +617,13 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("x2text", backendErrors)}
             >
-              <Select options={adapterOptions(x2TextItems, "x2text")} />
+              <Select
+                showSearch
+                options={adapterOptions(x2TextItems, "x2text")}
+              />
             </Form.Item>
             <Collapse
+              className="add-llm-profile-advanced"
               expandIcon={({ isActive }) => handleCaretIcon(isActive)}
               size="small"
               style={{
