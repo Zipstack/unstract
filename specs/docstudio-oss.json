@@ -319,32 +319,6 @@
           "401": {
             "content": {
               "application/json": {
-                "examples": {
-                  "AuthenticationFailed": {
-                    "value": {
-                      "errors": [
-                        {
-                          "attr": null,
-                          "code": "authentication_failed",
-                          "detail": "Incorrect authentication credentials."
-                        }
-                      ],
-                      "type": "client_error"
-                    }
-                  },
-                  "NotAuthenticated": {
-                    "value": {
-                      "errors": [
-                        {
-                          "attr": null,
-                          "code": "not_authenticated",
-                          "detail": "Authentication credentials were not provided."
-                        }
-                      ],
-                      "type": "client_error"
-                    }
-                  }
-                },
                 "schema": {
                   "$ref": "#/components/schemas/PlatformKeyError"
                 }
@@ -355,20 +329,6 @@
           "403": {
             "content": {
               "application/json": {
-                "examples": {
-                  "PermissionDenied": {
-                    "value": {
-                      "errors": [
-                        {
-                          "attr": null,
-                          "code": "permission_denied",
-                          "detail": "You do not have permission to perform this action."
-                        }
-                      ],
-                      "type": "client_error"
-                    }
-                  }
-                },
                 "schema": {
                   "$ref": "#/components/schemas/PlatformKeyError"
                 }

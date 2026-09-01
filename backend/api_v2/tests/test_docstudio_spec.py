@@ -42,6 +42,17 @@ _METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
 #: up from the extraction metadata when the request asks for it.
 _PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
 
+#: Responses whose published example already contradicted its schema before
+#: this check existed. All three are the deployment operations declaring a
+#: non-error body for a status the standardized-errors schema class also
+#: injects a handler-shaped example for. Recorded rather than silently skipped:
+#: the check below fails on any *new* instance, and this list is the debt.
+_KNOWN_EXAMPLE_DIVERGENCES = {
+    ("status", "406"),
+    ("status", "500"),
+    ("execute", "500"),
+}
+
 #: The operations served by an API deployment, as opposed to the platform-key
 #: operations that describe the account. They authenticate differently and can
 #: fail differently, so several checks below split on this.
@@ -323,15 +334,49 @@ def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
     `platform_api`, which pins the same claim against the wire.
     """
     spec = _committed()
-    for path, _, operation in _operations(spec):
-        if operation["operationId"] != "whoami":
-            continue
+    reads = [
+        (path, operation)
+        for path, _, operation in _operations(spec)
+        if operation["operationId"] == "whoami"
+    ]
+
+    # Guarded like its sibling below: without this the whole check is skipped
+    # the day the operation id moves, which is the same vacuity this commit
+    # fixed twelve lines down and reintroduced here.
+    assert reads
+    for path, operation in reads:
         for code in ("401", "403"):
             ref = operation["responses"][code]["content"]["application/json"]["schema"][
                 "$ref"
             ]
             assert ref.endswith("/PlatformKeyError"), f"{code} on {path}: {ref}"
     assert set(_schema("PlatformKeyError")["properties"]) == {"message"}
+
+
+def test_no_published_example_contradicts_its_own_schema() -> None:
+    """The standardized-errors schema class appends an example of the exception
+    handler's body to every 4xx/5xx, keyed on the status code alone -- so an
+    operation that overrides the schema keeps examples describing the shape it
+    replaced, and the artifact contradicts itself in one media-type object.
+
+    Checked structurally rather than by name: any response declaring a body
+    other than `ErrorResponse` must carry no handler-shaped example.
+    """
+    for path, method, operation in _operations(_committed()):
+        if (operation["operationId"], "") in _KNOWN_EXAMPLE_DIVERGENCES:
+            continue
+        for code, response in operation["responses"].items():
+            media = response.get("content", {}).get("application/json", {})
+            ref = media.get("schema", {}).get("$ref", "")
+            if ref.endswith("/ErrorResponse"):
+                continue
+            for name, example in media.get("examples", {}).items():
+                if (operation["operationId"], code) in _KNOWN_EXAMPLE_DIVERGENCES:
+                    continue
+                assert "errors" not in example.get("value", {}), (
+                    f"{method} {path} {code}: example {name!r} shows the handler "
+                    f"body, but the response declares {ref.split('/')[-1]!r}"
+                )
 
 
 def test_the_identity_read_asks_for_no_organisation() -> None:

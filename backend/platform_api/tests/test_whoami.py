@@ -199,7 +199,10 @@ class WhoAmITest(APITestCase):
     def test_the_alias_under_an_organisation_segment_also_answers(self) -> None:
         """`OrganizationMiddleware` strips the segment, so `<org>/whoami/` is
         rewritten onto this same view. Untested, this behaviour would move the
-        next time either the mount order or the org-match branch changed.
+        next time the org-match branch changed.
+
+        Not mount order: swapping this mount below the tenant urlconf leaves
+        every test here green, because no tenant urlconf declares `whoami/`.
         """
         key = self._make_key(organization=self.org_a)
 
@@ -222,3 +225,6 @@ class WhoAmITest(APITestCase):
         )
 
         self.assertEqual(response.status_code, 403)
+        # The 403 body is declared too, and "status asserted, body unasserted"
+        # is exactly what let the original spec publish a shape nothing sends.
+        self.assertEqual(list(response.json()), ["message"])

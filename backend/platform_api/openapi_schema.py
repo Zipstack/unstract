@@ -8,10 +8,12 @@ Their docstrings and help texts are published as the client-facing
 descriptions, so they are written for the caller rather than the maintainer.
 
 This operation does **not** reuse ``api_v2.openapi_schema.ErrorResponse``. That
-shape comes from the project-wide exception handler, and this route never
-reaches it: ``whoami`` is deliberately absent from ``WHITELISTED_PATHS``, so
-``CustomAuthMiddleware`` authenticates it and answers every rejection itself,
-with a bare ``{"message": ...}`` body, before DRF is entered.
+shape comes from the project-wide exception handler, and nothing on this route
+produces it. ``whoami`` is deliberately absent from ``WHITELISTED_PATHS``, so
+``CustomAuthMiddleware`` answers almost every rejection itself, before DRF is
+entered, with a bare ``{"message": ...}`` body. The one it does not reach --- a
+caller who is authenticated but carries no platform key --- is answered by the
+view in that same shape, deliberately, so one declaration covers both.
 """
 
 from drf_spectacular.utils import (
@@ -19,9 +21,26 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
+from drf_standardized_errors.openapi import AutoSchema as StandardizedErrorsAutoSchema
 from rest_framework import serializers
 
 from platform_api.models import ApiKeyPermission
+
+
+class PlatformKeyAutoSchema(StandardizedErrorsAutoSchema):
+    """The project schema class, minus its error-body examples.
+
+    ``drf_standardized_errors`` appends an example of the exception handler's
+    ``{type, errors[]}`` body to every 4xx/5xx response, keyed on the status
+    code alone and never on the declared serializer
+    (``drf_standardized_errors/openapi.py:343-356``). On this operation the
+    handler is never reached, so those examples contradict the ``$ref`` beside
+    them -- a reader following the example writes ``errors[0].code`` and gets a
+    ``KeyError`` on the wire.
+    """
+
+    def _get_error_response_examples(self) -> list:
+        return []
 
 
 class WhoAmIResponse(serializers.Serializer):
