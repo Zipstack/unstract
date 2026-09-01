@@ -22,6 +22,10 @@ _HOSTILE = [
     "import sys\nsys.modules['os'].system('id')",
     "import posix\nposix.system('id')",
     "from os import path",
+    "e = eval\ne('1')",
+    "e = exec\ne('x=1')",
+    "import functools\nf = functools.partial(eval, '1')\nf()",
+    "breakpoint()",
 ]
 
 
@@ -47,5 +51,14 @@ def test_encoded_import_via_builtins_subscript_rejected():
 
 def test_allowed_modules_pass():
     ok, reason = check_code_safe("import math\nimport datetime\nx = math.sqrt(4)")
+    assert ok is True, reason
+    assert reason == ""
+
+
+def test_realistic_calc_with_safe_builtins_passes():
+    ok, reason = check_code_safe(
+        "import json\nvals=[1,2,3]\ntotal=sum(vals)\nm=max(vals)\n"
+        "with open('o','w') as f:\n    f.write(json.dumps({'t': total, 'm': m}))"
+    )
     assert ok is True, reason
     assert reason == ""

@@ -11,7 +11,7 @@ import ast
 _ALLOWED_IMPORTS = {"json", "math", "statistics", "decimal", "datetime", "re", "collections", "itertools", "functools"}
 _DENYLISTED_CALLS = {
     "eval", "exec", "compile", "__import__", "globals", "vars",
-    "getattr", "setattr", "delattr",
+    "getattr", "setattr", "delattr", "breakpoint", "input", "help",
 }
 _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
 
@@ -39,5 +39,7 @@ def check_code_safe(code: str) -> tuple[bool, str]:
         elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, f"safety gate: dunder attribute access '{node.attr}'"
         elif isinstance(node, ast.Name) and node.id in _DENYLISTED_NAMES:
+            return False, f"safety gate: disallowed name '{node.id}'"
+        elif isinstance(node, ast.Name) and node.id in _DENYLISTED_CALLS:
             return False, f"safety gate: disallowed name '{node.id}'"
     return True, ""
