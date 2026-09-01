@@ -1,5 +1,5 @@
-import { Modal } from "antd";
 import PropTypes from "prop-types";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
 

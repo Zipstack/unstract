@@ -1,4 +1,6 @@
-import { Form, Select, Tag } from "antd";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Tag } from "@/components/ui/shims/antd-leaves";
 
 import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
 

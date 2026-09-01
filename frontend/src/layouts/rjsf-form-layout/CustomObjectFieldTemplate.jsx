@@ -1,5 +1,5 @@
-import { Col, Row } from "antd";
 import PropTypes from "prop-types";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
 import "./CustomFieldTemplate.css";
 
 const CustomObjectFieldTemplate = (props) => {

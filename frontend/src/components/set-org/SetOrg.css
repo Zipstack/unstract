@@ -98,7 +98,7 @@
 }
 
 .org-card-container .ant-card-meta-title {
-  color: #0d3a63;
+  color: var(--foreground);
   font-weight: 700;
   font-size: 20px;
   text-overflow: ellipsis;

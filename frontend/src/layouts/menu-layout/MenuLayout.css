@@ -17,7 +17,7 @@
 }
 
 .appBody {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   overflow: hidden;
   height: 100%;
 }

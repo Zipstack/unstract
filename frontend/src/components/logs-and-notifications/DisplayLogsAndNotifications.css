@@ -3,8 +3,8 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: #fff;
-  border-top: 1px solid #ccc;
+  background-color: var(--card);
+  border-top: 1px solid var(--border);
   box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
@@ -14,8 +14,8 @@
 
 .logs-handle {
   height: 40px;
-  background-color: #fff;
-  border-bottom: 1px solid #ccc;
+  background-color: var(--card);
+  border-bottom: 1px solid var(--border);
   cursor: ns-resize;
   user-select: none;
   font-weight: bold;
@@ -36,20 +36,22 @@
 
 .tool-logs-table .ant-table {
   font-family: Consolas, "Courier New", monospace;
-  font-size: 14px !important;
-  background-color: #fff;
+  font-size: 13px !important;
+  background-color: var(--card);
 }
 
 .tool-logs-table .ant-table-thead > tr > th {
-  background-color: #ffffff;
+  background-color: var(--card);
   font-weight: 600;
 }
 
+/* A light red wash for error logs. Mixed off --destructive so it tracks the
+ * theme instead of staying a light-mode-only #fff1f0. */
 .tool-logs-table .ant-table-tbody > tr.display-logs-error-bg > td {
-  background-color: #fff1f0; /* a light red for error logs */
+  background-color: color-mix(in srgb, var(--destructive) 8%, var(--card));
 }
 
 .display-logs-md {
-  font-size: 14px;
+  font-size: 13px;
   padding-left: 5px;
 }

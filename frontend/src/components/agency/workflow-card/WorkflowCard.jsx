@@ -1,6 +1,8 @@
-import { CheckOutlined } from "@ant-design/icons";
-import { Flex, Image, Typography } from "antd";
+import { Check } from "lucide-react";
 import PropTypes from "prop-types";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard";
 import "./WorkflowCard.css";
@@ -51,7 +53,7 @@ const renderConnectorBadge = (number, stepNumber) => {
 // Main function to render the number display
 const renderNumberDisplay = (number, connectorIcon, stepNumber) => {
   if (isCompletedStatus(number)) {
-    return <CheckOutlined />;
+    return <Check />;
   }
 
   if (isConnectorTypeStatus(number)) {
