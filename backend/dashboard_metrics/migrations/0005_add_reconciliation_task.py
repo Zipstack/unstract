@@ -49,7 +49,7 @@ def remove_reconciliation_task(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("dashboard_metrics", "0003_alter_eventmetricsdaily_organization_and_more"),
+        ("dashboard_metrics", "0004_pg_periodic_tasks"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),
     ]
 

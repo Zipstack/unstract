@@ -495,7 +495,7 @@ class TestReconciliationSchedule(TestCase):
     def setUp(self):
         """Load the data migration module."""
         self.migration = import_module(
-            "dashboard_metrics.migrations.0004_add_reconciliation_task"
+            "dashboard_metrics.migrations.0005_add_reconciliation_task"
         )
 
     def _task(self):
