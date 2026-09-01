@@ -1,6 +1,7 @@
 """Tests for the query params the LLMWhisperer V2 adapter sends."""
 
 import pytest
+
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )

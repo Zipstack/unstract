@@ -13,6 +13,7 @@ Covers the two halves of the feature:
 from typing import Any
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
     AnthropicLLMParameters,
     AWSBedrockLLMParameters,

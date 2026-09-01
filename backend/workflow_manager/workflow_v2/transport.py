@@ -34,7 +34,6 @@ import os
 from typing import TYPE_CHECKING
 
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
-
 from unstract.core.data_models import WorkflowTransport
 from unstract.flags.feature_flag import check_feature_flag_status
 

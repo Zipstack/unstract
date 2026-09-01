@@ -1,6 +1,7 @@
 import uuid
 
 from account_v2.models import User
+from backend.constants import FieldLengthConstants as FieldLength
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
@@ -18,8 +19,6 @@ from utils.models.organization_mixin import (
 )
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
-
-from backend.constants import FieldLengthConstants as FieldLength
 
 APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32

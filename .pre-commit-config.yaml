@@ -8,7 +8,7 @@ ci:
     - hadolint-docker # Fails in pre-commit CI
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
         exclude_types:
@@ -38,7 +38,7 @@ repos:
       - id: no-commit-to-branch
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.3.4
+    rev: v0.16.5
     hooks:
       - id: ruff
         args: [--fix]
@@ -57,7 +57,7 @@ repos:
   #       language: python
 
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.17.0
+    rev: v3.21.2
     hooks:
       - id: pyupgrade
         entry: pyupgrade --py39-plus --keep-runtime-typing
@@ -111,7 +111,7 @@ repos:
         stages: [pre-commit]
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.42.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         args: [--disable, MD013]
@@ -119,7 +119,7 @@ repos:
         args: [--disable, MD013]
 
   - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.18.2
+    rev: v8.30.0
     hooks:
       - id: gitleaks
 
@@ -129,7 +129,7 @@ repos:
       - id: htmlhint
 
   - repo: https://github.com/hadolint/hadolint
-    rev: v2.12.1-beta
+    rev: v2.15.1
     hooks:
       - id: hadolint-docker
         args:

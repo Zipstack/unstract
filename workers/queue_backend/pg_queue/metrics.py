@@ -268,8 +268,7 @@ class ReaperMetrics(_Exporter):
         )
         self.claim_recovered = Counter(
             "pg_reaper_claim_recovered_total",
-            "Orphan orchestration claims recovered (crash-window execution "
-            "marked ERROR)",
+            "Orphan orchestration claims recovered (crash-window execution marked ERROR)",
             registry=self.registry,
         )
         self.claim_gc = Counter(

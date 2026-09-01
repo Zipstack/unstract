@@ -21,9 +21,8 @@ from typing import Any
 from uuid import UUID
 
 from pg_queue.producer import enqueue_task
-from workflow_manager.workflow_v2.transport import resolve_transport
-
 from unstract.core.data_models import is_pg_transport
+from workflow_manager.workflow_v2.transport import resolve_transport
 
 logger = logging.getLogger(__name__)
 

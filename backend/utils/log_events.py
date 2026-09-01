@@ -6,10 +6,10 @@ from typing import Any
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
-
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
+
 from utils.constants import ExecutionLogConstants
 from utils.cors_origin import RegexOrigin
 

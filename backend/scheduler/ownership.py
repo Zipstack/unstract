@@ -34,7 +34,6 @@ from django.utils import timezone
 from django_celery_beat.models import PeriodicTask, PeriodicTasks
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgPeriodicSchedule
-
 from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
