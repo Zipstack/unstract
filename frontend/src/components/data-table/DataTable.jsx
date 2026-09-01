@@ -40,6 +40,24 @@ import { cn } from "@/lib/utils";
  */
 
 /**
+ * One cell's value, read the way antd reads it.
+ *
+ * `dataIndex` is either a key or a PATH: `["product", "name"]` is antd's
+ * documented nested form and means `record.product.name`. The flat lookup this
+ * replaces indexed the record with the array itself, and JavaScript stringifies
+ * that to the property name `"product,name"` — so the value was always
+ * undefined, and silently so, because a column with no `render` hands it
+ * straight to the cell. LLMWhisperer's API Keys table declares its Plan column
+ * exactly that way and lost the whole column to a blank strip.
+ */
+function cellValue(record, dataIndex) {
+  if (Array.isArray(dataIndex)) {
+    return dataIndex.reduce((v, k) => (v == null ? undefined : v[k]), record);
+  }
+  return record?.[dataIndex];
+}
+
+/**
  * One antd column → one TanStack column def.
  *
  * antd spells a banded header as a column that carries a `title` and a
@@ -53,6 +71,14 @@ import { cn } from "@/lib/utils";
  * version used would collide across levels.
  */
 function toColumn(c, path) {
+  /*
+   * Three places spell this identity, and they must agree: here, `columnKey`
+   * (ColumnFilter.jsx) and `toSorterInfo` below, which matches on it to answer
+   * antd's `onChange`. A PATH `dataIndex` with no `key` coerces to
+   * `"product,name"` in all three, so they still agree — which is why this is
+   * deliberately NOT normalised to `dataIndex.join(".")`. Tidying it here alone
+   * would silently stop sorting and filtering reporting for a nested column.
+   */
   const id = String(c.key ?? c.dataIndex ?? path);
   // `column` rides along so the header can render antd's filter affordance,
   // which is declared on the antd def and has no TanStack equivalent.
@@ -76,7 +102,31 @@ function toColumn(c, path) {
 
   return {
     id,
-    accessorKey: c.dataIndex,
+    /*
+     * A path needs an accessor FUNCTION: TanStack's `accessorKey` is a single
+     * key, so handing it the array repeats the same stringified-`"product,name"`
+     * lookup one layer down.
+     *
+     * This is NOT inert. TanStack defaults every column to `sortUndefined: 1`,
+     * and `getSortedRowModel` reads `row.getValue()` to apply it BEFORE it ever
+     * consults `sortingFn` — so undefined-valued rows sort to the end even
+     * though `sortingFn` is `() => 0`. A nested column was accidentally exempt
+     * while every one of its values was undefined; with a real accessor it now
+     * behaves exactly as an equivalent string column already does (verified:
+     * both reorder identically on a sparse column). That quirk is pre-existing
+     * and cross-cutting, not introduced here, and no nested column declares a
+     * `sorter` today.
+     *
+     * The string case keeps `accessorKey` because it is unchanged, not because
+     * its behaviour is right: TanStack deep-reads a DOTTED string while the
+     * cell below reads it as a literal key, which is antd's own reading. Those
+     * two disagree for `dataIndex: "a.b"`. Pre-existing on both halves, no
+     * literal dotted `dataIndex` exists in either repo, and reconciling it is a
+     * behaviour change beyond this fix.
+     */
+    ...(Array.isArray(c.dataIndex)
+      ? { accessorFn: (record) => cellValue(record, c.dataIndex) }
+      : { accessorKey: c.dataIndex }),
     header: c.title,
     enableSorting: Boolean(c.sorter),
     /*
@@ -95,7 +145,9 @@ function toColumn(c, path) {
         : () => 0,
     meta,
     cell: ({ row }) => {
-      const value = c.dataIndex ? row.original?.[c.dataIndex] : undefined;
+      const value = c.dataIndex
+        ? cellValue(row.original, c.dataIndex)
+        : undefined;
       // antd's render(value, record, index) contract.
       return c.render ? c.render(value, row.original, row.index) : value;
     },
