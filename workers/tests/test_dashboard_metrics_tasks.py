@@ -67,6 +67,27 @@ class TestCallContract:
             dmt.dashboard_metrics_aggregate()
         assert call.call_args[0][0] == "v1/dashboard-metrics/aggregate/"
 
+    @pytest.mark.parametrize("tier", ["hourly", "daily_monthly", "all"])
+    def test_aggregate_forwards_the_tier_from_the_schedule_row(self, tier):
+        """UN-3974: the PG scheduler hands a row's task_kwargs over as **kwargs, so the
+        tier arrives here and has to reach the backend in the request body.
+
+        This is the leg that fails quietly. Drop the forwarding and every schedule still
+        fires, the endpoint still returns 200, and every other test here still passes —
+        but both rows run the default tier, so daily and monthly quietly go back to
+        being recomputed every 15 minutes.
+        """
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(tier=tier)
+        assert call.call_args.kwargs["body"] == {"tier": tier}
+
+    def test_aggregate_omits_the_body_when_no_tier_is_given(self):
+        # Pre-0005 rows carry no tier kwarg; the backend's default then applies, which
+        # is every tier rather than none.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate()
+        assert call.call_args.kwargs["body"] is None
+
     @pytest.mark.parametrize(
         "func,path",
         [
