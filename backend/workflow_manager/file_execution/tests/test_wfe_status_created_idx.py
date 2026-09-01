@@ -1,0 +1,83 @@
+"""Shape guard for the ``(status, created_at)`` index migration (UN-3972).
+
+``workflow_file_execution`` is ~3.4 GB in production and takes live inserts. A plain
+``AddIndex`` — which is what ``makemigrations`` emits from ``Meta.indexes`` — holds a
+``SHARE`` lock for the whole build and stalls file processing. ``0007`` is therefore
+hand-written: non-atomic, ``CONCURRENTLY``, and split so the ``AddIndex`` updates model
+state only.
+
+Nothing else guards that. The suite runs with ``--no-migrations``, so this migration is
+never executed in CI; regenerating or "tidying" it would land the locking version with
+every test still green. These assertions are what fails instead.
+
+DB-free by design: the migration module is imported and inspected directly.
+"""
+
+from __future__ import annotations
+
+import importlib
+
+from django.db import migrations
+from django.test import SimpleTestCase
+
+from workflow_manager.file_execution.models import WorkflowFileExecution
+
+_MIGRATION = "workflow_manager.file_execution.migrations.0007_wfe_status_created_idx"
+
+INDEX_NAME = "wfe_status_created_idx"
+INDEX_FIELDS = ["status", "created_at"]
+TABLE = "workflow_file_execution"
+
+
+class MigrationShapeTests(SimpleTestCase):
+    """The properties that keep the build off the write path."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        cls.migration = importlib.import_module(_MIGRATION).Migration
+        cls.operation = cls.migration.operations[0]
+
+    def test_migration_is_non_atomic(self) -> None:
+        """CREATE/DROP INDEX CONCURRENTLY is rejected inside a transaction block."""
+        self.assertIs(self.migration.atomic, False)
+
+    def test_index_is_built_and_dropped_concurrently(self) -> None:
+        """Both directions must stay off the write-blocking lock path."""
+        create = self.operation.database_operations[0]
+        self.assertIn("CREATE INDEX CONCURRENTLY IF NOT EXISTS", create.sql)
+        self.assertIn(INDEX_NAME, create.sql)
+        self.assertIn(f"{TABLE} ({', '.join(INDEX_FIELDS)})", create.sql)
+        self.assertIn("DROP INDEX CONCURRENTLY IF EXISTS", create.reverse_sql)
+
+    def test_invalid_index_guard_is_present(self) -> None:
+        """An interrupted concurrent build leaves an INVALID index.
+
+        ``IF NOT EXISTS`` would keep it and let Django record the migration as applied —
+        green, but the index costs on every write and is never read. The guard turns that
+        into a loud failure.
+        """
+        guard = self.operation.database_operations[1].sql
+        self.assertIn("indisvalid", guard)
+        self.assertIn("RAISE EXCEPTION", guard)
+        self.assertIn(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}", guard)
+
+    def test_add_index_updates_state_only(self) -> None:
+        """``AddIndex`` must not reach the database, or it builds a second time."""
+        self.assertIsInstance(self.operation, migrations.SeparateDatabaseAndState)
+        self.assertTrue(
+            all(
+                isinstance(op, migrations.RunSQL)
+                for op in self.operation.database_operations
+            )
+        )
+        self.assertEqual(len(self.operation.state_operations), 1)
+        state_op = self.operation.state_operations[0]
+        self.assertIsInstance(state_op, migrations.AddIndex)
+        self.assertEqual(state_op.index.name, INDEX_NAME)
+        self.assertEqual(state_op.index.fields, INDEX_FIELDS)
+
+    def test_model_meta_matches_the_migration(self) -> None:
+        """Model state and migration state drift silently otherwise."""
+        declared = {idx.name: idx.fields for idx in WorkflowFileExecution._meta.indexes}
+        self.assertEqual(declared.get(INDEX_NAME), INDEX_FIELDS)
