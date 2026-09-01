@@ -16,18 +16,16 @@ through the project exception handler and comes back as ``ErrorResponse``; a
 method this view does not implement is the reachable case.
 """
 
+from api_v2.openapi_schema import ErrorResponse
 from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
     extend_schema_view,
 )
 from drf_standardized_errors.openapi import AutoSchema as StandardizedErrorsAutoSchema
-
-from api_v2.openapi_schema import ErrorResponse
 from rest_framework import serializers
 
 from platform_api.models import ApiKeyPermission
-
 
 #: The statuses this operation answers from the authentication middleware, in
 #: ``PlatformKeyError`` shape. Everything else it can return is DRF's own and
