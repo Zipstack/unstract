@@ -219,7 +219,7 @@
         "type": "object"
       },
       "PlatformKeyError": {
-        "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return.",
+        "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return. It is\nthe shape of this operation's credential failures specifically, not of\nevery failure it can return.",
         "properties": {
           "message": {
             "description": "Human-readable reason for the refusal.",
@@ -335,6 +335,30 @@
               }
             },
             "description": "The key was recognised but refused: its permission tier is not one this deployment knows, or the request named an organisation the key does not belong to."
+          },
+          "405": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "MethodNotAllowed": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "method_not_allowed",
+                          "detail": "Method \"get\" not allowed."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "This route serves GET only. A key whose tier permits the method reaches the view and is refused here; a tier that does not is refused earlier, as a 403."
           },
           "500": {
             "description": "The request could not be served. The body is not guaranteed to be JSON."

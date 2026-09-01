@@ -48,9 +48,9 @@ _PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
 #: injects a handler-shaped example for. Recorded rather than silently skipped:
 #: the check below fails on any *new* instance, and this list is the debt.
 _KNOWN_EXAMPLE_DIVERGENCES = {
-    ("status", "406"),
-    ("status", "500"),
-    ("execute", "500"),
+    ("status", "406", "NotAcceptable"),
+    ("status", "500", "APIException"),
+    ("execute", "500", "APIException"),
 }
 
 #: The operations served by an API deployment, as opposed to the platform-key
@@ -326,7 +326,7 @@ def test_the_documented_permission_tiers_are_the_ones_the_model_defines() -> Non
 
 def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
     """`whoami` authenticates in middleware, which answers with a bare
-    `message` and never reaches the project exception handler -- so it must not
+    `message` and does not reach the project exception handler for its credential failures -- so it must not
     publish the handler's `{type, errors[]}` shape the way the deployment
     operations legitimately do.
 
@@ -341,8 +341,7 @@ def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
     ]
 
     # Guarded like its sibling below: without this the whole check is skipped
-    # the day the operation id moves, which is the same vacuity this commit
-    # fixed twelve lines down and reintroduced here.
+    # the day the operation id moves.
     assert reads
     for path, operation in reads:
         for code in ("401", "403"):
@@ -363,15 +362,17 @@ def test_no_published_example_contradicts_its_own_schema() -> None:
     other than `ErrorResponse` must carry no handler-shaped example.
     """
     for path, method, operation in _operations(_committed()):
-        if (operation["operationId"], "") in _KNOWN_EXAMPLE_DIVERGENCES:
-            continue
         for code, response in operation["responses"].items():
             media = response.get("content", {}).get("application/json", {})
             ref = media.get("schema", {}).get("$ref", "")
             if ref.endswith("/ErrorResponse"):
                 continue
             for name, example in media.get("examples", {}).items():
-                if (operation["operationId"], code) in _KNOWN_EXAMPLE_DIVERGENCES:
+                if (
+                    operation["operationId"],
+                    code,
+                    name,
+                ) in _KNOWN_EXAMPLE_DIVERGENCES:
                     continue
                 assert "errors" not in example.get("value", {}), (
                     f"{method} {path} {code}: example {name!r} shows the handler "
