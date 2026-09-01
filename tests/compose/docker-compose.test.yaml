@@ -19,6 +19,9 @@ services:
       # given to worker-executor-v2 below -- the executor reads back what the
       # backend staged and caches OCR under the same root.
       - AGENT_KV_STORAGE_DIR_PREFIX=${AGENT_KV_STORAGE_DIR_PREFIX:-unstract/agent_kv}
+      # Flips on the Agent-KV calc e2e lane (Task 12); unset/empty (the
+      # default) keeps it off so other lanes are unaffected.
+      - AGENT_KV_CALCULATIONS_ENABLED=${AGENT_KV_CALCULATIONS_ENABLED:-}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -66,3 +69,22 @@ services:
   worker-ide-callback:
     environment:
       - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
+
+  # Codegen sandbox worker (Task 5/12) -- consumes sandbox_codegen. Pinned to
+  # the test image like backend/platform-service/runner above; SANDBOX_* pass
+  # through with empty defaults (the task's own code-level defaults apply --
+  # see workers/sandbox/tasks.py). SANDBOX_HEALTH_PORT stays fixed at 8092
+  # (see docker/docker-compose.yaml's worker-sandbox and controller ruling R2)
+  # since it is not part of the pass-through set.
+  worker-sandbox:
+    image: unstract/worker-unified:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - SANDBOX_HEALTH_PORT=8092
+      - SANDBOX_MAX_CODE_BYTES=${SANDBOX_MAX_CODE_BYTES:-}
+      - SANDBOX_MAX_INPUT_BYTES=${SANDBOX_MAX_INPUT_BYTES:-}
+      - SANDBOX_MAX_OUTPUT_BYTES=${SANDBOX_MAX_OUTPUT_BYTES:-}
+      - SANDBOX_MAX_ROWS=${SANDBOX_MAX_ROWS:-}
+      - SANDBOX_TIMEOUT_MAX=${SANDBOX_TIMEOUT_MAX:-}
+      - SANDBOX_TIMEOUT_GRACE=${SANDBOX_TIMEOUT_GRACE:-}
+      - SANDBOX_MEMORY_MB=${SANDBOX_MEMORY_MB:-}
+      - SANDBOX_MAX_PIDS=${SANDBOX_MAX_PIDS:-}

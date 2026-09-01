@@ -97,6 +97,40 @@ services:
     labels:
       - traefik.enable=false
 
+  # Codegen sandbox worker (WorkerType.SANDBOX) — consumes sandbox_codegen and
+  # runs generated code out-of-process in a scrubbed, rlimit-bounded
+  # subprocess (spec §6.3). Hardened and isolated: no host_gateway (must not
+  # reach the host), no published ports (SANDBOX_HEALTH_PORT=8092 is an
+  # internal-only metrics endpoint — 8090/8091 are reserved for
+  # pg_queue_consumer / pluggable-worker auto-discovery), read-only rootfs,
+  # all capabilities dropped, no privilege escalation.
+  worker-sandbox:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-sandbox
+    restart: unless-stopped
+    command: ["sandbox"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - APPLICATION_NAME=unstract-worker-sandbox
+      - WORKER_TYPE=sandbox
+      - WORKER_NAME=sandbox-worker
+      - SANDBOX_HEALTH_PORT=8092
+    labels:
+      - traefik.enable=false
+
   # Celery Flower
   celery-flower:
     <<: *host_gateway

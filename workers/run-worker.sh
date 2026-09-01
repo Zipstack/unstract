@@ -117,6 +117,7 @@ declare -A WORKERS=(
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["ide-callback"]="${IDE_CALLBACK_WORKER_TYPE}"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    ["sandbox"]="sandbox"
     # PG Queue consumer — polls Postgres (SKIP LOCKED), not RabbitMQ via Celery
     ["pg-queue-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
     ["$PG_QUEUE_CONSUMER_TYPE"]="$PG_QUEUE_CONSUMER_TYPE"
@@ -161,6 +162,8 @@ declare -A WORKER_QUEUES=(
     # (agent_kv_complete/agent_kv_error, spec §5.3) dispatched by
     # backend/agent_kv/dispatch.py; ide_callback owns both queues.
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE},agent_kv_callback"
+    # Codegen sandbox worker (WorkerType.SANDBOX) — sandboxed code execution.
+    ["sandbox"]="sandbox_codegen"
     # The PG queue (in pg_queue_message) this consumer polls — exported as
     # WORKER_PG_QUEUE_CONSUMER_QUEUE, not a Celery --queues value.
     ["$PG_QUEUE_CONSUMER_TYPE"]="notifications"
@@ -177,6 +180,10 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
+    # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
+    # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot
+    # (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first).
+    ["sandbox"]="8092"
     # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
     # range and just below where pluggable-worker discovery starts allocating
     # (8091+, see below), so it collides with neither. The consumer binds it
@@ -216,6 +223,7 @@ WORKER_TYPE:
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
     executor              Run executor worker (extraction execution tasks)
     ide-callback          Run IDE callback worker (Prompt Studio post-execution callbacks)
+    sandbox               Run codegen sandbox worker (sandboxed code execution; scrubbed-env subprocess)
     pg-queue-consumer     Run a generic PG-queue poll-loop consumer (env-configured; opt-in)
     pg-orchestrator-api   Run the PG orchestrator consumer for API execs (celery_api_deployments)
     pg-orchestrator-general Run the PG orchestrator consumer for ETL/general execs (celery)
@@ -772,6 +780,9 @@ run_worker() {
             "${IDE_CALLBACK_WORKER_TYPE}")
                 export IDE_CALLBACK_HEALTH_PORT="$health_port"
                 ;;
+            "sandbox")
+                export SANDBOX_HEALTH_PORT="$health_port"
+                ;;
             *)
                 # Handle pluggable workers dynamically
                 if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
@@ -849,6 +860,9 @@ run_worker() {
                 cmd_args+=("--concurrency=2")
                 ;;
             "${IDE_CALLBACK_WORKER_TYPE}")
+                cmd_args+=("--concurrency=2")
+                ;;
+            "sandbox")
                 cmd_args+=("--concurrency=2")
                 ;;
             *)
