@@ -38,7 +38,7 @@ from dashboard_metrics.tasks import (  # noqa: E402
     aggregate_metrics_from_sources,
 )
 
-_SPLIT_MIGRATION = "dashboard_metrics.migrations.0005_split_aggregation_schedule"
+_SPLIT_MIGRATION = "dashboard_metrics.migrations.0006_split_aggregation_schedule"
 _ENDPOINT = "/internal/v1/dashboard-metrics/aggregate/"
 
 

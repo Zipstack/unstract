@@ -127,7 +127,7 @@ def merge_schedules(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("dashboard_metrics", "0004_pg_periodic_tasks"),
+        ("dashboard_metrics", "0005_add_reconciliation_task"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),
         ("pg_queue", "0003_pgperiodictask"),
     ]

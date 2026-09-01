@@ -6,7 +6,7 @@ separate tables, so nothing stops someone editing one and forgetting the other. 
 the whole failure mode this file exists for: a schedule changed on Beat but not on PG means
 the task silently runs on a different cadence the moment the flag flips.
 
-``0005_split_aggregation_schedule`` (UN-3974) then splits the aggregation into two rows by
+``0006_split_aggregation_schedule`` (UN-3974) then splits the aggregation into two rows by
 tier. It writes both scheduler tables from one spec, so the new row cannot drift by
 construction — but it also rewrites an existing row, and *how* it does that is load-bearing.
 The last section covers both.
@@ -119,7 +119,7 @@ class TestSeededInert:
             assert "last_run_at" not in spec
 
 
-_SPLIT_MIGRATION = "dashboard_metrics.migrations.0005_split_aggregation_schedule"
+_SPLIT_MIGRATION = "dashboard_metrics.migrations.0006_split_aggregation_schedule"
 _NEW_ROW = "dashboard_metrics_aggregate_daily_monthly"
 _EXISTING_ROW = "dashboard_metrics_aggregate_from_sources"
 
