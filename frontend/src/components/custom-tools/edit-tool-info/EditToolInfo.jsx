@@ -1,4 +1,6 @@
-import { Input, Space, Typography } from "antd";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./EditToolInfo.css";
 

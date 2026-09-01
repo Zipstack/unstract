@@ -1,6 +1,7 @@
-import { PlayCircleFilled, PlayCircleOutlined } from "@ant-design/icons";
-import { Button, Tooltip } from "antd";
+import { CirclePlay, FastForward } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 
@@ -29,7 +30,7 @@ function PromptOutputActions({
             isPublicSource
           }
         >
-          <PlayCircleOutlined className="prompt-card-actions-head" />
+          <CirclePlay className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
       <Tooltip title="Run All">
@@ -43,7 +44,8 @@ function PromptOutputActions({
             isPublicSource
           }
         >
-          <PlayCircleFilled className="prompt-card-actions-head" />
+          {/* All-documents run; the button beside it keeps CirclePlay. */}
+          <FastForward className="prompt-card-actions-head" />
         </Button>
       </Tooltip>
     </>

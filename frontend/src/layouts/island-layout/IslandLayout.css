@@ -2,11 +2,24 @@
 
 .island-layout {
   padding: 12px;
+  /*
+   * NOT `height: 100%` alone. The island sits in a column flex container next
+   * to ToolNavBar, where 100% resolves against the container's FULL height and
+   * ignores the ~42px the nav bar already took — so the island overflowed its
+   * parent by exactly the nav bar's height and its last row sat below the
+   * fold, unreachable because `body` is `overflow-y: hidden`.
+   *
+   * `flex: 1` wins on the main axis wherever the parent is a flex column (all
+   * 22 call sites today); `height` is kept as the fallback for any parent that
+   * is not, where `flex` is inert.
+   */
+  flex: 1;
+  min-height: 0;
   height: 100%;
 }
 
 .island-layout > div {
-  background-color: var(--white);
+  background-color: var(--card);
   height: 100%;
   overflow-y: auto;
 }
