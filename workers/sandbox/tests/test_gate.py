@@ -88,6 +88,65 @@ def test_sys_argv_allowed_for_runner_contract():
     assert reason == ""
 
 
+def test_re_compile_attribute_form_allowed():
+    # re is an allowlisted module; `.compile` collides with the denylisted
+    # bare-name `compile` builtin but the attribute-form call must still be
+    # permitted — see gate.py's _DENYLISTED_ATTR_CALLS.
+    ok, reason = check_code_safe("import re\nre.compile('x')")
+    assert ok is True, reason
+    assert reason == ""
+
+
+def test_bare_compile_builtin_still_rejected():
+    # Only the attribute form (`re.compile`) is exempted; the bare `compile`
+    # builtin call must remain blocked.
+    ok, reason = check_code_safe("compile('x', '<s>', 'eval')")
+    assert ok is False
+    assert reason == "safety gate: disallowed call 'compile'"
+
+
+def test_re_compile_result_used_normally():
+    ok, reason = check_code_safe("import re\nx = re.compile('a')\nx.match('a')")
+    assert ok is True, reason
+    assert reason == ""
+
+
+def test_eval_attribute_form_still_rejected():
+    # `builtins` is not itself an allowlisted module, so this is rejected at
+    # the import check before the attribute-form Call check is ever reached
+    # — still `ok is False`, which is what matters for the corpus.
+    ok, reason = check_code_safe("import builtins\nbuiltins.eval('1')")
+    assert ok is False
+
+
+def test_exec_attribute_form_still_rejected():
+    ok, reason = check_code_safe("import builtins\nbuiltins.exec('x=1')")
+    assert ok is False
+
+
+def test_denylisted_attr_calls_excludes_only_compile():
+    # Direct check of the fix's structural intent (gate.py's
+    # _DENYLISTED_ATTR_CALLS): every other denylisted name — no allowlisted
+    # module exposes any of them as a safe attribute — stays denied in the
+    # attribute-form branch; only `compile` is exempted, and only there.
+    from sandbox.gate import _DENYLISTED_ATTR_CALLS, _DENYLISTED_CALLS
+
+    assert _DENYLISTED_CALLS - _DENYLISTED_ATTR_CALLS == {"compile"}
+    assert "compile" in _DENYLISTED_CALLS  # bare-Name branch still has it
+    for name in ("eval", "exec", "__import__", "globals", "vars", "getattr",
+                 "setattr", "delattr", "breakpoint", "input", "help"):
+        assert name in _DENYLISTED_ATTR_CALLS
+
+
+def test_eval_exec_bare_forms_still_rejected():
+    ok, reason = check_code_safe("eval('1+1')")
+    assert ok is False
+    assert reason == "safety gate: disallowed call 'eval'"
+    ok, reason = check_code_safe("exec('x=1')")
+    assert ok is False
+    assert reason == "safety gate: disallowed call 'exec'"
+
+
 def test_codegen_template_passes():
     # The real codegen contract: sys used only for sys.argv, json for I/O.
     ok, reason = check_code_safe(

@@ -24,6 +24,13 @@ _DENYLISTED_CALLS = {
     "eval", "exec", "compile", "__import__", "globals", "vars",
     "getattr", "setattr", "delattr", "breakpoint", "input", "help",
 }
+# Attribute-form calls only (e.g. `mod.compile(...)`): `compile` is excluded
+# because it's the one denylisted name that collides with a legitimate
+# allowlisted-module method, `re.compile`. No allowlisted module exposes any
+# of the other denylisted names as safe attributes, so this differs from
+# _DENYLISTED_CALLS only by that one entry. The bare-Name branch below still
+# rejects a bare `compile(...)` builtin call unconditionally.
+_DENYLISTED_ATTR_CALLS = _DENYLISTED_CALLS - {"compile"}
 _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
 # The only sys attribute generated code legitimately needs.
 _SYS_ALLOWED_ATTR = "argv"
@@ -62,7 +69,7 @@ def check_code_safe(code: str) -> tuple[bool, str]:
             if node.func.id in _DENYLISTED_CALLS:
                 return False, f"safety gate: disallowed call '{node.func.id}'"
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in _DENYLISTED_CALLS:
+            if node.func.attr in _DENYLISTED_ATTR_CALLS:
                 return False, f"safety gate: disallowed call '{node.func.attr}'"
         elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, f"safety gate: dunder attribute access '{node.attr}'"

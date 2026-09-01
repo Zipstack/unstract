@@ -160,7 +160,18 @@ def run_code(
                 stderr=_scrub(stderr or "", tmp)[:_CAPTURE_LIMIT],
                 error=f"execution timed out after {timeout}s",
             )
-        except Exception as exc:  # rlimit / spawn failure
+        except Exception as exc:
+            # rlimit / spawn failure, or a rare non-timeout failure during
+            # communicate(). Mirror the TimeoutExpired branch above: best-
+            # effort kill the child's process group so a partially-started
+            # child doesn't run away unsupervised. `proc` can be None here
+            # (Popen itself failed to spawn), unlike in the TimeoutExpired
+            # branch, so guard on that before attempting the kill.
+            if proc is not None:
+                try:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                except Exception:
+                    pass
             return RunResult(success=False, error=f"execution failed: {type(exc).__name__}")
 
         stdout = _scrub(stdout or "", tmp)[:_CAPTURE_LIMIT]

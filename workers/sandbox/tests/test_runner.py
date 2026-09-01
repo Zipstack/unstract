@@ -1,4 +1,5 @@
 import json
+import signal
 import time
 from unittest.mock import MagicMock, patch
 
@@ -90,6 +91,26 @@ def test_subprocess_popen_env_is_exactly_minimal_path():
         )
     assert r.success is True, r.error
     assert mock_popen.call_args.kwargs["env"] == {"PATH": _MINIMAL_PATH}
+
+
+def test_non_timeout_exception_kills_process_group():
+    # A rare non-timeout failure during communicate() (e.g. a transient OS
+    # error) must not leave the child's process group running unsupervised.
+    # Mirrors the TimeoutExpired kill path.
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.communicate.side_effect = OSError("boom")
+    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc), \
+         patch("sandbox.runner.os.getpgid", return_value=4321) as mock_getpgid, \
+         patch("sandbox.runner.os.killpg") as mock_killpg:
+        r = run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}), **_DEFAULTS,
+        )
+    assert r.success is False
+    assert "OSError" in r.error
+    mock_getpgid.assert_called_once_with(4321)
+    mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
 
 
 def test_non_json_output_is_error():
