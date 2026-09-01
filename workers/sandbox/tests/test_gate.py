@@ -20,6 +20,8 @@ _HOSTILE = [
     "from builtins import exec as e\ne('x=1')",
     "import builtins\nx = builtins.eval\nx('1')",
     "import sys\nsys.modules['os'].system('id')",
+    "from sys import modules\nmodules['os'].system('id')",
+    "import sys\nm = sys.modules",
     "import posix\nposix.system('id')",
     "from os import path",
     "e = eval\ne('1')",
@@ -59,6 +61,20 @@ def test_realistic_calc_with_safe_builtins_passes():
     ok, reason = check_code_safe(
         "import json\nvals=[1,2,3]\ntotal=sum(vals)\nm=max(vals)\n"
         "with open('o','w') as f:\n    f.write(json.dumps({'t': total, 'm': m}))"
+    )
+    assert ok is True, reason
+    assert reason == ""
+
+
+def test_sys_argv_allowed_for_runner_contract():
+    # The runner invokes generated scripts as `python script.py <in> <out>`;
+    # scripts legitimately read/write via sys.argv[1]/sys.argv[2]. `sys` was
+    # added to the allowed-imports set for exactly this — see gate.py.
+    ok, reason = check_code_safe(
+        "import json, sys\n"
+        "data = json.load(open(sys.argv[1]))\n"
+        "with open(sys.argv[2], 'w') as f:\n"
+        "    f.write(json.dumps(data) + '\\n')\n"
     )
     assert ok is True, reason
     assert reason == ""
