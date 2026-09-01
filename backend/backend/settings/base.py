@@ -671,12 +671,24 @@ SPECTACULAR_SETTINGS = {
                 "type": "http",
                 "scheme": "bearer",
                 "description": "The API deployment's own key.",
-            }
+            },
+            "platformKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "An organisation-wide platform API key, minted under "
+                    "Settings. It carries the organisation it belongs to, but "
+                    "cannot execute an API deployment."
+                ),
+            },
         }
     },
     # Without this the enum component is named after the field that holds it,
     # and generated clients get a class called `TypeEnum`.
-    "ENUM_NAME_OVERRIDES": {"ErrorType": "api_v2.openapi_schema.ERROR_TYPES"},
+    "ENUM_NAME_OVERRIDES": {
+        "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
+        "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+    },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
     "TAGS": [
@@ -686,7 +698,14 @@ SPECTACULAR_SETTINGS = {
                 "Run an API deployment against one or more documents and poll "
                 "the result."
             ),
-        }
+        },
+        {
+            "name": "identity",
+            "description": (
+                "Resolve what a platform API key is scoped to, so a client can "
+                "discover its organisation rather than being told it."
+            ),
+        },
     ],
 }
 
@@ -709,8 +728,13 @@ WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
-# These path will work without organization in request
-ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
+# These path will work without organization in request.
+# `whoami` resolves the organisation from the API key itself, so it carries no
+# organisation segment -- without this the middleware would read `whoami` as one.
+# Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
+ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
+    rf"^/{PATH_PREFIX}/unstract/whoami/",
+]
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"
