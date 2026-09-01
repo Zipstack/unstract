@@ -40,6 +40,24 @@ import { cn } from "@/lib/utils";
  */
 
 /**
+ * One cell's value, read the way antd reads it.
+ *
+ * `dataIndex` is either a key or a PATH: `["product", "name"]` is antd's
+ * documented nested form and means `record.product.name`. The flat lookup this
+ * replaces indexed the record with the array itself, and JavaScript stringifies
+ * that to the property name `"product,name"` — so the value was always
+ * undefined, and silently so, because a column with no `render` hands it
+ * straight to the cell. LLMWhisperer's API Keys table declares its Plan column
+ * exactly that way and lost the whole column to a blank strip.
+ */
+function cellValue(record, dataIndex) {
+  if (Array.isArray(dataIndex)) {
+    return dataIndex.reduce((v, k) => (v == null ? undefined : v[k]), record);
+  }
+  return record?.[dataIndex];
+}
+
+/**
  * One antd column → one TanStack column def.
  *
  * antd spells a banded header as a column that carries a `title` and a
@@ -76,7 +94,20 @@ function toColumn(c, path) {
 
   return {
     id,
-    accessorKey: c.dataIndex,
+    /*
+     * A path needs an accessor FUNCTION: TanStack's `accessorKey` is a single
+     * key (or a dotted string), so handing it the array would repeat the same
+     * stringified-`"product,name"` lookup one layer down. The string case keeps
+     * `accessorKey` deliberately — swapping it for `cellValue` too would drop
+     * TanStack's dotted-string deep access, a behaviour change beyond this fix.
+     *
+     * Nothing reads `row.getValue` today (the cell below resolves its own
+     * value, and `sortingFn` compares originals), so this is correctness for
+     * the value-based sorting or filtering a later change would reach for.
+     */
+    ...(Array.isArray(c.dataIndex)
+      ? { accessorFn: (row) => cellValue(row, c.dataIndex) }
+      : { accessorKey: c.dataIndex }),
     header: c.title,
     enableSorting: Boolean(c.sorter),
     /*
@@ -95,7 +126,9 @@ function toColumn(c, path) {
         : () => 0,
     meta,
     cell: ({ row }) => {
-      const value = c.dataIndex ? row.original?.[c.dataIndex] : undefined;
+      const value = c.dataIndex
+        ? cellValue(row.original, c.dataIndex)
+        : undefined;
       // antd's render(value, record, index) contract.
       return c.render ? c.render(value, row.original, row.index) : value;
     },

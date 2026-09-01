@@ -1521,3 +1521,77 @@ describe("DataTable controlled filters", () => {
     });
   });
 });
+
+/**
+ * antd's `dataIndex` is either a key or a PATH — `["product", "name"]` reads
+ * `record.product.name`. The flat lookup this guards indexed the record with
+ * the array itself, which JavaScript stringifies to the property name
+ * `"product,name"`, so the value was always undefined and — because a column
+ * with no `render` hands it straight to the cell — silently blank.
+ *
+ * LLMWhisperer's API Keys table declares its Plan column exactly this way and
+ * lost the whole column to an empty strip after the migration. It is the only
+ * nested `dataIndex` in either repo, which is why nothing else caught it.
+ */
+describe("DataTable nested dataIndex", () => {
+  const nested = [
+    { id: 1, product: { id: "free", name: "LLM Whisperer Free" } },
+  ];
+
+  it("resolves an array dataIndex as a path into the record", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Plan",
+            dataIndex: ["product", "name"],
+            key: "product_name",
+          },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+      />,
+    );
+    expect(screen.getByText("LLM Whisperer Free")).toBeInTheDocument();
+  });
+
+  it("renders an empty cell rather than throwing on a missing segment", () => {
+    expect(() =>
+      render(
+        <DataTable
+          columns={[
+            {
+              title: "Plan",
+              dataIndex: ["product", "name"],
+              key: "product_name",
+            },
+          ]}
+          dataSource={[{ id: 1, product: null }, { id: 2 }]}
+          rowKey="id"
+        />,
+      ),
+    ).not.toThrow();
+    // Two rows, both with an empty Plan cell — not the empty state.
+    expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+  });
+
+  it("hands the resolved nested value to render, as antd does", () => {
+    const render_ = vi.fn((value) => `plan: ${value}`);
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Plan",
+            dataIndex: ["product", "name"],
+            key: "product_name",
+            render: render_,
+          },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+      />,
+    );
+    expect(render_).toHaveBeenCalledWith("LLM Whisperer Free", nested[0], 0);
+    expect(screen.getByText("plan: LLM Whisperer Free")).toBeInTheDocument();
+  });
+});
