@@ -388,6 +388,19 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def update_execution_completed(execution_id: str) -> WorkflowExecution | None:
+        """Terminalise an execution that finished without any work to dispatch."""
+        try:
+            execution = WorkflowExecution.objects.get(pk=execution_id)
+            # Same reason as update_execution_err: the model method owns the
+            # terminal-one-way guard, so this cannot revert an already-final row.
+            execution.update_execution(status=ExecutionStatus.COMPLETED)
+            return execution
+        except WorkflowExecution.DoesNotExist:
+            logger.error(f"execution doesn't exist {execution_id}")
+            return None
+
+    @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
             logger.info(

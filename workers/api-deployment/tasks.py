@@ -222,6 +222,13 @@ def _unified_api_execution(
 
         if not converted_files:
             logger.warning("No valid files to process after conversion")
+            # Returning COMPLETED is not enough: without this write the row keeps
+            # whatever status it was dispatched with, and the caller polls forever.
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.COMPLETED.value,
+                total_files=0,
+            )
             return {
                 "execution_id": execution_id,
                 "status": "COMPLETED",

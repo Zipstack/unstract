@@ -19,6 +19,7 @@ from usage_v2.helper import UsageHelper
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
+from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -303,6 +304,26 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     execution_id=execution_id,
                     execution_status=ExecutionStatus.ERROR.value,
                     error=str(error),
+                )
+            ).data
+
+        # Staging rejected every file, so there is nothing to dispatch. The worker
+        # short-circuits an empty file set without writing a status back, which
+        # would strand this execution in PENDING — terminalise it here instead.
+        if not hash_values_of_files:
+            WorkflowExecutionServiceHelper.update_execution_completed(str(execution_id))
+            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            DestinationConnector.delete_api_storage_dir(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+            return APIExecutionResponseSerializer(
+                ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=ExecutionStatus.COMPLETED.value,
+                    result=ResultCacheUtils.get_api_results(
+                        workflow_id=str(workflow_id), execution_id=str(execution_id)
+                    ),
                 )
             ).data
 
