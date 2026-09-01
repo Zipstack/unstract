@@ -1530,8 +1530,7 @@ describe("DataTable controlled filters", () => {
  * with no `render` hands it straight to the cell — silently blank.
  *
  * LLMWhisperer's API Keys table declares its Plan column exactly this way and
- * lost the whole column to an empty strip after the migration. It is the only
- * nested `dataIndex` in either repo, which is why nothing else caught it.
+ * lost the whole column to an empty strip after the migration.
  */
 describe("DataTable nested dataIndex", () => {
   const nested = [
@@ -1571,12 +1570,64 @@ describe("DataTable nested dataIndex", () => {
         />,
       ),
     ).not.toThrow();
-    // Two rows, both with an empty Plan cell — not the empty state.
-    expect(document.querySelectorAll("tbody tr")).toHaveLength(2);
+    // Two rows, both with an EMPTY Plan cell — not the empty state, and not a
+    // stand-in like "undefined" or "N/A" that a laxer resolver would print.
+    const cells = document.querySelectorAll("tbody td");
+    expect(cells).toHaveLength(2);
+    for (const cell of cells) {
+      expect(cell).toHaveTextContent("");
+    }
+  });
+
+  it("walks a path of any depth, including an array index", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Owner",
+            dataIndex: ["subscription", "owners", 0, "email"],
+            key: "owner",
+          },
+        ]}
+        dataSource={[
+          { id: 1, subscription: { owners: [{ email: "a@example.com" }] } },
+        ]}
+        rowKey="id"
+      />,
+    );
+    expect(screen.getByText("a@example.com")).toBeInTheDocument();
+  });
+
+  /*
+   * The identity a nested column reports back through antd's `onChange`.
+   *
+   * With no `key`, the column id and `toSorterInfo`'s lookup both coerce the
+   * array to `"product,name"` — agreeing only because NEITHER normalises it.
+   * Normalising the id alone (to `"product.name"`, say) is exactly the tidy-up
+   * a later reader would attempt, and it would silently stop a nested column
+   * reporting its sort, with every other test here still green.
+   */
+  it("reports a keyless nested column through onChange when sorted", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          { title: "Plan", dataIndex: ["product", "name"], sorter: true },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByText("Plan"));
+    expect(onChange).toHaveBeenCalled();
+    const sorter = onChange.mock.calls.at(-1)[2];
+    expect(sorter.field).toEqual(["product", "name"]);
+    expect(sorter.order).toBe("ascend");
   });
 
   it("hands the resolved nested value to render, as antd does", () => {
-    const render_ = vi.fn((value) => `plan: ${value}`);
+    const renderCell = vi.fn((value) => `plan: ${value}`);
     render(
       <DataTable
         columns={[
@@ -1584,14 +1635,14 @@ describe("DataTable nested dataIndex", () => {
             title: "Plan",
             dataIndex: ["product", "name"],
             key: "product_name",
-            render: render_,
+            render: renderCell,
           },
         ]}
         dataSource={nested}
         rowKey="id"
       />,
     );
-    expect(render_).toHaveBeenCalledWith("LLM Whisperer Free", nested[0], 0);
+    expect(renderCell).toHaveBeenCalledWith("LLM Whisperer Free", nested[0], 0);
     expect(screen.getByText("plan: LLM Whisperer Free")).toBeInTheDocument();
   });
 });

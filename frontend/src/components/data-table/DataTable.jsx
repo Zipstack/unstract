@@ -71,6 +71,14 @@ function cellValue(record, dataIndex) {
  * version used would collide across levels.
  */
 function toColumn(c, path) {
+  /*
+   * Three places spell this identity, and they must agree: here, `columnKey`
+   * (ColumnFilter.jsx) and `toSorterInfo` below, which matches on it to answer
+   * antd's `onChange`. A PATH `dataIndex` with no `key` coerces to
+   * `"product,name"` in all three, so they still agree — which is why this is
+   * deliberately NOT normalised to `dataIndex.join(".")`. Tidying it here alone
+   * would silently stop sorting and filtering reporting for a nested column.
+   */
   const id = String(c.key ?? c.dataIndex ?? path);
   // `column` rides along so the header can render antd's filter affordance,
   // which is declared on the antd def and has no TanStack equivalent.
@@ -96,17 +104,28 @@ function toColumn(c, path) {
     id,
     /*
      * A path needs an accessor FUNCTION: TanStack's `accessorKey` is a single
-     * key (or a dotted string), so handing it the array would repeat the same
-     * stringified-`"product,name"` lookup one layer down. The string case keeps
-     * `accessorKey` deliberately — swapping it for `cellValue` too would drop
-     * TanStack's dotted-string deep access, a behaviour change beyond this fix.
+     * key, so handing it the array repeats the same stringified-`"product,name"`
+     * lookup one layer down.
      *
-     * Nothing reads `row.getValue` today (the cell below resolves its own
-     * value, and `sortingFn` compares originals), so this is correctness for
-     * the value-based sorting or filtering a later change would reach for.
+     * This is NOT inert. TanStack defaults every column to `sortUndefined: 1`,
+     * and `getSortedRowModel` reads `row.getValue()` to apply it BEFORE it ever
+     * consults `sortingFn` — so undefined-valued rows sort to the end even
+     * though `sortingFn` is `() => 0`. A nested column was accidentally exempt
+     * while every one of its values was undefined; with a real accessor it now
+     * behaves exactly as an equivalent string column already does (verified:
+     * both reorder identically on a sparse column). That quirk is pre-existing
+     * and cross-cutting, not introduced here, and no nested column declares a
+     * `sorter` today.
+     *
+     * The string case keeps `accessorKey` because it is unchanged, not because
+     * its behaviour is right: TanStack deep-reads a DOTTED string while the
+     * cell below reads it as a literal key, which is antd's own reading. Those
+     * two disagree for `dataIndex: "a.b"`. Pre-existing on both halves, no
+     * literal dotted `dataIndex` exists in either repo, and reconciling it is a
+     * behaviour change beyond this fix.
      */
     ...(Array.isArray(c.dataIndex)
-      ? { accessorFn: (row) => cellValue(row, c.dataIndex) }
+      ? { accessorFn: (record) => cellValue(record, c.dataIndex) }
       : { accessorKey: c.dataIndex }),
     header: c.title,
     enableSorting: Boolean(c.sorter),
