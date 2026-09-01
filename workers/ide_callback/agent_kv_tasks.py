@@ -12,6 +12,7 @@ before firing the completion webhook (Task 13).
 """
 
 import logging
+import os
 from typing import Any
 
 from queue_backend import worker_task
@@ -162,4 +163,13 @@ def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
     url = finalize_response.get("webhook_url") or ""
     if not url:
         return
-    send_webhook(url, {"job_id": job_id, "status": finalize_response.get("status", "")})
+    # Test/dev stacks only (e2e lane): waive the SSRF guards so a receiver on
+    # the compose host is reachable. Unset/false in production.
+    allow_insecure = os.environ.get(
+        "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
+    ).lower() in ("1", "true", "yes")
+    send_webhook(
+        url,
+        {"job_id": job_id, "status": finalize_response.get("status", "")},
+        allow_insecure=allow_insecure,
+    )

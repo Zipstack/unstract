@@ -321,6 +321,7 @@ class TestWebhookFiring:
         mock_send_webhook.assert_called_once_with(
             "https://example.com/hook",
             {"job_id": "job-1", "status": "completed"},
+            allow_insecure=False,
         )
 
     @patch(_PATCH_SEND_WEBHOOK)
@@ -375,4 +376,5 @@ class TestWebhookFiring:
         mock_send_webhook.assert_called_once_with(
             "https://example.com/hook",
             {"job_id": "job-1", "status": "failed"},
+            allow_insecure=False,
         )

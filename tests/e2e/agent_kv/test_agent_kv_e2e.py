@@ -50,6 +50,7 @@ paths, no ``Permission denied``, no provider response body (spec Sec 8's
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 import time
 
@@ -59,6 +60,7 @@ import requests
 from tests.e2e.agent_kv.conftest import (
     INVOICE_FIELDS,
     INVOICE_PDF,
+    INVOICE_XLSX,
     AgentKVAuth,
     cancel,
     delete,
@@ -131,7 +133,9 @@ def _cheap_submit(auth: AgentKVAuth) -> requests.Response:
     )
 
 
-def _drain_until_slot_free(auth: AgentKVAuth, timeout_s: float = _SLOT_DRAIN_TIMEOUT_S) -> bool:
+def _drain_until_slot_free(
+    auth: AgentKVAuth, timeout_s: float = _SLOT_DRAIN_TIMEOUT_S
+) -> bool:
     """Probe with cheap submits until one is ACCEPTED (proof a slot is free)
     or the bounded wait runs out. Any accepted probe is cancelled again so it
     doesn't hold the slot it just proved was available.
@@ -506,15 +510,23 @@ def test_resubmit_same_document_hits_document_cache(
     cache once the first has actually got there.
     """
     first_id, _ = submit(
-        agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema(),
-        qa=False, challenge=False,
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
     )
     first_doc = poll(agent_kv_key, first_id, timeout_s=600)
     assert first_doc["status"] == "completed", first_doc
 
     second_id, _ = submit(
-        agent_kv_key, _INVOICE_BYTES, "invoice.pdf", invoice_schema(),
-        qa=False, challenge=False,
+        agent_kv_key,
+        _INVOICE_BYTES,
+        "invoice.pdf",
+        invoice_schema(),
+        qa=False,
+        challenge=False,
     )
     assert second_id != first_id
     second_doc = poll(agent_kv_key, second_id, timeout_s=600)
@@ -537,6 +549,125 @@ def test_resubmit_same_document_hits_document_cache(
         f"skips the OCR round trip and leaves only the local page render, so "
         f"anything approaching the cold time means the document cache missed"
     )
+
+
+# ---------------------------------------------------------------------------
+# 9b. Sync-wait submit (`timeout` field)
+# ---------------------------------------------------------------------------
+
+
+def test_sync_wait_submit_returns_result_inline(
+    agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
+    """A submit with ``timeout`` seconds sync-waits: if the job reaches a
+    terminal state inside the window, the response is 200 with the result
+    payload itself (docs §3) -- no polling leg. Uses the same invoice as the
+    happy path, so a warm document cache keeps the wait well inside the
+    window; even a cold cache (~15 s pipeline) fits comfortably.
+    """
+    resp = submit_raw(
+        agent_kv_key,
+        INVOICE_PDF.read_bytes(),
+        "invoice.pdf",
+        invoice_schema(),
+        timeout=120,
+    )
+    assert resp.status_code == 200, (
+        f"sync-wait submit: HTTP {resp.status_code} (expected 200 with the "
+        f"inline result): {resp.text}"
+    )
+    body = resp.json()
+    assert body.get("success") is True, body
+    assert set(INVOICE_FIELDS) <= set(body.get("record", {})), body.get("record")
+
+
+# ---------------------------------------------------------------------------
+# 9c. Excel input
+# ---------------------------------------------------------------------------
+
+
+def test_excel_submit_extracts(agent_kv_key: AgentKVAuth, require_llm: None) -> None:
+    """An .xlsx submit runs the whole pipeline. Excel has no pre-OCR page
+    count (``pages_total`` stays None at submit) and takes the post-OCR
+    virtual-page cap path instead. Structure-only assertions, like the
+    happy path.
+    """
+    job_id, _ = submit(
+        agent_kv_key, INVOICE_XLSX.read_bytes(), "invoice.xlsx", invoice_schema()
+    )
+    doc = poll(agent_kv_key, job_id)
+    assert doc["status"] == "completed", doc
+    body = result(agent_kv_key, job_id).json()
+    assert body.get("success") is True, body
+    audited = {entry["key_path"] for entry in body["keys"]}
+    assert set(INVOICE_FIELDS) <= audited, (audited, body["keys"])
+
+
+# ---------------------------------------------------------------------------
+# 9d. Webhook delivery (operator-gated)
+# ---------------------------------------------------------------------------
+
+
+def test_webhook_delivered_on_completion(
+    agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
+    """Completion-webhook delivery, end to end: submit with a ``webhook_url``
+    pointing at a receiver on the compose host and wait for the POST.
+
+    Operator-gated: the worker's SSRF guards (https + public host, spec
+    §6.7) refuse a host-local receiver unless the stack runs with
+    ``AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1`` on the ide-callback
+    worker (test/dev only), reached via ``host.docker.internal`` (compose
+    host-gateway mapping). Skips unless the operator set the same env for
+    the test run to declare that setup.
+    """
+    if os.environ.get("AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", "").lower() not in (
+        "1",
+        "true",
+        "yes",
+    ):
+        pytest.skip(
+            "webhook e2e needs AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1 "
+            "on both the ide-callback worker and this test run"
+        )
+
+    import http.server
+    import threading
+
+    hits: list[dict] = []
+
+    class _Receiver(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):  # noqa: N802 - stdlib API name
+            length = int(self.headers.get("Content-Length", "0"))
+            hits.append(json.loads(self.rfile.read(length) or b"{}"))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *args):  # keep pytest output pristine
+            pass
+
+    server = http.server.HTTPServer(("0.0.0.0", 0), _Receiver)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        job_id, _ = submit(
+            agent_kv_key,
+            INVOICE_PDF.read_bytes(),
+            "invoice.pdf",
+            invoice_schema(),
+            webhook_url=f"http://host.docker.internal:{port}/agent-kv-hook",
+        )
+        doc = poll(agent_kv_key, job_id)
+        assert doc["status"] == "completed", doc
+        deadline = time.time() + 30
+        while time.time() < deadline and not hits:
+            time.sleep(0.5)
+        assert hits, "no webhook POST arrived within 30s of completion"
+        assert hits[0] == {"job_id": job_id, "status": "completed"}, hits
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 # ---------------------------------------------------------------------------

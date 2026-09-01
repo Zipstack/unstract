@@ -59,3 +59,10 @@ services:
   worker-api-deployment-v2:
     environment:
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
+
+  # Completion-webhook e2e: waive the worker's SSRF guards (https + public
+  # host) so a receiver on the compose host is reachable. Empty/unset (the
+  # default) keeps the guards mandatory; the gated webhook scenario skips.
+  worker-ide-callback:
+    environment:
+      - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}

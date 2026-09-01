@@ -31,6 +31,11 @@ FIXTURES_DIR = Path(__file__).parent / "fixtures"
 # an extraction fixture). It's a static binary checked into the repo; the e2e
 # venv itself does not depend on reportlab to regenerate it at test time.
 INVOICE_PDF = FIXTURES_DIR / "invoice.pdf"
+# A small single-sheet invoice workbook (generated with openpyxl, checked in
+# as a static binary like invoice.pdf): Excel exercises the no-pre-OCR-page-
+# count path -- ``pages_total`` is None at submit and the engine enforces the
+# post-OCR virtual-page cap instead.
+INVOICE_XLSX = FIXTURES_DIR / "invoice.xlsx"
 
 # The 3 leaves the happy-path schema asks for; also used to build the schema.
 INVOICE_FIELDS = ("invoice_number", "vendor_name", "total_amount")

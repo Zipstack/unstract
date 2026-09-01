@@ -59,9 +59,7 @@ def test_ipv6_loopback_refused(m_gai, m_requests):
 @mock.patch.object(wn, "requests")
 @mock.patch.object(wn.socket, "getaddrinfo")
 def test_ipv6_public_posted(m_gai, m_requests):
-    m_gai.return_value = [
-        (wn.socket.AF_INET6, 1, 6, "", ("2606:4700::1111", 443, 0, 0))
-    ]
+    m_gai.return_value = [(wn.socket.AF_INET6, 1, 6, "", ("2606:4700::1111", 443, 0, 0))]
     m_requests.post.return_value.status_code = 200
     assert wn.send_webhook("https://v6.example/hook", {}) is True
 
@@ -111,3 +109,26 @@ def test_allow_http_true_posts_public_host(m_gai, m_requests):
     m_requests.post.return_value.status_code = 200
     assert wn.send_webhook("http://example.com/hook", {}, allow_http=True) is True
     assert m_requests.post.called
+
+
+class TestAllowInsecure:
+    """``allow_insecure`` waives scheme + public-host guards (test stacks only)."""
+
+    @mock.patch.object(wn, "requests")
+    def test_http_private_host_delivered_when_insecure(self, m_requests):
+        m_requests.post.return_value = mock.Mock(status_code=200)
+        ok = wn.send_webhook(
+            "http://host.docker.internal:18099/hook",
+            {"job_id": "j", "status": "completed"},
+            allow_insecure=True,
+        )
+        assert ok is True
+        m_requests.post.assert_called_once()
+
+    @mock.patch.object(wn, "requests")
+    def test_default_still_refuses_http_and_private(self, m_requests):
+        assert (
+            wn.send_webhook("http://host.docker.internal:18099/hook", {"job_id": "j"})
+            is False
+        )
+        assert not m_requests.post.called

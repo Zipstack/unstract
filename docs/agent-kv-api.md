@@ -439,6 +439,11 @@ own module docstring says so:
   pre-check, timeout, connection error, non-2xx status) is logged and swallowed —
   there is no retry loop anywhere in this delivery path.
 
+Test/dev stacks only: `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1` on the
+ide-callback worker waives both guards (http scheme and non-public host) so the
+e2e lane can deliver to a receiver on the compose host. Never set it in
+production.
+
 ## 10. Retention and TTL
 
 - **Input deletion is completion-triggered, not TTL-based** (spec D10: "uploaded
@@ -741,6 +746,17 @@ beyond `docker compose up`:
     `tests/compose/docker-compose.test.yaml`) and then invoke pytest directly with
     `UNSTRACT_BACKEND_URL`, `AGENT_KV_E2E=1` and the `AGENT_KV_*` keys exported:
     `AGENT_KV_E2E=1 UNSTRACT_BACKEND_URL=http://localhost:8000 pytest tests/e2e/agent_kv`.
+
+    Two scenarios are operator-gated on top of that: the bad-LLM-key scenario
+    (`AGENT_KV_E2E_BAD_KEY_JOB=1`, see the test module docstring) and the
+    completion-webhook scenario, which needs
+    `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1` set BOTH on the
+    ide-callback worker (it waives the webhook SSRF guards — https scheme +
+    public host — for test/dev stacks only; never set it in production) and in
+    the pytest process env; the receiver is reached via
+    `host.docker.internal` (the compose host-gateway mapping). The lane also
+    covers sync-wait submits (`timeout` → 200 with the inline result) and an
+    `.xlsx` document (`fixtures/invoice.xlsx`, the no-pre-OCR-page-count path).
 
 ## 13. Environment reference
 
