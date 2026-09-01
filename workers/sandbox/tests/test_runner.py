@@ -1,7 +1,8 @@
 import json
 import time
+from unittest.mock import MagicMock, patch
 
-from sandbox.runner import run_code
+from sandbox.runner import _MINIMAL_PATH, run_code
 
 _DEFAULTS = dict(
     timeout=10, max_output_bytes=1_048_576, max_rows=100_000,
@@ -75,6 +76,22 @@ def test_subprocess_env_is_scrubbed():
     assert r.success is True
 
 
+def test_subprocess_popen_env_is_exactly_minimal_path():
+    # Strengthen the behavioural scrub test above with a direct assertion on
+    # the actual Popen call: the child's env must be exactly the minimal
+    # PATH-only mapping — nothing from the parent's environment leaks in.
+    mock_proc = MagicMock()
+    mock_proc.communicate.return_value = ("", "")
+    mock_proc.returncode = 0
+    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        r = run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}), **_DEFAULTS,
+        )
+    assert r.success is True, r.error
+    assert mock_popen.call_args.kwargs["env"] == {"PATH": _MINIMAL_PATH}
+
+
 def test_non_json_output_is_error():
     r = run_code(
         "import sys\nopen(sys.argv[2],'w').write('not json\\n')\n",
@@ -94,3 +111,16 @@ def test_output_row_cap_enforced():
     r = run_code(code, "{}", **{**_DEFAULTS, "max_rows": 3})
     assert r.success is False
     assert "rows" in r.error.lower()
+
+
+def test_exception_traceback_scrubs_host_path():
+    # A script that raises writes a traceback naming the real host path to
+    # script.py into stderr. That must never reach the caller: the tempdir
+    # path is replaced with a fixed placeholder, everything else (exception
+    # type/message) stays for debuggability.
+    r = run_code("raise ValueError('boom')\n", "{}", **_DEFAULTS)
+    assert r.success is False
+    assert "<sandbox>" in r.stderr
+    assert "/var/folders" not in r.stderr
+    assert "/tmp/sandbox_" not in r.stderr
+    assert "boom" in r.stderr

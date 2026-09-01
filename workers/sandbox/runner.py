@@ -40,6 +40,22 @@ logger = logging.getLogger(__name__)
 
 _MINIMAL_PATH = "/usr/bin:/bin"
 _CAPTURE_LIMIT = 4096
+_SANDBOX_PLACEHOLDER = "<sandbox>"
+
+
+def _scrub(text: str, tmp: str) -> str:
+    """Replace the per-run tempdir's host path with a fixed placeholder.
+
+    A script that raises writes a traceback containing the real host path
+    to ``script.py`` (e.g. ``File "/var/folders/.../sandbox_xxxx/script.py"``)
+    into stdout/stderr, which run_code returns to the caller. Errors must
+    stay user-safe: no host filesystem paths leak, while the rest of the
+    message (exception type, line, syntax-error text, etc.) stays intact
+    for debuggability.
+    """
+    if not text:
+        return text
+    return text.replace(tmp, _SANDBOX_PLACEHOLDER)
 
 
 @dataclass
@@ -140,15 +156,15 @@ def run_code(
                 stdout, stderr = "", ""
             return RunResult(
                 success=False,
-                stdout=(stdout or "")[:_CAPTURE_LIMIT],
-                stderr=(stderr or "")[:_CAPTURE_LIMIT],
+                stdout=_scrub(stdout or "", tmp)[:_CAPTURE_LIMIT],
+                stderr=_scrub(stderr or "", tmp)[:_CAPTURE_LIMIT],
                 error=f"execution timed out after {timeout}s",
             )
         except Exception as exc:  # rlimit / spawn failure
             return RunResult(success=False, error=f"execution failed: {type(exc).__name__}")
 
-        stdout = (stdout or "")[:_CAPTURE_LIMIT]
-        stderr = (stderr or "")[:_CAPTURE_LIMIT]
+        stdout = _scrub(stdout or "", tmp)[:_CAPTURE_LIMIT]
+        stderr = _scrub(stderr or "", tmp)[:_CAPTURE_LIMIT]
         if returncode != 0:
             return RunResult(
                 success=False, stdout=stdout, stderr=stderr,
