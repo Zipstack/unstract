@@ -1,5 +1,5 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 

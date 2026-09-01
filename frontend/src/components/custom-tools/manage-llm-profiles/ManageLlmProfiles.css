@@ -25,4 +25,9 @@
 
 .profile-copy-icon {
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }

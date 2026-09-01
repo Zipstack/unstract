@@ -1,22 +1,12 @@
-import {
-  BugOutlined,
-  HistoryOutlined,
-  LoadingOutlined,
-  PlayCircleOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Progress,
-  Row,
-  Select,
-  Typography,
-} from "antd";
+import { Bug, CirclePlay, History, LoaderCircle, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Alert, Progress } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./Agency.css";
 import { sourceTypes, wfExecutionTypes } from "../../../helpers/GetStaticData";
@@ -1033,19 +1023,19 @@ function Agency() {
     {
       key: "run-workflow",
       label: "Run Workflow",
-      icon: <PlayCircleOutlined />,
+      icon: <CirclePlay />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "view-file-history",
       label: "View File History",
-      icon: <HistoryOutlined />,
+      icon: <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
-      icon: isClearingFileHistory ? <LoadingOutlined /> : <HistoryOutlined />,
+      icon: isClearingFileHistory ? <LoaderCircle /> : <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
   ];
@@ -1082,14 +1072,21 @@ function Agency() {
               strokeColor={workflowProgress === 100 ? "#52c41a" : "#1890ff"}
             />
           </div>
+          {/*
+           * The entries are portalled and built from `actionsMenuItems`, so
+           * they derive their ids from this one: `workflow-actions-item-
+           * run-workflow`, and so on for the other two.
+           */}
           <Dropdown
             menu={{ items: actionsMenuItems, onClick: handleMenuClick }}
             placement="bottomRight"
             trigger={["click"]}
+            data-testid="workflow-actions"
           >
             <Button
               type="primary"
-              icon={<SettingOutlined />}
+              icon={<Settings />}
+              data-testid="workflow-actions-btn"
               loading={loadingType === "EXECUTE" || isClearingFileHistory}
               disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >
@@ -1251,7 +1248,7 @@ function Agency() {
         <div className="debug-panel">
           <div className="debug-panel-header">
             <div className="debug-panel-title">
-              <BugOutlined />
+              <Bug />
               <Typography.Text>Debug Panel</Typography.Text>
             </div>
             <Button

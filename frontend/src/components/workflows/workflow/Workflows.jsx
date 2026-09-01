@@ -1,8 +1,11 @@
-import { PlusOutlined, UserOutlined } from "@ant-design/icons";
-import { Typography } from "antd";
+// Aliased: this file defines its own `User` component below.
+
+import { Plus, User as UserIcon } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Pagination } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -33,8 +36,6 @@ import { SharePermission } from "../../widgets/share-permission/SharePermission.
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
 import "./Workflows.css";
-
-const { Text } = Typography;
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -382,7 +383,7 @@ function Workflows() {
   const newWorkflowButton = (
     <CustomButton
       type="primary"
-      icon={<PlusOutlined />}
+      icon={<Plus />}
       onClick={handleNewWorkflowBtnClick}
     >
       New Workflow
@@ -435,6 +436,7 @@ function Workflows() {
           )}
           {!loadError && projectList?.length > 0 && (
             <ResourceTable
+              testIdPrefix="workflow-list"
               dataSource={projectList}
               loading={loading}
               pagination={pagination}
@@ -496,7 +498,7 @@ function Workflows() {
 function User({ name }) {
   return name ? (
     <div className="sessionDetails">
-      <UserOutlined />
+      <UserIcon className="size-3.5" />
       <Text italic ellipsis>
         {name}
       </Text>

@@ -1,5 +1,7 @@
-import { Col, Empty, Flex, Pagination, Row } from "antd";
 import PropTypes from "prop-types";
+import { Col, Flex, Row } from "@/components/ui/shims/antd-layout";
+import { Empty } from "@/components/ui/shims/antd-leaves";
+import { Pagination } from "@/components/ui/shims/antd-structure";
 
 import { CardItem } from "./CardItem.jsx";
 import { LoadingSkeleton } from "./LoadingSkeleton.jsx";
@@ -20,6 +22,7 @@ import "./CardGridView.css";
  * @param {boolean} props.listMode - When true, renders cards as full-width list items
  * @param {string} props.forceExpandedId - ID of item to keep expanded (e.g., when modal is open)
  * @param {string} props.scrollToId - ID of item to scroll to (without forcing expansion)
+ * @param {string} props.testIdPrefix - Prefix for the grid's and cards' `data-testid`s
  * @return {JSX.Element} The rendered card grid component
  *
  * @example
@@ -43,6 +46,14 @@ function CardGridView({
   forceExpandedId = null,
   scrollToId = null,
   pagination = null,
+  /**
+   * Cards are the list rows of this widget: identical in structure, told apart
+   * only by their content, and every control inside one repeats in all the
+   * others. `getRowKey` already computes a unique id per item, so each card
+   * gets `${testIdPrefix}-card-${key}`. Callers pass a page-specific prefix so
+   * the locator names the screen rather than this widget.
+   */
+  testIdPrefix,
 }) {
   // Default grid configuration
   const defaultGridConfig = {
@@ -105,7 +116,7 @@ function CardGridView({
   const showPagination = pagination && pagination.total > pagination.pageSize;
 
   return (
-    <div className={`card-grid-view ${className}`}>
+    <div className={`card-grid-view ${className}`} data-testid={testIdPrefix}>
       <Row gutter={gutter} className="card-grid-row">
         {data.map((item, index) => (
           <Col
@@ -121,6 +132,11 @@ function CardGridView({
               item={item}
               config={cardConfig}
               onClick={onCardClick}
+              testId={
+                testIdPrefix
+                  ? `${testIdPrefix}-card-${getRowKey(item, index)}`
+                  : undefined
+              }
               listMode={listMode}
               forceExpanded={
                 forceExpandedId && String(forceExpandedId) === String(item.id)
@@ -191,6 +207,7 @@ CardGridView.propTypes = {
   listMode: PropTypes.bool,
   forceExpandedId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   scrollToId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  testIdPrefix: PropTypes.string,
   pagination: PropTypes.shape({
     current: PropTypes.number,
     pageSize: PropTypes.number,

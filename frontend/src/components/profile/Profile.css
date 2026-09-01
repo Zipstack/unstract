@@ -1,5 +1,5 @@
 .profile-page {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   min-height: 100%;
   padding: 0;
 }
@@ -70,7 +70,7 @@
   justify-content: center;
   align-items: center;
   min-height: 300px;
-  background-color: var(--white);
+  background-color: var(--card);
   border-radius: 14px;
 }
 
@@ -157,7 +157,7 @@
 }
 
 .profile-card .field-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #6a7282;
   font-weight: 500;
   line-height: 14px;
@@ -178,7 +178,7 @@
 
 .profile-card .field-value {
   /* Our desired styles */
-  font-size: 14px;
+  font-size: 13px;
   color: #101828;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -200,7 +200,12 @@
 
 .profile-card .field-icon {
   color: #9ca3af;
-  font-size: 14px;
+  font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
   flex-shrink: 0;
 }
 
@@ -228,8 +233,8 @@
 }
 
 .copy-button:hover {
-  color: var(--primary-color, #1890ff);
-  border-color: var(--primary-color, #1890ff);
+  color: var(--primary-color, var(--primary));
+  border-color: var(--primary-color, var(--primary));
 }
 
 /* Role badge */
@@ -250,4 +255,9 @@
 
 .role-badge .anticon {
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }

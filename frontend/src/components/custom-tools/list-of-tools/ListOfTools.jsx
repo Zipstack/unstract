@@ -1,7 +1,7 @@
-import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
-import { Space } from "antd";
+import { ArrowDown, Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Space } from "@/components/ui/shims/antd-layout";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
@@ -37,7 +37,7 @@ const DefaultCustomButtons = ({
     <Space gap={16}>
       <CustomButton
         type="default"
-        icon={<ArrowDownOutlined />}
+        icon={<ArrowDown />}
         onClick={() => setOpenImportTool(true)}
         loading={isImportLoading}
       >
@@ -45,7 +45,7 @@ const DefaultCustomButtons = ({
       </CustomButton>
       <CustomButton
         type="primary"
-        icon={<PlusOutlined />}
+        icon={<Plus />}
         onClick={handleNewProjectBtnClick}
       >
         New Project
@@ -487,6 +487,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
             )}
             {!loadError && displayList?.length > 0 && (
               <ResourceTable
+                testIdPrefix="prompt-studio-list"
                 dataSource={displayList}
                 loading={isLoading}
                 pagination={pagination}

@@ -1,7 +1,8 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Modal } from "antd";
+import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -16,7 +17,7 @@ function AddSourceModal({
   open,
   setOpen,
   type,
-  isConnector,
+  isConnector = false,
   connectorMode,
   addNewItem,
   editItemId,
@@ -166,7 +167,7 @@ function AddSourceModal({
         type="text"
         shape="circle"
         size="small"
-        icon={<ArrowLeftOutlined />}
+        icon={<ArrowLeft />}
         onClick={handleBack}
         aria-label="Go back to source selection"
       />
@@ -191,6 +192,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      data-testid="add-source-modal"
       className="add-source-modal"
     >
       {selectedSourceId ? (
@@ -229,10 +231,6 @@ AddSourceModal.propTypes = {
   addNewItem: PropTypes.func.isRequired,
   editItemId: PropTypes.string,
   setEditItemId: PropTypes.func.isRequired,
-};
-
-AddSourceModal.defaultProps = {
-  isConnector: false,
 };
 
 export { AddSourceModal };

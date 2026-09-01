@@ -1,7 +1,9 @@
-import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Modal, Table, Tooltip } from "antd";
+import { Copy, Download } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
 
 import "./LogModal.css";
 import {
@@ -177,7 +179,7 @@ function LogModal({
       width: 200,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
-          {record.eventTime}
+          <span>{record.eventTime}</span>
         </Tooltip>
       ),
     },
@@ -246,7 +248,7 @@ function LogModal({
           {displayId && (
             <Button
               className="copy-btn-outlined"
-              icon={<CopyOutlined />}
+              icon={<Copy />}
               aria-label="Copy execution ID"
               onClick={() => copyToClipboard(displayId, "File Execution ID")}
             />
@@ -263,7 +265,7 @@ function LogModal({
               <span>
                 <Button
                   className="export-btn-outlined"
-                  icon={<DownloadOutlined />}
+                  icon={<Download />}
                   loading={exporting}
                   disabled={!pagination.total || exporting}
                 >

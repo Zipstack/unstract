@@ -1,8 +1,12 @@
-import { QuestionCircleOutlined } from "@ant-design/icons";
-import { Button, Form, Input, Modal, Space } from "antd";
+import { CircleHelp } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
 import { workflowService } from "../../components/workflows/workflow/workflow-service";
@@ -98,7 +102,7 @@ function MenuLayout({ children }) {
       <Space>
         <Button
           key="help"
-          icon={<QuestionCircleOutlined />}
+          icon={<CircleHelp />}
           disabled={true}
           type={activeTab === "help" ? "primary" : "default"}
         >

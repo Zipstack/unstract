@@ -1,5 +1,5 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import loginRightBanner from "../../assets/login-right-panel.svg";
 
 const defaultUnstractContent = {

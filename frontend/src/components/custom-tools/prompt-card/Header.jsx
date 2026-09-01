@@ -1,26 +1,21 @@
-import {
-  CheckCircleOutlined,
-  DeleteOutlined,
-  InfoCircleOutlined,
-  LoadingOutlined,
-  MoreOutlined,
-  PlayCircleFilled,
-  PlayCircleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Checkbox,
-  Col,
-  Dropdown,
-  Input,
-  Row,
-  Tag,
-  Tooltip,
-} from "antd";
 import debounce from "lodash/debounce";
+import {
+  CircleCheck,
+  CirclePlay,
+  EllipsisVertical,
+  FastForward,
+  Info,
+  LoaderCircle,
+  RefreshCw,
+  Trash2,
+} from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Checkbox, Input } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Dropdown, Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import {
   PROMPT_RUN_TYPES,
@@ -113,7 +108,6 @@ function Header({
     details,
   } = useCustomToolStore();
   const runGate = usePromptRunGate(promptDetails);
-  const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
@@ -197,14 +191,38 @@ function Header({
       setWebhookUrl,
     );
   };
+  /*
+   * One effect per field, keyed on that field's own value. Keyed on the whole
+   * `promptDetails` object (plus `details`, which none of these fields read),
+   * the effect re-ran on every *unrelated* optimistic update and re-seeded all
+   * four from the last persisted prompt — so the webhook toggle's own save
+   * landing mid-keystroke blanked the URL input the user was still typing in.
+   */
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
-    setRequired(promptDetails?.required);
-    setWebhookEnabled(promptDetails?.enable_postprocessing_webhook || false);
-    setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
-  }, [promptDetails, details]);
+  }, [promptDetails?.prompt_id, promptDetails?.active]);
 
   useEffect(() => {
+    setRequired(promptDetails?.required);
+  }, [promptDetails?.prompt_id, promptDetails?.required]);
+
+  useEffect(() => {
+    setWebhookEnabled(promptDetails?.enable_postprocessing_webhook || false);
+  }, [promptDetails?.prompt_id, promptDetails?.enable_postprocessing_webhook]);
+
+  useEffect(() => {
+    setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
+  }, [promptDetails?.prompt_id, promptDetails?.postprocessing_webhook_url]);
+
+  /*
+   * Derived, NOT state written from an effect. The webhook URL <Input> lives
+   * inside these menu entries, so with `setItems` in an effect its `value` prop
+   * trailed `webhookUrl` by one render: the render right after a keystroke
+   * still carried the previous string, and React wrote that back onto the DOM
+   * input. Typing at speed therefore dropped characters. useMemo builds the
+   * entries in the same pass that updates the state they read.
+   */
+  const items = useMemo(() => {
     const dropdownItems = [
       {
         label: (
@@ -224,31 +242,49 @@ function Header({
               >
                 Value Required{" "}
                 <Tooltip title="Marks this as a required field. Saving this record won't be allowed in Human Quality Review should this field be empty.">
-                  <InfoCircleOutlined />
+                  <span>
+                    <Info />
+                  </span>
                 </Tooltip>
               </Checkbox>
             )}
             {enforceType === "json" && (
               <>
-                <Checkbox
-                  checked={required === "all"}
-                  onChange={() => handleRequiredChange("all")}
-                >
-                  All JSON Values Required
-                </Checkbox>
-                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
-                  <InfoCircleOutlined />
-                </Tooltip>
-                <Checkbox
-                  checked={required === "any"}
-                  onChange={() => handleRequiredChange("any")}
-                  className="required-checkbox-padding"
-                >
-                  At least 1 JSON Value Required
-                </Checkbox>
-                <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
-                  <InfoCircleOutlined />
-                </Tooltip>
+                {/*
+                 * Each checkbox is grouped with its own tooltip icon so the
+                 * two never separate, and the pairs share a row as they did
+                 * under antd. `required-checkbox-padding`, which used to sit
+                 * on the second checkbox, has no rule anywhere in the app —
+                 * the gap came from antd's own adjacent-wrapper margin.
+                 */}
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                  <span className="inline-flex items-center gap-1">
+                    <Checkbox
+                      checked={required === "all"}
+                      onChange={() => handleRequiredChange("all")}
+                    >
+                      All JSON Values Required
+                    </Checkbox>
+                    <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without all key/values filled in this JSON structure.">
+                      <span>
+                        <Info />
+                      </span>
+                    </Tooltip>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <Checkbox
+                      checked={required === "any"}
+                      onChange={() => handleRequiredChange("any")}
+                    >
+                      At least 1 JSON Value Required
+                    </Checkbox>
+                    <Tooltip title="When set, saving this record won't be allowed in Human Quality Review without at least one value filled in this JSON structure.">
+                      <span>
+                        <Info />
+                      </span>
+                    </Tooltip>
+                  </span>
+                </div>
                 <div
                   style={{
                     marginTop: "8px",
@@ -263,7 +299,9 @@ function Header({
                   >
                     Enable Postprocessing Webhook{" "}
                     <Tooltip title="Enable external webhook call to postprocess JSON responses before returning to user.">
-                      <InfoCircleOutlined />
+                      <span>
+                        <Info />
+                      </span>
                     </Tooltip>
                   </Checkbox>
                   {webhookEnabled && (
@@ -300,7 +338,7 @@ function Header({
             handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
             content="The prompt will be permanently deleted."
           >
-            <DeleteOutlined /> Delete
+            <Trash2 /> Delete
           </ConfirmModal>
         ),
         key: "delete",
@@ -329,7 +367,8 @@ function Header({
       dropdownItems.splice(0, 1);
     }
 
-    setItems(dropdownItems);
+    return dropdownItems;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isDisablePrompt, required, enforceType, webhookEnabled, webhookUrl]);
 
   return (
@@ -352,7 +391,7 @@ function Header({
           {progressMsg?.message && (
             <Tooltip title={progressMsg?.message || ""}>
               <Tag
-                icon={isCoverageLoading && <LoadingOutlined spin />}
+                icon={isCoverageLoading && <LoaderCircle spin />}
                 color={progressMsg?.level === "ERROR" ? "error" : "processing"}
                 className="display-flex-align-center"
               >
@@ -368,7 +407,7 @@ function Header({
             <div>
               {updateStatus?.status === promptStudioUpdateStatus.isUpdating && (
                 <Tag
-                  icon={<SyncOutlined spin />}
+                  icon={<RefreshCw spin />}
                   color="processing"
                   className="display-flex-align-center"
                 >
@@ -379,7 +418,7 @@ function Header({
             <div>
               {updateStatus?.status === promptStudioUpdateStatus.done && (
                 <Tag
-                  icon={<CheckCircleOutlined />}
+                  icon={<CircleCheck />}
                   color="success"
                   className="display-flex-align-center"
                 >
@@ -391,7 +430,7 @@ function Header({
               {updateStatus?.status ===
                 promptStudioUpdateStatus.validationError && (
                 <Tag
-                  icon={<CheckCircleOutlined />}
+                  icon={<CircleCheck />}
                   color="error"
                   className="display-flex-align-center"
                 >
@@ -407,6 +446,7 @@ function Header({
               title={runGate?.reason || "Run all LLMs for current document"}
             >
               <Button
+                data-testid={`ps-prompt-run-doc-${promptDetails?.prompt_id}`}
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
@@ -428,13 +468,14 @@ function Header({
                   !!runGate?.disabled
                 }
               >
-                <PlayCircleOutlined className="prompt-card-actions-head" />
+                <CirclePlay className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
             <Tooltip
               title={runGate?.reason || "Run all LLMs for all documents"}
             >
               <Button
+                data-testid={`ps-prompt-run-all-docs-${promptDetails?.prompt_id}`}
                 size="small"
                 type="text"
                 className="prompt-card-action-button"
@@ -454,12 +495,24 @@ function Header({
                   !!runGate?.disabled
                 }
               >
-                <PlayCircleFilled className="prompt-card-actions-head" />
+                {/*
+                 * "All documents" needs a DIFFERENT glyph from the
+                 * "current document" button beside it. antd used
+                 * PlayCircleFilled vs PlayCircleOutlined; the icon migration
+                 * collapsed both to CirclePlay, leaving two identical buttons
+                 * distinguished only by their tooltips. The double-chevron
+                 * play reads as "run across everything".
+                 */}
+                <FastForward className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
           </>
         )}
-        <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        <ExpandCardBtn
+          expandCard={expandCard}
+          setExpandCard={setExpandCard}
+          testId={`ps-prompt-expand-${promptDetails?.prompt_id}`}
+        />
         {PromptChangeIndicator && (
           <PromptChangeIndicator
             promptDetails={promptDetails}
@@ -478,11 +531,12 @@ function Header({
         )}
         <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
           <Button
+            data-testid={`ps-prompt-menu-${promptDetails?.prompt_id}`}
             size="small"
             type="text"
             className="prompt-card-action-button"
           >
-            <MoreOutlined className="prompt-card-actions-head" />
+            <EllipsisVertical className="prompt-card-actions-head" />
           </Button>
         </Dropdown>
       </Col>
