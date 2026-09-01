@@ -1,8 +1,8 @@
 import { lazy } from "react";
 import { Route } from "react-router-dom";
-import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
-import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
-import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
+import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.jsx";
+import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.jsx";
+import { ProjectHelper } from "../components/helpers/project/ProjectHelper.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";

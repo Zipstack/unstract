@@ -1,6 +1,9 @@
-import { ReloadOutlined } from "@ant-design/icons";
-import { Button, Switch, Tooltip, Typography } from "antd";
+import { RotateCw } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./LogsRefreshControls.css";
 
 function LogsRefreshControls({
@@ -22,7 +25,7 @@ function LogsRefreshControls({
           disabled={disabled}
         />
         <Button
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={onRefresh}
           className="logs-refresh-btn"
           disabled={disabled}

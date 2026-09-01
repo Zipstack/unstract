@@ -1,6 +1,6 @@
-import { PlusOutlined } from "@ant-design/icons";
-import { Button } from "antd";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
 
 import { groupsService } from "../components/groups/groups-service.js";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
@@ -290,11 +290,7 @@ function ConnectorsPage() {
   };
 
   const newConnectorButton = (
-    <Button
-      type="primary"
-      icon={<PlusOutlined />}
-      onClick={handleCreateConnector}
-    >
+    <Button type="primary" icon={<Plus />} onClick={handleCreateConnector}>
       New Connector
     </Button>
   );
@@ -330,6 +326,7 @@ function ConnectorsPage() {
           )}
           {!loadError && displayList?.length > 0 && (
             <ResourceTable
+              testIdPrefix="connector-list"
               dataSource={displayList}
               loading={loading}
               pagination={pagination}

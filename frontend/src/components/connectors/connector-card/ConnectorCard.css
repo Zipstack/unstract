@@ -5,7 +5,7 @@
 }
 
 .connector-card.selected {
-  border-color: #1890ff;
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 

@@ -31,3 +31,18 @@ services:
   worker-api-deployment-v2:
     environment:
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
+
+  # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
+  # the app derives every API URL from window.location.origin. The production
+  # nginx config serves only static files plus an SPA fallback, so `/api/v1/*`
+  # came back as index.html and authenticated specs never got past login. This
+  # mounts a test-only config that proxies the API prefixes to the backend,
+  # giving the suite a single origin. See frontend-nginx.test.conf for why the
+  # Traefik origin the compose stack already provides is not usable here.
+  frontend:
+    volumes:
+      # Relative to the PROJECT directory (docker/, from the first -f), not to
+      # this file — Compose resolves every path against the project dir, so a
+      # bare ./ here would silently resolve to docker/ and Docker would create
+      # an empty directory at the mount target rather than error.
+      - ../tests/compose/frontend-nginx.test.conf:/etc/nginx/nginx.conf:ro

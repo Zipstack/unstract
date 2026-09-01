@@ -1,4 +1,331 @@
-@import "variables.css";
+/* ------------------------------------------------------------------
+ * Tailwind v4 must be imported FIRST so its layer ordering is correct.
+ * (UN_SHADCN_IMPL_PLAN P0-10)
+ * ------------------------------------------------------------------ */
+@import "tailwindcss";
+@plugin "tailwindcss-animate";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ------------------------------------------------------------------
+ * `inline` is MANDATORY. With a plain `@theme`, Tailwind snapshots the
+ * light value at build time and dark mode silently breaks. (P0-11)
+ * ------------------------------------------------------------------ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  /* antd styles info alerts blue; success/warning already had tokens. */
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-border: var(--border);
+  /* antd draws list/table separators at rgba(5,5,5,.06), which composites to
+   * #f0f0f0 — a hairline four shades lighter than --border. Exposed as its
+   * own token so `divide-separator` can match it without repainting every
+   * card edge and <Separator> in the app. */
+  --color-separator: var(--separator);
+  /* Recessed surface a raised card/island sits IN (the list "well"). Needs a
+   * clear gap from --card; --background is only two values off it. */
+  --color-well: var(--well);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /*
+   * Body text at 14px, matching the antd reference.
+   *
+   * `text-sm` is the app's dominant size — nearly every label, table cell,
+   * menu item and control renders through it — so this is the lever that
+   * actually moves perceived text size.
+   *
+   * Deliberately NOT `html { font-size: 13px }`: Tailwind v4 spacing, gaps and
+   * control heights are all rem-based, so changing the root would shrink the
+   * entire UI (padding, button heights, icon boxes) rather than just the type.
+   *
+   * 14px is also Tailwind's stock `text-sm`, so the override is now a no-op in
+   * value — kept explicit (with its line-height) so the intent is stated and a
+   * future Tailwind default change cannot silently move the app's base size.
+   *
+   * Verified to still fit the reference-matched control heights: 14px at 22px
+   * leading inside an h-8 (32px) control leaves 10px for padding and border,
+   * which is what antd itself does.
+   */
+  --text-sm: 0.875rem; /* 14px — matches the antd reference exactly */
+  --text-sm--line-height: calc(1.375 / 0.875); /* 22px */
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: var(--radius-2xl);
+  --radius-full: var(--radius-full);
+}
+
+/* ------------------------------------------------------------------
+ * Midnight Bloom — light (UN_SHADCN_SPEC §2.5.1, verbatim).
+ * Type/spacing/leading scales are deliberately NOT declared: they are
+ * identical to Tailwind v4 stock (§2.5.0).
+ * ------------------------------------------------------------------ */
+:root {
+  /* Base palette */
+  --violet-50: #f1effe;
+  --violet-100: #e4e0fd;
+  --violet-300: #b7adf6;
+  --violet-500: #6f5cef; /* brand primary */
+  --violet-600: #5a45e6;
+  --violet-700: #4a37c8;
+  --purple-200: #f1e5ff;
+  --purple-400: #d9b8ff;
+  --purple-500: #9747ff;
+  --purple-600: #8638e5;
+  --sky-200: #d3e6fb;
+  --sky-300: #97caf5; /* secondary */
+  --sky-500: #5f8ad0;
+  --neutral-0: #ffffff;
+  --neutral-50: #fafafa;
+  --neutral-100: #f5f5f5;
+  --neutral-150: #f0f0f0;
+  --neutral-200: #e5e5e5;
+  --neutral-300: #d3d3d3;
+  --neutral-400: #a1a1a1;
+  --neutral-500: #737373;
+  --neutral-700: #404040;
+  --neutral-800: #262626;
+  --neutral-850: #1f1f1f;
+  --neutral-900: #1a1a1a;
+  --neutral-925: #171717;
+  --neutral-950: #0a0a0a;
+  --red-600: #b41b30;
+  --red-300: #fca5a5;
+
+  /* Semantic aliases */
+  --background: var(--neutral-50);
+  --foreground: var(--neutral-900);
+  /* Raised surfaces (cards, tables, modals) are WHITE, as in the reference:
+   * page #e9e9e9 → content #f5f5f5 → surface #fff. #fcfcfc sat two shades
+   * off --background (#fafafa), so a modal or table read as the same plane
+   * as the page behind it and the main area never looked like a panel. */
+  --card: var(--neutral-0);
+  --card-foreground: var(--neutral-900);
+  --popover: var(--neutral-0);
+  --popover-foreground: #19191a;
+  --primary: var(--violet-500);
+  --primary-foreground: var(--neutral-50);
+  --secondary: var(--sky-300);
+  --secondary-foreground: #19191a;
+  --muted: var(--neutral-100);
+  --muted-foreground: var(--neutral-500);
+  --accent: var(--neutral-100);
+  --accent-foreground: #6161cc;
+  --destructive: var(--red-600);
+  --destructive-foreground: var(--neutral-0);
+  --success: #15803d;
+  --warning: #b45309;
+  /* antd v5 info tokens: colorInfo #1677ff on colorInfoBg #e6f4ff. */
+  --info: #1677ff;
+  --info-bg: #e6f4ff;
+  --border: var(--neutral-200);
+  --separator: var(--neutral-150);
+  --well: var(--neutral-200);
+  --input: var(--neutral-300);
+  --ring: var(--primary);
+
+  --chart-1: #a7c7ea;
+  --chart-2: #5f8ad0;
+  --chart-3: #4d73c7;
+  --chart-4: #4060b4;
+  --chart-5: #3b4e91;
+
+  --sidebar: var(--neutral-0);
+  --sidebar-foreground: var(--neutral-900);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent: var(--neutral-100);
+  --sidebar-accent-foreground: var(--neutral-900);
+  --sidebar-border: var(--neutral-200);
+  --sidebar-ring: var(--primary);
+
+  --radius: 10px;
+  --radius-2xl: 16px;
+  --radius-full: 9999px;
+
+  --font-sans:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", sans-serif;
+  --font-display:
+    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    "Geist Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    monospace;
+
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  --tracking-tighter: -0.04em;
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0em;
+  --tracking-wide: 0.025em;
+
+  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm:
+    0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+}
+
+/* Midnight Bloom — dark (UN_SHADCN_SPEC §2.5.2, verbatim).
+ * The rgba() values are INTENTIONAL, not opaque colours (§2.5.3b). */
+.dark {
+  --background: var(--neutral-900);
+  --foreground: var(--neutral-50);
+  --card: #19191a;
+  --card-foreground: var(--neutral-50);
+  --popover: var(--neutral-925);
+  --popover-foreground: var(--neutral-50);
+  --primary: var(--violet-500);
+  --primary-foreground: var(--neutral-50);
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: var(--neutral-50);
+  --muted: var(--neutral-800);
+  --muted-foreground: var(--neutral-400);
+  --accent: #2a2a2d;
+  --accent-foreground: #c1c5fb;
+  --destructive: #e5484d;
+  --destructive-foreground: var(--neutral-50);
+  --success: #4ade80;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --info-bg: rgba(96, 165, 250, 0.12);
+  --border: rgba(255, 255, 255, 0.1);
+  /* Dark counterpart: lighter than --border for the same hairline effect. */
+  --separator: rgba(255, 255, 255, 0.06);
+  /* Dark: recess by going DARKER than --card, not lighter. */
+  --well: var(--neutral-950);
+  --input: #343434;
+  --ring: var(--primary);
+
+  --sidebar: var(--neutral-925);
+  --sidebar-foreground: var(--neutral-50);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--neutral-50);
+  --sidebar-accent: rgba(255, 255, 255, 0.06);
+  --sidebar-accent-foreground: var(--neutral-50);
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --sidebar-ring: var(--primary);
+
+  --shadow-2xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
+  --shadow-sm:
+    0 1px 3px 0 rgba(0, 0, 0, 0.45), 0 1px 2px -1px rgba(0, 0, 0, 0.45);
+  --shadow-md:
+    0 4px 6px -1px rgba(0, 0, 0, 0.5), 0 2px 4px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg:
+    0 10px 15px -3px rgba(0, 0, 0, 0.55), 0 4px 6px -4px rgba(0, 0, 0, 0.55);
+  --shadow-xl:
+    0 20px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+}
+
+/* ------------------------------------------------------------------
+ * Default border colour.
+ *
+ * Tailwind's border utilities set WIDTH only; the colour falls back to
+ * `currentColor`, which on this app resolves to black. So every `border`,
+ * `border-b` or `divide-y` written without an explicit colour drew a solid
+ * black line — most visibly as a black rule between every list row, where
+ * antd had a near-invisible rgba(5,5,5,.06) hairline.
+ *
+ * `@layer base` is load-bearing, not tidiness. Unlayered rules beat layered
+ * ones in the cascade no matter their specificity, so as a bare selector this
+ * outranked Tailwind's `utilities` layer and repainted every explicitly
+ * coloured border too. `border-input` was the visible casualty: form controls
+ * resolved to `--border` (#e5e5e5) instead of `--input` (#d3d3d3), leaving
+ * every input a full shade lighter than the antd reference (1.21 vs 1.41
+ * contrast against the page). That reads as "the side borders aren't there",
+ * because the thin left/right edges are the first to wash out at fractional
+ * device-pixel widths.
+ *
+ * In `base` it still supplies the default for uncoloured borders, but any
+ * `border-*` utility now wins, which is what shadcn intends.
+ * ------------------------------------------------------------------ */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--border);
+  }
+
+  /*
+   * antd shipped its icons as a FONT: they sat on the text baseline and
+   * inherited font-size, so `<span><Icon /></span> Label` rendered inline as a
+   * matter of course. lucide ships SVGs, and Tailwind's preflight sets
+   * `svg { display: block }` with a 24px default — a block element forces its
+   * own line, so every such pair broke with the icon stacked ABOVE its text
+   * ("Not Indexed"/"Not Summarized" in Manage Documents, "Yet to run" on the
+   * prompt cards) and the glyph was oversized beside 14px copy.
+   *
+   * Restoring inline layout for icons that sit INSIDE a text flow fixes the
+   * whole class at once. Icons in a flex/grid container are untouched: those
+   * parents already align their children, and `display` is ignored for flex
+   * items anyway.
+   */
+  :where(span, p, label, td, th, li, a):not(:where(.flex, .inline-flex, .grid))
+    > svg.lucide,
+  :where(span, p, label, td, th, li, a):not(:where(.flex, .inline-flex, .grid))
+    > :where(span, i):not(:where(.flex, .inline-flex))
+    > svg.lucide {
+    display: inline-block;
+    vertical-align: -0.145em; /* antd's icon baseline offset */
+    width: 1em;
+    height: 1em;
+  }
+}
+
+/* ------------------------------------------------------------------
+ * Existing Unstract rules — unchanged below this line, except the
+ * body font-family fix noted in P0-12.
+ * ------------------------------------------------------------------ */
 
 html,
 #root {
@@ -6,18 +333,42 @@ html,
 }
 
 body {
-  font-family: var(--font-family) !important;
+  /* P0-12: `!important` dropped and repointed at --font-sans; it otherwise
+   * overrode the design token on every element. */
+  font-family: var(--font-sans);
+  /*
+   * Base size for text that inherits rather than carrying a size class.
+   *
+   * `--text-sm` alone was not enough: it only reaches elements that use
+   * `text-sm`, so anything relying on inheritance kept the UA default of
+   * 16px. The "Owned By:" label in the project list rendered at 16px next
+   * to 13px siblings for exactly that reason.
+   *
+   * Set on `body`, deliberately NOT on `html` — Tailwind v4 derives spacing,
+   * gaps and control heights from rem, so moving the ROOT size would shrink
+   * the whole UI rather than just the type. Body inheritance carries the
+   * text without touching any of that.
+   */
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   height: 100%;
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
+  /* P0-12 / P2-02 — RESOLVED. The concern was that Radix's dialog scroll-lock
+   * (which also sets body overflow, then restores the prior value on close)
+   * could restore the wrong value here and leave the fixed app shell
+   * scrollable. Verified in antd-overlays.scrolllock.test.jsx: body overflow
+   * stays `hidden` before, during and after a dialog's lifecycle, survives
+   * repeated open/close cycles, and is NOT left hidden on pages that never
+   * pinned it. Safe to keep. */
   min-width: 1024px;
   overflow: hidden;
 }
 
 .page-bg-2 {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
 }
 
 .center {
@@ -31,12 +382,19 @@ body {
 /* Custom scroll bar css starts */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #e8edf2 transparent;
+  /* Thumb visible against the track. #e8edf2 on a near-white surface was
+   * indistinguishable, which is what made scrollable areas look truncated. */
+  scrollbar-color: var(--neutral-300) transparent;
 }
 
 ::-webkit-scrollbar {
-  width: 3px;
-  height: 5px;
+  /*
+   * 8px, matching the reference. At the previous 3px the bar was thin enough
+   * to read as absent — the emoji picker in "Choose icon" scrolls, but nobody
+   * could tell, so the grid looked truncated rather than scrollable.
+   */
+  width: 8px;
+  height: 8px;
 }
 
 /* Track */
@@ -48,12 +406,12 @@ body {
 /* Handle */
 ::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background: #e8edf2;
+  background: var(--neutral-300);
 }
 
 /* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-  background: #d4dce5;
+  background: var(--neutral-400);
 }
 
 /* Corner where both X and Y scroll bar meets */
@@ -186,9 +544,17 @@ body {
   flex: 1;
 }
 
-.border {
-  border-style: solid;
-}
+/*
+ * `.border { border-style: solid }` was a legacy app utility from the antd
+ * era. Its name now collides with Tailwind's `border` utility, and because it
+ * is declared later it overrode `--tw-border-style` — so `border border-dashed`
+ * rendered solid, which is why the Import Project drop zone had a solid edge
+ * instead of antd's dashed one.
+ *
+ * Removed rather than renamed: every remaining `className="… border …"` in the
+ * app is Tailwind's utility, which already sets `solid` by default, so nothing
+ * relied on this rule for its own sake.
+ */
 
 .overflow-hidden {
   overflow: hidden;
@@ -252,6 +618,24 @@ body {
   z-index: 2000;
 }
 
+/* Radix positions popovers/dropdowns/tooltips in this wrapper and gives it
+ * `z-index: 50`. This app predates that scale and uses much larger values —
+ * `.logs-container` alone is 999 — so a sidebar fly-out opened near the bottom
+ * of the screen was clipped by the Logs footer. Sit above the app's legacy
+ * z-indexes but below `.fullscreen-loader` (2000), which must still cover
+ * everything.
+ *
+ * The layer ladder, for reference:
+ *   legacy app chrome  100–1000   (.logs-container 999, agency/settings 1000)
+ *   modal layer        1100       (dialog/alert-dialog/sheet overlay+content)
+ *   popper layer       1500       (this rule — must clear a modal above it)
+ *   fullscreen loader  2000
+ * Modals were left on Radix's stock z-50 at first, which put them *under* the
+ * Logs footer: the footer stayed bright white over the dimmed page. */
+[data-radix-popper-content-wrapper] {
+  z-index: 1500 !important;
+}
+
 .notification-id-line,
 .notification-id-line__value {
   font-size: 12px;
@@ -273,4 +657,45 @@ body {
 
 .notification-id-line__value {
   word-break: break-all;
+}
+
+/* Sonner's viewport is an ordinary body-level element, so the
+ * `pointer-events: none` Radix puts on <body> while a modal Dialog is open
+ * inherits straight into it and the toasts stop taking clicks — their own
+ * close buttons included. An open modal is exactly when error toasts pile up
+ * (a rejected form re-renders the dialog and toasts the backend error), so the
+ * stack has to stay operable through one. Same reasoning as
+ * `.notification-clear-all` below.
+ *
+ * `auto` here only restores sonner's own default; the <ol> is 0px tall
+ * (toasts inside it are absolutely positioned), so this adds no dead zone over
+ * the page. App.jsx wraps the toaster in a DismissableLayer.Branch so the
+ * clicks it regains are not read as "outside" and dismiss the dialog under it.
+ */
+[data-sonner-toaster] {
+  pointer-events: auto;
+}
+
+/* Sits in the band `<Toaster offset>` reserves above the toast stack (App.jsx);
+ * the offset and this `top` are a pair. Sonner's viewport is z-index
+ * 999999999, so this has to clear it to stay clickable. */
+.notification-clear-all {
+  position: fixed;
+  top: 24px;
+  right: 24px;
+  z-index: 1000000000;
+  display: flex;
+  justify-content: flex-end;
+  /* Radix sets `pointer-events: none` on <body> while a modal dialog is open,
+   * and that inherits down to here. Re-enable it: a modal open is exactly when
+   * toasts pile up, so the control has to stay clickable through one. */
+  pointer-events: auto;
+}
+
+@media (max-width: 600px) {
+  /* Sonner drops to a 16px viewport offset on narrow screens. */
+  .notification-clear-all {
+    top: 16px;
+    right: 16px;
+  }
 }
