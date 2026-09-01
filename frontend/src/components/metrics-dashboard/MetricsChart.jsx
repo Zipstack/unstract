@@ -56,7 +56,7 @@ function formatDate(dateStr) {
  * @return {string} Formatted number
  */
 function formatValue(value) {
-  if (value === null || value === undefined) {
+  if (value == null) {
     return "0";
   }
   if (value >= 1000000) {

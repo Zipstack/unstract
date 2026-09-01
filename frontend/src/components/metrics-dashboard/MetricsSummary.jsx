@@ -137,7 +137,7 @@ const METRIC_PRIORITY = [
  * @return {string} Formatted number string
  */
 function formatValue(value, precision = 0) {
-  if (value === null || value === undefined) {
+  if (value == null) {
     return "0";
   }
   if (precision > 0) {
