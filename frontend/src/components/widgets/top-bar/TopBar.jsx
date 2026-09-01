@@ -1,6 +1,7 @@
 import debounce from "lodash/debounce";
 import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
+import { useEffect, useMemo, useRef } from "react";
 import { Input } from "@/components/ui/shims/antd-inputs";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -17,9 +18,6 @@ function TopBar({
   children,
 }) {
   const navigate = useNavigate();
-  const onSearchDebounce = debounce(({ target: { value } }) => {
-    onSearch(value);
-  }, 600);
 
   const onSearch = (searchText = "") => {
     if (searchText?.trim() === "") {
@@ -34,6 +32,25 @@ function TopBar({
     });
     setFilteredUserList(filteredList);
   };
+
+  /*
+   * Built inline, `debounce(...)` was a fresh instance on every render, so each
+   * keystroke started a new 600ms timer on a new closure and nothing was ever
+   * coalesced — the filter ran per keypress. Memoised with no deps it is
+   * created once; the ref is what keeps that single instance calling the
+   * CURRENT onSearch, so it never filters a stale `searchData`.
+   */
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
+  const onSearchDebounce = useMemo(
+    () => debounce((value) => onSearchRef.current(value), 600),
+    [],
+  );
+  // A pending timer firing after unmount would setState on a dead component.
+  useEffect(() => () => onSearchDebounce.cancel(), [onSearchDebounce]);
+
   return (
     <Row align="middle" justify="space-between" className="search-nav">
       <Col>
@@ -65,7 +82,7 @@ function TopBar({
             <Input
               placeholder={searchPlaceholder}
               data-testid="top-bar-search"
-              onChange={onSearchDebounce}
+              onChange={(event) => onSearchDebounce(event.target.value)}
             />
           )}
           {children}

@@ -1,7 +1,7 @@
 import debounce from "lodash/debounce";
 import { Search } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/shims/antd-inputs";
 import { List, Segmented } from "@/components/ui/shims/antd-structure";
 
@@ -42,10 +42,18 @@ function ListOfSources({
     setFilteredSourcesList(filteredList);
   }, [sourcesList, searchText, localModeFilter, isConnector, connectorMode]);
 
-  const handleInputChange = debounce((event) => {
-    const { value } = event.target;
-    setSearchText(value);
-  }, 300);
+  /*
+   * Built inline, `debounce(...)` was a fresh instance on every render, so each
+   * keystroke started a new 300ms timer on a new closure and the list filtered
+   * per keypress. `setSearchText` is a stable setState setter, so no deps are
+   * needed and the single memoised instance can never go stale.
+   */
+  const handleInputChange = useMemo(
+    () => debounce((value) => setSearchText(value), 300),
+    [],
+  );
+  // A pending timer firing after unmount would setState on a dead component.
+  useEffect(() => () => handleInputChange.cancel(), [handleInputChange]);
 
   const renderModeFilters = () => {
     if (!isConnector || connectorMode) {
@@ -76,7 +84,7 @@ function ListOfSources({
           <Input
             placeholder="Search"
             prefix={<Search className="search-outlined" />}
-            onChange={handleInputChange}
+            onChange={(event) => handleInputChange(event.target.value)}
           />
         </div>
         {renderModeFilters()}
