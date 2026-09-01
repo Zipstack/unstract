@@ -19,6 +19,9 @@ _HOSTILE = [
     "import builtins\nbuiltins.exec('x=1')",
     "from builtins import exec as e\ne('x=1')",
     "import builtins\nx = builtins.eval\nx('1')",
+    "import sys\nsys.modules['os'].system('id')",
+    "import posix\nposix.system('id')",
+    "from os import path",
 ]
 
 
@@ -40,3 +43,9 @@ def test_hostile_code_rejected(code):
 def test_encoded_import_via_builtins_subscript_rejected():
     ok, _ = check_code_safe("__builtins__['__import__']('os')")
     assert ok is False
+
+
+def test_allowed_modules_pass():
+    ok, reason = check_code_safe("import math\nimport datetime\nx = math.sqrt(4)")
+    assert ok is True, reason
+    assert reason == ""
