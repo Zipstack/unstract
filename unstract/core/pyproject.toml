@@ -17,10 +17,6 @@ dependencies = [
     "requests==2.33.0",
     "kombu~=5.5.3",
     "httpx>=0.27.0",
-    # Present transitively via requests; declared because the egress guard
-    # imports them directly.
-    "idna>=3.0",
-    "urllib3>=2.0",
 ]
 
 [project.optional-dependencies]
