@@ -12,7 +12,7 @@ _DENYLISTED_IMPORTS = {
     "os", "subprocess", "socket", "shutil", "ctypes", "pickle", "marshal",
     "importlib", "requests", "urllib", "urllib2", "urllib3", "http", "ftplib",
     "smtplib", "telnetlib", "pty", "multiprocessing", "signal", "resource",
-    "fcntl", "mmap",
+    "fcntl", "mmap", "builtins",
 }
 _DENYLISTED_CALLS = {
     "eval", "exec", "compile", "__import__", "globals", "vars",
@@ -38,6 +38,9 @@ def check_code_safe(code: str) -> tuple[bool, str]:
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id in _DENYLISTED_CALLS:
                 return False, f"safety gate: disallowed call '{node.func.id}'"
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr in _DENYLISTED_CALLS:
+                return False, f"safety gate: disallowed call '{node.func.attr}'"
         elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, f"safety gate: dunder attribute access '{node.attr}'"
         elif isinstance(node, ast.Name) and node.id in _DENYLISTED_NAMES:

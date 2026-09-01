@@ -16,6 +16,9 @@ _HOSTILE = [
     "b = __builtins__",
     "getattr(object, 'x')",
     "not valid python (",
+    "import builtins\nbuiltins.exec('x=1')",
+    "from builtins import exec as e\ne('x=1')",
+    "import builtins\nx = builtins.eval\nx('1')",
 ]
 
 
