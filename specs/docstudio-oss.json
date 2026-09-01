@@ -303,7 +303,7 @@
   "paths": {
     "/api/v1/unstract/whoami/": {
       "get": {
-        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
+        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.\n\nThis route serves GET only. Another method is refused either by the key's permission tier or by the route itself; neither refusal is described here, because OpenAPI attaches responses to an operation and there is no operation for a method the route does not serve.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
         "operationId": "whoami",
         "responses": {
           "200": {
@@ -335,30 +335,6 @@
               }
             },
             "description": "The key was recognised but refused: its permission tier is not one this deployment knows, or the request named an organisation the key does not belong to."
-          },
-          "405": {
-            "content": {
-              "application/json": {
-                "examples": {
-                  "MethodNotAllowed": {
-                    "value": {
-                      "errors": [
-                        {
-                          "attr": null,
-                          "code": "method_not_allowed",
-                          "detail": "Method \"get\" not allowed."
-                        }
-                      ],
-                      "type": "client_error"
-                    }
-                  }
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "This route serves GET only. A key whose tier permits the method reaches the view and is refused here; a tier that does not is refused earlier, as a 403."
           },
           "500": {
             "description": "The request could not be served. The body is not guaranteed to be JSON."
