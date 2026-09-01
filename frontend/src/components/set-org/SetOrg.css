@@ -7,18 +7,27 @@
 }
 
 .card-list-container {
-  /* The scroll region. `.org-list` is a fixed-height (100vh) flex column, so
-   * without `min-height: 0` this box refuses to shrink below its content and
-   * the extra org cards spill past the viewport instead of scrolling. */
-  flex: 1 1 auto;
+  /* The scroll region. `.org-list` fills `.org-container`'s 100vh as a column
+   * flex container, so without `min-height: 0` this box refuses to shrink
+   * below its content: the extra org cards spill past the viewport and are
+   * clipped instead of scrolling. */
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* Was `margin: 10%`. The horizontal half was redundant — `width: 80%` plus
+   * `align-items: center` on `.org-list` lands the cards at the same offset —
+   * so card geometry is unchanged. Note top/bottom percentages resolve
+   * against the containing block's WIDTH, as they did before. */
   margin: 5% 0;
   width: 80%;
-  /* Bottom room for the cards' 8px/24px box-shadow, which the scroll box
-   * clips. Deliberately no horizontal padding: it would narrow the cards and
-   * worsen the pre-existing title/Connect-button overlap on narrow viewports. */
-  padding-bottom: 24px;
+  /* Room below for `.org-card-container`'s box-shadow, which the scroll box
+   * clips. No horizontal padding: it would narrow the cards and worsen the
+   * overlap between a long org name and the Connect button that
+   * `.ant-card-meta-title` below causes by setting `text-overflow: ellipsis`
+   * with no `overflow: hidden`. Fix that rule and this constraint expires.
+   * The right-hand shadow stays clipped either way; at ~5% alpha it reads as
+   * nothing. */
+  padding-bottom: 32px;
 }
 .org-list {
   background: #ffffff;
@@ -95,7 +104,7 @@
   width: 200px;
   margin-top: 10%;
   /* Flex items default to `flex-shrink: 1`, so a long org list squashed the
-   * logo to zero height rather than scrolling the list. */
+   * logo instead of scrolling — measured at 0px height, not merely thin. */
   flex-shrink: 0;
 }
 
