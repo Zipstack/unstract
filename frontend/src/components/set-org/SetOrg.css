@@ -7,8 +7,18 @@
 }
 
 .card-list-container {
-  margin: 10%;
+  /* The scroll region. `.org-list` is a fixed-height (100vh) flex column, so
+   * without `min-height: 0` this box refuses to shrink below its content and
+   * the extra org cards spill past the viewport instead of scrolling. */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 5% 0;
   width: 80%;
+  /* Bottom room for the cards' 8px/24px box-shadow, which the scroll box
+   * clips. Deliberately no horizontal padding: it would narrow the cards and
+   * worsen the pre-existing title/Connect-button overlap on narrow viewports. */
+  padding-bottom: 24px;
 }
 .org-list {
   background: #ffffff;
@@ -84,6 +94,9 @@
 .select-org-unstract-logo {
   width: 200px;
   margin-top: 10%;
+  /* Flex items default to `flex-shrink: 1`, so a long org list squashed the
+   * logo to zero height rather than scrolling the list. */
+  flex-shrink: 0;
 }
 
 .select-org-button {
