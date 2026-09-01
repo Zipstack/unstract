@@ -286,6 +286,25 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}`.
 
+**Calculation result shape** (when `calculations` is supplied and
+`AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
+engine's standard result object:
+
+- `calculations_applied: true` — indicates calculation codegen ran.
+- `execution: {success: bool, rows_written: int, error: string|null}` — sandbox worker
+  execution status. `success` is `true` if the generated code ran without error;
+  `rows_written` is the count of rows the code emitted; `error` is `null` on success, or
+  a user-safe message (e.g., `"Runtime error: division by zero"`) on failure.
+- `codegen_validation_passed: bool` — whether the AST gate (layer 1 of a 5-layer
+  defense-in-depth model) accepted the generated code syntax.
+- `calculation_rows: [...]` — an array of computed JSONL rows (size-capped). If the code
+  produced more rows than the cap allows, this array is empty and `calculation_rows_truncated: true`
+  is present instead.
+
+If the sandbox worker fails to execute, the job completes with `success: false` and a
+user-safe `error` (e.g., `"Calculation execution timed out"`); the `execution` field
+carries the inner error details.
+
 **Drift from the spec:** §7.3 sketches the failed-job body as
 `{success: false, error, timing}`. The shipped body
 (`backend/agent_kv/execution_views_result.py::result_payload`) is
@@ -757,6 +776,24 @@ beyond `docker compose up`:
     `host.docker.internal` (the compose host-gateway mapping). The lane also
     covers sync-wait submits (`timeout` → 200 with the inline result) and an
     `.xlsx` document (`fixtures/invoice.xlsx`, the no-pre-OCR-page-count path).
+11. **Sandbox worker — calculations codegen fleet** (when
+    `AGENT_KV_CALCULATIONS_ENABLED=true`). The optional `calculations` field
+    invokes out-of-process codegen and execution in a dedicated sandbox worker fleet
+    consuming the `sandbox_codegen` Celery queue. **Deployment order is strict:**
+    deploy the sandbox worker (Deployment healthy, actively consuming tasks from
+    `sandbox_codegen`) **before** flipping `AGENT_KV_CALCULATIONS_ENABLED=true`.
+    With the flag on but the sandbox down, calculation jobs fail user-safely at the
+    RPC timeout (they do not hang past it); however, **never leave the flag on
+    without a healthy sandbox fleet**, as all jobs with `calculations` will eventually
+    exceed their timeouts and return failures to callers.
+
+    **Security posture:** The sandbox pod carries no LLM, OCR, or storage secrets and
+    runs with default-deny egress — it only executes generated calculation code against
+    the extracted record in-memory. User-supplied `calculations` expressions are
+    validated through an AST gate (layer 1 of a 5-layer defense-in-depth model) at
+    submit time before ever reaching the sandbox, and further constrained (parsing,
+    type-checking, capability allowlist) at execution time. This layered defense prevents
+    unbounded code execution and resource exhaustion from untrusted input.
 
 ## 13. Environment reference
 
