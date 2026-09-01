@@ -28,7 +28,9 @@ def mark_llmwhisperer_v1_deprecated(apps, schema_editor):
     platform-service reads this column to reject execution, so a row missed
     here would fail deep in the SDK instead of with the deprecation message.
     """
-    AdapterInstance = apps.get_model("adapter_processor_v2", "AdapterInstance")
+    AdapterInstance = apps.get_model(  # NOSONAR
+        "adapter_processor_v2", "AdapterInstance"
+    )
 
     updated = AdapterInstance.objects.filter(adapter_id=ADAPTER_ID).update(
         is_available=False, deprecation_metadata=DEPRECATION_METADATA
@@ -37,7 +39,9 @@ def mark_llmwhisperer_v1_deprecated(apps, schema_editor):
 
 
 def reverse_deprecation(apps, schema_editor):
-    AdapterInstance = apps.get_model("adapter_processor_v2", "AdapterInstance")
+    AdapterInstance = apps.get_model(  # NOSONAR
+        "adapter_processor_v2", "AdapterInstance"
+    )
 
     updated = AdapterInstance.objects.filter(adapter_id=ADAPTER_ID).update(
         is_available=True, deprecation_metadata=None
