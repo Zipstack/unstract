@@ -19,7 +19,7 @@ from rest_framework import status, views
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from platform_api.openapi_schema import WHOAMI_SCHEMA
+from platform_api.openapi_schema import WHOAMI_SCHEMA, PlatformKeyAutoSchema
 
 
 @WHOAMI_SCHEMA
@@ -31,6 +31,10 @@ class WhoAmIView(views.APIView):
     # enforces the key's permission tier against the method. A permission
     # class here would only re-ask a question already answered.
     permission_classes: list = []
+
+    # Suppresses the standardized-errors example bodies, which this route never
+    # sends. See PlatformKeyAutoSchema.
+    schema = PlatformKeyAutoSchema()
 
     # authentication_classes is deliberately left alone. The project sets no
     # DEFAULT_AUTHENTICATION_CLASSES, so DRF's own default applies --
