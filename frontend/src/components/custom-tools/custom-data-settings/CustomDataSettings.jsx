@@ -1,11 +1,9 @@
-import {
-  CheckCircleOutlined,
-  InfoCircleOutlined,
-  WarningOutlined,
-} from "@ant-design/icons";
 import Editor from "@monaco-editor/react";
-import { Alert, Space, Tag, Typography } from "antd";
+import { CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Tag } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -238,7 +236,7 @@ function CustomDataSettings() {
         {extractedVariables.length > 0 && (
           <div className="custom-data-variables-section">
             <div className="custom-data-variables-header">
-              <InfoCircleOutlined />
+              <Info />
               <Typography.Text strong>
                 Variables Referenced in Active Prompts
               </Typography.Text>
@@ -252,9 +250,9 @@ function CustomDataSettings() {
               {variableStatus.map(({ variable, isDefined }) => (
                 <div key={variable} className="custom-data-variable-item">
                   {isDefined ? (
-                    <CheckCircleOutlined className="custom-data-icon-success" />
+                    <CircleCheck className="custom-data-icon-success" />
                   ) : (
-                    <WarningOutlined className="custom-data-icon-warning" />
+                    <TriangleAlert className="custom-data-icon-warning" />
                   )}
                   <Typography.Text
                     code

@@ -1,28 +1,15 @@
-import {
-  CheckCircleOutlined,
-  CloseCircleOutlined,
-  InfoCircleOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Card,
-  Empty,
-  Spin,
-  Table,
-  Tabs,
-  Tag,
-  Tooltip,
-  Typography,
-} from "antd";
+import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Alert, Empty, Spin, Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card, Table, Tabs } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";
 
 import "./MetricsDashboard.css";
-
-const { Text } = Typography;
 
 /**
  * Format large numbers with K/M/B suffixes.
@@ -55,7 +42,7 @@ const columns = [
       <span>
         Tokens{" "}
         <Tooltip title="Total LLM tokens consumed by this deployment">
-          <InfoCircleOutlined className="llm-usage-info-icon" />
+          <Info className="llm-usage-info-icon" />
         </Tooltip>
       </span>
     ),
@@ -65,7 +52,7 @@ const columns = [
     defaultSortOrder: "descend",
     render: (value) => (
       <Tooltip title={(value || 0).toLocaleString()}>
-        {formatCompactNumber(value)}
+        <span>{formatCompactNumber(value)}</span>
       </Tooltip>
     ),
     width: 120,
@@ -95,12 +82,12 @@ const columns = [
             <span>{total.toLocaleString()}</span>
             {completed > 0 && (
               <span className="execution-success">
-                <CheckCircleOutlined /> {formatCompactNumber(completed)}
+                <CircleCheck /> {formatCompactNumber(completed)}
               </span>
             )}
             {failed > 0 && (
               <span className="execution-error">
-                <CloseCircleOutlined /> {formatCompactNumber(failed)}
+                <CircleX /> {formatCompactNumber(failed)}
               </span>
             )}
           </span>
@@ -137,7 +124,11 @@ const columns = [
   },
 ];
 
-function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
+function DeploymentUsageTable({
+  startDate = null,
+  endDate = null,
+  refetchRef = null,
+}) {
   const [activeType, setActiveType] = useState("API");
 
   const { data, loading, error, refetch } = useDeploymentUsage(
@@ -267,12 +258,6 @@ DeploymentUsageTable.propTypes = {
   startDate: PropTypes.string,
   endDate: PropTypes.string,
   refetchRef: PropTypes.shape({ current: PropTypes.func }),
-};
-
-DeploymentUsageTable.defaultProps = {
-  startDate: null,
-  endDate: null,
-  refetchRef: null,
 };
 
 export { DeploymentUsageTable };

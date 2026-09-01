@@ -1,9 +1,12 @@
-import { ArrowLeftOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Segmented, Typography } from "antd";
-import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
+import { ArrowLeft, Pencil } from "lucide-react";
 import PropTypes from "prop-types";
+import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Segmented } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./ToolNavBar.css";
 
@@ -26,9 +29,27 @@ function ToolNavBar({
   searchPlaceholder = "Search by name",
 }) {
   const navigate = useNavigate();
-  const onSearchDebounce = debounce(({ target: { value } }) => {
-    onSearch(value, setSearchList);
-  }, 600);
+
+  /*
+   * Built inline, `debounce(...)` was a fresh instance on every render, so each
+   * keystroke started a new 600ms timer on a new closure and nothing was ever
+   * coalesced — the search ran per keypress. Memoised with no deps it is
+   * created once; the ref is what keeps that single instance calling the
+   * CURRENT onSearch/setSearchList props rather than the ones from mount.
+   */
+  const searchRef = useRef({ onSearch, setSearchList });
+  useEffect(() => {
+    searchRef.current = { onSearch, setSearchList };
+  });
+  const onSearchDebounce = useMemo(
+    () =>
+      debounce((value) => {
+        searchRef.current.onSearch?.(value, searchRef.current.setSearchList);
+      }, 600),
+    [],
+  );
+  // A pending timer firing after unmount would setState on a dead component.
+  useEffect(() => () => onSearchDebounce.cancel(), [onSearchDebounce]);
 
   const handleBack = () => {
     if (onNavigateBack) {
@@ -45,7 +66,8 @@ function ToolNavBar({
           <Button
             type="text"
             shape="circle"
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft />}
+            data-testid="tool-nav-bar-back-btn"
             onClick={handleBack}
           />
         )}
@@ -61,7 +83,7 @@ function ToolNavBar({
                   <Button
                     type="text"
                     size="small"
-                    icon={<EditOutlined />}
+                    icon={<Pencil />}
                     className="tool-nav-bar__edit-icon"
                     onClick={onEditTitle}
                     aria-label="Edit title"
@@ -85,17 +107,19 @@ function ToolNavBar({
             options={segmentOptions}
             value={segmentValue}
             onChange={segmentFilter}
+            data-testid="tool-nav-bar-segment"
             className="tool-nav-bar__segment"
           />
         )}
       </div>
       <div className="tool-nav-bar__right">
         {enableSearch && (
-          <Search
+          <Input.Search
             key={searchKey}
             className="tool-nav-bar__search"
             placeholder={searchPlaceholder}
-            onChange={onSearchDebounce}
+            data-testid="tool-nav-bar-search"
+            onChange={(event) => onSearchDebounce(event.target.value)}
             allowClear
           />
         )}

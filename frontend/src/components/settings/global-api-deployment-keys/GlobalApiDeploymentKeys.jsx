@@ -1,6 +1,9 @@
-import { Checkbox, Form, Select, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Checkbox, Select } from "@/components/ui/shims/antd-inputs";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -9,7 +12,10 @@ import { useSessionStore } from "../../../store/session-store";
 import { ApiKeyManager } from "../api-key-manager/ApiKeyManager.jsx";
 
 function DeploymentScopeFields({ form, deployments }) {
-  const allowAll = Form.useWatch("allow_all_deployments", form);
+  // Seeded `false` to match the Form.Item below: the checks here read
+  // `=== false` to mean "explicitly unchecked", so an undefined first render
+  // would disable the picker and drop its required-rule for that frame.
+  const allowAll = Form.useWatch("allow_all_deployments", form, false);
   return (
     <>
       <Form.Item

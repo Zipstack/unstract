@@ -1,17 +1,14 @@
-import {
-  Button,
-  Divider,
-  Form,
-  Input,
-  Modal,
-  Space,
-  Spin,
-  Steps,
-  Typography,
-} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Spin } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Steps } from "@/components/ui/shims/antd-structure";
+import { Text, Title } from "@/components/ui/shims/antd-typography";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -25,8 +22,6 @@ import { apiDeploymentsService } from "../api-deployment/api-deployments-service
 import "./CreateApiDeploymentFromPromptStudio.css";
 
 const { Step } = Steps;
-const { Title, Text } = Typography;
-
 const CreateApiDeploymentFromPromptStudio = ({
   open,
   setOpen,
@@ -52,7 +47,6 @@ const CreateApiDeploymentFromPromptStudio = ({
   const [createdWorkflowId, setCreatedWorkflowId] = useState(null);
   const [createdApiDeployment, setCreatedApiDeployment] = useState(null);
   const [isCreationComplete, setIsCreationComplete] = useState(false);
-  const [exportRetryCount, setExportRetryCount] = useState(0);
 
   // Form data states
   const [deploymentDetails, setDeploymentDetails] = useState({
@@ -87,14 +81,18 @@ const CreateApiDeploymentFromPromptStudio = ({
       setCreatedWorkflowId(null);
       setCreatedApiDeployment(null);
       setIsCreationComplete(false);
-      setExportRetryCount(0);
+      setToolFunctionName(null);
 
       // Fetch tool function name first, then schema
       fetchToolFunctionName();
     }
-  }, [open, toolDetails, form]);
+    // Keyed on the project id rather than `toolDetails` itself: that object comes
+    // from the custom-tool store and gets a fresh identity on every store write
+    // (SinglePass toggle, tool edit), which would otherwise restart the whole
+    // lookup/export chain — concurrently — while the modal is open.
+  }, [open, toolDetails?.tool_id, form]);
 
-  const fetchToolFunctionName = async () => {
+  const fetchToolFunctionName = async (retriesLeft = 1) => {
     if (!toolDetails?.tool_id) {
       return;
     }
@@ -107,18 +105,28 @@ const CreateApiDeploymentFromPromptStudio = ({
       });
 
       const tools = response.data || [];
-      const matchingTool = tools.find(
-        (tool) =>
-          tool.function_name === toolDetails.tool_id ||
-          tool.name === toolDetails.tool_name,
+      // `function_name` is the registry's own UUID (PromptStudioRegistry's PK),
+      // never the Prompt Studio project id — so correlate on the
+      // `prompt_studio_tool_id` back-reference the listing publishes for exactly
+      // this purpose. Fall back to the display name only for legacy registry rows
+      // that carry no back-reference; matching on name alone goes stale the moment
+      // a project is renamed after export, and is ambiguous when two projects
+      // share a name.
+      const matchingTool = tools.find((tool) =>
+        tool.prompt_studio_tool_id
+          ? tool.prompt_studio_tool_id === toolDetails.tool_id
+          : tool.name === toolDetails.tool_name,
       );
 
       if (matchingTool?.function_name) {
         setToolFunctionName(matchingTool.function_name);
         // Now fetch schema using the function name
         fetchToolSchema(matchingTool.function_name);
-      } else if (exportRetryCount < 2) {
-        // Tool not found in registry, automatically export it to the organization
+      } else if (retriesLeft > 0) {
+        // Not exported yet — export it, then re-read the listing. Sharing is kept
+        // private and mirrors the export `createApiDeployment` performs; exporting
+        // to the whole org here would silently widen access to the project for a
+        // user who only opened this modal.
         try {
           await axiosPrivate({
             method: "POST",
@@ -128,18 +136,15 @@ const CreateApiDeploymentFromPromptStudio = ({
               "Content-Type": "application/json",
             },
             data: {
-              is_shared_with_org: true,
-              user_id: [], // Export to everyone in the org
+              is_shared_with_org: false,
+              user_id: [toolDetails?.created_by],
               force_export: true,
             },
           });
 
-          setExportRetryCount((prev) => prev + 1);
-
-          // Retry fetching tool function name after export
-          setTimeout(() => {
-            fetchToolFunctionName();
-          }, 1000); // Wait 1 second for export to complete
+          // The export endpoint commits before it responds, so the entry is
+          // readable now — no delay to wait out.
+          await fetchToolFunctionName(retriesLeft - 1);
         } catch (exportErr) {
           setAlertDetails(handleException(exportErr));
           setToolSchema(null);
@@ -211,7 +216,6 @@ const CreateApiDeploymentFromPromptStudio = ({
     setCreatedWorkflowId(null);
     setCreatedApiDeployment(null);
     setIsCreationComplete(false);
-    setExportRetryCount(0);
     form.resetFields();
   };
 
@@ -313,6 +317,18 @@ const CreateApiDeploymentFromPromptStudio = ({
       return;
     }
 
+    // The registry lookup is async and can still be in flight when the wizard is
+    // clicked through quickly. Without the uid there is nothing valid to attach to
+    // the workflow, so bail before creating resources we would only roll back.
+    if (!toolFunctionName) {
+      setAlertDetails({
+        type: "error",
+        content:
+          "Still preparing this tool for deployment. Please retry in a moment.",
+      });
+      return;
+    }
+
     setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
       info: "Creating API deployment from prompt studio",
       tool_id: toolDetails?.tool_id,
@@ -372,7 +388,7 @@ const CreateApiDeploymentFromPromptStudio = ({
           "Content-Type": "application/json",
         },
         data: {
-          tool_id: toolFunctionName || toolDetails.tool_id,
+          tool_id: toolFunctionName,
           workflow_id: workflowId,
         },
       });
@@ -423,30 +439,18 @@ const CreateApiDeploymentFromPromptStudio = ({
       // Cleanup created resources on failure
       await cleanupCreatedResources(createdResources);
 
-      // Show error message to user
-      let errorMessage = "Failed to create API deployment";
-      const errorDetails = err?.response?.data?.errors;
-
-      if (errorDetails) {
-        setBackendErrors(err.response.data);
-        // Extract specific error messages for better user feedback
-        if (errorDetails.length > 0) {
-          const errorDetails = errorDetails
-            .map((e) => `${e.attr}: ${e.detail}`)
-            .join(", ");
-          errorMessage = `API deployment creation failed: ${errorDetails}`;
-        }
-      }
-
-      // Always show an alert for API deployment failures
-      setAlertDetails({
-        type: "error",
-        content: errorMessage,
-      });
+      setAlertDetails(
+        handleException(
+          err,
+          "Failed to create API deployment",
+          setBackendErrors,
+        ),
+      );
 
       // If we're on step 2 and have backend errors for deployment fields,
       // go back to step 1 to show the errors
-      if (errorDetails && currentStep === 1) {
+      const errorDetails = err?.response?.data?.errors;
+      if (Array.isArray(errorDetails) && currentStep === 1) {
         const hasDeploymentFieldErrors = errorDetails.some((error) =>
           ["api_name", "display_name", "description"].includes(error?.attr),
         );
@@ -587,6 +591,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       cancelText={getCancelText()}
       okButtonProps={{
         loading: isLoading,
+        disabled: currentStep === 1 && (isSchemaLoading || !toolFunctionName),
       }}
       footer={
         isCreationComplete

@@ -1,7 +1,10 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Col, Input, Row, Typography } from "antd";
 import debounce from "lodash/debounce";
+import { ArrowLeft } from "lucide-react";
 import PropTypes from "prop-types";
+import { useEffect, useMemo, useRef } from "react";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./TopBar.css";
 import { useNavigate } from "react-router-dom";
 
@@ -15,9 +18,6 @@ function TopBar({
   children,
 }) {
   const navigate = useNavigate();
-  const onSearchDebounce = debounce(({ target: { value } }) => {
-    onSearch(value);
-  }, 600);
 
   const onSearch = (searchText = "") => {
     if (searchText?.trim() === "") {
@@ -32,18 +32,57 @@ function TopBar({
     });
     setFilteredUserList(filteredList);
   };
+
+  /*
+   * Built inline, `debounce(...)` was a fresh instance on every render, so each
+   * keystroke started a new 600ms timer on a new closure and nothing was ever
+   * coalesced — the filter ran per keypress. Memoised with no deps it is
+   * created once; the ref is what keeps that single instance calling the
+   * CURRENT onSearch, so it never filters a stale `searchData`.
+   */
+  const onSearchRef = useRef(onSearch);
+  useEffect(() => {
+    onSearchRef.current = onSearch;
+  });
+  const onSearchDebounce = useMemo(
+    () => debounce((value) => onSearchRef.current(value), 600),
+    [],
+  );
+  // A pending timer firing after unmount would setState on a dead component.
+  useEffect(() => () => onSearchDebounce.cancel(), [onSearchDebounce]);
+
   return (
     <Row align="middle" justify="space-between" className="search-nav">
       <Col>
-        <ArrowLeftOutlined onClick={() => navigate(-1)} />
-        <Typography className="topbar-title">{title}</Typography>
+        {/*
+         * A real <button>, not a bare <ArrowLeft onClick>. lucide renders a
+         * plain SVG, so the handler landed on an element with no button
+         * semantics — not keyboard reachable, and the click did not register
+         * at all on these pages. antd's icon component supplied that wrapper.
+         *
+         * The row is an explicit flex: `.topbar-title` asks for `display:
+         * inline`, but Tailwind's preflight makes the SVG `display: block`,
+         * which broke the line and stacked the arrow above the title.
+         */}
+        <div className="topbar-heading">
+          <button
+            type="button"
+            className="topbar-back"
+            aria-label="Go back"
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft />
+          </button>
+          <Typography className="topbar-title">{title}</Typography>
+        </div>
       </Col>
       <Col>
         <div className="invite-user-search">
           {enableSearch && (
             <Input
               placeholder={searchPlaceholder}
-              onChange={onSearchDebounce}
+              data-testid="top-bar-search"
+              onChange={(event) => onSearchDebounce(event.target.value)}
             />
           )}
           {children}

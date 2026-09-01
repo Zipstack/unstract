@@ -1,7 +1,7 @@
 /* Styles for ToolSettings */
 
 .plt-tool-settings-layout {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   height: 100%;
   display: flex;
   flex-direction: column;

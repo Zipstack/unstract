@@ -31,7 +31,7 @@
 
 .card-grid-item .ant-card-head-title {
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -57,7 +57,7 @@
 }
 
 .card-item-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   margin: 0;
   white-space: nowrap;
@@ -345,7 +345,7 @@
 
 /* Workflow link - styled with icon */
 .card-list-workflow-link {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   text-decoration: none;
   display: inline-flex;
@@ -363,13 +363,18 @@
 
 .card-list-workflow-link-icon {
   font-size: 11px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 11px;
+  height: 11px;
   color: rgba(0, 0, 0, 0.55);
 }
 
 .card-list-name {
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
   font-size: 16px;
-  font-weight: var(--font-weight-600);
+  font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -391,7 +396,7 @@
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
   text-transform: uppercase;
   letter-spacing: 0.5px;
   cursor: default;
@@ -426,7 +431,7 @@
 
 .status-badge.status-badge-clickable:focus-visible,
 .status-badge.ant-tag.status-badge-clickable:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -448,7 +453,7 @@
 }
 
 .status-tooltip-count.success {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .status-tooltip-count.error {
@@ -471,7 +476,7 @@
 
 /* Preserve icon colors inside dark tooltip background */
 .status-tooltip-count.success .anticon {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .status-tooltip-count.error .anticon {
@@ -483,7 +488,7 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
 }
 
 /* Status row - full width below 2-column layout */
@@ -511,7 +516,12 @@
 }
 
 .card-list-meta-label .anticon {
-  font-size: 14px;
+  font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
 }
 
 .card-list-meta-icon {
@@ -522,7 +532,7 @@
 
 /* Meta item values - dark color */
 .card-list-meta-value {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   font-weight: 400;
 }
@@ -575,8 +585,8 @@
 
 /* Connector instance name - user-set name, prominent */
 .connector-flow-instance-name {
-  font-family: var(--font-family);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
   white-space: nowrap;
@@ -591,8 +601,8 @@
 
 /* Legacy connector name style (fallback) */
 .connector-flow-name {
-  font-family: var(--font-family);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
   white-space: nowrap;
@@ -646,7 +656,7 @@
   align-items: center;
   justify-content: center;
   font-size: 18px;
-  color: #092c4c;
+  color: var(--foreground);
   cursor: pointer;
   transition:
     color 0.2s ease,
@@ -661,12 +671,12 @@
 .action-icon-btn:hover,
 .action-icon-btn.ant-btn:hover {
   transform: scale(1.1);
-  color: #092c4c;
+  color: var(--primary);
 }
 
 .action-icon-btn:focus-visible,
 .action-icon-btn.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -739,7 +749,7 @@
 
 .card-expand-chevron:focus-visible,
 .card-expand-chevron.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
@@ -764,15 +774,15 @@
 }
 
 .card-list-expanded-label {
-  font-family: var(--font-family);
+  font-family: var(--font-sans);
   font-size: 11px;
   color: rgba(0, 0, 0, 0.55);
   letter-spacing: 0.3px;
 }
 
 .card-list-expanded-value {
-  font-family: var(--font-family);
-  font-size: 14px;
+  font-family: var(--font-sans);
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
 }
 
@@ -870,6 +880,11 @@
 
   .action-icon-btn {
     font-size: 16px;
+    /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+    width: 16px;
+    height: 16px;
   }
 }
 
@@ -892,8 +907,8 @@
 }
 
 .copy-btn-outlined:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* Clickable owner field - mirrors ListView owner badge behavior */
@@ -912,7 +927,7 @@
 }
 
 .card-owner-clickable:hover .ant-typography {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 /* Responsive override for card-grid-view on smaller screens */
@@ -977,7 +992,7 @@
 
 /* Value column with icon */
 .card-list-field-value {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
 }
 
@@ -1000,7 +1015,7 @@
 }
 
 .card-list-field-instance-name {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.85);
 }
@@ -1013,7 +1028,7 @@
 /* Footer row - inline items */
 .card-list-footer-row {
   padding: 14px 16px 0px 16px;
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   border-top: 1px solid #f0f0f0;
   background: #fafafa;
@@ -1108,13 +1123,13 @@
 
 .card-kebab-menu:focus-visible,
 .card-kebab-menu.ant-btn:focus-visible {
-  outline: 2px solid #1890ff;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
 /* Workflow link in row layout */
 .card-list-workflow-link-row {
-  font-size: 14px;
+  font-size: 13px;
   color: rgba(0, 0, 0, 0.85);
   text-decoration: none;
   display: inline-flex;
@@ -1124,11 +1139,16 @@
 }
 
 .card-list-workflow-link-row:hover {
-  color: #1677ff;
+  color: var(--primary);
 }
 
 .card-list-workflow-link-row .anticon {
   font-size: 11px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 11px;
+  height: 11px;
   color: rgba(0, 0, 0, 0.55);
 }
 

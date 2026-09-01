@@ -1,17 +1,13 @@
-import { SearchOutlined } from "@ant-design/icons";
-import {
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-} from "antd";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Row, Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
+import { Collapse } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
@@ -243,7 +239,11 @@ function PromptCardItems({
                           {isCoverageLoading ? (
                             <SpinnerLoader size="small" />
                           ) : (
-                            <SearchOutlined className="font-size-12" />
+                            // size-3 (12px), not `font-size-12`: that class is
+                            // a TEXT utility shared with the Typography.Link
+                            // below, and font-size does nothing to an SVG — the
+                            // icon fell back to lucide's 24px default.
+                            <Search className="size-3" />
                           )}
                           <Typography.Link className="font-size-12">
                             Coverage: {promptCoverage?.length || 0} of{" "}
@@ -283,7 +283,7 @@ function PromptCardItems({
                         className="prompt-card-select-type"
                         size="small"
                         placeholder="Enforce Type"
-                        optionFilterProp="children"
+                        showSearch
                         options={enforceTypeList}
                         value={promptDetails?.enforce_type || null}
                         disabled={
