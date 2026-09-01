@@ -74,6 +74,9 @@ class WorkerRegistry:
             # ride the same worker on their own dedicated queue (spec §5.3).
             additional_queues=[QueueName.AGENT_KV_CALLBACK],
         ),
+        WorkerType.SANDBOX: WorkerQueueConfig(
+            primary_queue=QueueName.SANDBOX_CODEGEN,
+        ),
     }
 
     # Pluggable worker configurations loaded dynamically
@@ -163,6 +166,12 @@ class WorkerRegistry:
                 TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
             ],
         ),
+        WorkerType.SANDBOX: WorkerTaskRouting(
+            worker_type=WorkerType.SANDBOX,
+            routes=[
+                TaskRoute("execute_sandboxed_code", QueueName.SANDBOX_CODEGEN),
+            ],
+        ),
     }
 
     # Pluggable worker task routes loaded dynamically
@@ -204,6 +213,9 @@ class WorkerRegistry:
             "log_level": "INFO",
         },
         WorkerType.IDE_CALLBACK: {
+            "log_level": "INFO",
+        },
+        WorkerType.SANDBOX: {
             "log_level": "INFO",
         },
     }
