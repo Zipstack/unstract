@@ -9,14 +9,15 @@ descriptions, so they are written for the caller rather than the maintainer.
 
 This operation publishes two error shapes, because it really sends two.
 ``whoami`` is deliberately absent from ``WHITELISTED_PATHS``, so
-``CustomAuthMiddleware`` authenticates it and answers the credential failures
-itself, before DRF is entered, with a bare ``{"message": ...}`` --- that is
-``PlatformKeyError``. Anything DRF itself raises after that point still goes
+``CustomAuthMiddleware`` authenticates it and answers almost every credential
+failure itself, before DRF is entered, with a bare ``{"message": ...}`` --- that
+is ``PlatformKeyError``. The one it does not reach --- a caller who is
+authenticated but carries no platform key --- is answered by the view in that
+same shape, deliberately, so one declaration covers both. Anything DRF itself raises after that point still goes
 through the project exception handler and comes back as ``ErrorResponse``; a
 method this view does not implement is the reachable case.
 """
 
-from api_v2.openapi_schema import ErrorResponse
 from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
@@ -28,8 +29,7 @@ from rest_framework import serializers
 from platform_api.models import ApiKeyPermission
 
 #: The statuses this operation answers from the authentication middleware, in
-#: ``PlatformKeyError`` shape. Everything else it can return is DRF's own and
-#: keeps the handler shape.
+#: ``PlatformKeyError`` shape.
 _MIDDLEWARE_ANSWERED_STATUSES = frozenset({"401", "403"})
 
 
@@ -42,8 +42,9 @@ class PlatformKeyAutoSchema(StandardizedErrorsAutoSchema):
     (``drf_standardized_errors/openapi.py:343-356``). Where this operation
     declares ``PlatformKeyError`` that example contradicts the ``$ref`` beside
     it, and a reader following it writes ``errors[0].code`` and gets a
-    ``KeyError`` on the wire. Where the operation really does return the
-    handler body -- a 405, say -- the example is correct and is kept.
+    ``KeyError`` on the wire. The narrowing is by status rather than blanket so
+    that a response later declared with the handler's own shape keeps the
+    example that is correct for it.
     """
 
     def _get_examples(
@@ -100,6 +101,10 @@ WHOAMI_DESCRIPTION = (
     "Only a platform API key is accepted. An API deployment key authenticates "
     "against a different table on a path that never reaches this endpoint, and "
     "is rejected as unauthenticated.\n\n"
+    "This route serves GET only. Another method is refused either by the "
+    "key's permission tier or by the route itself; neither refusal is "
+    "described here, because OpenAPI attaches responses to an operation and "
+    "there is no operation for a method the route does not serve.\n\n"
     "The same route also answers under an organisation segment "
     "(`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong "
     "to the organisation named. Prefer the form documented here: it is the one "
@@ -126,12 +131,6 @@ WHOAMI_SCHEMA = extend_schema_view(
                 description="The key was recognised but refused: its permission "
                 "tier is not one this deployment knows, or the request named an "
                 "organisation the key does not belong to.",
-            ),
-            405: OpenApiResponse(
-                ErrorResponse,
-                description="This route serves GET only. A key whose tier "
-                "permits the method reaches the view and is refused here; a "
-                "tier that does not is refused earlier, as a 403.",
             ),
             500: OpenApiResponse(
                 description="The request could not be served. The body is not "

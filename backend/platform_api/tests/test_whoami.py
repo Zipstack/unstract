@@ -164,13 +164,18 @@ class WhoAmITest(APITestCase):
         key = self._make_key(is_active=False)
         self.assertEqual(self._get(str(key.key)).status_code, 401)
 
-    def test_a_disallowed_method_is_the_handler_shape_the_spec_declares(self) -> None:
+    def test_a_disallowed_method_returns_the_handler_shape(self) -> None:
         """The endpoint returns two error shapes, and this is the second one.
 
         A tier that permits POST gets past the middleware and is refused by
         DRF, in `{type, errors[]}` -- not the `{message}` the credential
-        failures use. Undeclared and unasserted, that is the same spec-lies-
-        about-the-wire defect this suite already carries two other pins for.
+        failures use.
+
+        This asserts the wire only. It says nothing about the spec, and it does
+        not fail if the spec stops describing this: the route serves GET, so
+        OpenAPI has no operation to hang a POST response on. That gap is
+        recorded on the PR rather than papered over with a test that reads as
+        coverage it does not provide.
         """
         key = self._make_key(permission=ApiKeyPermission.READ_WRITE)
 
