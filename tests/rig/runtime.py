@@ -416,11 +416,18 @@ def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
     and there is no standalone prompt-service (folded into workers). The runner
     is intentionally absent — container-based execution is being retired in
     favour of in-worker execution, so e2e must not depend on it being up.
+
+    The frontend probes ``/`` rather than a health path: it is nginx serving a
+    static SPA, so there is no health endpoint to hit and index.html answering
+    200 is exactly the liveness signal. Without it the browser-driven ``ui``
+    group would sail past ``_wait_ready`` with nothing serving on :3000 and
+    then skip itself, reporting success while never opening the app.
     """
     return [
         ("backend", endpoints.backend_url.rstrip("/") + "/health"),
         ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
         ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
+        ("frontend", endpoints.frontend_url.rstrip("/") + "/"),
     ]
 
 
