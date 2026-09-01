@@ -7,10 +7,10 @@ serializer or the schema annotation, and regenerate in the same PR.
     uv run python manage.py generate_docstudio_spec           # from backend/
     uv run python manage.py generate_docstudio_spec --check   # no write, drift is an error
 
-The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX``, so generation refuses
-to produce a spec mounted anywhere but the public default: the committed
-artifact describes the deployment as it is served publicly, not as one
-installation chooses to mount it.
+The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX`` or ``PATH_PREFIX``
+depending on the mount, so generation refuses to produce a spec mounted anywhere
+but the public defaults: the committed artifact describes the API as it is
+served publicly, not as one installation chooses to mount it.
 """
 
 import json

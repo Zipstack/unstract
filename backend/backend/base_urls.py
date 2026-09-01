@@ -10,9 +10,16 @@ from .urls_v2 import urlpatterns as tenant_urls
 # Combine the URL patterns
 urlpatterns = [
     # Organisation-less, and so mounted ahead of the tenant urlconf rather than
-    # relying on falling through it. `OrganizationMiddleware` rewrites every
-    # organisation-scoped path before routing, and none of those rewrites can
-    # produce `whoami/`, so this shadows nothing.
+    # relying on falling through it. Nothing is shadowed today because no tenant
+    # urlconf declares `whoami/`; mounting first is what makes this route win if
+    # one ever does.
+    #
+    # Note this is not the only URL that reaches the view. `OrganizationMiddleware`
+    # strips the organisation segment before routing, so
+    # `/api/v1/unstract/<org>/whoami/` is rewritten to exactly this path and
+    # resolves here too -- with `organization_id` set, so the key-belongs-to-org
+    # check in `CustomAuthMiddleware` additionally applies. That alias is
+    # stricter, not looser; `test_whoami.py` covers both forms.
     path(
         f"{settings.TENANT_SUBFOLDER_PREFIX}/",
         include("platform_api.whoami_urls"),

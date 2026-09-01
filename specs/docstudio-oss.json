@@ -218,6 +218,19 @@
         ],
         "type": "object"
       },
+      "PlatformKeyError": {
+        "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return.",
+        "properties": {
+          "message": {
+            "description": "Human-readable reason for the refusal.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "StatusResponse": {
         "properties": {
           "message": {
@@ -290,7 +303,7 @@
   "paths": {
     "/api/v1/unstract/whoami/": {
       "get": {
-        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.",
+        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
         "operationId": "whoami",
         "responses": {
           "200": {
@@ -333,11 +346,11 @@
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/PlatformKeyError"
                 }
               }
             },
-            "description": "No usable platform API key was supplied."
+            "description": "No usable platform API key was supplied \u2014 absent, malformed, unknown, or revoked."
           },
           "403": {
             "content": {
@@ -357,35 +370,14 @@
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/PlatformKeyError"
                 }
               }
             },
-            "description": "The key is not permitted to issue this request."
+            "description": "The key was recognised but refused: its permission tier is not one this deployment knows, or the request named an organisation the key does not belong to."
           },
           "500": {
-            "content": {
-              "application/json": {
-                "examples": {
-                  "APIException": {
-                    "value": {
-                      "errors": [
-                        {
-                          "attr": null,
-                          "code": "error",
-                          "detail": "A server error occurred."
-                        }
-                      ],
-                      "type": "server_error"
-                    }
-                  }
-                },
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            },
-            "description": "The organisation could not be resolved."
+            "description": "The request could not be served. The body is not guaranteed to be JSON."
           }
         },
         "security": [

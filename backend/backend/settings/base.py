@@ -732,8 +732,10 @@ WHITELISTED_PATHS.append("/health")
 # `whoami` resolves the organisation from the API key itself, so it carries no
 # organisation segment -- without this the middleware would read `whoami` as one.
 # Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
+# Anchored: `re.match` is a prefix test, so without the `$` an organisation
+# literally named `whoami` would have its entire API treated as organisation-less.
 ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
-    rf"^/{PATH_PREFIX}/unstract/whoami/",
+    rf"^/{PATH_PREFIX}/unstract/whoami/$",
 ]
 
 # Social Auth Settings
