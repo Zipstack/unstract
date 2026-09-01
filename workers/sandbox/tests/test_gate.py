@@ -22,6 +22,10 @@ _HOSTILE = [
     "import sys\nsys.modules['os'].system('id')",
     "from sys import modules\nmodules['os'].system('id')",
     "import sys\nm = sys.modules",
+    "import sys\nsys._getframe(0).f_globals",
+    "import sys\nsys.settrace(None)",
+    "import sys as s\ns.argv",
+    "from sys import argv",
     "import posix\nposix.system('id')",
     "from os import path",
     "e = eval\ne('1')",
@@ -75,6 +79,23 @@ def test_sys_argv_allowed_for_runner_contract():
         "data = json.load(open(sys.argv[1]))\n"
         "with open(sys.argv[2], 'w') as f:\n"
         "    f.write(json.dumps(data) + '\\n')\n"
+    )
+    assert ok is True, reason
+    assert reason == ""
+
+
+def test_codegen_template_passes():
+    # The real codegen contract: sys used only for sys.argv, json for I/O.
+    ok, reason = check_code_safe(
+        "import json\n"
+        "import sys\n"
+        "def main():\n"
+        "    with open(sys.argv[1]) as f:\n"
+        "        record = json.load(f)[\"records\"][0]\n"
+        "    record[\"net\"] = round(float(record.get(\"total\", 0)) * 0.9, 2)\n"
+        "    with open(sys.argv[2], \"w\") as f:\n"
+        "        f.write(json.dumps(record) + \"\\n\")\n"
+        "main()\n"
     )
     assert ok is True, reason
     assert reason == ""
