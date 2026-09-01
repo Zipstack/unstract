@@ -45,6 +45,11 @@ class UnstractDB(UnstractConnector, ABC):
         return ""
 
     @staticmethod
+    def get_doc_url() -> str:
+        # Connectors without a dedicated page fall back to the category index
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/databases/index/"
+
+    @staticmethod
     def get_json_schema() -> str:
         return ""
 
@@ -356,6 +361,10 @@ class UnstractDB(UnstractConnector, ABC):
                     sql_values[column] = json.dumps(fallback_value)
             elif isinstance(value, Enum):
                 sql_values[column] = value.value
+            elif value is None:
+                # Bind as SQL NULL; f"{None}" would write the literal "None",
+                # invalid for a jsonb column (e.g. data on an errored record).
+                sql_values[column] = None
             else:
                 sql_values[column] = f"{value}"
 

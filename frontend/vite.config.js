@@ -113,6 +113,18 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: Number(env.PORT) || 3000,
+      // Vite refuses requests whose Host header is not localhost or an IP, as a
+      // DNS-rebinding guard. That is the right default locally, but when the dev
+      // server runs inside a cluster pod behind an ingress the browser sends the
+      // real domain and every request comes back "Blocked request". Opt in per
+      // environment with a comma-separated list, e.g. ".example.com".
+      // Empty list == Vite's default (localhost/IPs only), so local dev and the
+      // production build are unaffected.
+      allowedHosts: env.VITE_DEV_ALLOWED_HOSTS
+        ? env.VITE_DEV_ALLOWED_HOSTS.split(",")
+            .map((host) => host.trim())
+            .filter(Boolean)
+        : [],
       // Docker-specific: Enable polling for file watching
       watch: {
         usePolling: true,
@@ -124,6 +136,13 @@ export default defineConfig(({ mode }) => {
         clientPort: env.WDS_SOCKET_PORT
           ? Number(env.WDS_SOCKET_PORT)
           : Number(env.PORT) || 3000,
+        // Behind a TLS-terminating ingress the page is served over https, so the
+        // HMR socket has to be wss on the ingress port (443) rather than the
+        // port the dev server itself listens on. Left unset, Vite derives the
+        // protocol from its own (plain http) server and the socket never opens.
+        ...(env.VITE_DEV_HMR_PROTOCOL
+          ? { protocol: env.VITE_DEV_HMR_PROTOCOL }
+          : {}),
       },
       // Proxy configuration (similar to setupProxy.js in CRA)
       proxy:
@@ -133,6 +152,12 @@ export default defineConfig(({ mode }) => {
                 target: env.VITE_BACKEND_URL,
                 changeOrigin: true,
                 secure: false,
+                // Forward WebSocket upgrades too — the Socket.IO log/result
+                // channel connects to `/api/v1/socket` with a websocket-only
+                // transport. Without this the upgrade is never proxied to the
+                // backend and Prompt Studio results never stream to the UI in
+                // dev. (Prod is unaffected: Traefik routes /api/v1/socket.)
+                ws: true,
               },
             }
           : undefined,

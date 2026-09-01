@@ -28,6 +28,7 @@ from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -146,6 +147,10 @@ class AdapterInstanceViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
     serializer_class = AdapterInstanceSerializer
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["adapter_name", "created_at", "modified_at"]
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -187,6 +192,19 @@ class AdapterInstanceViewSet(
             constant.ADAPTER_NAME,
         ):
             queryset = queryset.filter(**filter_args)
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(adapter_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
+
         return queryset
 
     def get_serializer_class(

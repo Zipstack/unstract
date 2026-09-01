@@ -1,3 +1,4 @@
+import { fetchAllPages } from "../../../helpers/pagination.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useSessionStore } from "../../../store/session-store.js";
 
@@ -10,13 +11,12 @@ function workflowService() {
   const csrfToken = sessionDetails.csrfToken;
 
   return {
-    getWorkflowList: () => {
-      options = {
-        url: `${path}/workflow/?is_active=True`,
-        method: "GET",
-      };
-      return axiosPrivate(options);
-    },
+    // Feeds selectors, so it resolves to every workflow rather than one page.
+    getWorkflowList: () =>
+      fetchAllPages(axiosPrivate, {
+        url: `${path}/workflow/`,
+        params: { is_active: "True" },
+      }),
     getWorkflowEndpointList: (endpointType, connectorType) => {
       options = {
         url: `${path}/workflow/endpoint/?endpoint_type=${endpointType}&connection_type=${connectorType}`,
@@ -24,8 +24,7 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
-    getProjectList: (myProjects = false) => {
-      const params = myProjects ? { created_by: sessionDetails?.id } : {};
+    getProjectList: (params = {}) => {
       options = {
         url: `${path}/workflow/`,
         method: "GET",

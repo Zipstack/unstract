@@ -608,8 +608,13 @@ class InternalAPIClient(CachedAPIClientMixin):
         attempts: int | None = None,
         execution_time: float | None = None,
         organization_id: str | None = None,
+        cascade_terminal_files: bool = False,
     ) -> dict[str, Any]:
-        """Update workflow execution status."""
+        """Update workflow execution status.
+
+        ``cascade_terminal_files=True`` also marks the execution's non-terminal file
+        executions to the same terminal status atomically (used by the reaper).
+        """
         return self.execution_client.update_workflow_execution_status(
             execution_id,
             status,
@@ -620,6 +625,20 @@ class InternalAPIClient(CachedAPIClientMixin):
             attempts,
             execution_time,
             organization_id,
+            cascade_terminal_files=cascade_terminal_files,
+        )
+
+    def recover_stuck_pg_executions(
+        self,
+        stuck_seconds: int | None = None,
+        limit: int | None = None,
+    ) -> APIResponse:
+        """Reaper safety-net: finalize PG executions stranded non-terminal after all
+        their files completed. Org-agnostic (the endpoint scans across orgs, scoped
+        to PG rows by ``queue_message_id``). Delegates to the execution client.
+        """
+        return self.execution_client.recover_stuck_pg_executions(
+            stuck_seconds=stuck_seconds, limit=limit
         )
 
     def create_workflow_execution(self, execution_data: dict[str, Any]) -> dict[str, Any]:
@@ -1425,6 +1444,21 @@ class InternalAPIClient(CachedAPIClientMixin):
     ) -> dict[str, Any]:
         """Make GET request."""
         return self.base_client.get(endpoint, params, organization_id)
+
+    def sweep_undispatched_executions(self) -> dict[str, Any]:
+        """Ask the backend to terminalise executions that were never dispatched.
+
+        Closes a gap no worker can see: an abort between ``create_workflow_execution``
+        and ``execute_workflow_async`` commits a PENDING execution row without ever
+        creating a queue message or a barrier, so the reaper's barrier scan cannot
+        find it and PENDING — a non-terminal state — is never resolved.
+
+        Backend-side because the sweep touches ``WorkflowExecution``, the API-deployment
+        rate limiter; the reaper only supplies leader
+        election so exactly one instance runs it. Org-agnostic: the sweep spans all
+        organizations, so no ``organization_id`` is sent.
+        """
+        return self.post("v1/execution-logs/sweep-undispatched-executions/", data={})
 
     def post(
         self, endpoint: str, data: dict[str, Any], organization_id: str | None = None

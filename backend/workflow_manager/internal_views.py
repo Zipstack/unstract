@@ -6,6 +6,7 @@ import logging
 import uuid
 
 from django.db import transaction
+from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -148,6 +149,51 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             serializer = WorkflowExecutionContextSerializer(context_data)
             return Response(serializer.data)
 
+        except (Http404, WorkflowExecution.DoesNotExist):
+            # A deleted execution must return 404 (deterministic) so the reaper's
+            # orphan-claim sweep can GC it, instead of 500 (which it treats as
+            # transient → retry forever). BUT get_object() is org-scoped and this try
+            # wraps the whole method, so an Http404 here can also mean "exists but
+            # scoped out of this request" or a nested Http404 for a *different*
+            # resource — NOT "execution deleted". Since the reaper turns a genuine 404
+            # into an irreversible claim GC, confirm the row is truly absent (unscoped)
+            # before saying not-found; otherwise 500 so the reaper retains the claim.
+            execution_id = kwargs.get("pk") or kwargs.get("id")
+            # Own try/except: a DatabaseError from this unscoped exists-check is
+            # raised INSIDE this except block, so the sibling ``except Exception``
+            # below would NOT catch it (Python doesn't route between sibling
+            # handlers) — it would escape as Django's unstructured 500. On any
+            # exists-check failure we can't confirm absence, so fail closed to a
+            # structured 500 (retain the claim), never a 404 that would GC it.
+            try:
+                row_absent = not WorkflowExecution.objects.filter(
+                    id=execution_id
+                ).exists()
+            except Exception:
+                logger.exception(
+                    f"WorkflowExecution {execution_id} existence check failed "
+                    "(retrieve) — returning 500 (retain)"
+                )
+                return Response(
+                    {"error": "Failed to retrieve workflow execution"},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            if row_absent:
+                logger.info(
+                    f"WorkflowExecution {execution_id} not found (retrieve) — 404"
+                )
+                return Response(
+                    {"error": "WorkflowExecution not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            logger.warning(
+                f"WorkflowExecution {execution_id} exists but was not retrievable in "
+                "this context (org scope / nested lookup) — returning 500 (retain)"
+            )
+            return Response(
+                {"error": "Failed to retrieve workflow execution"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         except Exception as e:
             logger.error(
                 f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"
@@ -503,6 +549,56 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
+                # Concurrency guard for PG-transport executions, identified by the
+                # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
+                # Keying on the row's own transport keeps the invariant correct even
+                # if the rollout flag is toggled off or Flipt is unreachable while a
+                # PG execution is still finalizing (per the "transport carried on the
+                # row, never re-read from Flipt" rule).
+                #
+                # Protect COMPLETED and STOPPED — the two statuses that assert a
+                # deliberate final outcome. COMPLETED is set exclusively by a
+                # successful callback (its redelivery is skipped, see
+                # _callback_already_ran); STOPPED records an explicit user/operator
+                # stop. Under the PG path's high concurrency ~15 call sites write
+                # status via unlocked read-modify-write, so a stale writer can commit
+                # AFTER one of these and clobber it (lost update → execution stranded
+                # in EXECUTING, a confusing success→failed flip, or a straggler
+                # callback erasing a user's stop). Lock the row and refuse to overwrite
+                # either with a different status.
+                #
+                # ERROR is deliberately NOT protected: other paths (upstream error,
+                # the reaper) can set it BEFORE the first real callback, which then
+                # legitimately corrects the row to COMPLETED when the files actually
+                # succeeded — blocking that would freeze a genuinely successful run at
+                # a premature ERROR. Celery executions (queue_message_id NULL) keep the
+                # legacy path.
+                if execution.queue_message_id is not None:
+                    execution = WorkflowExecution.objects.select_for_update().get(
+                        pk=execution.pk
+                    )
+                    protected = {
+                        ExecutionStatus.COMPLETED.value,
+                        ExecutionStatus.STOPPED.value,
+                    }
+                    if (
+                        execution.status in protected
+                        and status_enum.value != execution.status
+                    ):
+                        logger.warning(
+                            f"update_status: refusing to overwrite protected status "
+                            f"'{execution.status}' with '{status_enum.value}' "
+                            f"for execution {id}"
+                        )
+                        return Response(
+                            {
+                                "status": "skipped",
+                                "reason": "already_final",
+                                "execution_id": str(execution.id),
+                                "new_status": execution.status,
+                            }
+                        )
+
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
@@ -511,6 +607,12 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
                 # File aggregates are not handled by update_execution; persist separately.
                 self._update_file_aggregates(execution, validated_data)
+
+                # Reaper recovery: cascade the terminal status to any non-terminal
+                # file executions so the execution and its files agree (atomic with
+                # the status write above — they can't diverge).
+                if validated_data.get("cascade_terminal_files"):
+                    self._cascade_terminal_files(execution, status_enum, error_message)
 
             logger.info(
                 f"Updated workflow execution {id} status to {validated_data['status']}"
@@ -531,6 +633,264 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @action(detail=False, methods=["post"])
+    def recover_stuck_pg_executions(self, request):
+        """Reaper safety-net: finalize PG executions stranded non-terminal after
+        all their files completed.
+
+        A lost-update race (unlocked concurrent status writes) or a swallowed
+        finalization write can leave a PG execution in EXECUTING/PENDING forever
+        even though every file execution is terminal — and because the barrier row
+        self-deletes at fan-in, the reaper's other (PG-table) sweeps can't see it.
+        This endpoint is the leader-gated reaper's trigger: it finds PG executions
+        stuck past ``stuck_seconds`` whose files are ALL terminal, recomputes the
+        correct terminal status from those files, and finalizes them.
+
+        **Covers BOTH transports (UN-3796).** It was scoped to PG by
+        ``queue_message_id__isnull=False``, which made a Celery execution invisible —
+        so one stranded by a PG cutover (its workers removed while its chord callback
+        was still to fire) sat ``EXECUTING`` forever with nothing able to close it. The
+        finalization logic itself was always transport-agnostic: it reads file statuses
+        and recomputes the terminal status, never touching a queue. Only the selection
+        was narrow.
+
+        Now requires the row to have been dispatched on **some** transport —
+        ``queue_message_id`` (PG) or ``task_id`` (Celery). That deliberately excludes
+        rows with BOTH handles NULL, which are never-dispatched and belong to
+        ``workflow_v2/undispatched_sweep.py``; the two predicates are disjoint on
+        ``task_id`` so they can never contend for the same row. (The
+        ``total == 0 → skipped`` guard below would also catch those, but relying on a
+        downstream guard for correctness is how overlaps get reintroduced.)
+
+        The method and route keep the ``_pg_`` name despite no longer being PG-only:
+        the URL is an internal-API contract between backend and workers, and renaming
+        it would break during a rolling deploy where an older worker still calls the
+        old path. Misleading name, deliberate trade.
+        """
+        from datetime import timedelta
+
+        from django.db.models import Exists, Max, OuterRef, Q
+        from django.utils import timezone
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        # Validate/clamp inputs: a negative stuck_seconds would push the cutoff into
+        # the future and match LIVE executions (finalizing running work); an
+        # unbounded limit would let one call scan the whole table.
+        try:
+            stuck_seconds = int(request.data.get("stuck_seconds") or 9000)
+            limit = int(request.data.get("limit") or 100)
+        except (TypeError, ValueError):
+            return Response(
+                {"error": "stuck_seconds and limit must be integers"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        stuck_seconds = max(1, stuck_seconds)
+        limit = max(1, min(limit, 1000))
+        cutoff = timezone.now() - timedelta(seconds=stuck_seconds)
+        terminal = ExecutionStatus.terminal_values()
+
+        # Select ONLY rows the per-row guard below can actually finalize: at least one
+        # file execution, and none of them still non-terminal.
+        #
+        # Without this the window fills with rows _recover_one_stuck_pg_execution()
+        # always skips — and a skip leaves ``modified_at`` untouched, so the SAME rows
+        # are re-selected on every sweep, forever. A genuinely recoverable execution
+        # behind them is never reached: not scanned, not skipped, simply invisible.
+        # Measured on integration during the UN-3796 cutover rehearsal: 1964 candidates,
+        # of which 476 had no file rows and 646 had a non-terminal file — 57% permanent
+        # skip fodder — while the freshly stranded execution sat at rank 1964 and every
+        # sweep logged a healthy-looking "scanned 100, recovered 0".
+        #
+        # Filtering here rather than leaning on the downstream guard is also what makes
+        # the drain real: every selected row finalizes and drops out of the candidate
+        # set, so the backlog shrinks monotonically. That is precisely what keeps the
+        # oldest-first ordering below starvation-free — FIFO is only fair if the queue
+        # actually moves.
+        files = WorkflowFileExecution.objects.filter(workflow_execution=OuterRef("pk"))
+        stuck_ids = list(
+            WorkflowExecution.objects.filter(
+                # Dispatched by ANY evidence: the positive stamp, or either transport
+                # handle. dispatched_at alone is not enough — pre-0027 rows never got
+                # one — and the handles alone are not enough either, which is the gap
+                # that makes this three-way rather than two.
+                #
+                # Once undispatched_sweep also requires `dispatched_at IS NULL`, a row
+                # that WAS dispatched but whose handle write failed stops matching that
+                # sweep. Without dispatched_at here it would match neither, and an
+                # execution whose files all finished could sit non-terminal forever with
+                # nothing able to close it — trading "wrongly terminalised" for "never
+                # terminalised". The three-way test keeps the two sweeps disjoint AND
+                # jointly exhaustive: undispatched takes rows where all three are absent,
+                # this takes rows where any one is present.
+                Q(dispatched_at__isnull=False)
+                | Q(queue_message_id__isnull=False)
+                | Q(task_id__isnull=False),
+                status__in=[
+                    ExecutionStatus.PENDING.value,
+                    ExecutionStatus.EXECUTING.value,
+                ],
+                modified_at__lt=cutoff,
+            )
+            .filter(Exists(files), ~Exists(files.exclude(status__in=terminal)))
+            # Staleness must be measured on the FILES, not on the execution row.
+            #
+            # ``workflow_execution.modified_at`` is effectively the START time: file
+            # completions write the file row, not the execution row, so it does not
+            # advance while work proceeds. ``modified_at < cutoff`` therefore reads as
+            # "started more than stuck_seconds ago", not "quiet for stuck_seconds" —
+            # and every run longer than the window is formally eligible for recovery
+            # WHILE IT IS STILL RUNNING. (Observed: a 14-minute ETL whose execution row
+            # still read its 12:01:44 start at 12:15, with a 600 s window.)
+            #
+            # The all-files-terminal filter above stops that being catastrophic, but it
+            # leaves a live race: between the last file going terminal and the callback
+            # finalizing, a healthy execution passes every check here. If a sweep lands
+            # in that window the reaper finalizes first, the terminal-one-way guard then
+            # refuses the callback's own write, and the notification never fires.
+            #
+            # Requiring the LAST FILE to also be older than the cutoff closes it: an
+            # execution whose files just finished is not yet stale, so the callback keeps
+            # its window and only genuinely abandoned work is recovered. Both conditions
+            # are kept — the indexed execution-row predicate cheaply narrows the scan,
+            # this one decides correctness.
+            .annotate(last_file_at=Max("file_executions__modified_at"))
+            .filter(last_file_at__lt=cutoff)
+            .order_by("modified_at")
+            .values_list("id", flat=True)[:limit]
+        )
+
+        outcomes = {"recovered": 0, "skipped": 0, "failed": 0}
+        for exec_id in stuck_ids:
+            outcomes[self._recover_one_stuck_pg_execution(exec_id, cutoff, terminal)] += 1
+        logger.info(
+            "recover_stuck_pg_executions: scanned=%s recovered=%s skipped=%s failed=%s",
+            len(stuck_ids),
+            outcomes["recovered"],
+            outcomes["skipped"],
+            outcomes["failed"],
+        )
+        return Response(
+            {
+                "recovered": outcomes["recovered"],
+                "skipped": outcomes["skipped"],
+                "scanned": len(stuck_ids),
+                "failed": outcomes["failed"],
+            }
+        )
+
+    def _recover_one_stuck_pg_execution(self, exec_id, cutoff, terminal) -> str:
+        """Finalize one stuck PG execution under a row lock.
+
+        Returns the outcome — ``"recovered"`` | ``"skipped"`` | ``"failed"``.
+        Extracted from :meth:`recover_stuck_pg_executions` to keep that action's
+        cognitive complexity low; see it for the full rationale.
+        """
+        from django.db.models import Count, Q
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        try:
+            with transaction.atomic():
+                execution = WorkflowExecution.objects.select_for_update().get(pk=exec_id)
+                # Re-check under lock: skip if it reached terminal or was just
+                # touched (no longer stuck) — never race a live execution.
+                if execution.status in terminal or execution.modified_at >= cutoff:
+                    return "skipped"
+                # One conditional aggregate instead of three COUNT round-trips.
+                counts = WorkflowFileExecution.objects.filter(
+                    workflow_execution=execution
+                ).aggregate(
+                    total=Count("id"),
+                    terminal=Count("id", filter=Q(status__in=terminal)),
+                    errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+                    stopped=Count("id", filter=Q(status=ExecutionStatus.STOPPED.value)),
+                    completed=Count(
+                        "id", filter=Q(status=ExecutionStatus.COMPLETED.value)
+                    ),
+                )
+                total = counts["total"]
+                if total == 0 or counts["terminal"] < total:
+                    # total==0: a valid PG message may still be QUEUED (a
+                    # backlog/outage can outlast stuck_seconds), so failing it would
+                    # wrongly terminalize a live execution the one-way guard then
+                    # blocks from recovery — file-less recovery needs a queue-state
+                    # check (reaper-side, follow-up). terminal < total: a file is
+                    # still non-terminal → genuinely processing. Skip either way.
+                    return "skipped"
+                # Recompute the correct terminal status: ERROR if any file errored,
+                # else STOPPED if any was stopped (a cancelled run must not be turned
+                # into ERROR), else COMPLETED.
+                if counts["errored"]:
+                    computed = ExecutionStatus.ERROR
+                elif counts["stopped"]:
+                    computed = ExecutionStatus.STOPPED
+                else:
+                    computed = ExecutionStatus.COMPLETED
+                execution.update_execution(status=computed)
+                self._restamp_execution_time_from_files(execution)
+                self._update_file_aggregates(
+                    execution,
+                    {
+                        "total_files": total,
+                        "successful_files": counts["completed"],
+                        "failed_files": counts["errored"],
+                    },
+                )
+                logger.warning(
+                    "Reaper safety-net: finalized stranded PG execution %s to %s "
+                    "(files %s ok / %s errored / %s stopped)",
+                    exec_id,
+                    computed.value,
+                    counts["completed"],
+                    counts["errored"],
+                    counts["stopped"],
+                )
+                return "recovered"
+        except Exception:
+            logger.exception("recover_stuck_pg_executions: failed to recover %s", exec_id)
+            return "failed"
+
+    @staticmethod
+    def _cascade_terminal_files(execution, status_enum, error_message) -> None:
+        """Mark this execution's non-terminal (PENDING/EXECUTING) file executions to
+        *status_enum*, so a reaper-recovered strand doesn't leave the execution
+        terminal while its files stay EXECUTING (the b11ba2f3 inconsistency).
+
+        No-op unless *status_enum* is terminal. Runs in the caller's transaction, so
+        the execution status and the file cascade commit together. Idempotent — a
+        re-run finds those files already terminal and updates nothing.
+        """
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        terminal = ExecutionStatus.terminal_values()  # canonical COMPLETED/ERROR/STOPPED
+        if status_enum.value not in terminal:
+            return
+        # Bulk .update() deliberately bypasses WorkflowFileExecution.update_status():
+        # this is a give-up recovery, so per-file execution_time is unknown (stays
+        # NULL) and the parent's failed/successful_files aggregates are NOT
+        # reconciled here — the execution's own terminal status (set above) is the
+        # source of truth (is_failure_run / notifications read it), and the
+        # serializer already derives failed counts for a terminal-failure run.
+        cascaded = (
+            WorkflowFileExecution.objects.filter(workflow_execution=execution)
+            .exclude(status__in=terminal)
+            .update(
+                status=status_enum.value,
+                execution_error=(
+                    error_message
+                    or "[reaper-recovery] Execution stranded; file marked terminal "
+                    "to match the execution."
+                ),
+            )
+        )
+        if cascaded:
+            logger.info(
+                f"Cascaded terminal status {status_enum.value} to {cascaded} "
+                f"non-terminal file execution(s) of execution {execution.id}"
+            )
+
     @staticmethod
     def _truncate_error_message(error_msg: str | None, execution_id) -> str | None:
         """Truncate an error message to the 256-char column limit (with ellipsis)."""
@@ -543,6 +903,35 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return error_msg[:253] + "..."
         return error_msg
+
+    @staticmethod
+    def _restamp_execution_time_from_files(execution) -> None:
+        """Correct the runtime ``update_execution()`` just stamped from ``now()``.
+
+        Both transports' status writers set ``execution_time = now - created_at`` on
+        any terminal transition (``_apply_legacy_update`` / ``_apply_pg_guarded_update``
+        in the execution model). That is right for a live finalization, where "now" IS
+        when the work ended, and wrong here: this sweep finalizes executions whose files
+        finished long before anything noticed, so the stamp would record how late the
+        reaper was rather than how long the work took. On the integration backlog that
+        meant multi-day runtimes on executions that ran for minutes — every one of them
+        feeding whatever dashboards read this column.
+
+        Recompute from the last file to reach a terminal state, which is the closest
+        durable record of when the work actually ended. If no file carries a timestamp,
+        leave whatever is there alone rather than substituting a worse guess.
+        """
+        from django.db.models import Max
+
+        last_file_at = WorkflowFileExecution.objects.filter(
+            workflow_execution=execution
+        ).aggregate(last=Max("modified_at"))["last"]
+        if not last_file_at or not execution.created_at:
+            return
+        execution.execution_time = round(
+            (last_file_at - execution.created_at).total_seconds(), 3
+        )
+        execution.save(update_fields=["execution_time"])
 
     @staticmethod
     def _update_file_aggregates(execution, validated_data) -> None:

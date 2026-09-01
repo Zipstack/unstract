@@ -3,7 +3,6 @@ import time
 import uuid
 
 from account_v2.constants import Common
-from django.utils import timezone
 from platform_settings_v2.platform_auth_service import PlatformAuthenticationService
 from tags.models import Tag
 from tool_instance_v2.models import ToolInstance
@@ -174,29 +173,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         error: str | None = None,
         increment_attempt: bool = False,
     ) -> None:
+        # Delegate to the model method, which owns the single, robust terminal-one-way
+        # guard (atomic select_for_update, PG-scoped, field-scoped writes). Duplicating
+        # the guard here risked drift + its own TOCTOU/dropped-field bugs.
         execution = WorkflowExecution.objects.get(pk=self.execution_id)
-
-        if status is not None:
-            execution.status = status.value
-
-            if (
-                status
-                in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.ERROR,
-                    ExecutionStatus.STOPPED,
-                ]
-                and not execution.execution_time
-            ):
-                execution.execution_time = round(
-                    (timezone.now() - execution.created_at).total_seconds(), 3
-                )
-        if error:
-            execution.error_message = error[:EXECUTION_ERROR_LENGTH]
-        if increment_attempt:
-            execution.attempts += 1
-
-        execution.save()
+        execution.update_execution(
+            status=status, error=error, increment_attempt=increment_attempt
+        )
 
     def has_successful_compilation(self) -> bool:
         return self.compilation_result["success"] is True
@@ -396,9 +379,10 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
     def update_execution_err(execution_id: str, err_msg: str = "") -> WorkflowExecution:
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            execution.status = ExecutionStatus.ERROR.value
-            execution.error_message = err_msg[:EXECUTION_ERROR_LENGTH]
-            execution.save()
+            # Route through the guarded model method instead of a direct save, so a
+            # late error handler can't revert a PG execution the callback already
+            # finalized COMPLETED/STOPPED. (ERROR over EXECUTING/PENDING still applies.)
+            execution.update_execution(status=ExecutionStatus.ERROR, error=err_msg)
             return execution
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
@@ -424,6 +408,69 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             )
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")
+
+    @staticmethod
+    def mark_dispatched(execution_id: str) -> None:
+        """Stamp ``dispatched_at`` — the positive record that the orchestrator task
+        reached its transport.
+
+        Called by the dispatcher the instant dispatch returns, BEFORE any handle
+        bookkeeping. That ordering is the whole point: ``_record_dispatch_handle`` has
+        three paths that leave both handles NULL on an execution that IS running (an
+        exception the caller swallows, an empty handle, an unparseable PG handle), and
+        the undispatched sweep used to read that absence as "never dispatched" and mark
+        the live row ERROR. One write upstream of all three closes it.
+
+        Best-effort, matching the handle write it precedes: a failure here must never
+        abort the caller, which is past the point of no return — the orchestrator is
+        already running. A failure leaves exactly the pre-existing ambiguity rather than
+        a new one.
+
+        ``update()`` rather than ``save()``: no auto_now field on this model may be
+        re-stamped by a bookkeeping write, and this must not race the orchestrator's own
+        status writes on the same row.
+        """
+        from django.utils import timezone
+
+        updated = WorkflowExecution.objects.filter(id=execution_id).update(
+            dispatched_at=timezone.now()
+        )
+        if not updated:
+            logger.error(
+                f"Could not stamp dispatched_at: execution {execution_id} not found"
+            )
+
+    @staticmethod
+    def update_execution_queue_message_id(
+        execution_id: str, queue_message_id: int | None
+    ) -> None:
+        """Record the PG queue-row handle (``pg_queue_message.msg_id``) on the
+        execution. PG-only: ``task_id`` is a UUIDField that can't hold the bigint
+        msg_id, so the PG handle lives in its own ``queue_message_id`` column.
+        """
+        if queue_message_id is None:
+            logger.warning(
+                f"Skipped setting queue_message_id for execution {execution_id} "
+                "since it's None"
+            )
+            return
+
+        # A DB-side single-column UPDATE, NOT execution.save(): a save() (even with
+        # update_fields) re-runs _handle_execution_cache(), which would republish
+        # this method's stale in-memory status to the Redis execution cache and can
+        # clobber a status the worker has since advanced — the same reason
+        # _set_result_acknowledge uses a queryset .update(). This marker write must
+        # touch ONLY the handle column and never the status/counters or the cache.
+        updated = WorkflowExecution.objects.filter(pk=execution_id).update(
+            queue_message_id=queue_message_id
+        )
+        if not updated:
+            logger.error(f"execution doesn't exist {execution_id}")
+            return
+        logger.info(
+            f"Successfully set queue_message_id '{queue_message_id}' for "
+            f"execution {execution_id}"
+        )
 
     @staticmethod
     def convert_tool_instance_model_to_data_class(

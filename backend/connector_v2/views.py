@@ -21,6 +21,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
+from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from backend.constants import RequestKey
@@ -45,6 +46,10 @@ class ConnectorInstanceViewSet(
 ):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    pagination_class = OptionalPagination
+    # `pk` tiebreaker keeps paging deterministic when modified_at collides.
+    ordering = ["-modified_at", "pk"]
+    ordering_fields = ["connector_name", "created_at", "modified_at"]
     notification_resource_name_field = "connector_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -120,6 +125,18 @@ class ConnectorInstanceViewSet(
                     f"Invalid connector_mode parameter: {connector_mode_param}"
                 )
                 queryset = queryset.none()
+
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+            from tenant_account_v2.sharing_helpers import (
+                resources_matching_owner_search,
+            )
+
+            queryset = queryset.filter(
+                Q(connector_name__icontains=search)
+                | Q(pk__in=resources_matching_owner_search(queryset.model, search))
+            )
 
         return queryset
 

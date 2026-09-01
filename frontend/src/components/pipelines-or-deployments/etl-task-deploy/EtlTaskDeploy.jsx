@@ -82,8 +82,8 @@ const EtlTaskDeploy = ({
   const getWorkflowList = () => {
     workflowApiService
       .getWorkflowList()
-      .then((res) => {
-        setWorkflowList(res?.data);
+      .then((workflows) => {
+        setWorkflowList(workflows);
       })
       .catch(() => {
         console.error("Unable to get workflow list");
