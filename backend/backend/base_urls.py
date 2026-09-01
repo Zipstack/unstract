@@ -9,6 +9,14 @@ from .urls_v2 import urlpatterns as tenant_urls
 
 # Combine the URL patterns
 urlpatterns = [
+    # Organisation-less, and so mounted ahead of the tenant urlconf rather than
+    # relying on falling through it. `OrganizationMiddleware` rewrites every
+    # organisation-scoped path before routing, and none of those rewrites can
+    # produce `whoami/`, so this shadows nothing.
+    path(
+        f"{settings.TENANT_SUBFOLDER_PREFIX}/",
+        include("platform_api.whoami_urls"),
+    ),
     path(
         f"{settings.TENANT_SUBFOLDER_PREFIX}/",
         include((tenant_urls, "tenant"), namespace="tenant"),

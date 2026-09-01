@@ -25,10 +25,12 @@ from drf_spectacular.validation import validate_schema
 DEFAULT_OUT = Path(__file__).resolve().parents[4] / "specs" / "docstudio-oss.json"
 URLCONF = "api_v2.deployment_spec_urls"
 REGENERATE = "uv run python manage.py generate_docstudio_spec"
-# The mount the deployment is served at publicly. `API_DEPLOYMENT_PATH_PREFIX`
-# can move it per installation, and a spec carrying a private prefix would send
-# every generated client to a URL only that installation answers.
-PUBLISHED_PATH_PREFIX = "deployment"
+# The mounts these routes are served at publicly. `API_DEPLOYMENT_PATH_PREFIX`
+# and `PATH_PREFIX` can move them per installation, and a spec carrying a
+# private prefix would send every generated client to a URL only that
+# installation answers. Written as literals rather than read from settings, so
+# an override fails the gate rather than being baked into the artifact.
+PUBLISHED_PATH_PREFIXES = ("deployment", "api/v1/unstract")
 # Named in every failure message: the repos that regenerate from this file are
 # the ones a spec change actually breaks, and nothing there watches this repo.
 DOWNSTREAM = (
@@ -69,16 +71,13 @@ def render_spec() -> str:
             f"API nobody implements:\n{diagnostics}"
         )
 
-    off_prefix = [
-        path
-        for path in schema["paths"]
-        if not path.startswith(f"/{PUBLISHED_PATH_PREFIX}/")
-    ]
+    published = tuple(f"/{prefix}/" for prefix in PUBLISHED_PATH_PREFIXES)
+    off_prefix = [path for path in schema["paths"] if not path.startswith(published)]
     if off_prefix:
         raise SpecGenerationFailed(
-            f"Generated paths are not under /{PUBLISHED_PATH_PREFIX}/: "
-            f"{', '.join(sorted(off_prefix))}. Unset API_DEPLOYMENT_PATH_PREFIX "
-            f"and regenerate."
+            f"Generated paths are outside the published mounts "
+            f"({', '.join(published)}): {', '.join(sorted(off_prefix))}. Unset "
+            f"API_DEPLOYMENT_PATH_PREFIX and PATH_PREFIX and regenerate."
         )
 
     # Hand-written fragments (path parameter schemas, security schemes) reach

@@ -19,6 +19,7 @@ from django.urls import resolve, reverse
 from drf_spectacular.drainage import warn
 from drf_spectacular.generators import SchemaGenerator
 from middleware.exception import drf_logging_exc_handler
+from platform_api.models import ApiKeyPermission
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.test import APIRequestFactory
 from workflow_manager.endpoint_v2.dto import FileExecutionResult
@@ -40,6 +41,11 @@ _METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
 #: Documented on a file result but absent from the DTO: the workflow copies it
 #: up from the extraction metadata when the request asks for it.
 _PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
+
+#: The operations served by an API deployment, as opposed to the platform-key
+#: operations that describe the account. They authenticate differently and can
+#: fail differently, so several checks below split on this.
+DEPLOYMENT_OPERATIONS = {"execute", "status"}
 
 
 def _committed() -> dict:
@@ -115,23 +121,62 @@ def test_spec_documents_the_deployment_operations() -> None:
     assert "deployment" in [tag["name"] for tag in spec["tags"]]
 
 
-def test_operations_require_the_deployment_key() -> None:
+def test_every_operation_names_the_credential_it_takes() -> None:
     """Without this the unset DRF authentication default is published as
     though it were a decision, and no generated client can authenticate.
+
+    Which credential differs by operation -- a deployment key runs a
+    deployment, a platform key describes itself -- so what is pinned here is
+    that each operation names exactly one, and that the scheme it names is
+    declared and is a bearer token.
     """
     spec = _committed()
-    scheme = spec["components"]["securitySchemes"]["deploymentKey"]
+    schemes = spec["components"]["securitySchemes"]
 
-    assert (scheme["type"], scheme["scheme"]) == ("http", "bearer")
     for path, method, operation in _operations(spec):
-        assert operation["security"] == [{"deploymentKey": []}], f"{method} {path}"
+        security = operation["security"]
+        assert len(security) == 1, f"{method} {path}"
+        (requirement,) = security
+        (name,) = requirement
+        assert requirement[name] == [], f"{method} {path}"
+        assert (schemes[name]["type"], schemes[name]["scheme"]) == (
+            "http",
+            "bearer",
+        ), f"{method} {path}"
+
+
+def test_the_deployment_operations_take_the_deployment_key() -> None:
+    """The credential each operation names is part of its contract, so the
+    pairing is pinned rather than left to the loop above.
+    """
+    for path, method, operation in _operations(_committed()):
+        if operation["operationId"] in DEPLOYMENT_OPERATIONS:
+            assert operation["security"] == [{"deploymentKey": []}], f"{method} {path}"
+        else:
+            assert operation["security"] == [{"platformKey": []}], f"{method} {path}"
 
 
 def test_clients_can_branch_on_every_failure_they_will_see() -> None:
+    """Every operation authenticates and can fail on the server, so these three
+    are the branches a client needs whatever it is calling.
+    """
     for path, method, operation in _operations(_committed()):
-        assert {"400", "401", "403", "404", "500"} <= set(
-            operation["responses"]
-        ), f"{method} {path}"
+        assert {"401", "403", "500"} <= set(operation["responses"]), f"{method} {path}"
+
+
+def test_the_deployment_operations_document_a_rejected_request_and_a_missing_one() -> (
+    None
+):
+    """Kept off the universal check above: a request carrying no body and
+    naming no resource cannot be malformed or miss its target, and documenting
+    a status an operation cannot return hands clients a dead branch.
+    """
+    for path, method, operation in _operations(_committed()):
+        declared = {"400", "404"} & set(operation["responses"])
+        if operation["operationId"] in DEPLOYMENT_OPERATIONS:
+            assert declared == {"400", "404"}, f"{method} {path}"
+        else:
+            assert not declared, f"{method} {path}"
 
 
 def test_only_the_execution_endpoint_documents_the_statuses_only_it_returns() -> None:
@@ -214,6 +259,44 @@ def test_the_status_read_documents_the_two_keys_it_returns() -> None:
     assert status_response["properties"]["message"]["items"]["$ref"].endswith(
         "/FileResult"
     )
+
+
+def test_spec_documents_the_identity_operation() -> None:
+    spec = _committed()
+    documented = {operation["operationId"] for _, _, operation in _operations(spec)}
+
+    assert "whoami" in documented
+    assert "identity" in [tag["name"] for tag in spec["tags"]]
+
+
+def test_the_identity_read_documents_the_keys_it_returns() -> None:
+    """The view builds its body literally, so the spec is the only place the
+    set is written down.
+    """
+    whoami = _schema("WhoAmIResponse")
+    fields = {"organization_id", "organization_name", "permission", "key_name"}
+
+    assert set(whoami["properties"]) == fields
+    # All four are read off a key row that always has them, so a client can
+    # treat every one as present rather than guarding each.
+    assert set(whoami["required"]) == fields
+
+
+def test_the_documented_permission_tiers_are_the_ones_the_model_defines() -> None:
+    """A tier added to the model but not the spec reaches clients as a value
+    their generated enum rejects.
+    """
+    assert _schema("ApiKeyPermission")["enum"] == list(ApiKeyPermission.values)
+
+
+def test_the_identity_read_asks_for_no_organisation() -> None:
+    """Resolving the organisation from the key is the whole point: a path
+    parameter here would mean the caller had to know the answer first.
+    """
+    for path, _, operation in _operations(_committed()):
+        if operation["operationId"] == "whoami":
+            assert "{" not in path, path
+            assert not operation.get("parameters"), path
 
 
 @pytest.mark.parametrize(
