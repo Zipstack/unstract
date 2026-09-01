@@ -32,8 +32,8 @@ class WhoAmIView(views.APIView):
     # class here would only re-ask a question already answered.
     permission_classes: list = []
 
-    # Suppresses the standardized-errors example bodies, which this route never
-    # sends. See PlatformKeyAutoSchema.
+    # Narrows the standardized-errors example bodies to the statuses that
+    # actually carry them. See PlatformKeyAutoSchema.
     schema = PlatformKeyAutoSchema()
 
     # authentication_classes is deliberately left alone. The project sets no

@@ -164,6 +164,33 @@ class WhoAmITest(APITestCase):
         key = self._make_key(is_active=False)
         self.assertEqual(self._get(str(key.key)).status_code, 401)
 
+    def test_a_disallowed_method_is_the_handler_shape_the_spec_declares(self) -> None:
+        """The endpoint returns two error shapes, and this is the second one.
+
+        A tier that permits POST gets past the middleware and is refused by
+        DRF, in `{type, errors[]}` -- not the `{message}` the credential
+        failures use. Undeclared and unasserted, that is the same spec-lies-
+        about-the-wire defect this suite already carries two other pins for.
+        """
+        key = self._make_key(permission=ApiKeyPermission.READ_WRITE)
+
+        response = self.client.post(WHOAMI_URL, HTTP_AUTHORIZATION=f"Bearer {key.key}")
+
+        self.assertEqual(response.status_code, 405)
+        self.assertEqual(set(response.json()), {"type", "errors"})
+
+    def test_a_tier_that_forbids_the_method_is_refused_earlier(self) -> None:
+        """The 403 the middleware sends for the same request, so the two
+        rejection paths for one method are pinned against each other rather
+        than each looking like the only one.
+        """
+        key = self._make_key(permission=ApiKeyPermission.READ)
+
+        response = self.client.post(WHOAMI_URL, HTTP_AUTHORIZATION=f"Bearer {key.key}")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(list(response.json()), ["message"])
+
     def test_a_rejection_carries_the_body_the_spec_publishes(self) -> None:
         """The status alone was asserted everywhere above, and the status alone
         is what let the spec claim a body shape this route never sends.
