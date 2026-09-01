@@ -838,14 +838,24 @@ def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch)
     assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
 
 
-def test_node_command_vitest_points_reporter_at_group_junit(tmp_path: Path) -> None:
+def test_node_command_vitest_points_reporter_at_group_junit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The whole reason `vitest` is a first-class runner rather than a synthetic
     one-row wrapper: it writes real JUnit, so `parse_junit` reports per-test
     counts. That only holds if the reporter is aimed at the group's junit.xml.
+
+    `shutil.which` is stubbed PRESENT because this asserts command *construction*,
+    which must not depend on whether the host happens to have Node: without the
+    stub `_node_command` short-circuits to its `exit 5` sentinel and the assert
+    below compares against that instead. Mirrors
+    `test_node_command_without_npx_collects_nothing`, which stubs the same hook to
+    absent to cover the other branch.
     """
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
     group = GroupDefinition(
         name="frontend", tier="unit", paths=("src",), runner="vitest",
         workdir="frontend",
@@ -859,13 +869,19 @@ def test_node_command_vitest_points_reporter_at_group_junit(tmp_path: Path) -> N
     assert cmd[-1] == "src"
 
 
-def test_node_command_playwright_takes_junit_from_env_not_flag(tmp_path: Path) -> None:
+def test_node_command_playwright_takes_junit_from_env_not_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Playwright reads its reporter path from config (PLAYWRIGHT_JUNIT_OUTPUT_NAME),
     not a CLI flag — passing --outputFile would make it fail to parse args.
+
+    `shutil.which` stubbed present for the same reason as the vitest case above:
+    the assertion is about argument shape, not about the host having Node.
     """
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
     group = GroupDefinition(
         name="ui", tier="e2e", paths=("tests/ui",), runner="playwright",
         workdir="frontend",
