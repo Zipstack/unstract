@@ -1,17 +1,19 @@
 """OpenAPI annotation for the ``whoami`` endpoint.
 
-The serializer here shapes the published spec only; it never parses a request
-or builds a response. It lives outside ``serializers.py`` so that nothing at
-request time imports it by accident, matching ``api_v2.openapi_schema``.
+The serializers here shape the published spec only; they never parse a request
+or build a response. They live outside ``serializers.py`` so that nothing at
+request time imports one by accident, matching ``api_v2.openapi_schema``.
 
-Its docstring and help texts are published as the client-facing descriptions,
-so they are written for the caller rather than the maintainer.
+Their docstrings and help texts are published as the client-facing
+descriptions, so they are written for the caller rather than the maintainer.
 
-The error body is imported rather than restated: it comes from the project-wide
-exception handler, so it is the same shape for every endpoint in the spec.
+This operation does **not** reuse ``api_v2.openapi_schema.ErrorResponse``. That
+shape comes from the project-wide exception handler, and this route never
+reaches it: ``whoami`` is deliberately absent from ``WHITELISTED_PATHS``, so
+``CustomAuthMiddleware`` authenticates it and answers every rejection itself,
+with a bare ``{"message": ...}`` body, before DRF is entered.
 """
 
-from api_v2.openapi_schema import ErrorResponse
 from drf_spectacular.utils import (
     OpenApiResponse,
     extend_schema,
@@ -42,6 +44,17 @@ class WhoAmIResponse(serializers.Serializer):
     key_name = serializers.CharField(help_text="The key's name, as it was minted.")
 
 
+class PlatformKeyError(serializers.Serializer):
+    """Why a platform-key request was refused.
+
+    Produced by the authentication middleware rather than by the project's
+    exception handler, so it carries a single human-readable message and none
+    of the per-field structure the organisation-scoped endpoints return.
+    """
+
+    message = serializers.CharField(help_text="Human-readable reason for the refusal.")
+
+
 WHOAMI_DESCRIPTION = (
     "Resolve the organisation a platform API key belongs to.\n\n"
     "The organisation is read from the key itself, so this route carries no "
@@ -49,7 +62,11 @@ WHOAMI_DESCRIPTION = (
     "`organization_id`; every other endpoint takes it as a path segment.\n\n"
     "Only a platform API key is accepted. An API deployment key authenticates "
     "against a different table on a path that never reaches this endpoint, and "
-    "is rejected as unauthenticated."
+    "is rejected as unauthenticated.\n\n"
+    "The same route also answers under an organisation segment "
+    "(`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong "
+    "to the organisation named. Prefer the form documented here: it is the one "
+    "that needs no organisation to begin with."
 )
 
 
@@ -63,16 +80,19 @@ WHOAMI_SCHEMA = extend_schema_view(
         responses={
             200: WhoAmIResponse,
             401: OpenApiResponse(
-                ErrorResponse,
-                description="No usable platform API key was supplied.",
+                PlatformKeyError,
+                description="No usable platform API key was supplied — absent, "
+                "malformed, unknown, or revoked.",
             ),
             403: OpenApiResponse(
-                ErrorResponse,
-                description="The key is not permitted to issue this request.",
+                PlatformKeyError,
+                description="The key was recognised but refused: its permission "
+                "tier is not one this deployment knows, or the request named an "
+                "organisation the key does not belong to.",
             ),
             500: OpenApiResponse(
-                ErrorResponse,
-                description="The organisation could not be resolved.",
+                description="The request could not be served. The body is not "
+                "guaranteed to be JSON.",
             ),
         },
         description=WHOAMI_DESCRIPTION,

@@ -17,7 +17,8 @@ from django.conf import settings
 from django.test import override_settings
 from django.urls import Resolver404, resolve
 from platform_api.models import ApiKeyPermission, PlatformApiKey
-from rest_framework.test import APITestCase
+from platform_api.whoami_views import WhoAmIView
+from rest_framework.test import APIRequestFactory, APITestCase
 
 ORG_A = "org-a"
 ORG_B = "org-b"
@@ -73,8 +74,11 @@ class WhoAmITest(APITestCase):
     # --- routing -----------------------------------------------------------
 
     def test_the_route_is_reachable(self) -> None:
-        """A 404 from the organisation regex eating `whoami` would otherwise
-        look identical to a rejected request in every test below.
+        """The mount exists. Nothing more: `resolve()` runs no middleware, so
+        this cannot see the organisation regex at all -- removing the whitelist
+        entry leaves this test green. The middleware regression is covered by
+        `test_the_organisation_middleware_still_defines_organisation_id`, and
+        the failure it produces is a 403, not a 404.
         """
         try:
             resolve(WHOAMI_URL)
@@ -82,13 +86,27 @@ class WhoAmITest(APITestCase):
             self.fail(f"{WHOAMI_URL} resolves to nothing; the route is not mounted")
 
     def test_the_endpoint_is_not_whitelisted(self) -> None:
-        """WHITELISTED_PATHS skips authentication entirely. This endpoint has
-        nothing to say without a key, so landing there would make it answer
-        with someone else's organisation or none at all.
+        """WHITELISTED_PATHS skips authentication entirely, so `platform_api_key`
+        would never be bound and every caller would get the view's own 401. The
+        endpoint would stop working rather than leak -- but it would stop
+        working silently, which this pins.
         """
         assert not any(
             WHOAMI_URL.startswith(path) for path in settings.WHITELISTED_PATHS
         ), f"{WHOAMI_URL} is whitelisted — it would bypass authentication entirely"
+
+    def test_the_whitelist_does_not_swallow_paths_beneath_it(self) -> None:
+        """`re.match` is a prefix test. Unanchored, an organisation literally
+        named `whoami` would have every one of its paths treated as
+        organisation-less.
+        """
+        import re
+
+        beneath = f"/{settings.PATH_PREFIX}/unstract/whoami/workflow/"
+        assert not any(
+            re.match(pattern, beneath)
+            for pattern in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
+        ), f"{beneath} is treated as organisation-less"
 
     def test_the_organisation_middleware_still_defines_organisation_id(self) -> None:
         """The whitelist branch returns early. Downstream middleware reads the
@@ -145,3 +163,62 @@ class WhoAmITest(APITestCase):
     def test_an_inactive_key_is_rejected(self) -> None:
         key = self._make_key(is_active=False)
         self.assertEqual(self._get(str(key.key)).status_code, 401)
+
+    def test_a_rejection_carries_the_body_the_spec_publishes(self) -> None:
+        """The status alone was asserted everywhere above, and the status alone
+        is what let the spec claim a body shape this route never sends.
+
+        These rejections come from the middleware, not from DRF's exception
+        handler, so the body is a bare `message` -- not the `{type, errors[]}`
+        the organisation-scoped endpoints return.
+        """
+        response = self._get(str(uuid.uuid4()))
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(list(response.json()), ["message"])
+
+    def test_the_view_answers_401_when_no_key_reached_it(self) -> None:
+        """The one rejection the view itself owns, and the only one the
+        middleware cannot answer first: a session-authenticated caller with no
+        platform key.
+
+        Called directly, because every request that goes through the middleware
+        is rejected before the view runs -- which is why this branch was
+        uncovered while returning the wrong status. `raise NotAuthenticated`
+        answers 403 here: DRF coerces it unless the first authenticator offers
+        a WWW-Authenticate header, and SessionAuthentication offers none.
+        """
+        request = APIRequestFactory().get(WHOAMI_URL)
+        response = WhoAmIView.as_view()(request)
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(list(response.data), ["message"])
+
+    # --- the organisation-scoped alias -------------------------------------
+
+    def test_the_alias_under_an_organisation_segment_also_answers(self) -> None:
+        """`OrganizationMiddleware` strips the segment, so `<org>/whoami/` is
+        rewritten onto this same view. Untested, this behaviour would move the
+        next time either the mount order or the org-match branch changed.
+        """
+        key = self._make_key(organization=self.org_a)
+
+        response = self._get(
+            str(key.key), url=f"/{settings.PATH_PREFIX}/unstract/{ORG_A}/whoami/"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["organization_id"], ORG_A)
+
+    def test_the_alias_rejects_a_key_from_another_organisation(self) -> None:
+        """The alias is stricter than the documented route, not looser: naming
+        an organisation re-arms the key-belongs-to-org check that the org-less
+        form has nothing to check against.
+        """
+        key = self._make_key(organization=self.org_b)
+
+        response = self._get(
+            str(key.key), url=f"/{settings.PATH_PREFIX}/unstract/{ORG_A}/whoami/"
+        )
+
+        self.assertEqual(response.status_code, 403)

@@ -5,14 +5,17 @@ organisation identifier is otherwise only discoverable by reading it out of a
 web-app URL. This endpoint answers "which organisation does this key belong
 to?", so a client can resolve it once and store it.
 
-The organisation is read off the key row, never off the URL: ``PlatformApiKey``
-carries an ``organization`` FK stamped at mint time and a globally unique
-``key``, so a bearer token maps to exactly one organisation by construction.
-That is why this route carries no organisation segment.
+The organisation is read off the key row, never off the URL: ``PlatformApiKey.key``
+is unique, so a bearer token selects at most one row, and that row names its own
+organisation. That is why this route carries no organisation segment.
+
+``mcp_server.tools.platform.whoami`` answers the same question over MCP for the
+same key. It predates this endpoint and spells the tier ``permission_tier``;
+this one uses ``permission``, matching the model field. Adding a field to either
+does not add it to the other.
 """
 
 from rest_framework import status, views
-from rest_framework.exceptions import NotAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -29,17 +32,28 @@ class WhoAmIView(views.APIView):
     # class here would only re-ask a question already answered.
     permission_classes: list = []
 
-    # authentication_classes is deliberately not set. The project configures no
-    # DEFAULT_AUTHENTICATION_CLASSES that resolves a user, so DRF's default
-    # returns None and the middleware's request.user survives into the view.
-
+    # authentication_classes is deliberately left alone. The project sets no
+    # DEFAULT_AUTHENTICATION_CLASSES, so DRF's own default applies --
+    # SessionAuthentication first -- and that is what carries the user
+    # CustomAuthMiddleware bound into the view. Emptying this list would not
+    # simplify anything and would drop that.
     def get(self, request: Request) -> Response:
         key = getattr(request, "platform_api_key", None)
         if key is None:
             # A session-authenticated browser user reaches this with no key to
             # describe. There is nothing to report, and reporting the session's
             # organisation instead would answer a question nobody asked.
-            raise NotAuthenticated("This endpoint requires a platform API key.")
+            #
+            # Returned rather than raised: DRF coerces NotAuthenticated to 403
+            # unless the first authenticator offers a WWW-Authenticate header,
+            # and SessionAuthentication offers none -- so a raise here would
+            # answer 403 to a request whose problem is a missing credential.
+            # The body matches what CustomAuthMiddleware sends for the same
+            # class of failure, so one shape covers every rejection.
+            return Response(
+                {"message": "This endpoint requires a platform API key."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
 
         organization = key.organization
         return Response(

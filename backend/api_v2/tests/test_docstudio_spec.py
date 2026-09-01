@@ -95,6 +95,30 @@ def test_a_generator_diagnostic_fails_generation(monkeypatch) -> None:
         render_spec()
 
 
+def test_a_path_outside_the_published_mounts_fails_generation(monkeypatch) -> None:
+    """The gate the diff widened, exercised on the branch it protects.
+
+    Widening it from one prefix to two is exactly the edit that could admit
+    everything; the accept direction is covered incidentally by every other
+    test here, and only this one covers the refusal.
+    """
+
+    def off_prefix_generator(self, request=None, public=False) -> dict:
+        # Otherwise-valid, so the OpenAPI-validity gate below cannot be what
+        # raises: matching on the path alone passed even with the prefix gate
+        # removed, because the validity error quotes the instance back.
+        return {
+            "openapi": "3.0.3",
+            "info": {"title": "t", "version": "v1"},
+            "paths": {"/private/api/{org_name}/": {}},
+        }
+
+    monkeypatch.setattr(SchemaGenerator, "get_schema", off_prefix_generator)
+
+    with pytest.raises(SpecGenerationFailed, match="outside the published mounts"):
+        render_spec()
+
+
 def test_spec_paths_are_the_urls_the_server_serves() -> None:
     """Resolves the real mount rather than restating it: a spec generated for
     URLs the server does not serve is the failure this file exists to catch.
@@ -289,14 +313,43 @@ def test_the_documented_permission_tiers_are_the_ones_the_model_defines() -> Non
     assert _schema("ApiKeyPermission")["enum"] == list(ApiKeyPermission.values)
 
 
+def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
+    """`whoami` authenticates in middleware, which answers with a bare
+    `message` and never reaches the project exception handler -- so it must not
+    publish the handler's `{type, errors[]}` shape the way the deployment
+    operations legitimately do.
+
+    Paired with `test_a_rejection_carries_the_body_the_spec_publishes` in
+    `platform_api`, which pins the same claim against the wire.
+    """
+    spec = _committed()
+    for path, _, operation in _operations(spec):
+        if operation["operationId"] != "whoami":
+            continue
+        for code in ("401", "403"):
+            ref = operation["responses"][code]["content"]["application/json"]["schema"][
+                "$ref"
+            ]
+            assert ref.endswith("/PlatformKeyError"), f"{code} on {path}: {ref}"
+    assert set(_schema("PlatformKeyError")["properties"]) == {"message"}
+
+
 def test_the_identity_read_asks_for_no_organisation() -> None:
     """Resolving the organisation from the key is the whole point: a path
     parameter here would mean the caller had to know the answer first.
     """
-    for path, _, operation in _operations(_committed()):
-        if operation["operationId"] == "whoami":
-            assert "{" not in path, path
-            assert not operation.get("parameters"), path
+    reads = [
+        (path, operation)
+        for path, _, operation in _operations(_committed())
+        if operation["operationId"] == "whoami"
+    ]
+
+    # Guarded like its sibling at `test_the_one_shot_read_...`: an unguarded
+    # loop passes by finding nothing the day the operation is renamed.
+    assert reads
+    for path, operation in reads:
+        assert "{" not in path, path
+        assert not operation.get("parameters"), path
 
 
 @pytest.mark.parametrize(
