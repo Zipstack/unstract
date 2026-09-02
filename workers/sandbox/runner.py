@@ -182,22 +182,35 @@ def run_code(
                 error=f"execution failed: exit {returncode}",
             )
 
-        raw = out.read_text()
-        if len(raw.encode()) > max_output_bytes:
-            return RunResult(success=False, stdout=stdout, stderr=stderr,
-                             error="execution failed: output exceeds size cap")
-        rows = 0
-        for line in raw.splitlines():
-            if not line.strip():
-                continue
-            try:
+        # The output read + JSONL parse is guarded end-to-end: `read_text` is
+        # forced to UTF-8 with `errors="replace"` so bytes the child wrote
+        # that aren't valid UTF-8 decode to replacement characters instead of
+        # raising `UnicodeDecodeError` (which, unguarded, would propagate out
+        # of run_code and break the "always return a structured RunResult"
+        # contract every other failure path here honours). The broad
+        # `except Exception` below is defense-in-depth for any other
+        # unexpected read failure (e.g. a filesystem error) — it never masks
+        # the specific size/row-cap returns above it, which `return` out of
+        # the `try` rather than raise.
+        try:
+            raw = out.read_text(encoding="utf-8", errors="replace")
+            if len(raw.encode()) > max_output_bytes:
+                return RunResult(success=False, stdout=stdout, stderr=stderr,
+                                 error="execution failed: output exceeds size cap")
+            rows = 0
+            for line in raw.splitlines():
+                if not line.strip():
+                    continue
                 json.loads(line)
-            except ValueError:
-                return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                 error="execution failed: invalid JSONL output")
-            rows += 1
-            if rows > max_rows:
-                return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                 error=f"execution failed: output exceeds row cap of {max_rows} rows")
+                rows += 1
+                if rows > max_rows:
+                    return RunResult(success=False, stdout=stdout, stderr=stderr,
+                                     error=f"execution failed: output exceeds row cap of {max_rows} rows")
+        except ValueError:
+            return RunResult(success=False, stdout=stdout, stderr=stderr,
+                             error="execution failed: invalid JSONL output")
+        except Exception:
+            return RunResult(success=False, stdout=stdout, stderr=stderr,
+                             error="execution failed: unreadable output")
         return RunResult(success=True, rows_jsonl=raw, rows_written=rows,
                          stdout=stdout, stderr=stderr)

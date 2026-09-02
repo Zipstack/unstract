@@ -48,3 +48,24 @@ def test_timeout_clamped_to_server_max():
         m.return_value = tasks.RunResult(success=True, rows_jsonl="", rows_written=0)
         _call(timeout=999)
         assert m.call_args.kwargs["timeout"] == 5
+
+
+def test_non_numeric_timeout_degrades_to_structured_failure():
+    # int(timeout) must never raise out of the task -- a non-numeric timeout
+    # degrades to a structured _fail() like every other bad-input path.
+    out = _call(timeout="not-a-number")
+    assert out["success"] is False
+    assert "timeout" in out["error"].lower()
+
+
+def test_none_code_degrades_to_structured_failure():
+    # code.encode() on a None/non-str code must not raise AttributeError.
+    out = _call(code=None)
+    assert out["success"] is False
+    assert "code" in out["error"].lower()
+
+
+def test_none_input_json_degrades_to_structured_failure():
+    out = _call(input_json=None)
+    assert out["success"] is False
+    assert "input_json" in out["error"].lower()

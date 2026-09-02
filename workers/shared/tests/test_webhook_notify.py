@@ -24,6 +24,26 @@ def test_metadata_ip_refused(m_gai, m_requests):
     assert wn.send_webhook("https://md.example/x", {}) is False
 
 
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_cgnat_shared_address_space_refused(m_gai, m_requests):
+    """RFC 6598 100.64.0.0/10: `ipaddress.is_private` does not cover this
+    range, so it must be checked separately or it slips past every other
+    guard and gets delivered to.
+    """
+    m_gai.return_value = [(2, 1, 6, "", ("100.64.0.1", 443))]
+    assert wn.send_webhook("https://cgnat.example/x", {}) is False
+    assert not m_requests.post.called
+
+
+@mock.patch.object(wn, "requests")
+@mock.patch.object(wn.socket, "getaddrinfo")
+def test_normal_public_ip_still_allowed(m_gai, m_requests):
+    m_gai.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+    m_requests.post.return_value.status_code = 200
+    assert wn.send_webhook("https://cgnat-sibling.example/x", {}) is True
+
+
 def test_http_scheme_refused_by_default():
     assert wn.send_webhook("http://example.com/x", {}) is False
 

@@ -1053,9 +1053,9 @@ git commit -m "UN-4044 [FEAT] Sandbox worker Deployment + default-deny NetworkPo
 
 ## Task 12: Live integration run + fix loop (13c) (BOTH)
 
-**Context:** The acceptance gate for the whole sub-project, run exactly like 13b: a scratch worktree of `Feat/agent-kv-api`, `copy_cloud_deps.py` overlay + Dockerfile patches, rebuild the `worker-unified` image (now containing `workers/sandbox/`), boot the stack (with `worker-sandbox`, `AGENT_KV_CALCULATIONS_ENABLED=1`), run the full Agent-KV lane. Prereqs identical to 13b (Docker, LLMWhisperer key, LLM key or mock). Reuse the scratchpad helpers (`stack.sh`, `run-env.sh`, the Compose-v2 shim, port override, mock-Auth0 sidecar).
+**Context:** The acceptance gate for the whole sub-project, run exactly like 13b: a scratch worktree of `Feat/agent-kv-api`, `copy_cloud_deps.py` overlay + Dockerfile patches, rebuild the `worker-unified` image (now containing `workers/sandbox/`), boot the stack (with `worker-sandbox`, `AGENT_KV_CALCULATIONS_ENABLED=true`), run the full Agent-KV lane. Prereqs identical to 13b (Docker, LLMWhisperer key, LLM key or mock). Reuse the scratchpad helpers (`stack.sh`, `run-env.sh`, the Compose-v2 shim, port override, mock-Auth0 sidecar).
 
-- [ ] **Step 1: Build the merged tree** in a scratch worktree; overlay cloud; apply docker patches; regenerate env; add `AGENT_KV_CALCULATIONS_ENABLED=1` and the sandbox worker to the run env.
+- [ ] **Step 1: Build the merged tree** in a scratch worktree; overlay cloud; apply docker patches; regenerate env; add `AGENT_KV_CALCULATIONS_ENABLED=true` and the sandbox worker to the run env.
 - [ ] **Step 2: Rebuild `worker-unified`** (carries the new sandbox worker) and `backend`; recreate the stack including `worker-sandbox`.
 - [ ] **Step 3: Pre-flight** — confirm `worker-sandbox` consumes `sandbox_codegen`; the executor registry still resolves `agentic_kv`; the sandbox pod env carries **no** LLM/storage secrets (`docker exec` grep).
 - [ ] **Step 4: Run the full lane.** Expect the 14 prior scenarios plus the 2 calc scenarios green (calc scenarios need the sandbox up). Verify in the DB/logs: a completed calc job's result carries `calculation_rows`; the sandbox worker log shows the request ran; no document bytes or secrets in sandbox logs.

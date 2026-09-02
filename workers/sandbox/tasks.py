@@ -32,12 +32,23 @@ def _execute_sandboxed_code_impl(
     memory_mb = _int_env("SANDBOX_MEMORY_MB", 512)
     max_pids = _int_env("SANDBOX_MAX_PIDS", 16)
 
+    # A None/non-str code or input_json (or a non-numeric timeout) must
+    # degrade to a structured failure like every other bad-input path here,
+    # not raise (AttributeError on `.encode()`, ValueError/TypeError on
+    # `int()`) out of a task that's supposed to always return a result dict.
+    if not isinstance(code, str):
+        return _fail(request_id, "code must be a string")
+    if not isinstance(input_json, str):
+        return _fail(request_id, "input_json must be a string")
     if len(code.encode()) > max_code:
         return _fail(request_id, "code exceeds size cap")
     if len(input_json.encode()) > max_input:
         return _fail(request_id, "input exceeds size cap")
 
-    eff_timeout = max(1, min(int(timeout) if timeout else timeout_max, timeout_max))
+    try:
+        eff_timeout = max(1, min(int(timeout) if timeout else timeout_max, timeout_max))
+    except (TypeError, ValueError):
+        return _fail(request_id, "timeout must be numeric")
     r: RunResult = run_code(
         code, input_json,
         timeout=eff_timeout, max_output_bytes=max_output, max_rows=max_rows,

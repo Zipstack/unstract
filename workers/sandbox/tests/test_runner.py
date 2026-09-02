@@ -134,6 +134,34 @@ def test_output_row_cap_enforced():
     assert "rows" in r.error.lower()
 
 
+def test_invalid_utf8_output_does_not_raise_and_returns_user_safe_error():
+    # Non-decodable bytes in the output file must never raise UnicodeDecodeError
+    # out of run_code -- the "always return a structured RunResult" contract
+    # holds even when the child writes bytes invalid in the read encoding.
+    code = (
+        "import sys\n"
+        "with open(sys.argv[2], 'wb') as f:\n"
+        "    f.write(b'\\xff\\xfe not valid utf-8\\n')\n"
+    )
+    r = run_code(code, "{}", **_DEFAULTS)
+    assert r.success is False
+    assert r.error is not None
+    assert r.error.startswith("execution failed:")
+
+
+def test_output_read_failure_is_user_safe_unreadable_output_error():
+    # Any other unexpected exception while reading/parsing the output file
+    # (not just a decode issue) must also degrade to a structured, user-safe
+    # failure rather than propagate.
+    with patch("sandbox.runner.Path.read_text", side_effect=OSError("boom")):
+        r = run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}), **_DEFAULTS,
+        )
+    assert r.success is False
+    assert r.error == "execution failed: unreadable output"
+
+
 def test_exception_traceback_scrubs_host_path():
     # A script that raises writes a traceback naming the real host path to
     # script.py into stderr. That must never reach the caller: the tempdir

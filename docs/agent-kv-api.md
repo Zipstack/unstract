@@ -789,11 +789,24 @@ beyond `docker compose up`:
 
     **Security posture:** The sandbox pod carries no LLM, OCR, or storage secrets and
     runs with default-deny egress — it only executes generated calculation code against
-    the extracted record in-memory. User-supplied `calculations` expressions are
+    the extracted record in-memory. This no-secrets/deny-all-egress posture is the
+    **Kubernetes/chart deployment guarantee**. The reference `docker-compose.yaml`
+    included here is a best-effort dev mirror only, not that guarantee: its
+    `worker-sandbox` service shares the same full worker env-file (`workers/.env`) as
+    every other worker for operational simplicity, so on that stack the untrusted-code
+    boundary is the runner's per-subprocess env scrub (spec §6.3 layer 2), not full
+    pod-level secret isolation — don't run untrusted `calculations` against secrets you
+    care about on docker-compose. User-supplied `calculations` expressions are
     validated through an AST gate (layer 1 of a 5-layer defense-in-depth model) at
     submit time before ever reaching the sandbox, and further constrained (parsing,
-    type-checking, capability allowlist) at execution time. This layered defense prevents
-    unbounded code execution and resource exhaustion from untrusted input.
+    type-checking, capability allowlist) at execution time. The AST gate is a
+    **best-effort** layer-1 control — a fail-closed denylist that closes the cheap,
+    demonstrated bypasses and raises the cost of the rest, not a provably airtight
+    sandbox by itself. The *enforced* containment is layers 2–5: the runner's
+    env-scrub + rlimits (layer 2) and the pod's non-root/read-only-rootfs/no-secrets/
+    deny-all-egress/per-job isolation (layers 3–5), with `runtimeClass: gvisor` as the
+    deferred syscall-sandbox mitigation (see the accepted v1 residual below). Do not
+    treat an AST-gate pass alone as proof generated code is safe.
 
     **Accepted v1 residual (arbitrary in-pod file reads):** because generated code
     legitimately needs `open()`/`pathlib` for its input and output files, untrusted

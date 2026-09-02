@@ -207,6 +207,66 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
 
 
 # ---------------------------------------------------------------------------
+# The 9-key options dict SubmitView.post builds and forwards to dispatch_job
+# must map every field correctly and carry the compiled schema -- a
+# dropped/typo'd key here would otherwise pass silently since nothing else
+# asserts on dispatch_job's call args.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_dispatch_job_called_with_expected_options_and_schema(
+    m_keys,
+    m_plugin,
+    m_rate,
+    m_serializer_cls,
+    m_limiter,
+    m_stage,
+    m_save,
+    m_dispatch,
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    keys_schema = {"total": {"description": "Grand total"}}
+    _mock_serializer(
+        m_serializer_cls,
+        keys=keys_schema,
+        qa=False,
+        challenge=False,
+        extraction_mode="per-page",
+        structured_output=True,
+        page_start=2,
+        page_end=5,
+        document_class="invoice",
+        key_notes="ignore footers",
+        calculations="annualize rent",
+    )
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    ev.SubmitView.as_view()(_authed_post())
+
+    assert m_dispatch.called
+    kwargs = m_dispatch.call_args.kwargs
+    assert kwargs["schema"] == keys_schema
+    assert kwargs["options"] == {
+        "qa": False,
+        "challenge": False,
+        "extraction_mode": "per-page",
+        "structured_output": True,
+        "page_start": 2,
+        "page_end": 5,
+        "document_class": "invoice",
+        "key_notes": "ignore footers",
+        "calculations": "annualize rent",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Dispatch failure: job marked FAILED via mark_terminal, concurrency slot
 # released, 500 response with a user-safe (non-leaking) error message.
 # ---------------------------------------------------------------------------

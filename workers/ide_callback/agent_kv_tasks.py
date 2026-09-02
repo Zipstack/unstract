@@ -53,6 +53,12 @@ def _resolve_error(failed_task_id: str, explicit: str | None = None) -> str:
     ``link_error`` path (``agent_kv.dispatch.dispatch_job``) passes no
     explicit error and relies on the result backend, then ``_UNKNOWN``.
 
+    Falsy-aware (``explicit or ...``), matching ``_get_task_error``'s own
+    ``if explicit is not None`` intent in practice: an empty-string
+    ``explicit`` (e.g. an executor that raised with no message) must not be
+    persisted verbatim as a blank error -- it falls through to the result
+    backend lookup, then ``_UNKNOWN``, same as an absent explicit error.
+
     Kept as a sibling implementation rather than importing
     ``ide_callback.tasks._get_task_error`` directly: ``ide_callback/tasks.py``
     already imports *this* module at its own bottom (so both of
@@ -64,7 +70,7 @@ def _resolve_error(failed_task_id: str, explicit: str | None = None) -> str:
     two-way coupling between the modules for ~10 lines of small, stable
     logic that isn't worth the added complexity to reason about.
     """
-    if explicit is not None:
+    if explicit:
         return explicit
     try:
         from celery import current_app as app

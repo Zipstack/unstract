@@ -17,6 +17,14 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT = 10
 
+# RFC 6598 Shared Address Space (CGNAT), 100.64.0.0/10: `ipaddress.is_private`
+# does NOT cover this range (verified on py3.12) even though it's non-public
+# address space carrier-grade NATs route internally, so it must be checked
+# separately or a host resolving into it slips past every other guard below.
+# (IPv6 unique-local fc00::/7 IS covered by `is_private`, so needs no
+# separate check.)
+_CGNAT_RANGE = ipaddress.ip_network("100.64.0.0/10")
+
 
 def _host_is_public(host: str) -> bool:
     try:
@@ -34,6 +42,7 @@ def _host_is_public(host: str) -> bool:
             or ip.is_reserved
             or ip.is_multicast
             or ip.is_unspecified
+            or ip in _CGNAT_RANGE
         ):
             return False
     return True

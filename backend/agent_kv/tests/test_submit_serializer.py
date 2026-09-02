@@ -87,9 +87,16 @@ def test_keys_not_json_rejected():
 
 
 def test_calculations_cap():
-    s = SubmitSerializer(data=_data(calculations="x" * 30_000))
-    assert not s.is_valid()
-    assert "calculations" in s.errors
+    # AGENT_KV_CALCULATIONS_ENABLED must be mocked True here: real settings
+    # default it False, so an unmocked run hits the feature-gate branch (a
+    # different error) instead of the byte-size cap this test is named for.
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        m.AGENT_KV_CALCULATIONS_ENABLED = True
+        s = SubmitSerializer(data=_data(calculations="x" * 30_000))
+        assert not s.is_valid()
+        assert "calculations" in s.errors
+        assert "20000 bytes" in str(s.errors["calculations"])
 
 
 def test_timeout_bounds():

@@ -269,6 +269,27 @@ class TestAgentKvError:
 
     @patch(_PATCH_SEND_WEBHOOK)
     @patch(_PATCH_GET_CLIENT)
+    def test_pg_transport_empty_explicit_error_falls_back_to_async_result(
+        self, mock_get_client, mock_send_webhook, mock_api
+    ):
+        """An empty-string explicit error must not be persisted verbatim --
+        it's falsy, so it falls through to the result-backend lookup (then
+        ``_UNKNOWN``), same as an absent explicit error.
+        """
+        mock_get_client.return_value = mock_api
+        pg_cb_kwargs = {"job_id": "job-1", "org_id": "org-1", "error": ""}
+        mock_async_result = MagicMock()
+        mock_async_result.result = RuntimeError("real backend cause")
+
+        with patch(_PATCH_ASYNC_RESULT, return_value=mock_async_result):
+            self._call("failed-task-empty-error", pg_cb_kwargs)
+
+        mock_api.agent_kv_finalize.assert_called_once_with(
+            "job-1", "org-1", success=False, error="real backend cause"
+        )
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
     def test_finalize_raising_is_swallowed_and_logged(
         self, mock_get_client, mock_send_webhook, cb_kwargs, caplog
     ):
