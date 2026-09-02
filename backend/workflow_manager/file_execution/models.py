@@ -198,8 +198,10 @@ class WorkflowFileExecution(BaseModel):
                 ],
                 name="wf_provider_uuid_path_stat_idx",
             ),
-            # Serves the dashboard metrics cron's status + date-window filter; every
-            # index above leads with workflow_execution. See migration 0007.
+            # Every other index on this table is prefixed by the workflow_execution
+            # FK column, so none can serve a status + created_at filter. Effective for
+            # get_failed_pages today; the COMPLETED path stays inert until UN-3973
+            # narrows the window. See migration 0007.
             models.Index(
                 fields=["status", "created_at"],
                 name="wfe_status_created_idx",

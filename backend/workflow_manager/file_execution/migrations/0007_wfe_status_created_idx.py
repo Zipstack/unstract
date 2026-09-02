@@ -1,13 +1,27 @@
 """Add a (status, created_at) index to workflow_file_execution.
 
-The dashboard metrics cron filters this table on status and a created_at window.
-Every existing index leads with workflow_execution_id, so the planner cannot drive
-from here and scans workflow_execution in full instead. Measurements in UN-3883.
+The dashboard metrics cron filters this table on status and a created_at window. No
+existing index leads with status or created_at — every secondary index is prefixed by
+the workflow_execution FK column — so the planner cannot drive from here and scans
+workflow_execution in full instead. Execution plan in UN-4045 (2026-08-31, which
+supersedes the earlier workflow_file_execution reading); cost measurements in UN-3883.
 
-Built CONCURRENTLY (atomic = False): a plain AddIndex holds a SHARE lock for the
-whole build and would block writes to a large, write-heavy table. Prefer building
-it out of band before the deploy; the migration then no-ops via IF NOT EXISTS and
-asserts the existing index is valid and has the expected definition.
+Full rather than partial: get_failed_pages benefits at today's window (ERROR is 0.40%
+of rows), and get_documents_processed only once UN-3973 narrows the window to 2 days —
+at 52 days the COMPLETED slice is 20.4% of the table and the planner scans regardless.
+A partial index on ERROR would serve the first and never the second.
+
+Built CONCURRENTLY (atomic = False): a plain AddIndex holds a SHARE lock for the whole
+build and would block writes to a large, write-heavy table. Prefer building it out of
+band before the deploy, exactly this statement and no other:
+
+    CREATE INDEX CONCURRENTLY IF NOT EXISTS wfe_status_created_idx
+        ON workflow_file_execution (status, created_at);
+
+The migration then no-ops via IF NOT EXISTS and asserts the existing index is valid
+and has the expected definition. Do not build the two-index variant from an older
+revision of UN-3972's description: wfe_created_at_desc_idx was struck as worse than
+nothing.
 """
 
 from django.db import migrations, models

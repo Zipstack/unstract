@@ -38,6 +38,18 @@ class MigrationShapeTests(SimpleTestCase):
         cls.migration = importlib.import_module(_MIGRATION).Migration
         cls.operation = cls.migration.operations[0]
 
+    def test_the_migration_has_exactly_one_operation(self) -> None:
+        """Every other assertion reads operations[0], so anything appended after the
+        SeparateDatabaseAndState is invisible — including a bare AddIndex, which is a
+        real lock-taking build on a 3.4 GB table.
+        """
+        self.assertEqual(len(self.migration.operations), 1)
+
+    def test_no_operation_builds_an_index_against_the_database(self) -> None:
+        """The same failure stated directly, so it survives the count changing."""
+        for op in self.migration.operations:
+            self.assertNotIsInstance(op, migrations.AddIndex)
+
     def test_migration_is_non_atomic(self) -> None:
         """CREATE/DROP INDEX CONCURRENTLY is rejected inside a transaction block."""
         self.assertIs(self.migration.atomic, False)
@@ -47,8 +59,17 @@ class MigrationShapeTests(SimpleTestCase):
         create = self.operation.database_operations[0]
         self.assertIn("CREATE INDEX CONCURRENTLY IF NOT EXISTS", create.sql)
         self.assertIn(INDEX_NAME, create.sql)
-        self.assertIn(f"{TABLE} ({', '.join(INDEX_FIELDS)})", create.sql)
+        # Column order is the point — (created_at, status) cannot serve an equality
+        # plus range filter. Whitespace and case are not, and a red test on
+        # semantically identical SQL only teaches people to loosen the assertion.
+        self.assertRegex(
+            create.sql,
+            rf"ON\s+{TABLE}\s*\(\s*{INDEX_FIELDS[0]}\s*,\s*{INDEX_FIELDS[1]}\s*\)",
+        )
         self.assertIn("DROP INDEX CONCURRENTLY IF EXISTS", create.reverse_sql)
+        # A typo here makes rollback a silent no-op through IF EXISTS: Django unapplies
+        # the migration while the index stays on the table.
+        self.assertIn(INDEX_NAME, create.reverse_sql)
 
     def test_every_database_operation_is_reversible(self) -> None:
         """One irreversible operation kills the whole rollback, DROP INDEX included."""
@@ -65,10 +86,17 @@ class MigrationShapeTests(SimpleTestCase):
         index up in ``current_schema()`` because app tables do not live in ``public``.
         """
         guard = self.operation.database_operations[1].sql
-        self.assertIn("indisvalid", guard)
+        # Polarity, not presence: `NOT idx_valid` raises on a broken index, `idx_valid`
+        # raises on every healthy deploy, and both contain "indisvalid".
+        self.assertIn("i.indisvalid", guard)
+        self.assertIn("IF NOT idx_valid THEN", guard)
+        # Scoped to this index, in this schema.
+        self.assertIn(f"c.relname = '{INDEX_NAME}'", guard)
+        self.assertIn("n.nspname = current_schema()", guard)
+        # Definition, not just validity.
         self.assertIn("pg_get_indexdef", guard)
         self.assertIn(f"USING btree ({', '.join(INDEX_FIELDS)})", guard)
-        self.assertIn("n.nspname = current_schema()", guard)
+        self.assertIn("NOT LIKE", guard)
         self.assertIn("RAISE EXCEPTION", guard)
         self.assertIn(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}", guard)
 
