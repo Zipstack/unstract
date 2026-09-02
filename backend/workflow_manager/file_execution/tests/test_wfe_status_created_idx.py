@@ -50,15 +50,25 @@ class MigrationShapeTests(SimpleTestCase):
         self.assertIn(f"{TABLE} ({', '.join(INDEX_FIELDS)})", create.sql)
         self.assertIn("DROP INDEX CONCURRENTLY IF EXISTS", create.reverse_sql)
 
-    def test_invalid_index_guard_is_present(self) -> None:
-        """An interrupted concurrent build leaves an INVALID index.
+    def test_every_database_operation_is_reversible(self) -> None:
+        """One irreversible operation kills the whole rollback, DROP INDEX included."""
+        self.assertTrue(
+            all(op.reversible for op in self.operation.database_operations)
+        )
 
-        ``IF NOT EXISTS`` would keep it and let Django record the migration as applied —
-        green, but the index costs on every write and is never read. The guard turns that
-        into a loud failure.
+    def test_pre_existing_index_guard_is_present(self) -> None:
+        """``IF NOT EXISTS`` matches on name alone, so the guard carries the rest.
+
+        An interrupted concurrent build leaves an INVALID index, and a hand-built one
+        may have different columns; either would be kept while Django recorded the
+        migration as applied. The guard turns both into a loud failure, and looks the
+        index up in ``current_schema()`` because app tables do not live in ``public``.
         """
         guard = self.operation.database_operations[1].sql
         self.assertIn("indisvalid", guard)
+        self.assertIn("pg_get_indexdef", guard)
+        self.assertIn(f"USING btree ({', '.join(INDEX_FIELDS)})", guard)
+        self.assertIn("n.nspname = current_schema()", guard)
         self.assertIn("RAISE EXCEPTION", guard)
         self.assertIn(f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}", guard)
 
