@@ -1,4 +1,5 @@
 from django.db.models import QuerySet
+from permissions.permission import WorkflowOwnerMutationMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -11,8 +12,19 @@ from workflow_manager.endpoint_v2.source import SourceConnector
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
-class WorkflowEndpointViewSet(viewsets.ModelViewSet):
+class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet):
+    """Workflow source / destination endpoints.
+
+    Config here selects the connector and its settings -- the destination
+    folder for filesystem, the table for database. Shared users may read
+    it; only owners and org admins may change it.
+    """
+
     serializer_class = WorkflowEndpointSerializer
+    mutation_denied_message = (
+        "Only the workflow owner or an organization admin can change its "
+        "connector configuration."
+    )
 
     def get_queryset(self) -> QuerySet:
         # Get workflows accessible to the user (owned or shared)

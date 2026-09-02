@@ -15,10 +15,12 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useWorkflowCanEdit } from "../../../hooks/useWorkflowCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import { ManageFiles } from "../../input-output/manage-files/ManageFiles";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { ReadOnlyNotice } from "../../widgets/read-only-notice/ReadOnlyNotice";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import "./ConfigureConnectorModal.css";
 
@@ -72,6 +74,11 @@ function ConfigureConnectorModal({
   const [hasInitializedFormData, setHasInitializedFormData] = useState(false);
   const [schemaLoadedForSession, setSchemaLoadedForSession] = useState(false);
   const [ruleEngineHasChanges, setRuleEngineHasChanges] = useState(false);
+  const canEdit = useWorkflowCanEdit();
+  // Grey out a region without touching each third-party widget inside it.
+  const roClass = canEdit ? undefined : "uneditable";
+  // Lets the single footer Save flush the HITL plugin's rules too.
+  const ruleEngineRef = useRef(null);
 
   const fileExplorerRef = useRef(null);
   const formRef = useRef(null);
@@ -333,19 +340,26 @@ function ConfigureConnectorModal({
   const handleSave = async () => {
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
 
-    if (hasConfigChanges && formRef?.current) {
-      if (formRef?.current?.validateForm()) {
-        await handleValidateAndSubmit(formDataConfig);
-        return true;
-      } else {
-        // RJSF shows validation errors
-        return false;
-      }
-    } else {
-      // No config changes, just save connector changes if any
-      await handleValidateAndSubmit(formDataConfig);
-      return true;
+    if (
+      hasConfigChanges &&
+      formRef?.current &&
+      !formRef.current.validateForm()
+    ) {
+      // RJSF shows validation errors
+      return false;
     }
+    await handleValidateAndSubmit(formDataConfig);
+    // HITL rules live in the plugin and used to need their own button. One
+    // Save now writes everything the modal shows.
+    if (ruleEngineRef.current?.save) {
+      setIsSavingEndpoint(true);
+      try {
+        await ruleEngineRef.current.save();
+      } finally {
+        setIsSavingEndpoint(false);
+      }
+    }
+    return true;
   };
 
   const handleModalClose = () => {
@@ -532,8 +546,10 @@ function ConfigureConnectorModal({
       footer={
         connDetails?.id || connMode === "API" ? (
           <div className="conn-modal-footer">
-            <Button onClick={handleModalClose}>Cancel</Button>
-            {connMode !== "API" && (
+            <Button onClick={handleModalClose}>
+              {canEdit ? "Cancel" : "Close"}
+            </Button>
+            {canEdit && (
               <Button
                 type="primary"
                 loading={isSavingEndpoint}
@@ -554,9 +570,11 @@ function ConfigureConnectorModal({
           {connMode === "API" ? "Configure HITL Rules" : "Configure Connector"}
         </Typography.Text>
 
+        {!canEdit && <ReadOnlyNotice />}
+
         {/* Connector Selection Dropdown (not shown for API connectors) */}
         {connMode !== "API" && (
-          <div className="connector-selection-section">
+          <div className={`connector-selection-section ${roClass ?? ""}`}>
             <Typography.Text strong className="connector-selection-label">
               Select Connector
             </Typography.Text>
@@ -622,11 +640,14 @@ function ConfigureConnectorModal({
 
         {/* API connectors: Show only HITL rules (no connector selection needed) */}
         {connMode === "API" && RuleEngine && (
-          <RuleEngine
-            workflowDetails={workflowDetails}
-            ruleType="API"
-            onDirtyStateChange={setRuleEngineHasChanges}
-          />
+          <div className={roClass}>
+            <RuleEngine
+              ref={ruleEngineRef}
+              workflowDetails={workflowDetails}
+              ruleType="API"
+              onDirtyStateChange={setRuleEngineHasChanges}
+            />
+          </div>
         )}
 
         {/* Only show configuration form and file browser after a connector is selected */}
@@ -645,7 +666,7 @@ function ConfigureConnectorModal({
                     label: item.label,
                     disabled: item.disabled,
                     children: (
-                      <>
+                      <div className={roClass}>
                         {item.key === "1" && (
                           <ConfigureFormsLayout
                             specConfig={specConfig}
@@ -658,18 +679,19 @@ function ConfigureConnectorModal({
                         )}
                         {item.key === "MANUALREVIEW" && RuleEngine && (
                           <RuleEngine
+                            ref={ruleEngineRef}
                             workflowDetails={workflowDetails}
                             ruleType="DB"
                             onDirtyStateChange={setRuleEngineHasChanges}
                           />
                         )}
-                      </>
+                      </div>
                     ),
                   }))}
               />
             ) : (
               /* Other connector types: Show existing layout */
-              <Row className="conn-modal-row" gutter={24}>
+              <Row className={`conn-modal-row ${roClass ?? ""}`} gutter={24}>
                 {/* Left side - Configuration Form */}
                 <Col span={12} className="conn-modal-col">
                   <div className="conn-modal-fs-config">
