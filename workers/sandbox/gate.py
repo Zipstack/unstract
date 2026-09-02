@@ -1,18 +1,41 @@
 """Normative AST safety gate for LLM-generated post-processing code.
 
-This is the authoritative copy: the sandbox NEVER trusts the client-side
+LAYER-1 CONTROL ONLY — BEST-EFFORT, NOT A COMPLETE SANDBOX. This is a
+fail-closed static AST check that rejects the well-known Python
+code-execution and introspection-escape primitives before generated code is
+ever run. It is deliberately a denylist-shaped, defense-in-depth control, NOT
+a provably airtight allowlist: a determined attacker may still discover a
+construction that reaches code execution through it. That residual risk is
+contained by the OTHER layers, which are the real security boundary:
+
+  * Layer 2 — the runner scrubs the environment and applies rlimits before
+    exec'ing the generated script.
+  * Layer 3 — the pod runs non-root on a read-only rootfs with no mounted
+    secrets, default-deny egress, and per-job isolation.
+  * Layer 4/5 — gVisor (deferred) is the syscall-sandbox mitigation that
+    turns any in-process escape into a contained one.
+
+So this gate's job is to CLOSE the cheap, demonstrated bypasses and raise the
+cost of the rest — not to be the sole barrier. Do not treat a pass here as
+proof the code is safe.
+
+This is also the authoritative copy: the sandbox NEVER trusts the client-side
 pre-flight check in the agentic_kv engine (``engine/code_executor._check_code_safe``,
-kept there as defense-in-depth). Fail-closed static allowlist — rejects imports outside
-the allowed set, dynamic-exec calls, dunder attribute access and introspection-escape
-names; permits the name ``sys`` used ONLY as ``sys.argv`` (the runner invokes generated
-scripts as ``argv[1]=input path, argv[2]=output path``, so scripts legitimately read
-``sys.argv`` — nothing else on ``sys`` is needed, and ``sys`` is the one allowed name
-with a dangerous surface: ``sys.modules`` reaches already-imported modules like ``os``
-without an ``import os``, ``sys._getframe``/``sys.settrace`` are classic sandbox-escape
-primitives, and the bare name itself can be aliased — ``x = sys`` — to reach any of
-that through a different name, so any Load reference to ``sys`` other than the
-immediate ``sys.argv`` attribute access is rejected, not just a denylist of
-attributes) and ``open()`` on the runner's two argv paths.
+kept there as defense-in-depth). It rejects imports outside the allowed set,
+dynamic-exec calls, dunder attribute access, introspection-escape names, an
+attribute REFERENCE (not only a call) to a dangerous builtin (``f = b.eval``),
+and a string subscript naming a dunder / ``__builtins__`` / ``__globals__``
+mapping (``x['__builtins__']``); it permits the name ``sys`` used ONLY as
+``sys.argv`` (the runner invokes generated scripts as ``argv[1]=input path,
+argv[2]=output path``, so scripts legitimately read ``sys.argv`` — nothing
+else on ``sys`` is needed, and ``sys`` is the one allowed name with a
+dangerous surface: ``sys.modules`` reaches already-imported modules like
+``os`` without an ``import os``, ``sys._getframe``/``sys.settrace`` are classic
+sandbox-escape primitives, and the bare name itself can be aliased —
+``x = sys`` — to reach any of that through a different name, so any Load
+reference to ``sys`` other than the immediate ``sys.argv`` attribute access is
+rejected, not just a denylist of attributes) and ``open()`` on the runner's
+two argv paths.
 """
 import ast
 
@@ -21,7 +44,7 @@ _ALLOWED_IMPORTS = {
     "itertools", "functools", "sys",
 }
 _DENYLISTED_CALLS = {
-    "eval", "exec", "compile", "__import__", "globals", "vars",
+    "eval", "exec", "compile", "__import__", "globals", "locals", "vars",
     "getattr", "setattr", "delattr", "breakpoint", "input", "help",
 }
 # Attribute-form calls only (e.g. `mod.compile(...)`): `compile` is excluded
@@ -68,11 +91,35 @@ def check_code_safe(code: str) -> tuple[bool, str]:
         elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             if node.func.id in _DENYLISTED_CALLS:
                 return False, f"safety gate: disallowed call '{node.func.id}'"
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
-            if node.func.attr in _DENYLISTED_ATTR_CALLS:
-                return False, f"safety gate: disallowed call '{node.func.attr}'"
+        elif (
+            isinstance(node, ast.Attribute)
+            and isinstance(node.ctx, ast.Load)
+            and node.attr in _DENYLISTED_ATTR_CALLS
+        ):
+            # Reject an attribute REFERENCE to a dangerous name, not only an
+            # immediate call: `f = b.eval` binds eval under another name, then
+            # `f(...)` runs it with no attribute left to check -- the old
+            # call-only check (`b.eval(...)`) missed this. Catching the
+            # `.eval` access itself closes it, and subsumes the call form
+            # (a call's `.func` is a Load attribute too). `compile` is
+            # excluded via _DENYLISTED_ATTR_CALLS so `re.compile(...)` still
+            # works.
+            return False, f"safety gate: disallowed attribute access '{node.attr}'"
         elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
             return False, f"safety gate: dunder attribute access '{node.attr}'"
+        elif isinstance(node, ast.Subscript):
+            # A string subscript like `x['__builtins__']` reaches the builtins
+            # / globals mapping without any ast.Attribute node for the dunder
+            # check to see. Reject a constant string slice that is a dunder or
+            # names the builtins/globals mapping. (py3.12: `node.slice` is the
+            # expression directly -- no ast.Index wrapper.)
+            key = node.slice
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                name = key.value
+                if name in {"__builtins__", "__globals__"} or (
+                    name.startswith("__") and name.endswith("__")
+                ):
+                    return False, f"safety gate: disallowed subscript key '{name}'"
         elif isinstance(node, ast.Name) and node.id == "sys" and isinstance(node.ctx, ast.Load):
             # The name `sys` may be used ONLY as the immediate value of a
             # `sys.argv` attribute access. This subsumes a plain denylist of

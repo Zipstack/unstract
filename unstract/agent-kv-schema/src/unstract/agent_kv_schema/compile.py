@@ -66,7 +66,16 @@ def _check_constraint_syntax(expr: str) -> None:
                 )
 
 
-def _max_depth(node: object, depth: int = 0) -> int:
+def _max_depth(node: object, max_depth: int, depth: int = 0) -> int:
+    # HARD ceiling FIRST -- before the `_array` short-circuit and before any
+    # further recursion. Two bugs this closes: (a) a pathologically deep plain
+    # schema (256 KiB of JSON nests ~40k deep, far past Python's ~1000
+    # recursion limit) used to raise an uncaught RecursionError (500) here;
+    # now it fails fast as a clean SchemaError (400). (b) The `_array`
+    # short-circuit below cannot be reached to bypass the cap once `depth`
+    # has already blown past it.
+    if depth > max_depth:
+        raise SchemaError(f"schema exceeds max_depth={max_depth}")
     if not isinstance(node, dict):
         return depth
     if "_array" in node:
@@ -74,18 +83,25 @@ def _max_depth(node: object, depth: int = 0) -> int:
     child = [v for v in node.values() if isinstance(v, dict)]
     if not child:
         return depth + 1
-    return max(_max_depth(v, depth + 1) for v in child)
+    return max(_max_depth(v, max_depth, depth + 1) for v in child)
 
 
 def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema:
     caps = caps or SchemaCaps()
     if not isinstance(spec, dict):
         raise SchemaError("Top-level key schema must be a JSON object")
-    if _max_depth({k: v for k, v in spec.items() if k != "_constraints"}) > caps.max_depth:
+    cleaned = {k: v for k, v in spec.items() if k != "_constraints"}
+    if _max_depth(cleaned, caps.max_depth) > caps.max_depth:
         raise SchemaError(f"schema exceeds max_depth={caps.max_depth}")
+    # The compile.py `_max_depth` pre-check does not count array-column
+    # nesting (arrays are row-local there, by design) and cannot see a decoy
+    # top-level `_array` field's real nesting -- so the actual recursive walk
+    # (`kv_schema._walk`) carries its own max_depth ceiling too, both to close
+    # that bypass and to guarantee a clean SchemaError instead of an uncaught
+    # RecursionError on a deeply-nested input.
     try:
-        key_specs = kv_schema.compile(spec)
-        array_specs = kv_schema.compile_arrays(spec)
+        key_specs = kv_schema.compile(spec, max_depth=caps.max_depth)
+        array_specs = kv_schema.compile_arrays(spec, max_depth=caps.max_depth)
     except ValueError as e:
         raise SchemaError(str(e)) from e
 

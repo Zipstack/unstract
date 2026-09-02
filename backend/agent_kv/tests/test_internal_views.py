@@ -12,6 +12,7 @@ if not apps.ready:
 from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import internal_views as iv  # noqa: E402
+from agent_kv import storage  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
@@ -459,6 +460,54 @@ def test_finalize_success_guard_win_does_not_delete_result(
     )
 
     assert not m_delete_result.called
+
+
+# (7e) concurrent duplicate-SUCCESS finalize race, exercised through the REAL
+# storage layer (only the object-store FileSystem is faked): two finalize
+# attempts land for one job, the first WINS the terminal guard and the second
+# LOSES. Because write_result now returns a UNIQUE ref per attempt, the loser
+# cleans up only ITS OWN orphaned result file -- the winner's result_ref
+# target is left intact (pre-Greptile critical #3: the old deterministic
+# result.json path let the loser delete the winner's live result).
+@mock.patch.object(storage, "FileSystem")
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", side_effect=[True, False])
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_duplicate_success_race_loser_deletes_only_its_own_result(
+    m_jobs, m_mark, m_release, m_fs
+):
+    # Two separate reads that both observed the job as still RUNNING (the race
+    # window before either guarded UPDATE ran).
+    winner_job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="", input_ref="")
+    loser_job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="", input_ref="")
+    m_jobs.filter.return_value.first.side_effect = [winner_job, loser_job]
+
+    fh = m_fs.return_value.get_file_storage.return_value
+    written: list[str] = []
+    removed: list[str] = []
+    fh.json_dump.side_effect = lambda path, data: written.append(path)
+    fh.rm.side_effect = lambda path: removed.append(path)
+
+    job_id = uuid.uuid4()
+    body = {"org_id": "org1", "success": True, "result": {"foo": "bar"}}
+    r1 = iv.FinalizeView.as_view()(_post("/x", body), job_id=job_id)  # winner
+    r2 = iv.FinalizeView.as_view()(_post("/x", body), job_id=job_id)  # loser
+
+    assert r1.data["finalized"] is True
+    assert r2.data["finalized"] is False
+
+    # Both attempts wrote a result; the two refs are DISTINCT.
+    assert len(written) == 2
+    assert written[0] != written[1]
+
+    # The winner's result file (written[0]) is the one mark_terminal stored as
+    # result_ref -- it must NOT be deleted. Only the loser's orphan is removed.
+    assert removed == [written[1]]
+    assert written[0] not in removed
+
+    # The winner stored its OWN specific ref, not a shared deterministic path.
+    winner_ref = m_mark.call_args_list[0].kwargs["result_ref"]
+    assert winner_ref == written[0]
 
 
 # (8) duplicate finalize: the job is already terminal (guard excludes it),

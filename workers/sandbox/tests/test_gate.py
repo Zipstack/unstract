@@ -36,7 +36,67 @@ _HOSTILE = [
     "e = exec\ne('x=1')",
     "import functools\nf = functools.partial(eval, '1')\nf()",
     "breakpoint()",
+    # locals() is globals() at module scope, so it hands back __builtins__.
+    "x = locals()",
+    "b = locals()['__builtins__']",
+    # Attribute REFERENCE (not an immediate call) that rebinds a dangerous
+    # builtin under another name, then calls it.
+    "b = {}\nf = b.eval\nf('1')",
+    # String-subscript reach for the builtins/globals mapping, invisible to
+    # the dunder-attribute check.
+    "y = {}\nz = y['__builtins__']",
+    "d = {}\ng = d['__globals__']",
 ]
+
+
+# The full verified PoC chain from the pre-Greptile review: locals() at module
+# scope IS globals(), so ['__builtins__'] hands back the real builtins mapping,
+# .eval rebinds eval under another name, and the final call executes. Every
+# link is independently rejected now; assert the whole chain is refused.
+_POC_CHAIN = (
+    "b = locals()['__builtins__']\n"
+    "f = b.eval\n"
+    "f(\"__import__('os').system('id')\")\n"
+)
+
+
+def test_full_poc_chain_rejected():
+    ok, reason = check_code_safe(_POC_CHAIN)
+    assert ok is False
+    assert reason.startswith("safety gate:")
+
+
+def test_locals_call_rejected():
+    ok, reason = check_code_safe("x = locals()")
+    assert ok is False
+    assert reason.startswith("safety gate:")
+
+
+def test_attribute_reference_to_dangerous_name_rejected():
+    # `f = b.eval` is an attribute REFERENCE, not an immediate call -- the
+    # old gate only rejected `b.eval(...)`.
+    ok, reason = check_code_safe("b = {}\nf = b.eval")
+    assert ok is False
+    assert reason.startswith("safety gate:")
+
+
+def test_string_subscript_of_dunder_rejected():
+    ok, reason = check_code_safe("y = {}\nz = y['__builtins__']")
+    assert ok is False
+    assert reason.startswith("safety gate:")
+
+
+def test_sys_argv_int_subscript_still_allowed():
+    # sys.argv[1]/[2] are int subscripts -- the dunder-string subscript rule
+    # must not touch them, nor json.load(f)["records"][0] (string key that is
+    # not a dunder).
+    ok, reason = check_code_safe(
+        "import json, sys\n"
+        "rec = json.load(open(sys.argv[1]))[\"records\"][0]\n"
+        "open(sys.argv[2], 'w').write(json.dumps(rec))\n"
+    )
+    assert ok is True, reason
+    assert reason == ""
 
 
 def test_safe_code_passes():

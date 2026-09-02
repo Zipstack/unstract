@@ -143,7 +143,7 @@ def test_stage_input_failure_releases_slot_and_500s_with_safe_body(
     assert resp.status_code == 500
     # The internal exception text must never reach the client.
     assert "leaked-secret-bucket-key" not in str(resp.data)
-    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["status"] == JobStatus.FAILED.lower()
     assert resp.data["error"] == "Job could not be accepted; nothing was billed."
     assert "job_id" in resp.data
 
@@ -198,7 +198,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
         resp.data["status_url"]
         == f"/{settings.AGENT_KV_PATH_PREFIX}/{resp.data['job_id']}"
     )
-    assert resp.data["status"] == JobStatus.DISPATCHED
+    assert resp.data["status"] == JobStatus.DISPATCHED.lower()
 
     assert m_limiter.check_and_acquire.called
     assert m_stage.called
@@ -240,7 +240,7 @@ def test_dispatch_failure_marks_job_failed_releases_slot_and_500s(
     assert resp.status_code == 500
     # The internal exception text must never reach the client.
     assert "super-secret-token" not in str(resp.data)
-    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["status"] == JobStatus.FAILED.lower()
     assert "job_id" in resp.data
 
     assert m_mark_terminal.called
@@ -287,7 +287,7 @@ def test_dispatch_job_raising_non_dispatch_error_is_still_caught_and_cleaned_up(
 
     assert resp.status_code == 500
     assert "leaked-secret-abc" not in str(resp.data)
-    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["status"] == JobStatus.FAILED.lower()
     assert resp.data["error"] == "Job could not be dispatched; nothing was billed."
 
     assert m_mark_terminal.called
@@ -333,7 +333,7 @@ def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
 
     assert resp.status_code == 500
     assert "leaked-secret-xyz" not in str(resp.data)
-    assert resp.data["status"] == JobStatus.FAILED
+    assert resp.data["status"] == JobStatus.FAILED.lower()
     assert resp.data["error"] == "Job could not be dispatched; nothing was billed."
 
     assert m_mark_terminal.called

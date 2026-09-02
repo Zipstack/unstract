@@ -13,6 +13,7 @@ executor keys its OCR cache under the same root
 
 import logging
 import os
+import uuid
 
 from django.conf import settings
 
@@ -37,8 +38,24 @@ def stage_input(org_id: str, job_id: str, uploaded_file) -> str:
     return ref
 
 
-def write_result(org_id: str, job_id: str, result: dict) -> str:
-    ref = f"{_base(org_id, job_id)}/result.json"
+def write_result(org_id: str, job_id: str, result: dict, *, nonce: str | None = None) -> str:
+    """Write a job result and return its object-store ref.
+
+    The path is UNIQUE per call (``.../result-<nonce>.json``, nonce defaulting
+    to a fresh uuid4 hex) rather than a deterministic ``.../result.json``.
+    ``FinalizeView`` writes the result BEFORE it attempts the terminal-state
+    guard; on a concurrent duplicate-SUCCESS finalize, the guard loser must
+    clean up ONLY the orphan it just wrote -- with a shared deterministic path
+    it would instead delete the exact file the winning row's ``result_ref``
+    points at, 500-ing the completed job's result endpoint / losing data
+    (pre-Greptile critical #3). A unique ref per attempt makes the loser's
+    ``delete_result_file`` target its own file and nothing else.
+
+    Backward-tolerant: ``read_result``/``delete_job_files``/TTL cleanup all use
+    the ref STORED on the job row, so any previously written ``result.json``
+    ref remains readable and removable unchanged.
+    """
+    ref = f"{_base(org_id, job_id)}/result-{nonce or uuid.uuid4().hex}.json"
     _fs().json_dump(path=ref, data=result)
     return ref
 

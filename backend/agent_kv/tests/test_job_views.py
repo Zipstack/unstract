@@ -212,10 +212,13 @@ def test_result_completed_with_blank_ref_is_404(m_keys, m_jobs, m_read):
 # ---------------------------------------------------------------------------
 # (6) cancel on RUNNING -> mark_terminal called with CANCELLED, 200.
 # ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_cancel_on_running_marks_terminal_and_200s(m_keys, m_jobs, m_mark_terminal):
+def test_cancel_on_running_marks_terminal_and_200s(
+    m_keys, m_jobs, m_mark_terminal, m_release
+):
     m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
@@ -228,6 +231,49 @@ def test_cancel_on_running_marks_terminal_and_200s(m_keys, m_jobs, m_mark_termin
     m_mark_terminal.assert_called_once_with(
         job.id, job.organization_id, JobStatus.CANCELLED
     )
+
+
+# ---------------------------------------------------------------------------
+# (6b) cancel that WINS the terminal guard releases the concurrency slot --
+# a job cancelled BEFORE dispatch gets no finalize callback and the sweep's
+# phase-1 only targets PENDING (not CANCELLED), so without this its slot
+# would leak until the 6h TTL (pre-Greptile important #4). release() is
+# idempotent (zrem), so a later finalize-callback release is harmless.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m_release):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    m_release.assert_called_once_with("org1", str(job.id))
+
+
+# ---------------------------------------------------------------------------
+# (6c) cancel that LOSES the guard (job already terminal) must NOT release --
+# whoever terminalized it (finalize callback / a prior cancel) owns the slot.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_loss_does_not_release_slot(m_keys, m_jobs, m_mark_terminal, m_release):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    job = AgentKVJob(status=JobStatus.COMPLETED)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 409
+    assert not m_release.called
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +295,9 @@ def test_cancel_on_completed_is_409_and_result_untouched(
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
     assert resp.status_code == 409
-    assert resp.data == {"status": JobStatus.COMPLETED}
+    # Status is lowercased consistently across every endpoint (spec §7.2) --
+    # the 409 body used to leak the raw uppercase value (pre-Greptile #5).
+    assert resp.data == {"status": "completed"}
     assert m_mark_terminal.called
     assert not m_read.called
 

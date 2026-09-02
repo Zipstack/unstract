@@ -74,7 +74,7 @@ def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Re
         )
     AgentKVConcurrencyLimiter.release(org_id, str(job.id))
     return Response(
-        {"job_id": str(job.id), "status": JobStatus.FAILED, "error": message},
+        {"job_id": str(job.id), "status": JobStatus.FAILED.lower(), "error": message},
         status=500,
     )
 
@@ -180,7 +180,9 @@ class SubmitView(APIView):
         return Response(
             {
                 "job_id": str(job.id),
-                "status": job.status,
+                # Lowercased for cross-endpoint consistency (spec §7.2) -- the
+                # 202 body used to leak the raw uppercase status.
+                "status": job.status.lower(),
                 "status_url": f"/{settings.AGENT_KV_PATH_PREFIX}/{job.id}",
                 "created_at": job.created_at.isoformat(),
             },
@@ -285,5 +287,14 @@ class JobCancelView(APIView):
         job = _get_job(agent_kv_key, job_id)
         won = AgentKVJob.mark_terminal(job.id, job.organization_id, JobStatus.CANCELLED)
         if won:
+            # The slot is acquired at submit and released by _fail_job_response,
+            # the finalize callback, and the sweep. A job cancelled BEFORE
+            # dispatch gets no finalize callback, and the sweep's phase-1 only
+            # targets PENDING (not CANCELLED) -- so without this release its
+            # slot would leak until the 6h TTL (pre-Greptile important #4).
+            # release() is idempotent (zrem), so a later finalize-callback
+            # release on a cancel-mid-run is harmless.
+            AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
             return Response({"status": "cancelled"}, status=200)
-        return Response({"status": job.status}, status=409)
+        # Lowercased for cross-endpoint consistency (spec §7.2).
+        return Response({"status": job.status.lower()}, status=409)

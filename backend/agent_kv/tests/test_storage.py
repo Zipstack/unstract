@@ -1,4 +1,5 @@
 import os
+import re
 from unittest import mock
 
 import django
@@ -43,10 +44,35 @@ def test_stage_input_defaults_extension_when_missing(m_fs):
 def test_write_and_read_result_roundtrip_path(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     ref = storage.write_result("org1", "job1", {"success": True})
-    assert ref == "unstract/agent_kv/org1/job1/result.json"
+    # The result path is UNIQUE per finalize attempt (a nonce suffix) so a
+    # guard-losing concurrent finalize deletes only its own orphan, never the
+    # winning row's result_ref target (pre-Greptile critical #3). It still
+    # lives under the deterministic job dir.
+    assert re.fullmatch(
+        r"unstract/agent_kv/org1/job1/result-[0-9a-f]{32}\.json", ref
+    ), ref
     fh.json_dump.assert_called_once()
     assert fh.json_dump.call_args.kwargs["path"] == ref
     assert fh.json_dump.call_args.kwargs["data"] == {"success": True}
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_write_result_produces_unique_ref_per_call(m_fs):
+    # Two writes for the SAME job must yield two DISTINCT refs -- this is what
+    # makes a concurrent duplicate-success finalize safe: the guard loser's
+    # delete targets its own ref, not the winner's.
+    a = storage.write_result("org1", "job1", {"n": 1})
+    b = storage.write_result("org1", "job1", {"n": 2})
+    assert a != b
+    assert a.startswith("unstract/agent_kv/org1/job1/result-")
+    assert b.startswith("unstract/agent_kv/org1/job1/result-")
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_write_result_accepts_explicit_nonce(m_fs):
+    # A caller may pin the nonce (deterministic ref for a given attempt).
+    ref = storage.write_result("org1", "job1", {"n": 1}, nonce="abc123")
+    assert ref == "unstract/agent_kv/org1/job1/result-abc123.json"
 
 
 @mock.patch.object(storage, "FileSystem")
@@ -170,7 +196,9 @@ def test_paths_are_rooted_at_the_configured_prefix(m_fs):
     assert input_ref.startswith("mybucket/kv-root/")
     assert result_ref.startswith("mybucket/kv-root/")
     assert input_ref == "mybucket/kv-root/org1/job1/input.pdf"
-    assert result_ref == "mybucket/kv-root/org1/job1/result.json"
+    assert re.fullmatch(
+        r"mybucket/kv-root/org1/job1/result-[0-9a-f]{32}\.json", result_ref
+    ), result_ref
 
 
 def test_storage_prefix_normalisation_matches_executor(monkeypatch):
