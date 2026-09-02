@@ -345,6 +345,10 @@ function ConfigureConnectorModal({
     return true;
   };
 
+  // The read-only styling stops the mouse but not the keyboard, so cut the
+  // form's own submit path too rather than let Enter fire a doomed request.
+  const submitIfEditable = canEdit ? handleValidateAndSubmit : () => {};
+
   const handleSave = async () => {
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
 
@@ -690,7 +694,7 @@ function ConfigureConnectorModal({
                             setFormDataConfig={setFormDataConfig}
                             isSpecConfigLoading={isSpecConfigLoading}
                             formRef={formRef}
-                            validateAndSubmit={handleValidateAndSubmit}
+                            validateAndSubmit={submitIfEditable}
                           />
                         )}
                         {item.key === "MANUALREVIEW" && RuleEngine && (
@@ -717,7 +721,7 @@ function ConfigureConnectorModal({
                       setFormDataConfig={setFormDataConfig}
                       isSpecConfigLoading={isSpecConfigLoading}
                       formRef={formRef}
-                      validateAndSubmit={handleValidateAndSubmit}
+                      validateAndSubmit={submitIfEditable}
                     />
                   </div>
                 </Col>

@@ -69,6 +69,11 @@ function ToolSettings({ spec, isSpecLoading }) {
   };
 
   const validateAndSubmit = (updatedFormData) => {
+    // The read-only styling stops the mouse but not the keyboard, so refuse
+    // here too rather than let Enter fire a request the backend will reject.
+    if (!canEdit) {
+      return;
+    }
     if (formRef && !formRef.current?.validateForm()) {
       return;
     }
