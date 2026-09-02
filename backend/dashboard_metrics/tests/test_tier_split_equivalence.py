@@ -21,18 +21,27 @@ import uuid
 from datetime import timedelta
 from typing import Any
 
-from account_v2.models import Organization
-from django.db import connection
-from django.test import TestCase
-from django.utils import timezone
-from workflow_manager.workflow_v2.models.workflow import Workflow
+import os
 
-from dashboard_metrics.models import (
+import django
+from django.apps import apps
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
+
+from account_v2.models import Organization  # noqa: E402
+from django.db import connection  # noqa: E402
+from django.test import TestCase  # noqa: E402
+from django.utils import timezone  # noqa: E402
+from workflow_manager.workflow_v2.models.workflow import Workflow  # noqa: E402
+
+from dashboard_metrics.models import (  # noqa: E402
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
 )
-from dashboard_metrics.tasks import AggregationTier, _run_aggregation
+from dashboard_metrics.tasks import AggregationTier, _run_aggregation  # noqa: E402
 
 # (model, the column naming its period) — the period field differs per tier.
 _TIERS = [

@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import importlib
 import inspect
-import json
 import os
 from typing import Any
 from unittest import mock
@@ -43,7 +42,11 @@ _ENDPOINT = "/internal/v1/dashboard-metrics/aggregate/"
 
 
 def _post(body: dict[str, Any]) -> tuple[int, Any]:
-    """POST to the aggregate endpoint with the task mocked; return status and its kwargs."""
+    """POST to the aggregate endpoint with the task mocked.
+
+    Returns the status and the kwargs the task was called with, or ``None`` if it was
+    never reached — which is what a rejected body has to look like.
+    """
     view = internal_views.AggregateMetricsAPIView.as_view()
     request = APIRequestFactory().post(_ENDPOINT, body, format="json")
     with mock.patch.object(
@@ -73,14 +76,13 @@ class TestThePgLegCarriesTheTier:
     def test_an_unrecognised_tier_is_rejected_rather_than_ignored(self) -> None:
         """A silent no-op would look like a successful run that wrote nothing.
 
-        Runs against the real task, not the mock: the 400 comes from the ValueError the
-        task raises, and a mock would accept anything and return 200. The tier is
-        validated on the task's first line, so nothing touches the database.
+        The 400 is raised at the boundary, before the task is entered, so it cannot be
+        confused with a ValueError from inside the aggregation — that one belongs on
+        the logged 500 path.
         """
-        view = internal_views.AggregateMetricsAPIView.as_view()
-        response = view(APIRequestFactory().post(_ENDPOINT, {"tier": "houry"}, format="json"))
-        assert response.status_code == 400
-        assert "houry" in str(response.data)
+        status, called_with = _post({"tier": "houry"})
+        assert status == 400
+        assert called_with is None
 
 
 class TestTheBeatLegCarriesTheTier:
@@ -114,10 +116,3 @@ class TestTheBeatLegCarriesTheTier:
         there raises inside the task on every single run."""
         for kwargs in declared_kwargs.values():
             AggregationTier(kwargs["tier"])
-
-    def test_beat_stores_the_kwargs_as_json_the_task_can_receive(self) -> None:
-        """Beat's kwargs column is a JSON *string*; PgPeriodicTask's is a JSONField.
-        The Beat side has to round-trip back to the same mapping."""
-        mod = importlib.import_module(_SPLIT_MIGRATION)
-        for spec in mod.AGGREGATION_SCHEDULES:
-            assert json.loads(json.dumps({"tier": spec["tier"]})) == {"tier": spec["tier"]}

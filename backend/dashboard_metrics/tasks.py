@@ -628,13 +628,9 @@ def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, A
         .values_list("workflow__organization_id", flat=True)
         .distinct()
     )
-    total_orgs = Organization.objects.count()
-    logger.info(
-        "Aggregation (%s): %d active orgs out of %d total",
-        tier.value,
-        len(active_org_ids),
-        total_orgs,
-    )
+    # No total_orgs here: a full count of the organization table, on every run of
+    # every tier, whose only consumer was this log line.
+    logger.info("Aggregation (%s): %d active orgs", tier.value, len(active_org_ids))
 
     if not active_org_ids:
         return {

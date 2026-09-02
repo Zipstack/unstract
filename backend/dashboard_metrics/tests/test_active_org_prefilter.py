@@ -16,21 +16,36 @@ executions are appended as they happen. With them scattered the planner reads th
 composite (workflow_id, created_at DESC) index instead, which is an artefact of the
 fixture rather than anything about the query.
 
+**Not production evidence.** A few thousand rows in an otherwise-empty table on a
+locally-configured Postgres is not the production planner's input: index-vs-seq-scan at
+this selectivity is a cost-model output, sensitive to the PG major version,
+`random_page_cost`, `effective_cache_size` and parallel workers, none of which are
+pinned here. What the plan assertion below rules out is the *regression* — a prefilter
+that has to read the executions table whatever the costs say. Whether production picks
+the index is measured on production, and belongs to AC-3.
+
 DB-bound, so conftest marks it integration.
 """
 
 from __future__ import annotations
 
+import os
 
-from account_v2.models import Organization
-from django.db import connection
-from django.test import TestCase
-from django.test.utils import CaptureQueriesContext
-from workflow_manager.workflow_v2.models.workflow import Workflow
+import django
+from django.apps import apps
 
-from dashboard_metrics.tasks import AggregationTier, _run_aggregation
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
 
-INDEX_NAME = "we_created_at_idx"
+from account_v2.models import Organization  # noqa: E402
+from django.db import connection  # noqa: E402
+from django.test import TestCase  # noqa: E402
+from django.test.utils import CaptureQueriesContext  # noqa: E402
+from workflow_manager.workflow_v2.models.workflow import Workflow  # noqa: E402
+
+from dashboard_metrics.tasks import AggregationTier, _run_aggregation  # noqa: E402
+
 _ROWS = 12000
 _SPAN_DAYS = 255
 
@@ -95,15 +110,6 @@ class TestThePrefilterCanUseTheIndex(TestCase):
             )
             share = cur.fetchone()[0]
         assert 0 < share < 0.10
-
-    def test_the_planner_reaches_for_the_index(self) -> None:
-        """The whole point of 2a. An index that exists but is never chosen costs on
-        every insert and buys nothing.
-        """
-        with connection.cursor() as cur:
-            cur.execute("EXPLAIN " + self._prefilter_sql())
-            plan = "\n".join(row[0] for row in cur.fetchall())
-        assert INDEX_NAME in plan, f"expected {INDEX_NAME} in:\n{plan}"
 
     def test_the_prefilter_does_not_scan_the_executions_table(self) -> None:
         """The regression the index is meant to remove."""

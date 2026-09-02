@@ -78,6 +78,21 @@ class TestTheMigrationIsSafeToDeploy:
         assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS" in sql
         assert "DROP INDEX CONCURRENTLY IF EXISTS" in sql
 
+    def test_the_statement_that_runs_names_the_model_table_and_column(self) -> None:
+        """Everything else here reads the ``AddIndex`` state operation, which by
+        construction never reaches the database, or greps the source for
+        ``CONCURRENTLY``. The ``RunSQL`` is the only statement production executes and
+        its table and column were cross-checked against nothing — so the index could be
+        built on the wrong column while Django's model state claimed otherwise.
+        """
+        index = _model_index()
+        assert index is not None
+        model = apps.get_model("workflow_v2", "WorkflowExecution")
+        expected = f"{model._meta.db_table} ({', '.join(index.fields)})"
+
+        create = _operations()[0].database_operations[0]
+        assert expected in create.sql, f"expected {expected!r} in {create.sql!r}"
+
     def test_it_guards_against_a_leftover_invalid_index(self) -> None:
         """An interrupted CONCURRENTLY build leaves an INVALID index that costs on every
         write and is never read. IF NOT EXISTS would keep it while Django recorded the

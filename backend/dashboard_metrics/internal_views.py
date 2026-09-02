@@ -34,6 +34,7 @@ from utils.constants import Account
 from utils.local_context import StateStore
 
 from dashboard_metrics.tasks import (
+    AggregationTier,
     aggregate_metrics_from_sources,
     cleanup_daily_metrics,
     cleanup_hourly_metrics,
@@ -74,11 +75,12 @@ class _MetricsTaskAPIView(APIView):
     """Shared plumbing: clear org context, run, translate errors."""
 
     def _run(self, fn, *args: Any, **kwargs: Any) -> Response:
+        """Run one task body. Every view validates its own body first, so anything
+        raising in here is an internal fault and belongs on the logged 500 path.
+        """
         _clear_org_context()
         try:
             return Response(fn(*args, **kwargs))
-        except ValueError as exc:  # bad request body
-            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as exc:
             logger.error("dashboard-metrics internal call failed: %s", exc, exc_info=True)
             return Response(
@@ -93,13 +95,24 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
     only because the PG consumer has no Django, not to change what the job does.
 
     Optional ``tier`` in the body selects which metric tiers to write; omitting it
-    writes all of them. An unrecognised value is a 400, not a silent no-op.
+    writes all of them. An unrecognised value is a 400 raised here at the boundary, so
+    a ValueError from inside the aggregation stays a logged 500 rather than reading as
+    a bad request.
     """
 
     def post(self, request: Request) -> Response:
-        tier = request.data.get("tier") if isinstance(request.data, dict) else None
+        body = request.data if isinstance(request.data, dict) else {}
+        tier = body.get("tier")
         if tier is None:
             return self._run(aggregate_metrics_from_sources)
+        try:
+            tier = AggregationTier(tier)
+        except ValueError:
+            valid = [member.value for member in AggregationTier]
+            return Response(
+                {"error": f"tier must be one of {valid}, got {tier!r}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return self._run(aggregate_metrics_from_sources, tier=tier)
 
 

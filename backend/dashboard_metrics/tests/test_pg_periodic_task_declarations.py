@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import importlib
 import json
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -131,14 +132,19 @@ class _SplitRecorder:
     only the named fields. Conflating them is exactly the bug this guards.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, existing: Any = None) -> None:
         self.created: dict[str, dict[str, Any]] = {}
         self.updated: dict[str, dict[str, Any]] = {}
+        self.bumps = 0
+        self._existing = existing
         self._filtered_on: str = ""
 
     def filter(self, name: str = "", **_kw: Any) -> _SplitRecorder:
         self._filtered_on = name
         return self
+
+    def first(self) -> Any:
+        return self._existing
 
     def update(self, **kwargs: Any) -> int:
         self.updated[self._filtered_on] = kwargs
@@ -147,6 +153,9 @@ class _SplitRecorder:
     def update_or_create(
         self, name: str = "", defaults: dict[str, Any] | None = None, **_kw: Any
     ) -> tuple[dict[str, Any], bool]:
+        if not name:  # PeriodicTasks(ident=1) — the Beat reload tracker
+            self.bumps += 1
+            return defaults or {}, True
         self.created[name] = defaults or {}
         return self.created[name], True
 
@@ -157,19 +166,33 @@ class _SplitRecorder:
         return (0, {})
 
 
-@pytest.fixture(scope="module")
-def split() -> dict[str, _SplitRecorder]:
-    """Run 0005's forward function against fakes and capture both tables."""
+def _run_split(beat_row: Any = None, pg_row: Any = None) -> dict[str, _SplitRecorder]:
+    """Run 0006's forward function against fakes and capture every table it writes."""
     mod = importlib.import_module(_SPLIT_MIGRATION)
-    beat, pg, crontab = _SplitRecorder(), _SplitRecorder(), _SplitRecorder()
+    beat = _SplitRecorder(existing=beat_row)
+    pg = _SplitRecorder(existing=pg_row)
+    crontab, tracker = _SplitRecorder(), _SplitRecorder()
 
     class _Apps:
         def get_model(self, _app: str, model: str) -> type:
-            table = {"PeriodicTask": beat, "PgPeriodicTask": pg}.get(model, crontab)
+            table = {
+                "PeriodicTask": beat,
+                "PgPeriodicTask": pg,
+                "PeriodicTasks": tracker,
+            }.get(model, crontab)
             return type("M", (), {"objects": table})
 
     mod.split_schedules(_Apps(), None)
-    return {"beat": beat, "pg": pg}
+    return {"beat": beat, "pg": pg, "tracker": tracker}
+
+
+@pytest.fixture(scope="module")
+def split() -> dict[str, _SplitRecorder]:
+    """The default case: a Beat-owned row, as every environment ships today."""
+    return _run_split(
+        beat_row=SimpleNamespace(enabled=True),
+        pg_row=SimpleNamespace(enabled=True, pg_owned=False),
+    )
 
 
 class TestTheSplitAddsOneRowAndRewritesOne:
@@ -188,9 +211,18 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         assert pg["task_kwargs"] == json.loads(beat["kwargs"])
 
     def test_the_new_row_runs_hourly_on_both_tables(self, split: dict[str, _SplitRecorder]) -> None:
-        assert split["pg"].created[_NEW_ROW]["cron_string"] == "0 * * * *"
+        assert split["pg"].created[_NEW_ROW]["cron_string"] == "20 * * * *"
         crontab = split["beat"].created[_NEW_ROW]["crontab"]
-        assert (crontab["minute"], crontab["hour"]) == ("0", "*")
+        assert (crontab["minute"], crontab["hour"]) == ("20", "*")
+
+    def test_the_two_rows_never_start_together(self, split: dict[str, _SplitRecorder]) -> None:
+        """The per-tier locks are built so the two runs cannot block each other, so a
+        shared minute is two full prefilter scans and two per-org loops at once — on a
+        change whose object is flattening cron load.
+        """
+        fires_at = {0, 15, 30, 45}  # the existing row's */15
+        minute = int(split["beat"].created[_NEW_ROW]["crontab"]["minute"])
+        assert minute not in fires_at
 
     def test_the_new_row_is_seeded_inert_on_the_pg_side(self, split: dict[str, _SplitRecorder]) -> None:
         """Same reason as 0004's rows: a PG row that is pg_owned before the scheduler
@@ -198,10 +230,79 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         """
         assert split["pg"].created[_NEW_ROW]["pg_owned"] is False
 
+    def test_the_rewritten_row_carries_the_same_kwargs_on_both_tables(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
+        """The row firing the hourly tier every 15 minutes in production.
+
+        Beat's ``kwargs`` is a TextField it parses with ``json.loads``; writing the
+        mapping rather than its JSON encoding stores a Python repr, ``ModelEntry``
+        raises, and the hourly aggregation silently stops firing.
+        """
+        beat = split["beat"].updated[_EXISTING_ROW]
+        assert json.loads(beat["kwargs"]) == split["pg"].updated[_EXISTING_ROW][
+            "task_kwargs"
+        ]
+
     def test_the_two_rows_ask_for_different_tiers(self, split: dict[str, _SplitRecorder]) -> None:
         new = split["pg"].created[_NEW_ROW]["task_kwargs"]["tier"]
         existing = split["pg"].updated[_EXISTING_ROW]["task_kwargs"]["tier"]
         assert new != existing
+
+
+class TestTheNewRowInheritsWhoeverFiresTheRowItSplitsFrom:
+    """Hardcoding Beat leaves the daily/monthly tier with no firer in a PG-adopted
+    environment: the adopted row's Beat twin is disabled and Beat may be scaled to
+    zero, so the sole writer of those figures never runs and the hourly run still
+    reports success.
+    """
+
+    def test_a_pg_adopted_row_hands_its_new_half_to_the_pg_scheduler(self) -> None:
+        split = _run_split(
+            beat_row=SimpleNamespace(enabled=False),
+            pg_row=SimpleNamespace(enabled=True, pg_owned=True),
+        )
+        assert split["pg"].created[_NEW_ROW]["pg_owned"] is True
+        assert split["pg"].created[_NEW_ROW]["enabled"] is True
+        assert split["beat"].created[_NEW_ROW]["enabled"] is False
+
+    def test_a_disabled_row_does_not_come_back_as_an_enabled_half(self) -> None:
+        split = _run_split(
+            beat_row=SimpleNamespace(enabled=False),
+            pg_row=SimpleNamespace(enabled=False, pg_owned=False),
+        )
+        assert split["beat"].created[_NEW_ROW]["enabled"] is False
+        assert split["pg"].created[_NEW_ROW]["enabled"] is False
+
+    def test_a_missing_row_falls_back_to_beat(self) -> None:
+        """A fresh install applies 0002/0004 first, so this is defensive only."""
+        split = _run_split(beat_row=None, pg_row=None)
+        assert split["beat"].created[_NEW_ROW]["enabled"] is True
+        assert split["pg"].created[_NEW_ROW]["pg_owned"] is False
+
+
+class TestARunningBeatIsToldToReload:
+    """Historical models fire no post_save, so DatabaseScheduler never reloads.
+
+    Without an explicit bump the existing row keeps firing with no tier and the new
+    row never fires at all — no error, nothing logged, and the whole saving silently
+    does not happen.
+    """
+
+    def test_the_forward_direction_bumps_the_change_tracker(self, split) -> None:
+        assert split["tracker"].bumps == 1
+
+    def test_the_reverse_direction_bumps_it_too(self) -> None:
+        mod = importlib.import_module(_SPLIT_MIGRATION)
+        tracker, other = _SplitRecorder(), _SplitRecorder()
+
+        class _Apps:
+            def get_model(self, _app: str, model: str) -> type:
+                table = tracker if model == "PeriodicTasks" else other
+                return type("M", (), {"objects": table})
+
+        mod.merge_schedules(_Apps(), None)
+        assert tracker.bumps == 1
 
 
 class TestTheRewriteLeavesSchedulerOwnershipAlone:

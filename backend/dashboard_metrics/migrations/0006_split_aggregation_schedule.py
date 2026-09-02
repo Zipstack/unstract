@@ -7,12 +7,23 @@ task name would need its own worker registration and internal endpoint.
 
 Beat and PG rows are declared here from one spec, so this pair cannot drift the way
 0002 and 0004 can. Beat stores kwargs as a JSON string, PgPeriodicTask decoded. The
-new PG row lands inert (``pg_owned=False``) like 0004's.
+new row inherits whichever scheduler owns the row it is split from, rather than
+hardcoding Beat: it is one half of that row, and the same process should fire it.
+
+The new row runs at minute 20 — off the ``*/15`` grid — so it never starts alongside
+the hourly-tier run, whose per-tier lock is deliberately unable to block it.
+
+**Rolling back the code past this release requires reversing this migration too.**
+After it runs both scheduler rows carry a ``tier`` kwarg that the previous release's
+zero-argument signatures reject with ``TypeError``, which ``autoretry_for`` does not
+cover — aggregation would stop for both tiers until ``migrate dashboard_metrics 0005``
+restores the single row.
 """
 
 import json
 
 from django.db import migrations
+from django.utils import timezone
 
 AGGREGATE_TASK_NAME = "dashboard_metrics.aggregate_from_sources"
 AGGREGATE_QUEUE = "dashboard_metric_events"
@@ -40,8 +51,11 @@ AGGREGATION_SCHEDULES = [
     {
         "name": "dashboard_metrics_aggregate_daily_monthly",
         "tier": TIER_DAILY_MONTHLY,
-        "cron_string": "0 * * * *",
-        "crontab": {"minute": "0", "hour": "*"},
+        # Off the */15 grid (:00 :15 :30 :45): the per-tier locks are built so the
+        # two runs cannot block each other, so a shared minute means two full
+        # prefilter scans and two per-org loops at once. Same cadence, no overlap.
+        "cron_string": "20 * * * *",
+        "crontab": {"minute": "20", "hour": "*"},
         "description": (
             "Aggregate the daily and monthly dashboard metrics tiers from source "
             "tables — hourly, since these figures do not need 15-minute freshness"
@@ -51,10 +65,27 @@ AGGREGATION_SCHEDULES = [
 ]
 
 
+def _inherited_ownership(periodic_task_model, pg_periodic_task_model):
+    """Which scheduler fires the row being split, so its other half matches.
+
+    Hardcoding Beat would leave the daily/monthly tier with no firer wherever the
+    metrics periodics are already PG-adopted: the adopted row's Beat twin is disabled
+    and Beat may not be running at all.
+    """
+    beat = periodic_task_model.objects.filter(name=EXISTING_AGGREGATE_ROW).first()
+    pg = pg_periodic_task_model.objects.filter(name=EXISTING_AGGREGATE_ROW).first()
+    return {
+        "beat_enabled": True if beat is None else beat.enabled,
+        "pg_enabled": True if pg is None else pg.enabled,
+        "pg_owned": False if pg is None else pg.pg_owned,
+    }
+
+
 def split_schedules(apps, schema_editor):
     CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
     PgPeriodicTask = apps.get_model("pg_queue", "PgPeriodicTask")
+    owner = _inherited_ownership(PeriodicTask, PgPeriodicTask)
 
     for spec in AGGREGATION_SCHEDULES:
         kwargs = {"tier": spec["tier"]}
@@ -84,7 +115,7 @@ def split_schedules(apps, schema_editor):
                 "crontab": schedule,
                 "queue": AGGREGATE_QUEUE,
                 "kwargs": json.dumps(kwargs),
-                "enabled": True,
+                "enabled": owner["beat_enabled"],
                 "description": spec["description"],
             },
         )
@@ -97,10 +128,12 @@ def split_schedules(apps, schema_editor):
                 "task_kwargs": kwargs,
                 "cron_string": spec["cron_string"],
                 "org_id": "",
-                "enabled": True,
-                "pg_owned": False,
+                "enabled": owner["pg_enabled"],
+                "pg_owned": owner["pg_owned"],
             },
         )
+
+    _bump_beat_change_tracker(apps)
 
 
 def merge_schedules(apps, schema_editor):
@@ -123,6 +156,23 @@ def merge_schedules(apps, schema_editor):
         ),
     )
     PgPeriodicTask.objects.filter(name=EXISTING_AGGREGATE_ROW).update(task_kwargs={})
+    _bump_beat_change_tracker(apps)
+
+
+def _bump_beat_change_tracker(apps):
+    """Make a running Beat reload instead of keeping the pre-split schedule.
+
+    django-celery-beat's post_save receiver binds the concrete PeriodicTask, so writes
+    through a historical model never bump PeriodicTasks.last_update and
+    DatabaseScheduler keeps its in-memory copy: the existing row would go on firing
+    with no tier and the new row would never fire at all — the whole saving silently
+    not happening. Same fix and reason as scheduler/ownership.py and
+    mirror_pg_periodic_tasks.py.
+    """
+    periodic_tasks_model = apps.get_model("django_celery_beat", "PeriodicTasks")
+    periodic_tasks_model.objects.update_or_create(
+        ident=1, defaults={"last_update": timezone.now()}
+    )
 
 
 class Migration(migrations.Migration):

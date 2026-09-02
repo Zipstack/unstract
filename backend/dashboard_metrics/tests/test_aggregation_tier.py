@@ -10,6 +10,7 @@ DB-free, so this runs in the unit tier alongside test_pg_periodic_task_declarati
 
 from __future__ import annotations
 
+import inspect
 import os
 
 import django
@@ -25,6 +26,7 @@ from dashboard_metrics.tasks import (  # noqa: E402
     _aggregation_lock_key,
     _writes_daily_monthly,
     _writes_hourly,
+    aggregate_metrics_from_sources,
 )
 
 
@@ -60,11 +62,23 @@ class TestWhichTiersEachRunWrites:
 
 
 class TestTheDefaultIsAll:
-    def test_omitting_the_tier_writes_everything_rather_than_nothing(self) -> None:
-        """Between the code deploying and migration 0005 running, the schedule row
-        still carries no tier kwarg. Defaulting to anything narrower would stop writing
-        tiers during that window; defaulting to none would stop writing entirely.
+    """The property that keeps the deploy window safe, pinned at the signature.
+
+    Between the code deploying and migration 0006 running, the schedule row still
+    carries no tier kwarg. Every other test in the suite passes a tier explicitly or
+    mocks the task, so none of them can see what the default actually is.
+    """
+
+    def test_the_signature_default_is_all(self) -> None:
+        """Narrower and daily/monthly stop being written for the whole window; none
+        and nothing is written at all. Both look like successful runs.
         """
+        default = inspect.signature(aggregate_metrics_from_sources).parameters[
+            "tier"
+        ].default
+        assert default == AggregationTier.ALL
+
+    def test_the_default_writes_everything_rather_than_nothing(self) -> None:
         assert AggregationTier("all") is AggregationTier.ALL
         assert _writes_hourly(AggregationTier.ALL)
         assert _writes_daily_monthly(AggregationTier.ALL)
