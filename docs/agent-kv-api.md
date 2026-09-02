@@ -795,6 +795,18 @@ beyond `docker compose up`:
     type-checking, capability allowlist) at execution time. This layered defense prevents
     unbounded code execution and resource exhaustion from untrusted input.
 
+    **Accepted v1 residual (arbitrary in-pod file reads):** because generated code
+    legitimately needs `open()`/`pathlib` for its input and output files, untrusted
+    calculation code can read world-readable files inside its own sandbox pod and
+    return the contents to the submitter. This is contained — not by the AST gate, but
+    by the pod's layers 2–5: no secrets in the pod (not even the platform
+    `ENCRYPTION_KEY`), non-root on a read-only rootfs, default-deny egress (no
+    exfiltration), per-job isolation, and results returned only to the submitting
+    key — so the worst case is disclosure of a non-sensitive container file to the
+    customer who submitted the job. The deferred hardening for this is a
+    `runtimeClass: gvisor` sandbox. Consequently the sandbox pod's default-deny egress
+    and no-secrets posture are load-bearing and must not be relaxed.
+
 ## 13. Environment reference
 
 All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`

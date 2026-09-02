@@ -129,6 +129,31 @@ no platform-service, no backend, no internet. Secrets: only the broker/DB creden
 assertions, mutation-checked). Compose/dev mirrors what it can (`read_only`,
 `cap_drop: ALL`, `no-new-privileges`, tmpfs `/tmp`, internal network only).
 
+### 8a. Accepted v1 residual — arbitrary in-pod file reads (R12)
+
+Generated calculation code legitimately needs `open()` (it reads its input JSON and
+writes its output JSONL), and the AST gate's import allowlist includes `pathlib` — so
+untrusted code **can read any world-readable file in its own pod** and emit the
+contents as a calculation row. This is **not robustly closable at the AST layer**
+(`open`, `pathlib`, `io`, `json.load(open(...))` are all needed or reachable), so v1
+**accepts it** as a bounded residual, contained by layers 2–5 rather than layer 1:
+
+- the pod carries **no secrets** (§8 / R11 — no LLM/OCR/storage creds, and critically
+  not the platform master `ENCRYPTION_KEY`; only its own broker/result-backend DB
+  credential),
+- it runs **non-root** on a **read-only rootfs** (cannot read `/etc/shadow`, cannot
+  write outside the `/tmp` emptyDir),
+- **default-deny egress** (no network path to exfiltrate what it reads),
+- **per-job tempdir** isolation (no cross-tenant file access), and
+- results return **only to the submitting customer's own API key**.
+
+So the worst case is disclosure of a **non-sensitive container file** (e.g. a stock
+`/etc/passwd`) back to the customer who submitted the job — no secret, no cross-tenant
+read, no exfiltration. The **deferred mitigation is `runtimeClass: gvisor`** (a
+filesystem/syscall sandbox), already listed as a v1-out-of-scope upgrade in §1 and the
+parent design §6.3. This residual is the reason the NetworkPolicy's default-deny egress
+and the no-secrets invariant are load-bearing and must not be relaxed.
+
 ## 9. Testing (S11)
 
 - Worker unit: AST-gate adversarial corpus (`os`/`subprocess`/`socket`/`ctypes`
