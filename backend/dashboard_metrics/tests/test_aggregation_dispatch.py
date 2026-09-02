@@ -67,11 +67,34 @@ class TestThePgLegCarriesTheTier:
 
     def test_an_omitted_tier_leaves_the_task_default_in_place(self) -> None:
         """Not 'hourly', and not nothing: the task's own default is `all`, and passing
-        anything here would override it during the pre-0005 deploy window.
+        anything here would override it during the window before 0006 applies.
         """
         status, called_with = _post({})
         assert status == 200
         assert called_with == {}
+
+    @pytest.mark.parametrize("body", [{}, {"tier": None}, "not-a-dict"])
+    def test_an_absent_tier_leaves_the_task_default_in_place(self, body) -> None:
+        """An explicit null and a non-dict body both mean "omitted", not "no tiers"."""
+        status, called_with = _post(body)
+        assert status == 200
+        assert called_with == {}
+
+    def test_the_source_window_reaches_the_task(self) -> None:
+        """0005's reconciliation row dispatches this against the same task path."""
+        status, called_with = _post({"source_window_days": 7})
+        assert status == 200
+        assert called_with == {"source_window_days": 7}
+
+    def test_both_kwargs_survive_together(self) -> None:
+        status, called_with = _post({"tier": "hourly", "source_window_days": 7})
+        assert status == 200
+        assert called_with == {"tier": "hourly", "source_window_days": 7}
+
+    def test_a_non_integer_window_is_rejected(self) -> None:
+        status, called_with = _post({"source_window_days": "seven"})
+        assert status == 400
+        assert called_with is None
 
     def test_an_unrecognised_tier_is_rejected_rather_than_ignored(self) -> None:
         """A silent no-op would look like a successful run that wrote nothing.

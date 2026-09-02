@@ -217,20 +217,75 @@ class AggregationTier(StrEnum):
 
 
 # Keyed per tier: the two schedules collide hourly and must not block each other.
+# Daily-tier source lookback. The reconciliation schedule 0005 declares dispatches a
+# wider one, so this signature has to accept it — see workers/scheduler and
+# internal_views for the other two legs of the same path.
+DASHBOARD_SOURCE_WINDOW_DAYS = 7
+MAX_SOURCE_WINDOW_DAYS = 90
+
 AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
 AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches the fastest task schedule)
 
 
+# Which granularities each tier writes. One table rather than a predicate per
+# granularity: add a member without an entry here and _tiers_written raises on the
+# first run, instead of the run acquiring its lock, iterating every org, writing
+# nothing and returning success.
+_TIER_WRITES: dict[AggregationTier, frozenset[str]] = {
+    AggregationTier.HOURLY: frozenset({AggregationTier.HOURLY.value}),
+    AggregationTier.DAILY_MONTHLY: frozenset({AggregationTier.DAILY_MONTHLY.value}),
+    AggregationTier.ALL: frozenset(
+        {AggregationTier.HOURLY.value, AggregationTier.DAILY_MONTHLY.value}
+    ),
+}
+
+
+def _tiers_written(tier: AggregationTier) -> frozenset[str]:
+    """The granularities one tier writes. Unhandled members raise rather than no-op."""
+    try:
+        return _TIER_WRITES[tier]
+    except KeyError:
+        raise AssertionError(f"Unhandled AggregationTier: {tier!r}") from None
+
+
 def _writes_hourly(tier: AggregationTier) -> bool:
-    return tier in (AggregationTier.HOURLY, AggregationTier.ALL)
+    return AggregationTier.HOURLY.value in _tiers_written(tier)
 
 
 def _writes_daily_monthly(tier: AggregationTier) -> bool:
-    return tier in (AggregationTier.DAILY_MONTHLY, AggregationTier.ALL)
+    return AggregationTier.DAILY_MONTHLY.value in _tiers_written(tier)
 
 
-def _aggregation_lock_key(tier: AggregationTier) -> str:
-    return f"{AGGREGATION_LOCK_KEY_PREFIX}:{tier.value}"
+def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> list[str]:
+    """One key per granularity written, namespaced by source window.
+
+    Per granularity, not per enum member: keying on the label alone gives ALL a third
+    key that excludes nothing, so an ALL run and the scheduled hourly run would write
+    EventMetricsHourly concurrently. Taking one key per granularity restores exclusion
+    exactly where writes collide, and the two scheduled tiers still never block.
+
+    Per window because a wider window is a different job. The reconciliation pass runs
+    once a day on a fixed crontab against a drifting 15-minute interval; on a shared
+    key it would lose the race, return skipped=True and never be retried — and it is
+    the only thing that repairs the narrowed window. Both are idempotent upserts, so
+    that once-a-day overlap costs duplicated work at worst.
+    """
+    return [
+        f"{AGGREGATION_LOCK_KEY_PREFIX}:{source_window_days}d:{granularity}"
+        for granularity in sorted(_tiers_written(tier))
+    ]
+
+
+def _acquire_aggregation_locks(lock_keys: list[str]) -> list[str]:
+    """Take every key or none; returns the keys taken, empty if the run must skip."""
+    taken: list[str] = []
+    for key in lock_keys:
+        if not _acquire_aggregation_lock(key):
+            for held in taken:
+                cache.delete(held)
+            return []
+        taken.append(key)
+    return taken
 
 
 def _acquire_aggregation_lock(lock_key: str) -> bool:
@@ -293,6 +348,7 @@ def _acquire_aggregation_lock(lock_key: str) -> bool:
 )
 def aggregate_metrics_from_sources(
     tier: str = AggregationTier.ALL,
+    source_window_days: int = DASHBOARD_SOURCE_WINDOW_DAYS,
 ) -> dict[str, Any]:
     """Aggregate metrics from source tables into the hourly/daily/monthly tables.
 
@@ -311,29 +367,41 @@ def aggregate_metrics_from_sources(
     Args:
         tier: An AggregationTier value. Defaults to all, so a caller that omits
             it writes every tier rather than none.
+        source_window_days: Daily-tier source lookback. The once-daily
+            reconciliation schedule declared by 0005 dispatches a wider one.
 
     Returns:
         Dict with aggregation summary for the tiers that ran
 
     Raises:
-        ValueError: tier is not a recognised AggregationTier
+        ValueError: tier is not a recognised AggregationTier, or the window is
+            not an integer between 1 and MAX_SOURCE_WINDOW_DAYS
     """
     tier = AggregationTier(tier)
-    lock_key = _aggregation_lock_key(tier)
+    source_window_days = _validate_source_window(source_window_days)
+    lock_keys = _aggregation_lock_keys(tier, source_window_days)
 
-    if not _acquire_aggregation_lock(lock_key):
-        logger.info("Skipping %s aggregation — another run is in progress", tier.value)
+    held = _acquire_aggregation_locks(lock_keys)
+    if not held:
+        logger.warning(
+            "Skipping the %s aggregation over %d day(s) — another run writing the "
+            "same tier is in progress",
+            tier.value,
+            source_window_days,
+        )
         return {
             "success": True,
             "skipped": True,
             "reason": "lock_held",
             "tier": tier.value,
+            "source_window_days": source_window_days,
         }
 
     try:
-        return _run_aggregation(tier)
+        return _run_aggregation(tier, source_window_days)
     finally:
-        cache.delete(lock_key)
+        for key in held:
+            cache.delete(key)
 
 
 def _aggregate_single_metric(
@@ -578,11 +646,31 @@ def _aggregate_org(
         stats["errors"] += 1
 
 
-def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, Any]:
+def _validate_source_window(source_window_days: int) -> int:
+    """Coerce and bound the window. It arrives as JSON from an editable Beat row."""
+    try:
+        days = int(source_window_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"source_window_days must be an integer, got {source_window_days!r}"
+        ) from exc
+    if not 1 <= days <= MAX_SOURCE_WINDOW_DAYS:
+        raise ValueError(
+            f"source_window_days must be between 1 and {MAX_SOURCE_WINDOW_DAYS}, "
+            f"got {days}"
+        )
+    return days
+
+
+def _run_aggregation(
+    tier: AggregationTier = AggregationTier.ALL,
+    source_window_days: int = DASHBOARD_SOURCE_WINDOW_DAYS,
+) -> dict[str, Any]:
     """Execute the actual aggregation logic.
 
     Separated from the task function to keep the lock management clean.
     """
+    source_window_days = _validate_source_window(source_window_days)
     end_date = timezone.now()
 
     # Query windows for each granularity
@@ -590,7 +678,7 @@ def _run_aggregation(tier: AggregationTier = AggregationTier.ALL) -> dict[str, A
     # - Daily: Last 7 days (ensures we capture late-arriving data)
     # - Monthly: Last 2 months (current + previous, ensures month transitions are captured)
     hourly_start = end_date - timedelta(hours=24)
-    daily_start = _truncate_to_day(end_date - timedelta(days=7))
+    daily_start = _truncate_to_day(end_date - timedelta(days=source_window_days))
     # Include previous month to handle month boundaries
     if end_date.month == 1:
         monthly_start = end_date.replace(

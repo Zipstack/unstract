@@ -28,8 +28,12 @@ from django.utils import timezone
 AGGREGATE_TASK_NAME = "dashboard_metrics.aggregate_from_sources"
 AGGREGATE_QUEUE = "dashboard_metric_events"
 
-# Frozen literals — migrations must not import app enums. Kept in step with
-# dashboard_metrics.tasks.AggregationTier.
+# Frozen wire values, not a copy to keep in step with the enum. These are written
+# into rows this migration never re-runs against, so editing them to follow a rename
+# of AggregationTier changes nothing in production and every test stays green while
+# live rows still carry the old string — the task then raises ValueError on every
+# run. Renaming an AggregationTier value needs a NEW data migration that rewrites the
+# rows; this file is a record of what was written on the day it ran.
 TIER_HOURLY = "hourly"
 TIER_DAILY_MONTHLY = "daily_monthly"
 
@@ -94,10 +98,23 @@ def split_schedules(apps, schema_editor):
             # Payload only. `enabled` and `pg_owned` say which scheduler fires this
             # row and belong to converge_pg_scheduler; rewriting them here can leave
             # an adopted row with no firer. Its cadence does not change.
-            PeriodicTask.objects.filter(name=spec["name"]).update(
+            #
+            # The counts are checked rather than discarded: a bulk update matching no
+            # row reports success having changed nothing, leaving the old row on
+            # kwargs="{}" — which defaults to every tier every 15 minutes — while the
+            # new hourly row also fires. Strictly more load than before, silently.
+            beat_updated = PeriodicTask.objects.filter(name=spec["name"]).update(
                 kwargs=json.dumps(kwargs), description=spec["description"]
             )
-            PgPeriodicTask.objects.filter(name=spec["name"]).update(task_kwargs=kwargs)
+            pg_updated = PgPeriodicTask.objects.filter(name=spec["name"]).update(
+                task_kwargs=kwargs
+            )
+            if not beat_updated or not pg_updated:
+                raise RuntimeError(
+                    f"{spec['name']}: expected a row on both schedulers to split, "
+                    f"found beat={beat_updated} pg={pg_updated}. Apply 0002 and 0004 "
+                    "first, or restore the row before re-running."
+                )
             continue
 
         schedule, _ = CrontabSchedule.objects.get_or_create(
@@ -148,14 +165,22 @@ def merge_schedules(apps, schema_editor):
     PeriodicTask.objects.filter(name__in=added).delete()
     PgPeriodicTask.objects.filter(name__in=added).delete()
 
-    PeriodicTask.objects.filter(name=EXISTING_AGGREGATE_ROW).update(
+    beat_restored = PeriodicTask.objects.filter(name=EXISTING_AGGREGATE_ROW).update(
         kwargs="{}",
         description=(
             "Aggregate metrics from source tables (Usage, PageUsage, etc.) "
             "into hourly, daily, and monthly metrics tables"
         ),
     )
-    PgPeriodicTask.objects.filter(name=EXISTING_AGGREGATE_ROW).update(task_kwargs={})
+    pg_restored = PgPeriodicTask.objects.filter(name=EXISTING_AGGREGATE_ROW).update(
+        task_kwargs={}
+    )
+    if not beat_restored or not pg_restored:
+        raise RuntimeError(
+            f"{EXISTING_AGGREGATE_ROW}: expected a row on both schedulers to restore, "
+            f"found beat={beat_restored} pg={pg_restored}. The rollback would leave "
+            "the daily and monthly tiers with no schedule."
+        )
     _bump_beat_change_tracker(apps)
 
 

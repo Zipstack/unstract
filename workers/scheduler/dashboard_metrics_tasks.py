@@ -105,13 +105,23 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
 
 
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
-def dashboard_metrics_aggregate(tier: str | None = None) -> dict[str, Any]:
+def dashboard_metrics_aggregate(
+    tier: str | None = None, source_window_days: int | None = None
+) -> dict[str, Any]:
     """Aggregate source tables into the hourly/daily/monthly metrics tables.
 
-    ``tier`` comes from the schedule row's kwargs and selects which tiers to write;
-    omitted means all of them.
+    Both kwargs come from the schedule row and both are optional: ``tier`` selects
+    which tiers to write, ``source_window_days`` widens the daily lookback for the
+    reconciliation pass. Omitting either applies the backend task's own default.
     """
-    body = {"tier": tier} if tier is not None else None
+    body = {
+        key: value
+        for key, value in (
+            ("tier", tier),
+            ("source_window_days", source_window_days),
+        )
+        if value is not None
+    } or None
     result = _call_internal(_AGGREGATE_PATH, body=body)
     _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
     return result

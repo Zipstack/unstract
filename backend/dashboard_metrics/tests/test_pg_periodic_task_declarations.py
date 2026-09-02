@@ -19,10 +19,19 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 from types import SimpleNamespace
 from typing import Any
 
+import django
 import pytest
+from django.apps import apps
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
+
+from dashboard_metrics.tasks import AggregationTier  # noqa: E402
 
 _BEAT_MIGRATION = "dashboard_metrics.migrations.0002_setup_periodic_tasks"
 _PG_MIGRATION = "dashboard_metrics.migrations.0004_pg_periodic_tasks"
@@ -126,7 +135,7 @@ _EXISTING_ROW = "dashboard_metrics_aggregate_from_sources"
 
 
 class _SplitRecorder:
-    """Captures what 0005 does to one scheduler table, keeping creates and updates apart.
+    """Captures what 0006 does to one scheduler table, keeping creates and updates apart.
 
     The distinction is the point: creating a row writes every default, updating one writes
     only the named fields. Conflating them is exactly the bug this guards.
@@ -135,12 +144,20 @@ class _SplitRecorder:
     def __init__(self, existing: Any = None) -> None:
         self.created: dict[str, dict[str, Any]] = {}
         self.updated: dict[str, dict[str, Any]] = {}
+        self.deleted: list[str] = []
         self.bumps = 0
+        # How many rows a filtered update matches. 0 models the row being absent,
+        # which is the case the migration now refuses to report as success.
+        self.rows_present: int | None = None
         self._existing = existing
         self._filtered_on: str = ""
+        self._filtered_in: list[str] = []
 
-    def filter(self, name: str = "", **_kw: Any) -> _SplitRecorder:
+    def filter(
+        self, name: str = "", name__in: list[str] | None = None, **_kw: Any
+    ) -> _SplitRecorder:
         self._filtered_on = name
+        self._filtered_in = list(name__in or [])
         return self
 
     def first(self) -> Any:
@@ -148,7 +165,7 @@ class _SplitRecorder:
 
     def update(self, **kwargs: Any) -> int:
         self.updated[self._filtered_on] = kwargs
-        return 1
+        return 1 if self.rows_present is None else self.rows_present
 
     def update_or_create(
         self, name: str = "", defaults: dict[str, Any] | None = None, **_kw: Any
@@ -163,7 +180,8 @@ class _SplitRecorder:
         return kwargs, True
 
     def delete(self) -> tuple[int, dict[str, Any]]:
-        return (0, {})
+        self.deleted.extend(self._filtered_in or [self._filtered_on])
+        return (len(self.deleted), {})
 
 
 def _run_split(beat_row: Any = None, pg_row: Any = None) -> dict[str, _SplitRecorder]:
@@ -303,6 +321,67 @@ class TestARunningBeatIsToldToReload:
 
         mod.merge_schedules(_Apps(), None)
         assert tracker.bumps == 1
+
+
+class TestTheFrozenLiteralsMatchTheEnumToday:
+    """These are wire values, so a rename has to fail loudly rather than pass.
+
+    The migration cannot import the enum, and it never re-runs — so renaming an
+    AggregationTier value and "keeping this in step" leaves live rows carrying the old
+    string while every test goes green. Comparing the two here turns that into a
+    failure at the moment of the rename.
+    """
+
+    def test_the_declared_tiers_are_exactly_the_schedulable_ones(self) -> None:
+        mod = importlib.import_module(_SPLIT_MIGRATION)
+        declared = {spec["tier"] for spec in mod.AGGREGATION_SCHEDULES}
+        # ALL is the signature default and the pre-migration row's meaning; no
+        # schedule row ever carries it.
+        schedulable = {t.value for t in AggregationTier} - {AggregationTier.ALL.value}
+        assert declared == schedulable
+
+
+class TestTheRollbackRestoresOneRow:
+    """merge_schedules is this PR's stated safety story and had no coverage at all."""
+
+    def _run_merge(self, rows_present: int | None = None):
+        mod = importlib.import_module(_SPLIT_MIGRATION)
+        beat, pg, tracker = _SplitRecorder(), _SplitRecorder(), _SplitRecorder()
+        beat.rows_present = rows_present
+        pg.rows_present = rows_present
+
+        class _Apps:
+            def get_model(self, _app: str, model: str) -> type:
+                table = {
+                    "PeriodicTask": beat,
+                    "PgPeriodicTask": pg,
+                    "PeriodicTasks": tracker,
+                }.get(model, _SplitRecorder())
+                return type("M", (), {"objects": table})
+
+        mod.merge_schedules(_Apps(), None)
+        return {"beat": beat, "pg": pg, "tracker": tracker}
+
+    def test_the_added_row_is_deleted_from_both_tables(self) -> None:
+        merged = self._run_merge()
+        for table in ("beat", "pg"):
+            assert _NEW_ROW in merged[table].deleted
+
+    def test_the_existing_row_gets_its_pre_split_payload_back(self) -> None:
+        merged = self._run_merge()
+        assert merged["beat"].updated[_EXISTING_ROW]["kwargs"] == "{}"
+        assert merged["pg"].updated[_EXISTING_ROW]["task_kwargs"] == {}
+
+    def test_the_rollback_leaves_ownership_alone_like_the_forward_direction(self) -> None:
+        merged = self._run_merge()
+        assert "enabled" not in merged["beat"].updated[_EXISTING_ROW]
+        assert set(merged["pg"].updated[_EXISTING_ROW]) == {"task_kwargs"}
+
+    def test_a_rollback_that_restores_nothing_raises(self) -> None:
+        """A bulk update matching no row would otherwise report a clean rollback while
+        leaving the daily and monthly tiers with no schedule at all."""
+        with pytest.raises(RuntimeError, match=_EXISTING_ROW):
+            self._run_merge(rows_present=0)
 
 
 class TestTheRewriteLeavesSchedulerOwnershipAlone:

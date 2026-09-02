@@ -7,8 +7,11 @@ separately in test_aggregation_tier.py; this is the outcome they are supposed to
 
 Two properties, and both matter:
 
-- the `hourly` schedule reproduces what the single pre-split run wrote to
-  EventMetricsHourly, exactly — that is the "unchanged" half
+- the `hourly` schedule reproduces what an all-tiers run writes to EventMetricsHourly,
+  exactly — that is the "unchanged" half. Note this is a **partition** property of the
+  post-change code, not a comparison against the pre-split implementation, which this
+  branch does not have: `test_the_hourly_tier_holds_the_figures_the_fixture_implies`
+  is what anchors it to an absolute number
 - `hourly` and `daily_monthly` together reproduce every row the pre-split run wrote to
   any table — that is the "nothing is lost" half, which the AC assumes rather than states
 
@@ -20,6 +23,7 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 from typing import Any
+from unittest.mock import patch
 
 import os
 
@@ -41,7 +45,11 @@ from dashboard_metrics.models import (  # noqa: E402
     EventMetricsHourly,
     EventMetricsMonthly,
 )
-from dashboard_metrics.tasks import AggregationTier, _run_aggregation  # noqa: E402
+from dashboard_metrics.tasks import (  # noqa: E402
+    AggregationTier,
+    _run_aggregation,
+    _truncate_to_month,
+)
 
 # (model, the column naming its period) — the period field differs per tier.
 _TIERS = [
@@ -60,16 +68,21 @@ class TestTheSplitPreservesEveryFigure(TestCase):
         self.workflow = Workflow.objects.create(
             workflow_name="tier-split-wf", organization=self.org
         )
-        now = timezone.now()
+        self.now = now = timezone.now()
         # One row per window the aggregation reads — last 24h for the hourly tier, last
         # 7 days for daily, inside the previous month for monthly. The two recent ones
         # also make the org visible to the active-org prefilter, without which nothing
         # runs at all.
+        #
+        # The previous-month row is derived from the month boundary, not a fixed
+        # "25 days ago": for the last few days of any month that lands in the *current*
+        # month and the cross-boundary coverage silently disappears.
+        last_month_day = _truncate_to_month(now) - timedelta(days=1)
         windows = [
             now - timedelta(hours=2),
             now - timedelta(hours=5),
             now - timedelta(days=3),
-            now - timedelta(days=25),
+            last_month_day,
         ]
         executions = self._add_executions(windows)
         # Both aggregation paths have to be exercised: the per-metric queries go through
@@ -136,8 +149,15 @@ class TestTheSplitPreservesEveryFigure(TestCase):
             model._base_manager.all().delete()
 
     def _run(self, tier: AggregationTier) -> dict[str, set[tuple[Any, ...]]]:
+        """One clock for every run in a test.
+
+        _run_aggregation reads timezone.now() itself, so three unpatched invocations
+        compute three different window starts — and a run straddling an hour or a month
+        boundary would fail on a non-regression.
+        """
         self._clear()
-        _run_aggregation(tier)
+        with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
+            _run_aggregation(tier)
         return self._snapshot()
 
     def test_the_pre_split_run_writes_all_three_tiers(self) -> None:
@@ -159,6 +179,24 @@ class TestTheSplitPreservesEveryFigure(TestCase):
             names = {row[2] for row in rows}
             assert "documents_processed" in names, f"{table}: no per-metric figure"
             assert "llm_calls" in names, f"{table}: no combined-LLM figure"
+
+    def test_the_hourly_tier_holds_the_figures_the_fixture_implies(self) -> None:
+        """An absolute expectation, not a comparison of the code against itself.
+
+        Every other assertion in this file runs the same post-change function twice, so
+        a regression in the shared path — the window arithmetic, the org_identifier
+        handoff, an upsert that writes zeroes — moves both sides equally and stays
+        green. This one names a number the fixture determines.
+        """
+        self._run(AggregationTier.HOURLY)
+        rows = EventMetricsHourly._base_manager.filter(
+            metric_name="documents_processed"
+        )
+        assert sum(row.metric_value for row in rows) == 2, (
+            "exactly the -2h and -5h file executions fall inside the 24h window; "
+            "the -3d and previous-month ones must not"
+        )
+        assert {row.metric_value for row in rows} != {0}
 
     def test_hourly_reproduces_the_pre_split_hourly_figures(self) -> None:
         """The "figures unchanged" half of AC-2, row for row rather than in aggregate."""

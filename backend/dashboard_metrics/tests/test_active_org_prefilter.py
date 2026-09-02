@@ -46,6 +46,8 @@ from workflow_manager.workflow_v2.models.workflow import Workflow  # noqa: E402
 
 from dashboard_metrics.tasks import AggregationTier, _run_aggregation  # noqa: E402
 
+INDEX_NAME = "we_created_at_idx"
+
 _ROWS = 12000
 _SPAN_DAYS = 255
 
@@ -96,7 +98,14 @@ class TestThePrefilterCanUseTheIndex(TestCase):
             and "DISTINCT" in q["sql"].upper()
             and "created_at" in q["sql"]
         ]
+        # The run issues nine further queries against this table, several of them
+        # joining it and filtering created_at. Index 0 is right today only by execution
+        # order, which nothing here states — so require the shape to be unambiguous.
         assert candidates, "the aggregation issued no active-org prefilter query"
+        assert len(candidates) == 1, (
+            f"{len(candidates)} queries match the prefilter shape; the match is no "
+            f"longer distinguishing:\n" + "\n\n".join(candidates)
+        )
         return str(candidates[0])
 
     def test_the_window_is_the_selectivity_the_index_is_for(self) -> None:
@@ -111,9 +120,22 @@ class TestThePrefilterCanUseTheIndex(TestCase):
             share = cur.fetchone()[0]
         assert 0 < share < 0.10
 
-    def test_the_prefilter_does_not_scan_the_executions_table(self) -> None:
-        """The regression the index is meant to remove."""
+    def test_the_index_can_serve_the_prefilter(self) -> None:
+        """*Usable*, not *chosen*.
+
+        Whether the planner picks the index on a synthetic table turns on
+        random_page_cost, effective_cache_size, the PG major version and how the
+        freshly-loaded visibility map looks — none of which this fixture pins, so
+        asserting the choice reds the build on a config change with no code change.
+        Disabling seqscan asks the question that is actually about the query: can this
+        shape be served from the index at all? A prefilter narrowed to lead with a
+        different column fails here whatever the cost model says.
+        """
+        sql = self._prefilter_sql()
         with connection.cursor() as cur:
-            cur.execute("EXPLAIN " + self._prefilter_sql())
+            cur.execute("SET LOCAL enable_seqscan = off")
+            cur.execute("EXPLAIN " + sql)
             plan = "\n".join(row[0] for row in cur.fetchall())
-        assert "Seq Scan on workflow_execution" not in plan, plan
+        assert f"Index Scan using {INDEX_NAME}" in plan or f"Index Only Scan using {INDEX_NAME}" in plan, (
+            f"expected {INDEX_NAME} to be usable for the prefilter:\n{plan}"
+        )

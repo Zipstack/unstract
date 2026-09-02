@@ -8,6 +8,7 @@ enqueue site), the request shape, and the failure posture.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -82,7 +83,7 @@ class TestCallContract:
         assert call.call_args.kwargs["body"] == {"tier": tier}
 
     def test_aggregate_omits_the_body_when_no_tier_is_given(self):
-        # Pre-0005 rows carry no tier kwarg; the backend's default then applies, which
+        # Rows written before 0006 carry no tier kwarg; the backend default then applies,
         # is every tier rather than none.
         with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
             dmt.dashboard_metrics_aggregate()
@@ -117,6 +118,40 @@ class TestCallContract:
         ):
             result = dmt.dashboard_metrics_aggregate()
         assert result["skipped"] is True
+
+
+class TestTheReconciliationKwargSurvives:
+    """0005 declares a row against this same task path carrying source_window_days.
+
+    The PG scheduler copies task_kwargs verbatim into the payload, so a proxy that
+    does not accept it raises TypeError per tick — not covered by autoretry_for, and
+    dropped at MAX_ATTEMPTS=1. The gap-repair pass simply never runs.
+    """
+
+    _DECLARED = [{}, {"tier": "hourly"}, {"source_window_days": 7}]
+
+    @pytest.mark.parametrize("kwargs", _DECLARED)
+    def test_every_scheduled_kwarg_set_binds(self, kwargs) -> None:
+        inspect.signature(dmt.dashboard_metrics_aggregate).bind(**kwargs)
+
+    def test_the_source_window_reaches_the_endpoint(self) -> None:
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate(source_window_days=7)
+        assert call.call_args.kwargs["body"] == {"source_window_days": 7}
+
+    def test_both_kwargs_travel_together(self) -> None:
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate(tier="hourly", source_window_days=7)
+        assert call.call_args.kwargs["body"] == {
+            "tier": "hourly",
+            "source_window_days": 7,
+        }
+
+    def test_omitting_both_sends_no_body(self) -> None:
+        # The backend then applies its own defaults rather than ones invented here.
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate()
+        assert call.call_args.kwargs["body"] is None
 
 
 class TestInternalCall:

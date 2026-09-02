@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import inspect
 import os
+import time
 
 import django
 import pytest
@@ -21,13 +22,24 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from django.core.cache import cache  # noqa: E402
+
 from dashboard_metrics.tasks import (  # noqa: E402
+    AGGREGATION_LOCK_TIMEOUT,
+    DASHBOARD_SOURCE_WINDOW_DAYS,
     AggregationTier,
-    _aggregation_lock_key,
+    _acquire_aggregation_lock,
+    _acquire_aggregation_locks,
+    _aggregation_lock_keys,
+    _tiers_written,
     _writes_daily_monthly,
     _writes_hourly,
     aggregate_metrics_from_sources,
 )
+
+
+def _keys(tier, window: int = DASHBOARD_SOURCE_WINDOW_DAYS) -> list[str]:
+    return _aggregation_lock_keys(tier, window)
 
 
 class TestWhichTiersEachRunWrites:
@@ -91,15 +103,81 @@ class TestTheDefaultIsAll:
             AggregationTier("houry")
 
 
-class TestTheLockIsPerTier:
-    def test_every_tier_gets_its_own_key(self) -> None:
-        """The two schedules collide at the top of every hour. One global key and
-        whichever fired first would hold it while the other returned lock_held —
-        so the slower tier could be starved indefinitely.
-        """
-        keys = {_aggregation_lock_key(t) for t in AggregationTier}
-        assert len(keys) == len(list(AggregationTier))
+class TestTheTierTableIsExhaustive:
+    """A member with no entry must raise, not write nothing and report success."""
 
-    def test_the_key_names_the_tier(self) -> None:
+    def test_every_declared_tier_has_an_entry(self) -> None:
         for tier in AggregationTier:
-            assert _aggregation_lock_key(tier).endswith(tier.value)
+            assert _tiers_written(tier)
+
+    def test_an_unhandled_member_raises_rather_than_writing_nothing(self) -> None:
+        # Stands in for a member added to the enum without a _TIER_WRITES entry.
+        ghost = type("_Ghost", (), {"value": "weekly"})()
+        with pytest.raises(AssertionError, match="Unhandled AggregationTier"):
+            _tiers_written(ghost)
+
+
+class TestTheLockCoversWhatIsWritten:
+    """Keyed by granularity written, not by enum member.
+
+    Keying on the label alone gives ALL a third key that excludes nothing, so an ALL
+    run and the scheduled hourly run write EventMetricsHourly concurrently. These
+    exercise the lock rather than its key string: a version of
+    _acquire_aggregation_lock that ignored its argument would pass a key-shape test.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _clear(self):
+        cache.clear()
+        yield
+        cache.clear()
+
+    def test_the_two_scheduled_tiers_never_block_each_other(self) -> None:
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
+
+    def test_a_tier_blocks_itself(self) -> None:
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+
+    def test_all_is_blocked_by_either_half(self) -> None:
+        """The exclusion a per-member key silently dropped."""
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
+
+    def test_a_blocked_run_releases_whatever_it_took(self) -> None:
+        """ALL takes hourly first; failing on daily_monthly must not strand hourly."""
+        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+
+    def test_a_wider_window_is_a_different_job(self) -> None:
+        """The reconciliation pass is never retried, so it must not be starved by the
+        15-minute schedule it races against."""
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY, 2))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.ALL, 7))
+
+
+class TestTheLockSelfHeals:
+    """Both reclaim branches, neither of which was executed by any test."""
+
+    @pytest.fixture(autouse=True)
+    def _clear(self):
+        cache.clear()
+        yield
+        cache.clear()
+
+    def test_a_lock_older_than_the_timeout_is_reclaimed(self) -> None:
+        key = _keys(AggregationTier.HOURLY)[0]
+        cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
+        assert _acquire_aggregation_lock(key)
+
+    def test_a_fresh_lock_is_not_reclaimed(self) -> None:
+        key = _keys(AggregationTier.HOURLY)[0]
+        cache.set(key, str(time.time()), 3600)
+        assert not _acquire_aggregation_lock(key)
+
+    def test_a_corrupted_lock_value_is_reclaimed(self) -> None:
+        key = _keys(AggregationTier.HOURLY)[0]
+        cache.set(key, "running", 3600)
+        assert _acquire_aggregation_lock(key)
