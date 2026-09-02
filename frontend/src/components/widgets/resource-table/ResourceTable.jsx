@@ -289,9 +289,12 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
-    // Sharing grants read only: no edit, no delete. Sharing onward stays
-    // available to shared users, so only the two mutating actions are gated.
+    // Sharing grants read only: no edit, no delete. Both controls stay on
+    // screen but disabled, so it is obvious they exist and why they are not
+    // available. Sharing onward stays open to shared users.
     const canEdit = canEditResource(item, sessionDetails);
+    const locked = !canEdit;
+    const lockedTitle = "Only the owner can change this";
     return (
       <Space
         size={18}
@@ -299,20 +302,20 @@ function ResourceTable({
         onClick={(event) => event.stopPropagation()}
         role="none"
       >
-        {canEdit && (
-          <Tooltip title={disabledTitle}>
-            <button
-              type="button"
-              className="action-icon-btn"
-              aria-label={`Edit ${type}`}
-              data-testid={rowTestId(item, "edit")}
-              aria-disabled={deprecated}
-              onClick={(event) => !deprecated && handleEdit?.(event, item)}
-            >
-              <Pencil className="action-icon-buttons edit-icon" />
-            </button>
-          </Tooltip>
-        )}
+        <Tooltip title={locked ? lockedTitle : disabledTitle}>
+          <button
+            type="button"
+            className="action-icon-btn"
+            aria-label={`Edit ${type}`}
+            data-testid={rowTestId(item, "edit")}
+            aria-disabled={deprecated || locked}
+            onClick={(event) =>
+              !deprecated && canEdit && handleEdit?.(event, item)
+            }
+          >
+            <Pencil className="action-icon-buttons edit-icon" />
+          </button>
+        </Tooltip>
         {handleShare && (
           <Tooltip title={disabledTitle}>
             <button
@@ -333,26 +336,27 @@ function ResourceTable({
          * making it more specific. The button that opens it is per-row,
          * because every row has one.
          */}
-        {canEdit && (
-          <Popconfirm
-            title={`Delete the ${type}`}
-            description={`Are you sure to delete ${item?.[titleProp]}`}
-            okText="Yes"
-            cancelText="No"
-            icon={<CircleHelp />}
-            data-testid={`${testIdPrefix}-delete-confirm`}
-            onConfirm={(event) => handleDelete?.(event, item)}
+        <Popconfirm
+          disabled={locked}
+          title={`Delete the ${type}`}
+          description={`Are you sure to delete ${item?.[titleProp]}`}
+          okText="Yes"
+          cancelText="No"
+          icon={<CircleHelp />}
+          data-testid={`${testIdPrefix}-delete-confirm`}
+          onConfirm={(event) => handleDelete?.(event, item)}
+        >
+          <button
+            type="button"
+            className="action-icon-btn"
+            aria-label={`Delete ${type}`}
+            data-testid={rowTestId(item, "delete")}
+            aria-disabled={locked}
+            title={locked ? lockedTitle : undefined}
           >
-            <button
-              type="button"
-              className="action-icon-btn"
-              aria-label={`Delete ${type}`}
-              data-testid={rowTestId(item, "delete")}
-            >
-              <Trash2 className="action-icon-buttons delete-icon" />
-            </button>
-          </Popconfirm>
-        )}
+            <Trash2 className="action-icon-buttons delete-icon" />
+          </button>
+        </Popconfirm>
       </Space>
     );
   };
