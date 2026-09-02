@@ -289,11 +289,9 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
-    // Sharing grants read only. A non-owner gets no row actions rather than
-    // ones that fail when pressed.
-    if (!canEditResource(item, sessionDetails)) {
-      return null;
-    }
+    // Sharing grants read only: no edit, no delete. Sharing onward stays
+    // available to shared users, so only the two mutating actions are gated.
+    const canEdit = canEditResource(item, sessionDetails);
     return (
       <Space
         size={18}
@@ -301,18 +299,20 @@ function ResourceTable({
         onClick={(event) => event.stopPropagation()}
         role="none"
       >
-        <Tooltip title={disabledTitle}>
-          <button
-            type="button"
-            className="action-icon-btn"
-            aria-label={`Edit ${type}`}
-            data-testid={rowTestId(item, "edit")}
-            aria-disabled={deprecated}
-            onClick={(event) => !deprecated && handleEdit?.(event, item)}
-          >
-            <Pencil className="action-icon-buttons edit-icon" />
-          </button>
-        </Tooltip>
+        {canEdit && (
+          <Tooltip title={disabledTitle}>
+            <button
+              type="button"
+              className="action-icon-btn"
+              aria-label={`Edit ${type}`}
+              data-testid={rowTestId(item, "edit")}
+              aria-disabled={deprecated}
+              onClick={(event) => !deprecated && handleEdit?.(event, item)}
+            >
+              <Pencil className="action-icon-buttons edit-icon" />
+            </button>
+          </Tooltip>
+        )}
         {handleShare && (
           <Tooltip title={disabledTitle}>
             <button
@@ -333,24 +333,26 @@ function ResourceTable({
          * making it more specific. The button that opens it is per-row,
          * because every row has one.
          */}
-        <Popconfirm
-          title={`Delete the ${type}`}
-          description={`Are you sure to delete ${item?.[titleProp]}`}
-          okText="Yes"
-          cancelText="No"
-          icon={<CircleHelp />}
-          data-testid={`${testIdPrefix}-delete-confirm`}
-          onConfirm={(event) => handleDelete?.(event, item)}
-        >
-          <button
-            type="button"
-            className="action-icon-btn"
-            aria-label={`Delete ${type}`}
-            data-testid={rowTestId(item, "delete")}
+        {canEdit && (
+          <Popconfirm
+            title={`Delete the ${type}`}
+            description={`Are you sure to delete ${item?.[titleProp]}`}
+            okText="Yes"
+            cancelText="No"
+            icon={<CircleHelp />}
+            data-testid={`${testIdPrefix}-delete-confirm`}
+            onConfirm={(event) => handleDelete?.(event, item)}
           >
-            <Trash2 className="action-icon-buttons delete-icon" />
-          </button>
-        </Popconfirm>
+            <button
+              type="button"
+              className="action-icon-btn"
+              aria-label={`Delete ${type}`}
+              data-testid={rowTestId(item, "delete")}
+            >
+              <Trash2 className="action-icon-buttons delete-icon" />
+            </button>
+          </Popconfirm>
+        )}
       </Space>
     );
   };

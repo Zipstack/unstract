@@ -50,8 +50,8 @@ function CardActionBox({
   testIdPrefix,
 }) {
   const { sessionDetails } = useSessionStore();
-  // Sharing grants read only, so a non-owner gets no edit, share or delete
-  // control at all -- rather than one that fails when pressed.
+  // Sharing grants read only: no edit, no delete. Sharing onward stays
+  // available -- see the Share button below.
   const canEdit = canEditResource(item, sessionDetails);
   const testId = (suffix) =>
     testIdPrefix ? `${testIdPrefix}-${suffix}-${item?.id}` : undefined;
@@ -70,23 +70,23 @@ function CardActionBox({
   return (
     <Space className="card-list-action-box">
       {canEdit && (
-        <>
-          <Button
-            type="text"
-            className="action-icon-btn edit-icon"
-            data-testid={testId("edit")}
-            icon={<Pencil />}
-            onClick={handleEditAction}
-          />
-          <Button
-            type="text"
-            className="action-icon-btn share-icon"
-            data-testid={testId("share")}
-            icon={<Share2 />}
-            onClick={handleShareAction}
-          />
-        </>
+        <Button
+          type="text"
+          className="action-icon-btn edit-icon"
+          data-testid={testId("edit")}
+          icon={<Pencil />}
+          onClick={handleEditAction}
+        />
       )}
+      {/* Sharing stays open to shared users: they may pass access on to a
+          group they belong to, or to a user in the same organisation. */}
+      <Button
+        type="text"
+        className="action-icon-btn share-icon"
+        data-testid={testId("share")}
+        icon={<Share2 />}
+        onClick={handleShareAction}
+      />
       {canEdit && (
         <Popconfirm
           title={deleteTitle}
