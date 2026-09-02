@@ -2,7 +2,7 @@
 
 .metrics-dashboard {
   padding: 12px;
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   flex: 1;
   overflow: hidden;
   display: flex;
@@ -10,7 +10,7 @@
 }
 
 .metrics-dashboard-container {
-  background-color: var(--page-bg-1);
+  background-color: var(--card);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -71,6 +71,11 @@
 
 .summary-card-icon span {
   font-size: 24px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 24px;
+  height: 24px;
 }
 
 .summary-card-content {
@@ -79,7 +84,7 @@
 }
 
 .summary-card-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #666;
   margin-bottom: 4px;
   white-space: nowrap;
@@ -119,11 +124,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .metric-icon {
   font-size: 16px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
 }
 
 .metric-count {
@@ -168,7 +178,7 @@
 }
 
 .metrics-empty-state-text {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 22px;
   max-width: 360px;
   margin-bottom: 24px;
@@ -283,6 +293,11 @@
 
 .recent-activity-info {
   font-size: 11px;
+  /* width/height, not font-size alone: these classes sit on lucide SVGs,
+   * which ignore font-size and fall back to their own 24px default. The
+   * antd originals were an icon FONT, where font-size was the size. */
+  width: 11px;
+  height: 11px;
   color: #8c8c8c;
   cursor: help;
 }
@@ -315,7 +330,7 @@
 }
 
 .subscription-plan-pages {
-  font-size: 14px;
+  font-size: 13px;
   color: #595959;
 }
 
@@ -361,7 +376,7 @@
 }
 
 .subscription-plan-total-label {
-  font-size: 14px;
+  font-size: 13px;
   color: #8c8c8c;
 }
 
@@ -376,8 +391,8 @@
 .subscription-upgrade-btn {
   align-self: flex-start;
   margin-top: 4px;
-  color: #52c41a;
-  border-color: #52c41a;
+  color: var(--success);
+  border-color: var(--success);
 }
 
 .subscription-upgrade-btn:hover {
@@ -395,7 +410,12 @@
 
 .subscription-stat-icon {
   font-size: 16px;
-  color: #1890ff;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
   margin-bottom: 6px;
 }
 
@@ -420,7 +440,7 @@
 
 .subscription-chart-card .ant-card-head-title,
 .subscription-table-card .ant-card-head-title {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -470,7 +490,7 @@
 }
 
 .execution-success {
-  color: #52c41a;
+  color: var(--success);
   font-size: 12px;
 }
 
@@ -516,7 +536,7 @@
 
 .llm-usage-table .ant-table-tbody > tr > td {
   color: #434343;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .llm-usage-table .ant-table-tbody > tr:hover > td {
@@ -543,4 +563,9 @@
 .llm-usage-info-icon {
   color: #8c8c8c;
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }

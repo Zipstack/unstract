@@ -152,10 +152,18 @@ const PromptCard = memo(
         value = event.target.value;
       }
 
-      const prevPromptDetailsState = { ...promptDetailsState };
-
-      const updatedPromptDetailsState = { ...promptDetailsState };
-      updatedPromptDetailsState[name] = value;
+      /*
+       * Functional update, NOT a spread of the captured snapshot. Header's
+       * debounced savers hold on to the `handleChange` from the render they
+       * were called in, so a save can land against newer state than it was
+       * built from. Spreading the snapshot wrote every *other* field back as
+       * it stood then: ticking "Enable Postprocessing Webhook" and typing the
+       * URL inside the 300ms toggle debounce made the URL save re-assert
+       * `enable_postprocessing_webhook: false`, unticking the box the user
+       * had just ticked (the PATCH itself only ever carries `name`, so the
+       * server kept both values and a refresh looked correct).
+       */
+      const prevValue = promptDetailsState?.[name];
 
       handleUpdateStatus(
         isUpdateStatus,
@@ -163,7 +171,7 @@ const PromptCard = memo(
         promptStudioUpdateStatus.isUpdating,
         setUpdateStatus,
       );
-      setPromptDetailsState(updatedPromptDetailsState);
+      setPromptDetailsState((prev) => ({ ...prev, [name]: value }));
       return handleChangePromptCard(name, value, promptId)
         .then((res) => {
           const data = res?.data;
@@ -180,7 +188,8 @@ const PromptCard = memo(
         })
         .catch(() => {
           handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
-          setPromptDetailsState(prevPromptDetailsState);
+          // Roll back only the field that failed, for the same reason.
+          setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
         })
         .finally(() => {
           if (isUpdateStatus) {

@@ -1,6 +1,8 @@
-import { EditOutlined, MinusOutlined } from "@ant-design/icons";
-import { Button, Input, Typography } from "antd";
+import { Minus, Pencil } from "lucide-react";
 import { useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -88,7 +90,7 @@ function Prompt() {
               <Button
                 size="small"
                 type="text"
-                icon={<MinusOutlined />}
+                icon={<Minus />}
                 onClick={() => setIsPromptOpen(false)}
               />
             </div>
@@ -121,7 +123,7 @@ function Prompt() {
             <Button
               size="small"
               type="text"
-              icon={<EditOutlined />}
+              icon={<Pencil />}
               onClick={() => setIsPromptOpen(true)}
             />
           </div>

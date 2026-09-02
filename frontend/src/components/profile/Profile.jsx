@@ -1,13 +1,12 @@
-import {
-  ArrowLeftOutlined,
-  CheckCircleOutlined,
-  CopyOutlined,
-  MailOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
-import { Button, Card, Col, Row, Space, Spin, Tooltip, Typography } from "antd";
+import { ArrowLeft, CircleCheck, Copy, Mail, User } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Spin } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./Profile.css";
 
 import { OrganizationIcon } from "../../assets";
@@ -80,7 +79,7 @@ function Profile() {
         <div className="profile-secondary-header">
           <Button
             type="text"
-            icon={<ArrowLeftOutlined />}
+            icon={<ArrowLeft />}
             onClick={() => navigate(-1)}
           />
           <Typography.Text strong className="profile-header-title">
@@ -106,11 +105,7 @@ function Profile() {
     <div className="profile-page">
       {/* Secondary header bar - outside white container */}
       <div className="profile-secondary-header">
-        <Button
-          type="text"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(-1)}
-        />
+        <Button type="text" icon={<ArrowLeft />} onClick={() => navigate(-1)} />
         <Typography.Text strong className="profile-header-title">
           Profile
         </Typography.Text>
@@ -124,7 +119,7 @@ function Profile() {
               <Card className="profile-card">
                 <Space size={12} className="card-header">
                   <div className="card-icon-circle user-icon">
-                    <UserOutlined />
+                    <User />
                   </div>
                   <Space direction="vertical" size={0}>
                     <Typography.Text strong className="card-title">
@@ -148,7 +143,7 @@ function Profile() {
                       <Typography.Text className="field-value">
                         {userName}
                       </Typography.Text>
-                      <UserOutlined className="field-icon" />
+                      <User className="field-icon" />
                     </div>
                   </div>
                   <div className="field-group">
@@ -159,7 +154,7 @@ function Profile() {
                       <Typography.Text className="field-value">
                         {email}
                       </Typography.Text>
-                      <MailOutlined className="field-icon" />
+                      <Mail className="field-icon" />
                     </div>
                   </div>
                 </Space>
@@ -216,7 +211,7 @@ function Profile() {
                       >
                         <Button
                           type="text"
-                          icon={<CopyOutlined />}
+                          icon={<Copy />}
                           className="copy-button"
                           onClick={() => handleCopy(orgId, "Organization ID")}
                           disabled={!orgId}
@@ -230,7 +225,7 @@ function Profile() {
                         Your Role
                       </Typography.Text>
                       <Typography.Text strong className="role-badge">
-                        <CheckCircleOutlined />
+                        <CircleCheck />
                         {role}
                       </Typography.Text>
                     </div>

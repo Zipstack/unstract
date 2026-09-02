@@ -1,0 +1,722 @@
+{
+  "components": {
+    "schemas": {
+      "AcknowledgedResponse": {
+        "description": "The execution's result was handed to an earlier call and discarded.",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "status"
+        ],
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "description": "One problem found with the request.",
+        "properties": {
+          "attr": {
+            "description": "The request field the problem belongs to, when it belongs to one.",
+            "nullable": true,
+            "type": "string"
+          },
+          "code": {
+            "description": "Machine-readable problem identifier.",
+            "type": "string"
+          },
+          "detail": {
+            "description": "Human-readable description.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "attr",
+          "code",
+          "detail"
+        ],
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "The body of a rejected request.\n\nProduced by the project-wide exception handler, so its shape is the same\nfor every failure listed against an operation.",
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": "array"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ErrorType"
+          }
+        },
+        "required": [
+          "errors",
+          "type"
+        ],
+        "type": "object"
+      },
+      "ErrorType": {
+        "description": "* `validation_error` - validation_error\n* `client_error` - client_error\n* `server_error` - server_error",
+        "enum": [
+          "validation_error",
+          "client_error",
+          "server_error"
+        ],
+        "type": "string"
+      },
+      "ExecuteRequest": {
+        "description": "The documents to run, and the options that shape the result.\n\nSupply `files`, `presigned_urls`, or both.",
+        "properties": {
+          "custom_data": {
+            "nullable": true
+          },
+          "files": {
+            "items": {
+              "format": "binary",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "hitl_packet_id": {
+            "description": "Groups documents reviewed together into one packet. Requires the enterprise manual-review capability; an installation without it rejects the request with 400.",
+            "nullable": true,
+            "type": "string"
+          },
+          "hitl_queue_name": {
+            "description": "Document class name for the manual review queue. Requires the enterprise manual-review capability; an installation without it rejects the request with 400.",
+            "nullable": true,
+            "type": "string"
+          },
+          "include_extracted_text": {
+            "default": false,
+            "type": "boolean"
+          },
+          "include_metadata": {
+            "default": false,
+            "type": "boolean"
+          },
+          "include_metrics": {
+            "default": false,
+            "type": "boolean"
+          },
+          "llm_profile_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "presigned_urls": {
+            "items": {
+              "format": "uri",
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "tags": {
+            "default": "",
+            "description": "Comma-separated list of tag names (EX:'tag1,tag2-name,tag3_name')",
+            "type": "string"
+          },
+          "timeout": {
+            "default": -1,
+            "maximum": 300,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "use_file_history": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ExecuteResponse": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/ExecutionMessage"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
+      "ExecutionMessage": {
+        "description": "The execution's identity and, once it has finished, its per-file\nresults.",
+        "properties": {
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "execution_id": {
+            "type": "string"
+          },
+          "execution_status": {
+            "type": "string"
+          },
+          "result": {
+            "items": {
+              "$ref": "#/components/schemas/FileResult"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "status_api": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "execution_status"
+        ],
+        "type": "object"
+      },
+      "FileResult": {
+        "description": "One input document's outcome.\n\nEvery key is present on every item; the ones that depend on the request\noptions or on the outcome are sent as `null` when they do not apply.",
+        "properties": {
+          "error": {
+            "nullable": true,
+            "type": "string"
+          },
+          "extracted_text": {
+            "description": "The document's full extracted text. Sent only when the request set `include_extracted_text`.",
+            "nullable": true,
+            "type": "string"
+          },
+          "file": {
+            "type": "string"
+          },
+          "file_execution_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "metadata": {
+            "nullable": true
+          },
+          "result": {
+            "nullable": true
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "type": "object"
+      },
+      "StatusResponse": {
+        "properties": {
+          "message": {
+            "items": {
+              "$ref": "#/components/schemas/FileResult"
+            },
+            "nullable": true,
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "deploymentKey": {
+        "description": "The API deployment's own key.",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Unstract API",
+    "version": "v1"
+  },
+  "openapi": "3.0.3",
+  "paths": {
+    "/deployment/api/{org_name}/{api_name}/": {
+      "get": {
+        "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
+        "operationId": "status",
+        "parameters": [
+          {
+            "description": "API deployment name.",
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_extracted_text",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_metadata",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_metrics",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Organization identifier.",
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "AuthenticationFailed": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "authentication_failed",
+                          "detail": "Incorrect authentication credentials."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  },
+                  "NotAuthenticated": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_authenticated",
+                          "detail": "Authentication credentials were not provided."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No usable API key was supplied for the deployment."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "PermissionDenied": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "permission_denied",
+                          "detail": "You do not have permission to perform this action."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused as unauthorized."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "NotFound": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_found",
+                          "detail": "Not found."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No active deployment, or a referenced document, was found."
+          },
+          "406": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "NotAcceptable": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_acceptable",
+                          "detail": "Could not satisfy the request Accept header."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/AcknowledgedResponse"
+                }
+              }
+            },
+            "description": "The result was already consumed by an earlier call."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "The execution is still running, or it finished with an error; read `status` to tell them apart."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "APIException": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "error",
+                          "detail": "A server error occurred."
+                        }
+                      ],
+                      "type": "server_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/StatusResponse"
+                }
+              }
+            },
+            "description": "The execution could not be completed; the body carries its last known state."
+          }
+        },
+        "security": [
+          {
+            "deploymentKey": []
+          }
+        ],
+        "tags": [
+          "deployment"
+        ]
+      },
+      "post": {
+        "description": "Execute an API deployment against one or more documents.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
+        "operationId": "execute",
+        "parameters": [
+          {
+            "description": "API deployment name.",
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Organization identifier.",
+            "in": "path",
+            "name": "org_name",
+            "required": true,
+            "schema": {
+              "pattern": "^[\\w-]+$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ExecuteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request failed validation."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "AuthenticationFailed": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "authentication_failed",
+                          "detail": "Incorrect authentication credentials."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  },
+                  "NotAuthenticated": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_authenticated",
+                          "detail": "Authentication credentials were not provided."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No usable API key was supplied for the deployment."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "PermissionDenied": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "permission_denied",
+                          "detail": "You do not have permission to perform this action."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "The request was refused as unauthorized."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "NotFound": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "not_found",
+                          "detail": "Not found."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "No active deployment, or a referenced document, was found."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A referenced document is larger than the limit."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": "The execution finished with an error."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "Throttled": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "throttled",
+                          "detail": "Request was throttled."
+                        }
+                      ],
+                      "type": "client_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too many concurrent executions; retry later."
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "examples": {
+                  "APIException": {
+                    "value": {
+                      "errors": [
+                        {
+                          "attr": null,
+                          "code": "error",
+                          "detail": "A server error occurred."
+                        }
+                      ],
+                      "type": "server_error"
+                    }
+                  }
+                },
+                "schema": {
+                  "$ref": "#/components/schemas/ExecuteResponse"
+                }
+              }
+            },
+            "description": "The deployment could not be run; the body carries the execution that failed."
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A referenced document could not be fetched."
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Fetching a referenced document timed out."
+          }
+        },
+        "security": [
+          {
+            "deploymentKey": []
+          }
+        ],
+        "tags": [
+          "deployment"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Run an API deployment against one or more documents and poll the result.",
+      "name": "deployment"
+    }
+  ]
+}
