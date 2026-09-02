@@ -1,163 +1,67 @@
-"""Equivalence tests for the queue-backend seam.
+"""Contract tests for the queue-backend seam.
 
-Today the seam is a transparent pass-through to Celery. These tests
-lock that in so future PRs adding per-task routing (PG Queue) can be
-proved to preserve the Celery default path.
+``dispatch()`` enqueues to Postgres — PG is the only transport (UN-4046). Two
+layers:
 
-Two layers:
+1. **No dispatch may reach Celery.** The canary below asserts that no call site
+   can resolve to ``CELERY``, because a producer without a consumer does not just
+   lose the work: the messages accumulate in RabbitMQ until it hits its memory
+   high-watermark and starts blocking publishers.
 
-1. **dispatch()** must produce the same ``current_app.send_task`` call
-   as the raw Celery idiom — checked against representative
-   ``send_webhook_notification`` and ``async_execute_bin``
-   (``scheduler/tasks.py::_execute_scheduled_workflow``) shapes.
+2. **@worker_task** must still register a task with the Celery app. That is not
+   vestigial — the PG consumer resolves work via ``self._app.tasks.get(name)``, so
+   the Celery *registry* stays load-bearing even though the Celery *transport* is
+   gone.
 
-2. **@worker_task** must register a task with the Celery app so that
-   functions decorated with it behave identically to ones decorated
-   with ``@shared_task``.
+The old layer 1 was the mirror image of this: a suite proving ``dispatch()``
+produced exactly the same ``current_app.send_task`` call as the raw Celery idiom,
+so that adding PG routing could be shown to preserve the Celery default. That
+default is what we have now removed, so those cases are gone.
 """
 
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from celery import current_app
+from queue_backend import QueueBackend, dispatch, select_backend
+from queue_backend.routing import resolve_backend
 
-# --- dispatch() equivalence ---
-
-
-class TestDispatchEquivalence:
-    """dispatch() forwards to current_app.send_task with the same shape."""
-
-    def test_dispatches_task_name(self):
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("send_webhook_notification")
-
-        mock_app.send_task.assert_called_once()
-        assert mock_app.send_task.call_args.args[0] == "send_webhook_notification"
-
-    def test_forwards_args(self):
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task", args=["a", "b", 42])
-
-        assert mock_app.send_task.call_args.kwargs["args"] == ["a", "b", 42]
-
-    def test_forwards_kwargs(self):
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task", kwargs={"max_retries": 5, "platform": "SLACK"})
-
-        assert mock_app.send_task.call_args.kwargs["kwargs"] == {
-            "max_retries": 5,
-            "platform": "SLACK",
-        }
-
-    def test_forwards_queue(self):
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task", queue="notifications")
-
-        assert mock_app.send_task.call_args.kwargs["queue"] == "notifications"
-
-    def test_omitted_args_forwarded_as_none(self):
-        """Omitted ``args`` is forwarded verbatim as ``None``.
-
-        Celery's own ``send_task`` normalises ``None`` to its native default
-        (a tuple) internally — the seam doesn't coerce, so any third-party
-        router that checks ``isinstance(args, tuple)`` sees Celery's default.
-        """
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task")
-
-        assert mock_app.send_task.call_args.kwargs["args"] is None
-
-    def test_omitted_kwargs_forwarded_as_none(self):
-        """Same as args — omitted kwargs reaches Celery as ``None``."""
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task")
-
-        assert mock_app.send_task.call_args.kwargs["kwargs"] is None
-
-    def test_returns_underlying_handle(self):
-        """Whatever send_task returns is what dispatch returns."""
-        from queue_backend import dispatch
-
-        sentinel = object()
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            mock_app.send_task.return_value = sentinel
-            result = dispatch("any_task")
-
-        assert result is sentinel
-
-    def test_matches_notification_helper_shape(self):
-        """Output mirrors the raw ``send_task`` shape for a notification task.
-
-        The callback notification path itself migrated to an HTTP
-        buffer-enqueue in UN-3056; this keeps a representative
-        ``send_webhook_notification`` call as a seam-equivalence reference.
-
-        Reference call shape (paraphrased):
-
-            current_app.send_task(
-                "send_webhook_notification",
-                args=[url, payload_dict, headers, timeout],
-                kwargs={"max_retries": ..., "retry_delay": ..., "platform": ...},
-                queue="notifications",
-            )
-        """
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch(
-                "send_webhook_notification",
-                args=["https://example.com/hook", {"event": "x"}, {}, 10],
-                kwargs={"max_retries": 3, "retry_delay": 10, "platform": "API"},
-                queue="notifications",
-            )
-
-        call = mock_app.send_task.call_args
-        assert call.args[0] == "send_webhook_notification"
-        assert call.kwargs["args"] == ["https://example.com/hook", {"event": "x"}, {}, 10]
-        assert call.kwargs["kwargs"] == {
-            "max_retries": 3,
-            "retry_delay": 10,
-            "platform": "API",
-        }
-        assert call.kwargs["queue"] == "notifications"
-
-    def test_matches_scheduler_dispatch_shape(self):
-        """Output mirrors the raw send_task at ``_execute_scheduled_workflow``."""
-        from queue_backend import dispatch
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch(
-                "async_execute_bin",
-                args=["org-1", "wf-1", "exec-1", {}, True],
-                kwargs={"use_file_history": False, "pipeline_id": "pipe-1"},
-                queue="general",
-            )
-
-        call = mock_app.send_task.call_args
-        assert call.args[0] == "async_execute_bin"
-        assert call.kwargs["args"] == ["org-1", "wf-1", "exec-1", {}, True]
-        assert call.kwargs["kwargs"] == {
-            "use_file_history": False,
-            "pipeline_id": "pipe-1",
-        }
-        assert call.kwargs["queue"] == "general"
+# --- no Celery producer ---
 
 
-# --- @worker_task equivalence ---
+class TestNoCeleryProducer:
+    """The zero-producer canary (UN-4046).
+
+    Any dispatch that resolves to CELERY publishes to RabbitMQ, where — with the
+    Celery fleet scaled to zero — nothing drains it. Left unnoticed the queue grows
+    until the broker blocks publishers, so this is asserted rather than assumed.
+    """
+
+    def test_select_backend_never_resolves_to_celery(self):
+        # `select_backend()` takes no argument since UN-4046: the answer cannot
+        # depend on the task name, so enumerating names proved nothing. (Sonar
+        # flagged the unused parameter; removing it makes that structural.)
+        assert select_backend() is QueueBackend.PG
+
+    def test_resolve_backend_defaults_to_pg_without_an_override(self):
+        assert resolve_backend("any_task", None) is QueueBackend.PG
+
+    def test_an_explicit_pg_override_is_honoured(self):
+        assert resolve_backend("any_task", QueueBackend.PG) is QueueBackend.PG
+
+    def test_dispatch_never_calls_send_task(self):
+        client = MagicMock()
+        client.send.return_value = 1
+        with (
+            patch("queue_backend.dispatch.current_app") as mock_app,
+            patch("queue_backend.dispatch._get_pg_client", return_value=client),
+        ):
+            dispatch("send_webhook_notification", args=["a"], queue="notifications")
+            dispatch("async_execute_bin", args=["b"], queue="celery")
+        mock_app.send_task.assert_not_called()
+        assert client.send.call_count == 2
 
 
 class TestWorkerTaskEquivalence:

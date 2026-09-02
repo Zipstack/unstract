@@ -4,24 +4,23 @@ from Celery Beat to the Postgres scheduler, per-schedule and reversibly.
 A schedule is owned by exactly one firer. ``reconcile_ownership_for``
 applies that decision atomically:
 
-    pg_periodic_schedule.pg_owned  = resolve_schedule_owner(...)   # PG fires it
+    pg_periodic_schedule.pg_owned  = resolve_schedule_owner()      # PG fires it
     PeriodicTask.enabled           = active AND NOT pg_owned       # Beat fires it
 
 Doing both in one transaction is what makes "never double-fires" real (it was
 *conditional* on this slice): a ``pg_owned`` row always has its Beat
 ``PeriodicTask`` disabled, so the two can't both fire.
 
-**Two gates, and both must be on.** ``PG_SCHEDULER_ENABLED`` (env, default off) comes
-first; the ``pg_queue_enabled`` Flipt flag then decides per schedule, failing closed to
-Beat on a blind Flipt or any error.
+**One gate, and it defaults ON.** ``PG_SCHEDULER_ENABLED`` (env) is the whole decision.
+UN-4046 removed the second one — the per-schedule ``pg_queue_enabled`` Flipt flag that
+used to fail closed to Beat — and flipped this env's default from ``false`` to ``true``.
 
-They are separate because Beat stays the **sole scheduler for the whole PG rollout**:
-pipelines already reach PG without this module (``execute_pipeline_task_v2`` →
-``complete_execution`` → ``execute_workflow_async`` → ``resolve_transport``), so the PG
-scheduler exists only to retire the Beat *deployment* — a later, deliberate step. While
-the env gate is off this module writes **nothing at all**, so Beat's tables are untouched
-for the entire rollout and turning the flag off again is a pure Flipt flip with nothing
-to restore.
+The consequence is the opposite of what this docstring said before, so it is worth
+stating plainly: on a default deployment this module DOES write, on every schedule save
+and on every ``--migrate`` start, handing pipelines to PG and disabling Beat's
+``PeriodicTask`` rows. Rolling back is not a flag flip with nothing to restore — it is
+``PG_SCHEDULER_ENABLED=false`` **plus** a ``converge_pg_scheduler`` run to release the
+rows already adopted. Beat coming back does not re-enable rows this module disabled.
 """
 
 from __future__ import annotations
@@ -32,89 +31,46 @@ import os
 from django.db import transaction
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask, PeriodicTasks
-from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgPeriodicSchedule
-
-from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
-# Gating uses the single shared PG-queue flag (pg_queue.flags.PG_QUEUE_FLAG_KEY,
-# imported above) — one flip gates execution + scheduler + executor. The scheduler
-# buckets the %-rollout on pipeline_id (each subsystem keys on its own entity).
-
-
-# Second gate, ahead of the Flipt flag: hand-over to the PG scheduler happens only
-# when this is explicitly on. Referenced as "pg_scheduler_enabled" by this module's
-# callers' comments (scheduler/helper.py, reconcile_pg_schedules) since the ramp was
-# designed, but never actually implemented — resolve_schedule_owner gated on
-# pg_queue_enabled alone, so the two flips were welded together.
-#
-# They must be separable, because Beat stays the SOLE scheduler for the whole PG
-# rollout: pipelines already reach PG without it (execute_pipeline_task_v2 →
-# complete_execution → execute_workflow_async → resolve_transport), so the PG
-# scheduler exists only to retire the Beat *deployment* — a later, deliberate step.
-#
-# Without this gate, turning pg_queue_enabled on would hand schedules to a PG
-# scheduler that is not running: reconcile_ownership_for disables the Beat
-# PeriodicTask, nothing polls the PG side, and the pipeline has no firer at all. It
-# runs in the backend on every schedule save, so scaling Beat to zero does not avoid
-# it and no ramp command is needed to trigger it — a user saving a schedule suffices.
+# The sole gate on schedule hand-over. It used to sit ahead of the
+# ``pg_queue_enabled`` Flipt flag; the flag is gone (UN-4046) and this remains,
+# because it guards a failure mode of its own: ``reconcile_ownership_for``
+# disables the Beat ``PeriodicTask`` whenever a schedule is PG-owned, so handing
+# schedules over while no PG scheduler is running leaves the pipeline with no
+# firer at all. It runs in the backend on every schedule save, so scaling Beat to
+# zero does not avoid it — a user saving a schedule suffices.
 _PG_SCHEDULER_ENABLED_ENV = "PG_SCHEDULER_ENABLED"
 
 
 def pg_scheduler_enabled() -> bool:
-    """Whether schedule hand-over to the PG scheduler is switched on at all.
+    """Whether schedule hand-over to the PG scheduler is switched on.
 
-    Defaults **off**. Flip it only alongside deploying the PG scheduler worker, as
-    part of retiring Celery Beat.
+    Defaults **on** (UN-4046): PG is the only transport and the PG scheduler ships
+    with the fleet. Set ``PG_SCHEDULER_ENABLED=false`` only to keep Beat as the
+    firer in a deployment that deliberately runs without ``worker-pg-scheduler``.
     """
-    return os.environ.get(_PG_SCHEDULER_ENABLED_ENV, "false").strip().lower() == "true"
+    return os.environ.get(_PG_SCHEDULER_ENABLED_ENV, "true").strip().lower() == "true"
 
 
-def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
+def resolve_schedule_owner() -> bool:
     """True → the PG scheduler owns this schedule; False → Celery Beat does.
 
-    Mirrors ``resolve_transport``: gated by the single ``pg_queue_enabled`` Flipt
-    flag, keyed on ``pipeline_id`` for a stable percentage bucket. **Fails closed to
-    Beat** on a blind Flipt or any error — so a schedule never silently loses its
-    firer.
+    Gated solely by ``PG_SCHEDULER_ENABLED``. This used to *also* require the
+    ``pg_queue_enabled`` Flipt flag, because during the rollout the flag could be
+    on while the PG scheduler was still dark and a schedule handed to a scheduler
+    that is not running would simply stop firing. The flag is gone (UN-4046), so
+    the env gate is the sole dial — and it still has to be, for the same reason:
+    ``reconcile_ownership_for`` disables the Beat ``PeriodicTask`` when this
+    returns True, so turning it on without a running PG scheduler leaves the
+    pipeline with no firer at all.
 
-    Requires ``PG_SCHEDULER_ENABLED`` **as well as** the flag: during the PG rollout
-    the flag is on while the PG scheduler is still dark, and a schedule handed to a
-    scheduler that is not running would simply stop firing.
+    ``organization_id`` is retained for call-site compatibility; it fed the Flipt
+    context and is now unused.
     """
-    if not pg_scheduler_enabled():
-        return False
-    if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
-        logger.warning(
-            "resolve_schedule_owner: FLIPT_SERVICE_AVAILABLE != true "
-            "(Flipt blind) for pipeline %s; leaving on Beat",
-            pipeline_id,
-        )
-        return False
-
-    # Flipt context is a gRPC map<string,string>; coerce values to str (a non-str
-    # makes the client swallow it as False). entity_id str-coerced too so the
-    # %-rollout bucket is stable across str/UUID call sites.
-    context = {"pipeline_id": str(pipeline_id)}
-    if organization_id:
-        context["organization_id"] = str(organization_id)
-    try:
-        owned = check_feature_flag_status(
-            flag_key=PG_QUEUE_FLAG_KEY, entity_id=str(pipeline_id), context=context
-        )
-    except Exception:
-        # Expected, recoverable (fail-closed to Beat) and runs on every schedule
-        # edit — warn with traceback rather than logger.exception so a persistently
-        # down Flipt doesn't bury real errors as a per-edit Sentry exception.
-        logger.warning(
-            "resolve_schedule_owner: Flipt check failed for pipeline %s; leaving on Beat",
-            pipeline_id,
-            exc_info=True,
-        )
-        return False
-    return bool(owned)
+    return pg_scheduler_enabled()
 
 
 def _has_stale_pg_ownership(pipeline_id: str) -> bool:
@@ -149,7 +105,7 @@ def reconcile_ownership_for(
     window where both fire. On rollback (``pg_owned`` → False) ``next_run_at`` is
     also cleared so a later re-hand-over re-enters the PG tick's NULL baseline
     (no burst). ``organization_id`` is the org *identifier* string (what the
-    mirror stores), used for Flipt per-org segmenting. ``active`` is keyword-only
+    mirror stores), carried for logging/traceability. ``active`` is keyword-only
     (a fire/don't-fire boolean trap otherwise).
 
     Best-effort: a DB failure is logged and swallowed so it can never break the
@@ -195,7 +151,7 @@ def reconcile_ownership_for(
         )
         pg_owned = False
     else:
-        pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
+        pg_owned = resolve_schedule_owner()
     try:
         with transaction.atomic():
             was_pg_owned = (

@@ -22,11 +22,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from file_processing.worker import app
-from queue_backend import FairnessKey, worker_task
-from queue_backend.fairness import WorkloadType
+from queue_backend import worker_task
 from queue_backend.pg_queue.executor_rpc import (
-    RoutingExecutionDispatcher,
+    PgExecutionDispatcher,
     get_executor_dispatcher,
 )
 from shared.enums.task_enums import TaskName
@@ -43,25 +41,13 @@ logger = logging.getLogger(__name__)
 EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
 
 
-def _fairness_headers(
-    organization_id: str,
-) -> dict[str, dict[str, str | int | None]]:
-    """Fairness header for executor dispatches.
-
-    Structure-tool dispatches are workflow-execution work — both ETL
-    and API workflows route through here. ``NON_API`` is the safe
-    default (API traffic preempting is a strictly weaker mistake than
-    the inverse).
-
-    TODO(UN-3504): propagate the caller's WorkloadType (API vs ETL)
-    instead of hard-coding ``NON_API``. Requires the chord-lift work
-    so the workflow type flows from the chord caller down to here.
-    """
-    return FairnessKey(
-        org_id=organization_id,
-        workload_type=WorkloadType.NON_API,
-    ).as_header()
-
+# NOTE: `_fairness_headers()` lived here and was passed as `headers=` to every
+# executor dispatch. It is gone with the routing dispatcher (UN-4046):
+# `PgExecutionDispatcher.dispatch()` takes no `headers`, and the router that used
+# to absorb them never forwarded them to the PG path anyway — PG carries org
+# routing in the enqueue payload (`transport.enqueue(..., org_id=...)`).
+# UN-3504 (propagating the caller's WorkloadType) is unaffected: it was always
+# about the PG payload, not these headers.
 
 # -----------------------------------------------------------------------
 # Constants mirrored from tools/structure/src/constants.py
@@ -279,9 +265,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
 
     platform_helper = _create_platform_helper(shim, file_execution_id)
-    # Gate-routed: PG executor RPC when pg_queue_enabled is on, else the unchanged
-    # Celery ExecutionDispatcher (zero-regression by construction — see executor_rpc).
-    dispatcher = get_executor_dispatcher(celery_app=app)
+    # PG executor RPC. ``celery_app`` is accepted and ignored by the factory —
+    # see executor_rpc.
+    dispatcher = get_executor_dispatcher()
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----
@@ -498,7 +484,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         at_result = dispatcher.dispatch(
             at_ctx,
             timeout=EXECUTOR_TIMEOUT,
-            headers=_fairness_headers(organization_id),
         )
         if not at_result.success:
             return at_result.to_dict()
@@ -541,7 +526,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         pipeline_result = dispatcher.dispatch(
             pipeline_ctx,
             timeout=EXECUTOR_TIMEOUT,
-            headers=_fairness_headers(organization_id),
         )
         pipeline_elapsed = time.monotonic() - pipeline_start
 
@@ -684,7 +668,7 @@ def _run_agentic_extraction(
     input_file_path: str,
     output_dir_path: str,
     tool_instance_metadata: dict,
-    dispatcher: RoutingExecutionDispatcher,
+    dispatcher: PgExecutionDispatcher,
     shim: Any,
     file_execution_id: str,
     execution_id: str,
@@ -758,7 +742,6 @@ def _run_agentic_extraction(
     agentic_result = dispatcher.dispatch(
         agentic_ctx,
         timeout=EXECUTOR_TIMEOUT,
-        headers=_fairness_headers(organization_id),
     )
 
     if not agentic_result.success:
