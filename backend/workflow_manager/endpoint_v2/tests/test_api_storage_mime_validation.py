@@ -138,3 +138,82 @@ def test_supported_files_survive_a_rejected_sibling(collaborators) -> None:
 
     assert set(result) == {"good.pdf"}
     assert _staged_names(collaborators["storage"]) == {"good.pdf"}
+
+
+def _ole2_like(total_size: int) -> bytes:
+    """An OLE2 compound file whose format markers sit past the sample window.
+
+    libmagic resolves .doc/.xls/.ppt through the OLE2 directory sector, which
+    lives at the end of the file. Only the container signature is visible in the
+    leading bytes, which is exactly the shape that made these files unstageable.
+    """
+    header = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 504
+    return header + b"\x00" * (total_size - len(header))
+
+
+def test_container_prefix_triggers_a_full_file_sniff(collaborators) -> None:
+    """A container type seen in the sample must not decide the verdict alone.
+
+    Pins the regression directly: an OLE2 upload sniffs application/x-ole-storage
+    from its first bytes, which is absent from AllowedFileTypes, so resolving from
+    the sample alone rejects every legacy Office file bigger than the window.
+
+    The sniff results are stubbed because libmagic's container reporting differs
+    between builds; what must hold everywhere is that an inconclusive sample is
+    escalated to the full file instead of being treated as a verdict.
+    """
+    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    sniffs = ["application/x-ole-storage", "application/msword"]
+
+    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs) as sniff:
+        result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
+
+    # The sample verdict was inconclusive, so the whole file was classified...
+    assert sniff.call_count == 2
+    assert len(sniff.call_args_list[0].args[0]) == SourceConnector.MIME_DETECT_CHUNK_SIZE
+    assert len(sniff.call_args_list[1].args[0]) == len(ole_bytes)
+    # ...and the answer from the full file is what decides.
+    assert set(result) == {"legacy.doc"}
+    assert result["legacy.doc"].mime_type == "application/msword"
+
+
+def test_container_still_rejected_when_the_full_file_is_unsupported(
+    collaborators,
+) -> None:
+    """The full-file re-sniff widens the evidence, not the allow-list."""
+    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    sniffs = ["application/x-ole-storage", "application/x-dosexec"]
+
+    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs):
+        result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
+def test_container_upload_is_not_consumed_by_detection(collaborators) -> None:
+    """Reading the whole file to classify it must still leave it stageable."""
+    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    sniffs = ["application/x-ole-storage", "application/msword"]
+
+    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs):
+        _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
+
+    written = b"".join(
+        call.kwargs["data"] for call in collaborators["storage"].write.call_args_list
+    )
+    assert written == ole_bytes
+
+
+def test_empty_upload_is_staged_rather_than_called_unsupported(collaborators) -> None:
+    """An empty file must reach the downstream empty-file error, not a type error.
+
+    libmagic calls zero bytes application/x-empty, which is absent from
+    AllowedFileTypes; without the short-circuit an empty upload would be reported
+    as an unsupported type, which names the wrong cause.
+    """
+    result = _stage([_upload("empty.pdf", b"", "application/pdf")])
+
+    assert set(result) == {"empty.pdf"}
+    assert result["empty.pdf"].mime_type == "application/octet-stream"
+    collaborators["ResultCacheUtils"].update_api_results.assert_not_called()

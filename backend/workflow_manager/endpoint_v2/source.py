@@ -73,8 +73,15 @@ class SourceConnector(BaseConnector):
     """
 
     READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
-    # libmagic classifies from the leading bytes; reading more only costs memory.
+    # Most formats are identifiable from their leading bytes, so a small sample
+    # keeps the common path cheap.
     MIME_DETECT_CHUNK_SIZE = 8192
+    # These two carry the real format in a structure libmagic can only reach by
+    # reading the whole file: the OLE2 directory sector and the zip central
+    # directory both sit at the end. A sample of any size reports the container
+    # rather than the .doc/.xls/.ppt or .docx/.xlsx/.pptx inside it, so these
+    # must never be resolved from the sample alone.
+    CONTAINER_MIME_TYPES = frozenset({"application/x-ole-storage", "application/zip"})
 
     def __init__(
         self,
@@ -1207,7 +1214,29 @@ class SourceConnector(BaseConnector):
             # file as an unsupported type. An empty upload is a distinct failure
             # and is reported as such once staging hands off, so let it pass.
             return AllowedFileTypes.OCTET_STREAM.value
-        return magic.from_buffer(sample, mime=True)
+
+        mime_type = magic.from_buffer(sample, mime=True)
+        if mime_type not in cls.CONTAINER_MIME_TYPES:
+            return mime_type
+        return cls._detect_container_mime_type(file, fallback=mime_type)
+
+    @classmethod
+    def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:
+        """Resolve a container format by classifying the file in full.
+
+        Django spills uploads over FILE_UPLOAD_MAX_MEMORY_SIZE to disk, so this
+        hands libmagic the path when there is one and only buffers the whole
+        upload for the in-memory case, where that ceiling already bounds it.
+        """
+        temporary_file_path = getattr(file, "temporary_file_path", None)
+        if temporary_file_path is not None:
+            return magic.from_file(temporary_file_path(), mime=True)
+
+        content = file.read()
+        file.seek(0)
+        if not content:
+            return fallback
+        return magic.from_buffer(content, mime=True)
 
     @classmethod
     def add_input_file_to_api_storage(

@@ -388,13 +388,40 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
-    def update_execution_completed(execution_id: str) -> WorkflowExecution | None:
-        """Terminalise an execution that finished without any work to dispatch."""
+    def update_execution_completed(
+        execution_id: str, total_files: int = 0, failed_files: int = 0
+    ) -> WorkflowExecution | None:
+        """Terminalise an execution that finished without any work to dispatch.
+
+        The counters must be written alongside the status: a terminal row whose
+        failed_files is NULL reads as a clean success to is_failure_run() and to
+        run history, which would hide a run whose files were all rejected.
+
+        Returns the row as persisted, so callers can see whether the status
+        actually changed rather than assuming it did.
+        """
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            # Same reason as update_execution_err: the model method owns the
-            # terminal-one-way guard, so this cannot revert an already-final row.
+            # Same reason as update_execution_err: on the PG transport the model
+            # method owns the terminal-one-way guard, so a row the callback already
+            # finalized cannot be reverted. The legacy transport has no such guard.
             execution.update_execution(status=ExecutionStatus.COMPLETED)
+            execution.total_files = total_files
+            execution.successful_files = 0
+            execution.failed_files = failed_files
+            # Field-scoped, matching update_execution, so this cannot clobber the
+            # status write or anything a concurrent writer touched.
+            execution.save(
+                update_fields=[
+                    "total_files",
+                    "successful_files",
+                    "failed_files",
+                    "modified_at",
+                ]
+            )
+            # The guard may have refused the status change without raising; re-read
+            # so the returned row reflects what is actually stored.
+            execution.refresh_from_db()
             return execution
         except WorkflowExecution.DoesNotExist:
             logger.error(f"execution doesn't exist {execution_id}")

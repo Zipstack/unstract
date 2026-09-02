@@ -311,16 +311,33 @@ class DeploymentHelper(BaseAPIKeyValidator):
         # short-circuits an empty file set without writing a status back, which
         # would strand this execution in PENDING — terminalise it here instead.
         if not hash_values_of_files:
-            WorkflowExecutionServiceHelper.update_execution_completed(str(execution_id))
+            # Isolate the DB write the way the staging-failure path above does, so
+            # the rate limit slot and staging dir are released even if it raises.
+            execution = None
+            try:
+                execution = WorkflowExecutionServiceHelper.update_execution_completed(
+                    str(execution_id),
+                    total_files=len(file_objs),
+                    failed_files=len(file_objs),
+                )
+            except Exception:
+                logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
+
             APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
+            # Report the stored status rather than asserting COMPLETED: the row may
+            # be missing, or the terminal guard may have refused the change. Claiming
+            # success here would only hide the stranded execution behind a 200 that a
+            # follow-up GET /status then contradicts.
             return APIExecutionResponseSerializer(
                 ExecutionResponse(
                     workflow_id=workflow_id,
                     execution_id=execution_id,
-                    execution_status=ExecutionStatus.COMPLETED.value,
+                    execution_status=(
+                        execution.status if execution else ExecutionStatus.ERROR.value
+                    ),
                     result=ResultCacheUtils.get_api_results(
                         workflow_id=str(workflow_id), execution_id=str(execution_id)
                     ),

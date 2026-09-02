@@ -114,6 +114,11 @@ def staging_rejects_everything():
         mocks["ResultCacheUtils"].get_api_results.return_value = [
             {"file": "evil.pdf", "status": "Failed", "error": "unsupported MIME type"}
         ]
+        completed_row = MagicMock()
+        completed_row.status = "COMPLETED"
+        mocks[
+            "WorkflowExecutionServiceHelper"
+        ].update_execution_completed.return_value = completed_row
         yield mocks
 
 
@@ -126,19 +131,25 @@ def test_all_files_rejected_completes_without_dispatch(
     dispatching one strands the execution in PENDING and the caller polls forever.
     """
     mocks = staging_rejects_everything
+    # A non-empty upload whose staging result is empty. Passing [] instead would
+    # leave the branch satisfied by `not file_objs` too, and the original bug -
+    # dispatching a request whose files were all rejected - would pass this test.
     response = dh.DeploymentHelper.execute_workflow(
         organization_name="org",
         api=_api(),
-        file_objs=[],
+        file_objs=[MagicMock()],
         timeout=-1,
     )
 
     # Nothing is dispatched...
     mocks["WorkflowHelper"].execute_workflow_async.assert_not_called()
-    # ...the row is terminalised here instead of being left PENDING...
+    # ...the row is terminalised here instead of being left PENDING, and the
+    # counters are written so the run does not read back as a clean success...
     mocks[
         "WorkflowExecutionServiceHelper"
-    ].update_execution_completed.assert_called_once_with("exec-123")
+    ].update_execution_completed.assert_called_once_with(
+        "exec-123", total_files=1, failed_files=1
+    )
     # ...the slot and staging dir are released...
     mocks["APIDeploymentRateLimiter"].release_slot.assert_called_once()
     mocks["DestinationConnector"].delete_api_storage_dir.assert_called_once()
@@ -146,3 +157,52 @@ def test_all_files_rejected_completes_without_dispatch(
     assert response["execution_status"] == "COMPLETED"
     assert response["result"][0]["file"] == "evil.pdf"
     assert response["result"][0]["status"] == "Failed"
+
+
+def test_files_staged_successfully_are_dispatched(staging_rejects_everything) -> None:
+    """The short-circuit must not fire when staging did return files.
+
+    Sibling to the test above: together they pin the branch to the staging result
+    rather than to the upload list.
+    """
+    mocks = staging_rejects_everything
+    mocks["SourceConnector"].add_input_file_to_api_storage.return_value = {
+        "good.pdf": MagicMock()
+    }
+
+    dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    mocks["WorkflowHelper"].execute_workflow_async.assert_called_once()
+    mocks["WorkflowExecutionServiceHelper"].update_execution_completed.assert_not_called()
+
+
+def test_all_files_rejected_cleanup_survives_db_marking_error(
+    staging_rejects_everything,
+) -> None:
+    """A failing status write must not strand the slot or the staging dir.
+
+    update_execution_completed only catches DoesNotExist, so a lock timeout or a
+    dropped connection propagates; without isolation the org's rate limit slot
+    stays held for its full TTL and throttles every other call for that org.
+    """
+    mocks = staging_rejects_everything
+    mocks[
+        "WorkflowExecutionServiceHelper"
+    ].update_execution_completed.side_effect = Exception("db is down")
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    mocks["APIDeploymentRateLimiter"].release_slot.assert_called_once()
+    mocks["DestinationConnector"].delete_api_storage_dir.assert_called_once()
+    # The row never reached COMPLETED, so the response must not claim it did.
+    assert response["execution_status"] == "ERROR"
