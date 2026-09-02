@@ -18,47 +18,25 @@ _ORG = "org_abc"
 
 
 class TestResolveScheduleOwner:
-    @pytest.fixture(autouse=True)
-    def _scheduler_gate_on(self, monkeypatch):
-        """These pin the FINAL-phase behaviour, when hand-over is switched on.
+    """Ownership is gated solely by PG_SCHEDULER_ENABLED (UN-4046).
 
-        PG_SCHEDULER_ENABLED defaults off for the whole rollout (Beat stays the sole
-        scheduler), so without this every case below would short-circuit to Beat and
-        assert nothing about the logic it was written for.
-        """
+    The ``pg_queue_enabled`` Flipt cases (unavailable / true / false / error) are
+    gone with the flag. The env gate still has to hold in both directions:
+    ``reconcile_ownership_for`` disables the Beat PeriodicTask whenever this says
+    PG, so a deployment without a running PG scheduler must be able to keep Beat.
+    """
+
+    def test_defaults_to_pg(self, monkeypatch):
+        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        assert ownership.resolve_schedule_owner() is True
+
+    def test_env_gate_off_keeps_beat(self, monkeypatch):
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
+        assert ownership.resolve_schedule_owner() is False
+
+    def test_env_gate_on_is_pg(self, monkeypatch):
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
-
-    def test_flipt_unavailable_is_beat(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
-        with patch("scheduler.ownership.check_feature_flag_status") as flag:
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
-            flag.assert_not_called()
-
-    def test_flag_true_is_pg(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(
-            "scheduler.ownership.check_feature_flag_status", return_value=True
-        ) as flag:
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is True
-            # entity_id = pipeline_id (stable %-bucket); org in context.
-            assert flag.call_args.kwargs["entity_id"] == _PID
-            assert flag.call_args.kwargs["context"]["pipeline_id"] == _PID
-            assert flag.call_args.kwargs["context"]["organization_id"] == _ORG
-
-    def test_flag_false_is_beat(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(
-            "scheduler.ownership.check_feature_flag_status", return_value=False
-        ):
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
-
-    def test_flipt_error_fails_closed_to_beat(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(
-            "scheduler.ownership.check_feature_flag_status",
-            side_effect=RuntimeError("flipt down"),
-        ):
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
+        assert ownership.resolve_schedule_owner() is True
 
 
 class TestReconcileOwnership:
@@ -66,9 +44,9 @@ class TestReconcileOwnership:
     def _scheduler_gate_on(self, monkeypatch):
         """These pin the FINAL-phase behaviour, when hand-over is switched on.
 
-        PG_SCHEDULER_ENABLED defaults off for the whole rollout (Beat stays the sole
-        scheduler), so without this every case below would short-circuit to Beat and
-        assert nothing about the logic it was written for.
+        PG_SCHEDULER_ENABLED is the sole ownership gate. It now defaults ON, so
+        this is belt-and-braces: it keeps these cases independent of the default
+        should a future change flip it.
         """
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
 
@@ -82,9 +60,7 @@ class TestReconcileOwnership:
     def _patches(self, *, owner: bool, rows_matched: int = 1):
         sched = patch("scheduler.ownership.PgPeriodicSchedule")
         pt = patch("scheduler.ownership.PeriodicTask")
-        resolve = patch(
-            "scheduler.ownership.resolve_schedule_owner", return_value=owner
-        )
+        resolve = patch("scheduler.ownership.resolve_schedule_owner", return_value=owner)
         # transaction.atomic() as a no-op context manager.
         txn = patch(
             "scheduler.ownership.transaction.atomic",
@@ -101,14 +77,11 @@ class TestReconcileOwnership:
         assert result is True
         # mirror pg_owned set True
         assert (
-            Sched.objects.filter.return_value.update.call_args.kwargs["pg_owned"]
-            is True
+            Sched.objects.filter.return_value.update.call_args.kwargs["pg_owned"] is True
         )
         # Beat PeriodicTask disabled (active AND NOT pg_owned == False)
         PT.objects.filter.assert_called_once_with(name=_PID)
-        assert (
-            PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
-        )
+        assert PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
 
     def test_not_pg_owned_enables_beat_and_clears_next_run(self):
         sched, pt, resolve, txn = self._patches(owner=False)
@@ -120,9 +93,7 @@ class TestReconcileOwnership:
         assert update_kwargs["pg_owned"] is False
         # Rollback to Beat clears next_run_at so a re-hand-over re-baselines.
         assert update_kwargs["next_run_at"] is None
-        assert (
-            PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
-        )
+        assert PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
 
     def test_an_ALREADY_pg_owned_schedule_does_not_clear_next_run(self):
         """Narrowed: this is the True→True case, not "adopt never clears".
@@ -152,9 +123,7 @@ class TestReconcileOwnership:
             ownership.reconcile_ownership_for(_PID, _ORG, active=False)
 
         # active=False → Beat stays disabled regardless of ownership.
-        assert (
-            PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
-        )
+        assert PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
 
     def test_missing_mirror_row_skips_and_reports_beat(self):
         sched, pt, resolve, txn = self._patches(owner=True)
@@ -178,7 +147,8 @@ class TestReconcileOwnership:
         clobbering a concurrent reconcile), which bypasses django-celery-beat's
         post_save signal. Without an explicit PeriodicTasks.update_changed() bump,
         DatabaseScheduler never reloads and Beat keeps firing the handed-over
-        schedule from its stale in-memory copy (breaking no-double-fire)."""
+        schedule from its stale in-memory copy (breaking no-double-fire).
+        """
         sched, pt, resolve, txn = self._patches(owner=True)
         with sched as Sched, pt, resolve, txn:
             Sched.objects.filter.return_value.update.return_value = 1
@@ -187,7 +157,8 @@ class TestReconcileOwnership:
 
     def test_beat_reload_not_signalled_when_no_mirror_row(self, _mock_periodic_tasks):
         """No mirror row → the method returns before touching the PeriodicTask, so
-        no reload should be signalled either."""
+        no reload should be signalled either.
+        """
         sched, pt, resolve, txn = self._patches(owner=True)
         with sched as Sched, pt, resolve, txn:
             Sched.objects.filter.return_value.update.return_value = 0
@@ -196,34 +167,30 @@ class TestReconcileOwnership:
 
 
 class TestPgSchedulerGate:
-    """The gate that keeps Beat the sole scheduler for the whole PG rollout.
+    """The gate deciding whether the PG scheduler or Beat owns a schedule.
 
-    Pipelines already reach PG without the PG scheduler (execute_pipeline_task_v2 →
-    complete_execution → execute_workflow_async → resolve_transport), so the PG
-    scheduler exists only to retire the Beat *deployment* — a later, deliberate step.
-    Handing a schedule over before then leaves it with NO firer: Beat's PeriodicTask
-    disabled, nothing polling the PG side.
+    It defaults ON (UN-4046) — PG is the only transport and the PG scheduler ships
+    with the fleet. It remains a gate because handing a schedule over while no PG
+    scheduler is running leaves it with NO firer: Beat's PeriodicTask disabled,
+    nothing polling the PG side.
     """
 
-    def test_defaults_off(self, monkeypatch):
+    def test_defaults_on(self, monkeypatch):
         monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
-        assert ownership.pg_scheduler_enabled() is False
+        assert ownership.pg_scheduler_enabled() is True
 
     @pytest.mark.parametrize("value", ["false", "False", "0", "", "yes", "TRUE "])
-    def test_only_an_exact_true_opts_in(self, monkeypatch, value):
+    def test_only_an_exact_true_stays_on(self, monkeypatch, value):
+        """Opting OUT is the deliberate act now — anything but an exact ``true``
+        (case/whitespace-insensitive) turns the gate off.
+        """
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", value)
         assert ownership.pg_scheduler_enabled() is (value.strip().lower() == "true")
 
-    def test_owner_stays_beat_even_with_the_flag_on(self, monkeypatch):
-        """The rollout state: pg_queue_enabled on, PG scheduler still dark."""
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(
-            "scheduler.ownership.check_feature_flag_status", return_value=True
-        ) as flag:
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
-            # Short-circuits before Flipt — no evaluation on every schedule save.
-            flag.assert_not_called()
+    def test_owner_stays_beat_when_the_gate_is_off(self, monkeypatch):
+        """A deployment that deliberately runs without worker-pg-scheduler."""
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
+        assert ownership.resolve_schedule_owner() is False
 
     def test_reconcile_writes_NEITHER_beat_table(self, monkeypatch):
         """The regression this gate exists to prevent.
@@ -233,13 +200,11 @@ class TestPgSchedulerGate:
         on every schedule save — writing back a value Beat already had and forcing a
         reload, on a table we promised not to touch.
         """
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
         with (
             patch("scheduler.ownership.PeriodicTask") as PT,
             patch("scheduler.ownership.PeriodicTasks") as PTs,
             patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
-            patch("scheduler.ownership.check_feature_flag_status", return_value=True),
         ):
             # A CLEAN row: not pg_owned, so there is nothing to repair and the
             # write-free path must be taken. Must be set explicitly — a bare
@@ -286,7 +251,7 @@ class TestStalePgOwnershipIsReleased:
         patch.stopall()
 
     def test_a_stale_row_is_handed_back_to_beat(self, monkeypatch):
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
         sched = self._mocks(stale=True)
         with (
             patch("scheduler.ownership.PeriodicTask") as PT,
@@ -315,7 +280,7 @@ class TestStalePgOwnershipIsReleased:
 
     def test_a_paused_pipeline_is_not_resurrected_by_the_repair(self, monkeypatch):
         """Repair restores the FIRER, never the on/off state the user chose."""
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
         self._mocks(stale=True)
         with (
             patch("scheduler.ownership.PeriodicTask") as PT,
@@ -334,22 +299,17 @@ class TestStalePgOwnershipIsReleased:
         Asking Flipt could return True and re-hand the schedule to a PG scheduler
         that is not running — turning a double-fire into no firer at all.
         """
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
         self._mocks(stale=True)
         with (
             patch("scheduler.ownership.PeriodicTask"),
             patch("scheduler.ownership.PeriodicTasks"),
-            patch(
-                "scheduler.ownership.check_feature_flag_status", return_value=True
-            ) as flag,
         ):
             ownership.reconcile_ownership_for(_PID, _ORG, active=True)
-        flag.assert_not_called()
 
     def test_a_db_error_on_the_check_falls_back_to_writing_nothing(self, monkeypatch):
         """A repair that cannot confirm it is needed must not run."""
-        monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
+        monkeypatch.setenv("PG_SCHEDULER_ENABLED", "false")
         sched = patch("scheduler.ownership.PgPeriodicSchedule").start()
         sched.objects.filter.side_effect = Exception("db down")
         with (
@@ -412,9 +372,7 @@ class TestReconcileAtomicityRealDB:
                 patch("scheduler.ownership.resolve_schedule_owner", return_value=True),
                 patch("scheduler.ownership.PeriodicTask", failing_pt),
             ):
-                result = ownership.reconcile_ownership_for(
-                    pid, "org_atomic", active=True
-                )
+                result = ownership.reconcile_ownership_for(pid, "org_atomic", active=True)
             assert result is None  # failure signalled
             # The pg_owned=True write was rolled back with the failed PT update.
             assert PgPeriodicSchedule.objects.get(pipeline_id=pid).pg_owned is False
@@ -445,7 +403,6 @@ class TestNextRunBaselineOnTransition:
 
     def _reconcile(self, monkeypatch, *, was_pg_owned, now_pg_owned):
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with (
             patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
             patch("scheduler.ownership.PeriodicTask"),
@@ -455,7 +412,7 @@ class TestNextRunBaselineOnTransition:
                 return_value=contextlib.nullcontext(),
             ),
             patch(
-                "scheduler.ownership.check_feature_flag_status",
+                "scheduler.ownership.resolve_schedule_owner",
                 return_value=now_pg_owned,
             ),
         ):
@@ -503,7 +460,6 @@ class TestBeatClockBaselineOnRelease:
 
     def _reconcile(self, monkeypatch, *, was_pg_owned, now_pg_owned, active=True):
         monkeypatch.setenv("PG_SCHEDULER_ENABLED", "true")
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with (
             patch("scheduler.ownership.PgPeriodicSchedule") as Sched,
             patch("scheduler.ownership.PeriodicTask") as Beat,
@@ -513,7 +469,7 @@ class TestBeatClockBaselineOnRelease:
                 return_value=contextlib.nullcontext(),
             ),
             patch(
-                "scheduler.ownership.check_feature_flag_status",
+                "scheduler.ownership.resolve_schedule_owner",
                 return_value=now_pg_owned,
             ),
         ):
@@ -534,7 +490,8 @@ class TestBeatClockBaselineOnRelease:
 
     def test_handing_over_to_pg_does_NOT_touch_beats_clock(self, monkeypatch):
         """Adoption switches Beat OFF, so its clock is irrelevant — and overwriting it
-        would destroy the value the eventual release needs to restore from."""
+        would destroy the value the eventual release needs to restore from.
+        """
         beat = self._reconcile(monkeypatch, was_pg_owned=False, now_pg_owned=True)
         assert beat["enabled"] is False
         assert "last_run_at" not in beat
@@ -542,7 +499,8 @@ class TestBeatClockBaselineOnRelease:
     def test_an_unchanged_owner_is_NOT_re_stamped(self, monkeypatch):
         """Same transition-scoping reason as next_run_at: reconcile runs on every
         pipeline save, and stamping unconditionally would push Beat's clock forward
-        on an ordinary edit and silently skip a due fire."""
+        on an ordinary edit and silently skip a due fire.
+        """
         beat = self._reconcile(monkeypatch, was_pg_owned=False, now_pg_owned=False)
         assert "last_run_at" not in beat
 
@@ -550,7 +508,8 @@ class TestBeatClockBaselineOnRelease:
         self, monkeypatch
     ):
         """A paused schedule comes back paused — but if it is later resumed, Beat must
-        not then replay the backlog it accrued while PG owned it."""
+        not then replay the backlog it accrued while PG owned it.
+        """
         beat = self._reconcile(
             monkeypatch, was_pg_owned=True, now_pg_owned=False, active=False
         )

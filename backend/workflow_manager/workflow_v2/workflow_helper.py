@@ -27,7 +27,7 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
-from unstract.core.data_models import WorkloadType, is_pg_transport
+from unstract.core.data_models import WorkflowTransport, WorkloadType
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -59,7 +59,6 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.transport import resolve_transport
 
 logger = logging.getLogger(__name__)
 
@@ -483,96 +482,80 @@ class WorkflowHelper:
     @staticmethod
     def _dispatch_orchestrator_task(
         *,
-        transport: str,
         queue: str | None,
         args: list[Any],
         kwargs: dict[str, Any],
         org_schema: str,
     ) -> str | None:
-        """Dispatch ``async_execute_bin`` on the resolved transport; return its id.
+        """Enqueue ``async_execute_bin`` on the PG queue; return its id.
 
-        ``pg_queue`` → enqueue to ``pg_queue_message`` (a PG consumer runs it);
-        ``celery`` → ``celery_app.send_task``. The returned id is the **bare**
-        ``str(msg_id)`` (PG) or the Celery task id — one format across entry
+        The returned id is the **bare** ``str(msg_id)`` — one format across entry
         paths, matching the worker PG dispatch (``PgDispatchHandle.id``).
         """
-        if is_pg_transport(transport):
-            is_api_execution = queue == CeleryQueue.CELERY_API_DEPLOYMENTS
-            msg_id = pg_enqueue_task(
-                task_name="async_execute_bin",
-                # None → "celery" (general); else celery_api_deployments.
-                queue=queue,
-                args=args,
-                kwargs=kwargs,
-                # Two sentinels, deliberately: the row's org_id column is NOT NULL
-                # (wants ""), while the fairness payload's org_id is str | None (a
-                # missing org means "no segment", not the literal "None").
-                org_id=org_schema or "",
-                priority=PG_DEFAULT_PRIORITY,
-                fairness={
-                    "org_id": org_schema or None,
-                    "workload_type": (
-                        WorkloadType.API.value
-                        if is_api_execution
-                        else WorkloadType.NON_API.value
-                    ),
-                    "pipeline_priority": PG_DEFAULT_PRIORITY,
-                },
-            )
-            return str(msg_id)
-        async_execution = celery_app.send_task(
-            "async_execute_bin", args=args, kwargs=kwargs, queue=queue
+        is_api_execution = queue == CeleryQueue.CELERY_API_DEPLOYMENTS
+        msg_id = pg_enqueue_task(
+            task_name="async_execute_bin",
+            # None → "celery" (general); else celery_api_deployments.
+            queue=queue,
+            args=args,
+            kwargs=kwargs,
+            # Two sentinels, deliberately: the row's org_id column is NOT NULL
+            # (wants ""), while the fairness payload's org_id is str | None (a
+            # missing org means "no segment", not the literal "None").
+            org_id=org_schema or "",
+            priority=PG_DEFAULT_PRIORITY,
+            fairness={
+                "org_id": org_schema or None,
+                "workload_type": (
+                    WorkloadType.API.value
+                    if is_api_execution
+                    else WorkloadType.NON_API.value
+                ),
+                "pipeline_priority": PG_DEFAULT_PRIORITY,
+            },
         )
-        return async_execution.id
+        return str(msg_id)
 
     @staticmethod
     def _record_dispatch_handle(
         *,
         execution_id: str,
-        transport: str,
         dispatch_handle: str | None,
         org_schema: str,
         file_count: int,
     ) -> None:
-        """Persist the transport's dispatch handle on the execution row.
+        """Persist the dispatch handle on the execution row.
 
-        Celery → the Celery task UUID into ``task_id`` (UUIDField). PG → the
-        ``pg_queue_message.msg_id`` into ``queue_message_id`` (BigIntegerField);
-        ``task_id`` stays NULL because there is no Celery task on the PG path.
-        Each id lives in its own correctly-typed column so a bigint msg_id is
-        never forced into the UUID ``task_id``.
+        The ``pg_queue_message.msg_id`` goes into ``queue_message_id``
+        (BigIntegerField). ``task_id`` stays NULL — it held the Celery task UUID
+        and there is no Celery task on the PG path.
         """
         if not dispatch_handle:
-            # PG always yields a truthy msg_id, so an empty handle is Celery-only.
+            # PG always yields a truthy msg_id, so an empty handle means the
+            # enqueue did not return one — record it rather than silently
+            # leaving the execution without a handle.
             logger.warning(
-                f"[{org_schema}] Empty dispatch handle (transport={transport}) "
-                f"for execution_id '{execution_id}'."
+                f"[{org_schema}] Empty dispatch handle for execution_id '{execution_id}'."
             )
             return
-        if is_pg_transport(transport):
-            # The PG handle is the bigint msg_id as a string. Parse defensively
-            # so a malformed/future handle format surfaces its specific cause
-            # here instead of being absorbed by the caller's generic guard.
-            try:
-                msg_id = int(dispatch_handle)
-            except (TypeError, ValueError):
-                logger.error(
-                    f"[{org_schema}] PG dispatch handle {dispatch_handle!r} is not "
-                    f"a valid bigint msg_id for execution_id '{execution_id}'; "
-                    "queue_message_id not recorded"
-                )
-                return
-            WorkflowExecutionServiceHelper.update_execution_queue_message_id(
-                execution_id=execution_id, queue_message_id=msg_id
+        # The handle is the bigint msg_id as a string. Parse defensively so a
+        # malformed/future handle format surfaces its specific cause here
+        # instead of being absorbed by the caller's generic guard.
+        try:
+            msg_id = int(dispatch_handle)
+        except (TypeError, ValueError):
+            logger.error(
+                f"[{org_schema}] PG dispatch handle {dispatch_handle!r} is not "
+                f"a valid bigint msg_id for execution_id '{execution_id}'; "
+                "queue_message_id not recorded"
             )
-        else:
-            WorkflowExecutionServiceHelper.update_execution_task(
-                execution_id=execution_id, task_id=dispatch_handle
-            )
+            return
+        WorkflowExecutionServiceHelper.update_execution_queue_message_id(
+            execution_id=execution_id, queue_message_id=msg_id
+        )
         logger.info(
-            f"[{org_schema}] Job '{dispatch_handle}' enqueued "
-            f"(transport={transport}) for execution_id '{execution_id}', "
-            f"'{file_count}' files"
+            f"[{org_schema}] Job '{dispatch_handle}' enqueued for "
+            f"execution_id '{execution_id}', '{file_count}' files"
         )
 
     @classmethod
@@ -621,19 +604,6 @@ class WorkflowHelper:
             # end-to-end. Flipt (gated by the env master-switch) decides; fails
             # closed to "celery".
             #
-            # NOTE (deliberate, two resolution sites): transport is resolved here
-            # for the API/manual/async paths and separately in
-            # internal_api_views.create_workflow_execution for the scheduler
-            # path. These are DISTINCT entry paths — never a double-resolution of
-            # the same execution. entity_id is execution_id, so each execution
-            # buckets exactly once and can't split across transports even if the
-            # rollout % is re-rolled between the two sites.
-            transport = resolve_transport(
-                execution_id=execution_id,
-                organization_id=org_schema,
-                workflow_id=workflow_id,
-                pipeline_id=pipeline_id,
-            )
             dispatch_args = [
                 org_schema,  # schema_name
                 workflow_id,  # workflow_id
@@ -650,13 +620,11 @@ class WorkflowHelper:
                 "hitl_queue_name": hitl_queue_name,
                 "hitl_packet_id": hitl_packet_id,
                 "custom_data": custom_data,
-                "transport": transport,
+                # Wire field the workers still branch on. PG is the only
+                # transport now; the field goes when those branches do.
+                "transport": WorkflowTransport.PG_QUEUE.value,
             }
-            # Orchestrator transport (9e PR A / 2d): dispatch async_execute_bin on
-            # the resolved transport (PG enqueue vs Celery). Extracted to a helper
-            # so this method stays simple and the fork is unit-testable.
             dispatch_handle = cls._dispatch_orchestrator_task(
-                transport=transport,
                 queue=queue,
                 args=dispatch_args,
                 kwargs=dispatch_kwargs,
@@ -691,26 +659,24 @@ class WorkflowHelper:
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            # Record the dispatch handle (Celery task_id or PG msg_id) on the row.
-            # Best-effort, in its OWN try/except: it must NEVER abort the
-            # synchronous timeout wait below. (Writing a bigint msg_id into the
-            # UUID task_id used to raise ValueError inside update_execution_task
-            # (UUID coercion on save), which bubbled to the post-dispatch handler
-            # and silently skipped the wait — so every PG-routed API deployment
-            # ignored `timeout`.)
+            # Record the PG msg_id on the row. Best-effort, in its OWN
+            # try/except: it must NEVER abort the synchronous timeout wait below.
+            # (Writing a bigint msg_id into the UUID task_id used to raise
+            # ValueError inside update_execution_task (UUID coercion on save),
+            # which bubbled to the post-dispatch handler and silently skipped the
+            # wait — so every PG-routed API deployment ignored `timeout`.)
             try:
                 cls._record_dispatch_handle(
                     execution_id=execution_id,
-                    transport=transport,
                     dispatch_handle=dispatch_handle,
                     org_schema=org_schema or "",
                     file_count=len(hash_values_of_files),
                 )
             except Exception:
                 logger.exception(
-                    f"[{org_schema}] Failed to record dispatch handle "
-                    f"(transport={transport}) for execution '{execution_id}'; "
-                    "continuing — the orchestrator is already running"
+                    f"[{org_schema}] Failed to record dispatch handle for "
+                    f"execution '{execution_id}'; continuing — the orchestrator "
+                    "is already running"
                 )
 
             execution_status = workflow_execution.status
@@ -747,8 +713,8 @@ class WorkflowHelper:
                 # it never raised; this generic handler covers any stray case.)
                 logger.exception(
                     f"[{org_schema}] Post-dispatch bookkeeping failed for execution "
-                    f"'{execution_id}' (orchestrator already dispatched on "
-                    f"{transport}); not marking ERROR"
+                    f"'{execution_id}' (orchestrator already enqueued on the PG "
+                    f"queue); not marking ERROR"
                 )
                 return ExecutionResponse(
                     workflow_id, execution_id, ExecutionStatus.EXECUTING.value
@@ -1054,43 +1020,29 @@ class WorkflowHelper:
                     workflow_id=workflow.id, single_step=True
                 )
             try:
-                workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+                # Existence probe only — the branch below raises unconditionally,
+                # so the result is deliberately not bound. The query is still
+                # load-bearing: its DoesNotExist selects the create-a-new-execution
+                # path in the except.
+                WorkflowExecution.objects.get(pk=execution_id)
                 # Single-step is the one entry path that never moved onto PG. Its
                 # only fan-out is the Celery chord in `process_input_files` — the
-                # normal path's PG fan-out lives in the general worker instead, so
-                # nothing here is transport-gated. With the flag on and the Celery
-                # file_processing workers scaled to zero (the epic's acceptance
-                # gate), those batches would sit unconsumed and the execution would
-                # hang in EXECUTING, invisible to the PG reaper. Fail fast instead:
-                # a 500 with a stated cause beats a silent forever-EXECUTING row.
+                # normal path's PG fan-out lives in the general worker instead —
+                # so with no Celery file_processing workers those batches would
+                # sit unconsumed and the execution would hang in EXECUTING,
+                # invisible to the PG reaper. Fail fast instead: a 500 with a
+                # stated cause beats a silent forever-EXECUTING row.
                 #
-                # Unreachable from the UI — the step buttons are gone and both live
-                # call sites pass isStepExecution=false, so `execution_action` is
-                # never sent (frontend Agency.jsx). This guards a direct API call.
+                # Deprecated and unreachable from the UI — the step buttons are
+                # gone and both live call sites pass isStepExecution=false, so
+                # `execution_action` is never sent (frontend Agency.jsx). This
+                # guards a direct API call. Removing the endpoint outright is
+                # tracked separately.
                 #
-                # Resolved here rather than in `process_input_files` so the Celery
-                # path stays byte-identical and an already-resolved execution is
-                # never re-resolved. Step executions are created by
-                # `create_and_make_execution_response`, which resolves no transport,
-                # so this is their first and only resolution.
-                transport = resolve_transport(
-                    execution_id=execution_id,
-                    organization_id=workflow.organization.organization_id,
-                    workflow_id=workflow.id,
-                )
-                if is_pg_transport(transport):
-                    raise WorkflowExecutionError(
-                        "Single-step execution is not supported on the Postgres "
-                        "queue transport: it has no PG fan-out, and its Celery "
-                        "batches would never be consumed. Run the full workflow "
-                        "instead, or disable pg_queue_enabled for this "
-                        "organization."
-                    )
-                return WorkflowHelper.run_workflow(
-                    workflow=workflow,
-                    single_step=True,
-                    workflow_execution=workflow_execution,
-                    hash_values_of_files=hash_values_of_files,
+                raise WorkflowExecutionError(
+                    "Single-step execution is not supported: it has no PG "
+                    "fan-out, and its Celery batches would never be consumed. "
+                    "Run the full workflow instead."
                 )
             except WorkflowExecution.DoesNotExist:
                 return WorkflowHelper.create_and_make_execution_response(

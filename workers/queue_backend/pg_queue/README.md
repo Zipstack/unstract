@@ -3,8 +3,9 @@
 A quick-reference dictionary for the bespoke Postgres-backed work queue that can
 stand in for Celery/RabbitMQ. This file is the **terminology + config lookup**.
 
-The transport is chosen **per org** by the Flipt flag `pg_queue_enabled`
-(fail-closed to Celery), so the system runs **with and without** PG unchanged.
+PG is the **only** transport since UN-4046. There is no per-org flag and no Celery
+fallback: every dispatch is enqueued here, so a queue whose consumer is not running
+accepts work and never executes it — durably, and with no error at the producer.
 
 ---
 
@@ -52,11 +53,11 @@ integers.
 | `WORKER_PG_DEDUP_RETENTION_SECONDS` | Retention for `pg_batch_dedup` rows |
 | `WORKER_PG_QUEUE_CONNECT_RETRIES` / `_BACKOFF` | Reconnect attempts / backoff on a stale or broken DB connection |
 
-### Routing / flag
-| Env / flag | One-line |
-|---|---|
-| `pg_queue_enabled` (Flipt, `PG_QUEUE_FLAG_KEY`) | Per-org gate that routes dispatch to PG; **fail-closed to Celery** on any Flipt error |
-| `WORKER_PG_QUEUE_ENABLED_TASKS` | Comma-separated task names eligible for PG routing (empty → everything stays on Celery) |
+### Routing
+There are no routing knobs left. `select_backend()` returns PG unconditionally; the
+`pg_queue_enabled` Flipt flag and the `WORKER_PG_QUEUE_ENABLED_TASKS` allow-list were
+both removed in UN-4046. Which work reaches a given consumer is decided entirely by
+`WORKER_PG_QUEUE_CONSUMER_QUEUE` above.
 
 ---
 
