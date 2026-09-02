@@ -171,10 +171,33 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
   sandbox containment, the minimal Secret, and the sandbox result-backend wiring are
   helm-unittest-rendered but never applied to a cluster. **This is the one outstanding
   validation before production.**
-- **Branch state:** the pre-Greptile fix commits are committed but **unpushed** on both
-  branches; **no PR raised yet** (both branches must pass Greptile first).
-- **Not started:** billing/Stripe integration (a later sub-project); migrating
-  `agentic_table` onto this shared sandbox (a follow-up).
+- **Branch state:** all fix commits (plus this overview) are **committed and pushed** on
+  both branches — OSS `Feat/agent-kv-api`, cloud `UN-4044-agent-kv-cloud-executor`;
+  **no PR raised yet** (both must pass Greptile first).
+- **Not started:** the fail-closed billing admission gate + Stripe invoicing (see
+  **Billing & metering** below); migrating `agentic_table` onto this shared sandbox.
+
+### Billing & metering
+
+**Usage recording — built and wired** (rides the platform's standard usage pipeline):
+- **LLM token/cost usage:** the executor flushes each LLM's pending usage exactly-once into
+  `metadata.usage_records`; the generic executor task harvests them →
+  `usage_client.bulk_create_usage(...)` → `POST v1/usage/batch/`.
+- **OCR page usage:** `PageUsagePoster` → `Audit().push_page_usage_data(...)`
+  (platform-service), which fires the subscription hook — the same path
+  `unstract.sdk1.x2txt.X2Text` uses.
+- **Per-job snapshot:** `usage_summary = {pages, input_tokens, output_tokens, total_cost,
+  agents}` stored on `AgentKVJob`; `total_cost` is the authoritative billing figure.
+- **Status:** unit-tested and runs whenever a job completes; asserting a `usage_v2` row
+  end-to-end is a staging check (not separately asserted in the compose run).
+
+**Not built — deferred to the billing sub-project:**
+- **Fail-closed pre-dispatch admission / quota reserve** (design §6.6): submit today gates
+  on capability (501), per-key rate (429), schema caps, and concurrency (429) — but **not**
+  a billing quota reservation. A job can run and record usage even if the org is over
+  quota; enforcement is deferred.
+- **Stripe / invoicing** (billing sub-project): not started — turning recorded usage into
+  charges.
 
 ## 8. Document index
 
