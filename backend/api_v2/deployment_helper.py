@@ -294,7 +294,14 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 logger.exception(f"Failed to mark execution {execution_id} as ERROR")
 
             # Async job never started — release the rate limit slot and clean up.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            # str(...organization_id), NOT the model instance: release_slot formats
+            # its argument into the Redis key, and acquire_slot built that key from
+            # str(organization.organization_id). Passing the instance ZREMs a
+            # non-member — it returns 0 and raises nothing, so the slot silently
+            # stays held for the full TTL. Same trap as undispatched_sweep.py:245.
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
@@ -323,7 +330,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             except Exception:
                 logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
 
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
@@ -390,7 +399,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Dispatch failures are marked ERROR internally by execute_workflow_async;
             # post-dispatch failures (enrichment/config) must not overwrite a running
             # execution's status, so only release the slot and clean up storage here.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
 
             # Clean up storage
             DestinationConnector.delete_api_storage_dir(

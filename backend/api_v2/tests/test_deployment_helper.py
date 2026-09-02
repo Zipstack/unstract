@@ -48,6 +48,7 @@ def _api() -> MagicMock:
     api = MagicMock()
     api.workflow.id = "wf-1"
     api.id = "pipe-1"
+    api.organization.organization_id = "org-uuid-1"
     return api
 
 
@@ -150,8 +151,12 @@ def test_all_files_rejected_completes_without_dispatch(
     ].update_execution_completed.assert_called_once_with(
         "exec-123", total_files=1, failed_files=1
     )
-    # ...the slot and staging dir are released...
-    mocks["APIDeploymentRateLimiter"].release_slot.assert_called_once()
+    # ...the slot and staging dir are released. The slot must be released by org
+    # id string: release_slot formats its argument into the Redis key, so passing
+    # the model instance removes a non-member and silently holds the slot.
+    mocks["APIDeploymentRateLimiter"].release_slot.assert_called_once_with(
+        "org-uuid-1", "exec-123"
+    )
     mocks["DestinationConnector"].delete_api_storage_dir.assert_called_once()
     # ...and the caller still sees why each file failed.
     assert response["execution_status"] == "COMPLETED"
