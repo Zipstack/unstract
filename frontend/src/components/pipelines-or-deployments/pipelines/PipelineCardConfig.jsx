@@ -21,7 +21,6 @@ import { Avatar, Tag } from "@/components/ui/shims/antd-leaves";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
-import { canEditResource } from "../../../helpers/resourceAccess";
 import { useSessionStore } from "../../../store/session-store";
 import {
   ApiEndpointSection,
@@ -262,9 +261,6 @@ function createPipelineCardConfig({
         }
       }
 
-      // Sharing grants read only. Running and watching stay available; the
-      // actions that change the pipeline do not.
-      const canEdit = canEditResource(pipeline, sessionDetails);
       const kebabMenuItems = {
         items: [
           {
@@ -279,19 +275,13 @@ function createPipelineCardConfig({
             label: "View File History",
             onClick: () => onViewFileHistory?.(pipeline),
           },
-          ...(canEdit
-            ? [
-                {
-                  key: "clear-history",
-                  icon: <Eraser />,
-                  label: isClearingFileHistory
-                    ? "Clearing..."
-                    : "Clear File History",
-                  disabled: isClearingFileHistory,
-                  onClick: () => onClearFileHistory?.(pipeline),
-                },
-              ]
-            : []),
+          {
+            key: "clear-history",
+            icon: <Eraser />,
+            label: isClearingFileHistory ? "Clearing..." : "Clear File History",
+            disabled: isClearingFileHistory,
+            onClick: () => onClearFileHistory?.(pipeline),
+          },
           { type: "divider" },
           {
             key: "sync-now",
@@ -299,23 +289,19 @@ function createPipelineCardConfig({
             label: "Sync Now",
             onClick: () => onSyncNow?.(pipeline),
           },
-          ...(canEdit
-            ? [
-                { type: "divider" },
-                {
-                  key: "manage-keys",
-                  icon: <Key />,
-                  label: "Manage Keys",
-                  onClick: () => onManageKeys?.(pipeline),
-                },
-                {
-                  key: "notifications",
-                  icon: <Bell />,
-                  label: "Notifications",
-                  onClick: () => onSetupNotifications?.(pipeline),
-                },
-              ]
-            : []),
+          { type: "divider" },
+          {
+            key: "manage-keys",
+            icon: <Key />,
+            label: "Manage Keys",
+            onClick: () => onManageKeys?.(pipeline),
+          },
+          {
+            key: "notifications",
+            icon: <Bell />,
+            label: "Notifications",
+            onClick: () => onSetupNotifications?.(pipeline),
+          },
           { type: "divider" },
           {
             key: "download-postman",
@@ -337,23 +323,19 @@ function createPipelineCardConfig({
             </Tooltip>
 
             <Space size={16} className="card-list-actions">
-              {canEdit && (
-                <Tooltip
-                  title={
-                    pipeline.active ? "Disable pipeline" : "Enable pipeline"
-                  }
-                >
-                  <Switch
-                    size="small"
-                    checked={pipeline.active}
-                    data-testid={`pipeline-toggle-${pipeline.id}`}
-                    onChange={(checked, e) => {
-                      e.stopPropagation();
-                      handleEnablePipeline(checked, pipeline.id);
-                    }}
-                  />
-                </Tooltip>
-              )}
+              <Tooltip
+                title={pipeline.active ? "Disable pipeline" : "Enable pipeline"}
+              >
+                <Switch
+                  size="small"
+                  checked={pipeline.active}
+                  data-testid={`pipeline-toggle-${pipeline.id}`}
+                  onChange={(checked, e) => {
+                    e.stopPropagation();
+                    handleEnablePipeline(checked, pipeline.id);
+                  }}
+                />
+              </Tooltip>
               <CardActionBox
                 item={pipeline}
                 testIdPrefix="pipeline"
