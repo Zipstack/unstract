@@ -512,6 +512,7 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_run_time = SerializerMethodField()
     is_owner = SerializerMethodField()
     co_owners_count = SerializerMethodField()
+    owner_emails = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -531,6 +532,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_run_time",
             "is_owner",
             "co_owners_count",
+            "owner_emails",
         ]
 
     def get_created_by_email(self, obj):
@@ -543,6 +545,11 @@ class APIDeploymentListSerializer(ModelSerializer):
 
     def get_co_owners_count(self, obj) -> int:
         return obj.co_owners_count()
+
+    def get_owner_emails(self, obj) -> list[str]:
+        # Names the actual owner in "Owned By"; ``created_by`` is audit-only
+        # (UN-2202) and stays the service account on platform-key creates.
+        return obj.owner_emails()
 
     def get_run_count(self, instance) -> int:
         """Get total execution count for this API deployment."""
