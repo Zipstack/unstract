@@ -287,6 +287,10 @@ function ConfigureConnectorModal({
     folderSectionConfig[connType] || folderSectionConfig.input;
 
   const hasUnsavedChanges = () => {
+    // A view-only user cannot have changed anything, so never prompt them.
+    if (!canEdit) {
+      return false;
+    }
     // For API mode, only check RuleEngine's dirty state
     if (connMode === "API") {
       return ruleEngineHasChanges;
@@ -325,16 +329,20 @@ function ConfigureConnectorModal({
           type: "success",
           content: "Configuration saved successfully.",
         });
+        return true;
       } catch (error) {
         setAlertDetails({
           type: "error",
           content:
             error?.message || "Failed to save changes. Please try again.",
         });
+        return false;
       } finally {
         setIsSavingEndpoint(false);
       }
     }
+    // Nothing to write.
+    return true;
   };
 
   const handleSave = async () => {
@@ -348,13 +356,21 @@ function ConfigureConnectorModal({
       // RJSF shows validation errors
       return false;
     }
-    await handleValidateAndSubmit(formDataConfig);
+    // Stop here if the endpoint write failed, rather than writing half the
+    // configuration and closing as though everything saved.
+    if (!(await handleValidateAndSubmit(formDataConfig))) {
+      return false;
+    }
     // HITL rules live in the plugin and used to need their own button. One
-    // Save now writes everything the modal shows.
-    if (ruleEngineRef.current?.save) {
+    // Save now writes everything the modal shows. Only when they actually
+    // changed -- otherwise every connector save would write a rule too.
+    if (ruleEngineHasChanges && ruleEngineRef.current?.save) {
       setIsSavingEndpoint(true);
       try {
-        await ruleEngineRef.current.save();
+        // Keep the modal open on failure so the edit is not lost.
+        if (!(await ruleEngineRef.current.save())) {
+          return false;
+        }
       } finally {
         setIsSavingEndpoint(false);
       }

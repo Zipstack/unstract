@@ -171,8 +171,10 @@ class WorkflowOwnerMutationMixin:
         return list(super().get_permissions())
 
     def perform_create(self, serializer: Any) -> None:
+        # Fails closed: this mixin only guards resources that carry a parent
+        # workflow, so a payload without one cannot be authorised at all.
         workflow = serializer.validated_data.get("workflow")
-        if workflow and not is_workflow_mutator(self.request, workflow):
+        if not workflow or not is_workflow_mutator(self.request, workflow):
             raise PermissionDenied(self.mutation_denied_message)
         serializer.save()
 
