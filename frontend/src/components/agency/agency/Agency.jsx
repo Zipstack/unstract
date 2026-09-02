@@ -1148,9 +1148,16 @@ function Agency() {
                       {selectedTool ? (
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
+                            {/* exportedTools holds only the viewer's own
+                                projects, so a shared workflow misses; the
+                                tool instance carries the name either way. */}
                             {exportedTools.find(
                               (t) => t.function_name === selectedTool,
-                            )?.name || selectedTool}
+                            )?.name ||
+                              details?.tool_instances?.find(
+                                (ti) => ti.tool_id === selectedTool,
+                              )?.name ||
+                              selectedTool}
                           </span>
                           <Button
                             type="link"
