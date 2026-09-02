@@ -27,6 +27,11 @@ function EditableText({
   const { isSinglePassExtractLoading, isPublicSource } = useCustomToolStore();
 
   useEffect(() => {
+    // A rejected edit rolls the stored value back; keep the typed text on
+    // screen so the user can correct it in place.
+    if (error) {
+      return;
+    }
     setText(defaultText);
   }, [defaultText]);
 
