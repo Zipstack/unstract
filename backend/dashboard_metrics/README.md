@@ -46,7 +46,8 @@ celery -A backend beat -l info
 ### Celery Tasks & Schedule
 | Task | Schedule | What It Does |
 |------|----------|--------------|
-| `aggregate_from_sources` | Every 15 min | Aggregates source → hourly/daily/monthly |
+| `aggregate_from_sources` | Every 15 min | Aggregates source → hourly/daily; rolls monthly up from daily |
+| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | Same task over a 7-day source window, to repair gaps after downtime |
 | `cleanup_hourly_data` | Daily 2 AM | Deletes hourly data > 30 days |
 | `cleanup_daily_data` | Weekly Sun 3 AM | Deletes daily data > 365 days |
 
@@ -109,7 +110,7 @@ celery -A backend beat -l info
 │ EventMetrics    │      │ EventMetrics    │      │ EventMetrics    │
 │ Hourly          │      │ Daily           │      │ Monthly         │
 │                 │      │                 │      │                 │
-│ • 24h query     │      │ • 7 day query   │      │ • 2 month query │
+│ • 24h query     │      │ • 2 day query   │      │ • from daily    │
 │ • 30 day retain │      │ • 365 day retain│      │ • No cleanup    │
 └────────┬────────┘      └────────┬────────┘      └────────┬────────┘
          │                        │                        │
@@ -163,6 +164,7 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 
 **Failure Resilience:**
 - If the aggregation task fails, the dashboard shows stale data (up to 15 minutes old) rather than crashing.
+- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a gap shorter than that repairs itself without a manual backfill.
 - Celery tasks have `max_retries=3` with exponential backoff.
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
@@ -298,8 +300,8 @@ cost = (input_cost_per_token × input_tokens) + (output_cost_per_token × output
 | Table | Model | Time Column | Granularity | Query Window | Retention |
 |-------|-------|-------------|-------------|--------------|-----------|
 | `event_metrics_hourly` | `EventMetricsHourly` | `timestamp` | Hour | Last 24 hours | 30 days |
-| `event_metrics_daily` | `EventMetricsDaily` | `date` | Day | Last 7 days | 365 days |
-| `event_metrics_monthly` | `EventMetricsMonthly` | `month` | Month | Last 2 months | Forever |
+| `event_metrics_daily` | `EventMetricsDaily` | `date` | Day | Last 2 days (7 on the daily reconciliation pass) | 365 days |
+| `event_metrics_monthly` | `EventMetricsMonthly` | `month` | Month | Rolled up from the daily tier, current + previous month | Forever |
 
 ### Table Schema
 
@@ -340,6 +342,7 @@ Located in `tasks.py`:
 | Task Name | Celery Name | Schedule | Queue | Purpose |
 |-----------|-------------|----------|-------|---------|
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate from source tables |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, `source_window_days=7` |
 | `cleanup_hourly_metrics` | `dashboard_metrics.cleanup_hourly_data` | Daily 2:00 AM UTC | `dashboard_metric_events` | Delete hourly data >30 days |
 | `cleanup_daily_metrics` | `dashboard_metrics.cleanup_daily_data` | Weekly Sun 3:00 AM UTC | `dashboard_metric_events` | Delete daily data >365 days |
 
@@ -378,15 +381,22 @@ The `aggregate_metrics_from_sources` task:
 2. **For each metric**:
    - Queries source table with `MetricsQueryService`
    - Groups by time period (hour/day/month)
-3. **Upserts results** into aggregated tables using `update_or_create`
-4. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
+3. **Upserts results** into the hourly and daily tables
+4. **Rolls monthly up from the daily tier** in one statement for all orgs, dropping
+   monthly rows the daily tier no longer produces (scoped to the organization/month
+   partitions the rollup covered)
+5. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
 
 ```python
 # Query windows
-hourly_start = end_date - timedelta(hours=24)    # Last 24 hours
-daily_start = end_date - timedelta(days=7)       # Last 7 days
-monthly_start = first_of_previous_month          # Last 2 months
+hourly_start = end_date - timedelta(hours=24)                 # Last 24 hours
+daily_start = truncate_to_day(end_date - source_window_days)  # 2 days, 7 on reconcile
+monthly_start = first_of_previous_month                       # summed from daily
 ```
+
+The monthly tier has no source queries of its own. `backfill_metrics` still computes
+monthly from source, so within the rollup window (current + previous month) its output
+is recomputed within 15 minutes — see that command's help text.
 
 ---
 

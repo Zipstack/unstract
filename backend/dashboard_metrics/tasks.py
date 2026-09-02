@@ -32,6 +32,10 @@ from .services import MetricsQueryService
 
 logger = logging.getLogger(__name__)
 
+# Django 4.2's PostgreSQL backend does not override bulk_batch_size, so an
+# unbatched bulk_create emits one statement whose size scales with tenant count.
+MONTHLY_ROLLUP_BATCH_SIZE = 1000
+
 # Retention periods for metrics cleanup
 DASHBOARD_HOURLY_METRICS_RETENTION_DAYS = 30
 DASHBOARD_DAILY_METRICS_RETENTION_DAYS = 365
@@ -40,7 +44,9 @@ DASHBOARD_DAILY_METRICS_RETENTION_DAYS = 365
 # created_at -> terminal-status lag.
 DASHBOARD_SOURCE_WINDOW_DAYS = 2
 
-# Wider lookback for the once-daily reconciliation pass.
+# Wider lookback for the once-daily reconciliation pass. A migration must not
+# import live app code, so 0005_add_reconciliation_task carries this as a literal
+# in the schedule row's kwargs — editing this constant does not move the schedule.
 DASHBOARD_RECONCILE_WINDOW_DAYS = 7
 
 # Wider than the source window: metrics keyed on another column
@@ -179,39 +185,54 @@ def _bulk_upsert_daily(aggregations: dict) -> int:
     return len(objects)
 
 
-def _delete_orphan_monthly(month_start: date, fresh_keys: set[tuple]) -> int:
-    """Drop monthly rows from month_start that the rollup no longer produces.
+def _delete_orphan_monthly(objects: list[EventMetricsMonthly]) -> int:
+    """Drop stale monthly rows inside the partitions the rollup actually covered.
 
     Monthly derives from the daily tier, so a key with no daily rows left must
-    not survive as a stale total.
+    not survive as a stale total. An (organization, month) the rollup produced
+    nothing for is left alone instead: absent daily rows there mean an
+    incomplete tier, not a metric that went to zero.
     """
-    stale_pks = [
-        row["pk"]
-        for row in EventMetricsMonthly._base_manager.filter(
-            month__gte=month_start
-        ).values("pk", "organization_id", "month", "metric_name", "project", "tag")
-        if (
-            row["organization_id"],
-            row["month"],
-            row["metric_name"],
-            row["project"],
-            row["tag"],
-        )
-        not in fresh_keys
-    ]
-    if not stale_pks:
-        return 0
+    fresh_keys = {
+        (o.organization_id, o.month, o.metric_name, o.project, o.tag) for o in objects
+    }
+    covered: dict[date, set] = {}
+    for o in objects:
+        covered.setdefault(o.month, set()).add(o.organization_id)
 
-    deleted, _ = EventMetricsMonthly._base_manager.filter(pk__in=stale_pks).delete()
+    deleted = 0
+    for month, org_ids in covered.items():
+        stale_pks = [
+            row["pk"]
+            for row in EventMetricsMonthly._base_manager.filter(
+                month=month, organization_id__in=org_ids
+            ).values("pk", "organization_id", "month", "metric_name", "project", "tag")
+            if (
+                row["organization_id"],
+                row["month"],
+                row["metric_name"],
+                row["project"],
+                row["tag"],
+            )
+            not in fresh_keys
+        ]
+        if not stale_pks:
+            continue
+        removed, _ = EventMetricsMonthly._base_manager.filter(pk__in=stale_pks).delete()
+        deleted += removed
+
     return deleted
 
 
-def _rollup_monthly_from_daily(month_start: date) -> int:
+def _rollup_monthly_from_daily(month_start: date) -> tuple[int, int]:
     """Sum the daily tier from month_start into monthly, for all orgs at once.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
     conflict target.
+
+    Returns:
+        (rows upserted, rows deleted as orphans)
     """
     rows = (
         EventMetricsDaily._base_manager.filter(date__gte=month_start)
@@ -238,14 +259,11 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
         for row in rows
     ]
 
-    # An empty daily tier means the source is gone, not that every month is
-    # zero — leave existing rows alone.
+    # Nothing to write and nothing covered, so nothing to sweep. The scoping in
+    # _delete_orphan_monthly already makes this safe; returning early just skips a
+    # pointless transaction.
     if not objects:
-        return 0
-
-    fresh_keys = {
-        (o.organization_id, o.month, o.metric_name, o.project, o.tag) for o in objects
-    }
+        return 0, 0
 
     with transaction.atomic():
         EventMetricsMonthly._base_manager.bulk_create(
@@ -253,10 +271,11 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
             update_conflicts=True,
             unique_fields=["organization", "month", "metric_name", "project", "tag"],
             update_fields=["metric_type", "metric_value", "metric_count"],
+            batch_size=MONTHLY_ROLLUP_BATCH_SIZE,
         )
-        _delete_orphan_monthly(month_start, fresh_keys)
+        deleted = _delete_orphan_monthly(objects)
 
-    return len(objects)
+    return len(objects), deleted
 
 
 AGGREGATION_LOCK_KEY = "dashboard_metrics:aggregation_lock"
@@ -525,12 +544,19 @@ def _aggregate_org(
     stats["orgs_processed"] += 1
 
 
-def _active_org_ids(end_date: datetime) -> set:
-    """Organizations with execution activity in the prefilter lookback."""
+def _active_org_ids(end_date: datetime, window_start: datetime) -> set:
+    """Organizations with execution activity in the prefilter lookback.
+
+    Never narrower than the caller's own query window: a widened
+    source_window_days must not be prefiltered back down to the default
+    lookback, or the reconciliation pass skips the orgs it exists to repair.
+    """
+    cutoff = min(
+        window_start,
+        end_date - timedelta(days=DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS),
+    )
     return set(
-        WorkflowExecution.objects.filter(
-            created_at__gte=end_date - timedelta(days=DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS),
-        )
+        WorkflowExecution.objects.filter(created_at__gte=cutoff)
         .values_list("workflow__organization_id", flat=True)
         .distinct()
     )
@@ -579,13 +605,13 @@ def _run_aggregation(
     stats = {
         "hourly": {"upserted": 0},
         "daily": {"upserted": 0},
-        "monthly": {"upserted": 0},
+        "monthly": {"upserted": 0, "deleted": 0},
         "errors": 0,
         "orgs_processed": 0,
     }
 
     # Pre-filter to orgs with recent activity to reduce DB load.
-    active_org_ids = _active_org_ids(end_date)
+    active_org_ids = _active_org_ids(end_date, daily_start)
     logger.info(
         "Aggregation: %d active orgs out of %d total",
         len(active_org_ids),
@@ -614,7 +640,17 @@ def _run_aggregation(
             stats["errors"] += 1
 
     try:
-        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
+        upserted, deleted = _rollup_monthly_from_daily(monthly_start)
+        stats["monthly"]["upserted"] = upserted
+        stats["monthly"]["deleted"] = deleted
+        if deleted:
+            logger.warning(
+                "Monthly rollup deleted %d orphan row(s) from %s", deleted, monthly_start
+            )
+    except (DatabaseError, OperationalError):
+        # Configured on the task for autoretry — swallowing them here would
+        # leave monthly permanently stale behind successful-looking runs.
+        raise
     except Exception:
         logger.exception("Error rolling up monthly metrics from %s", monthly_start)
         stats["errors"] += 1
@@ -624,6 +660,7 @@ def _run_aggregation(
         f"hourly={stats['hourly']['upserted']}, "
         f"daily={stats['daily']['upserted']}, "
         f"monthly={stats['monthly']['upserted']}, "
+        f"monthly_deleted={stats['monthly']['deleted']}, "
         f"errors={stats['errors']}"
     )
 

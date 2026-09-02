@@ -105,9 +105,20 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
 
 
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
-def dashboard_metrics_aggregate() -> dict[str, Any]:
-    """Aggregate source tables into the hourly/daily/monthly metrics tables."""
-    result = _call_internal(_AGGREGATE_PATH)
+def dashboard_metrics_aggregate(
+    source_window_days: int | None = None,
+) -> dict[str, Any]:
+    """Aggregate source tables into the hourly/daily/monthly metrics tables.
+
+    The daily reconciliation schedule dispatches a wider ``source_window_days``;
+    omitting it applies the backend task's own default.
+    """
+    body = (
+        {"source_window_days": source_window_days}
+        if source_window_days is not None
+        else None
+    )
+    result = _call_internal(_AGGREGATE_PATH, body=body)
     _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
     return result
 

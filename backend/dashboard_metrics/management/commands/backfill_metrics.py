@@ -3,6 +3,12 @@
 This command populates EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
 tables from historical data in source tables (Usage, PageUsage, WorkflowExecution, etc.)
 
+The current and previous month are owned exclusively by the aggregation task, which
+derives them from the daily tier and drops monthly rows the daily tier no longer
+produces. Inside that window this command's monthly output is recomputed within 15
+minutes, so --skip-monthly is a no-op and --skip-daily leaves monthly to be rebuilt
+from a tier this run did not populate. Backfill both, or neither.
+
 Usage:
     python manage.py backfill_metrics --days=30
     python manage.py backfill_metrics --days=90 --org-id=5
@@ -92,12 +98,18 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-daily",
             action="store_true",
-            help="Skip daily aggregation",
+            help=(
+                "Skip daily aggregation. Unsafe for the current and previous month: "
+                "the aggregation task rebuilds monthly from daily there."
+            ),
         )
         parser.add_argument(
             "--skip-monthly",
             action="store_true",
-            help="Skip monthly aggregation",
+            help=(
+                "Skip monthly aggregation. A no-op for the current and previous "
+                "month, which the aggregation task owns."
+            ),
         )
         parser.add_argument(
             "--active-only",
@@ -122,6 +134,15 @@ class Command(BaseCommand):
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
         self.stdout.write(f"Days: {days}")
+
+        if skip_daily and not skip_monthly:
+            self.stdout.write(
+                self.style.WARNING(
+                    "--skip-daily without --skip-monthly: the aggregation task "
+                    "rebuilds the current and previous month from the daily tier "
+                    "and will drop monthly rows this run writes there."
+                )
+            )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))

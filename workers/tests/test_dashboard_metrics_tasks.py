@@ -8,6 +8,7 @@ enqueue site), the request shape, and the failure posture.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -61,11 +62,37 @@ class TestRegistration:
         assert getattr(dmt, func).name == name
 
 
+# The kwargs the dashboard_metrics migrations declare on schedule rows for
+# dashboard_metrics.aggregate_from_sources. Beat dispatches straight to the Django
+# task, the PG scheduler dispatches to the proxy below — so a kwarg the proxy cannot
+# bind raises TypeError per tick, is not covered by autoretry_for, and is dropped at
+# MAX_ATTEMPTS=1. Kept in step by dashboard_metrics/tests/test_pg_periodic_task_declarations.py
+# on the Django side; this is the half that lives outside Django.
+_DECLARED_AGGREGATE_KWARGS = [{}, {"source_window_days": 7}]
+
+
 class TestCallContract:
     def test_aggregate_posts_to_the_aggregate_endpoint(self):
         with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
             dmt.dashboard_metrics_aggregate()
         assert call.call_args[0][0] == "v1/dashboard-metrics/aggregate/"
+
+    @pytest.mark.parametrize("kwargs", _DECLARED_AGGREGATE_KWARGS)
+    def test_every_scheduled_kwarg_set_binds_to_the_proxy(self, kwargs):
+        inspect.signature(dmt.dashboard_metrics_aggregate).bind(**kwargs)
+
+    def test_aggregate_passes_the_source_window_through(self):
+        # The 4 AM reconciliation row carries this; dropping it here silently reverts
+        # the pass to the narrow 15-minute window it exists to widen.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(source_window_days=7)
+        assert call.call_args.kwargs["body"] == {"source_window_days": 7}
+
+    def test_aggregate_omits_body_when_no_window_given(self):
+        # The backend then applies the task's own default rather than one invented here.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate()
+        assert call.call_args.kwargs["body"] is None
 
     @pytest.mark.parametrize(
         "func,path",

@@ -34,6 +34,7 @@ from utils.constants import Account
 from utils.local_context import StateStore
 
 from dashboard_metrics.tasks import (
+    DASHBOARD_SOURCE_WINDOW_DAYS,
     aggregate_metrics_from_sources,
     cleanup_daily_metrics,
     cleanup_hourly_metrics,
@@ -94,7 +95,17 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
     """
 
     def post(self, request: Request) -> Response:
-        return self._run(aggregate_metrics_from_sources)
+        """``source_window_days`` is optional: the 15-minute schedule omits it and
+        gets the task's default, the daily reconciliation pass widens it.
+        """
+        body = request.data if isinstance(request.data, dict) else {}
+        if "source_window_days" not in body:
+            return self._run(aggregate_metrics_from_sources)
+        try:
+            days = _int_arg(request, "source_window_days", DASHBOARD_SOURCE_WINDOW_DAYS)
+        except ValueError as exc:
+            return Response({"error": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return self._run(aggregate_metrics_from_sources, source_window_days=days)
 
 
 class CleanupHourlyMetricsAPIView(_MetricsTaskAPIView):
