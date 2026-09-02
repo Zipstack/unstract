@@ -12,6 +12,7 @@ import { Flex, Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {
   ApiEndpointSection,
@@ -51,6 +52,9 @@ function createApiDeploymentCardConfig({
     },
     expandable: false,
     listContent: (deployment) => {
+      // Sharing grants read only: keep the read actions, drop the ones that
+      // change the deployment.
+      const canEdit = canEditResource(deployment, sessionDetails);
       const kebabMenuItems = {
         items: [
           {
@@ -59,19 +63,23 @@ function createApiDeploymentCardConfig({
             label: "View Logs",
             onClick: () => onViewLogs?.(deployment),
           },
-          { type: "divider" },
-          {
-            key: "manage-keys",
-            icon: <Key />,
-            label: "Manage Keys",
-            onClick: () => onManageKeys?.(deployment),
-          },
-          {
-            key: "notifications",
-            icon: <Bell />,
-            label: "Notifications",
-            onClick: () => onSetupNotifications?.(deployment),
-          },
+          ...(canEdit
+            ? [
+                { type: "divider" },
+                {
+                  key: "manage-keys",
+                  icon: <Key />,
+                  label: "Manage Keys",
+                  onClick: () => onManageKeys?.(deployment),
+                },
+                {
+                  key: "notifications",
+                  icon: <Bell />,
+                  label: "Notifications",
+                  onClick: () => onSetupNotifications?.(deployment),
+                },
+              ]
+            : []),
           { type: "divider" },
           {
             key: "code-snippets",
@@ -95,23 +103,25 @@ function createApiDeploymentCardConfig({
             description={deployment.description}
           >
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={
-                  deployment.is_active
-                    ? "Disable API deployment"
-                    : "Enable API deployment"
-                }
-              >
-                <Switch
-                  size="small"
-                  checked={deployment.is_active}
-                  data-testid={`api-deployment-toggle-${deployment.id}`}
-                  onChange={(checked, e) => {
-                    e.stopPropagation();
-                    updateStatus(deployment);
-                  }}
-                />
-              </Tooltip>
+              {canEdit && (
+                <Tooltip
+                  title={
+                    deployment.is_active
+                      ? "Disable API deployment"
+                      : "Enable API deployment"
+                  }
+                >
+                  <Switch
+                    size="small"
+                    checked={deployment.is_active}
+                    data-testid={`api-deployment-toggle-${deployment.id}`}
+                    onChange={(checked, e) => {
+                      e.stopPropagation();
+                      updateStatus(deployment);
+                    }}
+                  />
+                </Tooltip>
+              )}
               <CardActionBox
                 item={deployment}
                 testIdPrefix="api-deployment"

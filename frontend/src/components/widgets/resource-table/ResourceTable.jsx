@@ -22,6 +22,7 @@ import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
 import "./ResourceTable.css";
 
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
@@ -288,6 +289,11 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
+    // Sharing grants read only. A non-owner gets no row actions rather than
+    // ones that fail when pressed.
+    if (!canEditResource(item, sessionDetails)) {
+      return null;
+    }
     return (
       <Space
         size={18}

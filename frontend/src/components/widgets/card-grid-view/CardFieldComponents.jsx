@@ -27,6 +27,8 @@ import {
   formattedDateTime,
   shortenApiEndpoint,
 } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
+import { useSessionStore } from "../../../store/session-store";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -47,6 +49,10 @@ function CardActionBox({
    */
   testIdPrefix,
 }) {
+  const { sessionDetails } = useSessionStore();
+  // Sharing grants read only, so a non-owner gets no edit, share or delete
+  // control at all -- rather than one that fails when pressed.
+  const canEdit = canEditResource(item, sessionDetails);
   const testId = (suffix) =>
     testIdPrefix ? `${testIdPrefix}-${suffix}-${item?.id}` : undefined;
   const handleEditAction = (e) => {
@@ -63,48 +69,54 @@ function CardActionBox({
 
   return (
     <Space className="card-list-action-box">
-      <Button
-        type="text"
-        className="action-icon-btn edit-icon"
-        data-testid={testId("edit")}
-        icon={<Pencil />}
-        onClick={handleEditAction}
-      />
-      <Button
-        type="text"
-        className="action-icon-btn share-icon"
-        data-testid={testId("share")}
-        icon={<Share2 />}
-        onClick={handleShareAction}
-      />
-      <Popconfirm
-        title={deleteTitle}
-        description="This action cannot be undone."
-        onConfirm={() => {
-          setSelectedItem(item);
-          onDelete?.(item);
-        }}
-        onCancel={(e) => e?.stopPropagation()}
-        okText="Delete"
-        cancelText="Cancel"
-        okButtonProps={{ danger: true }}
-        /*
-         * Not keyed by item: only one confirm panel can be open at a time, so
-         * the id identifies the KIND of thing being deleted, which is what a
-         * test needs to know before clicking through.
-         */
-        data-testid={
-          testIdPrefix ? `${testIdPrefix}-delete-confirm` : undefined
-        }
-      >
-        <Button
-          type="text"
-          className="action-icon-btn delete-icon"
-          data-testid={testId("delete")}
-          icon={<Trash2 />}
-          onClick={(e) => e.stopPropagation()}
-        />
-      </Popconfirm>
+      {canEdit && (
+        <>
+          <Button
+            type="text"
+            className="action-icon-btn edit-icon"
+            data-testid={testId("edit")}
+            icon={<Pencil />}
+            onClick={handleEditAction}
+          />
+          <Button
+            type="text"
+            className="action-icon-btn share-icon"
+            data-testid={testId("share")}
+            icon={<Share2 />}
+            onClick={handleShareAction}
+          />
+        </>
+      )}
+      {canEdit && (
+        <Popconfirm
+          title={deleteTitle}
+          description="This action cannot be undone."
+          onConfirm={() => {
+            setSelectedItem(item);
+            onDelete?.(item);
+          }}
+          onCancel={(e) => e?.stopPropagation()}
+          okText="Delete"
+          cancelText="Cancel"
+          okButtonProps={{ danger: true }}
+          /*
+           * Not keyed by item: only one confirm panel can be open at a time, so
+           * the id identifies the KIND of thing being deleted, which is what a
+           * test needs to know before clicking through.
+           */
+          data-testid={
+            testIdPrefix ? `${testIdPrefix}-delete-confirm` : undefined
+          }
+        >
+          <Button
+            type="text"
+            className="action-icon-btn delete-icon"
+            data-testid={testId("delete")}
+            icon={<Trash2 />}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Popconfirm>
+      )}
       <Dropdown
         menu={kebabMenuItems}
         trigger={["click"]}
