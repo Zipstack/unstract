@@ -35,9 +35,11 @@ from dashboard_metrics.tasks import (
     AGGREGATION_LOCK_TIMEOUT,
     DASHBOARD_RECONCILE_WINDOW_DAYS,
     DASHBOARD_SOURCE_WINDOW_DAYS,
+    AggregationTier,
     _acquire_aggregation_lock,
+    _acquire_aggregation_locks,
     _active_org_ids,
-    _aggregation_lock_key,
+    _aggregation_lock_keys,
     _rollup_monthly_from_daily,
     _run_aggregation,
     _truncate_to_day,
@@ -764,41 +766,40 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
 
 
 class TestTheLockIsPerSchedule(TestCase):
-    """The reconciliation pass must not lose a race it is never retried after."""
+    """The reconciliation pass must not lose a race it is never retried after.
+
+    Per-granularity exclusion is covered in test_aggregation_tier.py; this is the
+    window half — two schedules that both write every tier.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def _keys(self, window):
+        return _aggregation_lock_keys(AggregationTier.ALL, window)
 
     def test_the_two_schedules_take_different_keys(self):
-        assert _aggregation_lock_key(
-            DASHBOARD_SOURCE_WINDOW_DAYS
-        ) != _aggregation_lock_key(DASHBOARD_RECONCILE_WINDOW_DAYS)
+        assert self._keys(DASHBOARD_SOURCE_WINDOW_DAYS) != self._keys(
+            DASHBOARD_RECONCILE_WINDOW_DAYS
+        )
 
     def test_a_held_key_does_not_block_the_other_schedule(self):
-        cache.clear()
-        assert _acquire_aggregation_lock(
-            _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
-        )
+        assert _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))
         # Same schedule: excluded, which is what the lock is for.
-        assert not _acquire_aggregation_lock(
-            _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
-        )
+        assert not _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))
         # The reconciliation pass proceeds regardless.
-        assert _acquire_aggregation_lock(
-            _aggregation_lock_key(DASHBOARD_RECONCILE_WINDOW_DAYS)
-        )
-        cache.clear()
+        assert _acquire_aggregation_locks(self._keys(DASHBOARD_RECONCILE_WINDOW_DAYS))
 
     def test_a_stale_lock_is_reclaimed(self):
-        cache.clear()
-        key = _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
         cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
         assert _acquire_aggregation_lock(key)
-        cache.clear()
 
     def test_a_corrupted_lock_value_is_reclaimed(self):
-        cache.clear()
-        key = _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
         cache.set(key, "running", 3600)
         assert _acquire_aggregation_lock(key)
-        cache.clear()
 
 
 class TestSourceWindowValidation(TestCase):
@@ -872,7 +873,9 @@ class TestSourceWindow(TestCase):
             patch("dashboard_metrics.tasks._run_aggregation") as mock_run,
         ):
             aggregate_metrics_from_sources()
-            mock_run.assert_called_once_with(DASHBOARD_SOURCE_WINDOW_DAYS)
+            mock_run.assert_called_once_with(
+                AggregationTier.ALL, DASHBOARD_SOURCE_WINDOW_DAYS
+            )
 
         with (
             patch("dashboard_metrics.tasks._acquire_aggregation_lock", return_value=True),
@@ -880,7 +883,7 @@ class TestSourceWindow(TestCase):
             patch("dashboard_metrics.tasks._run_aggregation") as mock_run,
         ):
             aggregate_metrics_from_sources(source_window_days=7)
-            mock_run.assert_called_once_with(7)
+            mock_run.assert_called_once_with(AggregationTier.ALL, 7)
 
     def _seed_file(
         self, days_ago: int, status: ExecutionStatus = ExecutionStatus.COMPLETED

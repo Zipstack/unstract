@@ -9,6 +9,7 @@ Tasks:
 import logging
 import time
 from datetime import date, datetime, timedelta
+from enum import StrEnum
 from typing import Any
 
 from account_v2.models import Organization
@@ -237,20 +238,80 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
     return len(objects)
 
 
+class AggregationTier(StrEnum):
+    """Which metric tiers one aggregation run writes.
+
+    Daily and monthly stay together because monthly is rolled up from the daily tier.
+    """
+
+    HOURLY = "hourly"
+    DAILY_MONTHLY = "daily_monthly"
+    ALL = "all"
+
+
+# Which granularities each tier writes. One table rather than a predicate per
+# granularity: add a member without an entry here and _tiers_written raises on the
+# first run, instead of the run acquiring its lock, iterating every org, writing
+# nothing and returning success.
+_TIER_WRITES: dict[AggregationTier, frozenset[str]] = {
+    AggregationTier.HOURLY: frozenset({AggregationTier.HOURLY.value}),
+    AggregationTier.DAILY_MONTHLY: frozenset({AggregationTier.DAILY_MONTHLY.value}),
+    AggregationTier.ALL: frozenset(
+        {AggregationTier.HOURLY.value, AggregationTier.DAILY_MONTHLY.value}
+    ),
+}
+
+
+def _tiers_written(tier: AggregationTier) -> frozenset[str]:
+    """The granularities one tier writes. Unhandled members raise rather than no-op."""
+    try:
+        return _TIER_WRITES[tier]
+    except KeyError:
+        raise AssertionError(f"Unhandled AggregationTier: {tier!r}") from None
+
+
+def _writes_hourly(tier: AggregationTier) -> bool:
+    return AggregationTier.HOURLY.value in _tiers_written(tier)
+
+
+def _writes_daily_monthly(tier: AggregationTier) -> bool:
+    return AggregationTier.DAILY_MONTHLY.value in _tiers_written(tier)
+
+
 AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
 AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
 
 
-def _aggregation_lock_key(source_window_days: int) -> str:
-    """One key per schedule, not one key for the task.
+def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> list[str]:
+    """One key per granularity written, namespaced by source window.
 
-    The 15-minute row is an IntervalSchedule and drifts against the reconciliation
-    pass's fixed crontab, so on a shared key the once-daily repair would lose the
-    race and return skipped=True — never retried, and the only mechanism that
-    repairs the narrowed window. Distinct windows are distinct jobs; both are
-    idempotent upserts, so the once-a-day overlap costs duplicated work at worst.
+    Per granularity, not per enum member: keying on the label alone gives ALL a third
+    key that excludes nothing, so an ALL run and the scheduled hourly run would write
+    EventMetricsHourly concurrently. Taking one key per granularity restores exclusion
+    exactly where writes collide, and the two scheduled tiers still never block.
+
+    Per window because a wider window is a different job. The reconciliation pass runs
+    once a day on a fixed crontab against a drifting 15-minute interval; on a shared
+    key it would lose the race, return skipped=True and never be retried — and it is
+    the only thing that repairs the narrowed window. Both are idempotent upserts, so
+    that once-a-day overlap costs duplicated work at worst.
     """
-    return f"{AGGREGATION_LOCK_KEY_PREFIX}:{source_window_days}d"
+    return [
+        f"{AGGREGATION_LOCK_KEY_PREFIX}:{source_window_days}d:{granularity}"
+        for granularity in sorted(_tiers_written(tier))
+    ]
+
+
+def _acquire_aggregation_locks(lock_keys: list[str]) -> list[str]:
+    """Take every key or none; returns the keys taken, empty if the run must skip."""
+    taken: list[str] = []
+    for key in lock_keys:
+        if not _acquire_aggregation_lock(key):
+            for held in taken:
+                cache.delete(held)
+            return []
+        taken.append(key)
+    return taken
 
 
 def _acquire_aggregation_lock(lock_key: str) -> bool:
@@ -306,41 +367,56 @@ def _acquire_aggregation_lock(lock_key: str) -> bool:
     retry_backoff_max=300,
 )
 def aggregate_metrics_from_sources(
+    tier: str = AggregationTier.ALL,
     source_window_days: int = DASHBOARD_SOURCE_WINDOW_DAYS,
 ) -> dict[str, Any]:
     """Aggregate source tables into the hourly, daily and monthly tiers.
 
-    Runs every 15 minutes under a self-healing Redis lock. Hourly covers the
-    last 24h, daily the source window, monthly is rolled up from daily.
+    Three schedules call this: the hourly tier every 15 minutes, the daily and
+    monthly tiers hourly at :20, and a once-daily reconciliation pass over every
+    tier at a wider window. Hourly covers the last 24h, daily the source window,
+    monthly is rolled up from daily.
 
     Args:
-        source_window_days: Daily-tier source lookback. The once-daily
-            reconciliation pass reruns this task at
-            DASHBOARD_RECONCILE_WINDOW_DAYS to repair gaps after downtime.
+        tier: An AggregationTier value. Defaults to all, so a caller that omits it
+            — a schedule row written before 0006 — writes every tier rather than
+            none.
+        source_window_days: Daily-tier source lookback. The reconciliation pass
+            reruns this task at DASHBOARD_RECONCILE_WINDOW_DAYS to repair gaps
+            after downtime.
 
     Returns:
-        Dict with aggregation summary for all three tiers
-    """
-    source_window_days = _validate_source_window(source_window_days)
-    lock_key = _aggregation_lock_key(source_window_days)
+        Dict with aggregation summary for the tiers that ran
 
-    if not _acquire_aggregation_lock(lock_key):
+    Raises:
+        ValueError: tier is not a recognised AggregationTier, or the window is not
+            an integer between 1 and MAX_SOURCE_WINDOW_DAYS
+    """
+    tier = AggregationTier(tier)
+    source_window_days = _validate_source_window(source_window_days)
+    lock_keys = _aggregation_lock_keys(tier, source_window_days)
+
+    held = _acquire_aggregation_locks(lock_keys)
+    if not held:
         logger.warning(
-            "Skipping the %d-day aggregation — another run of the same schedule is "
-            "in progress",
+            "Skipping the %s aggregation over %d day(s) — another run writing the "
+            "same tier is in progress",
+            tier.value,
             source_window_days,
         )
         return {
             "success": True,
             "skipped": True,
             "reason": "lock_held",
+            "tier": tier.value,
             "source_window_days": source_window_days,
         }
 
     try:
-        return _run_aggregation(source_window_days)
+        return _run_aggregation(tier, source_window_days)
     finally:
-        cache.delete(lock_key)
+        for key in held:
+            cache.delete(key)
 
 
 def _aggregate_single_metric(
@@ -353,24 +429,29 @@ def _aggregate_single_metric(
     end_date: datetime,
     hourly_agg: dict,
     daily_agg: dict,
+    tier: AggregationTier,
     extra_kwargs: dict | None = None,
 ) -> None:
-    """Run a single metric query at hourly and daily granularity."""
+    """Run a single metric query at the granularities this run writes."""
     extra_kwargs = extra_kwargs or {}
 
     # === HOURLY (last 24h) ===
-    for row in query_method(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-        **extra_kwargs,
-    ):
-        hour_ts = _truncate_to_hour(row["period"])
-        key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
-        _upsert_agg(hourly_agg, key, metric_type, row["value"] or 0)
+    if _writes_hourly(tier):
+        for row in query_method(
+            org_id,
+            hourly_start,
+            end_date,
+            granularity=Granularity.HOUR,
+            **extra_kwargs,
+        ):
+            hour_ts = _truncate_to_hour(row["period"])
+            key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
+            _upsert_agg(hourly_agg, key, metric_type, row["value"] or 0)
 
-    # === DAILY ===
+    # === DAILY (monthly is rolled up from it, so one query feeds both) ===
+    if not _writes_daily_monthly(tier):
+        return
+
     for row in query_method(
         org_id,
         daily_start,
@@ -391,24 +472,29 @@ def _aggregate_llm_combined(
     hourly_agg: dict,
     daily_agg: dict,
     llm_combined_fields: dict,
+    tier: AggregationTier,
 ) -> None:
-    """Run the combined LLM metrics query at hourly and daily granularity.
+    """Run the combined LLM metrics query at the granularities this run writes.
 
     Two queries covering four metrics.
     """
     # === HOURLY (last 24h) ===
-    for row in MetricsQueryService.get_llm_metrics_combined(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-    ):
-        ts_str = _truncate_to_hour(row["period"]).isoformat()
-        for field, (metric_name, metric_type) in llm_combined_fields.items():
-            key = (org_id, ts_str, metric_name, "default", "")
-            _upsert_agg(hourly_agg, key, metric_type, row[field] or 0)
+    if _writes_hourly(tier):
+        for row in MetricsQueryService.get_llm_metrics_combined(
+            org_id,
+            hourly_start,
+            end_date,
+            granularity=Granularity.HOUR,
+        ):
+            ts_str = _truncate_to_hour(row["period"]).isoformat()
+            for field, (metric_name, metric_type) in llm_combined_fields.items():
+                key = (org_id, ts_str, metric_name, "default", "")
+                _upsert_agg(hourly_agg, key, metric_type, row[field] or 0)
 
     # === DAILY ===
+    if not _writes_daily_monthly(tier):
+        return
+
     for row in MetricsQueryService.get_llm_metrics_combined(
         org_id,
         daily_start,
@@ -450,6 +536,7 @@ def _collect_org_metrics(
     hourly_start: datetime,
     daily_start: datetime,
     end_date: datetime,
+    tier: AggregationTier,
 ) -> tuple[dict, dict, int]:
     """Query every metric for one org into hourly/daily aggregates.
 
@@ -482,6 +569,7 @@ def _collect_org_metrics(
                 end_date,
                 hourly_agg,
                 daily_agg,
+                tier,
                 extra_kwargs,
             )
         except Exception:
@@ -497,6 +585,7 @@ def _collect_org_metrics(
             hourly_agg,
             daily_agg,
             LLM_COMBINED_FIELDS,
+            tier,
         )
     except Exception:
         logger.exception("Error querying combined LLM metrics for org %s", org_id)
@@ -510,11 +599,12 @@ def _aggregate_org(
     hourly_start: datetime,
     daily_start: datetime,
     end_date: datetime,
+    tier: AggregationTier,
     stats: dict[str, Any],
 ) -> None:
-    """Aggregate one organization and upsert its hourly and daily tiers."""
+    """Aggregate one organization and upsert the tiers this run writes."""
     hourly_agg, daily_agg, errors = _collect_org_metrics(
-        org, hourly_start, daily_start, end_date
+        org, hourly_start, daily_start, end_date, tier
     )
     stats["errors"] += errors
 
@@ -551,10 +641,12 @@ def _build_result(
     daily_start: datetime,
     monthly_start: date,
     end_date: datetime,
+    tier: AggregationTier,
     skipped_reason: str | None = None,
 ) -> dict[str, Any]:
     """Shape the task's return value from the accumulated stats."""
     result = {
+        "tier": tier.value,
         # Not a literal: every metric for every org can fail while each exception is
         # caught per-metric, and the run would otherwise report 200 / success with
         # zero rows written and the dashboard frozen.
@@ -597,10 +689,28 @@ def _validate_source_window(source_window_days: int) -> int:
     return days
 
 
+def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
+    """Derive the monthly tier from daily, recording a failure distinctly."""
+    try:
+        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
+    except (DatabaseError, OperationalError):
+        # Configured on the task for autoretry — swallowing them here would
+        # leave monthly permanently stale behind successful-looking runs.
+        raise
+    except Exception:
+        # upserted stays 0, which is also the legitimate empty-rollup value, so
+        # mark the failure explicitly rather than letting the two collapse.
+        logger.exception("Error rolling up monthly metrics from %s", monthly_start)
+        stats["monthly"]["failed"] = True
+        stats["errors"] += 1
+
+
 def _run_aggregation(
+    tier: AggregationTier = AggregationTier.ALL,
     source_window_days: int = DASHBOARD_SOURCE_WINDOW_DAYS,
 ) -> dict[str, Any]:
     """Execute the aggregation, separately from the task's lock handling."""
+    tier = AggregationTier(tier)
     source_window_days = _validate_source_window(source_window_days)
     end_date = timezone.now()
 
@@ -621,11 +731,9 @@ def _run_aggregation(
 
     # Pre-filter to orgs with recent activity to reduce DB load.
     active_org_ids = _active_org_ids(end_date, daily_start)
-    logger.info(
-        "Aggregation: %d active orgs out of %d total",
-        len(active_org_ids),
-        Organization.objects.count(),
-    )
+    # No total_orgs here: a full count of the organization table, on every run of
+    # every tier, whose only consumer was this log line.
+    logger.info("Aggregation (%s): %d active orgs", tier.value, len(active_org_ids))
 
     if not active_org_ids:
         return _build_result(
@@ -634,6 +742,7 @@ def _run_aggregation(
             daily_start,
             monthly_start,
             end_date,
+            tier,
             skipped_reason="no_active_orgs",
         )
 
@@ -643,23 +752,13 @@ def _run_aggregation(
 
     for org in organizations:
         try:
-            _aggregate_org(org, hourly_start, daily_start, end_date, stats)
+            _aggregate_org(org, hourly_start, daily_start, end_date, tier, stats)
         except Exception:
             logger.exception("Error processing org %s", org.id)
             stats["errors"] += 1
 
-    try:
-        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
-    except (DatabaseError, OperationalError):
-        # Configured on the task for autoretry — swallowing them here would
-        # leave monthly permanently stale behind successful-looking runs.
-        raise
-    except Exception:
-        # upserted stays 0, which is also the legitimate empty-rollup value, so
-        # mark the failure explicitly rather than letting the two collapse.
-        logger.exception("Error rolling up monthly metrics from %s", monthly_start)
-        stats["monthly"]["failed"] = True
-        stats["errors"] += 1
+    if _writes_daily_monthly(tier):
+        _roll_up_monthly(monthly_start, stats)
 
     log = logger.warning if stats["errors"] else logger.info
     log(
@@ -670,7 +769,7 @@ def _run_aggregation(
         f"errors={stats['errors']}"
     )
 
-    return _build_result(stats, hourly_start, daily_start, monthly_start, end_date)
+    return _build_result(stats, hourly_start, daily_start, monthly_start, end_date, tier)
 
 
 @shared_task(

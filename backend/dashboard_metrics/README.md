@@ -14,7 +14,7 @@ This module provides a metrics dashboard for monitoring document processing, API
 ### Data Flow
 ```
 Source Tables (usage_v2, page_usage, workflow_execution, workflow_file_execution)
-       ↓ [Celery task every 15 min]
+       ↓ [Celery: hourly tier every 15 min, daily+monthly hourly at :20]
 Aggregated Tables (EventMetricsHourly → Daily → Monthly)
        ↓
 API Endpoints (/overview/, /summary/, /series/)
@@ -46,8 +46,9 @@ celery -A backend beat -l info
 ### Celery Tasks & Schedule
 | Task | Schedule | What It Does |
 |------|----------|--------------|
-| `aggregate_from_sources` | Every 15 min | Aggregates source → hourly/daily; rolls monthly up from daily |
-| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | Same task over a 7-day source window, to repair gaps after downtime |
+| `aggregate_from_sources` | Every 15 min | Aggregates source → **hourly tier only** (`tier=hourly`) |
+| `aggregate_daily_monthly` | Hourly at :20 | Aggregates source → daily; rolls monthly up from daily (`tier=daily_monthly`) |
+| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | All tiers over a 7-day source window, to repair gaps after downtime |
 | `cleanup_hourly_data` | Daily 2 AM | Deletes hourly data > 30 days |
 | `cleanup_daily_data` | Weekly Sun 3 AM | Deletes daily data > 365 days |
 
@@ -163,7 +164,7 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 - Source table performance is unaffected by the dashboard feature. If the aggregation task is slow or fails, source tables continue working normally.
 
 **Failure Resilience:**
-- If the aggregation task fails, the dashboard shows stale data (up to 15 minutes old) rather than crashing.
+- If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
 - A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a gap shorter than that repairs itself without a manual backfill.
 - Celery tasks have `max_retries=3` with exponential backoff.
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
@@ -341,8 +342,9 @@ Located in `tasks.py`:
 
 | Task Name | Celery Name | Schedule | Queue | Purpose |
 |-----------|-------------|----------|-------|---------|
-| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate from source tables |
-| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, `source_window_days=7` |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate the hourly tier (`tier=hourly`) |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Hourly at :20 UTC | `dashboard_metric_events` | Aggregate the daily and monthly tiers (`tier=daily_monthly`) |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, all tiers, `source_window_days=7` |
 | `cleanup_hourly_metrics` | `dashboard_metrics.cleanup_hourly_data` | Daily 2:00 AM UTC | `dashboard_metric_events` | Delete hourly data >30 days |
 | `cleanup_daily_metrics` | `dashboard_metrics.cleanup_daily_data` | Weekly Sun 3:00 AM UTC | `dashboard_metric_events` | Delete daily data >365 days |
 
