@@ -19,6 +19,7 @@ from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
+from platform_api.services import owner_user_for
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -209,7 +210,8 @@ class PromptStudioCoreView(
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
         serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+            user_id=owner_user_for(request.user).id,
+            defaults={"role": ResourceRole.OWNER},
         )
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
