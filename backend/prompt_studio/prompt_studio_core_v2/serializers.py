@@ -99,6 +99,9 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     # groups axis is read-only here (UN-2977 plan §B). Direct viewers live in
     # the membership table (UN-2202) and surface via the share-modal serializer.
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # The editor needs to know whether to offer edit controls at all; the list
+    # serializer already carries this.
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -106,6 +109,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
+
+    def get_is_owner(self, instance: CustomTool) -> bool:
+        request = self.context.get("request")
+        return instance.is_owner(request.user) if request else False
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {

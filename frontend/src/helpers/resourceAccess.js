@@ -9,7 +9,13 @@
  * `is_owner` is set by every shareable resource's serializer.
  */
 function canEditResource(resource, sessionDetails) {
-  return Boolean(resource?.is_owner || sessionDetails?.isAdmin);
+  // Payload not in yet. The backend still refuses the write, so assume
+  // editable rather than flash a read-only view at the resource's own owner
+  // while the request is in flight.
+  if (!resource || resource.is_owner === undefined) {
+    return true;
+  }
+  return Boolean(resource.is_owner || sessionDetails?.isAdmin);
 }
 
 export { canEditResource };
