@@ -1279,7 +1279,25 @@ class SourceConnector(BaseConnector):
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
-            mime_type = cls._detect_uploaded_file_mime_type(file)
+            try:
+                mime_type = cls._detect_uploaded_file_mime_type(file)
+            except Exception:
+                # Detection reads the upload, so a broken stream raises here. Fail
+                # this one file instead of the whole request, and say that detection
+                # failed rather than blaming the file's type - an I/O fault and an
+                # unsupported format need different follow-ups.
+                log_message = (
+                    f"Rejecting file '{file_name}': could not determine its type"
+                )
+                logger.exception(log_message)
+                workflow_log.log_error(logger=logger, message=log_message)
+                ResultCacheUtils.update_api_results(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    api_result=FileExecutionResult(file=file_name, error=log_message),
+                )
+                continue
+
             logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
 
             if not AllowedFileTypes.is_allowed(mime_type):

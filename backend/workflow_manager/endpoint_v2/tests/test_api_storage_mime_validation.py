@@ -205,6 +205,30 @@ def test_container_upload_is_not_consumed_by_detection(collaborators) -> None:
     assert written == ole_bytes
 
 
+def test_undetectable_file_fails_alone(collaborators) -> None:
+    """A stream that cannot be read fails its own file, not the whole request."""
+    with mock.patch.object(
+        SourceConnector,
+        "_detect_uploaded_file_mime_type",
+        side_effect=[OSError("stream is gone"), "application/pdf"],
+    ):
+        result = _stage(
+            [
+                _upload("broken.pdf", PDF_BYTES, "application/pdf"),
+                _upload("good.pdf", PDF_BYTES, "application/pdf"),
+            ]
+        )
+
+    assert set(result) == {"good.pdf"}
+    api_result = collaborators["ResultCacheUtils"].update_api_results.call_args.kwargs[
+        "api_result"
+    ]
+    assert api_result.file == "broken.pdf"
+    # An I/O fault and an unsupported format need different follow-ups, so the
+    # message must not blame the file's type.
+    assert "could not determine its type" in api_result.error
+
+
 def test_empty_upload_is_staged_rather_than_called_unsupported(collaborators) -> None:
     """An empty file must reach the downstream empty-file error, not a type error.
 
