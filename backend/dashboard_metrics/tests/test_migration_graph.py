@@ -26,14 +26,27 @@ if not apps.ready:
     django.setup()
 
 from django.db.migrations.loader import MigrationLoader  # noqa: E402
-from django.test import SimpleTestCase  # noqa: E402
+from django.test import SimpleTestCase, override_settings  # noqa: E402
+
+
+def _build_graph() -> MigrationLoader:
+    """Build the real graph, whatever the suite's own flags say.
+
+    `--no-migrations` works by pointing MIGRATION_MODULES at a mapping that returns
+    None for every app, so a loader built under it finds nothing and every assertion
+    below would pass against an empty graph. Restoring the setting is what makes this
+    guard mean anything in the tier it runs in.
+    """
+    with override_settings(MIGRATION_MODULES={}):
+        loader = MigrationLoader(None, ignore_no_migrations=True)
+        loader.build_graph()
+    return loader
 
 
 class MigrationGraphTests(SimpleTestCase):
     def test_the_graph_builds(self) -> None:
         """A dependency on an absent migration raises NodeNotFoundError here."""
-        loader = MigrationLoader(None, ignore_no_migrations=True)
-        loader.build_graph()
+        loader = _build_graph()
         self.assertTrue(loader.graph.nodes, "no migrations loaded — the guard is inert")
 
     def test_every_app_has_exactly_one_leaf(self) -> None:
@@ -42,8 +55,7 @@ class MigrationGraphTests(SimpleTestCase):
         This is what a merge of two branches that each added a migration produces, and
         it is invisible until deploy for the same `--no-migrations` reason.
         """
-        loader = MigrationLoader(None, ignore_no_migrations=True)
-        loader.build_graph()
+        loader = _build_graph()
 
         leaves: dict[str, list[str]] = {}
         for app_label, name in loader.graph.leaf_nodes():

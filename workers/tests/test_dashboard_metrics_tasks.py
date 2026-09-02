@@ -62,6 +62,7 @@ class TestRegistration:
         assert getattr(dmt, func).name == name
 
 
+
 class TestCallContract:
     def test_aggregate_posts_to_the_aggregate_endpoint(self):
         with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
@@ -82,9 +83,16 @@ class TestCallContract:
             dmt.dashboard_metrics_aggregate(tier=tier)
         assert call.call_args.kwargs["body"] == {"tier": tier}
 
-    def test_aggregate_omits_the_body_when_no_tier_is_given(self):
+    def test_aggregate_passes_the_source_window_through(self):
+        # UN-3973: the reconciliation row carries this; dropping it here silently
+        # reverts the pass to the narrow window it exists to widen.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(source_window_days=7)
+        assert call.call_args.kwargs["body"] == {"source_window_days": 7}
+
+    def test_aggregate_omits_the_body_when_neither_is_given(self):
         # Rows written before 0006 carry no tier kwarg; the backend default then applies,
-        # is every tier rather than none.
+        # which is every tier rather than none.
         with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
             dmt.dashboard_metrics_aggregate()
         assert call.call_args.kwargs["body"] is None
