@@ -92,15 +92,26 @@ def _call_internal(
 
 
 def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
-    """Surface a lock-held no-op.
+    """Surface a run that did nothing, whatever shape the backend reported it in.
 
-    The backend returns success with ``skipped=True`` when the Redis lock is held. That
-    is correct behaviour, but left at INFO a permanently leaked lock looks like 96
-    successful runs a day that did nothing.
+    Three of them, and only the first sets ``skipped``: the Redis lock was held
+    (``skipped``/``reason``), no organisation had recent activity
+    (``skipped_reason``), or every metric raised and was caught per-metric
+    (``errors``). Each is correct behaviour in isolation, but left at INFO a leaked
+    lock or a frozen source table looks like 96 successful runs a day.
     """
     if result.get("skipped"):
         logger.warning(
             "%s did no work: %s", name, result.get("reason", "reported skipped=True")
+        )
+    elif result.get("skipped_reason"):
+        logger.warning("%s did no work: %s", name, result["skipped_reason"])
+    elif result.get("errors"):
+        logger.warning(
+            "%s completed with %s error(s) across %s organisation(s)",
+            name,
+            result["errors"],
+            result.get("organizations_processed", "?"),
         )
 
 
