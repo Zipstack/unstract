@@ -848,9 +848,14 @@ def test_node_command_vitest_points_reporter_at_group_junit(
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
-    # This test is about the command's shape, not the host's PATH; the Node-less
-    # branch is `test_node_command_without_npx_collects_nothing`'s job.
-    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
     group = GroupDefinition(
         name="frontend", tier="unit", paths=("src",), runner="vitest",
         workdir="frontend",
@@ -873,9 +878,14 @@ def test_node_command_playwright_takes_junit_from_env_not_flag(
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
-    # This test is about the command's shape, not the host's PATH; the Node-less
-    # branch is `test_node_command_without_npx_collects_nothing`'s job.
-    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
     group = GroupDefinition(
         name="ui", tier="e2e", paths=("tests/ui",), runner="playwright",
         workdir="frontend",
