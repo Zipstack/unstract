@@ -14,7 +14,6 @@ from typing import Any
 from account_v2.models import Organization
 from celery import shared_task
 from django.core.cache import cache
-from django.db import transaction
 from django.db.models import Min, Sum
 from django.db.models.functions import TruncMonth
 from django.db.utils import DatabaseError, OperationalError
@@ -49,8 +48,11 @@ DASHBOARD_SOURCE_WINDOW_DAYS = 2
 # in the schedule row's kwargs — editing this constant does not move the schedule.
 DASHBOARD_RECONCILE_WINDOW_DAYS = 7
 
-# Wider than the source window: metrics keyed on another column
-# (e.g. approved_at) can land for an org whose executions are older.
+# Floor on the prefilter lookback: metrics keyed on another column (e.g.
+# approved_at) can land for an org whose executions are older. _active_org_ids
+# takes the wider of this and the run's own window, so the prefilter is never
+# narrower than what is being queried — at the 7-day reconciliation window the
+# two are equal rather than this one being wider.
 DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS = 7
 
 
@@ -185,54 +187,17 @@ def _bulk_upsert_daily(aggregations: dict) -> int:
     return len(objects)
 
 
-def _delete_orphan_monthly(objects: list[EventMetricsMonthly]) -> int:
-    """Drop stale monthly rows inside the partitions the rollup actually covered.
-
-    Monthly derives from the daily tier, so a key with no daily rows left must
-    not survive as a stale total. An (organization, month) the rollup produced
-    nothing for is left alone instead: absent daily rows there mean an
-    incomplete tier, not a metric that went to zero.
-    """
-    fresh_keys = {
-        (o.organization_id, o.month, o.metric_name, o.project, o.tag) for o in objects
-    }
-    covered: dict[date, set] = {}
-    for o in objects:
-        covered.setdefault(o.month, set()).add(o.organization_id)
-
-    deleted = 0
-    for month, org_ids in covered.items():
-        stale_pks = [
-            row["pk"]
-            for row in EventMetricsMonthly._base_manager.filter(
-                month=month, organization_id__in=org_ids
-            ).values("pk", "organization_id", "month", "metric_name", "project", "tag")
-            if (
-                row["organization_id"],
-                row["month"],
-                row["metric_name"],
-                row["project"],
-                row["tag"],
-            )
-            not in fresh_keys
-        ]
-        if not stale_pks:
-            continue
-        removed, _ = EventMetricsMonthly._base_manager.filter(pk__in=stale_pks).delete()
-        deleted += removed
-
-    return deleted
-
-
-def _rollup_monthly_from_daily(month_start: date) -> tuple[int, int]:
+def _rollup_monthly_from_daily(month_start: date) -> int:
     """Sum the daily tier from month_start into monthly, for all orgs at once.
+
+    Upsert-only, per the design agreed on UN-3973: a monthly row the daily tier
+    no longer produces is left in place rather than deleted. A stale total is
+    recoverable with backfill_metrics; a deleted one is not, because the daily
+    rows that would rebuild it are exactly what is missing.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
     conflict target.
-
-    Returns:
-        (rows upserted, rows deleted as orphans)
     """
     rows = (
         EventMetricsDaily._base_manager.filter(date__gte=month_start)
@@ -259,30 +224,36 @@ def _rollup_monthly_from_daily(month_start: date) -> tuple[int, int]:
         for row in rows
     ]
 
-    # Nothing to write and nothing covered, so nothing to sweep. The scoping in
-    # _delete_orphan_monthly already makes this safe; returning early just skips a
-    # pointless transaction.
     if not objects:
-        return 0, 0
+        return 0
 
-    with transaction.atomic():
-        EventMetricsMonthly._base_manager.bulk_create(
-            objects,
-            update_conflicts=True,
-            unique_fields=["organization", "month", "metric_name", "project", "tag"],
-            update_fields=["metric_type", "metric_value", "metric_count"],
-            batch_size=MONTHLY_ROLLUP_BATCH_SIZE,
-        )
-        deleted = _delete_orphan_monthly(objects)
-
-    return len(objects), deleted
+    EventMetricsMonthly._base_manager.bulk_create(
+        objects,
+        update_conflicts=True,
+        unique_fields=["organization", "month", "metric_name", "project", "tag"],
+        update_fields=["metric_type", "metric_value", "metric_count"],
+        batch_size=MONTHLY_ROLLUP_BATCH_SIZE,
+    )
+    return len(objects)
 
 
-AGGREGATION_LOCK_KEY = "dashboard_metrics:aggregation_lock"
+AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
 AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
 
 
-def _acquire_aggregation_lock() -> bool:
+def _aggregation_lock_key(source_window_days: int) -> str:
+    """One key per schedule, not one key for the task.
+
+    The 15-minute row is an IntervalSchedule and drifts against the reconciliation
+    pass's fixed crontab, so on a shared key the once-daily repair would lose the
+    race and return skipped=True — never retried, and the only mechanism that
+    repairs the narrowed window. Distinct windows are distinct jobs; both are
+    idempotent upserts, so the once-a-day overlap costs duplicated work at worst.
+    """
+    return f"{AGGREGATION_LOCK_KEY_PREFIX}:{source_window_days}d"
+
+
+def _acquire_aggregation_lock(lock_key: str) -> bool:
     """Acquire the distributed aggregation lock with self-healing.
 
     Stores a Unix timestamp as the lock value. If a previous run crashed
@@ -295,22 +266,22 @@ def _acquire_aggregation_lock() -> bool:
     now = time.time()
 
     # Fast path: lock is free
-    if cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT):
+    if cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT):
         return True
 
     # Lock exists — check if it's stale (previous run died without releasing)
-    lock_value = cache.get(AGGREGATION_LOCK_KEY)
+    lock_value = cache.get(lock_key)
     if lock_value is None:
         # Expired between our check and get — lock is now free, try to acquire it
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     try:
         lock_time = float(lock_value)
     except (TypeError, ValueError):
         # Corrupted value (e.g. old "running" string) — reclaim it
         logger.warning("Reclaiming aggregation lock with invalid value: %s", lock_value)
-        cache.delete(AGGREGATION_LOCK_KEY)
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        cache.delete(lock_key)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     age = now - lock_time
     if age > AGGREGATION_LOCK_TIMEOUT:
@@ -319,8 +290,8 @@ def _acquire_aggregation_lock() -> bool:
             age,
             AGGREGATION_LOCK_TIMEOUT,
         )
-        cache.delete(AGGREGATION_LOCK_KEY)
-        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+        cache.delete(lock_key)
+        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     return False
 
@@ -350,14 +321,26 @@ def aggregate_metrics_from_sources(
     Returns:
         Dict with aggregation summary for all three tiers
     """
-    if not _acquire_aggregation_lock():
-        logger.info("Skipping aggregation — another run is in progress")
-        return {"success": True, "skipped": True, "reason": "lock_held"}
+    source_window_days = _validate_source_window(source_window_days)
+    lock_key = _aggregation_lock_key(source_window_days)
+
+    if not _acquire_aggregation_lock(lock_key):
+        logger.warning(
+            "Skipping the %d-day aggregation — another run of the same schedule is "
+            "in progress",
+            source_window_days,
+        )
+        return {
+            "success": True,
+            "skipped": True,
+            "reason": "lock_held",
+            "source_window_days": source_window_days,
+        }
 
     try:
         return _run_aggregation(source_window_days)
     finally:
-        cache.delete(AGGREGATION_LOCK_KEY)
+        cache.delete(lock_key)
 
 
 def _aggregate_single_metric(
@@ -572,7 +555,10 @@ def _build_result(
 ) -> dict[str, Any]:
     """Shape the task's return value from the accumulated stats."""
     result = {
-        "success": True,
+        # Not a literal: every metric for every org can fail while each exception is
+        # caught per-metric, and the run would otherwise report 200 / success with
+        # zero rows written and the dashboard frozen.
+        "success": stats["errors"] == 0,
         "organizations_processed": stats["orgs_processed"],
         "hourly": stats["hourly"],
         "daily": stats["daily"],
@@ -589,10 +575,33 @@ def _build_result(
     return result
 
 
+# A negative window puts daily_start in the future so nothing matches; 0 never
+# refreshes yesterday; an unbounded one restores the multi-month per-org scan this
+# change exists to remove, past soft_time_limit.
+MAX_SOURCE_WINDOW_DAYS = 90
+
+
+def _validate_source_window(source_window_days: int) -> int:
+    """Coerce and bound the window. It arrives as JSON from an editable Beat row."""
+    try:
+        days = int(source_window_days)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"source_window_days must be an integer, got {source_window_days!r}"
+        ) from exc
+    if not 1 <= days <= MAX_SOURCE_WINDOW_DAYS:
+        raise ValueError(
+            f"source_window_days must be between 1 and {MAX_SOURCE_WINDOW_DAYS}, "
+            f"got {days}"
+        )
+    return days
+
+
 def _run_aggregation(
     source_window_days: int = DASHBOARD_SOURCE_WINDOW_DAYS,
 ) -> dict[str, Any]:
     """Execute the aggregation, separately from the task's lock handling."""
+    source_window_days = _validate_source_window(source_window_days)
     end_date = timezone.now()
 
     # Monthly spans the current and previous month.
@@ -605,7 +614,7 @@ def _run_aggregation(
     stats = {
         "hourly": {"upserted": 0},
         "daily": {"upserted": 0},
-        "monthly": {"upserted": 0, "deleted": 0},
+        "monthly": {"upserted": 0, "failed": False},
         "errors": 0,
         "orgs_processed": 0,
     }
@@ -640,27 +649,24 @@ def _run_aggregation(
             stats["errors"] += 1
 
     try:
-        upserted, deleted = _rollup_monthly_from_daily(monthly_start)
-        stats["monthly"]["upserted"] = upserted
-        stats["monthly"]["deleted"] = deleted
-        if deleted:
-            logger.warning(
-                "Monthly rollup deleted %d orphan row(s) from %s", deleted, monthly_start
-            )
+        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
     except (DatabaseError, OperationalError):
         # Configured on the task for autoretry — swallowing them here would
         # leave monthly permanently stale behind successful-looking runs.
         raise
     except Exception:
+        # upserted stays 0, which is also the legitimate empty-rollup value, so
+        # mark the failure explicitly rather than letting the two collapse.
         logger.exception("Error rolling up monthly metrics from %s", monthly_start)
+        stats["monthly"]["failed"] = True
         stats["errors"] += 1
 
-    logger.info(
+    log = logger.warning if stats["errors"] else logger.info
+    log(
         f"Aggregation completed: {stats['orgs_processed']} orgs, "
         f"hourly={stats['hourly']['upserted']}, "
         f"daily={stats['daily']['upserted']}, "
         f"monthly={stats['monthly']['upserted']}, "
-        f"monthly_deleted={stats['monthly']['deleted']}, "
         f"errors={stats['errors']}"
     )
 

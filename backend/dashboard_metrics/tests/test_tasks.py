@@ -1,12 +1,14 @@
 """Unit tests for Dashboard Metrics Celery tasks."""
 
 import json
+import time
 from datetime import date, datetime, timedelta
 from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.apps import apps
+from django.core.cache import cache
 from django.db import connection
 from django.db.utils import DatabaseError
 from django.test import TestCase
@@ -19,6 +21,7 @@ from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
+    Granularity,
     MetricType,
 )
 from pg_queue.models import PgPeriodicTask
@@ -27,15 +30,20 @@ from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from dashboard_metrics.internal_views import AggregateMetricsAPIView
+from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.tasks import (
+    AGGREGATION_LOCK_TIMEOUT,
     DASHBOARD_RECONCILE_WINDOW_DAYS,
     DASHBOARD_SOURCE_WINDOW_DAYS,
+    _acquire_aggregation_lock,
     _active_org_ids,
+    _aggregation_lock_key,
     _rollup_monthly_from_daily,
     _run_aggregation,
     _truncate_to_day,
     _truncate_to_hour,
     _truncate_to_month,
+    _validate_source_window,
     aggregate_metrics_from_sources,
     cleanup_daily_metrics,
     cleanup_hourly_metrics,
@@ -264,7 +272,7 @@ class TestMonthlyRollup(TestCase):
         self._daily(date(2024, 3, 5), value=10, count=2)
         self._daily(date(2024, 3, 18), value=32, count=4)
 
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (1, 0)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 1
 
         rows = self._monthly_rows()
         assert len(rows) == 1
@@ -279,7 +287,7 @@ class TestMonthlyRollup(TestCase):
         self._daily(date(2024, 2, 1), value=100)
         self._daily(date(2024, 2, 2), value=200)
 
-        assert _rollup_monthly_from_daily(date(2024, 1, 1)) == (2, 0)
+        assert _rollup_monthly_from_daily(date(2024, 1, 1)) == 2
 
         rows = self._monthly_rows()
         assert [r.month for r in rows] == [date(2024, 1, 1), date(2024, 2, 1)]
@@ -290,7 +298,7 @@ class TestMonthlyRollup(TestCase):
         self._daily(date(2023, 12, 15), value=999)
         self._daily(date(2024, 1, 15), value=5)
 
-        assert _rollup_monthly_from_daily(date(2024, 1, 1)) == (1, 0)
+        assert _rollup_monthly_from_daily(date(2024, 1, 1)) == 1
 
         rows = self._monthly_rows()
         assert len(rows) == 1
@@ -314,7 +322,7 @@ class TestMonthlyRollup(TestCase):
         self._daily(date(2024, 3, 5), value=10, metric_type=MetricType.HISTOGRAM)
         self._daily(date(2024, 3, 6), value=5, metric_type=MetricType.COUNTER)
 
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (1, 0)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 1
 
         rows = self._monthly_rows()
         assert len(rows) == 1
@@ -324,8 +332,8 @@ class TestMonthlyRollup(TestCase):
         """An empty tier means the source is gone, not that every month is zero.
 
         Seeding a monthly row first is what makes the failure reachable at all: with
-        an empty table a sweep that deletes everything and one that deletes nothing
-        both leave an empty table, and the assertion passes either way.
+        an empty table an implementation that wipes and one that writes nothing both
+        leave an empty table, and the assertion passes either way.
         """
         EventMetricsMonthly._base_manager.create(
             organization=self.org,
@@ -337,81 +345,64 @@ class TestMonthlyRollup(TestCase):
             project="default",
         )
 
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (0, 0)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 0
 
         rows = self._monthly_rows()
         assert len(rows) == 1
         assert rows[0].metric_value == 42
 
-    def test_metric_is_dropped_once_its_daily_rows_are_gone(self):
-        """A metric with no daily rows left must not keep a stale monthly total."""
-        self._daily(date(2024, 3, 5), value=10)
-        self._daily(date(2024, 3, 6), value=7, metric_name="pages_processed")
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (2, 0)
+    def test_a_metric_whose_daily_rows_are_gone_keeps_its_last_total(self):
+        """Upsert-only, per the design agreed on UN-3973.
 
-        EventMetricsDaily._base_manager.filter(metric_name="pages_processed").delete()
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (1, 1)
-
-        rows = self._monthly_rows()
-        assert [r.metric_name for r in rows] == ["documents_processed"]
-
-    def test_a_month_with_no_daily_rows_of_its_own_is_left_alone(self):
-        """An incomplete daily tier must read as "unknown", not as "deleted".
-
-        A partially populated tier passes the empty-tier guard, so without scoping the
-        sweep to the (organization, month) partitions the rollup actually produced,
-        one missing month wipes that month's monthly rows for every org.
+        A stale total is recoverable — backfill_metrics rewrites it. A deleted row is
+        not, because the daily rows that would rebuild it are exactly what is missing.
         """
         self._daily(date(2024, 3, 5), value=10)
-        self._daily(date(2024, 4, 5), value=7)
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (2, 0)
+        self._daily(date(2024, 3, 6), value=7, metric_name="pages_processed")
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 2
 
-        EventMetricsDaily._base_manager.filter(date=date(2024, 3, 5)).delete()
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (1, 0)
+        EventMetricsDaily._base_manager.filter(metric_name="pages_processed").delete()
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 1
 
-        months = [row.month for row in self._monthly_rows()]
-        assert months == [date(2024, 3, 1), date(2024, 4, 1)]
+        rows = self._monthly_rows()
+        assert [r.metric_name for r in rows] == ["documents_processed", "pages_processed"]
 
-    def test_the_sweep_is_scoped_per_organization(self):
-        """The sweep bypasses the org-scoped manager, so the org half of the key is
-        load-bearing: drop it and one org's daily rows vouch for another's monthly."""
+    def test_a_partially_repopulated_month_is_overwritten_not_accumulated(self):
+        """The realistic post-downtime shape: the daily tier comes back short.
+
+        The total tracks whatever the daily tier currently holds, so repairing daily
+        repairs monthly on the next run — which is what makes upsert-only recoverable.
+        """
+        self._daily(date(2024, 3, 5), value=10)
+        self._daily(date(2024, 3, 6), value=32)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 1
+        assert self._monthly_rows()[0].metric_value == 42
+
+        EventMetricsDaily._base_manager.filter(date=date(2024, 3, 6)).delete()
+        _rollup_monthly_from_daily(date(2024, 3, 1))
+        assert self._monthly_rows()[0].metric_value == 10
+
+        self._daily(date(2024, 3, 6), value=32)
+        _rollup_monthly_from_daily(date(2024, 3, 1))
+        assert self._monthly_rows()[0].metric_value == 42
+
+    def test_rows_for_other_organizations_are_never_touched(self):
+        """The rollup goes through _base_manager, bypassing the org-scoped default."""
         other = Organization.objects.create(
             organization_id="rollup-org-2", name="rollup-org-2", display_name="Other"
         )
         self._daily(date(2024, 3, 5), value=10)
         self._daily(date(2024, 3, 6), value=20, org=other)
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (2, 0)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 2
 
         EventMetricsDaily._base_manager.filter(organization=other).delete()
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (1, 0)
+        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == 1
 
         rows = self._monthly_rows()
         assert [(r.organization_id, r.metric_value) for r in rows] == [
             (self.org.id, 10),
             (other.id, 20),
         ]
-
-    def test_a_stale_row_is_dropped_for_one_organization_only(self):
-        """Two orgs in one month: only the org whose metric vanished loses its row."""
-        other = Organization.objects.create(
-            organization_id="rollup-org-3", name="rollup-org-3", display_name="Other"
-        )
-        self._daily(date(2024, 3, 5), value=10)
-        self._daily(date(2024, 3, 5), value=1, metric_name="pages_processed")
-        self._daily(date(2024, 3, 6), value=20, org=other)
-        self._daily(date(2024, 3, 6), value=2, metric_name="pages_processed", org=other)
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (4, 0)
-
-        EventMetricsDaily._base_manager.filter(
-            organization=other, metric_name="pages_processed"
-        ).delete()
-        assert _rollup_monthly_from_daily(date(2024, 3, 1)) == (3, 1)
-
-        survivors = {
-            (r.organization_id, r.metric_name) for r in self._monthly_rows()
-        }
-        assert (self.org.id, "pages_processed") in survivors
-        assert (other.id, "pages_processed") not in survivors
 
     def test_months_before_the_window_are_left_alone(self):
         """Orphan cleanup must not reach outside the rebuilt window."""
@@ -506,8 +497,9 @@ class TestMonthlyRollupFailurePosture(TestCase):
                 with self.assertRaises(DatabaseError):
                     _run_aggregation()
 
-    def test_an_unexpected_error_is_still_counted_rather_than_fatal(self):
-        """Everything outside the retry set keeps the previous non-fatal posture."""
+    def test_an_unexpected_error_is_counted_but_does_not_abort_the_run(self):
+        """Everything outside the retry set stays non-fatal — the hourly and daily
+        tiers this run already wrote are kept — but it is not reported as success."""
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [1]
@@ -516,8 +508,9 @@ class TestMonthlyRollupFailurePosture(TestCase):
                 side_effect=ValueError("bad row"),
             ):
                 result = _run_aggregation()
-        assert result["success"] is True
+        assert result["success"] is False
         assert result["errors"] == 1
+        assert result["monthly"]["failed"] is True
 
 
 class TestInternalAggregateEndpoint(TestCase):
@@ -613,7 +606,7 @@ class TestMonthlyThroughTheTask(TestCase):
         result = self._run()
 
         assert result["period"]["monthly"]["start"] == self.last_month.isoformat()
-        assert result["monthly"] == {"upserted": 2, "deleted": 0}
+        assert result["monthly"] == {"upserted": 2, "failed": False}
 
         rows = EventMetricsMonthly._base_manager.order_by("month")
         assert [r.month for r in rows] == [
@@ -622,14 +615,212 @@ class TestMonthlyThroughTheTask(TestCase):
             self.this_month,
         ]
 
-    def test_the_run_reports_what_it_deleted(self):
-        """The only destructive write in the task has to reach the result."""
-        self._daily(self.this_month, value=10)
-        self._daily(self.this_month, value=1, metric_name="pages_processed")
-        assert self._run()["monthly"] == {"upserted": 2, "deleted": 0}
+    def test_a_failed_rollup_is_not_reported_as_nothing_to_do(self):
+        """upserted stays 0 on failure, which is also the legitimate empty value.
 
-        EventMetricsDaily._base_manager.filter(metric_name="pages_processed").delete()
-        assert self._run()["monthly"] == {"upserted": 1, "deleted": 1}
+        Three states used to collapse into one alongside success: True — failed,
+        empty, and no active orgs.
+        """
+        self._daily(self.this_month, value=10)
+        with patch(
+            "dashboard_metrics.tasks._rollup_monthly_from_daily",
+            side_effect=ValueError("bad row"),
+        ):
+            result = self._run()
+
+        assert result["monthly"] == {"upserted": 0, "failed": True}
+        assert result["success"] is False
+
+
+class TestMonthlyMatchesTheOldDerivation(TestCase):
+    """AC-4: the new monthly figures equal the ones the source queries produced.
+
+    Every other monthly test feeds hand-written daily rows in and checks the sum of
+    what it just wrote — self-consistency, not equivalence. This one seeds *source*
+    rows, lets the real aggregation populate the daily tier from them, and compares
+    the rolled-up monthly against the pre-change derivation computed independently:
+    `get_documents_processed` at DAY granularity, bucketed by month in Python.
+
+    The window is deliberately wide enough to cover both months, which is the state
+    `backfill_metrics` establishes before this change is deployed.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="golden-org", name="golden-org", display_name="Golden Org"
+        )
+        self.workflow = Workflow.objects.create(
+            workflow_name="golden-wf", organization=self.org
+        )
+        # Offsets are derived from the month boundary, never fixed day counts: on the
+        # 25th of a month a hardcoded "25 days ago" lands in the current month and the
+        # cross-boundary coverage silently disappears.
+        now = timezone.now()
+        first_of_this_month = _truncate_to_month(now)
+        self.days_to_last_month_end = (now - first_of_this_month).days + 1
+        self.days_to_last_month_start = (
+            now - _truncate_to_month(first_of_this_month - timedelta(days=1))
+        ).days
+
+    def _seed(self, days_ago: int, count: int) -> None:
+        """Seed `count` completed file executions dated `days_ago`."""
+        stamp = timezone.now() - timedelta(days=days_ago)
+        for n in range(count):
+            execution = WorkflowExecution.objects.create(
+                workflow=self.workflow, status=ExecutionStatus.COMPLETED
+            )
+            file_execution = WorkflowFileExecution.objects.create(
+                workflow_execution=execution,
+                file_name=f"{days_ago}-{n}.pdf",
+                status=ExecutionStatus.COMPLETED.value,
+            )
+            WorkflowFileExecution.objects.filter(pk=file_execution.pk).update(
+                created_at=stamp
+            )
+            WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+
+    def _written(self) -> dict:
+        """Monthly totals as the rollup wrote them."""
+        return {
+            row.month: row.metric_value
+            for row in EventMetricsMonthly._base_manager.filter(
+                metric_name="documents_processed"
+            )
+        }
+
+    def _oracle(self, monthly_start, end_date) -> dict:
+        """Monthly totals the way the code derived them before this change."""
+        rows = MetricsQueryService.get_documents_processed(
+            organization_id=str(self.org.id),  # tasks.py passes the numeric PK
+            start_date=monthly_start,
+            end_date=end_date,
+            granularity=Granularity.DAY,
+        )
+        totals: dict = {}
+        for row in rows:
+            month = _truncate_to_month(row["period"]).date()
+            totals[month] = totals.get(month, 0) + row["value"]
+        return totals
+
+    def test_monthly_equals_the_pre_change_figures_across_a_month_boundary(self):
+        self._seed(days_ago=0, count=3)
+        self._seed(days_ago=self.days_to_last_month_end, count=2)
+        self._seed(days_ago=self.days_to_last_month_start, count=4)
+
+        with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+            prefilter = mock_execution.objects.filter.return_value
+            prefilter.values_list.return_value.distinct.return_value = [self.org.id]
+            result = _run_aggregation(
+                source_window_days=self.days_to_last_month_start + 1
+            )
+
+        monthly_start = date.fromisoformat(result["period"]["monthly"]["start"])
+        end_date = datetime.fromisoformat(result["period"]["monthly"]["end"])
+        expected = self._oracle(
+            datetime.combine(monthly_start, datetime.min.time(), tzinfo=end_date.tzinfo),
+            end_date,
+        )
+
+        assert len(expected) == 2, f"fixture must straddle a month boundary: {expected}"
+        assert self._written() == expected
+
+    def test_the_comparison_can_fail_when_the_daily_tier_is_wrong(self):
+        """Guards the test above: an oracle that always matches proves nothing.
+
+        Monthly is the sum of whatever the daily tier holds, so corrupting a day has
+        to move the monthly total away from the source-derived figure. Corrupting
+        rather than deleting is the point — under upsert-only a *deleted* day leaves
+        the previous monthly total in place, which is the recoverable state the
+        design accepts and is covered by TestMonthlyRollup.
+        """
+        self._seed(days_ago=0, count=3)
+        self._seed(days_ago=self.days_to_last_month_end, count=2)
+
+        with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+            prefilter = mock_execution.objects.filter.return_value
+            prefilter.values_list.return_value.distinct.return_value = [self.org.id]
+            result = _run_aggregation(
+                source_window_days=self.days_to_last_month_start + 1
+            )
+
+        monthly_start = date.fromisoformat(result["period"]["monthly"]["start"])
+        end_date = datetime.fromisoformat(result["period"]["monthly"]["end"])
+        expected = self._oracle(
+            datetime.combine(monthly_start, datetime.min.time(), tzinfo=end_date.tzinfo),
+            end_date,
+        )
+        assert self._written() == expected
+
+        last_month_day = (
+            timezone.now() - timedelta(days=self.days_to_last_month_end)
+        ).date()
+        corrupted = EventMetricsDaily._base_manager.filter(
+            date=last_month_day, metric_name="documents_processed"
+        ).update(metric_value=99)
+        assert corrupted, "fixture wrote no daily row for the previous month"
+
+        _rollup_monthly_from_daily(monthly_start)
+        assert self._written() != expected
+
+
+class TestTheLockIsPerSchedule(TestCase):
+    """The reconciliation pass must not lose a race it is never retried after."""
+
+    def test_the_two_schedules_take_different_keys(self):
+        assert _aggregation_lock_key(
+            DASHBOARD_SOURCE_WINDOW_DAYS
+        ) != _aggregation_lock_key(DASHBOARD_RECONCILE_WINDOW_DAYS)
+
+    def test_a_held_key_does_not_block_the_other_schedule(self):
+        cache.clear()
+        assert _acquire_aggregation_lock(
+            _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        )
+        # Same schedule: excluded, which is what the lock is for.
+        assert not _acquire_aggregation_lock(
+            _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        )
+        # The reconciliation pass proceeds regardless.
+        assert _acquire_aggregation_lock(
+            _aggregation_lock_key(DASHBOARD_RECONCILE_WINDOW_DAYS)
+        )
+        cache.clear()
+
+    def test_a_stale_lock_is_reclaimed(self):
+        cache.clear()
+        key = _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
+        assert _acquire_aggregation_lock(key)
+        cache.clear()
+
+    def test_a_corrupted_lock_value_is_reclaimed(self):
+        cache.clear()
+        key = _aggregation_lock_key(DASHBOARD_SOURCE_WINDOW_DAYS)
+        cache.set(key, "running", 3600)
+        assert _acquire_aggregation_lock(key)
+        cache.clear()
+
+
+class TestSourceWindowValidation(TestCase):
+    """The window arrives as JSON from a Beat row editable in the admin."""
+
+    def test_a_sane_window_passes_through(self):
+        assert _validate_source_window(7) == 7
+        assert _validate_source_window("7") == 7
+
+    def test_a_window_that_would_query_nothing_is_rejected(self):
+        # Negative puts daily_start in the future; 0 never refreshes yesterday.
+        for bad in (-1, 0):
+            with self.assertRaises(ValueError):
+                _validate_source_window(bad)
+
+    def test_a_window_that_restores_the_multi_month_scan_is_rejected(self):
+        with self.assertRaises(ValueError):
+            _validate_source_window(365)
+
+    def test_a_non_integer_window_is_rejected(self):
+        with self.assertRaises(ValueError):
+            _validate_source_window("seven")
 
 
 class TestSourceWindow(TestCase):

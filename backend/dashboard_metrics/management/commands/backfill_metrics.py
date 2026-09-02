@@ -3,11 +3,11 @@
 This command populates EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
 tables from historical data in source tables (Usage, PageUsage, WorkflowExecution, etc.)
 
-The current and previous month are owned exclusively by the aggregation task, which
-derives them from the daily tier and drops monthly rows the daily tier no longer
-produces. Inside that window this command's monthly output is recomputed within 15
-minutes, so --skip-monthly is a no-op and --skip-daily leaves monthly to be rebuilt
-from a tier this run did not populate. Backfill both, or neither.
+The current and previous month are recomputed from the daily tier by the aggregation
+task every 15 minutes, so inside that window this command's monthly output is
+overwritten and --skip-monthly is a no-op. --skip-daily is worse than useless there:
+monthly is rebuilt from a tier this run did not populate, producing an under-count.
+Backfill both, or neither.
 
 Usage:
     python manage.py backfill_metrics --days=30
@@ -100,7 +100,8 @@ class Command(BaseCommand):
             action="store_true",
             help=(
                 "Skip daily aggregation. Unsafe for the current and previous month: "
-                "the aggregation task rebuilds monthly from daily there."
+                "the aggregation task rebuilds monthly from daily there, so monthly "
+                "ends up under-counted."
             ),
         )
         parser.add_argument(
@@ -139,8 +140,8 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.WARNING(
                     "--skip-daily without --skip-monthly: the aggregation task "
-                    "rebuilds the current and previous month from the daily tier "
-                    "and will drop monthly rows this run writes there."
+                    "rebuilds the current and previous month from the daily tier, "
+                    "so monthly will be overwritten with an under-count."
                 )
             )
 

@@ -382,9 +382,10 @@ The `aggregate_metrics_from_sources` task:
    - Queries source table with `MetricsQueryService`
    - Groups by time period (hour/day/month)
 3. **Upserts results** into the hourly and daily tables
-4. **Rolls monthly up from the daily tier** in one statement for all orgs, dropping
-   monthly rows the daily tier no longer produces (scoped to the organization/month
-   partitions the rollup covered)
+4. **Rolls monthly up from the daily tier** in one statement for all orgs. Upsert-only:
+   a monthly row the daily tier no longer produces is left in place. A stale total is
+   recoverable with `backfill_metrics`; a deleted one is not, because the daily rows
+   that would rebuild it are exactly what is missing
 5. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
 
 ```python
@@ -396,7 +397,9 @@ monthly_start = first_of_previous_month                       # summed from dail
 
 The monthly tier has no source queries of its own. `backfill_metrics` still computes
 monthly from source, so within the rollup window (current + previous month) its output
-is recomputed within 15 minutes — see that command's help text.
+is overwritten within 15 minutes by the sum of the daily tier — see that command's help
+text. **Backfill daily before relying on monthly:** the rollup writes whatever daily
+holds, so a month whose daily tier is short produces an under-counted monthly total.
 
 ---
 
