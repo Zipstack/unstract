@@ -118,6 +118,55 @@ class X2Text:
         self.push_usage_details(input_file_path, mime_type, fs=fs)
         return text_extraction_result
 
+    @staticmethod
+    def _parse_pages_to_extract(pages_to_extract: str, total_pages: int) -> int:
+        """Count the pages selected by an LLMWhisperer ``pages_to_extract`` spec.
+
+        The spec is a comma separated list of single pages and ranges, where a
+        range may be open ended (``50-`` means "page 50 to the end"). Pages are
+        1-indexed and may overlap, so they are collected into a set and clamped
+        to the document length. An empty spec means "all pages".
+        """
+        selected: set[int] = set()
+        for part in pages_to_extract.split(","):
+            part = part.strip()
+            if not part:
+                continue
+            if "-" in part:
+                start_str, _, end_str = part.partition("-")
+                try:
+                    start = int(start_str)
+                except ValueError:
+                    continue
+                end = total_pages
+                if end_str:
+                    try:
+                        end = int(end_str)
+                    except ValueError:
+                        continue
+                selected.update(range(max(start, 1), min(end, total_pages) + 1))
+            else:
+                try:
+                    page = int(part)
+                except ValueError:
+                    continue
+                if 1 <= page <= total_pages:
+                    selected.add(page)
+        return len(selected)
+
+    def _get_billable_page_count(self, page_count: int) -> int:
+        """Narrow ``page_count`` to the pages the adapter will actually extract.
+
+        Falls back to the full count whenever the setting is absent, empty or
+        unparseable, so usage is never under-reported by a malformed value.
+        """
+        config = getattr(self._x2text_instance, "config", None) or {}
+        pages_to_extract = str(config.get("pages_to_extract", "") or "").strip()
+        if not pages_to_extract:
+            return page_count
+        selected = self._parse_pages_to_extract(pages_to_extract, page_count)
+        return selected or page_count
+
     def push_usage_details(
         self,
         input_file_path: str,
@@ -133,6 +182,10 @@ class X2Text:
             with pdfplumber.open(pdf_contents) as pdf:
                 # calculate the number of pages
                 page_count = len(pdf.pages)
+            # UN-3038: when the adapter restricts extraction to a page range,
+            # only those pages are actually processed, so bill for them rather
+            # than for every page in the document.
+            page_count = self._get_billable_page_count(page_count)
             Audit().push_page_usage_data(
                 platform_api_key=self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
                 file_size=file_size,

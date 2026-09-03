@@ -186,9 +186,15 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             )
 
         # Fetch prompt instances
-        prompt_instances: ToolStudioPrompt = ToolStudioPrompt.objects.filter(
-            tool_id=data.get(TSKeys.TOOL_ID)
-        ).order_by("sequence_number")
+        # select_related("tool_id"): ToolStudioPromptSerializer's
+        # single_pass_unresolvable_variables (UN-2900) reads the parent tool's
+        # single_pass_extraction_mode, which would otherwise be one query per
+        # prompt here.
+        prompt_instances: ToolStudioPrompt = (
+            ToolStudioPrompt.objects.filter(tool_id=data.get(TSKeys.TOOL_ID))
+            .select_related("tool_id")
+            .order_by("sequence_number")
+        )
 
         data["created_by_email"] = (
             instance.created_by.email if instance.created_by else ""

@@ -90,6 +90,29 @@ class BigQueryNotFoundException(UnstractDBConnectorException):
         super().__init__(detail=final_detail)
 
 
+class BigQueryValueException(UnstractDBConnectorException):
+    """A BigQuery BadRequest caused by the DATA, not the table schema.
+
+    UN-3176: BigQuery returns BadRequest for value-level failures (a float that
+    will not round-trip through PARSE_JSON, a malformed JSON literal) as well as
+    for genuine schema mismatches. Mapping every BadRequest to
+    ColumnMissingException told users to "make sure all the columns exist" when
+    the columns were fine, which sent at least one investigation down the wrong
+    path.
+    """
+
+    def __init__(self, detail: Any, table_name: str) -> None:
+        default_detail = (
+            f"Error writing to '{table_name}'. \n"
+            f"BigQuery rejected a value in the row being inserted -- the table "
+            f"schema is not the problem. This usually means a number could not "
+            f"be represented exactly, or a JSON column received text that is "
+            f"not valid JSON.\n"
+        )
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
+
+
 class ColumnMissingException(UnstractDBConnectorException):
     def __init__(
         self,

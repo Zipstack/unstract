@@ -51,9 +51,13 @@ class KeywordTableRetriever(BaseRetriever):
                 llm=llm,  # Use the provided LLM instead of defaulting to OpenAI
             )
 
-            # Create retriever from keyword index
+            # Create retriever from keyword index.
+            # UN-2902: KeywordTableIndex's retriever caps results with
+            # `num_chunks_per_query` (default 10), not `similarity_top_k` --
+            # that kwarg is accepted and ignored, so a profile asking for 3
+            # chunks still got 10.
             keyword_retriever = keyword_index.as_retriever(
-                similarity_top_k=self.top_k,
+                num_chunks_per_query=self.top_k,
             )
 
             # Retrieve nodes using keyword matching
