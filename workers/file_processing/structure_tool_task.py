@@ -710,6 +710,7 @@ def _run_agentic_extraction(
     extraction_result = x2text.process(
         input_file_path=input_file_path,
         enable_highlight=enable_highlight,
+        file_name=source_file_name,
         fs=fs,
     )
     document_text = extraction_result.extracted_text

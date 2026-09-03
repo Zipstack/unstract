@@ -232,6 +232,12 @@ class LLMWhispererHelper:
                     WhispererConfig.TAG,
                     WhispererDefaults.TAG,
                 ),
+                # Name of the source document, surfaced in LLMWhisperer's reports.
+                # The upload is streamed from the execution's internal file
+                # (INFILE), so without this a whisper call cannot be traced back
+                # to the document it extracted.
+                WhispererConfig.FILENAME: extra_params.filename
+                or WhispererDefaults.FILENAME,
                 WhispererConfig.USE_WEBHOOK: config.get(WhispererConfig.USE_WEBHOOK, ""),
                 WhispererConfig.WEBHOOK_METADATA: config.get(
                     WhispererConfig.WEBHOOK_METADATA

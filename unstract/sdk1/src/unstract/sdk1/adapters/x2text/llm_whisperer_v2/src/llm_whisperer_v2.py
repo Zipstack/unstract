@@ -93,6 +93,7 @@ class LLMWhispererV2(X2TextAdapter):
         extra_params = WhispererRequestParams(
             tag=kwargs.get(X2TextConstants.TAGS),
             enable_highlight=enable_highlight,
+            filename=kwargs.get(X2TextConstants.FILE_NAME),
         )
         response: requests.Response = LLMWhispererHelper.send_whisper_request(
             input_file_path=input_file_path,

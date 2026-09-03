@@ -5,6 +5,7 @@ extraction, indexing, retrieval, prompt answering, single-pass
 extraction, summarisation, and usage tracking.
 """
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -259,19 +260,31 @@ class LegacyExecutor(BaseExecutor):
                     tags=tags,
                     fs=fs,
                 )
-                self._update_exec_metadata(
-                    fs=fs,
-                    execution_source=execution_source,
-                    tool_exec_metadata=tool_exec_metadata,
-                    execution_data_dir=execution_data_dir,
-                    process_response=process_response,
-                )
             else:
                 process_response = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
                     tags=tags,
                     fs=fs,
+                )
+
+            # The whisper hash identifies the LLMWhisperer call that produced
+            # this text, and is the handle used to correlate an execution with
+            # that call. Capture it for every extraction that returns one — not
+            # just highlighted ones, which is how it used to work and why it was
+            # missing from most executions.
+            whisper_hash = (
+                process_response.extraction_metadata.whisper_hash
+                if process_response.extraction_metadata
+                else None
+            )
+            if whisper_hash:
+                self._update_exec_metadata(
+                    fs=fs,
+                    execution_source=execution_source,
+                    tool_exec_metadata=tool_exec_metadata,
+                    execution_data_dir=execution_data_dir,
+                    whisper_hash=whisper_hash,
                 )
 
             has_metadata = bool(
@@ -292,7 +305,12 @@ class LegacyExecutor(BaseExecutor):
                 Path(file_path).name,
                 context.run_id,
             )
-            shim.stream_log("Text extraction completed")
+            # Surfaced to the user so an execution can be matched to the
+            # LLMWhisperer call behind it without digging through service logs.
+            shim.stream_log(
+                "Text extraction completed"
+                + (f" (whisper hash: {whisper_hash})" if whisper_hash else "")
+            )
             result_data: dict[str, Any] = {
                 IKeys.EXTRACTED_TEXT: process_response.extracted_text,
             }
@@ -326,20 +344,41 @@ class LegacyExecutor(BaseExecutor):
         execution_source: str,
         tool_exec_metadata: dict[str, Any] | None,
         execution_data_dir: str | None,
-        process_response: TextExtractionResult,
+        whisper_hash: str,
     ) -> None:
         """Write whisper_hash metadata for tool-sourced executions."""
         if execution_source != ExecutionSource.TOOL.value:
             return
-        whisper_hash = process_response.extraction_metadata.whisper_hash
         metadata = {X2TextConstants.WHISPER_HASH: whisper_hash}
         if tool_exec_metadata is not None:
             for key, value in metadata.items():
                 tool_exec_metadata[key] = value
+        if not execution_data_dir:
+            return
         metadata_path = str(Path(execution_data_dir) / IKeys.METADATA_FILE)
+        # METADATA.json is shared with the rest of the execution — source name,
+        # source hash and tool results are written to it before and after
+        # extraction. Merge into it rather than overwriting, which would drop
+        # everything already recorded there.
+        existing: dict[str, Any] = {}
+        try:
+            if fs.exists(metadata_path):
+                raw = fs.read(path=metadata_path, mode="r")
+                if raw:
+                    existing = json.loads(raw)
+        except Exception:
+            logger.warning(
+                "Could not read existing metadata at '%s'; writing whisper hash only",
+                metadata_path,
+                exc_info=True,
+            )
+            existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+        existing.update(metadata)
         ToolUtils.dump_json(
             file_to_dump=metadata_path,
-            json_to_dump=metadata,
+            json_to_dump=existing,
             fs=fs,
         )
 
