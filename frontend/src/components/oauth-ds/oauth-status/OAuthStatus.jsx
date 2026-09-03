@@ -1,5 +1,5 @@
-import { Typography } from "antd";
 import { useLocation } from "react-router-dom";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./OAuthStatus.css";
 
