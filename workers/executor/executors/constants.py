@@ -84,6 +84,8 @@ class PromptServiceConstants:
     LINE_ITEM = "line-item"
     LINE_NUMBERS = "line_numbers"
     WHISPER_HASH = "whisper_hash"
+    SIGNATURE_METADATA = "signature_metadata"
+    SIGNATURE_PAGE_REFERENCES = "signature_page_references"
     PAID_FEATURE_MSG = (
         "It is a cloud / enterprise feature. If you have purchased a plan and still "
         "face this issue, please contact support"

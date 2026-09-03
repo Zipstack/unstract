@@ -12,7 +12,7 @@ import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
-import { handleUpdateStatus } from "./constants";
+import { handleUpdateStatus, hasHighlightData } from "./constants";
 
 let useEnforceTypeSwitchGatePlugin;
 try {
@@ -263,23 +263,31 @@ const PromptCard = memo(
       highlightedProfile,
       confidenceData,
     ) => {
-      if (details?.enable_highlight) {
-        const processedHighlight =
-          singlePassExtractMode &&
-          typeof highlightData === "object" &&
-          !Array.isArray(highlightData)
-            ? flattenHighlightData(highlightData)
-            : highlightData;
-
-        updateCustomTool({
-          selectedHighlight: {
-            highlight: processedHighlight,
-            highlightedPrompt: highlightedPrompt,
-            highlightedProfile: highlightedProfile,
-            confidence: confidenceData,
-          },
-        });
+      // Allow highlight state to update when the tool has highlighting
+      // enabled OR when the backend produced highlight_data (e.g.
+      // signature page refs from LLMWhisperer's document_insights mode),
+      // so signature-driven page jumps work without the separate
+      // enable_highlight toggle. The fallback uses the same shared guard
+      // as DisplayPromptResult's clickable-render check so this never
+      // sets highlight state that nothing renders.
+      if (!details?.enable_highlight && !hasHighlightData(highlightData)) {
+        return;
       }
+      const processedHighlight =
+        singlePassExtractMode &&
+        typeof highlightData === "object" &&
+        !Array.isArray(highlightData)
+          ? flattenHighlightData(highlightData)
+          : highlightData;
+
+      updateCustomTool({
+        selectedHighlight: {
+          highlight: processedHighlight,
+          highlightedPrompt: highlightedPrompt,
+          highlightedProfile: highlightedProfile,
+          confidence: confidenceData,
+        },
+      });
     };
 
     const handleTypeChange = (value) => {

@@ -305,6 +305,13 @@ class LegacyExecutor(BaseExecutor):
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
+            # Include signature metadata when available (document_insights mode)
+            self._capture_signature_data(
+                fs=fs,
+                output_file_path=output_file_path,
+                process_response=process_response,
+                result_data=result_data,
+            )
             return ExecutionResult(
                 success=True,
                 data=result_data,
@@ -319,6 +326,91 @@ class LegacyExecutor(BaseExecutor):
             )
             msg = f"Error from text extractor '{name}'. {e}"
             raise ExtractionError(message=msg) from e
+
+    def _capture_signature_data(
+        self,
+        fs: Any,
+        output_file_path: str | None,
+        process_response: TextExtractionResult,
+        result_data: dict[str, Any],
+    ) -> None:
+        """Move document_insights signature fields onto the result dict and
+        persist them in a sidecar JSON next to the extracted text file.
+
+        No-op when the adapter did not produce signature data (e.g.
+        non-LLMWhisperer-V2 adapters or modes other than ``document_insights``).
+        """
+        extraction_metadata = process_response.extraction_metadata
+        if not extraction_metadata:
+            return
+        signature_metadata = extraction_metadata.signature_metadata
+        signature_page_references = extraction_metadata.signature_page_references
+        if signature_metadata:
+            result_data["signature_metadata"] = signature_metadata
+            logger.info(
+                "DOC_INSIGHTS _handle_extract: signature_metadata found for pages: %s",
+                list(signature_metadata.keys()),
+            )
+        if signature_page_references:
+            result_data["signature_page_references"] = signature_page_references
+            logger.info(
+                "DOC_INSIGHTS _handle_extract: signature_page_references=%s",
+                signature_page_references,
+            )
+        self._write_signature_sidecar(
+            fs=fs,
+            output_file_path=output_file_path,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
+
+    @staticmethod
+    def _signature_sidecar_path(output_file_path: str) -> str:
+        """Sidecar JSON for document_insights signature data.
+
+        Lives next to the extracted ``.txt`` file so cache hits in
+        Prompt Studio can recover signature data without re-extracting.
+        """
+        p = Path(output_file_path)
+        return str(p.with_suffix("")) + ".doc_insights.json"
+
+    @staticmethod
+    def _write_signature_sidecar(
+        fs: Any,
+        output_file_path: str | None,
+        signature_metadata: dict[str, Any] | None,
+        signature_page_references: dict[str, Any] | None,
+    ) -> None:
+        """Persist signature data alongside the extracted-text file.
+
+        Skipped if there's no signature data or no output path (e.g.,
+        when running without disk output).
+        """
+        if not output_file_path:
+            return
+        if not signature_metadata and not signature_page_references:
+            return
+        sidecar_path = LegacyExecutor._signature_sidecar_path(output_file_path)
+        payload = {
+            "signature_metadata": signature_metadata or {},
+            "signature_page_references": signature_page_references or {},
+        }
+        try:
+            ToolUtils.dump_json(
+                file_to_dump=sidecar_path,
+                json_to_dump=payload,
+                fs=fs,
+            )
+            logger.info(
+                "DOC_INSIGHTS sidecar: wrote signature data to %s",
+                sidecar_path,
+            )
+        except Exception as e:
+            logger.warning(
+                "DOC_INSIGHTS sidecar: failed to write %s: %s",
+                sidecar_path,
+                e,
+            )
 
     @staticmethod
     def _update_exec_metadata(
@@ -640,6 +732,30 @@ class LegacyExecutor(BaseExecutor):
                     return _failure(extract_result)
                 _absorb(extract_result)
                 extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+
+                # Pass signature data captured by document_insights mode to
+                # the answer phase via tool_settings.
+                signature_metadata = extract_result.data.get("signature_metadata")
+                signature_page_references = extract_result.data.get(
+                    "signature_page_references"
+                )
+                if signature_metadata or signature_page_references:
+                    tool_settings = answer_params.get(PSKeys.TOOL_SETTINGS, {})
+                    if signature_metadata:
+                        tool_settings[PSKeys.SIGNATURE_METADATA] = signature_metadata
+                    if signature_page_references:
+                        tool_settings[PSKeys.SIGNATURE_PAGE_REFERENCES] = (
+                            signature_page_references
+                        )
+                    answer_params[PSKeys.TOOL_SETTINGS] = tool_settings
+                    logger.info(
+                        "DOC_INSIGHTS pipeline: injected signature data into "
+                        "tool_settings (pages=%s, refs=%s)",
+                        list(signature_metadata.keys()) if signature_metadata else [],
+                        list(signature_page_references.keys())
+                        if signature_page_references
+                        else [],
+                    )
 
             # ---- Step 2: Summarize (if enabled) ----
             if is_summarization:
