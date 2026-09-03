@@ -5,7 +5,9 @@ the gating predicates and the per-tier lock key are the whole mechanism. Each pr
 here is one way the split fails silently — writing nothing, writing both tiers from one
 schedule, or the two schedules starving each other on the lock.
 
-DB-free, so this runs in the unit tier alongside test_pg_periodic_task_declarations.py.
+DB-free, and the lock cases pin the cache to locmem, so this runs in the unit tier
+alongside test_pg_periodic_task_declarations.py. Settings inherit the production
+django_redis backend, which that tier provides no server for.
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ if not apps.ready:
     django.setup()
 
 from django.core.cache import cache  # noqa: E402
+from django.test import override_settings  # noqa: E402
 
 from dashboard_metrics.tasks import (  # noqa: E402
     AGGREGATION_LOCK_TIMEOUT,
@@ -85,9 +88,9 @@ class TestTheDefaultIsAll:
         """Narrower and daily/monthly stop being written for the whole window; none
         and nothing is written at all. Both look like successful runs.
         """
-        default = inspect.signature(aggregate_metrics_from_sources).parameters[
-            "tier"
-        ].default
+        default = (
+            inspect.signature(aggregate_metrics_from_sources).parameters["tier"].default
+        )
         assert default == AggregationTier.ALL
 
     def test_the_default_writes_everything_rather_than_nothing(self) -> None:
@@ -117,6 +120,16 @@ class TestTheTierTableIsExhaustive:
             _tiers_written(ghost)
 
 
+# The lock protocol needs a cache, not a server: add/get/delete semantics are identical
+# on locmem, and pinning it here keeps these cases in the unit tier.
+_LOCMEM_CACHE = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "aggregation-lock-tests",
+    }
+}
+
+
 class TestTheLockCoversWhatIsWritten:
     """Keyed by granularity written, not by enum member.
 
@@ -128,9 +141,10 @@ class TestTheLockCoversWhatIsWritten:
 
     @pytest.fixture(autouse=True)
     def _clear(self):
-        cache.clear()
-        yield
-        cache.clear()
+        with override_settings(CACHES=_LOCMEM_CACHE):
+            cache.clear()
+            yield
+            cache.clear()
 
     def test_the_two_scheduled_tiers_never_block_each_other(self) -> None:
         assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
@@ -146,14 +160,19 @@ class TestTheLockCoversWhatIsWritten:
         assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
 
     def test_a_blocked_run_releases_whatever_it_took(self) -> None:
-        """ALL takes hourly first; failing on daily_monthly must not strand hourly."""
-        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
-        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
+        """Keys are taken in sorted order, so ALL takes daily_monthly first.
+
+        Holding hourly is what makes ALL fail on its *second* key, with the first
+        already taken — the only ordering that exercises the rollback.
+        """
         assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
 
     def test_a_wider_window_is_a_different_job(self) -> None:
         """The reconciliation pass is never retried, so it must not be starved by the
-        15-minute schedule it races against."""
+        15-minute schedule it races against.
+        """
         assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY, 2))
         assert _acquire_aggregation_locks(_keys(AggregationTier.ALL, 7))
 
@@ -163,9 +182,10 @@ class TestTheLockSelfHeals:
 
     @pytest.fixture(autouse=True)
     def _clear(self):
-        cache.clear()
-        yield
-        cache.clear()
+        with override_settings(CACHES=_LOCMEM_CACHE):
+            cache.clear()
+            yield
+            cache.clear()
 
     def test_a_lock_older_than_the_timeout_is_reclaimed(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]

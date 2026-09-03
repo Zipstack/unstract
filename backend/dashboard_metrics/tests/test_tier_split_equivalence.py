@@ -20,12 +20,11 @@ DB-bound, so conftest marks it integration.
 
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import timedelta
 from typing import Any
 from unittest.mock import patch
-
-import os
 
 import django
 from django.apps import apps
@@ -123,7 +122,8 @@ class TestTheSplitPreservesEveryFigure(TestCase):
 
     def _add_llm_usage(self, timestamps: list[Any]) -> None:
         """LLM metrics need no joins, so they are the cheapest way to put a real figure
-        in all three tiers."""
+        in all three tiers.
+        """
         with connection.cursor() as cur:
             for ts in timestamps:
                 cur.execute(
@@ -189,9 +189,7 @@ class TestTheSplitPreservesEveryFigure(TestCase):
         green. This one names a number the fixture determines.
         """
         self._run(AggregationTier.HOURLY)
-        rows = EventMetricsHourly._base_manager.filter(
-            metric_name="documents_processed"
-        )
+        rows = EventMetricsHourly._base_manager.filter(metric_name="documents_processed")
         assert sum(row.metric_value for row in rows) == 2, (
             "exactly the -2h and -5h file executions fall inside the 24h window; "
             "the -3d and previous-month ones must not"

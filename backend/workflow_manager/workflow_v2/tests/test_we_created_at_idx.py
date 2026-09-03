@@ -100,7 +100,30 @@ class TestTheMigrationIsSafeToDeploy:
         """
         sql = _MIGRATION_FILE.read_text()
         assert "RAISE EXCEPTION" in sql
-        assert "indisvalid" in sql
+        # Polarity, not presence: `NOT idx_valid` raises on a broken index, `idx_valid`
+        # would raise on every healthy deploy, and both contain "indisvalid".
+        assert "i.indisvalid" in sql
+        assert "IF NOT idx_valid THEN" in sql
+
+    def test_it_guards_against_a_hand_built_index_of_the_wrong_shape(self) -> None:
+        """IF NOT EXISTS matches on name alone.
+
+        The likely slip is (created_at DESC), since the neighbouring indexes in this
+        Meta are declared "-created_at". Without a definition check that index is kept
+        while AddIndex records fields=["created_at"] into model state, and nothing ever
+        reports the divergence.
+        """
+        # The rendered statement, not the file source: the source carries {INDEX_NAME}
+        # placeholders, so asserting on it would pass whatever the name resolves to.
+        guard = _operations()[0].database_operations[1].sql
+        assert "pg_get_indexdef" in guard
+        assert "USING btree (created_at)" in guard
+        assert "NOT LIKE" in guard
+        # Scoped to this index, in this schema — app tables do not live in `public`.
+        assert "c.relname = 'we_created_at_idx'" in guard
+        assert "n.nspname = current_schema()" in guard
+        # The remedy is in the message the operator actually sees.
+        assert "DROP INDEX CONCURRENTLY IF EXISTS we_created_at_idx" in guard
 
     def test_add_index_is_state_only(self) -> None:
         """The failure mode this whole file exists for. AddIndex outside

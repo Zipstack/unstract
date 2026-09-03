@@ -47,7 +47,7 @@ celery -A backend beat -l info
 | Task | Schedule | What It Does |
 |------|----------|--------------|
 | `aggregate_from_sources` | Every 15 min | Aggregates source → **hourly tier only** (`tier=hourly`) |
-| `aggregate_daily_monthly` | Hourly at :20 | Aggregates source → daily; rolls monthly up from daily (`tier=daily_monthly`) |
+| `aggregate_from_sources` (daily+monthly) | Hourly at :20 | Aggregates source → daily; rolls monthly up from daily (`tier=daily_monthly`) |
 | `aggregate_from_sources` (reconcile) | Daily 4:40 AM | All tiers over a 7-day source window, to repair gaps after downtime |
 | `cleanup_hourly_data` | Daily 2 AM | Deletes hourly data > 30 days |
 | `cleanup_daily_data` | Weekly Sun 3 AM | Deletes daily data > 365 days |
@@ -165,7 +165,8 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 
 **Failure Resilience:**
 - If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
-- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a gap shorter than that repairs itself without a manual backfill.
+- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier always covers only the last 24h, so an hourly gap needs `backfill_metrics` regardless.
+- The 7-day window is also the ceiling on lag, not just on downtime. The source queries filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
 - Celery tasks have `max_retries=3` with exponential backoff.
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
@@ -399,9 +400,21 @@ monthly_start = first_of_previous_month                       # summed from dail
 
 The monthly tier has no source queries of its own. `backfill_metrics` still computes
 monthly from source, so within the rollup window (current + previous month) its output
-is overwritten within 15 minutes by the sum of the daily tier — see that command's help
-text. **Backfill daily before relying on monthly:** the rollup writes whatever daily
-holds, so a month whose daily tier is short produces an under-counted monthly total.
+is overwritten by the sum of the daily tier on the next daily/monthly pass — see that
+command's help text. **Backfill daily before relying on monthly:** the rollup writes
+whatever daily holds, so a month whose daily tier is short produces an under-counted
+monthly total.
+
+Run this once before the first aggregation after deploying the monthly-from-daily
+rollup, so the tier it derives from is complete:
+
+```
+python manage.py backfill_metrics --days 62 --skip-hourly --skip-monthly
+```
+
+62, not 60: the rollup window reaches back to the first of the previous month, which is
+61 days before a run on the 31st. `--skip-monthly` is deliberate — repair daily and let
+the rollup derive monthly from it.
 
 ---
 

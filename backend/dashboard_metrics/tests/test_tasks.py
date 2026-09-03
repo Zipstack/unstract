@@ -7,6 +7,7 @@ from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from account_v2.models import Organization
 from django.apps import apps
 from django.core.cache import cache
 from django.db import connection
@@ -15,8 +16,13 @@ from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask, PeriodicTasks
+from pg_queue.models import PgPeriodicTask
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from account_v2.models import Organization
+from dashboard_metrics.internal_views import AggregateMetricsAPIView
 from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
@@ -24,12 +30,6 @@ from dashboard_metrics.models import (
     Granularity,
     MetricType,
 )
-from pg_queue.models import PgPeriodicTask
-from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.workflow_v2.enums import ExecutionStatus
-from workflow_manager.workflow_v2.models.execution import WorkflowExecution
-from workflow_manager.workflow_v2.models.workflow import Workflow
-from dashboard_metrics.internal_views import AggregateMetricsAPIView
 from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.tasks import (
     AGGREGATION_LOCK_TIMEOUT,
@@ -69,7 +69,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_hour_from_datetime(self):
         """Test truncating a datetime to the hour."""
-
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_hour(dt)
 
@@ -80,7 +79,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_hour_naive_datetime(self):
         """Test truncating a naive datetime makes it aware."""
-
         dt = datetime(2024, 1, 15, 14, 35, 22)
         result = _truncate_to_hour(dt)
 
@@ -90,7 +88,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_day(self):
         """Test truncating a datetime to midnight."""
-
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_day(dt)
 
@@ -102,7 +99,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_month(self):
         """Test truncating a datetime to first day of month."""
-
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_month(dt)
 
@@ -159,8 +155,12 @@ class TestCleanupTasks(TestCase):
 
         # _base_manager bypasses the org-scoped default manager, which filters
         # by UserContext.get_organization() — None here, so .objects sees nothing.
-        assert not EventMetricsHourly._base_manager.filter(metric_name="old_metric").exists()
-        assert EventMetricsHourly._base_manager.filter(metric_name="recent_metric").exists()
+        assert not EventMetricsHourly._base_manager.filter(
+            metric_name="old_metric"
+        ).exists()
+        assert EventMetricsHourly._base_manager.filter(
+            metric_name="recent_metric"
+        ).exists()
 
     def test_cleanup_daily_metrics_deletes_old_records(self):
         """Test that cleanup deletes daily records older than retention."""
@@ -475,7 +475,8 @@ class TestActiveOrgPrefilter(TestCase):
 
     def test_a_widened_window_widens_the_prefilter_with_it(self):
         """Otherwise a long-outage repair queries 30 days for orgs active in 7, and
-        reports errors: 0 having skipped every org it exists to repair."""
+        reports errors: 0 having skipped every org it exists to repair.
+        """
         window_start = self.now - timedelta(days=30)
         assert self.org.id in _active_org_ids(self.now, window_start)
 
@@ -501,7 +502,8 @@ class TestMonthlyRollupFailurePosture(TestCase):
 
     def test_an_unexpected_error_is_counted_but_does_not_abort_the_run(self):
         """Everything outside the retry set stays non-fatal — the hourly and daily
-        tiers this run already wrote are kept — but it is not reported as success."""
+        tiers this run already wrote are kept — but it is not reported as success.
+        """
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [1]
@@ -618,7 +620,7 @@ class TestMonthlyThroughTheTask(TestCase):
         ]
 
     def test_a_failed_rollup_is_not_reported_as_nothing_to_do(self):
-        """upserted stays 0 on failure, which is also the legitimate empty value.
+        """Upserted stays 0 on failure, which is also the legitimate empty value.
 
         Three states used to collapse into one alongside success: True — failed,
         empty, and no active orgs.
@@ -731,9 +733,10 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
 
         Monthly is the sum of whatever the daily tier holds, so corrupting a day has
         to move the monthly total away from the source-derived figure. Corrupting
-        rather than deleting is the point — under upsert-only a *deleted* day leaves
-        the previous monthly total in place, which is the recoverable state the
-        design accepts and is covered by TestMonthlyRollup.
+        rather than deleting is the point — deleting a day leaves the group in place
+        with a smaller sum, so it would move the total too and could not distinguish
+        a working oracle from a broken one. (Only an *entirely* absent month leaves
+        the previous monthly row untouched; that case is covered by TestMonthlyRollup.)
         """
         self._seed(days_ago=0, count=3)
         self._seed(days_ago=self.days_to_last_month_end, count=2)
@@ -995,9 +998,7 @@ class TestReconciliationSchedule(TestCase):
         assert row.task_name == "dashboard_metrics.aggregate_from_sources"
         assert row.queue == "dashboard_metric_events"
         assert row.cron_string == "40 4 * * *"
-        assert row.task_kwargs == {
-            "source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS
-        }
+        assert row.task_kwargs == {"source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS}
         assert row.enabled
         # Inert until the rollout flag decides otherwise.
         assert not row.pg_owned
@@ -1021,9 +1022,7 @@ class TestReconciliationSchedule(TestCase):
         self.migration.create_reconciliation_task(apps, None)
 
         assert (
-            PeriodicTask.objects.filter(
-                name=self.migration.RECONCILE_TASK_NAME
-            ).count()
+            PeriodicTask.objects.filter(name=self.migration.RECONCILE_TASK_NAME).count()
             == 1
         )
 

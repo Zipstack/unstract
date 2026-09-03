@@ -6,10 +6,10 @@ the workflow_execution FK column — so the planner cannot drive from here and s
 workflow_execution in full instead. Execution plan in UN-4045 (2026-08-31, which
 supersedes the earlier workflow_file_execution reading); cost measurements in UN-3883.
 
-Full rather than partial: get_failed_pages benefits at today's window (ERROR is 0.40%
-of rows), and get_documents_processed only once UN-3973 narrows the window to 2 days —
-at 52 days the COMPLETED slice is 20.4% of the table and the planner scans regardless.
-A partial index on ERROR would serve the first and never the second.
+Full rather than partial: get_failed_pages benefits at any window (ERROR is 0.40% of
+rows), and get_documents_processed benefits since UN-3973 narrowed the window to 2 days
+— at the previous 52 days the COMPLETED slice was 20.4% of the table and the planner
+scanned regardless. A partial index on ERROR would serve the first and never the second.
 
 Built CONCURRENTLY (atomic = False): a plain AddIndex holds a SHARE lock for the whole
 build and would block writes to a large, write-heavy table. Prefer building it out of

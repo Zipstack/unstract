@@ -9,6 +9,11 @@ Declared for **both** transports, like 0002/0004: Beat reads
 and a schedule present on one only stops firing the moment the flag flips.
 ``kwargs`` is a JSON string on Beat and a JSONField on PG — same value, two
 encodings.
+
+The row carries ``source_window_days``, which the previous release's zero-argument
+signatures reject with ``TypeError``. Rolling the code back past this release means
+reversing this migration too, **before** the image rolls back — ``migrate
+dashboard_metrics 0004``, which reverses 0006 and this one together.
 """
 
 from django.db import migrations

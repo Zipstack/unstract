@@ -136,6 +136,7 @@ class TestTheBeatLegCarriesTheTier:
         self, declared_kwargs: dict[str, dict[str, Any]]
     ) -> None:
         """The migration cannot import the enum, so it repeats the literals. A typo
-        there raises inside the task on every single run."""
+        there raises inside the task on every single run.
+        """
         for kwargs in declared_kwargs.values():
             AggregationTier(kwargs["tier"])

@@ -35,6 +35,7 @@ from utils.local_context import StateStore
 
 from dashboard_metrics.tasks import (
     DASHBOARD_SOURCE_WINDOW_DAYS,
+    MAX_SOURCE_WINDOW_DAYS,
     AggregationTier,
     aggregate_metrics_from_sources,
     cleanup_daily_metrics,
@@ -61,7 +62,7 @@ def _clear_org_context() -> None:
 
 
 def _tier_arg(raw: Any) -> AggregationTier:
-    """Coerce a request body's tier. An explicit null means "omitted", not "none"."""
+    """Coerce a request body's tier to the enum, raising ValueError on anything else."""
     try:
         return AggregationTier(raw)
     except ValueError as exc:
@@ -69,7 +70,7 @@ def _tier_arg(raw: Any) -> AggregationTier:
         raise ValueError(f"tier must be one of {valid}, got {raw!r}") from exc
 
 
-def _int_arg(request: Request, key: str, default: int) -> int:
+def _int_arg(request: Request, key: str, default: int, maximum: int | None = None) -> int:
     """Read an optional positive integer from the request body."""
     raw = request.data.get(key, default) if isinstance(request.data, dict) else default
     try:
@@ -78,6 +79,8 @@ def _int_arg(request: Request, key: str, default: int) -> int:
         raise ValueError(f"{key} must be an integer, got {raw!r}") from exc
     if value < 1:
         raise ValueError(f"{key} must be >= 1, got {value}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{key} must be <= {maximum}, got {value}")
     return value
 
 
@@ -119,7 +122,10 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
                 kwargs["tier"] = _tier_arg(body["tier"])
             if body.get("source_window_days") is not None:
                 kwargs["source_window_days"] = _int_arg(
-                    request, "source_window_days", DASHBOARD_SOURCE_WINDOW_DAYS
+                    request,
+                    "source_window_days",
+                    DASHBOARD_SOURCE_WINDOW_DAYS,
+                    maximum=MAX_SOURCE_WINDOW_DAYS,
                 )
         except ValueError as exc:
             # The one branch _run no longer covers, so it is logged here or nowhere.

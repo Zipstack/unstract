@@ -136,6 +136,7 @@ class TestThePrefilterCanUseTheIndex(TestCase):
             cur.execute("SET LOCAL enable_seqscan = off")
             cur.execute("EXPLAIN " + sql)
             plan = "\n".join(row[0] for row in cur.fetchall())
-        assert f"Index Scan using {INDEX_NAME}" in plan or f"Index Only Scan using {INDEX_NAME}" in plan, (
-            f"expected {INDEX_NAME} to be usable for the prefilter:\n{plan}"
-        )
+        assert (
+            f"Index Scan using {INDEX_NAME}" in plan
+            or f"Index Only Scan using {INDEX_NAME}" in plan
+        ), f"expected {INDEX_NAME} to be usable for the prefilter:\n{plan}"

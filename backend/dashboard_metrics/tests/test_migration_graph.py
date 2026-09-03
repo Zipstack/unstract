@@ -62,4 +62,6 @@ class MigrationGraphTests(SimpleTestCase):
             leaves.setdefault(app_label, []).append(name)
 
         conflicts = {app: names for app, names in leaves.items() if len(names) > 1}
-        self.assertEqual(conflicts, {}, f"apps with multiple leaf migrations: {conflicts}")
+        self.assertEqual(
+            conflicts, {}, f"apps with multiple leaf migrations: {conflicts}"
+        )

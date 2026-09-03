@@ -272,8 +272,9 @@ class WorkflowExecution(BaseModel):
                     queue_message_id__isnull=True,
                 ),
             ),
-            # Bare created_at range scans; the indexes above are date-ordered only
-            # within one workflow or pipeline. See migration 0029.
+            # Bare created_at range scans, which no index above serves: the composites
+            # lead with workflow_id / pipeline_id and the partial one is empty in steady
+            # state. See migration 0029.
             models.Index(fields=["created_at"], name="we_created_at_idx"),
         ]
 

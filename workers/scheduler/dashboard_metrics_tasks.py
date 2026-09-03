@@ -98,7 +98,7 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     (``skipped``/``reason``), no organisation had recent activity
     (``skipped_reason``), or every metric raised and was caught per-metric
     (``errors``). Each is correct behaviour in isolation, but left at INFO a leaked
-    lock or a frozen source table looks like 96 successful runs a day.
+    lock or a frozen source table looks like a day of successful runs.
     """
     if result.get("skipped"):
         logger.warning(

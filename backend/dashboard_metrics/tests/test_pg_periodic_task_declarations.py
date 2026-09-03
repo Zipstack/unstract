@@ -369,26 +369,36 @@ def split() -> dict[str, _SplitRecorder]:
 
 
 class TestTheSplitAddsOneRowAndRewritesOne:
-    def test_only_the_daily_monthly_row_is_created(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_only_the_daily_monthly_row_is_created(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         for table in ("beat", "pg"):
             assert set(split[table].created) == {_NEW_ROW}
 
-    def test_only_the_existing_aggregate_row_is_updated(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_only_the_existing_aggregate_row_is_updated(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         for table in ("beat", "pg"):
             assert set(split[table].updated) == {_EXISTING_ROW}
 
-    def test_the_new_row_is_declared_the_same_on_both_tables(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_new_row_is_declared_the_same_on_both_tables(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         beat, pg = split["beat"].created[_NEW_ROW], split["pg"].created[_NEW_ROW]
         assert pg["task_name"] == beat["task"]
         assert pg["queue"] == beat["queue"]
         assert pg["task_kwargs"] == json.loads(beat["kwargs"])
 
-    def test_the_new_row_runs_hourly_on_both_tables(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_new_row_runs_hourly_on_both_tables(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         assert split["pg"].created[_NEW_ROW]["cron_string"] == "20 * * * *"
         crontab = split["beat"].created[_NEW_ROW]["crontab"]
         assert (crontab["minute"], crontab["hour"]) == ("20", "*")
 
-    def test_the_two_rows_never_start_together(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_two_rows_never_start_together(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         """The per-tier locks are built so the two runs cannot block each other, so a
         shared minute is two full prefilter scans and two per-org loops at once — on a
         change whose object is flattening cron load.
@@ -397,7 +407,9 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         minute = int(split["beat"].created[_NEW_ROW]["crontab"]["minute"])
         assert minute not in fires_at
 
-    def test_the_new_row_is_seeded_inert_on_the_pg_side(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_new_row_is_seeded_inert_on_the_pg_side(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         """Same reason as 0004's rows: a PG row that is pg_owned before the scheduler
         has adopted it would fire alongside its Beat twin.
         """
@@ -413,11 +425,14 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         raises, and the hourly aggregation silently stops firing.
         """
         beat = split["beat"].updated[_EXISTING_ROW]
-        assert json.loads(beat["kwargs"]) == split["pg"].updated[_EXISTING_ROW][
-            "task_kwargs"
-        ]
+        assert (
+            json.loads(beat["kwargs"])
+            == split["pg"].updated[_EXISTING_ROW]["task_kwargs"]
+        )
 
-    def test_the_two_rows_ask_for_different_tiers(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_two_rows_ask_for_different_tiers(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         new = split["pg"].created[_NEW_ROW]["task_kwargs"]["tier"]
         existing = split["pg"].updated[_EXISTING_ROW]["task_kwargs"]["tier"]
         assert new != existing
@@ -534,7 +549,8 @@ class TestTheRollbackRestoresOneRow:
 
     def test_a_rollback_that_restores_nothing_raises(self) -> None:
         """A bulk update matching no row would otherwise report a clean rollback while
-        leaving the daily and monthly tiers with no schedule at all."""
+        leaving the daily and monthly tiers with no schedule at all.
+        """
         with pytest.raises(RuntimeError, match=_EXISTING_ROW):
             self._run_merge(rows_present=0)
 
@@ -546,13 +562,19 @@ class TestTheRewriteLeavesSchedulerOwnershipAlone:
     left with no firer at all. Only the payload may change.
     """
 
-    def test_the_pg_update_touches_only_the_kwargs(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_pg_update_touches_only_the_kwargs(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         assert set(split["pg"].updated[_EXISTING_ROW]) == {"task_kwargs"}
 
-    def test_the_beat_update_does_not_re_enable_the_row(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_beat_update_does_not_re_enable_the_row(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         assert "enabled" not in split["beat"].updated[_EXISTING_ROW]
 
-    def test_the_existing_row_keeps_its_cadence(self, split: dict[str, _SplitRecorder]) -> None:
+    def test_the_existing_row_keeps_its_cadence(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
         """Only the daily/monthly half moves to hourly; the hourly tier stays at 15
         minutes, which is the first half of the ticket's acceptance criteria.
         """

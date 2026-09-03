@@ -52,8 +52,7 @@ DASHBOARD_RECONCILE_WINDOW_DAYS = 7
 # Floor on the prefilter lookback: metrics keyed on another column (e.g.
 # approved_at) can land for an org whose executions are older. _active_org_ids
 # takes the wider of this and the run's own window, so the prefilter is never
-# narrower than what is being queried — at the 7-day reconciliation window the
-# two are equal rather than this one being wider.
+# narrower than what is being queried.
 DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS = 7
 
 
@@ -192,9 +191,14 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
     """Sum the daily tier from month_start into monthly, for all orgs at once.
 
     Upsert-only, per the design agreed on UN-3973: a monthly row the daily tier
-    no longer produces is left in place rather than deleted. A stale total is
-    recoverable with backfill_metrics; a deleted one is not, because the daily
+    no longer produces *at all* is left in place rather than deleted. A stale total
+    is recoverable with backfill_metrics; a deleted one is not, because the daily
     rows that would rebuild it are exactly what is missing.
+
+    That preservation covers the all-missing case only. date is not a grouping key,
+    so a month the daily tier still covers *partially* is overwritten with the sum
+    of the days present — a smaller number, not the previous total. Monthly is only
+    as good as event_metrics_daily; backfill daily first.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
@@ -279,7 +283,8 @@ def _writes_daily_monthly(tier: AggregationTier) -> bool:
 
 
 AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
-AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
+AGGREGATION_LOCK_TIMEOUT = 900  # must exceed time_limit (660s) and not outlive
+# the shortest schedule period (900s); three schedules now take these keys.
 
 
 def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> list[str]:
@@ -287,8 +292,9 @@ def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> li
 
     Per granularity, not per enum member: keying on the label alone gives ALL a third
     key that excludes nothing, so an ALL run and the scheduled hourly run would write
-    EventMetricsHourly concurrently. Taking one key per granularity restores exclusion
-    exactly where writes collide, and the two scheduled tiers still never block.
+    EventMetricsHourly concurrently. Taking one key per granularity restores that
+    exclusion between runs sharing a window, and the two scheduled tiers still never
+    block. Across windows it does not exclude — see the next paragraph.
 
     Per window because a wider window is a different job. The reconciliation pass runs
     once a day on a fixed crontab against a drifting 15-minute interval; on a shared
@@ -317,9 +323,10 @@ def _acquire_aggregation_locks(lock_keys: list[str]) -> list[str]:
 def _acquire_aggregation_lock(lock_key: str) -> bool:
     """Acquire the distributed aggregation lock with self-healing.
 
-    Stores a Unix timestamp as the lock value. If a previous run crashed
-    (OOM kill, SIGKILL) without releasing the lock, the next run detects
-    that the lock is older than AGGREGATION_LOCK_TIMEOUT and reclaims it.
+    Stores a Unix timestamp as the lock value. A crashed run (OOM kill, SIGKILL)
+    is recovered by the key's own AGGREGATION_LOCK_TIMEOUT TTL. The age check below
+    is a belt-and-braces path for a value written without that TTL, or for clock
+    skew between workers; it is not what recovers the ordinary crash.
 
     Returns:
         True if lock was acquired, False if another run is legitimately active.
@@ -415,8 +422,14 @@ def aggregate_metrics_from_sources(
     try:
         return _run_aggregation(tier, source_window_days)
     finally:
+        # Isolated per key: a raise here would replace the run's return value, reporting
+        # a completed aggregation as a hard failure, and would strand the keys after it.
+        # The TTL bounds whatever is not released.
         for key in held:
-            cache.delete(key)
+            try:
+                cache.delete(key)
+            except Exception:
+                logger.exception("Failed to release aggregation lock %s", key)
 
 
 def _aggregate_single_metric(
@@ -667,9 +680,9 @@ def _build_result(
     return result
 
 
-# A negative window puts daily_start in the future so nothing matches; 0 never
-# refreshes yesterday; an unbounded one restores the multi-month per-org scan this
-# change exists to remove, past soft_time_limit.
+# An upper sanity guard on a value that arrives as JSON from an editable schedule row,
+# not a bound derived from the run budget: 90 days is itself wider than the 32-62 day
+# scan this change removed, so a window near it is a manual repair, not a routine run.
 MAX_SOURCE_WINDOW_DAYS = 90
 
 

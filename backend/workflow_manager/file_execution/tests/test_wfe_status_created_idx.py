@@ -73,9 +73,7 @@ class MigrationShapeTests(SimpleTestCase):
 
     def test_every_database_operation_is_reversible(self) -> None:
         """One irreversible operation kills the whole rollback, DROP INDEX included."""
-        self.assertTrue(
-            all(op.reversible for op in self.operation.database_operations)
-        )
+        self.assertTrue(all(op.reversible for op in self.operation.database_operations))
 
     def test_pre_existing_index_guard_is_present(self) -> None:
         """``IF NOT EXISTS`` matches on name alone, so the guard carries the rest.

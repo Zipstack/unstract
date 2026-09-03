@@ -62,7 +62,6 @@ class TestRegistration:
         assert getattr(dmt, func).name == name
 
 
-
 class TestCallContract:
     def test_aggregate_posts_to_the_aggregate_endpoint(self):
         with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
@@ -202,7 +201,9 @@ class TestInternalCall:
     @pytest.mark.parametrize(
         "missing", ["INTERNAL_API_BASE_URL", "INTERNAL_SERVICE_API_KEY"]
     )
-    def test_missing_config_raises_rather_than_returning_falsy(self, monkeypatch, missing):
+    def test_missing_config_raises_rather_than_returning_falsy(
+        self, monkeypatch, missing
+    ):
         # Deliberately different from process_log_history.py, which returns False: that
         # runs under a bash loop with no other channel. Here raising is what marks the
         # message failed and gets it logged.

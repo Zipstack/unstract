@@ -2,7 +2,7 @@
 
 The hourly tier keeps its 15-minute cadence; the daily and monthly tiers move to
 hourly, taking the expensive DAY-granularity half of the work from 96 runs a day to
-24. Both rows run the same task and differ only in their ``tier`` kwargs — a second
+24, plus the once-daily reconciliation pass 0005 adds. Both rows run the same task and differ only in their ``tier`` kwargs — a second
 task name would need its own worker registration and internal endpoint.
 
 Beat and PG rows are declared here from one spec, so this pair cannot drift the way
@@ -13,11 +13,22 @@ hardcoding Beat: it is one half of that row, and the same process should fire it
 The new row runs at minute 20 — off the ``*/15`` grid — so it never starts alongside
 the hourly-tier run, whose per-tier lock is deliberately unable to block it.
 
-**Rolling back the code past this release requires reversing this migration too.**
-After it runs both scheduler rows carry a ``tier`` kwarg that the previous release's
-zero-argument signatures reject with ``TypeError``, which ``autoretry_for`` does not
-cover — aggregation would stop for both tiers until ``migrate dashboard_metrics 0005``
-restores the single row.
+**Rolling back the code past this release requires reversing this migration first,
+from the outgoing image.** After it runs both scheduler rows carry a ``tier`` kwarg
+that the previous release's zero-argument signatures reject with ``TypeError``, which
+``autoretry_for`` does not cover — aggregation stops for every tier until the rows are
+restored.
+
+Order matters, and the reverse is not available afterwards: this file and 0005 do not
+exist in the previous release, so once that image is deployed ``migrate`` has no node
+to reverse to and reports nothing to apply. Run the reverse **before** rolling the
+image back::
+
+    python manage.py migrate dashboard_metrics 0004
+
+0004, not 0005: 0005 adds the reconciliation row carrying ``source_window_days``,
+which the previous release's signatures reject the same way, so stopping at 0005
+leaves that row failing once a day indefinitely.
 """
 
 import json

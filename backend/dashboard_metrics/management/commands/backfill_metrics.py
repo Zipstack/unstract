@@ -4,7 +4,7 @@ This command populates EventMetricsHourly, EventMetricsDaily, and EventMetricsMo
 tables from historical data in source tables (Usage, PageUsage, WorkflowExecution, etc.)
 
 The current and previous month are recomputed from the daily tier by the aggregation
-task every 15 minutes, so inside that window this command's monthly output is
+task's daily/monthly pass, so inside that window this command's monthly output is
 overwritten and --skip-monthly is a no-op. --skip-daily is worse than useless there:
 monthly is rebuilt from a tier this run did not populate, producing an under-count.
 Backfill both, or neither.
@@ -32,6 +32,7 @@ from dashboard_metrics.models import (
     MetricType,
 )
 from dashboard_metrics.services import MetricsQueryService
+from dashboard_metrics.tasks import _truncate_to_day
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +132,10 @@ class Command(BaseCommand):
         active_only = options["active_only"]
 
         end_date = timezone.now()
-        start_date = end_date - timedelta(days=days)
+        # Truncated to match the cron's daily_start: an untruncated boundary writes the
+        # oldest day covering only part of it, and the monthly rollup now sums the
+        # persisted daily tier rather than recomputing that day from source.
+        start_date = _truncate_to_day(end_date - timedelta(days=days))
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
         self.stdout.write(f"Days: {days}")
