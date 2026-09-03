@@ -92,22 +92,48 @@ def _call_internal(
 
 
 def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
-    """Surface a lock-held no-op.
+    """Surface a run that did nothing, whatever shape the backend reported it in.
 
-    The backend returns success with ``skipped=True`` when the Redis lock is held. That
-    is correct behaviour, but left at INFO a permanently leaked lock looks like 96
-    successful runs a day that did nothing.
+    Three of them, and only the first sets ``skipped``: the Redis lock was held
+    (``skipped``/``reason``), no organisation had recent activity
+    (``skipped_reason``), or every metric raised and was caught per-metric
+    (``errors``). Each is correct behaviour in isolation, but left at INFO a leaked
+    lock or a frozen source table looks like a day of successful runs.
     """
     if result.get("skipped"):
         logger.warning(
             "%s did no work: %s", name, result.get("reason", "reported skipped=True")
         )
+    elif result.get("skipped_reason"):
+        logger.warning("%s did no work: %s", name, result["skipped_reason"])
+    elif result.get("errors"):
+        logger.warning(
+            "%s completed with %s error(s) across %s organisation(s)",
+            name,
+            result["errors"],
+            result.get("organizations_processed", "?"),
+        )
 
 
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
-def dashboard_metrics_aggregate() -> dict[str, Any]:
-    """Aggregate source tables into the hourly/daily/monthly metrics tables."""
-    result = _call_internal(_AGGREGATE_PATH)
+def dashboard_metrics_aggregate(
+    tier: str | None = None, source_window_days: int | None = None
+) -> dict[str, Any]:
+    """Aggregate source tables into the hourly/daily/monthly metrics tables.
+
+    Both kwargs come from the schedule row and both are optional: ``tier`` selects
+    which tiers to write, ``source_window_days`` widens the daily lookback for the
+    reconciliation pass. Omitting either applies the backend task's own default.
+    """
+    body = {
+        key: value
+        for key, value in (
+            ("tier", tier),
+            ("source_window_days", source_window_days),
+        )
+        if value is not None
+    } or None
+    result = _call_internal(_AGGREGATE_PATH, body=body)
     _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
     return result
 

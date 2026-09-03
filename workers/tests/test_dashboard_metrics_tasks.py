@@ -8,6 +8,7 @@ enqueue site), the request shape, and the failure posture.
 
 from __future__ import annotations
 
+import inspect
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -67,6 +68,34 @@ class TestCallContract:
             dmt.dashboard_metrics_aggregate()
         assert call.call_args[0][0] == "v1/dashboard-metrics/aggregate/"
 
+    @pytest.mark.parametrize("tier", ["hourly", "daily_monthly", "all"])
+    def test_aggregate_forwards_the_tier_from_the_schedule_row(self, tier):
+        """UN-3974: the PG scheduler hands a row's task_kwargs over as **kwargs, so the
+        tier arrives here and has to reach the backend in the request body.
+
+        This is the leg that fails quietly. Drop the forwarding and every schedule still
+        fires, the endpoint still returns 200, and every other test here still passes —
+        but both rows run the default tier, so daily and monthly quietly go back to
+        being recomputed every 15 minutes.
+        """
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(tier=tier)
+        assert call.call_args.kwargs["body"] == {"tier": tier}
+
+    def test_aggregate_passes_the_source_window_through(self):
+        # UN-3973: the reconciliation row carries this; dropping it here silently
+        # reverts the pass to the narrow window it exists to widen.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(source_window_days=7)
+        assert call.call_args.kwargs["body"] == {"source_window_days": 7}
+
+    def test_aggregate_omits_the_body_when_neither_is_given(self):
+        # Rows written before 0006 carry no tier kwarg; the backend default then applies,
+        # which is every tier rather than none.
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate()
+        assert call.call_args.kwargs["body"] is None
+
     @pytest.mark.parametrize(
         "func,path",
         [
@@ -96,6 +125,40 @@ class TestCallContract:
         ):
             result = dmt.dashboard_metrics_aggregate()
         assert result["skipped"] is True
+
+
+class TestTheReconciliationKwargSurvives:
+    """0005 declares a row against this same task path carrying source_window_days.
+
+    The PG scheduler copies task_kwargs verbatim into the payload, so a proxy that
+    does not accept it raises TypeError per tick — not covered by autoretry_for, and
+    dropped at MAX_ATTEMPTS=1. The gap-repair pass simply never runs.
+    """
+
+    _DECLARED = [{}, {"tier": "hourly"}, {"source_window_days": 7}]
+
+    @pytest.mark.parametrize("kwargs", _DECLARED)
+    def test_every_scheduled_kwarg_set_binds(self, kwargs) -> None:
+        inspect.signature(dmt.dashboard_metrics_aggregate).bind(**kwargs)
+
+    def test_the_source_window_reaches_the_endpoint(self) -> None:
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate(source_window_days=7)
+        assert call.call_args.kwargs["body"] == {"source_window_days": 7}
+
+    def test_both_kwargs_travel_together(self) -> None:
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate(tier="hourly", source_window_days=7)
+        assert call.call_args.kwargs["body"] == {
+            "tier": "hourly",
+            "source_window_days": 7,
+        }
+
+    def test_omitting_both_sends_no_body(self) -> None:
+        # The backend then applies its own defaults rather than ones invented here.
+        with patch.object(dmt, "_call_internal", return_value={}) as call:
+            dmt.dashboard_metrics_aggregate()
+        assert call.call_args.kwargs["body"] is None
 
 
 class TestInternalCall:
@@ -138,7 +201,9 @@ class TestInternalCall:
     @pytest.mark.parametrize(
         "missing", ["INTERNAL_API_BASE_URL", "INTERNAL_SERVICE_API_KEY"]
     )
-    def test_missing_config_raises_rather_than_returning_falsy(self, monkeypatch, missing):
+    def test_missing_config_raises_rather_than_returning_falsy(
+        self, monkeypatch, missing
+    ):
         # Deliberately different from process_log_history.py, which returns False: that
         # runs under a bash loop with no other channel. Here raising is what marks the
         # message failed and gets it logged.

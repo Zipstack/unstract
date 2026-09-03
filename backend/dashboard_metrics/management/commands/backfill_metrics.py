@@ -3,6 +3,12 @@
 This command populates EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
 tables from historical data in source tables (Usage, PageUsage, WorkflowExecution, etc.)
 
+The current and previous month are recomputed from the daily tier by the aggregation
+task's daily/monthly pass, so inside that window this command's monthly output is
+overwritten and --skip-monthly is a no-op. --skip-daily is worse than useless there:
+monthly is rebuilt from a tier this run did not populate, producing an under-count.
+Backfill both, or neither.
+
 Usage:
     python manage.py backfill_metrics --days=30
     python manage.py backfill_metrics --days=90 --org-id=5
@@ -26,6 +32,7 @@ from dashboard_metrics.models import (
     MetricType,
 )
 from dashboard_metrics.services import MetricsQueryService
+from dashboard_metrics.tasks import _truncate_to_day
 
 logger = logging.getLogger(__name__)
 
@@ -92,12 +99,19 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-daily",
             action="store_true",
-            help="Skip daily aggregation",
+            help=(
+                "Skip daily aggregation. Unsafe for the current and previous month: "
+                "the aggregation task rebuilds monthly from daily there, so monthly "
+                "ends up under-counted."
+            ),
         )
         parser.add_argument(
             "--skip-monthly",
             action="store_true",
-            help="Skip monthly aggregation",
+            help=(
+                "Skip monthly aggregation. A no-op for the current and previous "
+                "month, which the aggregation task owns."
+            ),
         )
         parser.add_argument(
             "--active-only",
@@ -118,10 +132,22 @@ class Command(BaseCommand):
         active_only = options["active_only"]
 
         end_date = timezone.now()
-        start_date = end_date - timedelta(days=days)
+        # Truncated to match the cron's daily_start: an untruncated boundary writes the
+        # oldest day covering only part of it, and the monthly rollup now sums the
+        # persisted daily tier rather than recomputing that day from source.
+        start_date = _truncate_to_day(end_date - timedelta(days=days))
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
         self.stdout.write(f"Days: {days}")
+
+        if skip_daily and not skip_monthly:
+            self.stdout.write(
+                self.style.WARNING(
+                    "--skip-daily without --skip-monthly: the aggregation task "
+                    "rebuilds the current and previous month from the daily tier, "
+                    "so monthly will be overwritten with an under-count."
+                )
+            )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))
