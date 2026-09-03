@@ -33,6 +33,7 @@ from api_v2.exceptions import (
     contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
+from api_v2.openapi_schema import DEPLOYMENT_EXECUTION_SCHEMA
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
@@ -50,6 +51,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.

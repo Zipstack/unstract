@@ -646,12 +646,30 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         stuck past ``stuck_seconds`` whose files are ALL terminal, recomputes the
         correct terminal status from those files, and finalizes them.
 
-        Scoped to PG by ``queue_message_id`` (the durable per-row transport marker;
-        Celery rows carry ``task_id`` and ``queue_message_id=NULL``), so it needs no
-        Flipt context and never touches Celery executions.
+        **Covers BOTH transports (UN-3796).** It was scoped to PG by
+        ``queue_message_id__isnull=False``, which made a Celery execution invisible —
+        so one stranded by a PG cutover (its workers removed while its chord callback
+        was still to fire) sat ``EXECUTING`` forever with nothing able to close it. The
+        finalization logic itself was always transport-agnostic: it reads file statuses
+        and recomputes the terminal status, never touching a queue. Only the selection
+        was narrow.
+
+        Now requires the row to have been dispatched on **some** transport —
+        ``queue_message_id`` (PG) or ``task_id`` (Celery). That deliberately excludes
+        rows with BOTH handles NULL, which are never-dispatched and belong to
+        ``workflow_v2/undispatched_sweep.py``; the two predicates are disjoint on
+        ``task_id`` so they can never contend for the same row. (The
+        ``total == 0 → skipped`` guard below would also catch those, but relying on a
+        downstream guard for correctness is how overlaps get reintroduced.)
+
+        The method and route keep the ``_pg_`` name despite no longer being PG-only:
+        the URL is an internal-API contract between backend and workers, and renaming
+        it would break during a rolling deploy where an older worker still calls the
+        old path. Misleading name, deliberate trade.
         """
         from datetime import timedelta
 
+        from django.db.models import Exists, Max, OuterRef, Q
         from django.utils import timezone
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -672,15 +690,72 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         cutoff = timezone.now() - timedelta(seconds=stuck_seconds)
         terminal = ExecutionStatus.terminal_values()
 
+        # Select ONLY rows the per-row guard below can actually finalize: at least one
+        # file execution, and none of them still non-terminal.
+        #
+        # Without this the window fills with rows _recover_one_stuck_pg_execution()
+        # always skips — and a skip leaves ``modified_at`` untouched, so the SAME rows
+        # are re-selected on every sweep, forever. A genuinely recoverable execution
+        # behind them is never reached: not scanned, not skipped, simply invisible.
+        # Measured on integration during the UN-3796 cutover rehearsal: 1964 candidates,
+        # of which 476 had no file rows and 646 had a non-terminal file — 57% permanent
+        # skip fodder — while the freshly stranded execution sat at rank 1964 and every
+        # sweep logged a healthy-looking "scanned 100, recovered 0".
+        #
+        # Filtering here rather than leaning on the downstream guard is also what makes
+        # the drain real: every selected row finalizes and drops out of the candidate
+        # set, so the backlog shrinks monotonically. That is precisely what keeps the
+        # oldest-first ordering below starvation-free — FIFO is only fair if the queue
+        # actually moves.
+        files = WorkflowFileExecution.objects.filter(workflow_execution=OuterRef("pk"))
         stuck_ids = list(
             WorkflowExecution.objects.filter(
-                queue_message_id__isnull=False,  # PG-only; Celery uses task_id
+                # Dispatched by ANY evidence: the positive stamp, or either transport
+                # handle. dispatched_at alone is not enough — pre-0027 rows never got
+                # one — and the handles alone are not enough either, which is the gap
+                # that makes this three-way rather than two.
+                #
+                # Once undispatched_sweep also requires `dispatched_at IS NULL`, a row
+                # that WAS dispatched but whose handle write failed stops matching that
+                # sweep. Without dispatched_at here it would match neither, and an
+                # execution whose files all finished could sit non-terminal forever with
+                # nothing able to close it — trading "wrongly terminalised" for "never
+                # terminalised". The three-way test keeps the two sweeps disjoint AND
+                # jointly exhaustive: undispatched takes rows where all three are absent,
+                # this takes rows where any one is present.
+                Q(dispatched_at__isnull=False)
+                | Q(queue_message_id__isnull=False)
+                | Q(task_id__isnull=False),
                 status__in=[
                     ExecutionStatus.PENDING.value,
                     ExecutionStatus.EXECUTING.value,
                 ],
                 modified_at__lt=cutoff,
             )
+            .filter(Exists(files), ~Exists(files.exclude(status__in=terminal)))
+            # Staleness must be measured on the FILES, not on the execution row.
+            #
+            # ``workflow_execution.modified_at`` is effectively the START time: file
+            # completions write the file row, not the execution row, so it does not
+            # advance while work proceeds. ``modified_at < cutoff`` therefore reads as
+            # "started more than stuck_seconds ago", not "quiet for stuck_seconds" —
+            # and every run longer than the window is formally eligible for recovery
+            # WHILE IT IS STILL RUNNING. (Observed: a 14-minute ETL whose execution row
+            # still read its 12:01:44 start at 12:15, with a 600 s window.)
+            #
+            # The all-files-terminal filter above stops that being catastrophic, but it
+            # leaves a live race: between the last file going terminal and the callback
+            # finalizing, a healthy execution passes every check here. If a sweep lands
+            # in that window the reaper finalizes first, the terminal-one-way guard then
+            # refuses the callback's own write, and the notification never fires.
+            #
+            # Requiring the LAST FILE to also be older than the cutoff closes it: an
+            # execution whose files just finished is not yet stale, so the callback keeps
+            # its window and only genuinely abandoned work is recovered. Both conditions
+            # are kept — the indexed execution-row predicate cheaply narrows the scan,
+            # this one decides correctness.
+            .annotate(last_file_at=Max("file_executions__modified_at"))
+            .filter(last_file_at__lt=cutoff)
             .order_by("modified_at")
             .values_list("id", flat=True)[:limit]
         )
@@ -753,6 +828,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 else:
                     computed = ExecutionStatus.COMPLETED
                 execution.update_execution(status=computed)
+                self._restamp_execution_time_from_files(execution)
                 self._update_file_aggregates(
                     execution,
                     {
@@ -827,6 +903,35 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
             return error_msg[:253] + "..."
         return error_msg
+
+    @staticmethod
+    def _restamp_execution_time_from_files(execution) -> None:
+        """Correct the runtime ``update_execution()`` just stamped from ``now()``.
+
+        Both transports' status writers set ``execution_time = now - created_at`` on
+        any terminal transition (``_apply_legacy_update`` / ``_apply_pg_guarded_update``
+        in the execution model). That is right for a live finalization, where "now" IS
+        when the work ended, and wrong here: this sweep finalizes executions whose files
+        finished long before anything noticed, so the stamp would record how late the
+        reaper was rather than how long the work took. On the integration backlog that
+        meant multi-day runtimes on executions that ran for minutes — every one of them
+        feeding whatever dashboards read this column.
+
+        Recompute from the last file to reach a terminal state, which is the closest
+        durable record of when the work actually ended. If no file carries a timestamp,
+        leave whatever is there alone rather than substituting a worse guess.
+        """
+        from django.db.models import Max
+
+        last_file_at = WorkflowFileExecution.objects.filter(
+            workflow_execution=execution
+        ).aggregate(last=Max("modified_at"))["last"]
+        if not last_file_at or not execution.created_at:
+            return
+        execution.execution_time = round(
+            (last_file_at - execution.created_at).total_seconds(), 3
+        )
+        execution.save(update_fields=["execution_time"])
 
     @staticmethod
     def _update_file_aggregates(execution, validated_data) -> None:

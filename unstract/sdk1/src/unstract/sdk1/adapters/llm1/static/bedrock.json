@@ -29,12 +29,12 @@
       "type": "string",
       "title": "Model",
       "default": "amazon.titan-text-express-v1",
-      "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
+      "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models. Models served by the Bedrock Mantle endpoint (the OpenAI GPT-5.x and GPT-OSS, Google Gemma 4 and xAI Grok families) are detected and routed there automatically — enter the bare model ID, e.g. `openai.gpt-5.6-terra`, not a `us.`/`global.` cross-Region inference profile ID."
     },
     "model_id": {
       "type": "string",
       "title": "Application Inference Profile ARN",
-      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
+      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx. Not supported for models served by Bedrock Mantle (including GPT-5.x, GPT-OSS, Gemma 4 and Grok) — ignored with a warning."
     },
     "auth_type": {
       "type": "string",
@@ -66,12 +66,12 @@
       "type": "boolean",
       "title": "Enable Extended Thinking",
       "default": false,
-      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+      "description": "Enhance reasoning for complex tasks. For Claude models this enables extended thinking with the token budget below. For GPT-5.x, GPT-OSS and Nova 2 models it enables the model's own reasoning at medium effort; the budget below does not apply. Models without reasoning support gain no reasoning, but note this setting pins the sampling temperature to 1 for **every** Bedrock model, so leave it off unless you want that."
     },
     "guardrail_identifier": {
       "type": "string",
       "title": "Bedrock Guardrail Identifier",
-      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable."
+      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable. **Not supported for models served by Bedrock Mantle** (including GPT-5.x, GPT-OSS, Gemma 4 and Grok) — the Mantle endpoint has no guardrail field, so the setting is ignored with a warning and no moderation is applied."
     },
     "guardrail_version": {
       "type": "string",
@@ -187,13 +187,10 @@
             "type": "number",
             "minimum": 1024,
             "default": 1024,
-            "title": "Thinking Budget Tokens",
-            "description": "Sets the max tokens for Claude's internal reasoning when thinking is enabled"
+            "title": "Thinking Budget Tokens (Claude only)",
+            "description": "Sets the max tokens for Claude's internal reasoning when extended thinking is enabled. Ignored by non-Claude models, which reason at a fixed effort instead."
           }
-        },
-        "required": [
-          "budget_tokens"
-        ]
+        }
       }
     },
     {

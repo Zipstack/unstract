@@ -83,6 +83,16 @@ _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # tracking — when callers route through an AIP, the standard model id often
 # only appears here, not in `model`.
 _MODEL_ID_FIELDS: tuple[str, ...] = ("model", "model_id")
+# LiteLLM provider prefixes for the two distinct AWS Bedrock endpoints:
+# `bedrock/` is the classic bedrock-runtime Converse/Invoke surface, while
+# `bedrock_mantle/` is the OpenAI-compatible bedrock-mantle endpoint that
+# serves the OpenAI GPT-5.x and GPT-OSS, Google Gemma 4 and xAI Grok families.
+# The membership list is not hardcoded — see `_is_bedrock_mantle_model`.
+_BEDROCK_PREFIX = "bedrock/"
+_BEDROCK_MANTLE_PREFIX = "bedrock_mantle/"
+# Default effort used when reasoning is switched on for a model that takes
+# `reasoning_effort` rather than Anthropic's `thinking` block.
+_DEFAULT_REASONING_EFFORT = "medium"
 # Substring of a Bedrock Application Inference Profile ARN; the rest of the
 # ARN is an opaque profile id so the underlying foundation model id is not
 # recoverable from the string. Used only to narrow the debug-breadcrumb path
@@ -1100,6 +1110,143 @@ def _clean_str(value: str | None) -> str | None:
     return stripped or None
 
 
+def _is_bedrock_mantle_model(model: str) -> bool:
+    """Whether ``model`` is served by the AWS Bedrock Mantle endpoint.
+
+    Mantle (``bedrock-mantle.<region>.api.aws``) is a separate,
+    OpenAI-compatible endpoint from the classic ``bedrock-runtime``
+    Converse/Invoke surface, and LiteLLM exposes it as its own provider
+    (``bedrock_mantle/``). The two model-id namespaces are disjoint but look
+    confusingly similar -- ``openai.gpt-oss-120b-1:0`` is a Converse model
+    while ``openai.gpt-oss-120b`` is a Mantle one -- so membership **for an
+    unprefixed id** is decided by an exact lookup in LiteLLM's own registry,
+    never by a family or substring match. An explicit prefix on the incoming id
+    short-circuits that lookup and always wins, so an operator can override the
+    routing by typing the fully-qualified model id.
+
+    Anything LiteLLM does not list as a Mantle model keeps the classic route:
+    Claude, Titan, Nova, ARNs, and the ``us.``/``global.`` cross-Region
+    inference profile ids that belong to ``bedrock-runtime``. Note that set is
+    not closed — it also contains any genuine Mantle model missing from the
+    registry this process loaded, which routes to ``bedrock/`` and fails there.
+    """
+    if model.startswith(_BEDROCK_MANTLE_PREFIX):
+        return True
+    if model.startswith(_BEDROCK_PREFIX):
+        return False
+    # Imported lazily: base1 is imported during adapter discovery, and litellm
+    # is a heavy import we do not want on that path unless it is needed.
+    import litellm
+
+    return f"{_BEDROCK_MANTLE_PREFIX}{model}" in litellm.model_cost
+
+
+def _is_bedrock_anthropic_model(metadata: dict[str, "Any"]) -> bool:
+    """Whether the configured Bedrock model is an Anthropic/Claude one.
+
+    Checks both ``model`` and ``model_id`` so callers routing through a
+    Bedrock Application Inference Profile (opaque ARN in ``model``, Claude id
+    in ``model_id``) are still recognised.
+    """
+    model_ids = " ".join(
+        str(metadata.get(field, "")) for field in _MODEL_ID_FIELDS
+    ).lower()
+    return "anthropic" in model_ids or "claude" in model_ids
+
+
+def _apply_bedrock_reasoning_config(metadata: dict[str, "Any"]) -> bool:
+    """Write the reasoning config for the model's family into ``metadata``.
+
+    Bedrock exposes two different shapes behind the one user-facing switch:
+    Anthropic models take a ``thinking`` block with an explicit token budget,
+    while every other reasoning-capable family (Mantle GPT-5.x, gpt-oss on
+    Converse, Nova 2) takes ``reasoning_effort``, which LiteLLM then maps to
+    that family's own wire field. Emitting the Anthropic shape for a
+    non-Anthropic model is a silent no-op -- LiteLLM drops it -- which is why
+    the switch produced no *reasoning* outside Claude before this mapping
+    existed. It was never wholly inert, though: the ``temperature = 1`` write
+    below is unconditional, so enabling the toggle has always changed sampling
+    for every Bedrock family, including ones that cannot reason at all.
+
+    Returns whether reasoning ended up enabled, so the caller can decide which
+    keys to carry onto the validated payload.
+    """
+    enable_thinking = bool(metadata.get("enable_thinking", False))
+
+    # `enable_thinking` is a UI-only control field and is stripped before the
+    # kwargs are stored, so on re-validation an already-configured reasoning
+    # payload is the only evidence that it was switched on.
+    has_thinking_config = metadata.get("thinking") is not None
+    has_reasoning_effort = metadata.get("reasoning_effort") is not None
+    if has_thinking_config or has_reasoning_effort:
+        enable_thinking = True
+
+    if not enable_thinking:
+        return False
+
+    # Both shapes require an unconstrained temperature.
+    metadata["temperature"] = 1
+
+    if not _is_bedrock_anthropic_model(metadata):
+        # LiteLLM routes `reasoning_effort` per family (Mantle ->
+        # reasoning.effort, gpt-oss -> additionalModelRequestFields, Nova 2 ->
+        # reasoningConfig) and drops it for families that cannot reason, which
+        # matches the previous behaviour for those models.
+        metadata["reasoning_effort"] = (
+            metadata.get("reasoning_effort") or _DEFAULT_REASONING_EFFORT
+        )
+        metadata.pop("thinking", None)
+        return True
+
+    # Mirrors the pop in the branch above: the two shapes are mutually
+    # exclusive, and leaving a stray `reasoning_effort` on an Anthropic model
+    # would emit both. That is inert on the wire only because
+    # `litellm.drop_params` discards it on the Converse route, which is not a
+    # guarantee worth resting on.
+    metadata.pop("reasoning_effort", None)
+    if not has_thinking_config:
+        thinking_config: dict[str, Any] = {"type": "enabled"}
+        budget_tokens = metadata.get("budget_tokens")
+        if budget_tokens is not None:
+            thinking_config["budget_tokens"] = budget_tokens
+        metadata["thinking"] = thinking_config
+    return True
+
+
+# Params the Bedrock Mantle endpoint has no field for, mapped to the label used
+# when telling the operator they were ignored. Single source of truth: the strip
+# below iterates this mapping, so a new key cannot be added without its label.
+_MANTLE_UNSUPPORTED_PARAMS: dict[str, str] = {
+    "guardrailConfig": "Bedrock Guardrails",
+    "model_id": "Application Inference Profile ARNs",
+}
+
+
+def _strip_unsupported_mantle_params(validated: dict[str, "Any"]) -> None:
+    """Drop Bedrock-only params that the Mantle endpoint cannot honour.
+
+    Guardrails and Application Inference Profiles are features of the
+    ``bedrock-runtime`` Converse/Invoke APIs; the Mantle endpoint speaks the
+    OpenAI wire format and has no field for either (AWS documents guardrails
+    as "Converse API only" for these models). LiteLLM silently discards them,
+    which would leave an operator believing a guardrail is enforced when it is
+    not -- so drop them here and say so loudly.
+    """
+    unsupported = [key for key in _MANTLE_UNSUPPORTED_PARAMS if validated.get(key)]
+    if not unsupported:
+        return
+    for key in unsupported:
+        validated.pop(key, None)
+    logger.warning(
+        "AWS Bedrock model %r is served by the Bedrock Mantle endpoint, which "
+        "does not support %s. The setting(s) were ignored -- to apply a "
+        "Guardrail or an Application Inference Profile, use a model served by "
+        "the standard Bedrock (Converse) endpoint.",
+        validated.get("model"),
+        " and ".join(_MANTLE_UNSUPPORTED_PARAMS[key] for key in unsupported),
+    )
+
+
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
@@ -1128,36 +1275,10 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
-        # Handle AWS Bedrock thinking configuration (for Claude models)
-        enable_thinking = adapter_metadata.get("enable_thinking", False)
-
-        # If enable_thinking is not explicitly provided but thinking config is present,
-        # assume thinking was enabled in a previous validation
-        has_thinking_config = (
-            "thinking" in adapter_metadata
-            and adapter_metadata.get("thinking") is not None
-        )
-        if not enable_thinking and has_thinking_config:
-            enable_thinking = True
-
         # Create a copy to avoid mutating the original metadata
         result_metadata = adapter_metadata.copy()
 
-        if enable_thinking:
-            # Set temperature to 1 for thinking mode
-            result_metadata["temperature"] = 1
-
-            if has_thinking_config:
-                # Preserve existing thinking config
-                result_metadata["thinking"] = adapter_metadata["thinking"]
-            else:
-                # Create new thinking config
-                thinking_config = {"type": "enabled"}
-                budget_tokens = adapter_metadata.get("budget_tokens")
-                if budget_tokens is not None:
-                    thinking_config["budget_tokens"] = budget_tokens
-                result_metadata["thinking"] = thinking_config
-                result_metadata["temperature"] = 1
+        enable_thinking = _apply_bedrock_reasoning_config(result_metadata)
 
         # Prompt caching is opt-in and applied on the message payload (a
         # `cache_control` block on the stable system prompt), not as a LiteLLM
@@ -1167,15 +1288,16 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # don't advertise the flag for other Bedrock families (Titan, Llama,
         # etc.). The LLM layer enforces the same model gate; this just keeps the
         # validated metadata honest.
-        # Check both ``model`` and ``model_id`` so callers routing through a
-        # Bedrock Application Inference Profile (opaque ARN in ``model``, Claude
-        # id in ``model_id``) still qualify.
-        bedrock_model_ids = " ".join(
-            str(result_metadata.get(field, "")) for field in _MODEL_ID_FIELDS
-        ).lower()
+        # The Anthropic check reuses the same helper as the reasoning config, so
+        # the two gates *inside this function* cannot drift apart. It checks
+        # both ``model`` and ``model_id`` so callers routing through a Bedrock
+        # Application Inference Profile (opaque ARN in ``model``, Claude id in
+        # ``model_id``) still qualify. Note the LLM layer keeps its own markers
+        # (`llm.py`'s `_BEDROCK_CACHE_MODEL_MARKERS`) and does not call this
+        # helper, so extending the helper alone will not move that gate.
         enable_prompt_caching = bool(
             adapter_metadata.get("enable_prompt_caching", False)
-        ) and ("anthropic" in bedrock_model_ids or "claude" in bedrock_model_ids)
+        ) and _is_bedrock_anthropic_model(result_metadata)
 
         _pack_bedrock_guardrail_config(result_metadata)
 
@@ -1189,6 +1311,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 "enable_thinking",
                 "budget_tokens",
                 "thinking",
+                "reasoning_effort",
                 "auth_type",
                 "guardrail_identifier",
                 "guardrail_version",
@@ -1203,9 +1326,23 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         if not validated.get("guardrailConfig"):
             validated.pop("guardrailConfig", None)
 
-        # Add thinking config to final result if enabled
-        if enable_thinking and "thinking" in result_metadata:
-            validated["thinking"] = result_metadata["thinking"]
+        # Re-attach the reasoning config if enabled. Exactly one of the two
+        # shapes is present, decided by the model family above.
+        # `reasoning_effort` is deliberately not a declared field: it is
+        # stripped from `validation_metadata` below, so Pydantic never sees it
+        # and re-attaching here is what carries it across `LLM.complete()`'s
+        # re-validation of self.kwargs.
+        if enable_thinking:
+            if "thinking" in result_metadata:
+                validated["thinking"] = result_metadata["thinking"]
+            if result_metadata.get("reasoning_effort"):
+                validated["reasoning_effort"] = result_metadata["reasoning_effort"]
+
+        # Bedrock Mantle is an OpenAI-compatible endpoint with no field for
+        # Guardrails or Application Inference Profiles; drop them loudly rather
+        # than let LiteLLM discard them behind the operator's back.
+        if _is_bedrock_mantle_model(validated.get("model", "")):
+            _strip_unsupported_mantle_params(validated)
 
         # Apply Bedrock auth semantics: IAM Role mode drops keys, Access
         # Keys mode requires non-blank values, legacy (no auth_type) is
@@ -1217,12 +1354,21 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        """Prefix the model id with the LiteLLM provider that serves it.
+
+        Models on the OpenAI-compatible Bedrock Mantle endpoint (OpenAI
+        GPT-5.x, Google Gemma 4, xAI Grok) must be routed as
+        ``bedrock_mantle/<model>``; everything else keeps the classic
+        ``bedrock/<model>`` Converse/Invoke route. Idempotent: an already
+        prefixed id is returned untouched, which matters because
+        ``LLM.complete()`` re-validates the kwargs on every call.
+        """
         model = adapter_metadata.get("model", "")
-        # Only add bedrock/ prefix if the model doesn't already have it
-        if model.startswith("bedrock/"):
+        if model.startswith((_BEDROCK_PREFIX, _BEDROCK_MANTLE_PREFIX)):
             return model
-        else:
-            return f"bedrock/{model}"
+        if _is_bedrock_mantle_model(model):
+            return f"{_BEDROCK_MANTLE_PREFIX}{model}"
+        return f"{_BEDROCK_PREFIX}{model}"
 
 
 class AnthropicLLMParameters(BaseChatCompletionParameters):

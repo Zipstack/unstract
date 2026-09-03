@@ -1,7 +1,8 @@
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import fs from "fs";
 import path from "path";
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, transformWithEsbuild } from "vite";
 import svgr from "vite-plugin-svgr";
 
 const EMPTY_MODULE_ID = "\0optional-plugin-empty";
@@ -79,6 +80,60 @@ function optionalPluginImports() {
   };
 }
 
+/*
+ * Transforms JSX that lives in plain `.js` files.
+ *
+ * This is NOT transitional. The OSS tree's own JSX-bearing `.js` files were
+ * renamed to `.jsx`, but this build also compiles `src/plugins/`, which is
+ * copied in from the separate unstract-cloud repo at Docker build time. Nine
+ * of those plugin files put JSX in `.js`, and they are invisible from here —
+ * the first sign of trouble is a Docker build failing with
+ * "content contains invalid JS syntax".
+ *
+ * Deleting this to "clean up" therefore breaks the cloud image, not the OSS
+ * one. Renaming the cloud files instead would impose an unwritten rule (no
+ * JSX in `.js`, anywhere, ever) that nothing enforces and cloud developers
+ * cannot see.
+ *
+ * Scoped to `.js` on purpose. Vite's own `esbuild` option cannot express this:
+ * its `include` REPLACES the default filter, and its `loader` is one string
+ * applied to every matched file, so covering `.js` there would hand `.ts` to
+ * the JSX parser.
+ */
+function jsxInJs() {
+  return {
+    name: "jsx-in-js",
+    async transform(code, id) {
+      if (id.includes("/node_modules/")) {
+        return null;
+      }
+      const [filepath] = id.split("?");
+      if (!/\/src\/.*\.js$/.test(filepath)) {
+        return null;
+      }
+      return transformWithEsbuild(code, filepath, {
+        loader: "jsx",
+        /*
+         * `jsx: "automatic"` is load-bearing, and its absence does NOT fail
+         * the build — it produces a white screen at runtime.
+         *
+         * esbuild defaults to the classic runtime, emitting
+         * `React.createElement(...)`. These files use JSX without importing
+         * React (the automatic runtime injects `jsx-runtime` itself), so the
+         * classic output referenced an undefined binding and threw
+         * `ReferenceError: React is not defined` while rendering the router —
+         * killing the whole app, with a green build and HTTP 200 throughout.
+         *
+         * The old `esbuild` block never hit this because Vite applies its own
+         * resolved `jsx` setting to that path; a standalone
+         * transformWithEsbuild call does not inherit it.
+         */
+        jsx: "automatic",
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -87,20 +142,43 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       optionalPluginImports(),
+      // Tailwind v4. Must come after optionalPluginImports() so missing
+      // cloud-plugin imports are still resolved to stubs first.
+      tailwindcss(),
+      // Must precede react(): it turns JSX-bearing .js into plain JS, which is
+      // what the React transform (and Rollup's import analysis) then expect.
+      jsxInJs(),
       react({
-        // Include .js files for JSX transformation
-        include: "**/*.{jsx,js}",
+        // Include .js files for JSX transformation, plus the TypeScript
+        // shim layer so it gets Fast Refresh in dev like everything else.
+        include: "**/*.{jsx,js,tsx,ts}",
       }),
       // SVG as React component support (for `import Logo from './logo.svg?react'`)
       svgr(),
     ],
 
-    // ESBuild configuration to handle JSX in .js files
-    esbuild: {
-      loader: "jsx",
-      include: /src\/.*\.jsx?$/,
-      exclude: [],
-    },
+    /*
+     * No `esbuild` override here, deliberately — Vite's defaults
+     * (`include: /\.(m?ts|[jt]sx)$/`, and a loader derived per-file from the
+     * extension) are exactly right once TypeScript is in the tree.
+     *
+     * This block previously read `{ loader: "jsx", include: /src\/.*\.jsx?$/ }`
+     * to cope with .js files that contain JSX. Both halves break TypeScript,
+     * and each cost a build to diagnose:
+     *
+     *   - `include` REPLACES Vite's default filter rather than extending it,
+     *     so .ts/.tsx were never transformed at all and failed to parse with a
+     *     bare "Expected ';', '}' or <eof>".
+     *   - `loader` reaches esbuild's single-file transform API, where it must
+     *     be a string (the per-extension map form is bundle-API only) and is
+     *     applied to every matched file. One blanket "jsx" hands TypeScript to
+     *     the JSX parser, which misreads the `<` in
+     *     `React.forwardRef<HTMLButtonElement, Props>(…)` as an opening tag.
+     *
+     * JSX-in-.js is handled by jsxInJs() above instead — see the note there
+     * for why the cloud plugin tree makes that a permanent requirement rather
+     * than a transitional one.
+     */
 
     // Resolve configuration
     resolve: {
@@ -113,6 +191,18 @@ export default defineConfig(({ mode }) => {
     server: {
       host: "0.0.0.0",
       port: Number(env.PORT) || 3000,
+      // Vite refuses requests whose Host header is not localhost or an IP, as a
+      // DNS-rebinding guard. That is the right default locally, but when the dev
+      // server runs inside a cluster pod behind an ingress the browser sends the
+      // real domain and every request comes back "Blocked request". Opt in per
+      // environment with a comma-separated list, e.g. ".example.com".
+      // Empty list == Vite's default (localhost/IPs only), so local dev and the
+      // production build are unaffected.
+      allowedHosts: env.VITE_DEV_ALLOWED_HOSTS
+        ? env.VITE_DEV_ALLOWED_HOSTS.split(",")
+            .map((host) => host.trim())
+            .filter(Boolean)
+        : [],
       // Docker-specific: Enable polling for file watching
       watch: {
         usePolling: true,
@@ -124,6 +214,13 @@ export default defineConfig(({ mode }) => {
         clientPort: env.WDS_SOCKET_PORT
           ? Number(env.WDS_SOCKET_PORT)
           : Number(env.PORT) || 3000,
+        // Behind a TLS-terminating ingress the page is served over https, so the
+        // HMR socket has to be wss on the ingress port (443) rather than the
+        // port the dev server itself listens on. Left unset, Vite derives the
+        // protocol from its own (plain http) server and the socket never opens.
+        ...(env.VITE_DEV_HMR_PROTOCOL
+          ? { protocol: env.VITE_DEV_HMR_PROTOCOL }
+          : {}),
       },
       // Proxy configuration (similar to setupProxy.js in CRA)
       proxy:
@@ -160,7 +257,6 @@ export default defineConfig(({ mode }) => {
           // Manual chunk splitting for better caching
           manualChunks: {
             "react-vendor": ["react", "react-dom", "react-router-dom"],
-            "antd-vendor": ["antd", "@ant-design/icons"],
             "pdf-vendor": [
               "@react-pdf-viewer/core",
               "@react-pdf-viewer/default-layout",
@@ -173,15 +269,6 @@ export default defineConfig(({ mode }) => {
       },
     },
 
-    // CSS configuration
-    css: {
-      preprocessorOptions: {
-        less: {
-          javascriptEnabled: true,
-        },
-      },
-    },
-
     // Define global constants
     define: {
       "process.env": {}, // For compatibility with some libraries expecting process.env
@@ -189,13 +276,7 @@ export default defineConfig(({ mode }) => {
 
     // Optimize dependencies
     optimizeDeps: {
-      include: [
-        "react",
-        "react-dom",
-        "react-router-dom",
-        "antd",
-        "@ant-design/icons",
-      ],
+      include: ["react", "react-dom", "react-router-dom"],
       exclude: [],
       esbuildOptions: {
         loader: {

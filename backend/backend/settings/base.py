@@ -371,9 +371,6 @@ SHARED_APPS = (
     # Connector OAuth
     # "connector_auth",
     "social_django",
-    # Doc generator
-    "drf_yasg",
-    "docs",
     # Plugins
     "plugins.apps.PluginsConfig",
     "feature_flag",
@@ -653,6 +650,44 @@ REST_FRAMEWORK = {
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
     "VERSION_PARAM": "version",
+    # The standardized-errors variant, because EXCEPTION_HANDLER above
+    # delegates to that package: it is the schema class that knows the error
+    # bodies these views actually return.
+    "DEFAULT_SCHEMA_CLASS": "drf_standardized_errors.openapi.AutoSchema",
+}
+
+# Read only while generating the OpenAPI spec
+# (``manage.py generate_docstudio_spec``); no effect at request time.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Unstract API",
+    "VERSION": "v1",
+    "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Declared, because DRF's unset authentication default is otherwise
+    # introspected as a decision and publishes auth these endpoints reject.
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "deploymentKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": "The API deployment's own key.",
+            }
+        }
+    },
+    # Without this the enum component is named after the field that holds it,
+    # and generated clients get a class called `TypeEnum`.
+    "ENUM_NAME_OVERRIDES": {"ErrorType": "api_v2.openapi_schema.ERROR_TYPES"},
+    # Group descriptions generated clients show in their help; without this
+    # the spec has no root `tags` array for the text to live in.
+    "TAGS": [
+        {
+            "name": "deployment",
+            "description": (
+                "Run an API deployment against one or more documents and poll "
+                "the result."
+            ),
+        }
+    ],
 }
 
 # These paths will work without authentication
@@ -676,13 +711,6 @@ WHITELISTED_PATHS.append("/health")
 
 # These path will work without organization in request
 ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
-
-# API Doc Generator Settings
-# https://drf-yasg.readthedocs.io/en/stable/settings.html
-REDOC_SETTINGS = {
-    "PATH_IN_MIDDLE": True,
-    "REQUIRED_PROPS_FIRST": True,
-}
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"

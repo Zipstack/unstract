@@ -13,6 +13,14 @@ on:
         required: false
         default: "" # Run for all dirs specified in docker/scripts/uv-lock-gen/uv-lock.sh
 
+# Serialize per branch. Pushing twice in quick succession used to start
+# overlapping runs that raced each other's auto-commit, and the loser failed the
+# whole job with "failed to push some refs". Only the newest run's lockfiles are
+# of any interest, so cancel whatever is already in flight for the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   update_uv_lock:
     name: Update UV lock in all directories

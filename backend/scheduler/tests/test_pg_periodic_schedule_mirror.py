@@ -83,39 +83,48 @@ class TestUpsertMirror:
             )
 
 
-class TestUpsertNextRunRecompute:
-    """UN-3690 — a cron EDIT must retarget ``next_run_at`` (Beat parity), so the
-    new time takes effect this cycle instead of the pipeline firing once more at
-    the stale old-cron time. Only for an already-baselined row: a fresh row and a
-    Beat→PG hand-over keep ``next_run_at`` NULL for the scheduler's no-burst
-    baseline.
-    """
+class _UpsertNextRunHelpers:
+    """Shared setup for the two ``next_run_at`` suites below. Helpers only — no
+    tests live here, so neither suite re-runs the other's cases."""
 
     _OLD = datetime(2026, 1, 1, 9, 0, tzinfo=dt_timezone.utc)
 
     @staticmethod
-    def _mock_existing(sched, *, cron_string, next_run_at):
+    def _mock_existing(sched, *, cron_string, next_run_at, enabled=True):
         _stub_existing_row(
             sched,
             None
             if cron_string is None
-            else {"cron_string": cron_string, "next_run_at": next_run_at},
+            else {
+                "cron_string": cron_string,
+                "next_run_at": next_run_at,
+                "enabled": enabled,
+            },
         )
 
     @staticmethod
-    def _upsert(cron):
+    def _upsert(cron, enabled=True):
         tasks.mirror_periodic_schedule_upsert(
             pipeline_id=_PIPELINE_ID,
             organization_id=_ORG,
             workflow_id=_WORKFLOW_ID,
             pipeline_name=_REAL_NAME,
             cron_string=cron,
-            enabled=True,
+            enabled=enabled,
         )
 
     @staticmethod
     def _defaults(sched):
         return sched.objects.update_or_create.call_args.kwargs["defaults"]
+
+
+class TestUpsertNextRunRecompute(_UpsertNextRunHelpers):
+    """UN-3690 — a cron EDIT must retarget ``next_run_at`` (Beat parity), so the
+    new time takes effect this cycle instead of the pipeline firing once more at
+    the stale old-cron time. Only for an already-baselined row: a fresh row and a
+    Beat→PG hand-over keep ``next_run_at`` NULL for the scheduler's no-burst
+    baseline.
+    """
 
     def test_cron_change_on_baselined_row_retargets_next_run_at(self):
         now = datetime(2026, 1, 1, 8, 0, tzinfo=dt_timezone.utc)
@@ -170,6 +179,86 @@ class TestUpsertNextRunRecompute:
             self._upsert("0 10 * * *")  # must not raise
         assert sched.objects.update_or_create.called  # base mirror write still ran
         assert "next_run_at" not in self._defaults(sched)
+
+
+class TestUpsertResumeBaselinesStaleNextRun(_UpsertNextRunHelpers):
+    """A UI resume must not fire a catch-up run.
+
+    ``enable_task`` baselines ``next_run_at`` on resume, but the UI does not take
+    that path — it re-saves the pipeline, reaching
+    ``SchedulerHelper._schedule_task_job`` → ``mirror_periodic_schedule_upsert``
+    (here) and ``reconcile_ownership_for``. The latter baselines only on a
+    Beat→PG hand-over, so a row that is ALREADY ``pg_owned`` keeps whatever
+    ``next_run_at`` it had when it was paused — days in the past — and the PG
+    tick's ``next_run_at <= now()`` fires it on the very next pass.
+
+    Observed three times on integration (2026-08-12, -14, -20): each enable of
+    ``gallh_load_test`` produced a spurious run 2-3s later, then settled onto the
+    cron correctly.
+    """
+
+    def test_resume_clears_a_stale_next_run_at(self):
+        """The bug, directly: paused row + past next_run_at, re-enabled."""
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(
+                sched, cron_string="8 * * * *", next_run_at=self._OLD, enabled=False
+            )
+            self._upsert("8 * * * *", enabled=True)
+        defaults = self._defaults(sched)
+        # Present AND None: writing NULL is the baseline instruction. Merely
+        # omitting the key would leave the stale value in place — the bug.
+        assert "next_run_at" in defaults
+        assert defaults["next_run_at"] is None
+
+    def test_resume_that_also_edits_the_cron_still_baselines(self):
+        """Resume is checked before the cron comparison, so a combined
+        resume+edit baselines rather than retargeting. Both are non-firing, but
+        this pins the ordering — reversing it would let the equal-cron early-out
+        swallow the common plain-resume case."""
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(
+                sched, cron_string="0 9 * * *", next_run_at=self._OLD, enabled=False
+            )
+            self._upsert("0 10 * * *", enabled=True)
+        assert self._defaults(sched)["next_run_at"] is None
+
+    def test_a_save_on_an_already_enabled_row_is_untouched(self):
+        """The mid-cycle guard. This helper runs on EVERY pipeline save, so a
+        rename at 12:07:59 against a 12:08 next_run_at must not re-baseline and
+        skip that fire. Only the False→True transition clears."""
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(
+                sched, cron_string="8 * * * *", next_run_at=self._OLD, enabled=True
+            )
+            self._upsert("8 * * * *", enabled=True)
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_pause_does_not_clear_next_run_at(self):
+        """Nothing fires while disabled, so there is nothing to guard against —
+        and clearing here would discard the value resume needs to detect."""
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(
+                sched, cron_string="8 * * * *", next_run_at=self._OLD, enabled=True
+            )
+            self._upsert("8 * * * *", enabled=False)
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_resume_of_a_never_baselined_row_writes_nothing(self):
+        """next_run_at already NULL is already the baseline — no write needed,
+        and the read short-circuits before the enabled check."""
+        with patch("scheduler.tasks.PgPeriodicSchedule") as sched:
+            self._mock_existing(
+                sched, cron_string="8 * * * *", next_run_at=None, enabled=False
+            )
+            self._upsert("8 * * * *", enabled=True)
+        assert "next_run_at" not in self._defaults(sched)
+
+    def test_the_sentinel_is_not_none(self):
+        """The whole fix rests on 'leave alone' being distinguishable from 'write
+        NULL'. If the sentinel were None-y, the resume baseline would silently
+        degrade back to the old skip-the-write behaviour and every test above
+        would still pass on the omission path."""
+        assert tasks._LEAVE_NEXT_RUN_AT is not None
 
 
 class TestHelperWiringSourcesRealName:
@@ -336,3 +425,53 @@ class TestDeleteMirror:
             pt.objects.get.return_value = MagicMock()
             sched.objects.filter.return_value.delete.side_effect = RuntimeError("db down")
             tasks.delete_periodic_task(_PIPELINE_ID)  # must not raise
+
+
+class TestResumeBaselinesInsteadOfCatchingUp:
+    """Re-enabling a paused schedule must resume at the next cron match, not fire now.
+
+    While a schedule is paused its `next_run_at` keeps drifting into the past, so the
+    PG tick's `next_run_at <= now()` matches on the very next pass and the pipeline runs
+    IMMEDIATELY on resume — the longer the pause, the more certain. NULL is the guard:
+    "record a baseline next tick, don't fire this cycle" (pg_queue/models.py:366).
+
+    Observed on integration 2026-08-14: gallh_load_test fired ~2s after being
+    re-enabled, against a next_run_at two days old, on top of the operator's manual run.
+
+    CORRECTION (2026-08-24): this docstring used to claim "Beat parity, not a new rule —
+    DatabaseScheduler ... recomputes due-ness from the crontab each tick, so resume
+    never produced a catch-up run there." Wrong on the mechanism: it recomputes from
+    PeriodicTask.last_run_at, so Beat catches up as well. Both schedulers need their
+    clock baselined on a hand-over; the Beat half is pinned by
+    scheduler/tests/test_pg_schedule_ownership.py::TestBeatClockBaselineOnRelease.
+    """
+
+    def _run(self, fn):
+        with (
+            patch("scheduler.tasks.PeriodicTask") as pt,
+            patch("scheduler.tasks.PeriodicTasks"),
+            patch("scheduler.tasks.PipelineProcessor"),
+            patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+            patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
+        ):
+            pt.objects.get.return_value = MagicMock()
+            (
+                sched.objects.select_for_update.return_value.filter.return_value
+                .values_list.return_value.first.return_value
+            ) = False
+            sched.objects.filter.return_value.update.return_value = 1
+            fn(_PIPELINE_ID)
+            return sched.objects.filter.return_value.update.call_args.kwargs
+
+    def test_resume_clears_next_run_at(self):
+        kwargs = self._run(tasks.enable_task)
+        assert kwargs["enabled"] is True
+        assert kwargs["next_run_at"] is None
+
+    def test_pause_leaves_next_run_at_alone(self):
+        """Nothing fires while disabled, so there is nothing to guard against — and
+        clearing here would discard the value resume needs to baseline against.
+        """
+        kwargs = self._run(tasks.disable_task)
+        assert kwargs["enabled"] is False
+        assert "next_run_at" not in kwargs

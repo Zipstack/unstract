@@ -25,8 +25,6 @@ urlpatterns = [
     path("", include("account_v2.urls")),
     # Connector OAuth
     path("", include("connector_auth_v2.urls")),
-    # Docs
-    path("", include("docs.urls")),
     # Feature flags
     path("flags/", include("feature_flag.urls")),
     # Pipeline
