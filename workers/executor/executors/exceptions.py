@@ -5,6 +5,8 @@ class is replaced with ``LegacyExecutorError`` so these exceptions
 work outside of Flask (i.e. inside the Celery executor worker).
 """
 
+from unstract.core.prompt_run_cancellation import PROMPT_RUN_CANCELLED_ERROR
+
 
 class LegacyExecutorError(Exception):
     """Base exception for legacy executor errors.
@@ -27,6 +29,20 @@ class LegacyExecutorError(Exception):
             self.code = code
         self.partial_usage_records: list[dict] = list(partial_usage_records or [])
         super().__init__(self.message)
+
+
+class ExecutionCancelled(LegacyExecutorError):
+    """The user stopped this run from Prompt Studio (UN-1031).
+
+    A ``LegacyExecutorError`` so it inherits ``partial_usage_records`` — tokens
+    already spent before the stop are still billed — and so ``execute()``'s
+    existing handler turns it into a result rather than letting it escape into
+    the consumer's retry path. The message is the shared sentinel every layer
+    matches on, so callers can tell a stop apart from a genuine failure.
+    """
+
+    code = 499  # nginx's "client closed request"; never rendered to a user
+    message = PROMPT_RUN_CANCELLED_ERROR
 
 
 class BadRequest(LegacyExecutorError):

@@ -20,9 +20,17 @@ const runNonceMap = new Map();
 const SOCKET_TIMEOUT_MS = 16 * 60 * 1000; // 16 minutes
 
 const usePromptRun = () => {
-  const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();
+  const { pushPromptRunApi, freeActiveApi, removeQueuedApis } =
+    usePromptRunQueueStore();
   const { generatePromptOutputKey } = usePromptOutput();
-  const { addPromptStatus, removePromptStatus } = usePromptRunStatusStore();
+  const {
+    addPromptStatus,
+    removePromptStatus,
+    registerRun,
+    markRunsStopping,
+    unmarkRunsStopping,
+    unregisterRun,
+  } = usePromptRunStatusStore();
   const { details, llmProfiles, listOfDocs } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
@@ -58,16 +66,37 @@ const usePromptRun = () => {
     const nonce = generateUUID();
     runNonceMap.set(nonceKey, nonce);
 
+    // Registered BEFORE the request goes out: the backend blocks on extraction
+    // and indexing before it answers, and a Stop during that window is exactly
+    // the one users reach for (UN-1031).
+    registerRun(runId, {
+      promptIds: [promptId],
+      docId,
+      profileId,
+      statusKey,
+      operation: "fetch_response",
+    });
+
     makeApiRequest(requestOptions)
       .then((res) => {
         // Handle pending-indexing response: clear running status immediately
         if (res?.data?.status === "pending") {
           removePromptStatus(promptId, statusKey);
+          unregisterRun(runId);
           setAlertDetails({
             type: "info",
             content:
               res?.data?.message || "Document is being indexed. Please wait.",
           });
+          return;
+        }
+
+        // Stopped before anything was dispatched, so no socket event is
+        // coming — this response is the terminal one.
+        if (res?.data?.status === "cancelled") {
+          removePromptStatus(promptId, statusKey);
+          unregisterRun(runId);
+          runNonceMap.delete(nonceKey);
           return;
         }
 
@@ -95,6 +124,7 @@ const usePromptRun = () => {
           handleException(err, "Failed to generate prompt output"),
         );
         removePromptStatus(promptId, statusKey);
+        unregisterRun(runId);
         runNonceMap.delete(nonceKey);
       })
       .finally(() => {
@@ -122,6 +152,13 @@ const usePromptRun = () => {
     };
 
     const statusKey = generateApiRunStatusId(docId, profileId);
+    registerRun(runId, {
+      promptIds,
+      docId,
+      profileId,
+      statusKey,
+      operation: "fetch_response",
+    });
     const nonces = {};
     promptIds.forEach((promptId) => {
       const nonceKey = `${promptId}__${statusKey}`;
@@ -154,11 +191,22 @@ const usePromptRun = () => {
           promptIds.forEach((promptId) => {
             removePromptStatus(promptId, statusKey);
           });
+          unregisterRun(runId);
           setAlertDetails({
             type: "info",
             content:
               res?.data?.message || "Document is being indexed. Please wait.",
           });
+          return;
+        }
+
+        // Stopped before dispatch: this response is the terminal one.
+        if (res?.data?.status === "cancelled") {
+          clearStaleStatuses();
+          promptIds.forEach((promptId) => {
+            removePromptStatus(promptId, statusKey);
+          });
+          unregisterRun(runId);
           return;
         }
 
@@ -168,6 +216,7 @@ const usePromptRun = () => {
         setAlertDetails(
           handleException(err, "Failed to generate prompt output"),
         );
+        unregisterRun(runId);
         promptIds.forEach((promptId) => {
           const nonceKey = `${promptId}__${statusKey}`;
           removePromptStatus(promptId, statusKey);
@@ -177,6 +226,87 @@ const usePromptRun = () => {
       .finally(() => {
         freeActiveApi();
       });
+  };
+
+  const postCancel = (runs) => {
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/cancel/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: { runs },
+    };
+    return makeApiRequest(requestOptions)
+      .then((res) => {
+        // A run the backend could not record (the signal store was
+        // unreachable) is STILL RUNNING and still billing. Leaving it marked
+        // "stopping" would tell the user the opposite, so un-mark it and say
+        // so — this is the one case where the Stop silently did nothing.
+        const failed = res?.data?.failed || [];
+        if (failed.length) {
+          unmarkRunsStopping(failed);
+          setAlertDetails({
+            type: "error",
+            content:
+              "Could not stop the run. It is still running — please try again.",
+          });
+        }
+        return res;
+      })
+      .catch((err) => {
+        unmarkRunsStopping(runs.map((run) => run.run_id));
+        setAlertDetails(handleException(err, "Failed to stop the prompt run"));
+      });
+  };
+
+  // Stop every in-flight run of one prompt. Queued-but-unsent runs are dropped
+  // locally (they cost nothing and have no backend to tell); runs already sent
+  // are cancelled by run_id, naming just this prompt so a bulk run's other
+  // prompts keep going.
+  const stopPromptRuns = (promptId) => {
+    if (!promptId) {
+      return;
+    }
+
+    const dropped = removeQueuedApis((api) => api.startsWith(`${promptId}__`));
+    dropped.forEach((api) => {
+      const [, docId, profileId] = api.split("__");
+      removePromptStatus(promptId, generateApiRunStatusId(docId, profileId));
+    });
+
+    const { activeRuns } = usePromptRunStatusStore.getState();
+    const runs = Object.entries(activeRuns)
+      .filter(([, run]) => run?.promptIds?.includes(promptId))
+      .map(([runId]) => ({ run_id: runId, prompt_ids: [promptId] }));
+
+    if (!runs.length) {
+      return;
+    }
+
+    markRunsStopping(runs.map((run) => run.run_id));
+    postCancel(runs);
+  };
+
+  // Stop everything running for this project.
+  const stopAllRuns = () => {
+    const dropped = removeQueuedApis(() => true);
+    dropped.forEach((api) => {
+      const [promptId, docId, profileId] = api.split("__");
+      removePromptStatus(promptId, generateApiRunStatusId(docId, profileId));
+    });
+
+    const { activeRuns } = usePromptRunStatusStore.getState();
+    const runIds = Object.keys(activeRuns);
+    if (!runIds.length) {
+      return;
+    }
+
+    markRunsStopping(runIds);
+    // prompt_ids omitted: cancel the whole run, including the extraction and
+    // indexing stages its prompts share.
+    postCancel(runIds.map((runId) => ({ run_id: runId })));
   };
 
   const runPrompt = (listOfApis) => {
@@ -332,6 +462,9 @@ const usePromptRun = () => {
     runPrompt,
     handlePromptRunRequest,
     syncPromptRunApisAndStatus,
+    stopPromptRuns,
+    stopAllRuns,
+    registerRun,
   };
 };
 

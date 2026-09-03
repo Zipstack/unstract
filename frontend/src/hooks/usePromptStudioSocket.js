@@ -18,7 +18,7 @@ const PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result";
  */
 const usePromptStudioSocket = () => {
   const socket = useContext(SocketContext);
-  const { removePromptStatus, clearPromptStatusById } =
+  const { removePromptStatus, clearPromptStatusById, unregisterRun } =
     usePromptRunStatusStore();
   const { updateCustomTool, deleteIndexDoc, selectedDoc, details } =
     useCustomToolStore();
@@ -133,6 +133,59 @@ const usePromptStudioSocket = () => {
     ],
   );
 
+  // A run the user stopped (UN-1031). Not an error: it can still carry
+  // answers for the prompts that finished before the stop, so the results are
+  // applied exactly as a completed run's are — only the toast differs.
+  const handleCancelled = useCallback(
+    (operation, result, extra) => {
+      if (
+        operation === "fetch_response" ||
+        operation === "single_pass_extraction"
+      ) {
+        const data = Array.isArray(result) ? result : [];
+        if (data.length) {
+          // Second arg is isReset, not a mode flag: partial results are merged
+          // in exactly as a completed run's are, never used to wipe state.
+          updatePromptOutputState(data, false, extra?.elapsed || 0);
+        }
+        if (operation === "single_pass_extraction") {
+          updateCustomTool({ isSinglePassExtractLoading: false });
+        }
+        const promptIds = extra?.prompt_ids || [];
+        if (extra?.document_id && extra?.profile_manager_id) {
+          clearPromptStatuses(
+            promptIds,
+            extra?.document_id,
+            extra?.profile_manager_id,
+          );
+        } else {
+          // Cancelled before the profile was resolved: clear every status for
+          // these prompts rather than leave a spinner running forever.
+          promptIds.forEach((promptId) => {
+            clearPromptStatusById(promptId);
+          });
+        }
+      } else if (operation === "index_document" && extra?.document_id) {
+        deleteIndexDoc(extra.document_id);
+      }
+
+      unregisterRun(extra?.run_id);
+      setAlertDetails({
+        type: "info",
+        content: "Prompt run stopped.",
+      });
+    },
+    [
+      updatePromptOutputState,
+      updateCustomTool,
+      clearPromptStatuses,
+      clearPromptStatusById,
+      deleteIndexDoc,
+      unregisterRun,
+      setAlertDetails,
+    ],
+  );
+
   const onResult = useCallback(
     (payload) => {
       try {
@@ -146,8 +199,12 @@ const usePromptStudioSocket = () => {
 
         if (status === "completed") {
           handleCompleted(operation, result, extra);
+          unregisterRun(extra?.run_id);
         } else if (status === "failed") {
           handleFailed(operation, error, extra);
+          unregisterRun(extra?.run_id);
+        } else if (status === "cancelled") {
+          handleCancelled(operation, result, extra);
         }
       } catch (err) {
         setAlertDetails(
@@ -155,7 +212,15 @@ const usePromptStudioSocket = () => {
         );
       }
     },
-    [handleCompleted, handleFailed, setAlertDetails, handleException, details],
+    [
+      handleCompleted,
+      handleFailed,
+      handleCancelled,
+      unregisterRun,
+      setAlertDetails,
+      handleException,
+      details,
+    ],
   );
 
   useEffect(() => {

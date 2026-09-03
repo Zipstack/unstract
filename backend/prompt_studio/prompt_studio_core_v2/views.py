@@ -54,6 +54,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
     MaxProfilesReachedError,
     OperationNotSupported,
+    PromptRunCancelled,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
@@ -83,6 +84,7 @@ from prompt_studio.tool_usage import (
     join_deployment_types,
 )
 from unstract.core.data_models import PgTaskStatus
+from unstract.core.prompt_run_cancellation import request_cancel
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -97,6 +99,21 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_uuid(value: Any) -> bool:
+    """Whether *value* is a well-formed UUID string.
+
+    The cancel endpoint takes ids straight from the browser and turns them into
+    Redis keys, so they are validated rather than trusted.
+    """
+    if not isinstance(value, str):
+        return False
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
 
 
 def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
@@ -582,18 +599,29 @@ class PromptStudioCoreView(
                 status=status.HTTP_202_ACCEPTED,
             )
 
-        context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
-            tool=custom_tool,
-            doc_path=doc_path,
-            doc_name=document.document_name,
-            prompt=prompt,
-            org_id=org_id,
-            user_id=user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager_id,
-            request_user=request.user,
-        )
+        try:
+            context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
+                tool=custom_tool,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                prompt=prompt,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                request_user=request.user,
+            )
+        except PromptRunCancelled:
+            # The user stopped this run while it was still in the blocking
+            # stages, so nothing was enqueued and no callback will ever fire.
+            # Answer the POST itself instead, and let the frontend clear the
+            # spinner the same way it does for the "pending" short-circuit.
+            logger.info("Prompt run %s cancelled before dispatch", run_id)
+            return Response(
+                {"status": "cancelled", "run_id": run_id},
+                status=status.HTTP_200_OK,
+            )
 
         # If document is being indexed, return pending status
         if context is None:
@@ -695,18 +723,29 @@ class PromptStudioCoreView(
             )
         doc_path = str(Path(doc_path) / document.document_name)
 
-        context, cb_kwargs = PromptStudioHelper.build_bulk_fetch_response_payload(
-            tool=custom_tool,
-            doc_path=doc_path,
-            doc_name=document.document_name,
-            prompts=prompts,
-            org_id=org_id,
-            user_id=user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager_id,
-            request_user=request.user,
-        )
+        try:
+            context, cb_kwargs = PromptStudioHelper.build_bulk_fetch_response_payload(
+                tool=custom_tool,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                prompts=prompts,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+                request_user=request.user,
+            )
+        except PromptRunCancelled:
+            # The user stopped this run while it was still in the blocking
+            # stages, so nothing was enqueued and no callback will ever fire.
+            # Answer the POST itself instead, and let the frontend clear the
+            # spinner the same way it does for the "pending" short-circuit.
+            logger.info("Prompt run %s cancelled before dispatch", run_id)
+            return Response(
+                {"status": "cancelled", "run_id": run_id},
+                status=status.HTTP_200_OK,
+            )
 
         if context is None:
             return Response(cb_kwargs, status=status.HTTP_202_ACCEPTED)
@@ -803,17 +842,28 @@ class PromptStudioCoreView(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
-            tool=custom_tool,
-            doc_path=doc_path,
-            doc_name=document.document_name,
-            prompts=prompts,
-            org_id=org_id,
-            user_id=user_id,
-            document_id=document_id,
-            run_id=run_id,
-            request_user=request.user,
-        )
+        try:
+            context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
+                tool=custom_tool,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                prompts=prompts,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                request_user=request.user,
+            )
+        except PromptRunCancelled:
+            # The user stopped this run while it was still in the blocking
+            # stages, so nothing was enqueued and no callback will ever fire.
+            # Answer the POST itself instead, and let the frontend clear the
+            # spinner the same way it does for the "pending" short-circuit.
+            logger.info("Prompt run %s cancelled before dispatch", run_id)
+            return Response(
+                {"status": "cancelled", "run_id": run_id},
+                status=status.HTTP_200_OK,
+            )
 
         dispatcher = PromptStudioHelper._get_dispatcher()
 
@@ -890,6 +940,85 @@ class PromptStudioCoreView(
         return Response(
             {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+    @action(detail=True, methods=["post"], url_path="cancel")
+    def cancel_runs(self, request: HttpRequest, pk: Any = None) -> Response:
+        """Ask in-flight prompt runs to stop (UN-1031).
+
+        Records a cancellation intent per ``run_id``; the work itself stops
+        cooperatively at the next checkpoint in the backend helper, the queue
+        consumer or the executor. Nothing is killed synchronously, so this
+        returns as soon as the intent is durable — the terminal
+        ``prompt_studio_result`` socket event still comes from the normal
+        callback path.
+
+        Body::
+
+            {"runs": [{"run_id": "<uuid>", "prompt_ids": ["<uuid>", ...] | null}]}
+
+        ``prompt_ids`` omitted/null cancels the whole run (every prompt in it,
+        plus its shared extract/index stages). Naming prompts cancels only
+        those, so stopping one prompt of a bulk run leaves the others going.
+
+        Returns:
+            202 with the run ids whose intent was recorded. A run id in
+            ``failed`` means the signal store was unreachable and that run is
+            still going — the caller must not report it as stopped.
+        """
+        custom_tool = self.get_object()
+        runs = request.data.get("runs")
+        if not isinstance(runs, list) or not runs:
+            return Response(
+                {"error": "runs is required and must be a non-empty list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Validate every entry before recording any of them: a half-applied
+        # cancel would stop some runs and leave the caller unable to tell which.
+        validated: list[tuple[str, list[str] | None]] = []
+        for entry in runs:
+            if not isinstance(entry, dict):
+                return Response(
+                    {"error": "Each entry in runs must be an object."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            run_id = entry.get(ToolStudioPromptKeys.RUN_ID)
+            if not _is_uuid(run_id):
+                return Response(
+                    {"error": f"Invalid run_id: {run_id!r}."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            prompt_ids = entry.get("prompt_ids")
+            if prompt_ids is not None:
+                if not isinstance(prompt_ids, list) or not all(
+                    _is_uuid(p) for p in prompt_ids
+                ):
+                    return Response(
+                        {"error": "prompt_ids must be a list of UUIDs."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                prompt_ids = [str(p) for p in prompt_ids]
+            validated.append((str(run_id), prompt_ids))
+
+        org_id = UserSessionUtils.get_organization_id(request)
+        cancelled: list[str] = []
+        failed: list[str] = []
+        for run_id, prompt_ids in validated:
+            if request_cancel(org_id, run_id, prompt_ids):
+                cancelled.append(run_id)
+            else:
+                failed.append(run_id)
+
+        logger.info(
+            "Prompt run cancel requested for tool %s: cancelled=%s failed=%s",
+            custom_tool.tool_id,
+            cancelled,
+            failed,
+        )
+        return Response(
+            {"cancelled": cancelled, "failed": failed},
+            status=status.HTTP_202_ACCEPTED,
         )
 
     @action(detail=True, methods=["get"])

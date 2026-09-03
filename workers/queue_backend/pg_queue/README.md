@@ -162,6 +162,26 @@ dropped without affecting the Celery path.
 
 ---
 
+## 4. Cancellation (UN-1031)
+
+The transport has **no cancel primitive**: `PgQueueClient` is `send` / `read` /
+`set_vt` / `delete`, there is no archive or dead-letter, and a claimed task runs
+eagerly in a forked child with no revoke and no time limit. Prompt Studio's Stop
+is therefore **cooperative**, and lives outside the queue:
+
+| Where | Key | Effect |
+|---|---|---|
+| Redis, written by the backend | `ps:cancel:{org_id}:{run_id}` — a SET of prompt ids, or `*` for the whole run; TTL 7260s (> the executor VT) | The intent. Ids only; never payloads |
+| `consumer._handle` | reads the key before running an IDE `execute_extraction` | Drops the message, ACKs it, and fires `on_error` with the sentinel so the UI still gets a terminal event. **Deleting the row instead would strand the caller**: the continuations live in the payload and die with it |
+| Executor stage boundaries | same key, per prompt | Stops before the next billable call; already-spent usage rows are still flushed |
+
+The shared vocabulary (key builder, `is_cancelled`, and the
+`PROMPT_RUN_CANCELLED_ERROR` sentinel every layer matches on) is in
+`unstract.core.prompt_run_cancellation`. Reads are best effort: an unreachable
+Redis means "not cancelled", so a cache outage can never kill a healthy run.
+
+---
+
 *Defaults here reflect the code constants at time of writing; the code
 (`consumer.py` / `supervisor.py` / `reaper.py`) and the chart `values.yaml` are the
 source of truth.*

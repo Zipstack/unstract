@@ -2,6 +2,7 @@ import debounce from "lodash/debounce";
 import {
   CircleCheck,
   CirclePlay,
+  CircleStop,
   EllipsisVertical,
   FastForward,
   Info,
@@ -21,7 +22,9 @@ import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { ExpandCardBtn } from "./ExpandCardBtn";
@@ -108,6 +111,21 @@ function Header({
     details,
   } = useCustomToolStore();
   const runGate = usePromptRunGate(promptDetails);
+  const { stopPromptRuns } = usePromptRun();
+  // True once a Stop has been sent for this prompt: the run keeps going until
+  // the executor reaches its next checkpoint, so the button says "stopping"
+  // rather than pretending the work is already over (UN-1031).
+  const isStopping = usePromptRunStatusStore((state) =>
+    Object.values(state.activeRuns || {}).some(
+      (run) =>
+        run?.stopping && run?.promptIds?.includes(promptDetails?.prompt_id),
+    ),
+  );
+  // While this prompt is running its Run buttons are replaced by a Stop, so
+  // the control the user wants is the one under their cursor.
+  const showPromptActions = !singlePassExtractMode && !isSimplePromptStudio;
+  const showStopAction = showPromptActions && isCoverageLoading;
+  const showRunActions = showPromptActions && !isCoverageLoading;
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
@@ -440,7 +458,21 @@ function Header({
             </div>
           </>
         )}
-        {!singlePassExtractMode && !isSimplePromptStudio && (
+        {showStopAction && (
+          <Tooltip title={isStopping ? "Stopping…" : "Stop this prompt"}>
+            <Button
+              data-testid={`ps-prompt-stop-${promptDetails?.prompt_id}`}
+              size="small"
+              type="text"
+              className="prompt-card-action-button"
+              onClick={() => stopPromptRuns(promptDetails?.prompt_id)}
+              disabled={isStopping || isPublicSource}
+            >
+              <CircleStop className="prompt-card-actions-head" />
+            </Button>
+          </Tooltip>
+        )}
+        {showRunActions && (
           <>
             <Tooltip
               title={runGate?.reason || "Run all LLMs for current document"}

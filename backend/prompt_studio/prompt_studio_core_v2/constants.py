@@ -34,6 +34,10 @@ class ToolStudioPromptKeys:
     FILE_HASH = "file_hash"
     TOOL_ID = "tool_id"
     NAME = "name"
+    # Carried in each outputs[] entry so the executor can match a prompt
+    # against a per-prompt cancel request; outputs are otherwise keyed only
+    # by prompt_key, which is user-editable text (UN-1031).
+    PROMPT_ID = "prompt_id"
     ACTIVE = "active"
     PROMPT = "prompt"
     CHUNK_SIZE = "chunk-size"

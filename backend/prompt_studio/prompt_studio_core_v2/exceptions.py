@@ -115,6 +115,16 @@ class PromptNotRun(APIException):
         super().__init__(detail, code)
 
 
+class PromptRunCancelled(Exception):
+    """A prompt run was stopped by the user (UN-1031).
+
+    Deliberately NOT an ``APIException``: a cancel is not an error, and the
+    views turn it into a ``200`` telling the frontend the run stopped. Raised
+    from the blocking stages (extract, index, the indexing wait) so the request
+    unwinds without enqueueing work the user no longer wants.
+    """
+
+
 class DeploymentUsageCheckError(APIException):
     status_code = 500
     default_detail = "Failed to check deployment usage"

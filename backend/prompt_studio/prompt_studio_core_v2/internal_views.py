@@ -107,6 +107,15 @@ def prompt_output(request):
             )
         )
 
+        # A stopped run carries answers only for the prompts that finished
+        # (UN-1031). The helper writes ``outputs.get(prompt.prompt_key)``
+        # unconditionally, so a prompt missing from the map would be saved as a
+        # blank ON TOP of whatever a previous good run stored. Keying on the
+        # answers themselves (rather than trusting the caller's id list) makes
+        # that impossible however the two drift apart.
+        if data.get("cancelled"):
+            prompts = [p for p in prompts if p.prompt_key in outputs]
+
         response = OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
