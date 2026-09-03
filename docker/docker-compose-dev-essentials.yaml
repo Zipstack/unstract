@@ -153,3 +153,7 @@ volumes:
   redis_data:
   prompt_studio_data:
   rabbitmq_data:
+
+networks:
+  default:
+    name: unstract-network
