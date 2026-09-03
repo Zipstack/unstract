@@ -242,6 +242,17 @@ def _merge_agentic_metrics(
 
     metrics = structured_output.setdefault("metrics", {})
     for prompt_name, prompt_metrics in agentic_metrics.items():
+        if prompt_name == PSKeys.FILE:
+            # `_file` is reserved for whole-document metrics. A prompt with that
+            # name would land its per-prompt metrics in the same object the
+            # extraction total below writes into, conflating the two namespaces
+            # the reserved bucket exists to keep apart. Its duration still counts.
+            logger.warning(
+                "Agentic prompt named %r collides with the reserved file-level "
+                "metrics namespace; its per-prompt metrics are omitted",
+                prompt_name,
+            )
+            continue
         metrics.setdefault(prompt_name, {}).update({"table_extraction": prompt_metrics})
 
     extraction_seconds = _agentic_extraction_seconds(agentic_metrics)

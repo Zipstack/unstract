@@ -368,3 +368,22 @@ class TestAgenticExtractionMetrics:
         metrics = structured_output["metrics"]
         assert metrics["invoices"]["table_extraction"] == {"table_rows": {"count": 12}}
         assert "_file" not in metrics
+
+    def test_prompt_named_file_does_not_invade_the_reserved_bucket(self):
+        """`_file` is reserved; a prompt with that name must not land in it.
+
+        Its extraction duration still counts toward the file-level total —
+        only the per-prompt entry is dropped, because there is nowhere
+        collision-free to put it.
+        """
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {}
+        _merge_agentic_metrics(
+            structured_output,
+            {"_file": {"text_extraction": {"time_taken(s)": 3.0}}},
+        )
+
+        file_bucket = structured_output["metrics"]["_file"]
+        assert file_bucket["text_extraction"] == {"time_taken(s)": 3.0}
+        assert "table_extraction" not in file_bucket
