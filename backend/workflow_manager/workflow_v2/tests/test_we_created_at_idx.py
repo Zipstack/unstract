@@ -73,10 +73,14 @@ class TestTheMigrationIsSafeToDeploy:
     def test_it_builds_and_drops_concurrently(self) -> None:
         """Both directions: a plain DROP INDEX takes an ACCESS EXCLUSIVE lock, so a
         rollback would block writes just as a plain build would.
+
+        Asserted on the rendered operation, not the file source: the guard's own
+        RAISE EXCEPTION messages contain the DROP text, so a source grep passes even
+        if reverse_sql is a noop and the index survives the rollback.
         """
-        sql = _MIGRATION_FILE.read_text()
-        assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS" in sql
-        assert "DROP INDEX CONCURRENTLY IF EXISTS" in sql
+        create = _operations()[0].database_operations[0]
+        assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS" in create.sql
+        assert f"DROP INDEX CONCURRENTLY IF EXISTS {INDEX_NAME}" in create.reverse_sql
 
     def test_the_statement_that_runs_names_the_model_table_and_column(self) -> None:
         """Everything else here reads the ``AddIndex`` state operation, which by

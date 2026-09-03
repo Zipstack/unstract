@@ -12,7 +12,7 @@ from django.apps import apps
 from django.core.cache import cache
 from django.db import connection
 from django.db.utils import DatabaseError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask, PeriodicTasks
@@ -768,6 +768,16 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         assert self._written() != expected
 
 
+# Same rationale as test_aggregation_tier.py: the lock protocol needs a cache, not a
+# server, and cache.clear() on django_redis is a whole-database FLUSHDB.
+_LOCMEM_CACHE = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+        "LOCATION": "aggregation-lock-window-tests",
+    }
+}
+
+
 class TestTheLockIsPerSchedule(TestCase):
     """The reconciliation pass must not lose a race it is never retried after.
 
@@ -776,6 +786,13 @@ class TestTheLockIsPerSchedule(TestCase):
     """
 
     def setUp(self):
+        # Pinned to locmem: cache.clear() is FLUSHDB on django_redis, which would wipe
+        # every key in that database — the Celery broker shares db 0 in the test env —
+        # and these keys are un-namespaced, so parallel workers would clear each
+        # other's. The lock protocol only needs add/get/delete.
+        override = override_settings(CACHES=_LOCMEM_CACHE)
+        override.enable()
+        self.addCleanup(override.disable)
         cache.clear()
         self.addCleanup(cache.clear)
 
