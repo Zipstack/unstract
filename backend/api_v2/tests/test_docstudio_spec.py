@@ -19,6 +19,7 @@ from django.urls import resolve, reverse
 from drf_spectacular.drainage import warn
 from drf_spectacular.generators import SchemaGenerator
 from middleware.exception import drf_logging_exc_handler
+from platform_api.models import ApiKeyPermission
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.test import APIRequestFactory
 from workflow_manager.endpoint_v2.dto import FileExecutionResult
@@ -40,6 +41,22 @@ _METHODS = ("get", "put", "post", "delete", "options", "head", "patch", "trace")
 #: Documented on a file result but absent from the DTO: the workflow copies it
 #: up from the extraction metadata when the request asks for it.
 _PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
+
+#: Responses whose published example already contradicted its schema before
+#: this check existed. All three are the deployment operations declaring a
+#: non-error body for a status the standardized-errors schema class also
+#: injects a handler-shaped example for. Recorded rather than silently skipped:
+#: the check below fails on any *new* instance, and this list is the debt.
+_KNOWN_EXAMPLE_DIVERGENCES = {
+    ("status", "406", "NotAcceptable"),
+    ("status", "500", "APIException"),
+    ("execute", "500", "APIException"),
+}
+
+#: The operations served by an API deployment, as opposed to the platform-key
+#: operations that describe the account. They authenticate differently and can
+#: fail differently, so several checks below split on this.
+DEPLOYMENT_OPERATIONS = {"execute", "status"}
 
 
 def _committed() -> dict:
@@ -89,6 +106,30 @@ def test_a_generator_diagnostic_fails_generation(monkeypatch) -> None:
         render_spec()
 
 
+def test_a_path_outside_the_published_mounts_fails_generation(monkeypatch) -> None:
+    """The gate the diff widened, exercised on the branch it protects.
+
+    Widening it from one prefix to two is exactly the edit that could admit
+    everything; the accept direction is covered incidentally by every other
+    test here, and only this one covers the refusal.
+    """
+
+    def off_prefix_generator(self, request=None, public=False) -> dict:
+        # Otherwise-valid, so the OpenAPI-validity gate below cannot be what
+        # raises: matching on the path alone passed even with the prefix gate
+        # removed, because the validity error quotes the instance back.
+        return {
+            "openapi": "3.0.3",
+            "info": {"title": "t", "version": "v1"},
+            "paths": {"/private/api/{org_name}/": {}},
+        }
+
+    monkeypatch.setattr(SchemaGenerator, "get_schema", off_prefix_generator)
+
+    with pytest.raises(SpecGenerationFailed, match="outside the published mounts"):
+        render_spec()
+
+
 def test_spec_paths_are_the_urls_the_server_serves() -> None:
     """Resolves the real mount rather than restating it: a spec generated for
     URLs the server does not serve is the failure this file exists to catch.
@@ -115,23 +156,62 @@ def test_spec_documents_the_deployment_operations() -> None:
     assert "deployment" in [tag["name"] for tag in spec["tags"]]
 
 
-def test_operations_require_the_deployment_key() -> None:
+def test_every_operation_names_the_credential_it_takes() -> None:
     """Without this the unset DRF authentication default is published as
     though it were a decision, and no generated client can authenticate.
+
+    Which credential differs by operation -- a deployment key runs a
+    deployment, a platform key describes itself -- so what is pinned here is
+    that each operation names exactly one, and that the scheme it names is
+    declared and is a bearer token.
     """
     spec = _committed()
-    scheme = spec["components"]["securitySchemes"]["deploymentKey"]
+    schemes = spec["components"]["securitySchemes"]
 
-    assert (scheme["type"], scheme["scheme"]) == ("http", "bearer")
     for path, method, operation in _operations(spec):
-        assert operation["security"] == [{"deploymentKey": []}], f"{method} {path}"
+        security = operation["security"]
+        assert len(security) == 1, f"{method} {path}"
+        (requirement,) = security
+        (name,) = requirement
+        assert requirement[name] == [], f"{method} {path}"
+        assert (schemes[name]["type"], schemes[name]["scheme"]) == (
+            "http",
+            "bearer",
+        ), f"{method} {path}"
+
+
+def test_the_deployment_operations_take_the_deployment_key() -> None:
+    """The credential each operation names is part of its contract, so the
+    pairing is pinned rather than left to the loop above.
+    """
+    for path, method, operation in _operations(_committed()):
+        if operation["operationId"] in DEPLOYMENT_OPERATIONS:
+            assert operation["security"] == [{"deploymentKey": []}], f"{method} {path}"
+        else:
+            assert operation["security"] == [{"platformKey": []}], f"{method} {path}"
 
 
 def test_clients_can_branch_on_every_failure_they_will_see() -> None:
+    """Every operation authenticates and can fail on the server, so these three
+    are the branches a client needs whatever it is calling.
+    """
     for path, method, operation in _operations(_committed()):
-        assert {"400", "401", "403", "404", "500"} <= set(
-            operation["responses"]
-        ), f"{method} {path}"
+        assert {"401", "403", "500"} <= set(operation["responses"]), f"{method} {path}"
+
+
+def test_the_deployment_operations_document_a_rejected_request_and_a_missing_one() -> (
+    None
+):
+    """Kept off the universal check above: a request carrying no body and
+    naming no resource cannot be malformed or miss its target, and documenting
+    a status an operation cannot return hands clients a dead branch.
+    """
+    for path, method, operation in _operations(_committed()):
+        declared = {"400", "404"} & set(operation["responses"])
+        if operation["operationId"] in DEPLOYMENT_OPERATIONS:
+            assert declared == {"400", "404"}, f"{method} {path}"
+        else:
+            assert not declared, f"{method} {path}"
 
 
 def test_only_the_execution_endpoint_documents_the_statuses_only_it_returns() -> None:
@@ -214,6 +294,108 @@ def test_the_status_read_documents_the_two_keys_it_returns() -> None:
     assert status_response["properties"]["message"]["items"]["$ref"].endswith(
         "/FileResult"
     )
+
+
+def test_spec_documents_the_identity_operation() -> None:
+    spec = _committed()
+    documented = {operation["operationId"] for _, _, operation in _operations(spec)}
+
+    assert "whoami" in documented
+    assert "identity" in [tag["name"] for tag in spec["tags"]]
+
+
+def test_the_identity_read_documents_the_keys_it_returns() -> None:
+    """The view builds its body literally, so the spec is the only place the
+    set is written down.
+    """
+    whoami = _schema("WhoAmIResponse")
+    fields = {"organization_id", "organization_name", "permission", "key_name"}
+
+    assert set(whoami["properties"]) == fields
+    # All four are read off a key row that always has them, so a client can
+    # treat every one as present rather than guarding each.
+    assert set(whoami["required"]) == fields
+
+
+def test_the_documented_permission_tiers_are_the_ones_the_model_defines() -> None:
+    """A tier added to the model but not the spec reaches clients as a value
+    their generated enum rejects.
+    """
+    assert _schema("ApiKeyPermission")["enum"] == list(ApiKeyPermission.values)
+
+
+def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
+    """`whoami` authenticates in middleware, which answers with a bare
+    `message` and does not reach the project exception handler for its credential failures -- so it must not
+    publish the handler's `{type, errors[]}` shape the way the deployment
+    operations legitimately do.
+
+    Paired with `test_a_rejection_carries_the_body_the_spec_publishes` in
+    `platform_api`, which pins the same claim against the wire.
+    """
+    spec = _committed()
+    reads = [
+        (path, operation)
+        for path, _, operation in _operations(spec)
+        if operation["operationId"] == "whoami"
+    ]
+
+    # Guarded like its sibling below: without this the whole check is skipped
+    # the day the operation id moves.
+    assert reads
+    for path, operation in reads:
+        for code in ("401", "403"):
+            ref = operation["responses"][code]["content"]["application/json"]["schema"][
+                "$ref"
+            ]
+            assert ref.endswith("/PlatformKeyError"), f"{code} on {path}: {ref}"
+    assert set(_schema("PlatformKeyError")["properties"]) == {"message"}
+
+
+def test_no_published_example_contradicts_its_own_schema() -> None:
+    """The standardized-errors schema class appends an example of the exception
+    handler's body to every 4xx/5xx, keyed on the status code alone -- so an
+    operation that overrides the schema keeps examples describing the shape it
+    replaced, and the artifact contradicts itself in one media-type object.
+
+    Checked structurally rather than by name: any response declaring a body
+    other than `ErrorResponse` must carry no handler-shaped example.
+    """
+    for path, method, operation in _operations(_committed()):
+        for code, response in operation["responses"].items():
+            media = response.get("content", {}).get("application/json", {})
+            ref = media.get("schema", {}).get("$ref", "")
+            if ref.endswith("/ErrorResponse"):
+                continue
+            for name, example in media.get("examples", {}).items():
+                if (
+                    operation["operationId"],
+                    code,
+                    name,
+                ) in _KNOWN_EXAMPLE_DIVERGENCES:
+                    continue
+                assert "errors" not in example.get("value", {}), (
+                    f"{method} {path} {code}: example {name!r} shows the handler "
+                    f"body, but the response declares {ref.split('/')[-1]!r}"
+                )
+
+
+def test_the_identity_read_asks_for_no_organisation() -> None:
+    """Resolving the organisation from the key is the whole point: a path
+    parameter here would mean the caller had to know the answer first.
+    """
+    reads = [
+        (path, operation)
+        for path, _, operation in _operations(_committed())
+        if operation["operationId"] == "whoami"
+    ]
+
+    # Guarded like its sibling at `test_the_one_shot_read_...`: an unguarded
+    # loop passes by finding nothing the day the operation is renamed.
+    assert reads
+    for path, operation in reads:
+        assert "{" not in path, path
+        assert not operation.get("parameters"), path
 
 
 @pytest.mark.parametrize(

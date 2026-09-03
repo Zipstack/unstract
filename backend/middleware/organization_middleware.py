@@ -16,6 +16,11 @@ class OrganizationMiddleware(MiddlewareMixin):
                 re.match(path, request.path)
                 for path in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
             ):
+                # Set before returning: downstream middleware reads this
+                # attribute directly, so leaving it undefined on a whitelisted
+                # path raises AttributeError rather than skipping the org check
+                # the way returning here intends.
+                request.organization_id = None
                 return
 
             org_id = match.group("org_id")

@@ -13,7 +13,7 @@ from django.core.exceptions import ImproperlyConfigured
 
 from backend import base_urls
 
-SPEC_URLCONFS = ("api_v2.execution_urls",)
+SPEC_URLCONFS = ("api_v2.execution_urls", "platform_api.whoami_urls")
 
 urlpatterns = [
     entry

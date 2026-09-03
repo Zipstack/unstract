@@ -17,6 +17,15 @@
         ],
         "type": "object"
       },
+      "ApiKeyPermission": {
+        "description": "* `read` - Read\n* `read_write` - Read/Write\n* `full_access` - Full Access",
+        "enum": [
+          "read",
+          "read_write",
+          "full_access"
+        ],
+        "type": "string"
+      },
       "ErrorDetail": {
         "description": "One problem found with the request.",
         "properties": {
@@ -209,6 +218,19 @@
         ],
         "type": "object"
       },
+      "PlatformKeyError": {
+        "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return. It is\nthe shape of this operation's credential failures specifically, not of\nevery failure it can return.",
+        "properties": {
+          "message": {
+            "description": "Human-readable reason for the refusal.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "type": "object"
+      },
       "StatusResponse": {
         "properties": {
           "message": {
@@ -226,11 +248,48 @@
           "status"
         ],
         "type": "object"
+      },
+      "WhoAmIResponse": {
+        "description": "The organisation a platform API key belongs to, and what it may do.",
+        "properties": {
+          "key_name": {
+            "description": "The key's name, as it was minted.",
+            "type": "string"
+          },
+          "organization_id": {
+            "description": "The organisation's identifier, as it appears in web-app URLs and in every organisation-scoped API path.",
+            "type": "string"
+          },
+          "organization_name": {
+            "description": "The organisation's display name.",
+            "type": "string"
+          },
+          "permission": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApiKeyPermission"
+              }
+            ],
+            "description": "The key's permission tier, which decides the HTTP methods it may issue.\n\n* `read` - Read\n* `read_write` - Read/Write\n* `full_access` - Full Access"
+          }
+        },
+        "required": [
+          "key_name",
+          "organization_id",
+          "organization_name",
+          "permission"
+        ],
+        "type": "object"
       }
     },
     "securitySchemes": {
       "deploymentKey": {
         "description": "The API deployment's own key.",
+        "scheme": "bearer",
+        "type": "http"
+      },
+      "platformKey": {
+        "description": "An organisation-wide platform API key, minted under Settings. It carries the organisation it belongs to, but cannot execute an API deployment.",
         "scheme": "bearer",
         "type": "http"
       }
@@ -242,6 +301,55 @@
   },
   "openapi": "3.0.3",
   "paths": {
+    "/api/v1/unstract/whoami/": {
+      "get": {
+        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.\n\nThis route serves GET only. Another method is refused either by the key's permission tier or by the route itself; neither refusal is described here, because OpenAPI attaches responses to an operation and there is no operation for a method the route does not serve.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
+        "operationId": "whoami",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoAmIResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "No usable platform API key was supplied \u2014 absent, malformed, unknown, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "The key was recognised but refused: its permission tier is not one this deployment knows, or the request named an organisation the key does not belong to."
+          },
+          "500": {
+            "description": "The request could not be served. The body is not guaranteed to be JSON."
+          }
+        },
+        "security": [
+          {
+            "platformKey": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
         "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
@@ -717,6 +825,10 @@
     {
       "description": "Run an API deployment against one or more documents and poll the result.",
       "name": "deployment"
+    },
+    {
+      "description": "Resolve what a platform API key is scoped to, so a client can discover its organisation rather than being told it.",
+      "name": "identity"
     }
   ]
 }
