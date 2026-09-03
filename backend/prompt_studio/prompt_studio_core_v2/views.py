@@ -12,6 +12,7 @@ from celery import signature
 from django.db import IntegrityError
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
@@ -22,6 +23,7 @@ from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -149,7 +151,16 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
+        # sync_prompts is a rip-and-replace: it deletes every prompt in the
+        # project before importing. That is owner-level destruction, so it
+        # belongs here rather than falling through to the share-aware class
+        # (UN-3315: a share grants view + edit, not delete).
+        if self.action in [
+            "destroy",
+            "add_co_owner",
+            "remove_co_owner",
+            "sync_prompts",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -385,11 +396,23 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
+        default_profile = request.data.get("default_profile")
+        if not default_profile:
+            raise ValidationError({"default_profile": "This field is required."})
+
+        # Resolve before clearing, and scope to this tool. Unscoped, a profile
+        # belonging to another tool could be promoted here -- and because the
+        # clear above had already run, the tool was left with no default of its
+        # own and a foreign profile marked default. A mismatch now 404s with
+        # nothing modified.
+        profile_manager = get_object_or_404(
+            ProfileManager, pk=default_profile, prompt_studio_tool=prompt_tool
+        )
+
         ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
             is_default=False
         )
 
-        profile_manager = ProfileManager.objects.get(pk=request.data["default_profile"])
         profile_manager.is_default = True
         profile_manager.save()
 
