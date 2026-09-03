@@ -304,7 +304,10 @@ function ConfigureConnectorModal({
     return hasConfigChanges || hasConnectorChanged || ruleEngineHasChanges;
   };
 
-  const handleValidateAndSubmit = async (validatedFormData) => {
+  const handleValidateAndSubmit = async (
+    validatedFormData,
+    notifySuccess = true,
+  ) => {
     const hasConfigChanges = !isEqual(validatedFormData, initialFormDataConfig);
     const hasConnectorChanged = connDetails?.id !== initialConnectorId;
     const hasChanges = hasConfigChanges || hasConnectorChanged;
@@ -325,10 +328,12 @@ function ConfigureConnectorModal({
         // Update initial values after successful save
         setInitialFormDataConfig(cloneDeep(validatedFormData));
         setInitialConnectorId(connDetails?.id);
-        setAlertDetails({
-          type: "success",
-          content: "Configuration saved successfully.",
-        });
+        if (notifySuccess) {
+          setAlertDetails({
+            type: "success",
+            content: "Configuration saved successfully.",
+          });
+        }
         return true;
       } catch (error) {
         setAlertDetails({
@@ -347,7 +352,7 @@ function ConfigureConnectorModal({
 
   // The read-only styling stops the mouse but not the keyboard, so cut the
   // form's own submit path too rather than let Enter fire a doomed request.
-  const submitIfEditable = canEdit ? handleValidateAndSubmit : () => {};
+  const submitIfEditable = canEdit ? handleValidateAndSubmit : undefined;
 
   const handleSave = async () => {
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
@@ -360,15 +365,18 @@ function ConfigureConnectorModal({
       // RJSF shows validation errors
       return false;
     }
-    // Stop here if the endpoint write failed, rather than writing half the
-    // configuration and closing as though everything saved.
-    if (!(await handleValidateAndSubmit(formDataConfig))) {
-      return false;
-    }
     // HITL rules live in the plugin and used to need their own button. One
     // Save now writes everything the modal shows. Only when they actually
     // changed -- otherwise every connector save would write a rule too.
-    if (ruleEngineHasChanges && ruleEngineRef.current?.save) {
+    const writesRules = ruleEngineHasChanges && !!ruleEngineRef.current?.save;
+    // Stop here if the endpoint write failed, rather than writing half the
+    // configuration and closing as though everything saved. Stay quiet on
+    // success when rules follow: the rule write reports the real outcome, and
+    // a success toast ahead of its failure would read as though both landed.
+    if (!(await handleValidateAndSubmit(formDataConfig, !writesRules))) {
+      return false;
+    }
+    if (writesRules) {
       setIsSavingEndpoint(true);
       try {
         // Keep the modal open on failure so the edit is not lost.
