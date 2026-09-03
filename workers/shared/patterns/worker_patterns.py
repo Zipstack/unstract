@@ -152,7 +152,6 @@ class APIEndpoints:
         "workflow-file-execution/create/"
     )
     PIPELINE_STATUS = build_internal_endpoint("pipeline/{pipeline_id}/status/")
-    WEBHOOK_SEND = build_internal_endpoint("webhook/send/")
 
 
 class WorkerConfig:

@@ -28,6 +28,11 @@
 
 .config-doc-icon {
   font-size: 16px;
-  color: #1890ff;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
   cursor: pointer;
 }

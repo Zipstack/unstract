@@ -1,13 +1,12 @@
-"""Shared executor-RPC dispatch for the PG path — the gate + reply_key orchestration.
+"""Shared executor-RPC dispatch — the reply_key/timeout orchestration.
 
 The executor "RPC" is a synchronous request-reply: a caller sends an
 ``ExecutionContext`` to the executor worker and blocks for the ``ExecutionResult``.
-The legacy transport is Celery (the SDK ``ExecutionDispatcher``); the PG path adds a
-parallel Postgres transport. Backend (Django/prompt-studio) and workers
-(``structure_tool``) both need it, and used to carry **byte-for-byte mirrors** of
-this logic — the only thing that genuinely differs between them is the *transport
-primitive*: the backend enqueues via the Django ORM (``enqueue_task`` +
-``PgTaskResult``), the workers via psycopg2 (``PgQueueClient`` + ``PgResultBackend``).
+Backend (Django/prompt-studio) and workers (``structure_tool``) both need it, and
+used to carry **byte-for-byte mirrors** of this logic — the only thing that
+genuinely differs between them is the *transport primitive*: the backend enqueues
+via the Django ORM (``enqueue_task`` + ``PgTaskResult``), the workers via psycopg2
+(``PgQueueClient`` + ``PgResultBackend``).
 
 So this module owns everything transport-agnostic exactly once, and the differing
 primitive is **injected** (composition, not inheritance) via :class:`QueueTransport`:
@@ -16,12 +15,10 @@ primitive is **injected** (composition, not inheritance) via :class:`QueueTransp
   ``dispatch_with_callback`` + the reply_key/timeout orchestration and the
   never-raises contract (timeout/failure → ``ExecutionResult.failure``). It calls
   ``transport.enqueue(...)`` and ``transport.wait_for_result(...)``.
-- :func:`resolve_pg_transport` — the gate: the single ``pg_queue_enabled`` Flipt
-  flag (bucketed per org) is the sole control. Fails closed to Celery on a
-  blind/unreachable Flipt or any error.
-- :class:`RoutingExecutionDispatcher` — picks PG-vs-Celery per call (instant
-  rollout/rollback) for every mode; the Celery dispatcher, the PG dispatcher and the
-  per-side ``resolve`` are all injected.
+
+PG is the only transport. This module used to also hold ``resolve_pg_transport``
+(the ``pg_queue_enabled`` Flipt gate) and ``RoutingExecutionDispatcher`` (which
+picked PG-vs-Celery per call); both went with the flag in UN-4046.
 
 It lives in ``unstract-workflow-execution`` (which both backend and workers already
 depend on) rather than ``unstract.core`` because it needs ``unstract.sdk1`` and
@@ -35,25 +32,19 @@ import logging
 import os
 import uuid
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.result import ExecutionResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from unstract.core.data_models import ContinuationSpec
     from unstract.core.execution_dispatch import CallbackSignature
     from unstract.sdk1.execution.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
 
-# The single PG-queue rollout flag — the same key execution and the scheduler read,
-# so one flip turns the whole PG-queue feature on/off.
-PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
 EXECUTE_TASK = "execute_extraction"
 # Mirror the SDK's queue-per-executor convention so the PG executor queue name
 # matches the Celery one (the worker-pg-executor consumer subscribes to these).
@@ -62,32 +53,6 @@ QUEUE_PREFIX = "celery_executor_"
 # else 3600s) so a PG-routed caller waits exactly as long as a Celery one.
 DEFAULT_TIMEOUT_ENV = "EXECUTOR_RESULT_TIMEOUT"
 DEFAULT_TIMEOUT = 3600
-
-
-class _CeleryDispatcher(Protocol):
-    """The subset of the SDK ``ExecutionDispatcher`` the router delegates to on the
-    Celery path — so ``RoutingExecutionDispatcher`` holds it typed, not as ``Any``.
-    """
-
-    def dispatch(
-        self,
-        context: ExecutionContext,
-        timeout: int | None = ...,
-        headers: dict[str, Any] | None = ...,
-    ) -> ExecutionResult: ...
-
-    def dispatch_async(
-        self, context: ExecutionContext, headers: dict[str, Any] | None = ...
-    ) -> str: ...
-
-    def dispatch_with_callback(
-        self,
-        context: ExecutionContext,
-        on_success: CallbackSignature | None = ...,
-        on_error: CallbackSignature | None = ...,
-        task_id: str | None = ...,
-        headers: dict[str, Any] | None = ...,
-    ) -> Any: ...
 
 
 @dataclass
@@ -129,42 +94,6 @@ class QueueTransport(Protocol):
     ) -> None: ...
 
     def wait_for_result(self, reply_key: str, timeout: float) -> ExecResultRow | None: ...
-
-
-def resolve_pg_transport(
-    context: ExecutionContext,
-    *,
-    flag_key: str = PG_QUEUE_FLAG_KEY,
-) -> bool:
-    """True → route this executor dispatch over PG; False → Celery (default).
-
-    Gated by the single ``pg_queue_enabled`` Flipt flag, bucketed per org.
-    **Fails closed to Celery** on a blind Flipt or any error — so the executor
-    never silently loses its transport.
-    """
-    if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
-        logger.warning(
-            "resolve_pg_transport: FLIPT_SERVICE_AVAILABLE != true "
-            "(Flipt blind); using Celery"
-        )
-        return False
-    org = getattr(context, "organization_id", None)
-    # %-bucket keyed on org; fall back to run_id so a context without an org still
-    # resolves deterministically.
-    entity_id = str(org or getattr(context, "run_id", "") or "default")
-    flag_context = {"executor_name": str(context.executor_name)}
-    if org:
-        flag_context["organization_id"] = str(org)
-    try:
-        enabled = check_feature_flag_status(
-            flag_key=flag_key, entity_id=entity_id, context=flag_context
-        )
-    except Exception:
-        logger.warning(
-            "resolve_pg_transport: Flipt check failed; using Celery", exc_info=True
-        )
-        return False
-    return bool(enabled)
 
 
 def _resolve_timeout(timeout: int | None) -> int:
@@ -215,8 +144,11 @@ class PgExecutionDispatcher:
         callers branch on ``result.success`` identically on either transport.
 
         No ``headers`` on any PG dispatch method: the PG path carries org/routing in
-        the enqueue payload, not Celery headers, so the ``RoutingExecutionDispatcher``
-        does not forward fairness headers to the PG path.
+        the enqueue payload (``transport.enqueue(..., org_id=...)``), not Celery
+        headers. This method takes no ``headers`` argument: callers must not pass
+        one. The routing dispatcher that used to absorb a ``headers=`` kwarg went
+        with the flag in UN-4046, and three call sites kept passing it — every
+        extraction raised ``TypeError`` until they were fixed.
         """
         timeout = _resolve_timeout(timeout)
         reply_key = str(uuid.uuid4())
@@ -393,69 +325,3 @@ class PgExecutionDispatcher:
             error_spec["task_name"] if error_spec else None,
         )
         return DispatchHandle(task_id)
-
-
-class RoutingExecutionDispatcher:
-    """Gate-routed executor dispatcher: every mode picks PG vs Celery per call
-    (read at dispatch time → flipping the flag is an instant, no-redeploy
-    rollout/rollback). Duck-typed against the SDK ``ExecutionDispatcher`` so call
-    sites are unchanged.
-
-    Composition-injected: the Celery dispatcher (``celery``), the PG dispatcher
-    (``pg``) and the per-side gate (``resolve(context) -> bool``).
-    """
-
-    def __init__(
-        self,
-        *,
-        celery: _CeleryDispatcher,
-        pg: PgExecutionDispatcher,
-        resolve: Callable[[ExecutionContext], bool],
-    ) -> None:
-        self._celery = celery
-        self._pg = pg
-        self._resolve = resolve
-
-    def dispatch(
-        self,
-        context: ExecutionContext,
-        timeout: int | None = None,
-        headers: dict[str, Any] | None = None,
-    ) -> ExecutionResult:
-        if self._resolve(context):
-            logger.info(
-                "Executor RPC → PG transport (executor=%s run_id=%s)",
-                context.executor_name,
-                context.run_id,
-            )
-            # PG carries org/routing via the enqueue payload, not Celery headers, so
-            # the fairness headers are intentionally not forwarded here.
-            return self._pg.dispatch(context, timeout=timeout)
-        return self._celery.dispatch(context, timeout=timeout, headers=headers)
-
-    def dispatch_async(
-        self, context: ExecutionContext, headers: dict[str, Any] | None = None
-    ) -> str:
-        if self._resolve(context):
-            return self._pg.dispatch_async(context)
-        return self._celery.dispatch_async(context, headers=headers)
-
-    def dispatch_with_callback(
-        self,
-        context: ExecutionContext,
-        on_success: CallbackSignature | None = None,
-        on_error: CallbackSignature | None = None,
-        task_id: str | None = None,
-        headers: dict[str, Any] | None = None,
-    ) -> Any:
-        if self._resolve(context):
-            return self._pg.dispatch_with_callback(
-                context, on_success=on_success, on_error=on_error, task_id=task_id
-            )
-        return self._celery.dispatch_with_callback(
-            context,
-            on_success=on_success,
-            on_error=on_error,
-            task_id=task_id,
-            headers=headers,
-        )

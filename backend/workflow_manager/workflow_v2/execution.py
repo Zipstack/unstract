@@ -410,6 +410,37 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def mark_dispatched(execution_id: str) -> None:
+        """Stamp ``dispatched_at`` — the positive record that the orchestrator task
+        reached its transport.
+
+        Called by the dispatcher the instant dispatch returns, BEFORE any handle
+        bookkeeping. That ordering is the whole point: ``_record_dispatch_handle`` has
+        three paths that leave both handles NULL on an execution that IS running (an
+        exception the caller swallows, an empty handle, an unparseable PG handle), and
+        the undispatched sweep used to read that absence as "never dispatched" and mark
+        the live row ERROR. One write upstream of all three closes it.
+
+        Best-effort, matching the handle write it precedes: a failure here must never
+        abort the caller, which is past the point of no return — the orchestrator is
+        already running. A failure leaves exactly the pre-existing ambiguity rather than
+        a new one.
+
+        ``update()`` rather than ``save()``: no auto_now field on this model may be
+        re-stamped by a bookkeeping write, and this must not race the orchestrator's own
+        status writes on the same row.
+        """
+        from django.utils import timezone
+
+        updated = WorkflowExecution.objects.filter(id=execution_id).update(
+            dispatched_at=timezone.now()
+        )
+        if not updated:
+            logger.error(
+                f"Could not stamp dispatched_at: execution {execution_id} not found"
+            )
+
+    @staticmethod
     def update_execution_queue_message_id(
         execution_id: str, queue_message_id: int | None
     ) -> None:

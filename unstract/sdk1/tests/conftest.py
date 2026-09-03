@@ -1,12 +1,28 @@
 """Pytest configuration and fixtures for unstract-sdk1 tests."""
 
-import logging
-from collections.abc import Callable
-from typing import Any
-from unittest.mock import MagicMock
+import os
 
-import pytest
-from _pytest.monkeypatch import MonkeyPatch
+# Pin LiteLLM to the model registry bundled with the pinned wheel, before
+# anything imports litellm. Left unset, litellm fetches its registry over the
+# network at import time, which makes any test that depends on it (notably the
+# AWS Bedrock Mantle routing tests, whose whole subject is registry membership)
+# both non-hermetic and dependent on which test module happened to import
+# litellm first. This has to be a module-scope assignment in conftest rather
+# than a fixture: the variable is read once at litellm import, which happens at
+# collection time, long before any fixture body runs.
+#
+# `setdefault` so an operator can still opt into the live registry -- e.g. to
+# find out early that AWS shipped a Mantle model the pinned wheel predates --
+# with LITELLM_LOCAL_MODEL_COST_MAP=False.
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "True")
+
+import logging  # noqa: E402
+from collections.abc import Callable  # noqa: E402
+from typing import Any  # noqa: E402
+from unittest.mock import MagicMock  # noqa: E402
+
+import pytest  # noqa: E402
+from _pytest.monkeypatch import MonkeyPatch  # noqa: E402
 
 
 @pytest.fixture

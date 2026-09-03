@@ -59,6 +59,7 @@
     "line_splitter_strategy": {
       "type": "string",
       "title": "Line Splitter Strategy",
+      "enum": ["left-priority", "mid-priority", "right-priority"],
       "default":"left-priority",
       "description": "An advanced option for customizing the line splitting process."
     },

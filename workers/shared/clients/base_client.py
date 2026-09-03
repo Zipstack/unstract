@@ -19,8 +19,6 @@ from celery.exceptions import SoftTimeLimitExceeded
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from unstract.flags.feature_flag import check_feature_flag_status
-
 from ..data.models import APIResponse
 from ..enums import HTTPMethod
 from ..infrastructure.config.worker_config import WorkerConfig
@@ -32,27 +30,8 @@ logger = WorkerLogger.get_logger(__name__)
 APPLICATION_JSON = "application/json"
 
 
-# Single PG-queue rollout flag (same key as pg_queue.flags / executor_rpc).
-_PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
-
-
-def _pg_queue_jitter_enabled() -> bool:
-    """Whether retry jitter is on — gated by the single ``pg_queue_enabled`` Flipt
-    flag (fail-closed to False, like ``check_feature_flag_status`` itself), so the
-    Celery flow's retry cadence is unchanged and the jitter tracks the PG rollout.
-
-    The retry path carries no per-execution/org context, so the flag is evaluated
-    globally (entity ``"default"``) — a coarse "is PG being rolled out" gate, which
-    is all a transport-agnostic HTTP-retry hardening needs.
-    """
-    try:
-        return check_feature_flag_status(flag_key=_PG_QUEUE_FLAG_KEY, entity_id="default")
-    except Exception:
-        return False
-
-
 def _backoff_with_jitter(backoff_factor: float, attempt: int) -> float:
-    """Exponential backoff, with equal jitter when the PG-queue flag is on.
+    """Exponential backoff with equal jitter.
 
     Without jitter, every concurrent worker retrying a saturated backend sleeps on
     the identical 1s/2s/4s schedule and their retries arrive in synchronized waves
@@ -60,16 +39,14 @@ def _backoff_with_jitter(backoff_factor: float, attempt: int) -> float:
     finalization-write failures under high concurrency. Equal jitter spreads each
     retry across [base/2, base] so the waves de-correlate.
 
-    Gated by the ``pg_queue_enabled`` Flipt flag (fail-closed): OFF keeps the exact
-    exponential backoff for the Celery flow; evaluated at call time on the rare
-    retry path (behind a sleep + network round-trip), so the Flipt cost is
-    irrelevant and it stays runtime-togglable via the flag.
+    Previously gated on the ``pg_queue_enabled`` Flipt flag so the Celery flow kept
+    the exact exponential cadence. With that flag removed the jitter is
+    unconditional — it is transport-agnostic HTTP-retry hardening, and the jittered
+    cadence is the one integration has run under load.
     """
     base = backoff_factor * (2**attempt)
     if base <= 0:
         return 0.0
-    if not _pg_queue_jitter_enabled():
-        return base  # exact exponential backoff (unchanged for the Celery flow)
     return base / 2 + random.uniform(0, base / 2)
 
 

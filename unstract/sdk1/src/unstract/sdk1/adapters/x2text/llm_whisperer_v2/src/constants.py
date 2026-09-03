@@ -16,6 +16,12 @@ class OutputModes(Enum):
     TEXT = "text"
 
 
+class LineSplitterStrategies(Enum):
+    LEFT_PRIORITY = "left-priority"
+    MID_PRIORITY = "mid-priority"
+    RIGHT_PRIORITY = "right-priority"
+
+
 class HTTPMethod(Enum):
     GET = "GET"
     POST = "POST"
@@ -62,12 +68,14 @@ class WhispererConfig:
     MEDIAN_FILTER_SIZE = "median_filter_size"
     GAUSSIAN_BLUR_RADIUS = "gaussian_blur_radius"
     LINE_SPLITTER_TOLERANCE = "line_splitter_tolerance"
-    LINE_SPLITTER_STRATEGY = "line_spitter_strategy"
+    LINE_SPLITTER_STRATEGY = "line_splitter_strategy"
     HORIZONTAL_STRETCH_FACTOR = "horizontal_stretch_factor"
     PAGES_TO_EXTRACT = "pages_to_extract"
     MARK_VERTICAL_LINES = "mark_vertical_lines"
     MARK_HORIZONTAL_LINES = "mark_horizontal_lines"
+    # Misspelling retained: correcting the JSON schema key means migrating saved configs
     PAGE_SEPARATOR = "page_seperator"
+    PAGE_SEPARATOR_PARAM = "page_separator"
     URL_IN_POST = "url_in_post"
     TAG = "tag"
     USE_WEBHOOK = "use_webhook"
@@ -80,6 +88,7 @@ class WhispererConfig:
     INCLUDE_LINE_CONFIDENCE = "include_line_confidence"
     EXTRACT_ALL_LINES = "extract_all_lines"
     LINES = "lines"
+    FILE_NAME = "file_name"
 
 
 class WhisperStatus:

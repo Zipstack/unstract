@@ -1,6 +1,7 @@
-import { Button, Result } from "antd";
 import { Suspense } from "react";
 import { Outlet, useLocation } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Result } from "@/components/ui/shims/antd-structure";
 
 import { GenericLoader } from "../../generic-loader/GenericLoader.jsx";
 import { ErrorBoundary } from "../../widgets/error-boundary/ErrorBoundary.jsx";
