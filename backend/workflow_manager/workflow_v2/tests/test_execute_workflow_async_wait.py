@@ -27,14 +27,11 @@ class TestTimeoutWaitSurvivesBookkeepingFailure:
         exec_row = MagicMock(status=ExecutionStatus.EXECUTING.value)
 
         with (
-            patch(f"{_MOD}.resolve_transport", return_value="pg_queue"),
             patch(f"{_MOD}.UserContext") as user_ctx,
             patch(f"{_MOD}.StateStore") as state_store,
             patch(f"{_MOD}.time"),  # no-op sleep
             patch(f"{_MOD}.WorkflowExecution") as wf_exec,
-            patch.object(
-                WorkflowHelper, "_dispatch_orchestrator_task", return_value="1"
-            ),
+            patch.object(WorkflowHelper, "_dispatch_orchestrator_task", return_value="1"),
             patch.object(
                 WorkflowHelper,
                 "_record_dispatch_handle",
