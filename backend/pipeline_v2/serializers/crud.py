@@ -32,6 +32,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     next_run_time = SerializerMethodField()
     is_owner = SerializerMethodField()
     co_owners_count = SerializerMethodField()
+    owner_emails = SerializerMethodField()
     # ``shared_groups`` is no longer an M2M on Pipeline — declare it
     # explicitly so ``fields = "__all__"`` continues to expose it. Share
     # mutations go through ``POST /pipeline/{id}/share/`` (UN-2977 plan §B).
@@ -223,6 +224,11 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def get_co_owners_count(self, obj) -> int:
         return obj.co_owners_count()
+
+    def get_owner_emails(self, obj) -> list[str]:
+        # Names the actual owner in "Owned By"; ``created_by`` is audit-only
+        # (UN-2202) and stays the service account on platform-key creates.
+        return obj.owner_emails()
 
     def get_last_5_run_statuses(self, instance: Pipeline) -> list[dict]:
         """Fetch the last 5 execution statuses with timestamps for this pipeline."""
