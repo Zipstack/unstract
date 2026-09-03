@@ -138,25 +138,48 @@ def resolve_signature_highlight_coords(
     return _dedupe_coords(matched_pages, page_coords)
 
 
+def _as_page_number(page_key: str | int) -> int | None:
+    """Return ``page_key`` as an int, or None when it isn't numeric.
+
+    LLMWhisperer keys its per-page metadata by a stringified page number,
+    but the payload is external input: a non-numeric key must degrade
+    gracefully rather than abort prompt construction for the whole run.
+    """
+    try:
+        return int(page_key)
+    except (TypeError, ValueError):
+        return None
+
+
 def format_signature_metadata_context(
     signature_metadata: dict[str, list[Any]],
 ) -> str:
     """Format ``signature_metadata`` as a human-readable LLM context block.
 
     Returns an empty string when no signatures are present. Page numbers
-    are converted from 0-indexed to 1-indexed for display.
+    are converted from 0-indexed to 1-indexed for display; non-numeric
+    page keys are kept verbatim and sorted last.
     """
     lines: list[str] = []
     for page_num, signatures in sorted(
-        signature_metadata.items(), key=lambda x: int(x[0])
+        signature_metadata.items(),
+        key=lambda item: (
+            _as_page_number(item[0]) is None,
+            _as_page_number(item[0]) or 0,
+            str(item[0]),
+        ),
     ):
         if not signatures:
             continue
+        page_number = _as_page_number(page_num)
+        # 0-indexed → 1-indexed; unparseable keys are shown as-is.
+        page_display = page_number + 1 if page_number is not None else page_num
         for sig in signatures:
+            if not isinstance(sig, dict):
+                continue
             name = sig.get("name", "Unknown")
             sig_type = sig.get("type", "signature")
             desc = sig.get("desc", "")
-            page_display = int(page_num) + 1  # 0-indexed → 1-indexed
             entry = f"- Page {page_display}: {name} ({sig_type})"
             if desc:
                 entry += f" — {desc}"

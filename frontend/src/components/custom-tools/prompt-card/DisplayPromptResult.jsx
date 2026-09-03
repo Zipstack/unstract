@@ -14,6 +14,7 @@ import {
 import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { hasHighlightData } from "./constants";
 
 function DisplayPromptResult({
   output,
@@ -421,9 +422,8 @@ const TextResult = ({
   // when the backend produced highlight_data (e.g. signature page refs
   // from LLMWhisperer's document_insights mode), so signature highlights
   // still work without requiring the separate enable_highlight toggle.
-  const hasHighlightData =
-    Array.isArray(highlightData) && highlightData.length > 0;
-  const isClickable = enableHighlight || hasHighlightData;
+  const isHighlightable = hasHighlightData(highlightData);
+  const isClickable = enableHighlight || isHighlightable;
 
   return isClickable ? (
     <Typography.Text
@@ -432,7 +432,7 @@ const TextResult = ({
         onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
-        hasHighlightData ? "clickable" : ""
+        isHighlightable ? "clickable" : ""
       } ${selectedHighlight?.highlightedPrompt === promptId ? "selected" : ""}`}
     >
       {parsedOutput}

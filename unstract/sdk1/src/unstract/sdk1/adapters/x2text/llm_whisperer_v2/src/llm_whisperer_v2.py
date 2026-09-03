@@ -141,7 +141,14 @@ class LLMWhispererV2(X2TextAdapter):
         for page_str, signatures in signature_metadata.items():
             if not signatures:
                 continue
-            page_num = int(page_str)
+            try:
+                page_num = int(page_str)
+            except (TypeError, ValueError):
+                # Page keys come straight from the LLMWhisperer response;
+                # skip anything non-numeric rather than failing the whole
+                # extraction.
+                logger.warning("DOC_INSIGHTS: skipping non-numeric page key %r", page_str)
+                continue
             if page_num not in page_first_line:
                 logger.warning(
                     "DOC_INSIGHTS: page %d not found in line_metadata", page_num
