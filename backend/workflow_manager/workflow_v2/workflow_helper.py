@@ -301,7 +301,7 @@ class WorkflowHelper:
     def run_workflow(
         workflow: Workflow,
         workflow_execution: WorkflowExecution,
-        hash_values_of_files: dict[str, FileHash] = {},
+        hash_values_of_files: dict[str, FileHash] | None = None,
         organization_id: str | None = None,
         pipeline_id: str | None = None,
         scheduled: bool = False,
@@ -313,6 +313,7 @@ class WorkflowHelper:
         packet_id: str | None = None,
         custom_data: dict[str, Any] | None = None,
     ) -> ExecutionResponse:
+        hash_values_of_files = hash_values_of_files or {}
         tool_instances: list[ToolInstance] = (
             ToolInstanceHelper.get_tool_instances_by_workflow(
                 workflow.id, ToolInstanceKey.STEP
@@ -868,11 +869,12 @@ class WorkflowHelper:
         execution_id: str | None = None,
         pipeline_id: str | None = None,
         execution_mode: WorkflowExecution | None = WorkflowExecution.Mode.QUEUE,
-        hash_values_of_files: dict[str, FileHash] = {},
+        hash_values_of_files: dict[str, FileHash] | None = None,
         use_file_history: bool = False,
         timeout: int | None = None,
         is_api_execution: bool = False,
     ) -> ExecutionResponse:
+        hash_values_of_files = hash_values_of_files or {}
         if pipeline_id:
             logger.info(f"Executing pipeline: {pipeline_id}")
             # Create a new WorkflowExecution entity for each pipeline execution.
@@ -1012,8 +1014,9 @@ class WorkflowHelper:
         workflow: Workflow,
         execution_action: str,
         execution_id: str | None = None,
-        hash_values_of_files: dict[str, FileHash] = {},
+        hash_values_of_files: dict[str, FileHash] | None = None,
     ) -> ExecutionResponse:
+        hash_values_of_files = hash_values_of_files or {}
         if execution_action is Workflow.ExecutionAction.START.value:  # type: ignore
             if execution_id is None:
                 return WorkflowHelper.create_and_make_execution_response(
