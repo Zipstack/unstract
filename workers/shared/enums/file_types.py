@@ -37,6 +37,9 @@ class AllowedFileTypes(Enum):
     DOC = "application/msword"
     XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     XLS = "application/vnd.ms-excel"
+    # Kept in step with the backend's AllowedFileTypes (UN-3016): the two lists
+    # must agree or a file the API accepts is rejected again inside the worker.
+    XLSM = "application/vnd.ms-excel.sheet.macroenabled.12"
     PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     PPT = "application/vnd.ms-powerpoint"
 

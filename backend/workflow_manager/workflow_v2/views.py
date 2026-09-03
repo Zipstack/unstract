@@ -258,17 +258,21 @@ class WorkflowViewSet(
         use_file_history: bool = True
 
         hashes_of_files: dict[str, FileHash] = {}
-        if file_objs and execution_id and workflow_id:
+        has_uploads = bool(file_objs and execution_id and workflow_id)
+        if has_uploads:
             use_file_history = False
-            hashes_of_files = SourceConnector.add_input_file_to_api_storage(
-                pipeline_id=pipeline_guid,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                file_objs=file_objs,
-                use_file_history=False,
-            )
 
         try:
+            # Staged inside this try so the handler below cleans up after a
+            # partial stage: its guard is exactly this staging condition.
+            if has_uploads:
+                hashes_of_files = SourceConnector.add_input_file_to_api_storage(
+                    pipeline_id=pipeline_guid,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    file_objs=file_objs,
+                    use_file_history=False,
+                )
             workflow = self.get_workflow_by_id(workflow_id=workflow_id)
             execution_response = self.execute_workflow(
                 workflow=workflow,
@@ -290,7 +294,7 @@ class WorkflowViewSet(
             )
         except Exception as exception:
             logger.error(f"Error while executing workflow: {exception}", exc_info=True)
-            if file_objs and execution_id and workflow_id:
+            if has_uploads:
                 DestinationConnector.delete_api_storage_dir(
                     workflow_id=workflow_id, execution_id=execution_id
                 )

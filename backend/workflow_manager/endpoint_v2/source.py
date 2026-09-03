@@ -2,7 +2,6 @@ import fnmatch
 import logging
 import os
 import shutil
-import uuid
 from collections.abc import Collection
 from hashlib import sha256
 from io import BytesIO
@@ -1223,6 +1222,9 @@ class SourceConnector(BaseConnector):
         workflow: Workflow = Workflow.objects.get(id=workflow_id)
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
+        # UN-3016: files rejected for an unsupported MIME type, pre-formatted
+        # for the error below; they are never staged and never handed to a worker.
+        skipped_files: list[str] = []
         connection_type = WorkflowEndpoint.ConnectionType.API
         for file in file_objs:
             file_name = file.name
@@ -1237,21 +1239,20 @@ class SourceConnector(BaseConnector):
                 mime_type = AllowedFileTypes.OCTET_STREAM.value
 
             if not AllowedFileTypes.is_allowed(mime_type):
-                log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
-                workflow_log.log_info(logger=logger, message=log_message)
-                # Generate a clearly marked temporary hash to avoid reading the file content
-                # Helps to prevent duplicate entries in file executions
-                fake_hash = f"temp-hash-{uuid.uuid4().hex}"
-                file_hash = FileHash(
-                    file_path=destination_path,
-                    source_connection_type=connection_type,
-                    file_name=file_name,
-                    file_hash=fake_hash,
-                    is_executed=True,
-                    file_size=file.size,
-                    mime_type=mime_type,
+                # UN-3016: the file is deliberately NOT staged (its bytes are never
+                # written), so it must not be handed to a worker either. Previously
+                # it was returned with is_executed=True and a temp hash; nothing
+                # downstream filters on is_executed, so the worker ran anyway, failed
+                # on the missing file, and the execution died with an opaque
+                # "Execution: <path>; Destination: <path>" error instead of a clear
+                # "skipped, unsupported type" outcome. Excluding it here keeps the
+                # skip a skip.
+                log_message = (
+                    f"Skipping file '{file_name}': unsupported file type "
+                    f"'{mime_type}'. It will not be processed."
                 )
-                file_hashes.update({file_name: file_hash})
+                workflow_log.log_error(logger=logger, message=log_message)
+                skipped_files.append(f"'{file_name}' ({mime_type})")
                 continue
 
             file_system = FileSystem(FileStorageType.API_EXECUTION)
@@ -1285,6 +1286,17 @@ class SourceConnector(BaseConnector):
                 mime_type=mime_type,
             )
             file_hashes.update({file_name: file_hash})
+
+        # UN-3016: if every uploaded file was rejected there is nothing to run.
+        # Fail loudly with the reason instead of dispatching an empty execution,
+        # which would otherwise finish as a vacuous success and leave the user
+        # wondering why nothing happened.
+        if skipped_files and not file_hashes:
+            raise UnsupportedMimeTypeError(
+                "No files could be processed. Unsupported file type(s): "
+                + ", ".join(skipped_files)
+            )
+
         return file_hashes
 
     @classmethod
