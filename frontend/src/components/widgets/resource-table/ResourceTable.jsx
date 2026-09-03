@@ -22,6 +22,7 @@ import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
 import "./ResourceTable.css";
 
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
@@ -288,6 +289,12 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
+    // Sharing grants read only: no edit, no delete. Both controls stay on
+    // screen but disabled, so it is obvious they exist and why they are not
+    // available. Sharing onward stays open to shared users.
+    const canEdit = canEditResource(item, sessionDetails);
+    const locked = !canEdit;
+    const lockedTitle = "Only the owner can change this";
     return (
       <Space
         size={18}
@@ -295,14 +302,16 @@ function ResourceTable({
         onClick={(event) => event.stopPropagation()}
         role="none"
       >
-        <Tooltip title={disabledTitle}>
+        <Tooltip title={locked ? lockedTitle : disabledTitle}>
           <button
             type="button"
             className="action-icon-btn"
             aria-label={`Edit ${type}`}
             data-testid={rowTestId(item, "edit")}
-            aria-disabled={deprecated}
-            onClick={(event) => !deprecated && handleEdit?.(event, item)}
+            aria-disabled={deprecated || locked}
+            onClick={(event) =>
+              !deprecated && canEdit && handleEdit?.(event, item)
+            }
           >
             <Pencil className="action-icon-buttons edit-icon" />
           </button>
@@ -328,6 +337,7 @@ function ResourceTable({
          * because every row has one.
          */}
         <Popconfirm
+          disabled={locked}
           title={`Delete the ${type}`}
           description={`Are you sure to delete ${item?.[titleProp]}`}
           okText="Yes"
@@ -341,6 +351,8 @@ function ResourceTable({
             className="action-icon-btn"
             aria-label={`Delete ${type}`}
             data-testid={rowTestId(item, "delete")}
+            aria-disabled={locked}
+            title={locked ? lockedTitle : undefined}
           >
             <Trash2 className="action-icon-buttons delete-icon" />
           </button>

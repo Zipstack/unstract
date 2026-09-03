@@ -3,6 +3,7 @@ from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from tenant_account_v2.organization_member_service import OrganizationMemberService
@@ -146,6 +147,36 @@ class IsParentWorkflowOwner(permissions.BasePermission):
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         return is_workflow_mutator(request, obj.workflow)
+
+
+class WorkflowOwnerMutationMixin:
+    """Viewset mixin gating mutation of a workflow sub-resource.
+
+    Shared access to the parent workflow -- direct, via group, or org-wide --
+    grants read only. Admits owners, co-owners, org admins and service
+    accounts, via :func:`is_workflow_mutator`. Requires the resource to carry
+    a ``workflow`` FK.
+
+    ``create`` is handled separately from the rest: it is collection-level, so
+    DRF never calls ``get_object()`` and ``IsParentWorkflowOwner`` cannot run.
+    """
+
+    mutation_denied_message = (
+        "Only the workflow owner or an organization admin can change this."
+    )
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsParentWorkflowOwner()]
+        return list(super().get_permissions())
+
+    def perform_create(self, serializer: Any) -> None:
+        # Fails closed: this mixin only guards resources that carry a parent
+        # workflow, so a payload without one cannot be authorised at all.
+        workflow = serializer.validated_data.get("workflow")
+        if not workflow or not is_workflow_mutator(self.request, workflow):
+            raise PermissionDenied(self.mutation_denied_message)
+        serializer.save()
 
 
 class IsParentToolOwner(permissions.BasePermission):

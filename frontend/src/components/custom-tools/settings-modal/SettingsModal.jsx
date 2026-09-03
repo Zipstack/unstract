@@ -12,6 +12,8 @@ import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Menu } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { getMenuItem } from "../../../helpers/GetStaticData";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
+import { ReadOnlyNotice } from "../../widgets/read-only-notice/ReadOnlyNotice";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { CustomDataSettings } from "../custom-data-settings/CustomDataSettings";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
@@ -41,6 +43,10 @@ try {
   // Component will remain null if it is not present.
 }
 function SettingsModal({ open, setOpen, handleUpdateTool }) {
+  // Settings hold the project's adapter credentials, so a shared user reads
+  // them but cannot change them. Prompts stay editable -- that is what the
+  // project was shared for.
+  const canEdit = usePromptStudioCanEdit();
   const [selectedId, setSelectedId] = useState(1);
   const [menuItems, setMenuItems] = useState([]);
   const [components, setComponents] = useState([]);
@@ -140,6 +146,9 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
             Settings
           </Typography.Text>
         </div>
+        {!canEdit && (
+          <ReadOnlyNotice message="Shared with you — settings are view only. Only the owner can change them." />
+        )}
         <Row className="conn-modal-row" style={{ height: "800px" }}>
           <Col span={4} className="conn-modal-col conn-modal-col-left">
             <div className="conn-modal-menu conn-modal-form-pad-right">
@@ -154,7 +163,11 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
             </div>
           </Col>
           <Col span={20} className="conn-modal-col">
-            <div className="conn-modal-form-pad-left">
+            <div
+              className={`conn-modal-form-pad-left${
+                canEdit ? "" : " uneditable"
+              }`}
+            >
               {components[selectedId]}
             </div>
           </Col>

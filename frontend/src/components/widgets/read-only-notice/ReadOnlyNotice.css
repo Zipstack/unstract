@@ -1,0 +1,25 @@
+.read-only-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 6px;
+  background: var(--bg-subtle, #fafafa);
+  font-size: 13px;
+}
+
+.read-only-notice__icon {
+  flex-shrink: 0;
+}
+
+/* Blanket read-only for a form region. Covers third-party widgets (the HITL
+   query builder, RJSF) that expose no single disabled prop.
+   ponytail: keyboard focus can still reach inputs; the backend gate and the
+   absent Save button are what actually prevent writes. Swap for per-input
+   `disabled` if that ever needs to be airtight visually. */
+.uneditable {
+  pointer-events: none;
+  opacity: 0.6;
+}
