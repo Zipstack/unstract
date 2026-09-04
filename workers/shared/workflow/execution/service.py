@@ -1018,11 +1018,11 @@ class WorkerWorkflowExecutionService:
     def _execute_structure_tool_workflow(
         self, execution_service: WorkflowExecutionService, file_name: str
     ) -> None:
-        """Execute structure tool as Celery task instead of Docker container.
+        """Execute structure tool as a task instead of a Docker container.
 
         Calls execute_structure_tool directly (same process, in-band).
-        Only the inner ExecutionDispatcher calls go through Celery to
-        the executor worker.
+        Only the inner executor-RPC dispatches leave this process, and they go
+        to the executor worker over the PG queue.
         """
         from file_processing.structure_tool_task import (
             execute_structure_tool as _execute_structure_tool,
