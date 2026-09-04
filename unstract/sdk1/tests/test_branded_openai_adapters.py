@@ -186,10 +186,30 @@ def test_minimax_m2_rejects_disabling_thinking() -> None:
         )
 
 
-def test_minimax_m2_defaults_to_adaptive_thinking() -> None:
+def test_minimax_m2_uses_always_on_thinking_without_request_parameter() -> None:
     validated = MiniMaxLLMParameters.validate({"model": "MiniMax-M2.7", "api_key": "k"})
 
-    assert validated["thinking"] == {"type": "adaptive"}
+    assert validated["thinking"] is None
+    assert MiniMaxLLMParameters.validate(dict(validated))["thinking"] is None
+
+    explicitly_enabled = MiniMaxLLMParameters.validate(
+        {"model": "MiniMax-M2.7", "api_key": "k", "enable_thinking": True}
+    )
+    assert explicitly_enabled["thinking"] is None
+
+
+def test_minimax_m2_strips_explicit_thinking_payload() -> None:
+    # The provider accepts a thinking payload for M2.x but ignores it, so drop it
+    # instead of failing a call that works today.
+    validated = MiniMaxLLMParameters.validate(
+        {
+            "model": "MiniMax-M2.7",
+            "api_key": "k",
+            "thinking": {"type": "disabled"},
+        }
+    )
+
+    assert validated["thinking"] is None
 
 
 def test_minimax_m2_thinking_rules_require_model_family_boundary() -> None:
