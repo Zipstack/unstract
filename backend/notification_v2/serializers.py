@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
+from unstract.core.network.ssrf import is_safe_webhook_url
+
 from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
 
@@ -34,7 +36,37 @@ class NotificationSerializer(serializers.ModelSerializer):
         # General validation for the relationship between api and pipeline
         self._validate_api_or_pipeline(data)
         self._validate_authorization(data)
+        self._validate_url(data)
         return data
+
+    def _validate_url(self, data):
+        """Reject a URL that can never be dialled, at save time.
+
+        is_safe_webhook_url refuses a disallowed scheme, credentials in the URL,
+        a host the two parsers disagree on, and an internal address literal —
+        not only the last of those. The sink is still the real control.
+
+        resolve=False keeps DNS off the request thread — getaddrinfo takes no
+        timeout. A hostname pointing inward is accepted here and refused at the
+        sink, which resolves. Only a URL the caller actually sent is checked;
+        re-checking the stored one would 400 an unrelated PATCH on a legacy row.
+        """
+        notification_type = data.get(
+            "notification_type", getattr(self.instance, "notification_type", None)
+        )
+        url = data.get("url", getattr(self.instance, "url", None))
+
+        if not url:
+            if notification_type == NotificationType.WEBHOOK.value:
+                raise serializers.ValidationError(
+                    {"url": "A webhook notification requires a URL."}
+                )
+            return
+
+        if "url" in data and not is_safe_webhook_url(url, resolve=False):
+            raise serializers.ValidationError(
+                {"url": "URL must not be an internal or ambiguous address."}
+            )
 
     def _validate_api_or_pipeline(self, data):
         """Ensure either 'api' or 'pipeline' is provided, but not both."""

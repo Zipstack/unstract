@@ -5,6 +5,7 @@ Handles webhook notification related endpoints for internal services.
 import logging
 from typing import Any
 
+import requests
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -21,6 +22,7 @@ from notification_v2.internal_serializers import (
     WebhookTestSerializer,
 )
 from notification_v2.models import Notification
+from unstract.core.network.ssrf import is_safe_webhook_url
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +117,14 @@ class WebhookTestAPIView(APIView):
             validated_data = serializer.validated_data
             headers = self._build_headers(validated_data)
 
-            import requests
+            # Same guard as the delivery sinks. This endpoint is behind
+            # INTERNAL_SERVICE_API_KEY and not tenant-reachable, but it takes
+            # an arbitrary URL and so gets the same treatment.
+            if not is_safe_webhook_url(validated_data["url"]):
+                return Response(
+                    {"error": "URL must resolve to a public address."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             try:
                 response = requests.post(
@@ -123,16 +132,19 @@ class WebhookTestAPIView(APIView):
                     json=validated_data["payload"],
                     headers=headers,
                     timeout=validated_data["timeout"],
+                    allow_redirects=False,
                 )
 
+                # Status only. The response body and headers are not the
+                # caller's to read, and `headers` (built above) carries the
+                # Authorization value built from authorization_key, so it is
+                # not echoed back either.
                 test_result = {
-                    "success": response.status_code < 400,
+                    # 2xx only: redirects are not followed, so a 301/302 means
+                    # the payload never reached the final destination.
+                    "success": 200 <= response.status_code < 300,
                     "status_code": response.status_code,
-                    "response_headers": dict(response.headers),
-                    "response_body": response.text[:1000],
                     "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
                 }
 
                 logger.info(
@@ -142,12 +154,14 @@ class WebhookTestAPIView(APIView):
                 return Response(test_result)
 
             except requests.exceptions.RequestException as e:
+                # Same rule as the success branch above: `headers` carries the
+                # Authorization value built from authorization_key, so it is not
+                # echoed back. A target that times out or refuses the connection
+                # is the most common way to get here.
                 test_result = {
                     "success": False,
                     "error": str(e),
                     "url": validated_data["url"],
-                    "request_headers": headers,
-                    "request_payload": validated_data["payload"],
                 }
 
                 return Response(test_result, status=status.HTTP_400_BAD_REQUEST)
