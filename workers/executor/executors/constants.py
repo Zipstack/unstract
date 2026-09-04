@@ -51,6 +51,15 @@ class PromptServiceConstants:
     CHALLENGE = "challenge"
     ENABLE_CHALLENGE = "enable_challenge"
     EXTRACTION = "extraction"
+    # Reserved namespace for file-level (whole-document) metrics so they cannot
+    # collide with user-defined output/prompt names at the top level of the
+    # metrics dict. Mirrors the "file" key of the API response.
+    FILE = "_file"
+    # Text extraction (X2Text) of the source document. Named to stay distinct
+    # from "extraction_llm", the extraction-purpose LLM call beside it.
+    TEXT_EXTRACTION = "text_extraction"
+    # Wire-format key every metrics producer reports its duration under.
+    TIME_TAKEN = "time_taken(s)"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
     SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"

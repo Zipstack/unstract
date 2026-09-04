@@ -196,6 +196,79 @@ def _should_skip_extraction_for_smart_table(
     return False
 
 
+def _agentic_extraction_seconds(agentic_metrics: dict[str, Any]) -> float:
+    """Total X2Text seconds reported by the agentic_table executor.
+
+    Each agentic prompt extracts the document itself, so the durations sum:
+    the figure is time *spent* extracting, not the wall-clock span of the
+    agentic step. Returns 0.0 when the executor reports no extraction timing,
+    which leaves the file-level bucket untouched rather than writing a zero.
+    """
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    total = 0.0
+    for prompt_metrics in agentic_metrics.values():
+        if not isinstance(prompt_metrics, dict):
+            continue
+        entry = prompt_metrics.get(PSKeys.TEXT_EXTRACTION)
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get(PSKeys.TIME_TAKEN)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += float(value)
+    return total
+
+
+def _merge_agentic_metrics(
+    structured_output: dict[str, Any], agentic_metrics: dict[str, Any]
+) -> None:
+    """Fold the agentic executor's metrics into the tool's metrics dict.
+
+    Two things happen here, and they are separate:
+
+    * Per-prompt metrics land beside the legacy pipeline's, keyed by prompt
+      name under ``table_extraction`` — the same shape
+      ``LegacyExecutor._run_table_extraction`` uses for the non-agentic table
+      plugin, so both table routes read alike downstream.
+    * Any X2Text duration the executor reported is *added* to the file-level
+      ``_file.text_extraction`` bucket. The legacy pipeline times only its own
+      extraction, so without this an agentic-only run reports no extraction
+      time at all and a mixed run under-reports it (UN-2771 / UN-4084).
+    """
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    if not agentic_metrics:
+        return
+
+    metrics = structured_output.setdefault("metrics", {})
+    for prompt_name, prompt_metrics in agentic_metrics.items():
+        key = prompt_name
+        if key == PSKeys.FILE:
+            # `_file` is reserved for whole-document metrics, so a prompt with
+            # that name gets a de-collided key. Merging it into the reserved
+            # bucket would conflate per-prompt and file-level figures; dropping
+            # it would lose every other count the prompt reported. The space
+            # cannot appear in the reserved key, so the two can never alias.
+            key = f"{prompt_name} (prompt)"
+            logger.warning(
+                "Agentic prompt named %r collides with the reserved file-level "
+                "metrics namespace; reporting its metrics under %r instead",
+                prompt_name,
+                key,
+            )
+        metrics.setdefault(key, {}).update({"table_extraction": prompt_metrics})
+
+    extraction_seconds = _agentic_extraction_seconds(agentic_metrics)
+    if not extraction_seconds:
+        return
+    file_bucket = metrics.setdefault(PSKeys.FILE, {}).setdefault(
+        PSKeys.TEXT_EXTRACTION, {}
+    )
+    file_bucket[PSKeys.TIME_TAKEN] = (
+        file_bucket.get(PSKeys.TIME_TAKEN, 0.0) + extraction_seconds
+    )
+
+
 # -----------------------------------------------------------------------
 # Main Celery task
 # -----------------------------------------------------------------------
@@ -443,6 +516,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # PDF written alongside INFILE by the source connector.
     agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
+    agentic_metrics: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
         json_structure = at_settings.get("json_structure")
@@ -490,6 +564,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             return at_result.to_dict()
         at_output_data = at_result.data.get("output", {}) or {}
         agentic_results[at_output[_SK.NAME]] = at_output_data.get("tables", [])
+        # The executor runs its own X2Text, so its metrics carry an extraction
+        # duration the legacy pipeline's timer never sees. Same result shape the
+        # non-agentic table plugin uses (LegacyExecutor._run_table_extraction).
+        at_metrics = (at_result.data.get("metadata") or {}).get("metrics") or {}
+        if at_metrics:
+            agentic_metrics[at_output[_SK.NAME]] = at_metrics
 
     # ---- Step 6b: Dispatch legacy structure_pipeline ----
     # Skipped entirely when every prompt is agentic_table — the legacy
@@ -536,12 +616,16 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         structured_output = pipeline_result.data
         if agentic_results:
             structured_output.setdefault("output", {}).update(agentic_results)
+        _merge_agentic_metrics(structured_output, agentic_metrics)
     else:
-        # All-agentic case: skip the legacy pipeline entirely.
+        # All-agentic case: skip the legacy pipeline entirely. The metrics
+        # dict is still populated, so an agentic-only deployment reports the
+        # same _file.text_extraction the legacy path does.
         structured_output = {
             "output": agentic_results,
             "metadata": {"agentic_only": True},
         }
+        _merge_agentic_metrics(structured_output, agentic_metrics)
         pipeline_elapsed = 0.0
 
     # ---- Step 7: Write output files ----
