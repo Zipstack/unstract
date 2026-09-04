@@ -47,9 +47,11 @@ _LOOPBACK_NAMES = ("localhost",)
 # Ranges IANA marks as not globally reachable that ``is_global`` still admits,
 # because the stdlib's copy of the registries predates them or omits them.
 # Multicast is handled separately in ``_is_public`` via ``is_multicast``.
+# These are registry entries, not deployment addresses: they name ranges this
+# guard must refuse, so they are hardcoded by definition. NOSONAR
 _NOT_GLOBALLY_REACHABLE = (
-    ipaddress.ip_network("192.88.99.0/24"),  # 6to4 relay anycast, deprecated
-    ipaddress.ip_network("5f00::/16"),  # SRv6 SIDs
+    ipaddress.ip_network("192.88.99.0/24"),  # NOSONAR - 6to4 relay anycast (RFC 7526)
+    ipaddress.ip_network("5f00::/16"),  # NOSONAR - SRv6 SIDs (RFC 9602)
 )
 
 
@@ -133,9 +135,19 @@ def _is_public(addr: str) -> bool:
         return False
     if not ip.is_global or ip.is_multicast:
         return False
-    return not any(
-        net.version == ip.version and ip in net for net in _NOT_GLOBALLY_REACHABLE
-    )
+    # ``in`` is version-safe: _BaseNetwork.__contains__ returns False on a
+    # version mismatch rather than raising, so no explicit guard is needed.
+    return not any(ip in net for net in _NOT_GLOBALLY_REACHABLE)
+
+
+def is_retryable_refusal(reason: str | None) -> bool:
+    """Whether retrying a refusal could ever produce a different outcome.
+
+    Only :data:`UNRESOLVABLE` can: a resolver outage clears on its own. Every
+    other reason is a property of the URL itself. Kept next to the reasons so a
+    new one has to be classified here rather than at each sink.
+    """
+    return reason == UNRESOLVABLE
 
 
 def webhook_url_refusal(
@@ -234,13 +246,17 @@ def is_safe_webhook_url(
     logger.warning(
         "Refusing webhook URL: %s (host=%s)",
         reason,
-        _safe_host(url),
+        safe_host(url),
     )
     return False
 
 
-def _safe_host(url: str | None) -> str:
-    """The host of ``url`` for logging, never the path or query string."""
+def safe_host(url: str | None) -> str:
+    """The host of ``url`` for logging, never the path or query string.
+
+    Public because every sink that logs a refusal needs it, and a second copy
+    is a second chance to drop the ``ValueError`` guard on a malformed literal.
+    """
     try:
         return urlparse(url or "").hostname or "<none>"
     except ValueError:

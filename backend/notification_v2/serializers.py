@@ -40,7 +40,11 @@ class NotificationSerializer(serializers.ModelSerializer):
         return data
 
     def _validate_url(self, data):
-        """Reject internal address literals at save time; the sink is the real control.
+        """Reject a URL that can never be dialled, at save time.
+
+        is_safe_webhook_url refuses a disallowed scheme, credentials in the URL,
+        a host the two parsers disagree on, and an internal address literal —
+        not only the last of those. The sink is still the real control.
 
         resolve=False keeps DNS off the request thread — getaddrinfo takes no
         timeout. A hostname pointing inward is accepted here and refused at the

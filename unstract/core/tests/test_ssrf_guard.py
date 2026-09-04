@@ -18,9 +18,12 @@ from unstract.core.network.ssrf import (
     REFUSED_INTERNAL_LITERAL,
     REFUSED_NON_PUBLIC,
     REFUSED_SCHEME,
+    REFUSED_UNPARSEABLE,
     UNRESOLVABLE,
     _normalize_host,
+    is_retryable_refusal,
     is_safe_webhook_url,
+    safe_host,
     webhook_url_refusal,
 )
 from unstract.core.notification_utils import send_webhook_request
@@ -348,3 +351,42 @@ class TestNotificationSink:
         assert result["success"] is False
         assert result["retryable"] is True
         assert result["refusal_reason"] == UNRESOLVABLE
+
+    def test_a_url_that_breaks_urlparse_is_refused_not_raised(self):
+        """The refusal log re-parses the URL; it must not raise doing so.
+
+        ``urlparse("http://[::1")`` raises ValueError. ``webhook_url_refusal``
+        catches that and returns REFUSED_UNPARSEABLE, so a second unguarded
+        parse in the sink turned a deterministic refusal into an exception that
+        the caller wraps as DeliveryError and retries like a transient failure.
+        """
+        with patch("unstract.core.notification_utils.requests.post") as post:
+            result = send_webhook_request(url="http://[::1", payload={})
+
+        post.assert_not_called()
+        assert result["success"] is False
+        assert result["retryable"] is False
+        assert result["refusal_reason"] == REFUSED_UNPARSEABLE
+
+
+class TestRetryabilityIsClassifiedOnce:
+    """Every sink asks the guard whether a refusal can clear, rather than
+    re-deriving it — a new reason has to be classified in one place."""
+
+    def test_only_a_resolver_outage_is_retryable(self):
+        assert is_retryable_refusal(UNRESOLVABLE) is True
+        for reason in (
+            REFUSED_INTERNAL_LITERAL,
+            REFUSED_NON_PUBLIC,
+            REFUSED_SCHEME,
+            REFUSED_UNPARSEABLE,
+        ):
+            assert is_retryable_refusal(reason) is False
+
+    def test_no_refusal_is_not_retryable(self):
+        assert is_retryable_refusal(None) is False
+
+    def test_safe_host_never_raises_and_never_leaks_the_query_string(self):
+        assert safe_host("https://example.com/hook?token=secret") == "example.com"
+        assert safe_host("http://[::1") == "<unparseable>"
+        assert safe_host(None) == "<none>"

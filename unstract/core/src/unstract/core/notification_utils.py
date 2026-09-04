@@ -7,12 +7,15 @@ backend Django services and worker processes for consistent notification handlin
 import logging
 from datetime import datetime
 from typing import Any
-from urllib.parse import urlparse
 from uuid import UUID
 
 import requests
 
-from unstract.core.network.ssrf import UNRESOLVABLE, webhook_url_refusal
+from unstract.core.network.ssrf import (
+    is_retryable_refusal,
+    safe_host,
+    webhook_url_refusal,
+)
 from unstract.core.notification_enums import AuthorizationType
 
 logger = logging.getLogger(__name__)
@@ -143,13 +146,14 @@ def send_webhook_request(
     if refusal is not None:
         # A resolver outage clears on its own, so that one stays retryable.
         # Every other reason is a property of the URL and cannot change between
-        # attempts — retrying it only re-runs getaddrinfo on a tenant-supplied
-        # hostname and delays dead-lettering.
-        retryable = refusal == UNRESOLVABLE
+        # attempts — retrying it wastes an attempt (and, when the refusal came
+        # from resolution, a DNS lookup on a tenant-supplied hostname) without
+        # ever changing the outcome, and delays dead-lettering.
+        retryable = is_retryable_refusal(refusal)
         logger.error(
             "Refusing webhook: %s (host=%s, retryable=%s)",
             refusal,
-            urlparse(url or "").hostname or "<none>",
+            safe_host(url),
             retryable,
         )
         return {

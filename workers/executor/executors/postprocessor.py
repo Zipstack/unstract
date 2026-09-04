@@ -57,7 +57,7 @@ def _process_successful_response(
 
 def _make_webhook_request(
     webhook_url: str, payload: dict, timeout: float
-) -> tuple[dict[str, Any], list | None] | None:
+) -> dict[str, Any] | None:
     """Make webhook request and return processed response or None on failure."""
     # Guard at the sink so it cannot be skipped by a caller. This path has
     # always required TLS, so keep it to https.

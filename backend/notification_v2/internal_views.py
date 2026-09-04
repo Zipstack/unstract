@@ -358,8 +358,9 @@ class WebhookTestAPIView(APIView):
                 )
 
                 # Status only. The response body and headers are not the
-                # caller's to read, and request_headers carried back the
-                # Authorization value built from authorization_key.
+                # caller's to read, and `headers` (built above) carries the
+                # Authorization value built from authorization_key, so it is
+                # not echoed back either.
                 test_result = {
                     # 2xx only: redirects are not followed, so a 301/302 means
                     # the payload never reached the final destination.
@@ -375,10 +376,10 @@ class WebhookTestAPIView(APIView):
                 return Response(test_result)
 
             except requests.exceptions.RequestException as e:
-                # Same rule as the success branch above: the echoed
-                # request_headers carried back the Authorization value built
-                # from authorization_key, and a target that times out or
-                # refuses the connection is the most common way to get here.
+                # Same rule as the success branch above: `headers` carries the
+                # Authorization value built from authorization_key, so it is not
+                # echoed back. A target that times out or refuses the connection
+                # is the most common way to get here.
                 test_result = {
                     "success": False,
                     "error": str(e),

@@ -30,6 +30,17 @@ from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)
 
+
+class TerminalWebhookRefusal(Exception):
+    """A refusal no retry can clear, already dead-lettered by its raiser.
+
+    Distinct from the errors below it so ``send_webhook_notification``'s broad
+    ``except Exception`` cannot route it back into ``self.retry`` — a plain
+    ``Exception`` here was retried ``max_retries`` times for a URL that will
+    never be dialable, and dead-lettered the buffer rows a second time.
+    """
+
+
 # Initialize worker configuration
 config = WorkerConfig.from_env("NOTIFICATION")
 
@@ -322,11 +333,16 @@ def send_webhook_notification(
                 )
                 _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
                 if raise_on_final_failure:
-                    raise Exception(error_message)
+                    raise TerminalWebhookRefusal(error_message)
                 return None
 
             # Failed delivery - raise exception for retry handling
             raise Exception(error_message)
+
+    except TerminalWebhookRefusal:
+        # Buffer rows are already dead-lettered above and no attempt can change
+        # the outcome. Surface FAILURE to the caller without re-entering retry.
+        raise
 
     except (ValidationError, DeliveryError) as e:
         # Handle provider-specific errors
