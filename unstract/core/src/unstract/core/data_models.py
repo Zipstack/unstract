@@ -214,8 +214,32 @@ class WorkflowTransport(str, Enum):
     PG_QUEUE = "pg_queue"
 
 
-# Default transport when none is resolved/carried — keeps every pre-existing
-# payload and caller on the legacy path until a transport is explicitly chosen.
+# Default transport when none is carried on the payload.
+#
+# ⚠️ KNOWN HAZARD, DELIBERATELY NOT FIXED HERE — the safe direction has inverted.
+#
+# CELERY was the safe fallback while Celery had consumers: a payload that lost the
+# field degraded onto a working substrate. With the Celery fleet at zero that is no
+# longer true. A payload defaulting to "celery" now selects CeleryChordBarrier in
+# `_barrier_for_transport`, skips the PG orchestration-claim and terminal-redelivery
+# guards, and publishes the fan-out to a broker nothing drains — and because no PG
+# rows are written, neither the reaper nor the undispatched sweep can see the
+# stranded execution. Reachable on a rolling deploy, where a not-yet-upgraded
+# backend still emits `transport: "celery"`.
+#
+# Flipping this constant to PG_QUEUE is the right fix and it is a one-line change,
+# but it is NOT a one-line consequence: it breaks 19 tests across 6 files
+# (test_pg_barrier, test_chord_sites_characterisation, test_barrier,
+# test_dispatch_with_callback, test_dispatch_sites_characterisation,
+# test_workflow_context_transport), every one of which relies on the implicit
+# Celery default — most of them characterising PgBarrier's Celery-link branch,
+# which is deferred-deletion code. Rewriting those to state their transport
+# explicitly is correct, but it is a behaviour change that deserves its own review
+# rather than riding along in a documentation sweep.
+#
+# Until then the mitigation is that every producer sets the field explicitly
+# (workflow_helper.py and internal_api_views.py both hardcode PG_QUEUE), so the
+# default is only reachable via version skew.
 DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
 
 
@@ -227,14 +251,18 @@ def normalize_transport(value: object, *, logger: Any = None, context: str = "")
     route an execution onto an unknown substrate. This **fails closed**: an
     unrecognized value (``None``, ``"celary"``, ``""``) logs a warning (when a
     ``logger`` is given) and falls back to :data:`DEFAULT_WORKFLOW_TRANSPORT`
-    (Celery). A recognized value passes through as its canonical string.
+    — see the hazard note on that constant. A recognized value passes through as
+    its canonical string.
 
     Coerce-not-raise is deliberate, and differs from how
     ``WorkflowContextData.workflow_type`` is validated: ``transport`` has an
-    explicit safe default by design (the whole point of the seam is reversible
-    fallback to Celery), so a bad value should degrade to Celery, not crash the
-    execution. ``context`` is an optional suffix for the log line (e.g. an
-    ``exec:<id>`` tag) to make a version-skew warning traceable.
+    explicit safe default by design, so a bad value should degrade rather than
+    crash the execution. What changed with UN-4046 is WHICH default is safe — see
+    the note on the constant. A rolling deploy where an older backend still emits
+    ``"celery"`` is the live case: that value is recognized, so it passes through
+    here untouched and the guards keyed on it are skipped. This function only
+    protects the missing/garbage case. ``context`` is an optional suffix for the
+    log line (e.g. an ``exec:<id>`` tag) to make a version-skew warning traceable.
     """
     try:
         return WorkflowTransport(value).value

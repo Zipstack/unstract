@@ -55,9 +55,9 @@ class SlackWebhook(WebhookProvider):
         Two input shapes are accepted:
         - Backend-rendered ``{"text": "<mrkdwn>"}`` (any backend dispatch
           through ``clubbed_renderer``) — passed through.
-        - Flat per-event dict from the generic internal webhook-send endpoints —
-          wrapped in a single-event envelope and rendered to the canonical
-          Slack mrkdwn body.
+        - Flat per-event dict from a direct ``send_webhook_notification``
+          dispatch — wrapped in a single-event envelope and rendered to the
+          canonical Slack mrkdwn body.
         """
         if "text" in payload and "events" not in payload:
             return {"text": payload["text"]}

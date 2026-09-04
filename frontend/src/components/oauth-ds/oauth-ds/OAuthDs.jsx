@@ -1,6 +1,6 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { getBaseUrl, O_AUTH_PROVIDERS } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
