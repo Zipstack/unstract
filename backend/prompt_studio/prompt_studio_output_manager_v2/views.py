@@ -12,6 +12,7 @@ from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
 from utils.filtering import FilterHelper
 from utils.user_context import UserContext
+from utils.uuid_validation import validated_uuid
 
 from prompt_studio.prompt_studio_output_manager_v2.constants import (
     PromptOutputManagerErrorMessage,
@@ -28,20 +29,6 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from .models import PromptStudioOutputManager
 
 logger = logging.getLogger(__name__)
-
-
-def _validated_uuid(raw: Any, field_name: str) -> uuid.UUID:
-    """A query-string id as a UUID, or a 400 naming the field.
-
-    These columns are UUID primary/foreign keys, so a non-UUID value makes
-    ``filter()`` raise Django's ``ValidationError`` while the query is being
-    *built*. drf_standardized_errors maps only ``Http404`` and Django's
-    ``PermissionDenied``, so that surfaced as a 500 rather than a 400.
-    """
-    try:
-        return uuid.UUID(str(raw))
-    except (ValueError, AttributeError, TypeError):
-        raise ValidationError(detail=f"'{field_name}' must be a valid UUID.")
 
 
 def _required_organization(tool_id: uuid.UUID) -> Organization:
@@ -96,7 +83,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             PromptStudioOutputManagerKeys.DOCUMENT_MANAGER,
         ):
             if key in filter_args:
-                filter_args[key] = _validated_uuid(filter_args[key], key)
+                filter_args[key] = validated_uuid(filter_args[key], key)
 
         # Convert the string representation to a boolean value
         is_single_pass_extract = CommonUtils.str_to_bool(is_single_pass_extract_param)
@@ -128,10 +115,17 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
-        tool_id = _validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
+        tool_id = validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
 
-        # A raw .objects query is not routed through filter_queryset(), so
-        # OrganizationFilterBackend does not see it — scope explicitly.
+        # Defence in depth, not the only scope. Since these models moved to
+        # OrgAwareManager (pinned to tool_id__organization in
+        # ORG_PATH_OVERRIDES) the manager appends this same predicate on its
+        # own, resolving the org through the same UserContext call
+        # _required_organization() makes. Kept explicit because a raw .objects
+        # query is not routed through filter_queryset(), so the view layer
+        # contributes nothing here and the manager pin would be the single
+        # point of failure. test_cross_org_isolation pins the manager
+        # independently, so removing these kwargs stays a safe follow-up.
         organization = _required_organization(tool_id)
         prompt_id_to_key = dict(
             ToolStudioPrompt.objects.filter(
@@ -174,7 +168,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not tool_id:
             raise ValidationError(detail=tool_validation_message)
 
-        tool_id = _validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
+        tool_id = validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
         # Same column type, same failure: this one reaches
         # PromptStudioOutputManager.objects.filter(document_manager_id=...) in
         # the helper below. Required, not optional — absent it stays None and
@@ -185,14 +179,15 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             raise ValidationError(
                 detail="'document_manager' is required and must be a valid UUID."
             )
-        document_manager_id = _validated_uuid(
+        document_manager_id = validated_uuid(
             document_manager_id, PromptStudioOutputManagerKeys.DOCUMENT_MANAGER
         )
         organization = _required_organization(tool_id)
 
         # Fetch ToolStudioPrompt records based on tool_id.
-        # A raw .objects query is not routed through filter_queryset(), so
-        # OrganizationFilterBackend does not see it — scope explicitly.
+        # Defence in depth, as above: OrgAwareManager already pins this model
+        # to tool_id__organization, and a raw .objects query gets nothing from
+        # the view layer.
         #
         # No exception handling below: for a valid UUID that matches no row, or
         # a tool in another organization, filter() returns empty rather than

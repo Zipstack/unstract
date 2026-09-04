@@ -12,6 +12,7 @@ refused and org B's row is untouched.
 """
 
 import secrets
+from unittest.mock import patch
 
 import pytest
 from account_v2.models import Organization, User
@@ -32,7 +33,31 @@ from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
 from prompt_studio.prompt_studio_output_manager_v2.models import (
     PromptStudioOutputManager,
 )
+from prompt_studio.prompt_studio_output_manager_v2.views import PromptStudioOutputView
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+
+
+def _make_profile(name, tool, adapter, *, is_default, created_by) -> ProfileManager:
+    """A ProfileManager with the fields none of these tests vary.
+
+    Only the name, tool, adapter and default flag ever differ between call
+    sites; spelling out the other nine each time hid that.
+    """
+    return ProfileManager.objects.create(
+        profile_name=name,
+        vector_store=adapter,
+        embedding_model=adapter,
+        llm=adapter,
+        x2text=adapter,
+        chunk_size=0,
+        chunk_overlap=0,
+        section="Default",
+        retrieval_strategy="simple",
+        similarity_top_k=3,
+        prompt_studio_tool=tool,
+        is_default=is_default,
+        created_by=created_by,
+    )
 
 
 class OrgFixture:
@@ -55,19 +80,11 @@ class OrgFixture:
             organization=self.org,
             created_by=self.user,
         )
-        adapter = self._adapter(slug)
-        self.profile = ProfileManager.objects.create(
-            profile_name=f"profile-{slug}",
-            vector_store=adapter,
-            embedding_model=adapter,
-            llm=adapter,
-            x2text=adapter,
-            chunk_size=0,
-            chunk_overlap=0,
-            section="Default",
-            retrieval_strategy="simple",
-            similarity_top_k=3,
-            prompt_studio_tool=self.tool,
+        self.adapter = self._adapter(slug)
+        self.profile = _make_profile(
+            f"profile-{slug}",
+            self.tool,
+            self.adapter,
             is_default=True,
             created_by=self.user,
         )
@@ -202,18 +219,10 @@ class CrossOrgIsolationTest(TestCase):
             organization=self.a.org,
             created_by=self.a.user,
         )
-        profile = ProfileManager.objects.create(
-            profile_name=f"sibling-profile-{secrets.token_hex(3)}",
-            vector_store=self.a.profile.vector_store,
-            embedding_model=self.a.profile.embedding_model,
-            llm=self.a.profile.llm,
-            x2text=self.a.profile.x2text,
-            chunk_size=0,
-            chunk_overlap=0,
-            section="Default",
-            retrieval_strategy="simple",
-            similarity_top_k=3,
-            prompt_studio_tool=tool,
+        profile = _make_profile(
+            f"sibling-profile-{secrets.token_hex(3)}",
+            tool,
+            self.a.adapter,
             is_default=True,
             created_by=self.a.user,
         )
@@ -224,14 +233,23 @@ class CrossOrgIsolationTest(TestCase):
         )
         return tool, profile, document
 
-    def _delete_for_ide(self, tool, document_id):
-        """DELETE prompt-studio/file/<tool> as the owner of ``tool``."""
+    def _grant_owner(self, tool) -> None:
+        """The OWNER row the create *view* writes.
+
+        ``CustomTool.objects.for_user`` resolves visibility through
+        ResourceMembership; the fixtures build rows directly, so without this
+        ``get_object()`` 404s before the code under test runs.
+        """
         ResourceMembership.objects.get_or_create(
             user=self.a.user,
             role=ResourceRole.OWNER,
             content_type=ContentType.objects.get_for_model(CustomTool),
             object_id=str(tool.tool_id),
         )
+
+    def _delete_for_ide(self, tool, document_id):
+        """DELETE prompt-studio/file/<tool> as the owner of ``tool``."""
+        self._grant_owner(tool)
         view = PromptStudioCoreView.as_view({"delete": "delete_for_ide"})
         request = APIRequestFactory().delete(
             f"/prompt-studio/file/{tool.tool_id}",
@@ -277,8 +295,9 @@ class CrossOrgIsolationTest(TestCase):
 
         response = self._delete_for_ide(self.a.tool, sibling_document.document_id)
 
-        # Row first: the delete lands before the file-store call, so without
-        # the predicate this is what actually goes missing.
+        # The row is what the predicate protects: get_object_or_404 above runs
+        # before either delete, so a missing predicate is what would let this
+        # row be removed at all.
         assert DocumentManager.objects.filter(
             pk=sibling_document.document_id
         ).exists(), "sibling tool's document was deleted"
@@ -287,19 +306,8 @@ class CrossOrgIsolationTest(TestCase):
     # --- the ordering fix, driven through the view ------------------------
 
     def _make_profile_default(self, tool, profile_id):
-        """PATCH make_profile_default as the owner of ``tool``.
-
-        ``CustomTool.objects.for_user`` resolves visibility through
-        ResourceMembership, which the create *view* writes — the fixture builds
-        rows directly, so the OWNER row has to be added here or get_object()
-        404s before the code under test runs.
-        """
-        ResourceMembership.objects.get_or_create(
-            user=self.a.user,
-            role=ResourceRole.OWNER,
-            content_type=ContentType.objects.get_for_model(CustomTool),
-            object_id=str(tool.tool_id),
-        )
+        """PATCH make_profile_default as the owner of ``tool``."""
+        self._grant_owner(tool)
         view = PromptStudioCoreView.as_view({"patch": "make_profile_default"})
         request = APIRequestFactory().patch(
             f"/prompt-studio/{tool.tool_id}/make_profile_default",
@@ -310,18 +318,10 @@ class CrossOrgIsolationTest(TestCase):
         return view(request, pk=str(tool.tool_id))
 
     def _second_profile_on_tool_a(self):
-        return ProfileManager.objects.create(
-            profile_name="profile-a-second",
-            vector_store=self.a.profile.vector_store,
-            embedding_model=self.a.profile.embedding_model,
-            llm=self.a.profile.llm,
-            x2text=self.a.profile.x2text,
-            chunk_size=0,
-            chunk_overlap=0,
-            section="Default",
-            retrieval_strategy="simple",
-            similarity_top_k=3,
-            prompt_studio_tool=self.a.tool,
+        return _make_profile(
+            "profile-a-second",
+            self.a.tool,
+            self.a.adapter,
             is_default=False,
             created_by=self.a.user,
         )
@@ -367,6 +367,91 @@ class CrossOrgIsolationTest(TestCase):
         ), "the tool lost (or duplicated) its default while rejecting another org's id"
         self.a.profile.refresh_from_db()
         assert self.a.profile.is_default
+
+    # --- ProfileManager.for_user: sharing must not widen the org scope -----
+
+    def _profile_ids_for_user(self, user):
+        return {str(p.profile_id) for p in ProfileManager.objects.for_user(user)}
+
+    def test_for_user_excludes_another_org_even_when_shared_to_org(self):
+        """``for_user`` dropped its explicit tool-org filter and now leans
+        entirely on ``get_queryset()``. ``shared_to_org=True`` is the branch
+        that would otherwise match every organization's rows at once.
+        """
+        self.b.profile.shared_to_org = True
+        self.b.profile.save(update_fields=["shared_to_org"])
+
+        visible = self._profile_ids_for_user(self.a.user)
+
+        assert str(self.a.profile.profile_id) in visible
+        assert str(self.b.profile.profile_id) not in visible
+
+    def test_for_user_service_account_branch_is_still_org_scoped(self):
+        """``self.all()`` is not ``_base_manager.all()`` — it inherits the
+        scope. A branch rewritten to bypass ``self`` would fail here."""
+        self.a.user.is_service_account = True
+
+        visible = self._profile_ids_for_user(self.a.user)
+
+        assert str(self.a.profile.profile_id) in visible
+        assert str(self.b.profile.profile_id) not in visible
+
+    def test_for_user_org_admin_branch_is_still_org_scoped(self):
+        """Admin of org A is not admin of every org."""
+        with patch(
+            "prompt_studio.prompt_profile_manager_v2.models."
+            "OrganizationMemberService.is_user_organization_admin",
+            return_value=True,
+        ):
+            visible = self._profile_ids_for_user(self.a.user)
+
+        assert str(self.a.profile.profile_id) in visible
+        assert str(self.b.profile.profile_id) not in visible
+
+    # --- the output read endpoints, against real cross-org ids -------------
+
+    def _output_view(self, action: str, params: dict):
+        view = PromptStudioOutputView.as_view({"get": action})
+        request = APIRequestFactory().get("/prompt-studio/output", params)
+        force_authenticate(request, user=self.a.user)
+        return view(request)
+
+    def test_latest_outputs_by_keys_refuses_another_orgs_tool(self):
+        """A real org-B tool id, not just an unmatched UUID.
+
+        The 400 cases already covered only prove the id is parsed. This is what
+        pins the scoping: org B's prompt key exists and holds a real output, so
+        an unscoped query would return it.
+        """
+        response = self._output_view(
+            "latest_outputs_by_keys",
+            {"tool_id": str(self.b.tool.tool_id), "prompt_keys": self.b.prompt.prompt_key},
+        )
+
+        assert response.status_code == 200, response.data
+        assert response.data == {}
+
+    def test_latest_outputs_by_keys_still_returns_own_output(self):
+        """Without this, a query scoped to nothing would pass above."""
+        response = self._output_view(
+            "latest_outputs_by_keys",
+            {"tool_id": str(self.a.tool.tool_id), "prompt_keys": self.a.prompt.prompt_key},
+        )
+
+        assert response.status_code == 200, response.data
+        assert response.data == {self.a.prompt.prompt_key: "secret"}
+
+    def test_get_output_for_tool_default_refuses_another_orgs_ids(self):
+        response = self._output_view(
+            "get_output_for_tool_default",
+            {
+                "tool_id": str(self.b.tool.tool_id),
+                "document_manager": str(self.b.document.document_id),
+            },
+        )
+
+        assert response.status_code == 200, response.data
+        assert response.data == {}
 
     # --- the dead, state-changing-over-GET route is gone -------------------
 

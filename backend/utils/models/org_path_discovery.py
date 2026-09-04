@@ -9,6 +9,8 @@ The result is cached per model class — BFS runs only once per model.
 
 import logging
 from collections import deque
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from django.db import models
 
@@ -42,22 +44,26 @@ _FK_TYPES = (models.ForeignKey, models.OneToOneField)
 #     model through a different join than its pin. Prefer the pin; reach for
 #     `org_filter_paths` only when a model needs OR across several nullable
 #     paths, which is why notification_v2 has it.
-ORG_PATH_OVERRIDES: dict[str, str] = {
-    "prompt_studio_document_manager_v2.DocumentManager": "tool__organization",
-    "prompt_studio_index_manager_v2.IndexManager": (
-        "document_manager__tool__organization"
-    ),
-    "prompt_studio_output_manager_v2.PromptStudioOutputManager": (
-        "tool_id__organization"
-    ),
-    # ToolStudioPrompt.tool_id is nullable — prompts orphaned from their tool
-    # are excluded. This is the path already in force.
-    "prompt_studio_v2.ToolStudioPrompt": "tool_id__organization",
-    # Deliberately not prompt_studio_tool__organization: that FK is nullable,
-    # so it would drop tool-less profiles. vector_store is non-null and
-    # AdapterInstance is org-owned, so it scopes to the same organization.
-    "prompt_profile_manager_v2.ProfileManager": "vector_store__organization",
-}
+# Read-only: a wrong entry here is a cross-tenant leak, so the table is not
+# something an importer should be able to reach in and change.
+ORG_PATH_OVERRIDES: Mapping[str, str] = MappingProxyType(
+    {
+        "prompt_studio_document_manager_v2.DocumentManager": "tool__organization",
+        "prompt_studio_index_manager_v2.IndexManager": (
+            "document_manager__tool__organization"
+        ),
+        "prompt_studio_output_manager_v2.PromptStudioOutputManager": (
+            "tool_id__organization"
+        ),
+        # ToolStudioPrompt.tool_id is nullable — prompts orphaned from their tool
+        # are excluded. This is the path already in force.
+        "prompt_studio_v2.ToolStudioPrompt": "tool_id__organization",
+        # Deliberately not prompt_studio_tool__organization: that FK is nullable,
+        # so it would drop tool-less profiles. vector_store is non-null and
+        # AdapterInstance is org-owned, so it scopes to the same organization.
+        "prompt_profile_manager_v2.ProfileManager": "vector_store__organization",
+    }
+)
 
 
 def get_org_path(model: type) -> str | None:

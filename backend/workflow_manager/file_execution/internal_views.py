@@ -29,9 +29,12 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkflowFileExecutionSerializer
     lookup_field = "id"
-    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
-    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
-    # therefore required in practice: a worker that omits it gets zero rows.
+    # OrganizationFilterBackend is off here. Unlike the other viewsets with
+    # this pattern, get_object() below does not go through get_queryset() — it
+    # builds its own queryset to skip the 3-table JOIN — so the two scope
+    # independently, each via filter_queryset_by_organization, which fails
+    # closed. X-Organization-ID is therefore required in practice on both
+    # paths: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_object(self):

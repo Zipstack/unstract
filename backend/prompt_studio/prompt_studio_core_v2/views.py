@@ -32,6 +32,7 @@ from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
+from utils.uuid_validation import validated_uuid
 
 from prompt_studio.lookup_utils import (
     get_latest_lookup_mutation_for_tool,
@@ -394,10 +395,7 @@ class PromptStudioCoreView(
         default_profile = request.data.get("default_profile")
         if not default_profile:
             raise ValidationError(detail="'default_profile' is required.")
-        try:
-            default_profile = uuid.UUID(str(default_profile))
-        except (ValueError, AttributeError, TypeError):
-            raise ValidationError(detail="'default_profile' must be a valid UUID.")
+        default_profile = validated_uuid(default_profile, "default_profile")
 
         # Resolve the target before clearing anything. The transaction below
         # is what actually guarantees the tool never ends up with zero
@@ -1168,9 +1166,15 @@ class PromptStudioCoreView(
                 DocumentIndexingService.remove_document_indexing(
                     org_id=org_id, user_id=user_id, doc_id_key=raw_index_id
                 )
-            # Delete the document record
-            document.delete()
-            # Delete the files
+            # Object store first, then the row. The two share no transaction,
+            # so the order decides which partial failure the except block below
+            # can report honestly. Deleting the row first and failing on the
+            # file returned "File deletion failed." (400, reads as "nothing
+            # happened") for a document already permanently gone, leaving the
+            # file orphaned with nothing left to retry against. This way a
+            # failed file delete leaves the row intact and the retry is real;
+            # the residue in the other direction is a row whose file is already
+            # gone, which the next delete clears.
             file_name: str = document.document_name
             PromptStudioFileHelper.delete_for_ide(
                 org_id=org_id,
@@ -1178,6 +1182,8 @@ class PromptStudioCoreView(
                 tool_id=str(custom_tool.tool_id),
                 file_name=file_name,
             )
+            # Delete the document record
+            document.delete()
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,

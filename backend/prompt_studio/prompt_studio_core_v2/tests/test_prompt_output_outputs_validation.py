@@ -13,6 +13,7 @@ executor can 500 the backend the same way.
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from prompt_studio.prompt_studio_core_v2.internal_views import prompt_output
@@ -39,6 +40,16 @@ def _request(outputs):
 
 def _body(response):
     return json.loads(response.content)
+
+
+def _resolved(*prompt_ids):
+    """What the ORM returns on the happy path.
+
+    prompt_output now compares resolved count to requested count — an org scope
+    that drops rows must not answer 200 — so the accept-path stubs have to
+    resolve every id they ask for. Only ``prompt_id`` is read on that path.
+    """
+    return [SimpleNamespace(prompt_id=pid) for pid in prompt_ids]
 
 
 def test_list_outputs_rejected_with_400_and_a_reason():
@@ -105,7 +116,7 @@ def test_dict_outputs_still_reach_the_helper():
         "prompt_studio.prompt_studio_output_manager_v2."
         "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
     ) as handler:
-        prompts.filter.return_value.order_by.return_value = []
+        prompts.filter.return_value.order_by.return_value = _resolved("p1")
         handler.return_value = []
         response = prompt_output(_request({"invoice_number": "INV-001"}))
     handler.assert_called_once()
@@ -123,7 +134,7 @@ def test_missing_outputs_defaults_to_empty_dict_and_is_accepted():
         "prompt_studio.prompt_studio_output_manager_v2."
         "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
     ) as handler:
-        prompts.filter.return_value.order_by.return_value = []
+        prompts.filter.return_value.order_by.return_value = _resolved("p1")
         handler.return_value = []
         response = prompt_output(request)
     assert response.status_code == 200

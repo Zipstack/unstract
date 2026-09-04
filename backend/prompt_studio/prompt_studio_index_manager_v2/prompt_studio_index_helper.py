@@ -2,7 +2,7 @@ import json
 import logging
 from enum import Enum
 
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.db import DatabaseError, transaction
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -106,9 +106,9 @@ class PromptStudioIndexHelper:
 
         Returns:
             ExtractionStatusResult: OK on success; DOCUMENT_MISSING when the
-                document is gone or hidden by the org scope; WRITE_FAILED for
-                a genuine write error. Callers that only need "did it write"
-                compare against OK.
+                document is gone, hidden by the org scope, or named by a
+                malformed id; WRITE_FAILED for a genuine write error. Callers
+                that only need "did it write" compare against OK.
 
         """
         try:
@@ -168,10 +168,13 @@ class PromptStudioIndexHelper:
 
             return ExtractionStatusResult.OK
 
-        except DocumentManager.DoesNotExist:
-            # Two ways to get here: the row is gone, or the org-scoped manager
-            # hides it from this caller. Both mean the status was not written,
-            # and neither is fixed by trying again.
+        except (DocumentManager.DoesNotExist, ValidationError):
+            # Three ways to get here: the row is gone, the org-scoped manager
+            # hides it from this caller, or ``document_id`` is not a UUID and
+            # ``get(pk=...)`` raised while building the query. All three mean
+            # the status was not written and none is fixed by trying again, so
+            # they share the 404 branch rather than the retryable 500 an
+            # unmapped ValidationError used to produce.
             logger.error(
                 "Document %s not found or not visible in the current "
                 "organization; extraction status not recorded.",

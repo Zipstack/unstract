@@ -12,6 +12,7 @@ and the case fails.
 import json
 import secrets
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from account_v2.models import Organization, User
@@ -151,3 +152,157 @@ class ExtractionStatusEndpointTest(TestCase):
 
     def test_success_is_200(self):
         assert self._post(ExtractionStatusResult.OK).status_code == 200
+
+
+class InternalCallbackResolutionTest(TestCase):
+    """An id the org-scoped managers cannot resolve must not become a 500.
+
+    Both handlers resolve ids through managers that are now org-scoped, so a
+    lookup can miss for two reasons — the row is gone, or the scope hides it —
+    and neither changes on retry. The worker's client retries {500,502,503,504}
+    three times with a 1s backoff factor, so a 500 here costs ~7s of worker
+    sleep and still fails. 404 is outside that set.
+    """
+
+    def _payload(self, **overrides):
+        payload = {
+            "run_id": str(uuid.uuid4()),
+            "prompt_ids": [str(uuid.uuid4()), str(uuid.uuid4())],
+            "outputs": {},
+            "document_id": str(uuid.uuid4()),
+            "is_single_pass_extract": False,
+            "profile_manager_id": str(uuid.uuid4()),
+            "metadata": {},
+        }
+        payload.update(overrides)
+        return payload
+
+    # --- prompt_output: a partial resolve is not a success ------------------
+
+    @staticmethod
+    def _prompt(prompt_id=None):
+        """Only the attribute the mismatch log reads is needed here."""
+        return SimpleNamespace(prompt_id=prompt_id or uuid.uuid4())
+
+    def _prompt_output(self, resolved):
+        """Drive prompt_output with ``resolved`` prompts coming back."""
+        from prompt_studio.prompt_studio_core_v2 import internal_views
+
+        payload = self._payload()
+        request = APIRequestFactory().post(
+            "/internal/v1/prompt-studio/prompt-output/",
+            json.dumps(payload),
+            content_type="application/json",
+        )
+        with (
+            patch.object(
+                internal_views, "_parse_json_body", return_value=(payload, None)
+            ),
+            patch(
+                "prompt_studio.prompt_studio_v2.models.ToolStudioPrompt.objects"
+            ) as prompts,
+            patch(
+                "prompt_studio.prompt_studio_output_manager_v2.output_manager_helper"
+                ".OutputManagerHelper.handle_prompt_output_update",
+                return_value={},
+            ) as handler,
+        ):
+            prompts.filter.return_value.order_by.return_value = resolved
+            return internal_views.prompt_output(request), handler
+
+    def test_prompt_output_refuses_when_the_scope_drops_every_prompt(self):
+        """handle_prompt_output_update early-exits on an empty list, so this
+        used to answer 200 with an empty body and discard the whole run."""
+        response, handler = self._prompt_output([])
+
+        assert response.status_code == 404, response.content
+        handler.assert_not_called()
+
+    def test_prompt_output_refuses_a_partial_resolve(self):
+        """One of two prompts resolved is still a run that would be recorded
+        wrong; the count comparison is what catches it."""
+        response, handler = self._prompt_output([self._prompt()])
+
+        assert response.status_code == 404, response.content
+        handler.assert_not_called()
+
+    def test_prompt_output_proceeds_when_every_prompt_resolves(self):
+        """Without this, a handler that refused everything would pass above."""
+        response, handler = self._prompt_output([self._prompt(), self._prompt()])
+
+        assert response.status_code == 200, response.content
+        handler.assert_called_once()
+
+    # --- the profile lookups: 404, not the generic 500 ----------------------
+
+    def _with_missing_profile(self, handler_name, payload):
+        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+        from prompt_studio.prompt_studio_core_v2 import internal_views
+
+        request = APIRequestFactory().post(
+            "/internal/v1/prompt-studio/", json.dumps(payload),
+            content_type="application/json",
+        )
+        with (
+            patch.object(
+                internal_views, "_parse_json_body", return_value=(payload, None)
+            ),
+            patch(
+                "prompt_studio.prompt_profile_manager_v2.models.ProfileManager.objects"
+            ) as profiles,
+        ):
+            profiles.get.side_effect = ProfileManager.DoesNotExist
+            return getattr(internal_views, handler_name)(request)
+
+    def test_extraction_status_with_an_unresolvable_profile_is_404(self):
+        response = self._with_missing_profile(
+            "extraction_status",
+            {
+                "document_id": str(uuid.uuid4()),
+                "profile_manager_id": str(uuid.uuid4()),
+                "x2text_config_hash": "hash",
+                "enable_highlight": False,
+                "extracted": True,
+            },
+        )
+        assert response.status_code == 404, response.content
+
+    def test_index_update_with_an_unresolvable_profile_is_404(self):
+        response = self._with_missing_profile(
+            "index_update",
+            {
+                "document_id": str(uuid.uuid4()),
+                "profile_manager_id": str(uuid.uuid4()),
+                "doc_id": "doc-1",
+            },
+        )
+        assert response.status_code == 404, response.content
+
+    def test_a_malformed_profile_id_is_404_not_a_retryable_500(self):
+        """``get(pk=...)`` raises Django's ValidationError, not DoesNotExist,
+        for an id that is not a UUID — just as permanent."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+
+        from prompt_studio.prompt_studio_core_v2 import internal_views
+
+        payload = {
+            "document_id": str(uuid.uuid4()),
+            "profile_manager_id": "not-a-uuid",
+            "doc_id": "doc-1",
+        }
+        request = APIRequestFactory().post(
+            "/internal/v1/prompt-studio/", json.dumps(payload),
+            content_type="application/json",
+        )
+        with (
+            patch.object(
+                internal_views, "_parse_json_body", return_value=(payload, None)
+            ),
+            patch(
+                "prompt_studio.prompt_profile_manager_v2.models.ProfileManager.objects"
+            ) as profiles,
+        ):
+            profiles.get.side_effect = DjangoValidationError("bad uuid")
+            response = internal_views.index_update(request)
+
+        assert response.status_code == 404, response.content
