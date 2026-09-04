@@ -25,7 +25,8 @@ class AdapterInstanceRequestHelper:
             _type_: _description_
         """
         query = (
-            "SELECT id, adapter_id, adapter_name, adapter_type, adapter_metadata_b"
+            "SELECT id, adapter_id, adapter_name, adapter_type, adapter_metadata_b,"
+            " is_available"
             f' FROM "{DB_SCHEMA}".{DBTable.ADAPTER_INSTANCE} x '
             f"WHERE id=%s and organization_id=%s"
         )
@@ -37,4 +38,15 @@ class AdapterInstanceRequestHelper:
                 )
             columns = [desc[0] for desc in cursor.description]
             data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
+            # Deprecated adapters are no longer in the SDK registry, so resolving
+            # one would fail with an unrelated error further down the call.
+            if not data_dict.pop("is_available", True):
+                adapter_name = data_dict.get("adapter_name") or adapter_instance_id
+                raise APIError(
+                    message=(
+                        f"Adapter '{adapter_name}' has been deprecated and can no "
+                        "longer be used. Please reconfigure with a supported adapter."
+                    ),
+                    code=400,
+                )
             return data_dict

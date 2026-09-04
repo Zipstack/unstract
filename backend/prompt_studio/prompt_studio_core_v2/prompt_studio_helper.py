@@ -8,6 +8,7 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
+from adapter_processor_v2.deprecated_adapters import is_adapter_selectable
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
@@ -142,8 +143,8 @@ class PromptStudioHelper:
             "vector_store": default_adapter.default_vector_db_adapter,
             "x2text": default_adapter.default_x2text_adapter,
         }
-        # A valid profile needs a usable default for every adapter type
-        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+        # A valid profile needs a selectable default for every adapter type
+        if not all(is_adapter_selectable(adapter) for adapter in adapters.values()):
             logger.info(
                 "Skipping default profile creation: "
                 "incomplete or unusable default adapters"
@@ -3138,7 +3139,7 @@ class PromptStudioHelper:
                 ]
 
                 for adapter in adapters_to_check:
-                    if not adapter or not adapter.is_usable:
+                    if not is_adapter_selectable(adapter):
                         warning_message = (
                             "Some adapters may need to be configured before you can use "
                             "this project. Please check the profile settings."

@@ -2,6 +2,10 @@ import logging
 from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.models import AdapterInstance
 from rest_framework.serializers import ValidationError
 
@@ -29,10 +33,11 @@ class ProfileManagerSerializer(AuditSerializer):
         validators = []
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """Reject a change to an adapter the requester cannot access.
+        """Reject a change to an adapter the requester cannot access or use.
 
         An unchanged value passes, so a co-owner can still save a profile
-        that points at an adapter shared only with the owner.
+        that points at an adapter shared only with the owner, and a profile
+        already on a deprecated adapter stays editable in its other fields.
         """
         request = self.context.get("request")
         if not request:
@@ -44,6 +49,10 @@ class ProfileManagerSerializer(AuditSerializer):
                 continue
             if not accessible.filter(id=adapter.id).exists():
                 raise ValidationError({field: "No access to the selected adapter."})
+            if not adapter.is_available or is_adapter_deprecated(adapter.adapter_id):
+                raise ValidationError(
+                    {field: get_deprecation_message(adapter.adapter_id)}
+                )
         return attrs
 
     def to_representation(self, instance):  # type: ignore

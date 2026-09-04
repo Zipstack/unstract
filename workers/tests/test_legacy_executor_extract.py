@@ -2,7 +2,7 @@
 
 Verifies:
 1. Happy path: extraction returns success with extracted_text
-2. With highlight (LLMWhisperer): enable_highlight passed through
+2. With highlight (LLMWhisperer V2): enable_highlight passed through
 3. Without highlight (non-Whisperer): enable_highlight NOT passed
 4. AdapterError → failure result
 5. Missing required params → failure result
@@ -18,12 +18,14 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import (
     FileStorageKeys,
+)
+from executor.executors.constants import (
     IndexingConstants as IKeys,
 )
 from executor.executors.exceptions import LegacyExecutorError
+
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
@@ -100,9 +102,7 @@ class TestHappyPath:
 
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_extract_passes_correct_params_to_x2text(
-        self, mock_x2text_cls, mock_get_fs
-    ):
+    def test_extract_passes_correct_params_to_x2text(self, mock_x2text_cls, mock_get_fs):
         _register_legacy()
         executor = ExecutorRegistry.get("legacy")
 
@@ -131,16 +131,14 @@ class TestHappyPath:
         )
 
 
-# --- 2. With highlight (LLMWhisperer) ---
+# --- 2. With highlight (LLMWhisperer V2) ---
 
 
 class TestWithHighlight:
     @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_highlight_with_whisperer_v2(
-        self, mock_x2text_cls, mock_get_fs, mock_dump
-    ):
+    def test_highlight_with_whisperer_v2(self, mock_x2text_cls, mock_get_fs, mock_dump):
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 
         _register_legacy()
@@ -168,39 +166,6 @@ class TestWithHighlight:
         assert result.success is True
         # Verify enable_highlight was passed to process()
         mock_x2text.process.assert_called_once()
-        call_kwargs = mock_x2text.process.call_args.kwargs
-        assert call_kwargs.get("enable_highlight") is True
-
-    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
-    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
-    @patch("executor.executors.legacy_executor.X2Text")
-    def test_highlight_with_whisperer_v1(
-        self, mock_x2text_cls, mock_get_fs, mock_dump
-    ):
-        from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
-
-        _register_legacy()
-        executor = ExecutorRegistry.get("legacy")
-
-        mock_x2text = MagicMock()
-        mock_x2text.process.return_value = _mock_process_response()
-        mock_x2text.x2text_instance = MagicMock(spec=LLMWhisperer)
-        mock_x2text_cls.return_value = mock_x2text
-        mock_get_fs.return_value = MagicMock()
-
-        ctx = _make_context(
-            executor_params={
-                "x2text_instance_id": "x2t-whisperer-v1",
-                "file_path": "/data/test.pdf",
-                "platform_api_key": "sk-key",
-                "enable_highlight": True,
-                "execution_data_dir": "/data/run",
-                "tool_execution_metadata": {},
-            }
-        )
-        result = executor.execute(ctx)
-
-        assert result.success is True
         call_kwargs = mock_x2text.process.call_args.kwargs
         assert call_kwargs.get("enable_highlight") is True
 
@@ -239,9 +204,7 @@ class TestWithoutHighlight:
 
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_highlight_false_skips_whisperer_branch(
-        self, mock_x2text_cls, mock_get_fs
-    ):
+    def test_highlight_false_skips_whisperer_branch(self, mock_x2text_cls, mock_get_fs):
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 
         _register_legacy()
@@ -356,9 +319,7 @@ class TestMetadataToolSource:
     @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_tool_source_writes_metadata(
-        self, mock_x2text_cls, mock_get_fs, mock_dump
-    ):
+    def test_tool_source_writes_metadata(self, mock_x2text_cls, mock_get_fs, mock_dump):
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 
         _register_legacy()
@@ -391,12 +352,8 @@ class TestMetadataToolSource:
         # ToolUtils.dump_json should have been called
         mock_dump.assert_called_once()
         dump_kwargs = mock_dump.call_args.kwargs
-        assert dump_kwargs["file_to_dump"] == str(
-            Path("/run/data") / IKeys.METADATA_FILE
-        )
-        assert dump_kwargs["json_to_dump"] == {
-            X2TextConstants.WHISPER_HASH: "whash-456"
-        }
+        assert dump_kwargs["file_to_dump"] == str(Path("/run/data") / IKeys.METADATA_FILE)
+        assert dump_kwargs["json_to_dump"] == {X2TextConstants.WHISPER_HASH: "whash-456"}
         assert dump_kwargs["fs"] is mock_fs
         # tool_exec_metadata should be updated in-place
         assert tool_meta[X2TextConstants.WHISPER_HASH] == "whash-456"
@@ -409,9 +366,7 @@ class TestMetadataIDESource:
     @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_ide_source_skips_metadata(
-        self, mock_x2text_cls, mock_get_fs, mock_dump
-    ):
+    def test_ide_source_skips_metadata(self, mock_x2text_cls, mock_get_fs, mock_dump):
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 
         _register_legacy()
@@ -445,6 +400,7 @@ class TestFileUtilsRouting:
     @patch("executor.executors.file_utils.EnvHelper.get_storage")
     def test_ide_returns_permanent_storage(self, mock_get_storage):
         from executor.executors.file_utils import FileUtils
+
         from unstract.sdk1.file_storage.constants import StorageType
 
         mock_get_storage.return_value = MagicMock()
@@ -458,6 +414,7 @@ class TestFileUtilsRouting:
     @patch("executor.executors.file_utils.EnvHelper.get_storage")
     def test_tool_returns_temporary_storage(self, mock_get_storage):
         from executor.executors.file_utils import FileUtils
+
         from unstract.sdk1.file_storage.constants import StorageType
 
         mock_get_storage.return_value = MagicMock()
@@ -481,9 +438,7 @@ class TestFileUtilsRouting:
 class TestOrchestratorIntegration:
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_orchestrator_extract_returns_success(
-        self, mock_x2text_cls, mock_get_fs
-    ):
+    def test_orchestrator_extract_returns_success(self, mock_x2text_cls, mock_get_fs):
         _register_legacy()
         orchestrator = ExecutionOrchestrator()
 
@@ -525,9 +480,7 @@ def eager_app():
 class TestCeleryEager:
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_eager_extract_returns_success(
-        self, mock_x2text_cls, mock_get_fs, eager_app
-    ):
+    def test_eager_extract_returns_success(self, mock_x2text_cls, mock_get_fs, eager_app):
         _register_legacy()
 
         mock_x2text = MagicMock()
@@ -551,11 +504,10 @@ class TestCeleryEager:
 class TestExecuteErrorCatching:
     @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
     @patch("executor.executors.legacy_executor.X2Text")
-    def test_extraction_error_caught_by_execute(
-        self, mock_x2text_cls, mock_get_fs
-    ):
+    def test_extraction_error_caught_by_execute(self, mock_x2text_cls, mock_get_fs):
         """ExtractionError (a LegacyExecutorError) is caught in execute()
-        and mapped to ExecutionResult.failure()."""
+        and mapped to ExecutionResult.failure().
+        """
         from unstract.sdk1.adapters.exceptions import AdapterError
 
         _register_legacy()
