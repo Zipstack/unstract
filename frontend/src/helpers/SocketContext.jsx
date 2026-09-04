@@ -2,8 +2,6 @@ import PropTypes from "prop-types";
 import { createContext, useEffect, useState } from "react";
 import io from "socket.io-client";
 
-import { getBaseUrl } from "./GetStaticData";
-
 const SocketContext = createContext();
 
 const SocketProvider = ({ children }) => {
@@ -15,7 +13,11 @@ const SocketProvider = ({ children }) => {
     // - Prod: Traefik routes /api/v1/socket to the backend.
     // This ensures session cookies are sent (same-origin) and avoids
     // cross-origin WebSocket issues.
-    const newSocket = io(getBaseUrl(), {
+    //
+    // The URL is omitted deliberately: socket.io already defaults to the
+    // page's own origin, so passing one derived from `window.location` would
+    // only hand the connection target to a value the user can influence.
+    const newSocket = io({
       transports: ["websocket"],
       path: "/api/v1/socket",
     });

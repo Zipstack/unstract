@@ -90,6 +90,11 @@
 
 .tool-icon {
   font-size: 20px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 20px;
+  height: 20px;
   color: #262626;
   flex-shrink: 0;
   margin-top: 2px;
@@ -111,7 +116,7 @@
 
 .tool-description {
   display: block;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.5;
   color: #6b7280;
   word-wrap: break-word;
@@ -131,16 +136,21 @@
 
 .author-icon {
   color: #9ca3af;
-  font-size: 14px;
+  font-size: 13px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 13px;
+  height: 13px;
 }
 
 .author-text {
-  font-size: 14px;
+  font-size: 13px;
   color: #6b7280;
 }
 
 .time-text {
-  font-size: 14px;
+  font-size: 13px;
   color: #9ca3af;
   margin-left: 8px;
 }

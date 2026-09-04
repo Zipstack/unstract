@@ -1,6 +1,10 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Space, Switch, Table, Tooltip } from "antd";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
@@ -47,7 +51,7 @@ function DisplayNotifications({
             <Button
               type="text"
               size="small"
-              icon={<EditOutlined />}
+              icon={<Pencil />}
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
@@ -56,7 +60,7 @@ function DisplayNotifications({
               handleConfirm={() => handleDelete(record?.id, record?.name)}
               content="Are you sure you want to delete?"
             >
-              <Button type="text" size="small" icon={<DeleteOutlined />} />
+              <Button type="text" size="small" icon={<Trash2 />} />
             </ConfirmModal>
           </Tooltip>
         </Space>
@@ -72,11 +76,7 @@ function DisplayNotifications({
   return (
     <SpaceWrapper>
       <div className="display-flex-right">
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setIsForm(true)}
-        >
+        <Button type="primary" icon={<Plus />} onClick={() => setIsForm(true)}>
           Create Notification
         </Button>
       </div>

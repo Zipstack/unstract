@@ -48,15 +48,17 @@ class TestDirection:
         assert kwargs["mirror_only"] is True
         assert kwargs["release_stale"] is True
 
-    def test_an_unset_gate_converges_to_beat(self, monkeypatch):
-        """Absent must mean Beat, not "do nothing" — the default has to be the
-        safe direction, since that is what an environment that never opted in has.
+    def test_an_unset_gate_converges_to_pg(self, monkeypatch):
+        """Absent must mean PG, not "do nothing" — the default has to be the
+        direction the deployment actually runs, and PG_SCHEDULER_ENABLED now
+        defaults on (UN-4046).
         """
         monkeypatch.delenv("PG_SCHEDULER_ENABLED", raising=False)
         with patch(f"{_CMD}.call_command") as sub:
             call_command("converge_pg_scheduler")
         kwargs = {c.args[0]: c.kwargs for c in sub.call_args_list}
-        assert kwargs["reconcile_pg_schedules"]["release_stale"] is True
+        # Hand-over direction: adopt, not release.
+        assert "release_stale" not in kwargs["reconcile_pg_schedules"]
 
 
 class TestPeriodicsAreOptIn:

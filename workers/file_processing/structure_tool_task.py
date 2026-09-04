@@ -22,11 +22,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from file_processing.worker import app
-from queue_backend import FairnessKey, worker_task
-from queue_backend.fairness import WorkloadType
+from queue_backend import worker_task
 from queue_backend.pg_queue.executor_rpc import (
-    RoutingExecutionDispatcher,
+    PgExecutionDispatcher,
     get_executor_dispatcher,
 )
 from shared.enums.task_enums import TaskName
@@ -43,25 +41,13 @@ logger = logging.getLogger(__name__)
 EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
 
 
-def _fairness_headers(
-    organization_id: str,
-) -> dict[str, dict[str, str | int | None]]:
-    """Fairness header for executor dispatches.
-
-    Structure-tool dispatches are workflow-execution work — both ETL
-    and API workflows route through here. ``NON_API`` is the safe
-    default (API traffic preempting is a strictly weaker mistake than
-    the inverse).
-
-    TODO(UN-3504): propagate the caller's WorkloadType (API vs ETL)
-    instead of hard-coding ``NON_API``. Requires the chord-lift work
-    so the workflow type flows from the chord caller down to here.
-    """
-    return FairnessKey(
-        org_id=organization_id,
-        workload_type=WorkloadType.NON_API,
-    ).as_header()
-
+# NOTE: `_fairness_headers()` lived here and was passed as `headers=` to every
+# executor dispatch. It is gone with the routing dispatcher (UN-4046):
+# `PgExecutionDispatcher.dispatch()` takes no `headers`, and the router that used
+# to absorb them never forwarded them to the PG path anyway — PG carries org
+# routing in the enqueue payload (`transport.enqueue(..., org_id=...)`).
+# UN-3504 (propagating the caller's WorkloadType) is unaffected: it was always
+# about the PG payload, not these headers.
 
 # -----------------------------------------------------------------------
 # Constants mirrored from tools/structure/src/constants.py
@@ -210,6 +196,79 @@ def _should_skip_extraction_for_smart_table(
     return False
 
 
+def _agentic_extraction_seconds(agentic_metrics: dict[str, Any]) -> float:
+    """Total X2Text seconds reported by the agentic_table executor.
+
+    Each agentic prompt extracts the document itself, so the durations sum:
+    the figure is time *spent* extracting, not the wall-clock span of the
+    agentic step. Returns 0.0 when the executor reports no extraction timing,
+    which leaves the file-level bucket untouched rather than writing a zero.
+    """
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    total = 0.0
+    for prompt_metrics in agentic_metrics.values():
+        if not isinstance(prompt_metrics, dict):
+            continue
+        entry = prompt_metrics.get(PSKeys.TEXT_EXTRACTION)
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get(PSKeys.TIME_TAKEN)
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            total += float(value)
+    return total
+
+
+def _merge_agentic_metrics(
+    structured_output: dict[str, Any], agentic_metrics: dict[str, Any]
+) -> None:
+    """Fold the agentic executor's metrics into the tool's metrics dict.
+
+    Two things happen here, and they are separate:
+
+    * Per-prompt metrics land beside the legacy pipeline's, keyed by prompt
+      name under ``table_extraction`` — the same shape
+      ``LegacyExecutor._run_table_extraction`` uses for the non-agentic table
+      plugin, so both table routes read alike downstream.
+    * Any X2Text duration the executor reported is *added* to the file-level
+      ``_file.text_extraction`` bucket. The legacy pipeline times only its own
+      extraction, so without this an agentic-only run reports no extraction
+      time at all and a mixed run under-reports it (UN-2771 / UN-4084).
+    """
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    if not agentic_metrics:
+        return
+
+    metrics = structured_output.setdefault("metrics", {})
+    for prompt_name, prompt_metrics in agentic_metrics.items():
+        key = prompt_name
+        if key == PSKeys.FILE:
+            # `_file` is reserved for whole-document metrics, so a prompt with
+            # that name gets a de-collided key. Merging it into the reserved
+            # bucket would conflate per-prompt and file-level figures; dropping
+            # it would lose every other count the prompt reported. The space
+            # cannot appear in the reserved key, so the two can never alias.
+            key = f"{prompt_name} (prompt)"
+            logger.warning(
+                "Agentic prompt named %r collides with the reserved file-level "
+                "metrics namespace; reporting its metrics under %r instead",
+                prompt_name,
+                key,
+            )
+        metrics.setdefault(key, {}).update({"table_extraction": prompt_metrics})
+
+    extraction_seconds = _agentic_extraction_seconds(agentic_metrics)
+    if not extraction_seconds:
+        return
+    file_bucket = metrics.setdefault(PSKeys.FILE, {}).setdefault(
+        PSKeys.TEXT_EXTRACTION, {}
+    )
+    file_bucket[PSKeys.TIME_TAKEN] = (
+        file_bucket.get(PSKeys.TIME_TAKEN, 0.0) + extraction_seconds
+    )
+
+
 # -----------------------------------------------------------------------
 # Main Celery task
 # -----------------------------------------------------------------------
@@ -279,9 +338,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
 
     platform_helper = _create_platform_helper(shim, file_execution_id)
-    # Gate-routed: PG executor RPC when pg_queue_enabled is on, else the unchanged
-    # Celery ExecutionDispatcher (zero-regression by construction — see executor_rpc).
-    dispatcher = get_executor_dispatcher(celery_app=app)
+    # PG executor RPC. ``celery_app`` is accepted and ignored by the factory —
+    # see executor_rpc.
+    dispatcher = get_executor_dispatcher()
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----
@@ -457,6 +516,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # PDF written alongside INFILE by the source connector.
     agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
+    agentic_metrics: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
         json_structure = at_settings.get("json_structure")
@@ -479,6 +539,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
+            "enable_header_mapping": at_settings.get("enable_header_mapping", False),
             # Set on the output at export by prompt_studio_registry_helper.py
             # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
@@ -498,12 +559,17 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         at_result = dispatcher.dispatch(
             at_ctx,
             timeout=EXECUTOR_TIMEOUT,
-            headers=_fairness_headers(organization_id),
         )
         if not at_result.success:
             return at_result.to_dict()
         at_output_data = at_result.data.get("output", {}) or {}
         agentic_results[at_output[_SK.NAME]] = at_output_data.get("tables", [])
+        # The executor runs its own X2Text, so its metrics carry an extraction
+        # duration the legacy pipeline's timer never sees. Same result shape the
+        # non-agentic table plugin uses (LegacyExecutor._run_table_extraction).
+        at_metrics = (at_result.data.get("metadata") or {}).get("metrics") or {}
+        if at_metrics:
+            agentic_metrics[at_output[_SK.NAME]] = at_metrics
 
     # ---- Step 6b: Dispatch legacy structure_pipeline ----
     # Skipped entirely when every prompt is agentic_table — the legacy
@@ -541,7 +607,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         pipeline_result = dispatcher.dispatch(
             pipeline_ctx,
             timeout=EXECUTOR_TIMEOUT,
-            headers=_fairness_headers(organization_id),
         )
         pipeline_elapsed = time.monotonic() - pipeline_start
 
@@ -551,12 +616,16 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         structured_output = pipeline_result.data
         if agentic_results:
             structured_output.setdefault("output", {}).update(agentic_results)
+        _merge_agentic_metrics(structured_output, agentic_metrics)
     else:
-        # All-agentic case: skip the legacy pipeline entirely.
+        # All-agentic case: skip the legacy pipeline entirely. The metrics
+        # dict is still populated, so an agentic-only deployment reports the
+        # same _file.text_extraction the legacy path does.
         structured_output = {
             "output": agentic_results,
             "metadata": {"agentic_only": True},
         }
+        _merge_agentic_metrics(structured_output, agentic_metrics)
         pipeline_elapsed = 0.0
 
     # ---- Step 7: Write output files ----
@@ -684,7 +753,7 @@ def _run_agentic_extraction(
     input_file_path: str,
     output_dir_path: str,
     tool_instance_metadata: dict,
-    dispatcher: RoutingExecutionDispatcher,
+    dispatcher: PgExecutionDispatcher,
     shim: Any,
     file_execution_id: str,
     execution_id: str,
@@ -758,7 +827,6 @@ def _run_agentic_extraction(
     agentic_result = dispatcher.dispatch(
         agentic_ctx,
         timeout=EXECUTOR_TIMEOUT,
-        headers=_fairness_headers(organization_id),
     )
 
     if not agentic_result.success:

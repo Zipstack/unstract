@@ -1,8 +1,8 @@
 import { getDefaultFormState } from "@rjsf/utils";
 import validator from "@rjsf/validator-ajv8";
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
