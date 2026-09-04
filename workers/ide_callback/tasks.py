@@ -243,9 +243,14 @@ def ide_index_complete(
                     organization_id=org_id,
                 )
             except Exception:
-                logger.warning(
+                # Non-fatal — primary indexing already succeeded — but not
+                # harmless: without the status, check_extraction_status stays
+                # False and every later Answer Prompt re-runs the full X2Text
+                # extraction. ERROR because nothing downstream reports it.
+                logger.error(
                     "Failed to mark extraction_status for document %s "
-                    "profile %s; primary indexing succeeded.",
+                    "profile %s; extraction will be repeated on every "
+                    "subsequent prompt run.",
                     document_id,
                     profile_manager_id,
                     exc_info=True,

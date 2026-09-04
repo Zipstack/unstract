@@ -9,9 +9,10 @@ from typing import Any
 import magic
 from account_v2.custom_exceptions import DuplicateData
 from celery import signature
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
@@ -22,6 +23,7 @@ from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -30,6 +32,7 @@ from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
+from utils.uuid_validation import validated_uuid
 
 from prompt_studio.lookup_utils import (
     get_latest_lookup_mutation_for_tool,
@@ -385,13 +388,38 @@ class PromptStudioCoreView(
             self.get_object()
         )  # Assuming you have a get_object method in your viewset
 
-        ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
-            is_default=False
+        # Validate before looking anything up. drf_standardized_errors maps
+        # neither the KeyError of a missing key nor the Django ValidationError
+        # a non-UUID raises while the query is built, so without this both are
+        # 500s next to the 404 a valid-but-unmatched id returns.
+        default_profile = request.data.get("default_profile")
+        if not default_profile:
+            raise ValidationError(detail="'default_profile' is required.")
+        default_profile = validated_uuid(default_profile, "default_profile")
+
+        # Resolve the target before clearing anything. The transaction below
+        # is what actually guarantees the tool never ends up with zero
+        # defaults — a 404 raised inside it rolls the clear back — so this
+        # ordering is the second of two independent guards, not the only one.
+        # Scoped to the same tool the caller already passed authz on, so
+        # another tool's id is a 404.
+        profile_manager = get_object_or_404(
+            ProfileManager,
+            pk=default_profile,
+            prompt_studio_tool=prompt_tool,
         )
 
-        profile_manager = ProfileManager.objects.get(pk=request.data["default_profile"])
-        profile_manager.is_default = True
-        profile_manager.save()
+        # Both writes in one transaction so a failure between them cannot leave
+        # the tool with zero defaults or two. update_fields so the second write
+        # touches one column: profile_manager was read before the transaction
+        # opened, and a bare save() would write every column from that snapshot
+        # back over any concurrent edit.
+        with transaction.atomic():
+            ProfileManager.objects.filter(prompt_studio_tool=prompt_tool).update(
+                is_default=False
+            )
+            profile_manager.is_default = True
+            profile_manager.save(update_fields=["is_default"])
 
         return Response(
             status=status.HTTP_200_OK,
@@ -1103,19 +1131,50 @@ class PromptStudioCoreView(
         document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        # Scope to the tool the caller already passed authz on — tighter than
+        # org scope. self.get_object() above is filtered by the backend, but
+        # this lookup is a raw .objects query and would not be.
+        # get_object_or_404 keeps a non-matching id a 404 rather than an
+        # unhandled DoesNotExist, which the DRF handler turns into a 500.
+        document: DocumentManager = get_object_or_404(
+            DocumentManager, pk=document_id, tool=custom_tool
+        )
 
         try:
             # Delete indexed flags in redis
             index_managers = IndexManager.objects.filter(document_manager=document_id)
+            if not index_managers.exists():
+                # Empty is almost always "never indexed", which is an ordinary
+                # delete and not worth a line. The case worth warning about is
+                # "the org filter hid the rows": there the Redis indexing flags
+                # outlive the document, and a re-upload of the same file is
+                # treated as already indexed. Only the unscoped probe can tell
+                # them apart, and it only runs on this already-empty path.
+                if IndexManager._base_manager.filter(
+                    document_manager=document_id
+                ).exists():
+                    logger.warning(
+                        "Index managers for document %s (tool %s) are not "
+                        "visible in org %s; deleting without clearing Redis "
+                        "indexing flags.",
+                        document_id,
+                        custom_tool.tool_id,
+                        org_id,
+                    )
             for index_manager in index_managers:
                 raw_index_id = index_manager.raw_index_id
                 DocumentIndexingService.remove_document_indexing(
                     org_id=org_id, user_id=user_id, doc_id_key=raw_index_id
                 )
-            # Delete the document record
-            document.delete()
-            # Delete the files
+            # Object store first, then the row. The two share no transaction,
+            # so the order decides which partial failure the except block below
+            # can report honestly. Deleting the row first and failing on the
+            # file returned "File deletion failed." (400, reads as "nothing
+            # happened") for a document already permanently gone, leaving the
+            # file orphaned with nothing left to retry against. This way a
+            # failed file delete leaves the row intact and the retry is real;
+            # the residue in the other direction is a row whose file is already
+            # gone, which the next delete clears.
             file_name: str = document.document_name
             PromptStudioFileHelper.delete_for_ide(
                 org_id=org_id,
@@ -1123,12 +1182,27 @@ class PromptStudioCoreView(
                 tool_id=str(custom_tool.tool_id),
                 file_name=file_name,
             )
+            # Delete the document record
+            document.delete()
             return Response(
                 {"data": "File deleted succesfully."},
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:
-            logger.error("Exception thrown from file deletion, error: %s", exc)
+            # Deliberately broad. Three subsystems are in play — Redis via
+            # DocumentIndexingService, the object store via
+            # PromptStudioFileHelper, and the database — and their failures do
+            # not share a base class, so narrowing to any list turns a
+            # reachable outage in whichever one was missed into a 500. The
+            # diagnosability problem was the log line, not the catch: it now
+            # carries the exception type, the document and a stack.
+            logger.error(
+                "File deletion failed for document %s (tool %s): %s",
+                document_id,
+                custom_tool.tool_id,
+                exc,
+                exc_info=True,
+            )
             return Response(
                 {"data": "File deletion failed."},
                 status=status.HTTP_400_BAD_REQUEST,

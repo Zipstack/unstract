@@ -76,6 +76,9 @@ class OutputManagerHelper:
             the instance.
             """
             try:
+                # Scoped manager on both halves: the update below is scoped
+                # too, so a mismatch here would leave that update matching zero
+                # rows and silently returning stale output as a success.
                 prompt_output, success = PromptStudioOutputManager.objects.get_or_create(
                     document_manager=document_manager,
                     tool_id=tool,

@@ -33,7 +33,9 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = NotificationSerializer
     lookup_field = "id"
-    # Backward compat: remove once all workers pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
+    # filter_queryset_by_organization. That helper fails closed, so a caller
+    # without X-Organization-ID gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):

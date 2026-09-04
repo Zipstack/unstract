@@ -13,7 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineInternalViewSet(ViewSet):
-    # Backward compat: remove once all workers pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; scoping runs through
+    # filter_queryset_by_organization, which fails closed, so a caller without
+    # X-Organization-ID gets zero rows.
     skip_org_filter = True
 
     def retrieve(self, request, pk=None):

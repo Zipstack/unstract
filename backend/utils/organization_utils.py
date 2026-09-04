@@ -72,7 +72,32 @@ def get_organization_context(organization: Organization) -> dict[str, Any]:
 
 
 def filter_queryset_by_organization(queryset, request, organization_field="organization"):
-    """Filter a Django queryset by organization context from request.
+    """Filter a Django queryset by the request's organization context.
+
+    Fails closed. For every caller, this function is the only tenant boundary
+    in the request: each one reaches it with ``OrganizationFilterBackend``
+    inert, either by opting out with ``skip_org_filter = True`` or by being on
+    a view class that declares no filter backends at all. Returning the
+    queryset unfiltered when there is no organization context would hand back
+    every organization's rows.
+
+    Scope note: ``OrgAwareManager`` draws the same line, on the same
+    condition. It fails closed whenever an organization identifier is set but
+    does not resolve, and stays open only when no identifier is set at all —
+    Celery tasks, management commands and the shell, which have no request to
+    take one from. Callers overlap: the ``@csrf_exempt`` internal views reach
+    both. Fail-open there is the absence of a request, not the absence of a
+    header.
+
+    The absent-header case is not exotic: ``InternalAPIAuthMiddleware`` logs a
+    warning and continues when ``X-Organization-ID`` is missing, so any caller
+    holding the internal service key reaches here without context simply by
+    omitting it.
+
+    Note for callers that genuinely span organizations — the leader-elected
+    reaper is one — query the model directly rather than routing through here.
+    ``recover_stuck_pg_executions`` already does, which is why failing closed
+    does not affect it.
 
     Args:
         queryset: Django QuerySet to filter
@@ -80,16 +105,22 @@ def filter_queryset_by_organization(queryset, request, organization_field="organ
         organization_field: Field name for organization relationship (default: 'organization')
 
     Returns:
-        Filtered queryset or empty queryset if organization not found
+        The queryset filtered to the request's organization, or an empty
+        queryset when the organization is absent or unresolvable.
     """
     org_id = getattr(request, "organization_id", None)
-    if org_id:
-        organization = resolve_organization(org_id, raise_on_not_found=False)
-        if organization:
-            # Use dynamic field lookup
-            filter_kwargs = {organization_field: organization}
-            return queryset.filter(**filter_kwargs)
-        else:
-            # Return empty queryset if organization not found
-            return queryset.none()
-    return queryset
+    if not org_id:
+        logger.warning(
+            "Organization scoping requested without organization context on %s; "
+            "returning no rows. A caller that must span organizations should "
+            "query the model directly instead of using this helper.",
+            getattr(request, "path", "<unknown path>"),
+        )
+        return queryset.none()
+
+    organization = resolve_organization(org_id, raise_on_not_found=False)
+    if not organization:
+        logger.warning("Organization %s not found; returning no rows.", org_id)
+        return queryset.none()
+
+    return queryset.filter(**{organization_field: organization})
