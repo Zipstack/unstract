@@ -369,21 +369,33 @@ class TestAgenticExtractionMetrics:
         assert metrics["invoices"]["table_extraction"] == {"table_rows": {"count": 12}}
         assert "_file" not in metrics
 
-    def test_prompt_named_file_does_not_invade_the_reserved_bucket(self):
-        """`_file` is reserved; a prompt with that name must not land in it.
+    def test_prompt_named_file_gets_a_de_collided_key(self):
+        """`_file` is reserved, so a prompt with that name moves aside.
 
-        Its extraction duration still counts toward the file-level total —
-        only the per-prompt entry is dropped, because there is nowhere
-        collision-free to put it.
+        Neither outcome the two namespaces could otherwise produce is
+        acceptable: merging into the reserved bucket conflates per-prompt with
+        file-level figures, and dropping the entry loses every other metric the
+        prompt reported. It is rehomed instead, and nothing is lost.
         """
         from file_processing.structure_tool_task import _merge_agentic_metrics
 
         structured_output = {}
         _merge_agentic_metrics(
             structured_output,
-            {"_file": {"text_extraction": {"time_taken(s)": 3.0}}},
+            {"_file": {"text_extraction": {"time_taken(s)": 3.0}, "rows": 12}},
         )
 
-        file_bucket = structured_output["metrics"]["_file"]
-        assert file_bucket["text_extraction"] == {"time_taken(s)": 3.0}
-        assert "table_extraction" not in file_bucket
+        metrics = structured_output["metrics"]
+        # The reserved bucket carries file-level metrics only...
+        assert metrics["_file"] == {"text_extraction": {"time_taken(s)": 3.0}}
+        # ...and the prompt keeps everything it reported, under its own key.
+        assert metrics["_file (prompt)"]["table_extraction"] == {
+            "text_extraction": {"time_taken(s)": 3.0},
+            "rows": 12,
+        }
+
+    def test_de_collided_key_cannot_alias_the_reserved_one(self):
+        """The rehomed key is distinct from the reserved key by construction."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        assert " " not in PSKeys.FILE
