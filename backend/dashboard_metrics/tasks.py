@@ -749,9 +749,6 @@ def _run_aggregation(
     logger.info("Aggregation (%s): %d active orgs", tier.value, len(active_org_ids))
 
     if not active_org_ids:
-        # The rollup is org-agnostic, so the per-org prefilter must not gate it.
-        if _writes_daily_monthly(tier):
-            _roll_up_monthly(monthly_start, stats)
         return _build_result(
             stats,
             hourly_start,
