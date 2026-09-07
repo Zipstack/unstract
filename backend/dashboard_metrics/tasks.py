@@ -748,17 +748,8 @@ def _run_aggregation(
     # every tier, whose only consumer was this log line.
     logger.info("Aggregation (%s): %d active orgs", tier.value, len(active_org_ids))
 
-    if not active_org_ids:
-        return _build_result(
-            stats,
-            hourly_start,
-            daily_start,
-            monthly_start,
-            end_date,
-            tier,
-            skipped_reason="no_active_orgs",
-        )
-
+    # No early return on an empty shortlist: the monthly rollup is org-agnostic, so
+    # it must still run. An empty id__in issues no query, so the loop below is free.
     organizations = Organization.objects.filter(id__in=active_org_ids).only(
         "id", "organization_id"
     )
@@ -782,7 +773,15 @@ def _run_aggregation(
         f"errors={stats['errors']}"
     )
 
-    return _build_result(stats, hourly_start, daily_start, monthly_start, end_date, tier)
+    return _build_result(
+        stats,
+        hourly_start,
+        daily_start,
+        monthly_start,
+        end_date,
+        tier,
+        skipped_reason="no_active_orgs" if not active_org_ids else None,
+    )
 
 
 @shared_task(
