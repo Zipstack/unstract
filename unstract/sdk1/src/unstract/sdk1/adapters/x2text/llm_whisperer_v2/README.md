@@ -4,10 +4,12 @@
 
 The below env variables are resolved by LLMWhisperer adapter
 
-| Variable                     | Description                                                                                  |
-| ---------------------------- | -------------------------------------------------------------------------------------------- |
-| `ADAPTER_LLMW_POLL_INTERVAL` | Time in seconds to wait before polling LLMWhisperer's status API. Defaults to 30s            |
-| `ADAPTER_LLMW_MAX_POLLS`     | Total number of times to poll the status API. Defaults to 30                                 |
+| Variable                      | Description                                                                     |
+| ----------------------------- | ------------------------------------------------------------------------------- |
+| `ADAPTER_LLMW_WAIT_TIMEOUT`   | Time in seconds to wait for the extraction to finish. Defaults to 900s          |
+| `ADAPTER_LLMW_MAX_RETRIES`    | Number of times a failed request is retried. Defaults to 3                      |
+| `ADAPTER_LLMW_RETRY_MIN_WAIT` | Lower bound in seconds for the backoff between retries. Defaults to 1.0         |
+| `ADAPTER_LLMW_RETRY_MAX_WAIT` | Upper bound in seconds for the backoff between retries. Defaults to 60.0        |
 
 
 ---
