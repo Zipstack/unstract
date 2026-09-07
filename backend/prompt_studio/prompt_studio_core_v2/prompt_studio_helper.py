@@ -26,7 +26,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -327,15 +326,17 @@ class PromptStudioHelper:
     def _get_dispatcher():
         """Executor dispatcher for the executor worker.
 
-        Gate-routed: when ``pg_queue_enabled`` is on the blocking
-        ``dispatch()`` rides the PG request-reply transport; otherwise — and for
-        all async/callback dispatches — it is the unchanged Celery
-        ``ExecutionDispatcher``. The decision is read per dispatch, so flipping
-        the flag is an instant, no-redeploy rollout/rollback.
+        Always the PG request-reply dispatcher since UN-4046. This used to be
+        gate-routed per dispatch on ``pg_queue_enabled``, falling back to the
+        Celery ``ExecutionDispatcher``; with the flag gone the factory returns
+        the PG dispatcher directly. It is kept as a factory call rather than a
+        direct construction on purpose — UN-3779 was a hardcoded
+        ``ExecutionDispatcher`` here that published to RabbitMQ and hung for its
+        full 1200s timeout with no consumer.
         """
         from pg_queue.executor_rpc import get_executor_dispatcher
 
-        return get_executor_dispatcher(celery_app=celery_app)
+        return get_executor_dispatcher()
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:

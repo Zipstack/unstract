@@ -472,8 +472,8 @@ def try_claim_orchestration(execution_id: str, organization_id: str) -> bool:
         raise RuntimeError(
             "pg_orchestration_claim schema is out of date — migrations "
             "0012_pgorchestrationclaim / 0013_pgorchestrationclaim_organization_id "
-            "have not been fully applied. Run backend migrations before enabling "
-            "PG transport (pg_queue_enabled)."
+            "have not been fully applied. Run backend migrations — PG is the only "
+            "execution transport, so this blocks all orchestration."
         ) from exc
 
 

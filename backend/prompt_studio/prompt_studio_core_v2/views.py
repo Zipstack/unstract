@@ -9,7 +9,6 @@ from typing import Any
 import magic
 from account_v2.custom_exceptions import DuplicateData
 from celery import signature
-from celery.result import AsyncResult
 from django.db import IntegrityError
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
@@ -20,7 +19,6 @@ from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
-from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -33,7 +31,6 @@ from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_latest_lookup_mutation_for_tool,
     get_lookup_validation_for_tool,
@@ -86,7 +83,6 @@ from prompt_studio.tool_usage import (
     join_deployment_types,
 )
 from unstract.core.data_models import PgTaskStatus
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -865,57 +861,34 @@ class PromptStudioCoreView(
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()
 
-        # Gate on the same per-org ``pg_queue_enabled`` flag the executor dispatch
-        # uses (``resolve_pg_transport`` — bucketed per org): flag ON → the task rode
-        # PG, which records its terminal state in ``pg_task_result`` (the eager PG
-        # executor never writes a Celery result backend, so ``AsyncResult`` alone
-        # would poll "processing" forever — UN-3693); flag OFF (default) → Celery,
-        # unchanged, and PG is not touched. ``entity_id``/``context`` match
-        # ``resolve_pg_transport`` so the per-org bucket agrees with the dispatch.
-        # No wrapper: ``check_feature_flag_status`` already fails closed to ``False``
-        # (its own try/except + warning) on any Flipt error → reads as "off" → Celery.
-        org_id = str(UserSessionUtils.get_organization_id(request) or "")
-        pg_enabled = check_feature_flag_status(
-            flag_key=PG_QUEUE_FLAG_KEY,
-            entity_id=org_id or "default",
-            context={"organization_id": org_id},
-        )
-        if pg_enabled:
-            from pg_queue.models import PgTaskResult
+        # The task rode PG, which records its terminal state in ``pg_task_result``.
+        # (The eager PG executor never writes a Celery result backend, so the old
+        # ``AsyncResult`` poll would have said "processing" forever — UN-3693.)
+        from pg_queue.models import PgTaskResult
 
-            try:
-                row = (
-                    PgTaskResult.objects.filter(task_id=task_id)
-                    .values("status", "error")
-                    .first()
-                )
-            except Exception:
-                # A transient DB blip degrades to "processing" (a poll retries) rather
-                # than a bare 500 that a status-code-keyed client would misread as a
-                # terminal task failure.
-                logger.exception(
-                    "task_status: pg_task_result read failed for %s; treating as pending",
-                    task_id,
-                )
-                row = None
-            # No row → not finished yet (there is no "pending" row). Status compared
-            # against PgTaskStatus (the writer's source of truth), not a bare literal.
-            if row is None:
-                return Response({"task_id": task_id, "status": "processing"})
-            if row["status"] == PgTaskStatus.COMPLETED.value:
-                return Response({"task_id": task_id, "status": "completed"})
-            return Response(
-                {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        try:
+            row = (
+                PgTaskResult.objects.filter(task_id=task_id)
+                .values("status", "error")
+                .first()
             )
-
-        result = AsyncResult(task_id, app=celery_app)
-        if not result.ready():
+        except Exception:
+            # A transient DB blip degrades to "processing" (a poll retries) rather
+            # than a bare 500 that a status-code-keyed client would misread as a
+            # terminal task failure.
+            logger.exception(
+                "task_status: pg_task_result read failed for %s; treating as pending",
+                task_id,
+            )
+            row = None
+        # No row → not finished yet (there is no "pending" row). Status compared
+        # against PgTaskStatus (the writer's source of truth), not a bare literal.
+        if row is None:
             return Response({"task_id": task_id, "status": "processing"})
-        if result.successful():
+        if row["status"] == PgTaskStatus.COMPLETED.value:
             return Response({"task_id": task_id, "status": "completed"})
         return Response(
-            {"task_id": task_id, "status": "failed", "error": str(result.result)},
+            {"task_id": task_id, "status": "failed", "error": row["error"] or ""},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 

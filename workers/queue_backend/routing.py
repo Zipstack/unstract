@@ -1,77 +1,34 @@
-"""Queue-transport routing gate (Strangler-Fig).
+"""Queue-transport routing.
 
-Decides whether a given dispatch should ride the **Celery** transport
-(today's only real path) or the future **PG Queue** transport,
-based on a per-task-type opt-in allow-list read from env:
+PG is the only transport. :func:`select_backend` returns ``PG``
+unconditionally and :func:`resolve_backend` applies the per-call override on
+top of it.
 
-- ``WORKER_PG_QUEUE_ENABLED_TASKS`` — comma-separated task names routed
-  to PG. Empty / unset → everything routes to Celery.
+**History (UN-4046).** This was the Strangler-Fig gate: a per-task opt-in
+allow-list, ``WORKER_PG_QUEUE_ENABLED_TASKS``, with everything not listed
+routed to Celery. That allow-list was never set in any environment, so every
+dispatch lacking an explicit ``backend=`` override went to Celery — harmless
+while Celery consumers existed, and a queue nothing drains once they were
+scaled to zero. The allow-list and the Celery default went with the
+``pg_queue_enabled`` flag.
 
-**Why an allow-list, not a global boolean.** A single
-``WORKER_QUEUE_BACKEND=pg`` switch would move *all* traffic at once —
-the big-bang migration the PG Queue rollout explicitly forbids. The
-allow-list lets an operator migrate one task type at a time
-(drain-and-cutover) and roll back instantly by removing an entry.
+**The per-call override survives** (``resolve_backend(task_name, override)``).
+It is how the coupled execution pipeline (``async_execute_bin`` → file
+processing → callback, with the barrier fan-in) pins a whole execution to one
+substrate. That mattered when two substrates existed; it is kept because
+stating the transport at the dispatch site reads as intent rather than as
+reliance on a module default, and because the barrier's fan-in still threads it.
 
-(Per-org granularity is intentionally out of scope here. When tenant-level
-canarying is needed it slots in behind :func:`select_backend` as a small
-additive change — no call site touches the routing decision directly.)
-
-**Migration coherence — what the allow-list may and may not split.**
-Per-task routing is the right granularity for *independent / leaf* tasks
-(e.g. ``process_log_history``, ``send_webhook_notification``): no chain,
-no barrier, so one can ride PG while the rest stay on Celery — these are
-the safe first migration candidates. It is **not** valid to split the
-*coupled execution pipeline* (``async_execute_bin`` → file processing →
-callback, with the barrier fan-in) across substrates: a chain hands off
-stage→stage and the barrier coordinates a batch, so a single execution
-must run **entirely on one transport**. The migration unit for the
-pipeline is therefore the *execution*, not the task — the next phase will
-resolve the transport once at kickoff and carry it in ``ExecutionContext``
-(like the fairness key), and downstream dispatches will honour that
-carried choice over the per-task env. ``select_backend`` then becomes:
-"if the dispatch carries an execution-transport marker, use it; otherwise
-consult this allow-list." Until then, only enable *leaf* tasks here.
-
-**Routing posture.** This module only makes the routing *decision*.
-When the flag and the ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list select
-PG, ``dispatch()`` really enqueues the task to Postgres (a durable INSERT
-via ``_enqueue_pg``) and the PG consumer runs it — this moves live traffic
-onto the PG transport, it is not a no-op. ``resolve_backend()`` wraps the
-``select_backend()`` allow-list with the per-call execution-transport
-override used to pin a whole coupled pipeline to one substrate.
-
-**Observability.** Routing is logged at INFO so the signals survive a
-default log config: the configured allow-list is logged once per process
-(:func:`_log_allow_list_once`, so a typo is visible even if it never
-matches a real task), and the first time each task is routed to PG
-(``dispatch()``, log-once per task name). A task not in the allow-list
-still routes to the safe ``CELERY`` default.
-
-**Fail-safe parsing.** Unlike ``get_barrier()`` (which raises on an
-unrecognised value, because a typo'd substrate must not silently fall
-back), the routing table is a membership set with no "invalid value"
-concept: blanks and stray whitespace are simply dropped. Malformed or
-empty config can only ever resolve to the safe ``CELERY`` default —
-``select_backend()`` never raises.
+**Observability.** The first dispatch of each task name is logged at INFO by
+``dispatch()``, so the signal survives a default log config.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from enum import StrEnum
 
 logger = logging.getLogger(__name__)
-
-# Env var name kept as a module literal (mirrors how the sibling
-# ``WORKER_BARRIER_BACKEND`` flag is read in ``queue_backend.__init__``)
-# so the queue-backend seam stays self-contained.
-_ENABLED_TASKS_ENV_VAR = "WORKER_PG_QUEUE_ENABLED_TASKS"
-
-# One-shot guard so the configured allow-list is logged once per process
-# (see ``_log_allow_list_once``). Module-level → per prefork child.
-_allow_list_logged = False
 
 
 class QueueBackend(StrEnum):
@@ -79,7 +36,7 @@ class QueueBackend(StrEnum):
 
     ``StrEnum`` (3.11+) is inherited for symmetry with ``BarrierBackend``,
     but unlike that enum this one is never read from / written to env —
-    only the task-name allow-list is. So callers MUST compare by identity
+    it is never read from env at all. So callers MUST compare by identity
     (``backend is QueueBackend.PG``), never ``== "pg"``: ``StrEnum`` makes a
     typo'd ``== "cellery"`` a silent ``False`` rather than an error.
     """
@@ -88,69 +45,34 @@ class QueueBackend(StrEnum):
     PG = "pg"
 
 
-def _parse_allow_list() -> frozenset[str]:
-    """Parse ``WORKER_PG_QUEUE_ENABLED_TASKS`` into a set of task names.
+def select_backend() -> QueueBackend:
+    """Return the transport a dispatch should ride: always ``PG``.
 
-    Trims surrounding whitespace per entry and drops blanks, so
-    ``"a, b ,, c"`` → ``{"a", "b", "c"}`` and ``""`` / unset → ``frozenset()``.
-    Read at call time (not import) so test harnesses that
-    ``monkeypatch.setenv`` flip the table per-test without a reload.
+    This used to consult a ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list and fall
+    back to ``CELERY`` for anything not opted in. The allow-list was set nowhere,
+    so every dispatch without an explicit ``backend=`` override published to
+    RabbitMQ — which, with no Celery consumers, is a queue nothing drains
+    (UN-4046). PG is the only transport now, so there is nothing to select.
+
+    Takes no argument: the answer no longer depends on the task. It used to.
     """
-    stripped = (
-        entry.strip() for entry in os.getenv(_ENABLED_TASKS_ENV_VAR, "").split(",")
-    )
-    return frozenset(entry for entry in stripped if entry)
-
-
-def _log_allow_list_once(allow_list: frozenset[str]) -> None:
-    """Log the configured allow-list once per process, at INFO.
-
-    Makes a misconfiguration eyeballable at boot: a typo'd task name
-    (``async_execute_bni``) silently routes everything to Celery, but it
-    still shows up here so an operator can spot it. Only fires for a
-    *non-empty* allow-list — the default (feature off) stays silent so
-    the scaffold is truly inert when unused.
-    """
-    global _allow_list_logged
-    if _allow_list_logged or not allow_list:
-        return
-    _allow_list_logged = True
-    logger.info(
-        "PG-queue routing enabled for tasks: %s (all others → Celery)",
-        sorted(allow_list),
-    )
-
-
-def select_backend(task_name: str) -> QueueBackend:
-    """Return the transport a dispatch should ride.
-
-    ``PG`` if ``task_name`` is in ``WORKER_PG_QUEUE_ENABLED_TASKS``;
-    otherwise ``CELERY``. Empty / unset allow-list → always ``CELERY``.
-
-    Never raises — the worst case is the safe ``CELERY`` default.
-    """
-    allow_list = _parse_allow_list()
-    _log_allow_list_once(allow_list)
-    if task_name in allow_list:
-        return QueueBackend.PG
-    return QueueBackend.CELERY
+    return QueueBackend.PG
 
 
 def resolve_backend(task_name: str, override: QueueBackend | None) -> QueueBackend:
     """Resolve the transport for a dispatch, applying the per-call override.
 
-    The single home for the override-wins-else-allow-list precedence so the
+    The single home for the override-wins-else-``select_backend`` precedence so the
     rule reads in one place (and ``dispatch()`` plus the call sites
     share it):
 
-    - ``override`` is ``None`` → defer to :func:`select_backend` (the env
-      allow-list) — the behaviour of every call site today.
-    - ``override`` is a :class:`QueueBackend` → it wins. This is how the
-      execution-level PG pipeline pins a whole execution's header/callback
-      dispatches to one transport regardless of the per-task allow-list (the
-      allow-list is for *leaf* tasks; the coupled pipeline's migration unit is
-      the execution).
+    - ``override`` is ``None`` → defer to :func:`select_backend`, which is now
+      unconditionally ``PG``.
+    - ``override`` is a :class:`QueueBackend` → it wins. Retained because the
+      execution-level pipeline pins a whole execution's header/callback
+      dispatches explicitly, which reads at the call site as intent rather than
+      as reliance on a default.
 
     Never raises — both branches resolve to a valid :class:`QueueBackend`.
     """
-    return override if override is not None else select_backend(task_name)
+    return override if override is not None else select_backend()

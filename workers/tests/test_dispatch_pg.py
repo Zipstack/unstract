@@ -18,7 +18,6 @@ import pytest
 from queue_backend import dispatch
 from queue_backend.fairness import FairnessKey, WorkloadType
 from queue_backend.pg_queue import to_payload
-from queue_backend.routing import _ENABLED_TASKS_ENV_VAR as ENABLED_TASKS_ENV
 from queue_backend.routing import QueueBackend
 
 # ``queue_backend.dispatch`` the attribute is the function (shadows the
@@ -28,7 +27,6 @@ dispatch_mod = importlib.import_module("queue_backend.dispatch")
 
 @pytest.fixture(autouse=True)
 def _reset(monkeypatch):
-    monkeypatch.delenv(ENABLED_TASKS_ENV, raising=False)
     dispatch_mod._pg_routing_logged.clear()
     dispatch_mod._pg_local.client = None
 
@@ -83,7 +81,6 @@ class TestToPayload:
 class TestDispatchEnqueueIntegration:
     def test_dispatch_lands_decodable_row(self, monkeypatch, pg_client):
         queue_name = f"test_dispatch_{os.getpid()}"
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "leaf_task")
         monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: pg_client)
         fairness = FairnessKey(org_id="org-x", workload_type=WorkloadType.API)
         try:
@@ -110,27 +107,17 @@ class TestDispatchEnqueueIntegration:
                 )
             pg_client.conn.commit()
 
-    def test_celery_dispatch_unaffected(self):
-        # No opt-in → Celery path; never touches the PG client.
-        with (
-            patch("queue_backend.dispatch.current_app") as mock_app,
-            patch("queue_backend.dispatch._get_pg_client") as mock_get,
-        ):
-            dispatch("some_task", args=["x"], queue="general")
-        mock_app.send_task.assert_called_once()
-        mock_get.assert_not_called()
-
 
 class TestDispatchBackendOverride:
     """The per-call ``backend=`` override (9e PR 2a inert foundation).
 
-    When set it wins over the ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list, so
-    the execution-level PG pipeline can route a whole execution's headers /
+    Retained after the allow-list went (UN-4046), so the execution-level PG
+    pipeline can state a whole execution's headers /
     callback onto PG without opting their task *names* in. ``None`` (default)
     preserves the allow-list decision exactly — every call site today.
     """
 
-    def test_override_pg_forces_pg_without_allow_list(self, monkeypatch):
+    def test_override_pg_forces_pg(self, monkeypatch):
         # Task name NOT in the (empty) allow-list → select_backend says Celery;
         # the explicit override must still route it to PG.
         captured: dict = {}
@@ -142,16 +129,13 @@ class TestDispatchBackendOverride:
 
         monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
         with patch("queue_backend.dispatch.current_app") as mock_app:
-            handle = dispatch(
-                "pipeline_header", queue="general", backend=QueueBackend.PG
-            )
+            handle = dispatch("pipeline_header", queue="general", backend=QueueBackend.PG)
         mock_app.send_task.assert_not_called()
         assert handle.id == "11"
         assert captured["payload"]["task_name"] == "pipeline_header"
 
-    def test_override_celery_forces_celery_despite_allow_list(self, monkeypatch):
+    def test_override_celery_forces_celery(self, monkeypatch):
         # Task name IS opted into PG, but the override pins it back to Celery.
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "pipeline_header")
         with (
             patch("queue_backend.dispatch.current_app") as mock_app,
             patch("queue_backend.dispatch._get_pg_client") as mock_get,
@@ -160,7 +144,7 @@ class TestDispatchBackendOverride:
         mock_app.send_task.assert_called_once()
         mock_get.assert_not_called()
 
-    def test_default_none_preserves_allow_list_decision(self, monkeypatch):
+    def test_default_none_resolves_to_pg(self, monkeypatch):
         # No override → allow-list decides. Opted-in name → PG.
         captured: dict = {}
 
@@ -169,7 +153,6 @@ class TestDispatchBackendOverride:
                 captured.update(queue=queue_name)
                 return 5
 
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "leaf_task")
         monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
         with patch("queue_backend.dispatch.current_app") as mock_app:
             handle = dispatch("leaf_task", queue="general")
@@ -215,7 +198,6 @@ class TestDispatchPriorityWiring:
                 captured.update(queue=queue_name, **kwargs)
                 return 7
 
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "leaf_task")
         monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
         return captured
 

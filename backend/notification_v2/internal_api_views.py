@@ -28,7 +28,6 @@ from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
-from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
 from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
@@ -530,16 +529,16 @@ def _reclaim_stale_sending() -> int:
 def _org_identifier(org_pk: int) -> str | None:
     """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
 
-    ``resolve_transport`` keys its Flipt decision on the org's string identifier,
-    but the buffer stores/uses the Organization pk. One indexed pk lookup per
-    dispatch group (post-commit) — negligible relative to the downstream webhook
-    dispatch.
+    The PG queue row records the org's string identifier (used for per-org
+    fairness), but the buffer stores/uses the Organization pk. One indexed pk
+    lookup per dispatch group (post-commit) — negligible relative to the
+    downstream webhook dispatch.
 
     Data-anomaly guard: ``NotificationBuffer.organization`` is
     ``on_delete=CASCADE``, so a live buffer row with a missing org is unreachable
     in normal operation. A ``None`` here therefore signals a dangling FK — we log
-    it (the only org-traceable breadcrumb; resolve_transport's own warning is keyed
-    on the random dispatch uuid) and fail closed to Celery in resolve_transport.
+    it (the only org-traceable breadcrumb) and enqueue with an empty org id, which
+    dispatches correctly but without fairness attribution.
     """
     org_string_id = (
         Organization.objects.filter(pk=org_pk)
@@ -549,11 +548,11 @@ def _org_identifier(org_pk: int) -> str | None:
     if org_string_id is None:
         # Sentry-routed (logger.error): a live buffer row with no org is a data
         # anomaly (dangling FK / corruption) that shouldn't happen under the
-        # CASCADE constraint, not routine noise. Routing still fails closed to
-        # Celery in resolve_transport.
+        # CASCADE constraint, not routine noise. The enqueue still succeeds — it
+        # just carries an empty org id, so the row loses fairness attribution.
         logger.error(
             "metric=notification_org_identifier_missing_total org_pk=%s "
-            "(dangling FK; notification routing falls back to Celery)",
+            "(dangling FK; enqueued without fairness attribution)",
             org_pk,
         )
     return org_string_id
@@ -586,12 +585,10 @@ def _send_clubbed(
     ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
-        # Flag-gated transport (UN-3753): PG queue when pg_queue_enabled for this
-        # org, else Celery (byte-identical to the prior send_task). resolve_transport
-        # keys on the org STRING id, but the buffer/worker contract below uses the
-        # org pk — hence _org_identifier(org_id) for routing, org_id in kwargs.
-        dispatched = dispatch_webhook_notification(
-            celery_app=celery_app,
+        # The queue row records the org STRING id, but the buffer/worker contract
+        # below uses the org pk — hence _org_identifier(org_id) on the row,
+        # org_id in kwargs. The two must not be conflated.
+        dispatch_task_id = dispatch_webhook_notification(
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
                 "max_retries": max_retries,
@@ -609,18 +606,14 @@ def _send_clubbed(
             queue="notifications",
             org_string_id=_org_identifier(org_id),
         )
-        # transport= makes the rollout answerable from the logs: during a percentage
-        # ramp the question is "are PG-routed notifications succeeding at the same
-        # rate as Celery-routed ones?", which result=success alone cannot answer.
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
-            "transport=%s org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
+            "org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
             platform,
-            dispatched.transport,
             org_id,
             webhook_url_hash(url),
             len(buffer_ids),
-            dispatched.task_id,
+            dispatch_task_id,
         )
     except PermanentDispatchError:
         # PG-ONLY permanent failure. From this path the only reachable cause is

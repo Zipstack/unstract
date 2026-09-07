@@ -838,7 +838,9 @@ def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch)
     assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
 
 
-def test_node_command_vitest_points_reporter_at_group_junit(tmp_path: Path) -> None:
+def test_node_command_vitest_points_reporter_at_group_junit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The whole reason `vitest` is a first-class runner rather than a synthetic
     one-row wrapper: it writes real JUnit, so `parse_junit` reports per-test
     counts. That only holds if the reporter is aimed at the group's junit.xml.
@@ -846,6 +848,14 @@ def test_node_command_vitest_points_reporter_at_group_junit(tmp_path: Path) -> N
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
     group = GroupDefinition(
         name="frontend", tier="unit", paths=("src",), runner="vitest",
         workdir="frontend",
@@ -859,13 +869,23 @@ def test_node_command_vitest_points_reporter_at_group_junit(tmp_path: Path) -> N
     assert cmd[-1] == "src"
 
 
-def test_node_command_playwright_takes_junit_from_env_not_flag(tmp_path: Path) -> None:
+def test_node_command_playwright_takes_junit_from_env_not_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Playwright reads its reporter path from config (PLAYWRIGHT_JUNIT_OUTPUT_NAME),
     not a CLI flag — passing --outputFile would make it fail to parse args.
     """
     import tests.rig.cli as cli_mod
     from tests.rig.groups import GroupDefinition
 
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
     group = GroupDefinition(
         name="ui", tier="e2e", paths=("tests/ui",), runner="playwright",
         workdir="frontend",
