@@ -309,11 +309,11 @@ All three tables share a similar schema:
 class EventMetricsHourly(Model):
     id = UUIDField(primary_key=True)
     organization = ForeignKey(Organization)
-    timestamp = DateTimeField()           # Hour bucket (truncated)
+    timestamp = DateTimeField()  # Hour bucket (truncated)
     metric_name = CharField(max_length=64)  # e.g., "documents_processed"
     metric_type = CharField(choices=["counter", "histogram"])
-    metric_value = FloatField()           # Aggregated value
-    metric_count = IntegerField()         # Number of events aggregated
+    metric_value = FloatField()  # Aggregated value
+    metric_count = IntegerField()  # Number of events aggregated
     project = CharField(default="default")
     tag = CharField(blank=True)
     created_at = DateTimeField(auto_now_add=True)
@@ -383,9 +383,9 @@ The `aggregate_metrics_from_sources` task:
 
 ```python
 # Query windows
-hourly_start = end_date - timedelta(hours=24)    # Last 24 hours
-daily_start = end_date - timedelta(days=7)       # Last 7 days
-monthly_start = first_of_previous_month          # Last 2 months
+hourly_start = end_date - timedelta(hours=24)  # Last 24 hours
+daily_start = end_date - timedelta(days=7)  # Last 7 days
+monthly_start = first_of_previous_month  # Last 2 months
 ```
 
 ---
@@ -485,8 +485,7 @@ Used for `/overview/`, `/live-summary/`, `/live-series/`
 
 ```python
 @cache_metrics_response(endpoint="overview")
-def overview(self, request):
-    ...
+def overview(self, request): ...
 ```
 
 TTLs:
@@ -521,11 +520,11 @@ metrics:bucket:hourly:<org_id>:<timestamp>[:metric_name]
 
 In `settings.py`:
 ```python
-DASHBOARD_CACHE_TTL_CURRENT_HOUR = 30      # 30 seconds
-DASHBOARD_CACHE_TTL_HISTORICAL = 28800     # 8 hours
-DASHBOARD_CACHE_TTL_OVERVIEW = 300         # 5 minutes
-DASHBOARD_CACHE_TTL_SUMMARY = 900          # 15 minutes
-DASHBOARD_CACHE_TTL_SERIES = 1800          # 30 minutes
+DASHBOARD_CACHE_TTL_CURRENT_HOUR = 30  # 30 seconds
+DASHBOARD_CACHE_TTL_HISTORICAL = 28800  # 8 hours
+DASHBOARD_CACHE_TTL_OVERVIEW = 300  # 5 minutes
+DASHBOARD_CACHE_TTL_SUMMARY = 900  # 15 minutes
+DASHBOARD_CACHE_TTL_SERIES = 1800  # 30 minutes
 ```
 
 ---
@@ -811,15 +810,13 @@ When adding new metrics:
 1. **Add query method** in `services.py`:
    ```python
    @staticmethod
-   def get_new_metric(org_id, start, end, granularity):
-       ...
+   def get_new_metric(org_id, start, end, granularity): ...
    ```
 
 2. **Add to metric configs** in `tasks.py`:
    ```python
    metric_configs = [
-       ...
-       ("new_metric", MetricsQueryService.get_new_metric, False),
+       ...("new_metric", MetricsQueryService.get_new_metric, False),
    ]
    ```
 

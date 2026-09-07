@@ -5,11 +5,10 @@ from enum import Enum
 from typing import Any
 
 from django.conf import settings
-from utils.constants import Common
-from workflow_manager.endpoint_v2.exceptions import UnstractQueueException
-
 from unstract.connectors.queues import connectors as queue_connectors
 from unstract.connectors.queues.unstract_queue import UnstractQueue
+from utils.constants import Common
+from workflow_manager.endpoint_v2.exceptions import UnstractQueueException
 
 logger = logging.getLogger(__name__)
 

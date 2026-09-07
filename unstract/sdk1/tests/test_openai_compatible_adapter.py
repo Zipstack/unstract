@@ -4,6 +4,7 @@ from importlib import import_module
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
@@ -113,9 +114,9 @@ def test_openai_compatible_schema_exposes_reasoning_toggle() -> None:
     # vacuously when the property is omitted from the submitted instance
     # (JSON Schema treats a `properties`-only `if` as valid in that case).
     for branch in schema["allOf"]:
-        assert branch["if"].get("required") == [
-            "enable_reasoning"
-        ], "if/then branches must anchor on the property being present"
+        assert branch["if"].get("required") == ["enable_reasoning"], (
+            "if/then branches must anchor on the property being present"
+        )
 
 
 def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() -> None:
@@ -165,9 +166,9 @@ def test_openai_compatible_validate_preserves_non_reasoning_models() -> None:
             }
         )
 
-        assert (
-            validated["temperature"] == _DEFAULT_TEMPERATURE
-        ), f"{model} should keep temperature"
+        assert validated["temperature"] == _DEFAULT_TEMPERATURE, (
+            f"{model} should keep temperature"
+        )
         assert validated["max_tokens"] == 1024, f"{model} should keep max_tokens"
         assert "extra_body" not in validated, f"{model} should not set extra_body"
 

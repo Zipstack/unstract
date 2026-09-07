@@ -17,7 +17,6 @@ import os
 import sys
 
 import httpx
-
 from unstract.core.cache.redis_queue_client import RedisQueueClient
 
 logger = logging.getLogger(__name__)

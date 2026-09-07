@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from celery import Signature
     from celery.result import AsyncResult
+
     from unstract.sdk1.execution.context import ExecutionContext
 
 from unstract.sdk1.execution.result import ExecutionResult
