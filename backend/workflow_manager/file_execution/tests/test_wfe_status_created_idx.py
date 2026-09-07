@@ -16,11 +16,18 @@ DB-free by design: the migration module is imported and inspected directly.
 from __future__ import annotations
 
 import importlib
+import os
 
+import django
+from django.apps import apps
 from django.db import migrations
 from django.test import SimpleTestCase
 
-from workflow_manager.file_execution.models import WorkflowFileExecution
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
+
+from workflow_manager.file_execution.models import WorkflowFileExecution  # noqa: E402
 
 _MIGRATION = "workflow_manager.file_execution.migrations.0007_wfe_status_created_idx"
 

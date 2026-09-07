@@ -407,7 +407,6 @@ class TestMonthlyRollup(TestCase):
         ]
 
     def test_months_before_the_window_are_left_alone(self):
-        """Orphan cleanup must not reach outside the rebuilt window."""
         self._daily(date(2024, 1, 10), value=99)
         _rollup_monthly_from_daily(date(2024, 1, 1))
         EventMetricsDaily._base_manager.all().delete()
