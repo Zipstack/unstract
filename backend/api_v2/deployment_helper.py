@@ -341,11 +341,20 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 workflow_id=str(workflow_id), execution_id=str(execution_id)
             )
             if execution is not None:
+                # Separate try blocks on purpose: these are independent obligations,
+                # and sharing one would let a failed acknowledgement silence the
+                # notification that subscribers depend on.
                 try:
                     # This response carries the results, so mark them consumed the way
                     # the synchronous dispatch path does — otherwise a follow-up
                     # GET /status serves them a second time with 200 instead of 406.
                     WorkflowHelper.set_result_acknowledge(execution)
+                except Exception:
+                    logger.exception(
+                        f"Failed to acknowledge results for execution {execution_id}"
+                    )
+
+                try:
                     # Terminalising here bypasses WorkflowHelper, which is what
                     # normally notifies API deployment subscribers on a terminal
                     # status. Without this an all-rejected run alerts nobody.
@@ -354,7 +363,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     )
                 except Exception:
                     logger.exception(
-                        f"Post-completion handling failed for execution {execution_id}"
+                        f"Failed to notify subscribers for execution {execution_id}"
                     )
 
             # Report the stored status rather than asserting COMPLETED: the row may

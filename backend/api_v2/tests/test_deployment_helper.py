@@ -195,6 +195,28 @@ def test_all_files_rejected_acknowledges_and_notifies(
     )
 
 
+def test_notification_survives_a_failed_acknowledgement(
+    staging_rejects_everything,
+) -> None:
+    """Acknowledgement and notification are independent obligations.
+
+    Sharing one try block would let a failed acknowledgement silence the
+    notification that subscribers depend on.
+    """
+    mocks = staging_rejects_everything
+    mocks["WorkflowHelper"].set_result_acknowledge.side_effect = Exception("db is down")
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    mocks["PipelineUtils"].update_pipeline_status.assert_called_once()
+    assert response["execution_status"] == "COMPLETED"
+
+
 def test_all_files_rejected_still_responds_if_notification_fails(
     staging_rejects_everything,
 ) -> None:
