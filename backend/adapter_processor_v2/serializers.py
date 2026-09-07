@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any
 
 from account_v2.serializer import UserSerializer
@@ -25,6 +26,8 @@ from unstract.sdk1.constants import AdapterTypes
 from unstract.sdk1.constants import Common as common
 
 from .models import AdapterInstance, UserDefaultAdapter
+
+logger = logging.getLogger(__name__)
 
 
 class TestAdapterSerializer(serializers.Serializer):
@@ -155,9 +158,6 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
                 )
             except Exception as e:
                 # Log error but don't fail serialization
-                import logging
-
-                logger = logging.getLogger(__name__)
                 logger.warning(
                     f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
                 )

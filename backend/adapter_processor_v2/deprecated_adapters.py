@@ -57,9 +57,12 @@ def is_adapter_selectable(adapter: Any) -> bool:
 
 
 def get_deprecation_message(adapter_id: str | None) -> str:
-    """User-facing reason ``adapter_id`` can no longer be used."""
+    """User-facing reason ``adapter_id`` can no longer be used.
+
+    ``reason`` is surfaced verbatim, so each entry must phrase it as a
+    complete sentence naming the adapter and its replacement.
+    """
     metadata = get_deprecation_metadata(adapter_id)
     if not metadata:
         return "This adapter has been deprecated and can no longer be used."
-    name = metadata.get("adapter_name") or "This adapter"
-    return f"{name} has been deprecated. {metadata['reason']}"
+    return metadata["reason"]

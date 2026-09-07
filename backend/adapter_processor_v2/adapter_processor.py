@@ -219,6 +219,14 @@ class AdapterProcessor:
             raise DeprecatedAdapter(get_deprecation_message(adapter.adapter_id))
         return adapter
 
+    # Payload key -> UserDefaultAdapter field backing that default.
+    _DEFAULT_TRIAD_FIELDS = (
+        (AdapterKeys.LLM_DEFAULT, "default_llm_adapter"),
+        (AdapterKeys.EMBEDDING_DEFAULT, "default_embedding_adapter"),
+        (AdapterKeys.VECTOR_DB_DEFAULT, "default_vector_db_adapter"),
+        (AdapterKeys.X2TEXT_DEFAULT, "default_x2text_adapter"),
+    )
+
     @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
         try:
@@ -230,31 +238,20 @@ class AdapterProcessor:
                 organization_member=organization_member
             )
 
-            if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
-                user_default_adapter.default_llm_adapter = (
-                    AdapterProcessor._resolve_selectable_adapter(
-                        default_triad[AdapterKeys.LLM_DEFAULT]
-                    )
-                )
-            if default_triad.get(AdapterKeys.EMBEDDING_DEFAULT, None):
-                user_default_adapter.default_embedding_adapter = (
-                    AdapterProcessor._resolve_selectable_adapter(
-                        default_triad[AdapterKeys.EMBEDDING_DEFAULT]
-                    )
-                )
-
-            if default_triad.get(AdapterKeys.VECTOR_DB_DEFAULT, None):
-                user_default_adapter.default_vector_db_adapter = (
-                    AdapterProcessor._resolve_selectable_adapter(
-                        default_triad[AdapterKeys.VECTOR_DB_DEFAULT]
-                    )
-                )
-
-            if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
-                user_default_adapter.default_x2text_adapter = (
-                    AdapterProcessor._resolve_selectable_adapter(
-                        default_triad[AdapterKeys.X2TEXT_DEFAULT]
-                    )
+            for payload_key, field in AdapterProcessor._DEFAULT_TRIAD_FIELDS:
+                adapter_pk = default_triad.get(payload_key)
+                # The UI submits all four defaults on every save, so an
+                # unchanged value must not be re-validated -- otherwise a user
+                # whose stored default was deprecated under them could never
+                # change any of the other three.
+                if not adapter_pk or str(adapter_pk) == str(
+                    getattr(user_default_adapter, f"{field}_id", None)
+                ):
+                    continue
+                setattr(
+                    user_default_adapter,
+                    field,
+                    AdapterProcessor._resolve_selectable_adapter(adapter_pk),
                 )
 
             user_default_adapter.save()
