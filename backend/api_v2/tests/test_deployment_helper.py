@@ -38,8 +38,8 @@ def collaborators():
         mocks[
             "WorkflowExecutionServiceHelper"
         ].create_workflow_execution.return_value = execution_row
-        mocks["SourceConnector"].add_input_file_to_api_storage.side_effect = RuntimeError(
-            "boom"
+        mocks["SourceConnector"].add_input_file_to_api_storage.side_effect = (
+            RuntimeError("boom")
         )
         yield mocks
 
@@ -75,9 +75,9 @@ def test_staging_failure_marks_execution_error(collaborators) -> None:
 
 def test_staging_failure_cleanup_survives_db_marking_error(collaborators) -> None:
     """If marking the row ERROR itself raises, cleanup must still run (not propagate)."""
-    collaborators[
-        "WorkflowExecutionServiceHelper"
-    ].update_execution_err.side_effect = RuntimeError("db down")
+    collaborators["WorkflowExecutionServiceHelper"].update_execution_err.side_effect = (
+        RuntimeError("db down")
+    )
 
     # Must NOT raise — a failed error-marking should not break cleanup.
     dh.DeploymentHelper.execute_workflow(
