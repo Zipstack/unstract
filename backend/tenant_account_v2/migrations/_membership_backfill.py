@@ -68,3 +68,57 @@ def backfill_memberships(apps, app_label: str, model_name: str) -> None:
         skipped,
         skipped_org,
     )
+
+
+def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
+    """Give ``created_by`` an OWNER row on resources that have no owner at all.
+
+    UN-3057: the Prompt Studio clone path created ``CustomTool`` rows without
+    the OWNER row that UN-2202 made authoritative, so projects cloned after
+    :func:`backfill_memberships` ran are ownerless — visible (the clone copies
+    the parent's ``shared_to_org``), but unmanageable by anyone but an org
+    admin. This repairs what that backfill could not have seen.
+
+    Only resources with *zero* OWNER rows are touched, so a creator who was
+    deliberately replaced by a co-owner is not resurrected. Null creator or
+    null organization means there is nothing to grant, so those are skipped.
+    Idempotent: a second run finds no ownerless rows.
+    """
+    Resource = apps.get_model(app_label, model_name)  # NOSONAR
+    Membership = apps.get_model("tenant_account_v2", "ResourceMembership")  # NOSONAR
+    ContentType = apps.get_model("contenttypes", "ContentType")  # NOSONAR
+
+    content_type = ContentType.objects.get_for_model(Resource)
+    owned_ids = set(
+        Membership.objects.filter(content_type=content_type, role=OWNER).values_list(
+            "object_id", flat=True
+        )
+    )
+
+    # ``_base_manager``: several resources' default manager is org-scoped by
+    # ``UserContext`` (unset here → it would filter every row out and silently
+    # repair nothing). Same guard as ``tenant_account_v2.signals``.
+    repaired = skipped = 0
+    for resource in Resource._base_manager.exclude(created_by=None).iterator():
+        if resource.organization_id is None:
+            skipped += 1
+            continue
+        object_id = str(resource.pk)
+        if object_id in owned_ids:
+            continue
+        _, created = Membership.objects.get_or_create(
+            content_type=content_type,
+            object_id=object_id,
+            user_id=resource.created_by_id,
+            defaults={"role": OWNER, "organization_id": resource.organization_id},
+        )
+        repaired += int(created)
+
+    logger.info(
+        "%s.%s ownerless repair: owners granted=%s (skipped %s null-org)",
+        app_label,
+        model_name,
+        repaired,
+        skipped,
+    )
+    return repaired
