@@ -3,14 +3,17 @@ import { useCallback } from "react";
 import { usePromptStudioService } from "../components/api/prompt-studio-service";
 import { useRetrievalStrategiesStore } from "../store/retrieval-strategies-store";
 
+// Maps the icon name the backend sends (still antd-flavoured) to the key used
+// by RetrievalStrategyModal's own ICON_MAP, which now holds lucide components.
+// The backend contract is unchanged — only the frontend key names moved.
 const ICON_MAP = {
-  SearchOutlined: "SearchOutlined",
-  QuestionCircleOutlined: "QuestionCircleOutlined",
-  ForkOutlined: "ForkOutlined",
-  ReloadOutlined: "ReloadOutlined",
-  ShareAltOutlined: "ShareAltOutlined",
-  TableOutlined: "TableOutlined",
-  MergeCellsOutlined: "MergeCellsOutlined",
+  SearchOutlined: "Search",
+  QuestionCircleOutlined: "CircleHelp",
+  ForkOutlined: "GitFork",
+  ReloadOutlined: "RotateCw",
+  ShareAltOutlined: "Share2",
+  TableOutlined: "Table",
+  MergeCellsOutlined: "Merge",
 };
 
 export const useRetrievalStrategies = () => {
@@ -41,7 +44,7 @@ export const useRetrievalStrategies = () => {
         // Transform the backend data to match our frontend format
         const transformedStrategies = Object.values(data).map((strategy) => ({
           ...strategy,
-          icon: ICON_MAP[strategy.icon] || "SearchOutlined",
+          icon: ICON_MAP[strategy.icon] || "Search",
           bestFor: strategy.best_for || [],
           tokenUsage: strategy.token_usage || "Unknown",
           costImpact: strategy.cost_impact || "Unknown",

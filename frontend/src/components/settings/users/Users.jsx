@@ -1,13 +1,11 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EllipsisOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-} from "@ant-design/icons";
-import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
+import { Ellipsis, Pencil, Plus, RotateCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Dropdown, Modal } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./Users.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -99,47 +97,61 @@ function Users() {
   const isSsoLocalAuthz =
     !!sessionDetails?.provider && !!sessionDetails?.disableSsoIdpAuthorization;
 
-  const editItem = {
-    key: "1",
-    label: (
-      <Space
-        direction="horizontal"
-        className="action-items"
-        onClick={() =>
-          navigate(`/${sessionDetails?.orgName}/users/edit`, {
-            state: selectedUserEmail,
-          })
-        }
-      >
-        <div>
-          <EditOutlined />
-        </div>
-        <div>
-          <Typography.Text>Edit</Typography.Text>
-        </div>
-      </Space>
-    ),
-  };
+  /*
+   * The row each entry acts on is bound HERE, in the render closure, rather
+   * than recorded by an onClick on the kebab itself. The menu opens on
+   * pointerdown and then pins `pointer-events: none` on <body> while it is
+   * open, so the click that would have followed on the kebab never lands: the
+   * row stayed unrecorded, Edit navigated to /users/edit with no state, and
+   * the page bounced to the dashboard. The Delete modal named no user for the
+   * same reason.
+   */
+  const getActionItems = (record) => {
+    const editItem = {
+      key: "1",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() =>
+            navigate(`/${sessionDetails?.orgName}/users/edit`, {
+              state: record,
+            })
+          }
+        >
+          <div>
+            <Pencil />
+          </div>
+          <div>
+            <Typography.Text>Edit</Typography.Text>
+          </div>
+        </Space>
+      ),
+    };
 
-  const deleteItem = {
-    key: "2",
-    label: (
-      <Space
-        direction="horizontal"
-        className="action-items"
-        onClick={showModal}
-      >
-        <div>
-          <DeleteOutlined />
-        </div>
-        <div>
-          <Typography.Text>Delete</Typography.Text>
-        </div>
-      </Space>
-    ),
-  };
+    const deleteItem = {
+      key: "2",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => {
+            setSelectedUserEmail(record);
+            showModal();
+          }}
+        >
+          <div>
+            <Trash2 />
+          </div>
+          <div>
+            <Typography.Text>Delete</Typography.Text>
+          </div>
+        </Space>
+      ),
+    };
 
-  const actionItems = isSsoLocalAuthz ? [editItem] : [editItem, deleteItem];
+    return isSsoLocalAuthz ? [editItem] : [editItem, deleteItem];
+  };
 
   const baseColumns = [
     {
@@ -157,15 +169,11 @@ function Users() {
     align: "center",
     render: (_, record) => (
       <Dropdown
-        menu={{ items: actionItems }}
+        menu={{ items: getActionItems(record) }}
         trigger={["click"]}
         placement="bottomLeft"
       >
-        <EllipsisOutlined
-          rotate={90}
-          style={{ cursor: "pointer" }}
-          onClick={() => setSelectedUserEmail(record)}
-        />
+        <Ellipsis rotate={90} style={{ cursor: "pointer" }} />
       </Dropdown>
     ),
   };
@@ -205,7 +213,7 @@ function Users() {
         {!sessionDetails?.provider && (
           <CustomButton
             type="primary"
-            icon={<PlusOutlined />}
+            icon={<Plus />}
             onClick={handleInviteUsers}
           >
             Invite User
@@ -213,7 +221,7 @@ function Users() {
         )}
         <Button
           shape="circle"
-          icon={<ReloadOutlined />}
+          icon={<RotateCw />}
           onClick={getAllUsers}
           className="user-reload-button"
         />

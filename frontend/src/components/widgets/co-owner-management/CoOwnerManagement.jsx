@@ -1,19 +1,12 @@
-import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
-import {
-  Avatar,
-  Button,
-  List,
-  Modal,
-  Popconfirm,
-  Select,
-  Typography,
-} from "antd";
+import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 import "./CoOwnerManagement.css";
@@ -148,9 +141,7 @@ function CoOwnerManagement({
                         <Button
                           type="text"
                           size="small"
-                          icon={
-                            <DeleteOutlined className="action-icon-buttons" />
-                          }
+                          icon={<Trash2 className="action-icon-buttons" />}
                           onClick={() => handleRemovePending(item?.id)}
                           aria-label={`Remove pending co-owner ${item?.email}`}
                         />
@@ -166,14 +157,14 @@ function CoOwnerManagement({
                               description={`Are you sure you want to remove '${item?.email}' as co-owner?`}
                               okText="Yes"
                               cancelText="No"
-                              icon={<QuestionCircleOutlined />}
+                              icon={<CircleHelp />}
                               onConfirm={() => handleRemoveExisting(item?.id)}
                             >
                               <Button
                                 type="text"
                                 size="small"
                                 icon={
-                                  <DeleteOutlined
+                                  <Trash2
                                     className="action-icon-buttons"
                                     style={{
                                       opacity:
@@ -194,7 +185,7 @@ function CoOwnerManagement({
                         <>
                           <Avatar
                             className="shared-user-avatar"
-                            icon={<UserOutlined />}
+                            icon={<User />}
                           />
                           <Typography.Text className="shared-username">
                             {item.email}

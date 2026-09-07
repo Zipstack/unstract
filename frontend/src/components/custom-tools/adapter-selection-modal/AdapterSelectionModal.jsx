@@ -1,6 +1,11 @@
-import { Divider, Form, Modal, Select, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Divider } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Text, Title } from "@/components/ui/shims/antd-typography";
 
 import "./AdapterSelectionModal.css";
 
@@ -11,7 +16,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 
-const { Text, Title } = Typography;
 const { Option } = Select;
 
 function AdapterSelectionModal({

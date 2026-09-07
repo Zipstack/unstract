@@ -27,4 +27,4 @@ const getRequestIdFromError = (err) => {
   );
 };
 
-export { REQUEST_ID_HEADER, attachRequestIdInterceptor, getRequestIdFromError };
+export { attachRequestIdInterceptor, getRequestIdFromError, REQUEST_ID_HEADER };

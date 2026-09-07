@@ -1,7 +1,11 @@
-import { DownOutlined, UpOutlined } from "@ant-design/icons";
-import { Button, Card, Flex, Space, Tooltip, Typography } from "antd";
+import { ChevronDown, ChevronUp } from "lucide-react";
 import PropTypes from "prop-types";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 /**
  * Individual card item renderer for CardGridView
@@ -13,6 +17,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
  * @param {boolean} props.listMode - Whether to render in list mode
  * @param {boolean} props.forceExpanded - Force card to stay expanded (e.g., when modal is open)
  * @param {boolean} props.scrollIntoView - Scroll to this card (without forcing expansion)
+ * @param {string} props.testId - `data-testid` for the card element itself
  * @return {JSX.Element} The rendered card item
  */
 function CardItem({
@@ -22,6 +27,7 @@ function CardItem({
   listMode = false,
   forceExpanded = false,
   scrollIntoView = false,
+  testId,
 }) {
   const [expanded, setExpanded] = useState(false);
   const cardRef = useRef(null);
@@ -235,7 +241,8 @@ function CardItem({
       <Button
         type="text"
         className="card-expand-chevron"
-        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
+        data-testid={testId ? `${testId}-expand-btn` : undefined}
+        icon={isExpanded ? <ChevronUp /> : <ChevronDown />}
         onClick={handleToggleExpand}
       />
     );
@@ -249,6 +256,7 @@ function CardItem({
         <Card
           ref={cardRef}
           className="card-grid-item card-list-mode"
+          data-testid={testId}
           hoverable={!!onClick}
           onClick={handleCardClick}
         >
@@ -265,6 +273,7 @@ function CardItem({
       <Card
         ref={cardRef}
         className="card-grid-item card-list-mode"
+        data-testid={testId}
         hoverable={!!onClick}
         onClick={handleCardClick}
       >
@@ -289,6 +298,7 @@ function CardItem({
     <Card
       ref={cardRef}
       className="card-grid-item"
+      data-testid={testId}
       hoverable={!!onClick || config.expandable}
       onClick={handleCardClick}
     >
@@ -366,6 +376,7 @@ CardItem.propTypes = {
   listMode: PropTypes.bool,
   forceExpanded: PropTypes.bool,
   scrollIntoView: PropTypes.bool,
+  testId: PropTypes.string,
 };
 
 // Wrap with memo to prevent unnecessary re-renders when parent array reference changes

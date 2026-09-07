@@ -7,4 +7,9 @@
 
 .cus-syn-del {
   font-size: 10px;
+  /* width/height, not font-size alone: these classes sit on lucide SVGs,
+   * which ignore font-size and fall back to their own 24px default. The
+   * antd originals were an icon FONT, where font-size was the size. */
+  width: 10px;
+  height: 10px;
 }

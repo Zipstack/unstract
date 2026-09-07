@@ -1,0 +1,48 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    /*
+     * The app is still ~370 JavaScript files. `allowJs` lets TypeScript see
+     * them so imports resolve, while `checkJs: false` keeps them unchecked —
+     * this is a targeted conversion of the shim layer, not a whole-repo
+     * migration.
+     */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* Vite/esbuild strip types without checking them, so `vite build`
+     * passing proves nothing about type safety. `tsc --noEmit` (the
+     * `typecheck` script) is what actually enforces these settings. */
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "strict": true,
+    /*
+     * The shims deliberately accept and forward unknown props, so an
+     * unused-parameter error would fire on every prop consumed purely to
+     * keep it off the DOM. Those are intentional, so the check is off.
+     */
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+
+    /* Must mirror the Vite alias (and jsconfig.json), or every `@/…`
+     * import fails to resolve for tsc even though it builds fine.
+     * `baseUrl` was removed in TypeScript 6, so the paths are relative to
+     * this file's directory. */
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
+  "exclude": ["node_modules", "build", "dist"]
+}

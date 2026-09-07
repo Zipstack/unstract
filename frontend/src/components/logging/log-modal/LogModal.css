@@ -18,8 +18,8 @@
 }
 
 .log-modal-title .copy-btn-outlined:hover {
-  border-color: #1677ff;
-  color: #1677ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .log-modal-title .export-btn-outlined {

@@ -27,7 +27,22 @@
 
 .prompt-card-actions-head {
   font-size: 12px;
+  /* width/height, not font-size alone: these classes sit on lucide SVGs,
+   * which ignore font-size and fall back to their own 24px default. The
+   * antd originals were an icon FONT, where font-size was the size. */
+  width: 12px;
+  height: 12px;
   color: #575859;
+  transition: color 0.2s;
+}
+
+/* The button carries `hover:text-accent-foreground`, but that only sets an
+ * INHERITED colour — this rule puts `color` directly on the SVG, so it wins and
+ * the icon never reacted. Only the button's faint background changed, which on
+ * a tinted prompt card is nearly imperceptible: several icons looked like they
+ * had no hover state at all. Tint the icon itself. */
+.prompt-card-action-button:hover:not(:disabled) .prompt-card-actions-head {
+  color: var(--primary);
 }
 
 .prompt-card-head .ant-typography {
@@ -223,7 +238,7 @@
 .ant-tag-checkable.checked {
   background-color: #f6ffed !important;
   border-color: #b7eb8f !important;
-  color: #52c41a !important;
+  color: var(--success) !important;
 }
 
 .ant-tag-checkable.unchecked {
@@ -293,7 +308,7 @@
 .highlighted-prompt {
   border-width: 1.2px;
   border-style: solid;
-  border-color: #4096ff;
+  border-color: var(--primary);
   box-shadow: 4px 4px 12.5px 0px rgba(0, 0, 0, 0.08);
 }
 

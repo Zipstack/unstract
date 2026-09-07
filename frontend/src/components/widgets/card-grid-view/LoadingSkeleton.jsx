@@ -1,6 +1,7 @@
-import { Card, Col, Row, Skeleton } from "antd";
 import PropTypes from "prop-types";
 import { useMemo } from "react";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Card, Skeleton } from "@/components/ui/shims/antd-structure";
 
 /**
  * Loading skeleton that matches the card grid layout

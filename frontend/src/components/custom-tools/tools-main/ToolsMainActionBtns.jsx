@@ -1,7 +1,9 @@
-import { BarChartOutlined, UnorderedListOutlined } from "@ant-design/icons";
-import { Button, Space, Tooltip } from "antd";
+import { ChartColumn, List } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -132,14 +134,16 @@ function ToolsMainActionBtns() {
         {!singlePassExtractMode && <RunAllPrompts />}
         <Tooltip title="Output Analyzer">
           <Button
-            icon={<BarChartOutlined />}
+            data-testid="ps-output-analyzer-btn"
+            icon={<ChartColumn />}
             onClick={handleOutputAnalyzerBtnClick}
             disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
           />
         </Tooltip>
         <Tooltip title="Reorder the list of prompts">
           <Button
-            icon={<UnorderedListOutlined />}
+            data-testid="ps-reorder-prompts-btn"
+            icon={<List />}
             onClick={() => setOpenReorderModal(true)}
             loading={isNewOrderLoading}
           />
