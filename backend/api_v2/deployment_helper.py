@@ -21,6 +21,7 @@ from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
@@ -336,6 +337,26 @@ class DeploymentHelper(BaseAPIKeyValidator):
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
+            api_results = ResultCacheUtils.get_api_results(
+                workflow_id=str(workflow_id), execution_id=str(execution_id)
+            )
+            if execution is not None:
+                try:
+                    # This response carries the results, so mark them consumed the way
+                    # the synchronous dispatch path does — otherwise a follow-up
+                    # GET /status serves them a second time with 200 instead of 406.
+                    WorkflowHelper.set_result_acknowledge(execution)
+                    # Terminalising here bypasses WorkflowHelper, which is what
+                    # normally notifies API deployment subscribers on a terminal
+                    # status. Without this an all-rejected run alerts nobody.
+                    PipelineUtils.update_pipeline_status(
+                        pipeline_id=pipeline_id, workflow_execution=execution
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Post-completion handling failed for execution {execution_id}"
+                    )
+
             # Report the stored status rather than asserting COMPLETED: the row may
             # be missing, or the terminal guard may have refused the change. Claiming
             # success here would only hide the stranded execution behind a 200 that a
@@ -347,9 +368,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     execution_status=(
                         execution.status if execution else ExecutionStatus.ERROR.value
                     ),
-                    result=ResultCacheUtils.get_api_results(
-                        workflow_id=str(workflow_id), execution_id=str(execution_id)
-                    ),
+                    result=api_results,
                 )
             ).data
 

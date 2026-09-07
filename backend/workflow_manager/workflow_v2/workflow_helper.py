@@ -413,7 +413,7 @@ class WorkflowHelper:
             task_result = ResultCacheUtils.get_api_results(
                 workflow_id=str(execution.workflow.id), execution_id=execution_id
             )
-            cls._set_result_acknowledge(execution)
+            cls.set_result_acknowledge(execution)
 
         result_response = ExecutionResponse(
             workflow_id=str(execution.workflow.id),
@@ -425,7 +425,7 @@ class WorkflowHelper:
         return result_response
 
     @staticmethod
-    def _set_result_acknowledge(execution: WorkflowExecution) -> None:
+    def set_result_acknowledge(execution: WorkflowExecution) -> None:
         """Mark the result as acknowledged and update the database.
 
         This method is called once the task has completed and its result is forgotten.
@@ -728,7 +728,7 @@ class WorkflowHelper:
                 task_result = ResultCacheUtils.get_api_results(
                     workflow_id=workflow_id, execution_id=execution_id
                 )
-                cls._set_result_acknowledge(workflow_execution)
+                cls.set_result_acknowledge(workflow_execution)
             else:
                 task_result = None
             return ExecutionResponse(

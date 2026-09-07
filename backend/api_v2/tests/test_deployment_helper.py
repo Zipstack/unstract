@@ -103,6 +103,7 @@ def staging_rejects_everything():
         APIDeploymentRateLimiter=mock.DEFAULT,
         WorkflowHelper=mock.DEFAULT,
         ResultCacheUtils=mock.DEFAULT,
+        PipelineUtils=mock.DEFAULT,
         Tag=mock.DEFAULT,
         logger=mock.DEFAULT,
     ) as mocks:
@@ -162,6 +163,54 @@ def test_all_files_rejected_completes_without_dispatch(
     assert response["execution_status"] == "COMPLETED"
     assert response["result"][0]["file"] == "evil.pdf"
     assert response["result"][0]["status"] == "Failed"
+
+
+def test_all_files_rejected_acknowledges_and_notifies(
+    staging_rejects_everything,
+) -> None:
+    """The early return owes the caller what the dispatch path would have done.
+
+    It hands back the results in its own response and reaches a terminal status
+    without going through WorkflowHelper, so both the acknowledgement and the
+    subscriber notification have to happen here or they happen nowhere.
+    """
+    mocks = staging_rejects_everything
+    completed_row = mocks[
+        "WorkflowExecutionServiceHelper"
+    ].update_execution_completed.return_value
+
+    dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    # Results were served in this response, so a later GET /status must 406
+    # rather than serve them again.
+    mocks["WorkflowHelper"].set_result_acknowledge.assert_called_once_with(completed_row)
+    # PipelineUtils is the only dispatcher of API deployment notifications.
+    mocks["PipelineUtils"].update_pipeline_status.assert_called_once_with(
+        pipeline_id="pipe-1", workflow_execution=completed_row
+    )
+
+
+def test_all_files_rejected_still_responds_if_notification_fails(
+    staging_rejects_everything,
+) -> None:
+    """A failing webhook must not turn a handled rejection into a 500."""
+    mocks = staging_rejects_everything
+    mocks["PipelineUtils"].update_pipeline_status.side_effect = Exception("webhook down")
+
+    response = dh.DeploymentHelper.execute_workflow(
+        organization_name="org",
+        api=_api(),
+        file_objs=[MagicMock()],
+        timeout=-1,
+    )
+
+    assert response["execution_status"] == "COMPLETED"
+    assert response["result"][0]["file"] == "evil.pdf"
 
 
 def test_files_staged_successfully_are_dispatched(staging_rejects_everything) -> None:

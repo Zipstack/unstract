@@ -499,7 +499,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         # update_fields) re-runs _handle_execution_cache(), which would republish
         # this method's stale in-memory status to the Redis execution cache and can
         # clobber a status the worker has since advanced — the same reason
-        # _set_result_acknowledge uses a queryset .update(). This marker write must
+        # set_result_acknowledge uses a queryset .update(). This marker write must
         # touch ONLY the handle column and never the status/counters or the cache.
         updated = WorkflowExecution.objects.filter(pk=execution_id).update(
             queue_message_id=queue_message_id
