@@ -99,13 +99,21 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     (``skipped_reason``), or every metric raised and was caught per-metric
     (``errors``). Each is correct behaviour in isolation, but left at INFO a leaked
     lock or a frozen source table looks like a day of successful runs.
+
+    ``skipped_reason`` reports the prefilter, not the whole run: the monthly rollup
+    is org-agnostic and can write with no active org at all, so the row count says
+    which happened.
     """
     if result.get("skipped"):
         logger.warning(
             "%s did no work: %s", name, result.get("reason", "reported skipped=True")
         )
     elif result.get("skipped_reason"):
-        logger.warning("%s did no work: %s", name, result["skipped_reason"])
+        wrote = sum(
+            result.get(granularity, {}).get("upserted", 0)
+            for granularity in ("hourly", "daily", "monthly")
+        )
+        logger.warning("%s: %s (rows written: %d)", name, result["skipped_reason"], wrote)
     elif result.get("errors"):
         logger.warning(
             "%s completed with %s error(s) across %s organisation(s)",
