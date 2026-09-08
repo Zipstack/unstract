@@ -9,7 +9,7 @@
             "type": "string"
           },
           "api_name": {
-            "maxLength": 30,
+            "readOnly": true,
             "type": "string"
           },
           "co_owners_count": {
@@ -28,11 +28,11 @@
             "type": "string"
           },
           "description": {
-            "maxLength": 255,
+            "readOnly": true,
             "type": "string"
           },
           "display_name": {
-            "maxLength": 30,
+            "readOnly": true,
             "type": "string"
           },
           "id": {
@@ -41,6 +41,7 @@
             "type": "string"
           },
           "is_active": {
+            "readOnly": true,
             "type": "boolean"
           },
           "is_owner": {
@@ -57,13 +58,11 @@
             "type": "array"
           },
           "last_run_time": {
-            "description": "Get the timestamp of the most recent execution.",
             "nullable": true,
             "readOnly": true,
             "type": "string"
           },
           "run_count": {
-            "description": "Get total execution count for this API deployment.",
             "readOnly": true,
             "type": "integer"
           },
@@ -78,10 +77,14 @@
         },
         "required": [
           "api_endpoint",
+          "api_name",
           "co_owners_count",
           "created_by",
           "created_by_email",
+          "description",
+          "display_name",
           "id",
+          "is_active",
           "is_owner",
           "last_5_run_statuses",
           "last_run_time",
@@ -463,7 +466,7 @@
     },
     "/api/v1/unstract/{org_id}/api/deployment/": {
       "get": {
-        "description": "List the API deployments of an organisation.\n\nEach entry carries the `api_name` and `api_endpoint` an execution call needs, alongside the `display_name` and `description` that say what the deployment is for. A key holder can therefore discover what is deployed without being told, having resolved `org_id` once from `whoami`.\n\nThe deployment's own API key is not part of this listing, so a platform key cannot be widened into the ability to execute a deployment by reading it. Executing still needs the deployment key.\n\nResults are ordered by most recent run first, and paginated: pass `page` and `page_size`, and read `count` and `next` from the envelope.",
+        "description": "List the API deployments of an organisation.\n\nEach entry carries the `api_name` and `api_endpoint` an execution call needs, alongside the `display_name` and `description` that say what the deployment is for. A key holder can therefore discover what is deployed without being told, having resolved `org_id` once from `whoami`.\n\nAn entry also describes who owns the deployment and how it has been running lately, including the creator's email address. This is the same view of the organisation its own members have in the web app.\n\nThe deployment's own API key is not part of this listing, so a platform key cannot be widened into the ability to execute a deployment by reading it. Executing still needs the deployment key.\n\nResults are ordered by most recent run first, then by identifier so that paging is stable. Pass `page` and `page_size`, and read `count` and `next` from the envelope.",
         "operationId": "list_deployments",
         "parameters": [
           {
@@ -538,6 +541,16 @@
               }
             },
             "description": "One page of the organisation's API deployments."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A query parameter was malformed."
           },
           "401": {
             "content": {

@@ -16,9 +16,11 @@ from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.services import create_api_user_for_key
 from rest_framework.test import APITestCase
 from utils.user_context import UserContext
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from api_v2.models import APIDeployment
+from api_v2.serializers import APIDeploymentListSerializer
 
 ORG_A = "org-a"
 ORG_B = "org-b"
@@ -146,6 +148,83 @@ class DeploymentListingTest(APITestCase):
         key = self._make_key(organization=self.org_b)
 
         response = self._get(str(key.key), organization_id=ORG_B)
+
+        self.assertEqual(
+            [listed["api_name"] for listed in response.json()["results"]], ["receipts"]
+        )
+
+    def test_the_run_summary_matches_what_has_run(self) -> None:
+        """The counts come from annotations on the list query rather than from
+        a query per row, so they are worth reading back.
+        """
+        key = str(self._make_key().key)
+
+        (listed,) = self._get(key).json()["results"]
+        self.assertEqual(listed["run_count"], 0)
+        self.assertIsNone(listed["last_run_time"])
+
+        # Written without `save()`: the model's post-save hooks reach Redis,
+        # which has nothing to do with what is being read back here.
+        (execution,) = WorkflowExecution.objects.bulk_create(
+            [
+                WorkflowExecution(
+                    pipeline_id=self.deployment.id, workflow=self.deployment.workflow
+                )
+            ]
+        )
+
+        (listed,) = self._get(key).json()["results"]
+        self.assertEqual(listed["run_count"], 1)
+        self.assertEqual(listed["last_run_time"], execution.created_at.isoformat())
+
+        # The same serializer over a plain row, as `by_prompt_studio_tool`
+        # serializes one: no annotations, same answer.
+        unannotated = APIDeploymentListSerializer(self.deployment).data
+        self.assertEqual(unannotated["run_count"], 1)
+        self.assertEqual(unannotated["last_run_time"], execution.created_at.isoformat())
+
+    def test_paging_reaches_every_deployment_exactly_once(self) -> None:
+        """Deployments that have never run all tie on the primary ordering, and
+        each page is its own query: without a unique tie-breaker a page can
+        repeat a row and drop another.
+        """
+        for name in ("receipts", "contracts"):
+            self._make_deployment(self.org_a, api_name=name)
+        key = str(self._make_key().key)
+
+        seen = []
+        for page in (1, 2, 3):
+            response = self.client.get(
+                f"{listing_url(ORG_A)}?page={page}&page_size=1",
+                HTTP_AUTHORIZATION=f"Bearer {key}",
+            )
+            self.assertEqual(response.status_code, 200)
+            seen += [listed["id"] for listed in response.json()["results"]]
+
+        self.assertEqual(sorted(seen), sorted(set(seen)))
+        self.assertEqual(len(seen), 3)
+
+    def test_a_malformed_workflow_filter_is_a_bad_request(self) -> None:
+        """Django raises on evaluation, which is past the point where a bad
+        request can still be answered as one.
+        """
+        key = str(self._make_key().key)
+
+        response = self.client.get(
+            f"{listing_url(ORG_A)}?workflow=not-a-uuid",
+            HTTP_AUTHORIZATION=f"Bearer {key}",
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_the_workflow_filter_selects_by_workflow(self) -> None:
+        other = self._make_deployment(self.org_a, api_name="receipts")
+        key = str(self._make_key().key)
+
+        response = self.client.get(
+            f"{listing_url(ORG_A)}?workflow={other.workflow_id}",
+            HTTP_AUTHORIZATION=f"Bearer {key}",
+        )
 
         self.assertEqual(
             [listed["api_name"] for listed in response.json()["results"]], ["receipts"]

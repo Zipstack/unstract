@@ -257,6 +257,15 @@ class APIDeploymentSummary(APIDeploymentListSerializer):
     `display_name` and `description` say what the deployment is for.
     """
 
+    # The model defaults these, so DRF reports them optional --- true of a
+    # request body, wrong for a response the server always fills. Left alone,
+    # a generated client types them nullable and every caller writes a check
+    # for a key that is always there.
+    api_name = serializers.CharField(read_only=True)
+    display_name = serializers.CharField(read_only=True)
+    description = serializers.CharField(read_only=True)
+    is_active = serializers.BooleanField(read_only=True)
+
 
 # This operation takes a platform key rather than a deployment key, so its
 # credential failures come from the auth middleware in `PlatformKeyError` shape
@@ -289,11 +298,15 @@ LIST_API_DEPLOYMENTS_DESCRIPTION = (
     "needs, alongside the `display_name` and `description` that say what the "
     "deployment is for. A key holder can therefore discover what is deployed "
     "without being told, having resolved `org_id` once from `whoami`.\n\n"
+    "An entry also describes who owns the deployment and how it has been "
+    "running lately, including the creator's email address. This is the same "
+    "view of the organisation its own members have in the web app.\n\n"
     "The deployment's own API key is not part of this listing, so a platform "
     "key cannot be widened into the ability to execute a deployment by "
     "reading it. Executing still needs the deployment key.\n\n"
-    "Results are ordered by most recent run first, and paginated: pass `page` "
-    "and `page_size`, and read `count` and `next` from the envelope."
+    "Results are ordered by most recent run first, then by identifier so that "
+    "paging is stable. Pass `page` and `page_size`, and read `count` and "
+    "`next` from the envelope."
 )
 
 
@@ -307,6 +320,10 @@ API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
             200: OpenApiResponse(
                 APIDeploymentSummary(many=True),
                 description="One page of the organisation's API deployments.",
+            ),
+            400: OpenApiResponse(
+                ErrorResponse,
+                description="A query parameter was malformed.",
             ),
             401: OpenApiResponse(
                 PlatformKeyError,

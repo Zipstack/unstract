@@ -63,6 +63,15 @@ _KNOWN_EXAMPLE_DIVERGENCES = {
 #: fail differently, so several checks below split on this.
 DEPLOYMENT_OPERATIONS = {"execute", "status"}
 
+#: The operations a caller can address wrongly, because they take a body or a
+#: parameter. The rest cannot answer 400 whatever the caller sends.
+REJECTABLE_REQUEST_OPERATIONS = DEPLOYMENT_OPERATIONS | {"list_deployments"}
+
+#: The operations that can refuse a credential they recognise -- a key for
+#: another deployment, or for another organisation. Where a key that resolves
+#: at all is a key that may proceed, there is no 403 to document.
+REFUSABLE_OPERATIONS = DEPLOYMENT_OPERATIONS | {"list_deployments"}
+
 
 @pytest.fixture(autouse=True)
 def _outside_any_request() -> None:
@@ -221,6 +230,22 @@ def test_the_listing_asks_for_the_organisation_it_lists() -> None:
         assert declared[0]["required"] is True, path
 
 
+def test_the_listed_fields_a_client_reads_are_not_optional() -> None:
+    """The model defaults these, so DRF reports them optional for a request
+    body. In a response they are always sent, and a client that types them
+    nullable makes every caller check a key that is always there.
+    """
+    listed = _schema("APIDeploymentSummary")
+
+    assert {
+        "api_name",
+        "api_endpoint",
+        "display_name",
+        "description",
+        "is_active",
+    } <= set(listed["required"])
+
+
 def test_spec_documents_the_deployment_operations() -> None:
     spec = _committed()
     documented = {operation["operationId"] for _, _, operation in _operations(spec)}
@@ -276,19 +301,25 @@ def test_clients_can_branch_on_every_failure_they_will_see() -> None:
         assert {"401", "500"} <= set(operation["responses"]), f"{method} {path}"
 
 
-def test_the_deployment_operations_document_a_rejected_request_and_a_missing_one() -> (
-    None
-):
-    """Kept off the universal check above: a request carrying no body and
-    naming no resource cannot be malformed or miss its target, and documenting
-    a status an operation cannot return hands clients a dead branch.
+def test_operations_document_a_rejected_request_only_where_one_is_possible() -> None:
+    """Kept off the universal check above: a request carrying no body and no
+    parameter cannot be malformed, not every credential can be refused once it
+    is recognised, nothing but the deployment operations names a resource that
+    can be missing, and documenting a status an operation cannot return hands
+    clients a dead branch.
     """
     for path, method, operation in _operations(_committed()):
-        declared = {"400", "403", "404"} & set(operation["responses"])
-        if operation["operationId"] in DEPLOYMENT_OPERATIONS:
-            assert declared == {"400", "403", "404"}, f"{method} {path}"
-        else:
-            assert not declared, f"{method} {path}"
+        responses = set(operation["responses"])
+        operation_id = operation["operationId"]
+        assert ("400" in responses) is (
+            operation_id in REJECTABLE_REQUEST_OPERATIONS
+        ), f"{method} {path}"
+        assert ("403" in responses) is (
+            operation_id in REFUSABLE_OPERATIONS
+        ), f"{method} {path}"
+        assert ("404" in responses) is (
+            operation_id in DEPLOYMENT_OPERATIONS
+        ), f"{method} {path}"
 
 
 def test_only_the_execution_endpoint_documents_the_statuses_only_it_returns() -> None:
