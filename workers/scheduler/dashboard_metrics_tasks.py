@@ -137,9 +137,9 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
             result["errors"],
             result.get("organizations_processed", "?"),
         )
-    if incomplete := result.get("monthly", {}).get("incomplete_months"):
+    if lowered := result.get("monthly", {}).get("lowered_months"):
         logger.warning(
-            "%s rolled up an incomplete daily tier for %s", name, ", ".join(incomplete)
+            "%s lowered existing monthly totals for %s", name, ", ".join(lowered)
         )
     if not wrote and not result.get("skipped_reason") and not result.get("errors"):
         # The signature of the regression this change could introduce: a tier with
@@ -165,6 +165,8 @@ def dashboard_metrics_aggregate(
     at MAX_ATTEMPTS=1, and the once-daily reconciliation row has no next tick to
     recover on.
     """
+    if _ignored:
+        logger.warning("Ignoring unrecognised aggregation kwargs: %s", sorted(_ignored))
     body = {
         key: value
         for key, value in (

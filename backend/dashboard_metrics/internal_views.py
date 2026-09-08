@@ -118,6 +118,12 @@ class AggregateMetricsAPIView(_MetricsTaskAPIView):
         body = request.data if isinstance(request.data, dict) else {}
         kwargs: dict[str, Any] = {}
         try:
+            # Rejected rather than ignored: the only automated caller sends exactly
+            # these two, so an unrecognised key is a hand-run typo — and ignoring it
+            # returns 200 having quietly run something other than what was asked.
+            unknown = set(body) - {"tier", "source_window_days"}
+            if unknown:
+                raise ValueError(f"unrecognised keys: {sorted(unknown)}")
             if body.get("tier") is not None:
                 kwargs["tier"] = _tier_arg(body["tier"])
             if body.get("source_window_days") is not None:

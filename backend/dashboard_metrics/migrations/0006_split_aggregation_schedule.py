@@ -10,8 +10,10 @@ Beat and PG rows are declared here from one spec, so this pair cannot drift the 
 new row inherits whichever scheduler owns the row it is split from, rather than
 hardcoding Beat: it is one half of that row, and the same process should fire it.
 
-The new row runs at minute 20 — off the ``*/15`` grid — so it never starts alongside
-the hourly-tier run, whose per-tier lock is deliberately unable to block it.
+The new row runs at minute 20, off the ``*/15`` grid. The hourly-tier run's per-tier
+lock is deliberately unable to block it, so what keeps the two apart is the schedule
+on the PG scheduler and the consumer's concurrency on Beat — see the note beside the
+new row's ``cron_string``.
 
 **Rolling back the code past this release requires reversing this migration first,
 from the outgoing image.** After it runs both scheduler rows carry a ``tier`` kwarg

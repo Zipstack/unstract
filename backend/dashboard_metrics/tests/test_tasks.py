@@ -40,6 +40,8 @@ from dashboard_metrics.tasks import (
     _acquire_aggregation_locks,
     _active_org_ids,
     _aggregation_lock_keys,
+    _lowered_months,
+    _monthly_totals,
     _rollup_monthly_from_daily,
     _run_aggregation,
     _truncate_to_day,
@@ -572,6 +574,19 @@ class TestInternalAggregateEndpoint(TestCase):
             self._post({})
         assert task.call_args.kwargs == {}
 
+    def test_an_unrecognised_body_key_is_a_400(self):
+        """Ignored, it answered 200 having run every tier at the default window.
+
+        `{"teir": ...}` is the realistic shape — a hand-run repair during an
+        incident, answered as though it did what was asked.
+        """
+        with patch(
+            "dashboard_metrics.internal_views.aggregate_metrics_from_sources"
+        ) as task:
+            response = self._post({"teir": "hourly"})
+        assert response.status_code == 400
+        task.assert_not_called()
+
     def test_a_non_integer_window_is_a_400(self):
         with patch(
             "dashboard_metrics.internal_views.aggregate_metrics_from_sources"
@@ -645,12 +660,10 @@ class TestMonthlyThroughTheTask(TestCase):
         assert result["period"]["monthly"]["start"] == self.last_month.isoformat()
         assert result["monthly"]["upserted"] == 2
         assert result["monthly"]["failed"] is False
-        # One seeded day per month, so both are reported as covered short — which is
-        # what stops a partial rollup lowering a total with nothing saying so.
-        assert [m.split()[0] for m in result["monthly"]["incomplete_months"]] == [
-            f"{self.last_month:%Y-%m}",
-            f"{self.this_month:%Y-%m}",
-        ]
+        # A correct rollup lowers nothing, so it says nothing. The detector fires on
+        # a total that actually fell, not on a calendar heuristic that would flag an
+        # idle day or a fresh install as damage.
+        assert "lowered_months" not in result["monthly"]
 
         rows = EventMetricsMonthly._base_manager.order_by("month")
         assert [r.month for r in rows] == [
@@ -1090,3 +1103,77 @@ class TestReconciliationSchedule(TestCase):
         assert not PgPeriodicTask.objects.filter(
             name=self.migration.RECONCILE_TASK_NAME
         ).exists()
+
+
+class TestALoweredTotalIsReported(TestCase):
+    """The damage is per-tenant, so the detector has to be.
+
+    A fleet-wide date count cannot see this: one org covers every date while
+    another loses one, so no date is globally missing and nothing fires — while
+    the second org's monthly total is rewritten downward and served to its
+    dashboard. `_collect_org_metrics` catches a failing metric per organization
+    and continues, so a query fault on one tenant produces exactly this shape,
+    and the 2-day source window makes it permanent two days later.
+    """
+
+    def setUp(self):
+        self.covered = Organization.objects.create(
+            organization_id="covered-org", name="covered", display_name="Covered"
+        )
+        self.short = Organization.objects.create(
+            organization_id="short-org", name="short", display_name="Short"
+        )
+        self.month = _truncate_to_month(timezone.now()).date()
+
+    def _daily(self, org, day, value):
+        EventMetricsDaily._base_manager.create(
+            organization=org,
+            date=day,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=value,
+            metric_count=1,
+            project="default",
+            tag="",
+        )
+
+    def _monthly(self, org, value):
+        EventMetricsMonthly._base_manager.create(
+            organization=org,
+            month=self.month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=value,
+            metric_count=2,
+            project="default",
+            tag="",
+        )
+
+    def test_one_tenant_losing_a_day_is_named_while_the_other_is_not(self):
+        # Both orgs previously totalled 80. Only `short` lost a day of daily rows.
+        self._monthly(self.covered, value=80)
+        self._monthly(self.short, value=80)
+        self._daily(self.covered, self.month, value=40)
+        self._daily(self.covered, self.month + timedelta(days=1), value=40)
+        self._daily(self.short, self.month, value=70)
+
+        before = _monthly_totals(self.month)
+        _rollup_monthly_from_daily(self.month)
+        lowered = _lowered_months(before, self.month)
+
+        assert lowered == [f"{self.month:%Y-%m} (org {self.short.id})"]
+
+        short_row = EventMetricsMonthly._base_manager.get(organization=self.short)
+        covered_row = EventMetricsMonthly._base_manager.get(organization=self.covered)
+        assert short_row.metric_value == 70  # the under-count the warning is about
+        assert covered_row.metric_value == 80
+
+    def test_a_tier_that_covers_everything_reports_nothing(self):
+        """The control: no total fell, so no warning — however few days are seeded."""
+        self._monthly(self.covered, value=40)
+        self._daily(self.covered, self.month, value=40)
+
+        before = _monthly_totals(self.month)
+        _rollup_monthly_from_daily(self.month)
+
+        assert _lowered_months(before, self.month) == []

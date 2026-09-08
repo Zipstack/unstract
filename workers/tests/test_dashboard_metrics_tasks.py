@@ -257,7 +257,7 @@ class TestTheRunSummaryReachesTheLog:
         assert "no_active_orgs" in text
         assert "1 error(s)" in text
 
-    def test_an_incomplete_monthly_rollup_is_named(self, caplog):
+    def test_a_lowered_monthly_total_is_named(self, caplog):
         text = self._run(
             caplog,
             {
@@ -265,11 +265,11 @@ class TestTheRunSummaryReachesTheLog:
                 "tier": "daily_monthly",
                 "monthly": {
                     "upserted": 3,
-                    "incomplete_months": ["2026-08 (12 of 31 days)"],
+                    "lowered_months": ["2026-08 (org 3)"],
                 },
             },
         )
-        assert "2026-08 (12 of 31 days)" in text
+        assert "2026-08 (org 3)" in text
 
     def test_a_clean_run_that_wrote_nothing_is_still_reported(self, caplog):
         """The regression signature of narrowing the source window: work to do, no

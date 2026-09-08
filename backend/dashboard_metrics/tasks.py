@@ -15,7 +15,8 @@ from typing import Any
 from account_v2.models import Organization
 from celery import shared_task
 from django.core.cache import cache
-from django.db.models import Count, Min, Sum
+from django.db import transaction
+from django.db.models import Min, Sum
 from django.db.models.functions import TruncMonth
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
@@ -199,32 +200,41 @@ def _upsert_monthly(objects: list[EventMetricsMonthly]) -> int:
     return len(objects)
 
 
-def _months_missing_days(month_start: date, today: date) -> list[str]:
-    """Months whose daily tier covers fewer dates than have elapsed.
+def _monthly_totals(month_start: date) -> dict[tuple, float]:
+    """Current monthly values, keyed by the tuple the rollup upserts on."""
+    return {
+        (
+            row["organization_id"],
+            row["month"],
+            row["metric_name"],
+            row["project"],
+            row["tag"],
+        ): row["metric_value"]
+        for row in EventMetricsMonthly._base_manager.filter(
+            month__gte=month_start
+        ).values(
+            "organization_id", "month", "metric_name", "project", "tag", "metric_value"
+        )
+    }
 
-    Counted across all orgs at once: a gap from cron downtime leaves no org with
-    rows for that date, so a global count isolates it without flagging a metric
-    an org legitimately did not emit every day.
+
+def _lowered_months(before: dict[tuple, float], month_start: date) -> list[str]:
+    """Which (org, month) pairs the rollup just wrote a smaller total for.
+
+    Compared at the grain the rollup writes at, because that is the grain the
+    damage occurs at: one tenant's metric can lose days while every other tenant
+    covers them. Counting dates fleet-wide misses exactly that case, and flags an
+    idle day or a fresh install — where nothing is wrong — as if it were one.
+
+    A total that fell is the condition itself rather than a proxy for it, so a
+    month the daily tier genuinely covers raises nothing.
     """
-    elapsed: dict[date, int] = {}
-    day = month_start
-    while day <= today:
-        bucket = day.replace(day=1)
-        elapsed[bucket] = elapsed.get(bucket, 0) + 1
-        day += timedelta(days=1)
-
-    covered = (
-        EventMetricsDaily._base_manager.filter(date__gte=month_start)
-        .annotate(month=TruncMonth("date"))
-        .values("month")
-        .annotate(days=Count("date", distinct=True))
-    )
-    seen = {row["month"]: row["days"] for row in covered}
-    return [
-        f"{month:%Y-%m} ({seen.get(month, 0)} of {expected} days)"
-        for month, expected in elapsed.items()
-        if seen.get(month, 0) < expected
-    ]
+    lowered = {
+        (key[0], key[1])
+        for key, value in _monthly_totals(month_start).items()
+        if key in before and value < before[key]
+    }
+    return [f"{month:%Y-%m} (org {org_id})" for org_id, month in sorted(lowered)]
 
 
 def _rollup_monthly_from_daily(month_start: date) -> int:
@@ -239,7 +249,7 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
     so a month the daily tier still covers *partially* is overwritten with the sum
     of the days present — a smaller number, not the previous total. That overwrite
     changes values without changing the row count, so it is reported rather than
-    left for a reader to notice: see _months_missing_days.
+    left for a reader to notice: see _lowered_months.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
@@ -262,24 +272,28 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
 
     upserted = 0
     batch: list[EventMetricsMonthly] = []
-    for row in rows.iterator(chunk_size=MONTHLY_ROLLUP_BATCH_SIZE):
-        batch.append(
-            EventMetricsMonthly(
-                organization_id=row["organization_id"],
-                month=row["month"],
-                metric_name=row["metric_name"],
-                project=row["project"],
-                tag=row["tag"],
-                metric_type=row["mtype"],
-                metric_value=row["value"],
-                metric_count=row["count"],
+    # One transaction for every chunk. A single bulk_create wrapped all its internal
+    # batches in one, so without this the streaming above would trade an atomic
+    # rewrite for a partially-rewritten tier if the run dies mid-loop.
+    with transaction.atomic():
+        for row in rows.iterator(chunk_size=MONTHLY_ROLLUP_BATCH_SIZE):
+            batch.append(
+                EventMetricsMonthly(
+                    organization_id=row["organization_id"],
+                    month=row["month"],
+                    metric_name=row["metric_name"],
+                    project=row["project"],
+                    tag=row["tag"],
+                    metric_type=row["mtype"],
+                    metric_value=row["value"],
+                    metric_count=row["count"],
+                )
             )
-        )
-        if len(batch) >= MONTHLY_ROLLUP_BATCH_SIZE:
+            if len(batch) >= MONTHLY_ROLLUP_BATCH_SIZE:
+                upserted += _upsert_monthly(batch)
+                batch = []
+        if batch:
             upserted += _upsert_monthly(batch)
-            batch = []
-    if batch:
-        upserted += _upsert_monthly(batch)
 
     return upserted
 
@@ -436,10 +450,10 @@ def aggregate_metrics_from_sources(
         source_window_days: Daily-tier source lookback. The reconciliation pass
             reruns this task at DASHBOARD_RECONCILE_WINDOW_DAYS to repair gaps
             after downtime.
-        _ignored: Unknown kwargs are accepted, not rejected. The schedule rows are
-            written by a migration from the backend image while the consumer ships
-            in another, so a row can carry a kwarg the running signature predates;
-            a TypeError there is dropped at MAX_ATTEMPTS=1 rather than retried.
+        _ignored: Unknown kwargs are accepted, not rejected, so a rolling deploy —
+            migration from the new image, workerMetrics pods still on the old one —
+            does not turn every tick into a TypeError. Dropped keys are logged,
+            because the same tolerance would otherwise hide a mistyped schedule row.
 
     Returns:
         Dict with aggregation summary for the tiers that ran
@@ -448,6 +462,11 @@ def aggregate_metrics_from_sources(
         ValueError: tier is not a recognised AggregationTier, or the window is not
             an integer between 1 and MAX_SOURCE_WINDOW_DAYS
     """
+    if _ignored:
+        # Tolerated for the rolling-deploy case above, but an unrecognised key is far
+        # more often a typo in an editable schedule row — and a reconciliation row
+        # whose window kwarg is misspelled silently runs at the 2-day default.
+        logger.warning("Ignoring unrecognised aggregation kwargs: %s", sorted(_ignored))
     tier = AggregationTier(tier)
     source_window_days = _validate_source_window(source_window_days)
     lock_keys = _aggregation_lock_keys(tier, source_window_days)
@@ -754,18 +773,8 @@ def _validate_source_window(source_window_days: int) -> int:
 def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
     """Derive the monthly tier from daily, recording a failure distinctly."""
     try:
+        before = _monthly_totals(monthly_start)
         stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
-        short_months = _months_missing_days(monthly_start, timezone.now().date())
-        if short_months:
-            # The rollup rewrote these months from a daily tier that does not
-            # cover them, lowering the total without changing the row count.
-            # Nothing else in the run notices, so say so and name the repair.
-            stats["monthly"]["incomplete_months"] = short_months
-            logger.warning(
-                "Monthly rollup summed an incomplete daily tier for %s — totals are "
-                "under-counted until `backfill_metrics` repairs daily for those months",
-                ", ".join(short_months),
-            )
     except Exception:
         # Counted rather than raised, including DatabaseError/OperationalError.
         # Raising reaches autoretry_for only on the Celery transport, where each
@@ -775,6 +784,24 @@ def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
         logger.exception("Error rolling up monthly metrics from %s", monthly_start)
         stats["monthly"]["failed"] = True
         stats["errors"] += 1
+        return
+
+    # Separate from the rollup's own failure: a diagnostic that cannot run must not
+    # report the rollup as failed, which would contradict a non-zero upserted count.
+    try:
+        lowered = _lowered_months(before, monthly_start)
+    except Exception:
+        logger.exception("Could not check monthly totals for under-counting")
+        return
+
+    if lowered:
+        stats["monthly"]["lowered_months"] = lowered
+        logger.warning(
+            "Monthly rollup lowered existing totals for %s — the daily tier does not "
+            "cover what it did before; repair daily for those months with "
+            "`backfill_metrics` before the figures are trusted",
+            ", ".join(lowered),
+        )
 
 
 def _run_aggregation(
@@ -823,7 +850,18 @@ def _run_aggregation(
     if _writes_daily_monthly(tier):
         _roll_up_monthly(monthly_start, stats)
 
-    log = logger.warning if stats["errors"] else logger.info
+    # A tier with orgs to process, no error and nothing written is the regression
+    # signature of narrowing the source window. Raised here rather than only in the
+    # worker proxy, which the Celery transport never loads.
+    wrote_nothing = (
+        active_org_ids
+        and not stats["errors"]
+        and not any(
+            stats[granularity]["upserted"]
+            for granularity in ("hourly", "daily", "monthly")
+        )
+    )
+    log = logger.warning if stats["errors"] or wrote_nothing else logger.info
     # tier and window are named because three schedules now emit this line and they
     # can overlap: without them a reconcile run is indistinguishable from a routine
     # one, and the window this change turns on appears in no successful run's logs.
