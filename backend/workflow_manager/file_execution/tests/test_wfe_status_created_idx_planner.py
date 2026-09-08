@@ -90,11 +90,14 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
         WorkflowFileExecution.objects.bulk_create(rows, batch_size=1000)
 
         # bulk_create cannot set auto_now_add columns, so spread them afterwards.
+        # Scoped to this fixture's own execution: an unqualified UPDATE would rewrite
+        # created_at for every row in whatever database this happens to run against.
         with connection.cursor() as cur:
             cur.execute(
                 "UPDATE workflow_file_execution SET created_at = %s::timestamptz"
-                " - (random() * %s || ' days')::interval",
-                [now.isoformat(), _SPAN_DAYS],
+                " - (random() * %s || ' days')::interval"
+                " WHERE workflow_execution_id = %s",
+                [now.isoformat(), _SPAN_DAYS, str(execution.id)],
             )
             cur.execute("ANALYZE workflow_file_execution")
 
