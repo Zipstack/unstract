@@ -223,12 +223,10 @@ function DocumentParser({
         return res;
       })
       .catch((err) => {
-        // Inline rendering of field errors is opt-in: a caller that has no
-        // renderer for the offending field returns false and gets the alert,
-        // so a rejected value can never fail silently.
-        const fieldErrors = getFieldErrors(err);
-        const handledInline =
-          Object.keys(fieldErrors).length > 0 && onFieldError?.(fieldErrors);
+        // Reporting the rejection is opt-in: a caller that will not report it
+        // itself returns false and gets the alert, so a rejected value can
+        // never fail silently.
+        const handledInline = onFieldError?.(getFieldErrors(err));
         if (!handledInline) {
           setAlertDetails(handleException(err, "Failed to update"));
         }

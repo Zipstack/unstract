@@ -200,20 +200,26 @@ const PromptCard = memo(
       // Collected here but applied in the rejection handler, so the inline
       // error and the rollback below always land in the same render.
       let inlineErrors = null;
-      const showInlineErrors = (errors) => {
+      const reportFieldError = (errors) => {
+        // A superseded attempt reports nothing: the newer one owns the field
+        // and surfaces its own outcome, so an alert here would contradict the
+        // value the user can see was accepted.
+        if (!isLatestAttempt()) {
+          return true;
+        }
         const renderable = Object.entries(errors).filter(([attr]) =>
           RENDERABLE_FIELD_ERRORS.has(attr),
         );
-        // A superseded attempt cannot render its error, so it must not claim
-        // the field either — the caller falls back to the global alert.
-        if (!renderable.length || !isLatestAttempt()) {
+        // Nothing renderable — the caller falls back to the global alert so a
+        // rejected value can never fail silently.
+        if (!renderable.length) {
           return false;
         }
         inlineErrors = Object.fromEntries(renderable);
         return true;
       };
 
-      return handleChangePromptCard(name, value, promptId, showInlineErrors)
+      return handleChangePromptCard(name, value, promptId, reportFieldError)
         .then((res) => {
           const data = res?.data;
           setUpdatedPromptsCopy((prev) => {
