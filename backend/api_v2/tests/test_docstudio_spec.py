@@ -66,9 +66,9 @@ DEPLOYMENT_OPERATIONS = {"execute", "status"}
 
 @pytest.fixture(autouse=True)
 def _outside_any_request() -> None:
-    """The command runs with no organisation in scope, and generating the spec
-    reaches the organisation-scoped model managers. Left set by whatever ran
-    before, that thread-local sends them to a database these tests do not open.
+    """Generation reaches the organisation-scoped managers, and the command
+    runs with nothing in this thread-local. A value left by an earlier test
+    sends them to a database these tests do not open.
     """
     UserContext.set_organization_identifier(None)
 
@@ -147,9 +147,8 @@ def test_a_path_outside_the_published_mounts_fails_generation(monkeypatch) -> No
 def _routed(path: str) -> str:
     """The path Django's URLconf sees, given a documented one.
 
-    `OrganizationMiddleware` strips the organisation segment before anything is
-    routed, so an organisation-scoped URL and the pattern that answers it
-    differ by exactly that segment.
+    They differ by the organisation segment, which `OrganizationMiddleware`
+    strips before routing.
     """
     concrete = path.replace("{org_name}", "ORG").replace("{api_name}", "API")
     return concrete.replace(f"/{ORG_SEGMENT}/", "/")
@@ -172,9 +171,7 @@ def test_spec_paths_are_the_urls_the_server_serves() -> None:
 
 def test_the_listing_is_documented_at_the_url_the_server_serves() -> None:
     """The listing's mount is restated in `deployment_spec_urls` rather than
-    selected out of the served urlconf, because it is served from one carrying
-    a dozen routes this spec does not publish. This holds the restatement to
-    the route it stands for.
+    selected, so nothing but this holds it to the route it stands for.
     """
     (documented,) = (
         path
@@ -186,8 +183,8 @@ def test_the_listing_is_documented_at_the_url_the_server_serves() -> None:
 
 
 def test_the_listing_documents_only_the_method_it_publishes() -> None:
-    """The served route also answers POST to create a deployment. That is not
-    published, so the restated route names one method and this says which.
+    """The served route also answers POST to create a deployment, which is not
+    published; the restated route names one method, and this says which.
     """
     served = resolve(reverse("tenant:api_deployment"))
     assert served.func.cls is APIDeploymentViewSet
@@ -202,9 +199,9 @@ def test_the_listing_documents_only_the_method_it_publishes() -> None:
 
 
 def test_the_listing_asks_for_the_organisation_it_lists() -> None:
-    """The counterpart of `test_the_identity_read_asks_for_no_organisation`:
-    every other endpoint takes the organisation `whoami` resolves, and the
-    router never sees that segment, so nothing but this puts it in the spec.
+    """The counterpart of `test_the_identity_read_asks_for_no_organisation`.
+    The router never sees this segment, so nothing but generation puts it in
+    the spec.
     """
     reads = [
         (path, operation)

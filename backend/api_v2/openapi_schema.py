@@ -247,9 +247,8 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
 
 
 # Declares no field of its own, so a change to the real serializer moves the
-# spec. It exists to carry a caller-facing description and a name the generated
-# clients can live with; the serializer's own name yields `APIDeploymentListList`
-# once the pagination envelope is wrapped round it.
+# spec. It carries a caller-facing description and a component name the
+# pagination envelope can be wrapped round without stuttering.
 @extend_schema_serializer(component_name="APIDeploymentSummary")
 class APIDeploymentSummary(APIDeploymentListSerializer):
     """One API deployment, as it appears in an organisation's listing.
@@ -259,10 +258,9 @@ class APIDeploymentSummary(APIDeploymentListSerializer):
     """
 
 
-# The organisation-scoped listing. Unlike the two operations above it is
-# authenticated by a platform API key rather than a deployment key, so its
-# credential failures are the ones `CustomAuthMiddleware` answers before DRF is
-# entered, in `PlatformKeyError` shape rather than `ErrorResponse`.
+# This operation takes a platform key rather than a deployment key, so its
+# credential failures come from the auth middleware in `PlatformKeyError` shape
+# rather than from the project exception handler.
 API_DEPLOYMENT_LIST_QUERY_PARAMETERS = [
     OpenApiParameter(
         "workflow",
@@ -299,8 +297,6 @@ LIST_API_DEPLOYMENTS_DESCRIPTION = (
 )
 
 
-# Generated clients take their command names, module paths and response shapes
-# from here, so this is part of the public API surface.
 API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
     list=extend_schema(
         operation_id="list_deployments",

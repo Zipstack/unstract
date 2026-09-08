@@ -1,11 +1,9 @@
 """Request-level tests for listing an organisation's API deployments.
 
-The listing is an ordinary tenant endpoint that a platform API key reaches
-without anything having been added for it, and the spec now publishes it on
-that basis. What makes it work sits either side of the view --- the key
-resolves to a service account, `OrganizationMiddleware` takes the organisation
-out of the path, and the manager scopes the queryset to it --- so these go
-through the real URLconf and a real middleware chain.
+What makes a platform key work here sits either side of the view: the key
+resolves to a service account, the organisation comes out of the path, and the
+manager scopes the queryset to it. None of that is visible from the view alone,
+so these go through the real URLconf and a real middleware chain.
 """
 
 import secrets
@@ -59,9 +57,7 @@ class DeploymentListingTest(APITestCase):
         )
 
     def tearDown(self) -> None:
-        # The organisation identifier lives in a thread-local that the request
-        # chain sets per request; a value left behind here scopes the manager
-        # in whatever runs next on this thread.
+        # Left set, this thread-local scopes the managers in whatever runs next.
         UserContext.set_organization_identifier(None)
 
     def _make_deployment(self, organization, **kwargs) -> APIDeployment:
@@ -71,8 +67,7 @@ class DeploymentListingTest(APITestCase):
             organization=organization,
             created_by=creator,
         )
-        # `api_endpoint` is composed in `save()` from the thread-local rather
-        # than from the row's own organisation.
+        # `save()` composes `api_endpoint` from the thread-local, not the row.
         UserContext.set_organization_identifier(organization.organization_id)
         try:
             return APIDeployment.objects.create(
@@ -99,8 +94,7 @@ class DeploymentListingTest(APITestCase):
             organization=organization or self.org_a,
             **kwargs,
         )
-        # The production minting path, because what makes the key able to read
-        # the whole organisation is the `is_service_account` flag it sets.
+        # The minting path, for the `is_service_account` flag it sets.
         create_api_user_for_key(key, key.organization)
         return key
 
@@ -121,8 +115,8 @@ class DeploymentListingTest(APITestCase):
         self.assertEqual(listed["api_endpoint"], f"deployment/api/{ORG_A}/invoices/")
 
     def test_the_listing_carries_no_key_material(self) -> None:
-        """A platform key that could read a deployment's own key would be a
-        platform key that could execute a deployment.
+        """A key readable here would widen a platform key into the ability to
+        execute a deployment.
         """
         response = self._get(str(self._make_key().key))
 
@@ -166,8 +160,8 @@ class DeploymentListingTest(APITestCase):
         self.assertEqual(self._get(str(uuid.uuid4())).status_code, 401)
 
     def test_a_key_cannot_list_another_organisation(self) -> None:
-        """The organisation is named in the path, so this is the check that
-        stops a key reading across the installation.
+        """The organisation is named in the path, so this is what stops a key
+        reading across the installation.
         """
         key = self._make_key(organization=self.org_a)
 

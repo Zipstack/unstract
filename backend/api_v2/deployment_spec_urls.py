@@ -31,15 +31,9 @@ if missing:
         "spec would be generated for routes the server does not serve."
     )
 
-# The organisation-scoped listing cannot be selected the way the mounts above
-# are: it is served from `api_v2.urls`, which is included several levels deep
-# and carries a dozen routes that are not published. So the route is restated
-# here, and only for the method that is published --- the same path also serves
-# POST to create a deployment, which is not part of this spec.
-#
-# Both halves of that restatement are drift risks, and `test_docstudio_spec`
-# holds them to the served route: the path against `reverse()`, and the method
-# against the real URLconf's view.
+# Restated rather than selected: this route is served from a urlconf carrying
+# routes that are not published, and only its GET is. Both halves of the
+# restatement are held to the served route by `test_docstudio_spec`.
 urlpatterns += [
     path(
         f"{settings.TENANT_SUBFOLDER_PREFIX}/api/deployment/",

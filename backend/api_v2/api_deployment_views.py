@@ -256,12 +256,10 @@ class APIDeploymentViewSet(
 ):
     pagination_class = CustomPagination
 
-    # Names the model for schema generation only: `get_queryset` overrides this
-    # for every request, and it cannot run without an authenticated user.
+    # For schema generation only; get_queryset replaces it on every request.
     queryset = APIDeployment.objects.none()
 
-    # Narrows the standardized-errors example bodies to the statuses the
-    # authentication middleware answers itself. See PlatformKeyAutoSchema.
+    # Error examples have to match what the auth middleware sends.
     schema = PlatformKeyAutoSchema()
     notification_resource_name_field = "display_name"
 

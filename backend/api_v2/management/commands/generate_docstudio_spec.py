@@ -46,8 +46,7 @@ DOWNSTREAM = (
     "PRs there for anything that changes an operation id, a tag or a schema."
 )
 
-# The mount every organisation-scoped route hangs off, spelled as a literal for
-# the same reason as `PUBLISHED_PATH_PREFIXES`.
+# A literal for the same reason as `PUBLISHED_PATH_PREFIXES`.
 TENANT_MOUNT = "/api/v1/unstract/"
 ORG_SEGMENT = "{org_id}"
 HTTP_METHODS = frozenset(
@@ -68,12 +67,9 @@ ORG_SEGMENT_PARAMETER = {
 def _restore_organisation_segment(schema: dict[str, Any]) -> None:
     """Put back the organisation segment the router never sees.
 
-    `OrganizationMiddleware` rewrites `/api/v1/unstract/<org>/...` to
-    `/api/v1/unstract/...` before anything is routed, so a spec generated from
-    the URLconf describes paths no caller ever sends. The routes that really
-    are served without the segment are exactly the ones the middleware is
-    configured to leave alone, so that setting decides this too rather than a
-    second list that could disagree with it.
+    `OrganizationMiddleware` strips it before routing, so paths taken from the
+    URLconf are not the ones callers send. The routes genuinely served without
+    it are the ones that setting whitelists, so it decides this too.
     """
     for url in [url for url in schema["paths"] if url.startswith(TENANT_MOUNT)]:
         if any(
