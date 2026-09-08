@@ -34,6 +34,8 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 ### Quick Commands
 ```bash
 # Backfill historical data (run first!)
+# Before deploying this change, use the deploy-critical form instead — see
+# "Deploy Steps": backfill_metrics --days 62 --skip-hourly --skip-monthly
 python manage.py backfill_metrics --days=30
 
 # Start metrics worker
@@ -411,6 +413,21 @@ rollup, so the tier it derives from is complete:
 ```
 python manage.py backfill_metrics --days 62 --skip-hourly --skip-monthly
 ```
+
+### Rolling this release back
+
+`0005` and `0006` write task kwargs into both scheduler tables. The previous release's
+zero-argument signatures reject them with `TypeError`, which nothing retries. **Reverting
+the image alone is not enough** — run `migrate dashboard_metrics 0004` from the outgoing
+image *before* the image reverts, which reverses both migrations together. A
+platform-driven rollback (an ArgoCD revision revert, an image tag pin) skips that by
+construction, so treat this release as blocking automated rollback.
+
+The forward direction is self-healing: this release's task accepts unknown kwargs, so a
+pod still on the old image during a rolling deploy is the only exposure, bounded by the
+rollout.
+
+### Why 62 days
 
 62, not 60: the rollup window reaches back to the first of the previous month, which is
 61 days before a run on the 31st. `--skip-monthly` is deliberate — repair daily and let

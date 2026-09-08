@@ -5,13 +5,21 @@ tier is now derived from what it writes, so a regression here is not self-healin
 """
 
 from datetime import timedelta
+from io import StringIO
 from unittest.mock import patch
 
+from account_v2.models import Organization
+from django.core.management import call_command
 from django.test import TestCase
 from django.utils import timezone
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.management.commands.backfill_metrics import Command
-from dashboard_metrics.models import Granularity
+from dashboard_metrics.models import EventMetricsDaily, Granularity
+from dashboard_metrics.tasks import _truncate_to_day
 
 
 class TestSkipHourlySkipsTheQueries(TestCase):
@@ -93,3 +101,62 @@ class TestLLMSplitHonoursSkipHourly(TestCase):
     def test_without_the_flag_both_granularities_are_queried(self):
         self._collect(skip_hourly=False)
         assert self.requested == [Granularity.HOUR, Granularity.DAY]
+
+
+class TestTheOldestBackfilledDayIsWhole(TestCase):
+    """The window boundary this PR changed, which had no exerciser.
+
+    An untruncated start writes the oldest day as a partial bucket, and the monthly
+    rollup now sums the persisted daily tier rather than recomputing that day from
+    source — so the partial value becomes permanent once it ages past the reconcile
+    window. This is the mandatory pre-deploy step, so a regression here corrupts the
+    state everything else assumes.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="trunc-org", name="trunc", display_name="Trunc"
+        )
+        self.workflow = Workflow.objects.create(
+            workflow_name="trunc-wf", organization=self.org
+        )
+        self.now = timezone.now()
+
+    def _seed(self, days_ago, hour):
+        stamp = (self.now - timedelta(days=days_ago)).replace(hour=hour, minute=30)
+        execution = WorkflowExecution.objects.create(
+            workflow=self.workflow, status=ExecutionStatus.COMPLETED
+        )
+        fe = WorkflowFileExecution.objects.create(
+            workflow_execution=execution,
+            file_name=f"{days_ago}-{hour}.pdf",
+            status=ExecutionStatus.COMPLETED.value,
+        )
+        WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+
+    def test_the_oldest_covered_day_counts_its_whole_day(self):
+        """Two rows on the boundary day, one before the run's hour and one after.
+
+        Untruncated, the earlier row falls outside the window and the oldest day is
+        written short.
+        """
+        self._seed(days_ago=2, hour=1)
+        self._seed(days_ago=2, hour=23)
+
+        call_command("backfill_metrics", days=2, skip_hourly=True, skip_monthly=True)
+
+        oldest_day = _truncate_to_day(self.now - timedelta(days=2)).date()
+        row = EventMetricsDaily._base_manager.get(
+            organization=self.org, date=oldest_day, metric_name="documents_processed"
+        )
+        assert row.metric_value == 2, "the oldest day was written as a partial bucket"
+
+
+class TestSkipDailyWithoutSkipMonthlyWarns(TestCase):
+    """The combination that produces an under-count rather than a no-op."""
+
+    def test_the_warning_is_emitted(self):
+        out = StringIO()
+        call_command("backfill_metrics", days=1, skip_daily=True, stdout=out)
+        assert "--skip-daily without --skip-monthly" in out.getvalue()
