@@ -40,8 +40,7 @@ from dashboard_metrics.tasks import (
     _acquire_aggregation_locks,
     _active_org_ids,
     _aggregation_lock_keys,
-    _lowered_months,
-    _monthly_totals,
+    _months_the_rollup_would_lower,
     _rollup_monthly_from_daily,
     _run_aggregation,
     _truncate_to_day,
@@ -1180,9 +1179,8 @@ class TestALoweredTotalIsReported(TestCase):
         self._daily(self.covered, self.month + timedelta(days=1), value=40)
         self._daily(self.short, self.month, value=70)
 
-        before = _monthly_totals(self.month)
+        lowered = _months_the_rollup_would_lower(self.month)
         _rollup_monthly_from_daily(self.month)
-        lowered = _lowered_months(before, self.month)
 
         assert lowered == [f"{self.month:%Y-%m} (org {self.short.id})"]
 
@@ -1196,7 +1194,61 @@ class TestALoweredTotalIsReported(TestCase):
         self._monthly(self.covered, value=40)
         self._daily(self.covered, self.month, value=40)
 
-        before = _monthly_totals(self.month)
+        assert _months_the_rollup_would_lower(self.month) == []
         _rollup_monthly_from_daily(self.month)
 
-        assert _lowered_months(before, self.month) == []
+
+class TestTheUnderCountCheckIsBounded(TestCase):
+    """The check must not scale with tenant x metric x project x tag.
+
+    An earlier version snapshotted every monthly row into a dict before the rollup
+    and read them all again afterwards — comparing the right thing on the axis the
+    streaming rollup exists to keep off the heap. This pins the replacement: one
+    statement, evaluated in the database, returning only offending pairs.
+    """
+
+    def setUp(self):
+        self.month = _truncate_to_month(timezone.now()).date()
+        for n in range(12):
+            org = Organization.objects.create(
+                organization_id=f"bounded-{n}", name=f"b{n}", display_name=f"B{n}"
+            )
+            for metric in ("documents_processed", "pages_processed", "llm_calls"):
+                EventMetricsDaily._base_manager.create(
+                    organization=org,
+                    date=self.month,
+                    metric_name=metric,
+                    metric_type=MetricType.COUNTER,
+                    metric_value=5,
+                    metric_count=1,
+                    project="default",
+                    tag="",
+                )
+                EventMetricsMonthly._base_manager.create(
+                    organization=org,
+                    month=self.month,
+                    metric_name=metric,
+                    metric_type=MetricType.COUNTER,
+                    metric_value=5,
+                    metric_count=1,
+                    project="default",
+                    tag="",
+                )
+
+    def test_it_costs_one_query_regardless_of_tenant_count(self):
+        with CaptureQueriesContext(connection) as captured:
+            assert _months_the_rollup_would_lower(self.month) == []
+        assert len(captured.captured_queries) == 1, (
+            "the under-count check should be a single database-side comparison, "
+            f"got {len(captured.captured_queries)}:\n"
+            + "\n\n".join(q["sql"] for q in captured.captured_queries)
+        )
+
+    def test_it_does_not_select_every_monthly_row(self):
+        """36 rows exist; the check must return only what is wrong, which is none."""
+        with CaptureQueriesContext(connection) as captured:
+            _months_the_rollup_would_lower(self.month)
+        sql = captured.captured_queries[0]["sql"]
+        assert "metric_value" in sql and "<" in sql, (
+            "the comparison is not happening in the database:\n" + sql
+        )

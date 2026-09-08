@@ -17,7 +17,7 @@ from account_v2.models import Organization
 from celery import shared_task
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import Min, Sum
+from django.db.models import F, Min, OuterRef, Subquery, Sum
 from django.db.models.functions import TruncMonth
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
@@ -203,41 +203,47 @@ def _upsert_monthly(objects: list[EventMetricsMonthly]) -> int:
     return len(objects)
 
 
-def _monthly_totals(month_start: date) -> dict[tuple, float]:
-    """Current monthly values, keyed by the tuple the rollup upserts on."""
-    return {
-        (
-            row["organization_id"],
-            row["month"],
-            row["metric_name"],
-            row["project"],
-            row["tag"],
-        ): row["metric_value"]
-        for row in EventMetricsMonthly._base_manager.filter(
-            month__gte=month_start
-        ).values(
-            "organization_id", "month", "metric_name", "project", "tag", "metric_value"
-        )
-    }
+def _months_the_rollup_would_lower(month_start: date) -> list[str]:
+    """(org, month) pairs whose monthly total the pending rollup would reduce.
 
+    Run before the upsert, while the stored value is still the old one, and
+    evaluated in the database: one statement returning only the offending pairs,
+    which in a healthy install is none.
 
-def _lowered_months(before: dict[tuple, float], month_start: date) -> list[str]:
-    """Which (org, month) pairs the rollup just wrote a smaller total for.
+    Materialising the old and new totals in Python would have compared the same
+    thing, but it scales with tenant x metric x project x tag — the axis the
+    streaming rollup below exists to keep off the heap.
 
-    Compared at the grain the rollup writes at, because that is the grain the
-    damage occurs at: one tenant's metric can lose days while every other tenant
-    covers them. Counting dates fleet-wide misses exactly that case, and flags an
-    idle day or a fresh install — where nothing is wrong — as if it were one.
-
-    A total that fell is the condition itself rather than a proxy for it, so a
-    month the daily tier genuinely covers raises nothing.
+    Compared at the grain the rollup writes at, because that is the grain the damage
+    occurs at: one tenant's metric can lose days while every other tenant covers
+    them. A fleet-wide count of missing dates misses exactly that, and flags an idle
+    day or a fresh install, where nothing is wrong, as if it were damage.
     """
-    lowered = {
-        (key[0], key[1])
-        for key, value in _monthly_totals(month_start).items()
-        if key in before and value < before[key]
-    }
-    return [f"{month:%Y-%m} (org {org_id})" for org_id, month in sorted(lowered)]
+    new_total = Subquery(
+        EventMetricsDaily._base_manager.filter(
+            organization_id=OuterRef("organization_id"),
+            metric_name=OuterRef("metric_name"),
+            project=OuterRef("project"),
+            tag=OuterRef("tag"),
+            date__gte=month_start,
+        )
+        .annotate(bucket=TruncMonth("date"))
+        .filter(bucket=OuterRef("month"))
+        .values("bucket")
+        .annotate(total=Sum("metric_value"))
+        .values("total")[:1]
+    )
+    lowered = (
+        EventMetricsMonthly._base_manager.filter(month__gte=month_start)
+        .annotate(new_total=new_total)
+        # A month the daily tier no longer produces at all is left in place by the
+        # upsert, so it is not a lowering — only a smaller total is.
+        .filter(new_total__isnull=False, new_total__lt=F("metric_value"))
+        .values_list("organization_id", "month")
+        .distinct()
+        .order_by("month", "organization_id")
+    )
+    return [f"{month:%Y-%m} (org {org_id})" for org_id, month in lowered]
 
 
 def _rollup_monthly_from_daily(month_start: date) -> int:
@@ -796,7 +802,8 @@ def _validate_source_window(source_window_days: int) -> int:
 def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
     """Derive the monthly tier from daily, recording a failure distinctly."""
     try:
-        before = _monthly_totals(monthly_start)
+        # Before the upsert, while the stored value is still the old one.
+        lowered = _months_the_rollup_would_lower(monthly_start)
         stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
     except Exception:
         # Counted rather than raised, including DatabaseError/OperationalError.
@@ -807,14 +814,6 @@ def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
         logger.exception("Error rolling up monthly metrics from %s", monthly_start)
         stats["monthly"]["failed"] = True
         stats["errors"] += 1
-        return
-
-    # Separate from the rollup's own failure: a diagnostic that cannot run must not
-    # report the rollup as failed, which would contradict a non-zero upserted count.
-    try:
-        lowered = _lowered_months(before, monthly_start)
-    except Exception:
-        logger.exception("Could not check monthly totals for under-counting")
         return
 
     if lowered:
