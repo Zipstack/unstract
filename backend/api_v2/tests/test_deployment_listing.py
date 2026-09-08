@@ -9,7 +9,6 @@ so these go through the real URLconf and a real middleware chain.
 import secrets
 import uuid
 
-import pytest
 from account_v2.models import Organization, User
 from django.conf import settings
 from django.test import override_settings
@@ -42,7 +41,6 @@ _MIDDLEWARE = [
 ]
 
 
-@pytest.mark.critical_path("platform-key-deployment-listing")
 @override_settings(MIDDLEWARE=_MIDDLEWARE)
 class DeploymentListingTest(APITestCase):
     def setUp(self) -> None:
