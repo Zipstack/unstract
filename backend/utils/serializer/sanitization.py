@@ -36,9 +36,14 @@ class SanitizedSerializerMixin:
             if name in exempt or field.read_only:
                 continue
             if isinstance(field, drf.CharField):
+                # Prefer a user-visible label so errors read like
+                # "Prompt key must not contain..." instead of "prompt_key must...".
+                display_name = field.label or name.replace("_", " ").capitalize()
                 # partial binds the field name at iteration time, avoiding the
                 # late-binding closure trap of a bare lambda.
-                field.validators.append(partial(validate_no_html_tags, field_name=name))
+                field.validators.append(
+                    partial(validate_no_html_tags, field_name=display_name)
+                )
 
 
 class ModelSerializer(SanitizedSerializerMixin, drf.ModelSerializer):
