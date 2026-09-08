@@ -22,12 +22,15 @@ from middleware.exception import drf_logging_exc_handler
 from platform_api.models import ApiKeyPermission
 from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.test import APIRequestFactory
+from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.dto import FileExecutionResult
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
+from api_v2.api_deployment_views import APIDeploymentViewSet
 from api_v2.management.commands.generate_docstudio_spec import (
     DEFAULT_OUT,
     DOWNSTREAM,
+    ORG_SEGMENT,
     REGENERATE,
     SpecGenerationFailed,
     render_spec,
@@ -59,6 +62,15 @@ _KNOWN_EXAMPLE_DIVERGENCES = {
 #: operations that describe the account. They authenticate differently and can
 #: fail differently, so several checks below split on this.
 DEPLOYMENT_OPERATIONS = {"execute", "status"}
+
+
+@pytest.fixture(autouse=True)
+def _outside_any_request() -> None:
+    """The command runs with no organisation in scope, and generating the spec
+    reaches the organisation-scoped model managers. Left set by whatever ran
+    before, that thread-local sends them to a database these tests do not open.
+    """
+    UserContext.set_organization_identifier(None)
 
 
 def _committed() -> dict:
@@ -132,6 +144,17 @@ def test_a_path_outside_the_published_mounts_fails_generation(monkeypatch) -> No
         render_spec()
 
 
+def _routed(path: str) -> str:
+    """The path Django's URLconf sees, given a documented one.
+
+    `OrganizationMiddleware` strips the organisation segment before anything is
+    routed, so an organisation-scoped URL and the pattern that answers it
+    differ by exactly that segment.
+    """
+    concrete = path.replace("{org_name}", "ORG").replace("{api_name}", "API")
+    return concrete.replace(f"/{ORG_SEGMENT}/", "/")
+
+
 def test_spec_paths_are_the_urls_the_server_serves() -> None:
     """Resolves the real mount rather than restating it: a spec generated for
     URLs the server does not serve is the failure this file exists to catch.
@@ -139,15 +162,66 @@ def test_spec_paths_are_the_urls_the_server_serves() -> None:
     served = reverse(
         "api_deployment_execution", kwargs={"org_name": "ORG", "api_name": "API"}
     )
-    documented = [
-        path.replace("{org_name}", "ORG").replace("{api_name}", "API")
-        for path in _committed()["paths"]
-    ]
+    documented = [_routed(path) for path in _committed()["paths"]]
 
     assert served.rstrip("/") in [path.rstrip("/") for path in documented]
     for path in documented:
         # Raises Resolver404 if the spec documents a URL nothing answers.
         resolve(path if path.endswith("/") else f"{path}/")
+
+
+def test_the_listing_is_documented_at_the_url_the_server_serves() -> None:
+    """The listing's mount is restated in `deployment_spec_urls` rather than
+    selected out of the served urlconf, because it is served from one carrying
+    a dozen routes this spec does not publish. This holds the restatement to
+    the route it stands for.
+    """
+    (documented,) = (
+        path
+        for path, _, operation in _operations(_committed())
+        if operation["operationId"] == "list_deployments"
+    )
+
+    assert _routed(documented) == reverse("tenant:api_deployment")
+
+
+def test_the_listing_documents_only_the_method_it_publishes() -> None:
+    """The served route also answers POST to create a deployment. That is not
+    published, so the restated route names one method and this says which.
+    """
+    served = resolve(reverse("tenant:api_deployment"))
+    assert served.func.cls is APIDeploymentViewSet
+    assert served.func.actions["get"] == APIDeploymentViewSet.list.__name__
+
+    (path,) = (
+        path
+        for path, _, operation in _operations(_committed())
+        if operation["operationId"] == "list_deployments"
+    )
+    assert set(_committed()["paths"][path]) & set(_METHODS) == {"get"}
+
+
+def test_the_listing_asks_for_the_organisation_it_lists() -> None:
+    """The counterpart of `test_the_identity_read_asks_for_no_organisation`:
+    every other endpoint takes the organisation `whoami` resolves, and the
+    router never sees that segment, so nothing but this puts it in the spec.
+    """
+    reads = [
+        (path, operation)
+        for path, _, operation in _operations(_committed())
+        if operation["operationId"] == "list_deployments"
+    ]
+
+    assert reads
+    for path, operation in reads:
+        assert ORG_SEGMENT in path, path
+        declared = [
+            parameter
+            for parameter in operation["parameters"]
+            if parameter["in"] == "path"
+        ]
+        assert [parameter["name"] for parameter in declared] == ["org_id"], path
+        assert declared[0]["required"] is True, path
 
 
 def test_spec_documents_the_deployment_operations() -> None:

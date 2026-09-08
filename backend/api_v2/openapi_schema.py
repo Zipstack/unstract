@@ -15,9 +15,11 @@ from drf_spectacular.utils import (
     extend_schema_serializer,
     extend_schema_view,
 )
+from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
 
 from api_v2.serializers import (
+    APIDeploymentListSerializer,
     APIExecutionResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -240,5 +242,92 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
             **DEPLOYMENT_ERRORS,
         },
         description=STATUS_DESCRIPTION,
+    ),
+)
+
+
+# Declares no field of its own, so a change to the real serializer moves the
+# spec. It exists to carry a caller-facing description and a name the generated
+# clients can live with; the serializer's own name yields `APIDeploymentListList`
+# once the pagination envelope is wrapped round it.
+@extend_schema_serializer(component_name="APIDeploymentSummary")
+class APIDeploymentSummary(APIDeploymentListSerializer):
+    """One API deployment, as it appears in an organisation's listing.
+
+    `api_name` and `api_endpoint` are what an execution call needs;
+    `display_name` and `description` say what the deployment is for.
+    """
+
+
+# The organisation-scoped listing. Unlike the two operations above it is
+# authenticated by a platform API key rather than a deployment key, so its
+# credential failures are the ones `CustomAuthMiddleware` answers before DRF is
+# entered, in `PlatformKeyError` shape rather than `ErrorResponse`.
+API_DEPLOYMENT_LIST_QUERY_PARAMETERS = [
+    OpenApiParameter(
+        "workflow",
+        {"type": "string", "format": "uuid"},
+        OpenApiParameter.QUERY,
+        description="Return only the deployments of this workflow.",
+    ),
+    OpenApiParameter(
+        "api_name",
+        {"type": "string"},
+        OpenApiParameter.QUERY,
+        description="Return only the deployment with exactly this `api_name`.",
+    ),
+    OpenApiParameter(
+        "search",
+        {"type": "string"},
+        OpenApiParameter.QUERY,
+        description="Return only deployments whose display name contains this "
+        "text, case-insensitively.",
+    ),
+]
+
+LIST_API_DEPLOYMENTS_DESCRIPTION = (
+    "List the API deployments of an organisation.\n\n"
+    "Each entry carries the `api_name` and `api_endpoint` an execution call "
+    "needs, alongside the `display_name` and `description` that say what the "
+    "deployment is for. A key holder can therefore discover what is deployed "
+    "without being told, having resolved `org_id` once from `whoami`.\n\n"
+    "The deployment's own API key is not part of this listing, so a platform "
+    "key cannot be widened into the ability to execute a deployment by "
+    "reading it. Executing still needs the deployment key.\n\n"
+    "Results are ordered by most recent run first, and paginated: pass `page` "
+    "and `page_size`, and read `count` and `next` from the envelope."
+)
+
+
+# Generated clients take their command names, module paths and response shapes
+# from here, so this is part of the public API surface.
+API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
+    list=extend_schema(
+        operation_id="list_deployments",
+        tags=["deployment"],
+        auth=[{"platformKey": []}],
+        parameters=API_DEPLOYMENT_LIST_QUERY_PARAMETERS,
+        responses={
+            200: OpenApiResponse(
+                APIDeploymentSummary(many=True),
+                description="One page of the organisation's API deployments.",
+            ),
+            401: OpenApiResponse(
+                PlatformKeyError,
+                description="No usable platform API key was supplied — absent, "
+                "malformed, unknown, or revoked.",
+            ),
+            403: OpenApiResponse(
+                PlatformKeyError,
+                description="The key was recognised but refused: it does not "
+                "belong to the organisation named in the path, or its "
+                "permission tier is not one this deployment knows.",
+            ),
+            500: OpenApiResponse(
+                description="The request could not be served. The body is not "
+                "guaranteed to be JSON.",
+            ),
+        },
+        description=LIST_API_DEPLOYMENTS_DESCRIPTION,
     ),
 )

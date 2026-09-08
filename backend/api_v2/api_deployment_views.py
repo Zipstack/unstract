@@ -9,6 +9,7 @@ from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
+from platform_api.openapi_schema import PlatformKeyAutoSchema
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -33,7 +34,10 @@ from api_v2.exceptions import (
     contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
-from api_v2.openapi_schema import DEPLOYMENT_EXECUTION_SCHEMA
+from api_v2.openapi_schema import (
+    API_DEPLOYMENT_LIST_SCHEMA,
+    DEPLOYMENT_EXECUTION_SCHEMA,
+)
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
@@ -246,10 +250,19 @@ class DeploymentExecution(views.APIView):
         )
 
 
+@API_DEPLOYMENT_LIST_SCHEMA
 class APIDeploymentViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
     pagination_class = CustomPagination
+
+    # Names the model for schema generation only: `get_queryset` overrides this
+    # for every request, and it cannot run without an authenticated user.
+    queryset = APIDeployment.objects.none()
+
+    # Narrows the standardized-errors example bodies to the statuses the
+    # authentication middleware answers itself. See PlatformKeyAutoSchema.
+    schema = PlatformKeyAutoSchema()
     notification_resource_name_field = "display_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:

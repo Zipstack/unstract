@@ -528,7 +528,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "co_owners_count",
         ]
 
-    def get_created_by_email(self, obj):
+    def get_created_by_email(self, obj) -> str | None:
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
 

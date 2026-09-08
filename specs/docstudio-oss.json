@@ -1,6 +1,96 @@
 {
   "components": {
     "schemas": {
+      "APIDeploymentSummary": {
+        "description": "One API deployment, as it appears in an organisation's listing.\n\n`api_name` and `api_endpoint` are what an execution call needs;\n`display_name` and `description` say what the deployment is for.",
+        "properties": {
+          "api_endpoint": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "api_name": {
+            "maxLength": 30,
+            "type": "string"
+          },
+          "co_owners_count": {
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_by_email": {
+            "description": "Get the email of the creator.",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 255,
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 30,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "is_active": {
+            "type": "boolean"
+          },
+          "is_owner": {
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "last_5_run_statuses": {
+            "description": "Fetch the last 5 execution statuses with timestamps for this API deployment.",
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "last_run_time": {
+            "description": "Get the timestamp of the most recent execution.",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "run_count": {
+            "description": "Get total execution count for this API deployment.",
+            "readOnly": true,
+            "type": "integer"
+          },
+          "workflow": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workflow_name": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_endpoint",
+          "co_owners_count",
+          "created_by",
+          "created_by_email",
+          "id",
+          "is_owner",
+          "last_5_run_statuses",
+          "last_run_time",
+          "run_count",
+          "workflow",
+          "workflow_name"
+        ],
+        "type": "object"
+      },
       "AcknowledgedResponse": {
         "description": "The execution's result was handed to an earlier call and discarded.",
         "properties": {
@@ -218,6 +308,37 @@
         ],
         "type": "object"
       },
+      "PaginatedAPIDeploymentSummaryList": {
+        "properties": {
+          "count": {
+            "example": 123,
+            "type": "integer"
+          },
+          "next": {
+            "example": "http://api.example.org/accounts/?page=4",
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "example": "http://api.example.org/accounts/?page=2",
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/APIDeploymentSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "PlatformKeyError": {
         "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return. It is\nthe shape of this operation's credential failures specifically, not of\nevery failure it can return.",
         "properties": {
@@ -337,6 +458,118 @@
         ],
         "tags": [
           "identity"
+        ]
+      }
+    },
+    "/api/v1/unstract/{org_id}/api/deployment/": {
+      "get": {
+        "description": "List the API deployments of an organisation.\n\nEach entry carries the `api_name` and `api_endpoint` an execution call needs, alongside the `display_name` and `description` that say what the deployment is for. A key holder can therefore discover what is deployed without being told, having resolved `org_id` once from `whoami`.\n\nThe deployment's own API key is not part of this listing, so a platform key cannot be widened into the ability to execute a deployment by reading it. Executing still needs the deployment key.\n\nResults are ordered by most recent run first, and paginated: pass `page` and `page_size`, and read `count` and `next` from the envelope.",
+        "operationId": "list_deployments",
+        "parameters": [
+          {
+            "description": "Return only the deployment with exactly this `api_name`.",
+            "in": "query",
+            "name": "api_name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which field to use when ordering the results.",
+            "in": "query",
+            "name": "ordering",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A page number within the paginated result set.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Return only deployments whose display name contains this text, case-insensitively.",
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only the deployments of this workflow.",
+            "in": "query",
+            "name": "workflow",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The organisation the request is scoped to, as `whoami` reports it in `organization_id`.",
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAPIDeploymentSummaryList"
+                }
+              }
+            },
+            "description": "One page of the organisation's API deployments."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "No usable platform API key was supplied \u2014 absent, malformed, unknown, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "The key was recognised but refused: it does not belong to the organisation named in the path, or its permission tier is not one this deployment knows."
+          },
+          "500": {
+            "description": "The request could not be served. The body is not guaranteed to be JSON."
+          }
+        },
+        "security": [
+          {
+            "platformKey": []
+          }
+        ],
+        "tags": [
+          "deployment"
         ]
       }
     },
@@ -813,7 +1046,7 @@
   },
   "tags": [
     {
-      "description": "Run an API deployment against one or more documents and poll the result.",
+      "description": "Discover an organisation's API deployments, run one against one or more documents, and poll the result.",
       "name": "deployment"
     },
     {

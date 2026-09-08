@@ -76,6 +76,11 @@ paths:
     covered_by: [integration-backend]
     proof: marker
 
+  - id: platform-key-deployment-listing
+    description: "A platform API key lists its own organisation's API deployments, and cannot list another organisation's."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: platform-key-whoami
     description: "A platform API key resolves its own organisation over the org-less whoami endpoint; the org comes from the key row, not the URL."
     covered_by: [integration-backend]

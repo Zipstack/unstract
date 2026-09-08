@@ -14,9 +14,11 @@ served publicly, not as one installation chooses to mount it.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
@@ -43,6 +45,47 @@ DOWNSTREAM = (
     "(Zipstack/unstract-cli) are generated from this file — raise the matching "
     "PRs there for anything that changes an operation id, a tag or a schema."
 )
+
+# The mount every organisation-scoped route hangs off, spelled as a literal for
+# the same reason as `PUBLISHED_PATH_PREFIXES`.
+TENANT_MOUNT = "/api/v1/unstract/"
+ORG_SEGMENT = "{org_id}"
+HTTP_METHODS = frozenset(
+    {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+)
+ORG_SEGMENT_PARAMETER = {
+    "in": "path",
+    "name": "org_id",
+    "required": True,
+    "schema": {"type": "string"},
+    "description": (
+        "The organisation the request is scoped to, as `whoami` reports it in "
+        "`organization_id`."
+    ),
+}
+
+
+def _restore_organisation_segment(schema: dict[str, Any]) -> None:
+    """Put back the organisation segment the router never sees.
+
+    `OrganizationMiddleware` rewrites `/api/v1/unstract/<org>/...` to
+    `/api/v1/unstract/...` before anything is routed, so a spec generated from
+    the URLconf describes paths no caller ever sends. The routes that really
+    are served without the segment are exactly the ones the middleware is
+    configured to leave alone, so that setting decides this too rather than a
+    second list that could disagree with it.
+    """
+    for url in [url for url in schema["paths"] if url.startswith(TENANT_MOUNT)]:
+        if any(
+            re.match(whitelisted, url)
+            for whitelisted in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
+        ):
+            continue
+        item = schema["paths"].pop(url)
+        for method, operation in item.items():
+            if method in HTTP_METHODS:
+                operation.setdefault("parameters", []).append(dict(ORG_SEGMENT_PARAMETER))
+        schema["paths"][f"{TENANT_MOUNT}{ORG_SEGMENT}/{url[len(TENANT_MOUNT):]}"] = item
 
 
 class SpecGenerationFailed(CommandError):
@@ -75,6 +118,8 @@ def render_spec() -> str:
             f"The generator reported problems, so the spec would describe an "
             f"API nobody implements:\n{diagnostics}"
         )
+
+    _restore_organisation_segment(schema)
 
     published = tuple(f"/{prefix}/" for prefix in PUBLISHED_PATH_PREFIXES)
     off_prefix = [path for path in schema["paths"] if not path.startswith(published)]
