@@ -21,6 +21,7 @@ from executor.executors.exceptions import ExecutionCancelled
 
 from unstract.core.prompt_run_cancellation import PROMPT_RUN_CANCELLED_ERROR
 from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.utils.aborting import AbortedError, should_abort_now
 
 from .test_answer_prompt import _make_prompt, _mock_deps, _mock_llm
 
@@ -228,3 +229,155 @@ class TestCheckpointContract:
         x2text.return_value.process.assert_not_called()
         assert result.success is False
         assert result.error == PROMPT_RUN_CANCELLED_ERROR
+
+
+class TestInFlightAbort:
+    """The second layer: a stop that lands *inside* a call, not between them.
+
+    The checkpoints above stop the next call. These pin what happens when
+    there is no next call to stop — the user pressed Stop while a model was
+    already taking minutes to answer, and the SDK abandoned the request.
+    """
+
+    def test_an_abandoned_call_is_reported_as_a_stop_not_a_failure(self, executor_env):
+        """`AbortedError` is the SDK's word for it; every layer past the
+        executor only knows `ExecutionCancelled`.
+        """
+        llm = _mock_llm()
+        llm.complete.side_effect = AbortedError("stopped mid-call")
+        prompts = [_prompt("field_a", PROMPT_A)]
+
+        with (
+            patch(
+                "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps",
+                return_value=_mock_deps(llm),
+            ),
+            patch("executor.executors.legacy_executor.is_cancelled", return_value=False),
+        ):
+            result = executor_env()._handle_answer_prompt(_context(prompts))
+
+        # Not an error: reporting failure would send the callback down the
+        # error path and throw away the rest of the batch.
+        assert result.success is True
+        assert result.metadata["cancelled_prompt_ids"] == [PROMPT_A]
+        # And no half-finished answer is passed off as a real one.
+        assert "field_a" not in result.data[PSKeys.OUTPUT]
+
+    def test_the_sdk_learns_of_the_stop_through_the_ambient_scope(self, executor_env):
+        """The executor never hands the SDK a prompt id — it installs a scoped
+        predicate and the SDK polls it. This is the wiring that makes a Stop
+        aimed at one prompt abandon only that prompt's call.
+        """
+        llm = _mock_llm()
+        answer = llm.complete.return_value
+
+        def _complete(*_args, **_kwargs):
+            # Stand in for litellm: notice the caller stopped waiting.
+            if should_abort_now():
+                raise AbortedError("caller stopped waiting")
+            return answer
+
+        llm.complete.side_effect = _complete
+        prompts = [_prompt("field_a", PROMPT_A), _prompt("field_b", PROMPT_B)]
+
+        def _only_b(org_id, run_id, prompt_id=None):
+            return prompt_id == PROMPT_B
+
+        with (
+            patch(
+                "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps",
+                return_value=_mock_deps(llm),
+            ),
+            patch("executor.executors.legacy_executor.is_cancelled", side_effect=_only_b),
+        ):
+            result = executor_env()._handle_answer_prompt(_context(prompts))
+
+        assert "field_a" in result.data[PSKeys.OUTPUT]
+        assert result.metadata["cancelled_prompt_ids"] == [PROMPT_B]
+
+    def test_tokens_spent_before_the_abort_still_reach_the_usage_rows(self, executor_env):
+        """Abandoning the request does not refund what it already cost."""
+        llm = _mock_llm()
+        llm.complete.side_effect = AbortedError("stopped mid-call")
+        llm.flush_pending_usage.return_value = [{"prompt_tokens": 4096}]
+        prompts = [_prompt("field_a", PROMPT_A)]
+
+        with (
+            patch(
+                "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps",
+                return_value=_mock_deps(llm),
+            ),
+            patch("executor.executors.legacy_executor.is_cancelled", return_value=False),
+        ):
+            result = executor_env()._handle_answer_prompt(_context(prompts))
+
+        assert {"prompt_tokens": 4096} in result.metadata["usage_records"]
+
+    def test_summarization_stopped_by_the_user_is_not_a_summarization_failure(
+        self, executor_env
+    ):
+        """Summarize has one broad handler that would otherwise relabel a stop
+        as an error, and the run would surface as failed rather than stopped.
+        """
+        ctx = ExecutionContext(
+            executor_name="legacy",
+            operation=Operation.SUMMARIZE.value,
+            executor_params={
+                "llm_adapter_instance_id": "llm-1",
+                "summarize_prompt": "summarize",
+                PSKeys.CONTEXT: "a very long document",
+                "prompt_keys": ["field_a"],
+                PSKeys.PLATFORM_SERVICE_API_KEY: "pk",
+            },
+            run_id="run-1",
+            execution_source="ide",
+            organization_id="org-1",
+        )
+        with (
+            patch("executor.executors.legacy_executor.is_cancelled", return_value=False),
+            patch(
+                "executor.executors.answer_prompt.AnswerPromptService.run_completion",
+                side_effect=AbortedError("stopped mid-call"),
+            ),
+        ):
+            result = executor_env().execute(ctx)
+
+        assert result.success is False
+        assert result.error == PROMPT_RUN_CANCELLED_ERROR
+
+
+class TestAbortPredicate:
+    def test_workflow_runs_get_no_predicate_at_all(self, executor_env):
+        """No Stop button on that path; a predicate would be pure overhead on
+        every poll of every call.
+        """
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        assert LegacyExecutor._abort_check(_context([], execution_source="tool")) is None
+        assert callable(LegacyExecutor._abort_check(_context([])))
+
+    def test_a_negative_answer_is_memoized(self):
+        """The SDK polls twice a second. A fifteen-minute extraction would
+        otherwise be eighteen hundred round trips to the signal store.
+        """
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        with patch(
+            "executor.executors.legacy_executor.is_cancelled", return_value=False
+        ) as is_cancelled:
+            check = LegacyExecutor._abort_check(_context([]))
+            answers = [check() for _ in range(20)]
+
+        assert answers == [False] * 20
+        assert is_cancelled.call_count == 1
+
+    def test_a_stop_is_never_rescinded(self):
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        with patch(
+            "executor.executors.legacy_executor.is_cancelled", side_effect=[True, False]
+        ):
+            check = LegacyExecutor._abort_check(_context([]))
+            assert check() is True
+            # A second, contradicting answer must not un-stop the run.
+            assert check() is True

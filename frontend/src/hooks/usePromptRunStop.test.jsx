@@ -21,6 +21,7 @@ vi.mock("./useAxiosPrivate", () => ({
 }));
 
 import { generateApiRunStatusId } from "../helpers/GetStaticData";
+import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptRunQueueStore } from "../store/prompt-run-queue-store";
 import { usePromptRunStatusStore } from "../store/prompt-run-status-store";
@@ -198,6 +199,63 @@ describe("stopping prompt runs", () => {
     });
 
     expect(cancelRequests()).toHaveLength(0);
+  });
+
+  // The safety net exists because a socket event can go missing. What it says
+  // matters: a run the user stopped themselves must not be reported back to
+  // them as a failure of the product.
+  const runUntilTheSafetyNetFires = async (result, { stop }) => {
+    const statusKey = generateApiRunStatusId(DOC, PROFILE);
+    await act(async () => {
+      result.current.runPrompt([`${PROMPT_A}__${DOC}__${PROFILE}`]);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    act(() => {
+      usePromptRunStatusStore.getState().addPromptStatus({
+        [PROMPT_A]: { [statusKey]: "RUNNING" },
+      });
+    });
+    if (stop) {
+      await act(async () => {
+        result.current.stopAllRuns();
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    }
+    act(() => {
+      vi.advanceTimersByTime(16 * 60 * 1000);
+    });
+  };
+
+  it("reports a run the user stopped as stopped, not as a timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderUsePromptRun();
+      await runUntilTheSafetyNetFires(result, { stop: true });
+
+      const { alertDetails } = useAlertStore.getState();
+      expect(alertDetails.type).toBe("info");
+      expect(alertDetails.content).toContain("stopped");
+      // And the run stops being offered as stoppable — nothing more is coming.
+      expect(usePromptRunStatusStore.getState().activeRuns).toEqual({});
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still reports a genuinely silent run as a timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const { result } = renderUsePromptRun();
+      await runUntilTheSafetyNetFires(result, { stop: false });
+
+      const { alertDetails } = useAlertStore.getState();
+      expect(alertDetails.type).toBe("warning");
+      expect(alertDetails.content).toContain("timed out");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("clears the spinner when the POST itself reports the run was cancelled", async () => {

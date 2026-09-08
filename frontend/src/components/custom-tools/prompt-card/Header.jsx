@@ -22,6 +22,7 @@ import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { useLingeringStop } from "../../../hooks/useLingeringStop";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
@@ -121,6 +122,15 @@ function Header({
         run?.stopping && run?.promptIds?.includes(promptDetails?.prompt_id),
     ),
   );
+  // An abort normally lands in seconds. When it does not, say why rather than
+  // leaving the user watching an unexplained spinner.
+  const isStoppingSlowly = useLingeringStop(isStopping);
+  let stopTooltip = "Stop this prompt";
+  if (isStopping) {
+    stopTooltip = isStoppingSlowly
+      ? "Still stopping — the step already in progress is finishing"
+      : "Stopping…";
+  }
   // While this prompt is running its Run buttons are replaced by a Stop, so
   // the control the user wants is the one under their cursor.
   const showPromptActions = !singlePassExtractMode && !isSimplePromptStudio;
@@ -459,12 +469,12 @@ function Header({
           </>
         )}
         {showStopAction && (
-          <Tooltip title={isStopping ? "Stopping…" : "Stop this prompt"}>
+          <Tooltip title={stopTooltip}>
             <Button
               data-testid={`ps-prompt-stop-${promptDetails?.prompt_id}`}
               size="small"
               type="text"
-              className="prompt-card-action-button"
+              className="prompt-card-action-button prompt-card-stop-button"
               onClick={() => stopPromptRuns(promptDetails?.prompt_id)}
               disabled={isStopping || isPublicSource}
             >

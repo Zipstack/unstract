@@ -106,14 +106,23 @@ const usePromptRun = () => {
           if (runNonceMap.get(nonceKey) !== nonce) {
             return;
           }
-          const current = usePromptRunStatusStore.getState().promptRunStatus;
+          const { promptRunStatus: current, activeRuns } =
+            usePromptRunStatusStore.getState();
           if (
             current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
           ) {
+            // A run that was told to stop and never reported back was stopped,
+            // not timed out. Calling it a timeout would read as a bug in the
+            // run the user themselves ended (UN-1031).
+            const wasStopped = activeRuns?.[runId]?.stopping;
             removePromptStatus(promptId, statusKey);
+            unregisterRun(runId);
             setAlertDetails({
-              type: "warning",
-              content: "Prompt execution timed out. Please try again.",
+              type: wasStopped ? "info" : "warning",
+              content: wasStopped
+                ? "The prompt was stopped. The step that had already started " +
+                  "may still be finishing on the server."
+                : "Prompt execution timed out. Please try again.",
             });
           }
           runNonceMap.delete(nonceKey);
@@ -210,7 +219,12 @@ const usePromptRun = () => {
           return;
         }
 
-        setTimeout(clearStaleStatuses, SOCKET_TIMEOUT_MS);
+        setTimeout(() => {
+          clearStaleStatuses();
+          // Nothing more is coming for this run, so stop offering it as
+          // stoppable — otherwise Stop All keeps a run that is long gone.
+          unregisterRun(runId);
+        }, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {
         setAlertDetails(

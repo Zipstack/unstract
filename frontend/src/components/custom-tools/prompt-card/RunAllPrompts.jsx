@@ -3,9 +3,11 @@ import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { PROMPT_RUN_TYPES } from "../../../helpers/GetStaticData";
+import { useLingeringStop } from "../../../hooks/useLingeringStop";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
+import "./PromptCard.css";
 
 function RunAllPrompts() {
   const {
@@ -28,13 +30,21 @@ function RunAllPrompts() {
   // the way until the executors reach their next checkpoints.
   const isStopping =
     canStop && Object.values(activeRuns).every((run) => run?.stopping);
+  const isStoppingSlowly = useLingeringStop(isStopping);
+  let stopTooltip = "Stop all running prompts";
+  if (isStopping) {
+    stopTooltip = isStoppingSlowly
+      ? "Still stopping — the step already in progress is finishing"
+      : "Stopping…";
+  }
 
   if (canStop) {
     return (
-      <Tooltip title={isStopping ? "Stopping…" : "Stop all running prompts"}>
+      <Tooltip title={stopTooltip}>
         <Button
           data-testid="ps-stop-all-prompts-btn"
           icon={<Square className="prompt-card-actions-head" />}
+          className="prompt-card-stop-button"
           onClick={stopAllRuns}
           disabled={isStopping || isPublicSource}
         />

@@ -41,6 +41,7 @@ from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.sdk1.utils.aborting import AbortCheck, AbortedError, abort_scope
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 
@@ -126,7 +127,15 @@ class LegacyExecutor(BaseExecutor):
         )
         start = time.monotonic()
         try:
-            result = handler(context)
+            # Everything the handler calls — extraction, embedding, the model
+            # itself — can now be abandoned rather than waited out.
+            try:
+                with abort_scope(self._abort_check(context)):
+                    result = handler(context)
+            except AbortedError as exc:
+                # Normalise to the executor's own signal so the handling
+                # below, and every layer past it, stays unchanged.
+                raise ExecutionCancelled() from exc
             elapsed = time.monotonic() - start
             logger.info(
                 "Handler %s completed in %.2fs (run_id=%s success=%s)",
@@ -190,6 +199,45 @@ class LegacyExecutor(BaseExecutor):
         if context.execution_source != ExecutionSource.IDE.value:
             return False
         return is_cancelled(str(context.organization_id or ""), str(context.run_id))
+
+    @staticmethod
+    def _abort_check(
+        context: ExecutionContext, prompt_id: str | None = None
+    ) -> AbortCheck | None:
+        """A predicate the SDK can poll while a call is in flight (UN-1031).
+
+        ``_check_cancelled`` below handles the boundaries *between* stages,
+        which is cheap and covers most of a run. This covers the rest: the
+        minutes a single call can occupy, where there is no boundary to reach.
+
+        Returns ``None`` for anything but an IDE run, so the workflow and API
+        deployment paths keep the synchronous, un-polled code path and never
+        touch the signal store.
+
+        Negative answers are memoized briefly. The SDK polls twice a second
+        while it waits, and a fifteen-minute extraction would otherwise mean
+        eighteen hundred round trips to Redis for one prompt.
+        """
+        if context.execution_source != ExecutionSource.IDE.value:
+            return None
+
+        org_id = str(context.organization_id or "")
+        run_id = str(context.run_id)
+        state: dict[str, float | bool] = {"until": 0.0, "answer": False}
+
+        def _check() -> bool:
+            # A True answer is permanent — a stop is never rescinded — so only
+            # the negative is worth caching.
+            if state["answer"]:
+                return True
+            now = time.monotonic()
+            if now < state["until"]:
+                return False
+            state["answer"] = is_cancelled(org_id, run_id, prompt_id)
+            state["until"] = now + 1.0
+            return bool(state["answer"])
+
+        return _check
 
     @staticmethod
     def _check_cancelled(context: ExecutionContext, prompt_id: str | None = None) -> None:
@@ -1252,6 +1300,8 @@ class LegacyExecutor(BaseExecutor):
 
         vector_db = None
         embedding = None
+        index = None
+        doc_id = ""
         try:
             index = index_cls(
                 tool=shim,
@@ -1320,6 +1370,36 @@ class LegacyExecutor(BaseExecutor):
                 data={IKeys.DOC_ID: doc_id},
                 metadata={"usage_records": embedding.flush_pending_usage()},
             )
+        except (AbortedError, ExecutionCancelled) as e:
+            # Stopped part-way through indexing. llama-index writes node
+            # batches as it goes, so the vector store may hold a fragment of
+            # this document — and `is_document_indexed` would later report it
+            # as indexed, leaving every future prompt to search half a
+            # document. Remove what was written.
+            if vector_db is not None and index is not None and doc_id:
+                try:
+                    index.delete_nodes(vector_db, doc_id)
+                    logger.info(
+                        "Removed partially indexed nodes after a stop: doc_id=%s",
+                        doc_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not remove partially indexed nodes for doc_id=%s; "
+                        "it may later look indexed when it is not",
+                        doc_id,
+                        exc_info=True,
+                    )
+            partial = []
+            if embedding is not None:
+                try:
+                    partial = list(embedding.flush_pending_usage())
+                except Exception:
+                    logger.warning(
+                        "Failed to flush embedding usage on the stop path",
+                        exc_info=True,
+                    )
+            raise ExecutionCancelled(partial_usage_records=partial) from e
         except Exception as e:
             logger.error(
                 "Indexing failed: file=%s error=%s",
@@ -1561,20 +1641,24 @@ class LegacyExecutor(BaseExecutor):
                         break
                     continue
                 try:
-                    usage_records.extend(
-                        self._execute_single_prompt(
-                            output=output,
-                            context=context,
-                            structured_output=structured_output,
-                            metadata=metadata,
-                            metrics=metrics,
-                            variable_names=variable_names,
-                            context_retrieval_metrics=context_retrieval_metrics,
-                            deps=_deps,
-                            tool_settings=tool_settings,
-                            process_text_fn=process_text_fn,
+                    # Narrow the scope to this prompt, so a Stop aimed at one
+                    # prompt abandons only its call and leaves the rest of the
+                    # batch running.
+                    with abort_scope(self._abort_check(context, prompt_id)):
+                        usage_records.extend(
+                            self._execute_single_prompt(
+                                output=output,
+                                context=context,
+                                structured_output=structured_output,
+                                metadata=metadata,
+                                metrics=metrics,
+                                variable_names=variable_names,
+                                context_retrieval_metrics=context_retrieval_metrics,
+                                deps=_deps,
+                                tool_settings=tool_settings,
+                                process_text_fn=process_text_fn,
+                            )
                         )
-                    )
                 except ExecutionCancelled as e:
                     # Stopped part-way through this prompt: keep the tokens it
                     # already spent on the bill, drop its (incomplete) answer.
@@ -2030,8 +2114,15 @@ class LegacyExecutor(BaseExecutor):
             val = structured_output.get(prompt_name)
             if isinstance(val, str):
                 structured_output[prompt_name] = val.rstrip("\n")
-        except LegacyExecutorError as e:
-            # Flush before bubbling so partial rows survive.
+        except (LegacyExecutorError, AbortedError) as e:
+            # An SDK abort means the caller stopped waiting mid-call. It
+            # becomes the same ExecutionCancelled a checkpoint raises, so
+            # everything downstream — the loop, the callback, the socket
+            # event, the UI — needs no knowledge of the SDK's exception.
+            if isinstance(e, AbortedError):
+                e = ExecutionCancelled()
+            # Flush before bubbling so partial rows survive. Tokens spent
+            # before the stop are still billed.
             flushed = self._flush_per_prompt_metrics(
                 metrics=metrics,
                 context_retrieval_metrics=context_retrieval_metrics,
@@ -2042,7 +2133,7 @@ class LegacyExecutor(BaseExecutor):
                 chunk_size=chunk_size,
             )
             e.partial_usage_records = records + flushed + e.partial_usage_records
-            raise
+            raise e from None
         records.extend(
             self._flush_per_prompt_metrics(
                 metrics=metrics,
@@ -2545,9 +2636,22 @@ class LegacyExecutor(BaseExecutor):
                 data={"data": summary},
                 metadata={"usage_records": records},
             )
+        except (AbortedError, ExecutionCancelled) as e:
+            # A stop during the summarize call is not a summarization failure,
+            # and must not be reported as one: the broad handler below would
+            # turn it into a LegacyExecutorError and the run would surface as
+            # errored rather than cancelled.
+            partial: list[dict] = []
+            if llm is not None:
+                try:
+                    partial = list(llm.flush_pending_usage())
+                except Exception:
+                    logger.debug("flush_pending_usage failed during the stop path")
+            logger.info("Summarization stopped by the user: run_id=%s", context.run_id)
+            raise ExecutionCancelled(partial_usage_records=partial) from e
         except Exception as e:
             # Flush before re-raising so partial rows survive.
-            partial: list[dict] = []
+            partial = []
             if llm is not None:
                 try:
                     partial = list(llm.flush_pending_usage())

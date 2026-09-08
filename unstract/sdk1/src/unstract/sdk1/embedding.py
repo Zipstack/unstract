@@ -14,6 +14,11 @@ from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
+from unstract.sdk1.utils.aborting import (
+    AbortedError,
+    current_abort_check,
+    should_abort_now,
+)
 from unstract.sdk1.utils.callback_manager import CallbackManager
 from unstract.sdk1.utils.retry_utils import (
     acall_with_retry,
@@ -143,15 +148,26 @@ class Embedding:
                 max_retries=max_retries,
                 retry_predicate=is_retryable_litellm_error,
                 description=self._get_adapter_info(),
+                should_abort=current_abort_check(),
             )
             return resp["data"][0]["embedding"]
+        except AbortedError:
+            raise
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     def get_embeddings(
         self, texts: list[str], input_type: str = "passage"
     ) -> list[list[float]]:
-        """Return embedding vectors for list of query strings."""
+        """Return embedding vectors for list of query strings.
+
+        Indexing a document is one opaque call into llama-index, which loops
+        over batches and lands here each time. Checking on entry is what makes
+        a long index abortable — at batch granularity, without reaching into
+        llama-index at all.
+        """
+        if should_abort_now():
+            raise AbortedError("Aborted before embedding a batch")
         try:
             model, kwargs, max_retries = self._prepare_call(input_type)
             resp = call_with_retry(
@@ -159,8 +175,13 @@ class Embedding:
                 max_retries=max_retries,
                 retry_predicate=is_retryable_litellm_error,
                 description=self._get_adapter_info(),
+                should_abort=current_abort_check(),
             )
             return [data["embedding"] for data in resp["data"]]
+        except AbortedError:
+            # A deliberate stop, not a provider problem — must not be
+            # re-labelled as one on the way out.
+            raise
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
