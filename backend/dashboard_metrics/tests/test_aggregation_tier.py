@@ -177,9 +177,14 @@ class TestTheLockCoversWhatIsWritten:
         assert _acquire_aggregation_locks(_keys(AggregationTier.ALL, 7))[0]
 
 
-class TestTheLockSelfHeals:
-    """Both reclaim branches. They apply to pre-token values only: a lock this
-    code wrote carries an owner and is recovered by its TTL, never by age."""
+class TestTheLockBlocksWhileHeld:
+    """Recovery is the key's own TTL, and nothing else.
+
+    The age-based reclaim these tests used to cover was removed: it could not tell a
+    live holder from a dead one (it compares a local clock against another worker's),
+    its read-judge-replace was not atomic, and it was unreachable anyway — the keys
+    this release uses are new, so no value predating tokens can appear under one.
+    """
 
     @pytest.fixture(autouse=True)
     def _clear(self):
@@ -188,17 +193,12 @@ class TestTheLockSelfHeals:
             yield
             cache.clear()
 
-    def test_a_lock_older_than_the_timeout_is_reclaimed(self) -> None:
+    def test_a_held_key_blocks_however_old_it_looks(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]
-        cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
-        assert _acquire_aggregation_lock(key, "tok")
-
-    def test_a_fresh_lock_is_not_reclaimed(self) -> None:
-        key = _keys(AggregationTier.HOURLY)[0]
-        cache.set(key, str(time.time()), 3600)
+        cache.set(key, f"someone-else:{time.time() - AGGREGATION_LOCK_TIMEOUT - 1}", 3600)
         assert not _acquire_aggregation_lock(key, "tok")
 
-    def test_a_corrupted_lock_value_is_reclaimed(self) -> None:
+    def test_a_free_key_is_taken_and_carries_the_token(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]
-        cache.set(key, "running", 3600)
         assert _acquire_aggregation_lock(key, "tok")
+        assert cache.get(key).startswith("tok:")

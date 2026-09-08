@@ -104,11 +104,14 @@ def _log_if_failed(name: str, result: dict[str, Any]) -> None:
 def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     """Surface a run that did nothing, whatever shape the backend reported it in.
 
-    Only the first sets ``skipped``: the Redis lock was held (``skipped``/
-    ``reason``), no organisation had recent activity (``skipped_reason``), one or
-    more metrics raised and were caught per-metric (``errors``), or the tier ran
-    cleanly and wrote nothing. Each is correct behaviour in isolation, but left at
-    INFO a leaked lock or a frozen source table looks like a day of successful runs.
+    Only the first sets ``skipped``. The conditions reported are: the Redis lock was
+    held (``skipped``/``reason``), no organisation had recent activity
+    (``skipped_reason``), something raised and was caught — per metric, per org, or
+    the monthly rollup (``errors``), the rollup lowered existing totals
+    (``lowered_months``) or could not check (``lowered_check``), the rollup itself
+    failed (``monthly.failed``), or the tier ran cleanly and wrote nothing. Each is
+    correct behaviour in isolation, but left at INFO a leaked lock or a frozen source
+    table looks like a day of successful runs.
 
     The conditions are independent, not alternatives: an empty prefilter and a
     failed monthly rollup co-occur, since the rollup is org-agnostic and runs even
@@ -141,6 +144,20 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
         logger.warning(
             "%s lowered existing monthly totals for %s", name, ", ".join(lowered)
         )
+    if result.get("monthly", {}).get("lowered_check") == "unavailable":
+        # Distinct from "nothing was lowered": the check itself did not run, so this
+        # run verified nothing about the derived tier.
+        logger.warning(
+            "%s could not check whether the rollup lowered monthly totals", name
+        )
+    if result.get("monthly", {}).get("failed"):
+        # Distinct from a per-org metric error: the rollup is org-agnostic, so its
+        # failure leaves EVERY tenant's monthly tier stale for this run.
+        logger.warning(
+            "%s: the monthly rollup did not run; every tenant's monthly tier is "
+            "stale for this run",
+            name,
+        )
     if not wrote and not result.get("skipped_reason") and not result.get("errors"):
         # The signature of the regression this change could introduce: a tier with
         # work to do, no error, and nothing written.
@@ -159,11 +176,13 @@ def dashboard_metrics_aggregate(
     which tiers to write, ``source_window_days`` widens the daily lookback for the
     reconciliation pass. Omitting either applies the backend task's own default.
 
-    Unknown kwargs are accepted rather than rejected: the rows are written by a
-    migration shipping in the backend image while this consumer ships in another,
-    so a row can carry a kwarg this signature predates. A TypeError here is dropped
-    at MAX_ATTEMPTS=1, and the once-daily reconciliation row has no next tick to
-    recover on.
+    Unknown kwargs are accepted rather than rejected. Note what this does and does
+    not buy: it does NOT save the deploy that introduces a kwarg, because a pod on
+    the previous image has the old signature. It saves a LATER release — a row may
+    gain a kwarg while pods still run this code. That matters here because the rows
+    ship in the backend image and this consumer ships in another, a TypeError is
+    dropped at MAX_ATTEMPTS=1, and the once-daily reconciliation row has no next
+    tick to recover on.
     """
     if _ignored:
         logger.warning("Ignoring unrecognised aggregation kwargs: %s", sorted(_ignored))

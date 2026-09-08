@@ -32,12 +32,12 @@ from dashboard_metrics.models import (
 )
 from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.tasks import (
-    AGGREGATION_LOCK_TIMEOUT,
     DASHBOARD_RECONCILE_WINDOW_DAYS,
     DASHBOARD_SOURCE_WINDOW_DAYS,
     AggregationTier,
     _acquire_aggregation_lock,
     _acquire_aggregation_locks,
+    _release_aggregation_locks,
     _active_org_ids,
     _aggregation_lock_keys,
     _months_the_rollup_would_lower,
@@ -408,7 +408,7 @@ class TestMonthlyRollup(TestCase):
         ]
 
     def test_months_before_the_window_are_left_alone(self):
-        """Orphan cleanup must not reach outside the rebuilt window."""
+        """A month before month_start is untouched by a later rollup."""
         self._daily(date(2024, 1, 10), value=99)
         _rollup_monthly_from_daily(date(2024, 1, 1))
         EventMetricsDaily._base_manager.all().delete()
@@ -583,6 +583,20 @@ class TestInternalAggregateEndpoint(TestCase):
             "dashboard_metrics.internal_views.aggregate_metrics_from_sources"
         ) as task:
             response = self._post({"teir": "hourly"})
+        assert response.status_code == 400
+        task.assert_not_called()
+
+    def test_a_window_over_the_maximum_is_a_400(self):
+        """The bound this diff added at the boundary.
+
+        Without it the value reaches the task, whose own ValueError is no longer
+        mapped to a 400 — so an over-wide window becomes a logged 500, the exact
+        inversion moving validation to the boundary was for.
+        """
+        with patch(
+            "dashboard_metrics.internal_views.aggregate_metrics_from_sources"
+        ) as task:
+            response = self._post({"source_window_days": 365})
         assert response.status_code == 400
         task.assert_not_called()
 
@@ -843,7 +857,7 @@ class TestTheLockIsPerSchedule(TestCase):
     """The reconciliation pass must not lose a race it is never retried after.
 
     Per-granularity exclusion is covered in test_aggregation_tier.py; this is the
-    window half — two schedules that both write every tier.
+    window half — two schedules that both write the daily/monthly tier.
     """
 
     def setUp(self):
@@ -871,16 +885,6 @@ class TestTheLockIsPerSchedule(TestCase):
         assert not _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))[0]
         # The reconciliation pass proceeds regardless.
         assert _acquire_aggregation_locks(self._keys(DASHBOARD_RECONCILE_WINDOW_DAYS))[0]
-
-    def test_a_stale_lock_is_reclaimed(self):
-        key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
-        cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
-        assert _acquire_aggregation_lock(key, "tok")
-
-    def test_a_corrupted_lock_value_is_reclaimed(self):
-        key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
-        cache.set(key, "running", 3600)
-        assert _acquire_aggregation_lock(key, "tok")
 
 
 class TestSourceWindowValidation(TestCase):
@@ -1289,3 +1293,83 @@ class TestTheDiagnosticCannotBlockTheRollup(TestCase):
         assert result["monthly"]["failed"] is False
         assert result["errors"] == 0
         assert result["success"] is True
+
+
+class TestTheLockIsReleasedOnlyByItsOwner(TestCase):
+    """The ownership check had no test; deleting it left the suite green.
+
+    Without it a run whose lock had already expired deletes whichever run took the
+    key next, so two runs write the same tier and a third is free to enter.
+    """
+
+    def setUp(self):
+        override = override_settings(CACHES=_LOCMEM_CACHE)
+        override.enable()
+        self.addCleanup(override.disable)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.key = _aggregation_lock_keys(AggregationTier.HOURLY, 2)[0]
+
+    def test_a_stale_owner_does_not_release_the_current_holder(self):
+        cache.set(self.key, f"newer-run:{time.time()}", 3600)
+
+        _release_aggregation_locks([self.key], "older-run")
+
+        assert cache.get(self.key) is not None, (
+            "a run that no longer owns the key deleted the current holder's lock"
+        )
+
+    def test_the_owner_does_release_its_own_key(self):
+        """The control: ownership gates the delete, it does not disable it."""
+        assert _acquire_aggregation_lock(self.key, "mine")
+        _release_aggregation_locks([self.key], "mine")
+        assert cache.get(self.key) is None
+
+
+class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
+    """The leg between the diagnostic and the result dict was untested on both sides.
+
+    One test called the helper directly; another asserted against a hand-built
+    payload. Neither observed the assignment, so dropping it left the suite green.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="surface-org", name="surface", display_name="Surface"
+        )
+        self.month = _truncate_to_month(timezone.now()).date()
+
+    def _run(self, **kwargs):
+        with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+            prefilter = mock_execution.objects.filter.return_value
+            prefilter.values_list.return_value.distinct.return_value = [self.org.id]
+            return _run_aggregation(**kwargs)
+
+    def test_a_lowered_total_reaches_the_result_dict(self):
+        EventMetricsMonthly._base_manager.create(
+            organization=self.org, month=self.month,
+            metric_name="documents_processed", metric_type=MetricType.COUNTER,
+            metric_value=999, metric_count=1, project="default", tag="",
+        )
+        EventMetricsDaily._base_manager.create(
+            organization=self.org, date=self.month,
+            metric_name="documents_processed", metric_type=MetricType.COUNTER,
+            metric_value=1, metric_count=1, project="default", tag="",
+        )
+
+        result = self._run(tier=AggregationTier.DAILY_MONTHLY)
+
+        assert result["monthly"]["lowered_months"], (
+            "the rollup lowered a total and the result dict did not say so"
+        )
+
+    def test_a_failed_check_is_reported_as_unavailable_not_as_clean(self):
+        """`[]` alone would read as 'checked, nothing lowered'."""
+        with patch(
+            "dashboard_metrics.tasks._months_the_rollup_would_lower",
+            side_effect=DatabaseError("diagnostic exploded"),
+        ):
+            result = self._run(tier=AggregationTier.DAILY_MONTHLY)
+
+        assert result["monthly"]["lowered_check"] == "unavailable"
+        assert "lowered_months" not in result["monthly"]

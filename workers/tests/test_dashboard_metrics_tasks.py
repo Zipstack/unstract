@@ -139,7 +139,13 @@ class TestTheReconciliationKwargSurvives:
 
     @pytest.mark.parametrize("kwargs", _DECLARED)
     def test_every_scheduled_kwarg_set_binds(self, kwargs) -> None:
-        inspect.signature(dmt.dashboard_metrics_aggregate).bind(**kwargs)
+        named = {
+            p.name
+            for p in inspect.signature(dmt.dashboard_metrics_aggregate).parameters.values()
+            if p.kind is not inspect.Parameter.VAR_KEYWORD
+        }
+        # Named parameters only — `**_ignored` makes bind() accept anything.
+        assert not set(kwargs) - named
 
     def test_the_source_window_reaches_the_endpoint(self) -> None:
         with patch.object(dmt, "_call_internal", return_value={}) as call:
@@ -311,3 +317,67 @@ class TestAnUnknownKwargDoesNotKillTheRun:
             dmt.dashboard_metrics_aggregate(tier="hourly", some_future_kwarg=1)
 
         assert call.call_args.kwargs["body"] == {"tier": "hourly"}
+
+
+class TestCleanupFailuresReachTheLog:
+    """`_log_if_failed` was added with no test, in the same file and commit as the
+    branches that did get one. The backend answers 200 with success: False, so this
+    is the only place a permanently failing retention delete becomes visible here.
+    """
+
+    def _run(self, caplog, task, result):
+        with caplog.at_level("WARNING"):
+            with patch.object(dmt, "_call_internal", return_value=result):
+                task()
+        return caplog.text
+
+    def test_a_failed_cleanup_is_reported(self, caplog):
+        text = self._run(
+            caplog,
+            dmt.dashboard_metrics_cleanup_hourly,
+            {"success": False, "error": "deadlock detected"},
+        )
+        assert "did not complete" in text
+        assert "deadlock detected" in text
+
+    def test_a_successful_cleanup_is_silent(self, caplog):
+        """The control: it reports failure, not every run."""
+        text = self._run(
+            caplog, dmt.dashboard_metrics_cleanup_daily, {"success": True, "deleted": 4}
+        )
+        assert text.strip() == ""
+
+
+class TestTheDiagnosticBlindSpotIsReported:
+    """A check that could not run must not read as a check that found nothing."""
+
+    def test_an_unavailable_check_is_named(self, caplog):
+        with caplog.at_level("WARNING"):
+            with patch.object(
+                dmt,
+                "_call_internal",
+                return_value={
+                    "success": True,
+                    "tier": "daily_monthly",
+                    "monthly": {"upserted": 7, "lowered_check": "unavailable"},
+                },
+            ):
+                dmt.dashboard_metrics_aggregate()
+        assert "could not check whether the rollup lowered" in caplog.text
+
+    def test_a_failed_rollup_is_named_as_fleet_wide(self, caplog):
+        """Distinct from a per-org metric error, which reads the same otherwise."""
+        with caplog.at_level("WARNING"):
+            with patch.object(
+                dmt,
+                "_call_internal",
+                return_value={
+                    "success": False,
+                    "errors": 1,
+                    "organizations_processed": 3,
+                    "tier": "daily_monthly",
+                    "monthly": {"upserted": 0, "failed": True},
+                },
+            ):
+                dmt.dashboard_metrics_aggregate()
+        assert "every tenant's monthly tier is stale" in caplog.text

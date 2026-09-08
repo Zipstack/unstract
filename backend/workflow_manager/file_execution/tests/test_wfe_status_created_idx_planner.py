@@ -28,6 +28,7 @@ DB-bound, so conftest marks it integration.
 from __future__ import annotations
 
 import os
+from datetime import timedelta
 
 import django
 from django.apps import apps
@@ -39,11 +40,15 @@ if not apps.ready:
 from account_v2.models import Organization  # noqa: E402
 from django.db import connection  # noqa: E402
 from django.test import TestCase  # noqa: E402
+from django.test.utils import CaptureQueriesContext  # noqa: E402
 from django.utils import timezone  # noqa: E402
 from workflow_manager.file_execution.models import WorkflowFileExecution  # noqa: E402
 from workflow_manager.workflow_v2.enums import ExecutionStatus  # noqa: E402
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution  # noqa: E402
 from workflow_manager.workflow_v2.models.workflow import Workflow  # noqa: E402
+
+from dashboard_metrics.models import Granularity  # noqa: E402
+from dashboard_metrics.services import MetricsQueryService  # noqa: E402
 
 
 INDEX_NAME = "wfe_status_created_idx"
@@ -65,14 +70,12 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
             organization_id="wfe-idx-org", name="wfe-idx", display_name="WFE Idx"
         )
         workflow = Workflow.objects.create(workflow_name="wfe-idx-wf", organization=org)
+        cls.org_id = org.id
         execution = WorkflowExecution.objects.create(
             workflow_id=workflow.id, status=ExecutionStatus.COMPLETED
         )
 
         now = timezone.now()
-        # Ascending created_at so the heap matches production, where rows are
-        # appended as they happen; scattered, the planner's choice is a fixture
-        # artefact rather than anything about the query.
         rows = []
         for n in range(_ROWS):
             status = (
@@ -89,7 +92,10 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
             )
         WorkflowFileExecution.objects.bulk_create(rows, batch_size=1000)
 
-        # bulk_create cannot set auto_now_add columns, so spread them afterwards.
+        # bulk_create overwrites auto_now_add with now(), so spread the dates
+        # afterwards. Correlation is not pinned and does not need to be: the
+        # assertions below run under enable_seqscan = off, which asks whether the
+        # index CAN serve the predicate, not whether the planner picks it.
         # Scoped to this fixture's own execution: an unqualified UPDATE would rewrite
         # created_at for every row in whatever database this happens to run against.
         with connection.cursor() as cur:
@@ -124,6 +130,50 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
             f"status, so it is not serving the shape it was added for:\n{plan}"
         )
 
+    def _real_query_sql(self, query_method) -> str:
+        """The SQL the production metric query actually emits.
+
+        Taken from the query rather than rewritten here. A hand-copied predicate
+        keeps passing after the query changes, which is the one thing this file is
+        for — the sibling prefilter test says exactly that and does exactly this.
+        """
+        now = timezone.now()
+        with CaptureQueriesContext(connection) as captured:
+            query_method(
+                organization_id=str(self.org_id),
+                start_date=now - timedelta(days=2),
+                end_date=now,
+                granularity=Granularity.DAY,
+            )
+        sql = [
+            q["sql"]
+            for q in captured.captured_queries
+            if "workflow_file_execution" in q["sql"]
+        ]
+        assert sql, f"{query_method.__name__} did not read workflow_file_execution"
+        return sql[-1]
+
+    def test_get_documents_processed_still_filters_on_status(self) -> None:
+        """The pairing this index exists for.
+
+        Which side the planner drives from on a joined query is a cost-model
+        decision a synthetic fixture cannot pin, so this asserts the half that is
+        the actual regression: the query stops filtering on status and the index is
+        left built, valid and dead.
+        """
+        sql = self._real_query_sql(MetricsQueryService.get_documents_processed)
+        assert '"status"' in sql and "created_at" in sql, (
+            "get_documents_processed no longer constrains status and created_at "
+            f"together, so {INDEX_NAME} cannot serve it:\n{sql}"
+        )
+
+    def test_get_failed_pages_still_filters_on_status(self) -> None:
+        sql = self._real_query_sql(MetricsQueryService.get_failed_pages)
+        assert '"status"' in sql and "created_at" in sql, (
+            "get_failed_pages no longer constrains status and created_at together, "
+            f"so {INDEX_NAME} cannot serve it:\n{sql}"
+        )
+
     def test_the_index_serves_the_documents_processed_predicate(self) -> None:
         """status = COMPLETED plus a created_at window — get_documents_processed."""
         self._assert_status_leads_the_index_scan(ExecutionStatus.COMPLETED.value)
@@ -137,11 +187,12 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
         self._assert_status_leads_the_index_scan(ExecutionStatus.ERROR.value)
 
     def test_the_index_is_valid(self) -> None:
-        """UN-3972's acceptance criterion, which nothing else asserted.
+        """The index exists and is valid in the schema under test.
 
-        An interrupted CREATE INDEX CONCURRENTLY leaves an INVALID index that still
-        satisfies IF NOT EXISTS, so the migration can report success over one the
-        planner will never use.
+        Note what this does NOT cover: the suite runs under --no-migrations, so 0007
+        never executes and the index here comes from Meta.indexes, which cannot
+        produce an INVALID one. The migration's own DO $$ assertion is the guard for
+        that, and test_wfe_status_created_idx.py pins its presence.
         """
         with connection.cursor() as cur:
             cur.execute(

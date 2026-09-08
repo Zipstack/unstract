@@ -7,7 +7,7 @@ The current and previous month are recomputed from the daily tier by the aggrega
 task's daily/monthly pass, so inside that window this command's monthly output is
 overwritten and --skip-monthly is a no-op. --skip-daily is worse than useless there:
 monthly is rebuilt from a tier this run did not populate, producing an under-count.
-Backfill both, or neither.
+Never --skip-daily without --skip-monthly.
 
 Usage:
     python manage.py backfill_metrics --days=30

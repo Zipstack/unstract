@@ -135,18 +135,28 @@ class TestTheOldestBackfilledDayIsWhole(TestCase):
         WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
         WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
 
+    def _frozen(self):
+        """Mid-afternoon, so the untruncated boundary really does exclude hour 1.
+
+        Read from the real clock this test passed with the bug present whenever CI
+        ran before 01:30 UTC — the boundary was already earlier than the seeded row.
+        """
+        return self.now.replace(hour=15, minute=0, second=0, microsecond=0)
+
     def test_the_oldest_covered_day_counts_its_whole_day(self):
         """Two rows on the boundary day, one before the run's hour and one after.
 
         Untruncated, the earlier row falls outside the window and the oldest day is
         written short.
         """
-        self._seed(days_ago=2, hour=1)
-        self._seed(days_ago=2, hour=23)
+        frozen = self._frozen()
+        with patch("django.utils.timezone.now", return_value=frozen):
+            self.now = frozen
+            self._seed(days_ago=2, hour=1)
+            self._seed(days_ago=2, hour=23)
+            call_command("backfill_metrics", days=2, skip_hourly=True, skip_monthly=True)
 
-        call_command("backfill_metrics", days=2, skip_hourly=True, skip_monthly=True)
-
-        oldest_day = _truncate_to_day(self.now - timedelta(days=2)).date()
+        oldest_day = _truncate_to_day(frozen - timedelta(days=2)).date()
         row = EventMetricsDaily._base_manager.get(
             organization=self.org, date=oldest_day, metric_name="documents_processed"
         )

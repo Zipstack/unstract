@@ -118,23 +118,22 @@ def split_schedules(apps, schema_editor):
             # row and belong to converge_pg_scheduler; rewriting them here can leave
             # an adopted row with no firer. Its cadence does not change.
             #
-            # The counts are checked rather than discarded: a bulk update matching no
-            # row reports success having changed nothing, leaving the old row on
-            # kwargs="{}" — which defaults to every tier every 15 minutes — while the
-            # new hourly row also fires. Strictly more load than before, silently.
+            # A count of 0 means no row of that name exists — and a transport with
+            # no row fires nothing, so there is no old row left on kwargs="{}" to
+            # double up with the new one. Create it instead of aborting: raising
+            # here fails `migrate` for EVERY app, and recovery means hand-inserting
+            # a row into an operator-editable scheduler table.
             beat_updated = PeriodicTask.objects.filter(name=spec["name"]).update(
                 kwargs=json.dumps(kwargs), description=spec["description"]
             )
             pg_updated = PgPeriodicTask.objects.filter(name=spec["name"]).update(
                 task_kwargs=kwargs
             )
-            if not beat_updated or not pg_updated:
-                raise RuntimeError(
-                    f"{spec['name']}: expected a row on both schedulers to split, "
-                    f"found beat={beat_updated} pg={pg_updated}. Apply 0002 and 0004 "
-                    "first, or restore the row before re-running."
-                )
-            continue
+            if beat_updated and pg_updated:
+                continue
+            # A transport missing the row fires nothing, so there is nothing to
+            # double up with — fall through and create it, rather than aborting
+            # `migrate` for every app in the project.
 
         schedule, _ = CrontabSchedule.objects.get_or_create(
             minute=spec["crontab"]["minute"],

@@ -266,7 +266,15 @@ class TestDeclaredKwargsAreCallable:
         for name, row in declared.pg.items():
             task = self._TASKS.get(row["task_name"])
             assert task is not None, f"{name} schedules an unknown task"
-            inspect.signature(task).bind(**row["task_kwargs"])
+            named = {
+                q.name
+                for q in inspect.signature(task).parameters.values()
+                if q.kind is not inspect.Parameter.VAR_KEYWORD
+            }
+            unknown = set(row["task_kwargs"]) - named
+            # Named parameters only: `**_ignored` makes bind() accept anything, so
+            # binding the whole signature stopped catching a misspelled kwarg.
+            assert not unknown, f"{name} declares kwargs {task.__name__} does not read: {unknown}"
 
 
 class TestSeededInert:
@@ -498,16 +506,22 @@ class TestTheNewRowInheritsWhoeverFiresTheRowItSplitsFrom:
         assert split["beat"].created[_NEW_ROW]["enabled"] is False
         assert split["pg"].created[_NEW_ROW]["enabled"] is False
 
-    def test_a_missing_row_is_refused_rather_than_split(self) -> None:
-        """0006 raises rather than creating half a split.
+    def test_a_missing_row_is_created_rather_than_aborting_migrate(self) -> None:
+        """A transport with no row fires nothing, so there is nothing to double up
+        with — 0006 creates it instead of raising.
 
-        This previously asserted the opposite — that the new row lands Beat-enabled —
-        which the forward guard makes unreachable: it raises before any row is
-        created. The fake could not tell, because its update() reported a match for
-        a row that was not there.
+        Raising failed `migrate` for every app in the project, and recovery meant
+        hand-inserting a row into an operator-editable scheduler table. The hazard
+        the guard named (an old row left on kwargs="{}" firing alongside the new
+        one) cannot arise from the state that triggered it.
         """
-        with pytest.raises(RuntimeError, match="expected a row on both schedulers"):
-            _run_split(beat_row=None, pg_row=None, rows_present=0)
+        split = _run_split(beat_row=None, pg_row=None, rows_present=0)
+
+        assert _EXISTING_ROW in split["beat"].created
+        assert _EXISTING_ROW in split["pg"].created
+        assert json.loads(split["beat"].created[_EXISTING_ROW]["kwargs"]) == {
+            "tier": "hourly"
+        }
 
 
 class TestARunningBeatIsToldToReload:

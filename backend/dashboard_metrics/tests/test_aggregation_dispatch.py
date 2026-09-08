@@ -56,6 +56,20 @@ def _post(body: dict[str, Any]) -> tuple[int, Any]:
     return response.status_code, (task.call_args.kwargs if task.call_args else None)
 
 
+def _named_parameters(func) -> set[str]:
+    """Parameter names a task actually reads, excluding a **kwargs catch-all.
+
+    `signature.bind()` alone stopped being a guard the moment these tasks grew
+    `**_ignored`: it accepts any keyword, so a schedule row declaring a misspelled
+    kwarg binds cleanly and the run silently proceeds on defaults.
+    """
+    return {
+        p.name
+        for p in inspect.signature(func).parameters.values()
+        if p.kind is not inspect.Parameter.VAR_KEYWORD
+    }
+
+
 class TestThePgLegCarriesTheTier:
     """The endpoint the worker proxy POSTs to."""
 
@@ -128,9 +142,11 @@ class TestTheBeatLegCarriesTheTier:
         """A row declaring a kwarg the task does not accept fails at call time, inside
         the worker, where it surfaces as a retrying task rather than a bad schedule.
         """
-        signature = inspect.signature(aggregate_metrics_from_sources)
-        for kwargs in declared_kwargs.values():
-            signature.bind(**kwargs)
+        named = _named_parameters(aggregate_metrics_from_sources)
+        for row, kwargs in declared_kwargs.items():
+            unknown = set(kwargs) - named
+            assert not unknown, f"{row} declares kwargs the task does not read: {unknown}"
+
 
     def test_every_declared_tier_is_a_real_tier(
         self, declared_kwargs: dict[str, dict[str, Any]]

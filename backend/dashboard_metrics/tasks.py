@@ -38,6 +38,10 @@ logger = logging.getLogger(__name__)
 # unbatched bulk_create emits one statement whose size scales with tenant count.
 MONTHLY_ROLLUP_BATCH_SIZE = 1000
 
+# Cap on the under-count report: a fleet-wide daily loss would otherwise name every
+# (organization, month) pair in one log line and one JSON body.
+LOWERED_MONTHS_REPORT_LIMIT = 20
+
 # Retention periods for metrics cleanup
 DASHBOARD_HOURLY_METRICS_RETENTION_DAYS = 30
 DASHBOARD_DAILY_METRICS_RETENTION_DAYS = 365
@@ -233,17 +237,27 @@ def _months_the_rollup_would_lower(month_start: date) -> list[str]:
         .annotate(total=Sum("metric_value"))
         .values("total")[:1]
     )
+    # One conjunct, not two: SQL three-valued logic already drops a NULL new_total
+    # from `<`, and Django inlines the correlated subquery once per conjunct — so
+    # adding `new_total__isnull=False` doubles the per-row subplan executions and
+    # changes nothing. A month the daily tier no longer produces at all is left in
+    # place by the upsert, which is why NULL is not a lowering.
     lowered = (
         EventMetricsMonthly._base_manager.filter(month__gte=month_start)
         .annotate(new_total=new_total)
-        # A month the daily tier no longer produces at all is left in place by the
-        # upsert, so it is not a lowering — only a smaller total is.
-        .filter(new_total__isnull=False, new_total__lt=F("metric_value"))
+        .filter(new_total__lt=F("metric_value"))
         .values_list("organization_id", "month")
         .distinct()
-        .order_by("month", "organization_id")
+        .order_by("month", "organization_id")[: LOWERED_MONTHS_REPORT_LIMIT + 1]
     )
-    return [f"{month:%Y-%m} (org {org_id})" for org_id, month in lowered]
+    pairs = list(lowered)
+    names = [f"{month:%Y-%m} (org {org_id})" for org_id, month in pairs]
+    if len(names) > LOWERED_MONTHS_REPORT_LIMIT:
+        # Capped: a fleet-wide daily loss makes this one entry per tenant per month,
+        # which would be joined into a single log line and a JSON body.
+        names = names[:LOWERED_MONTHS_REPORT_LIMIT]
+        names.append(f"... and more (showing {LOWERED_MONTHS_REPORT_LIMIT})")
+    return names
 
 
 def _rollup_monthly_from_daily(month_start: date) -> int:
@@ -258,7 +272,7 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
     so a month the daily tier still covers *partially* is overwritten with the sum
     of the days present — a smaller number, not the previous total. That overwrite
     changes values without changing the row count, so it is reported rather than
-    left for a reader to notice: see _lowered_months.
+    left for a reader to notice: see _months_the_rollup_would_lower.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
@@ -377,11 +391,17 @@ def _acquire_aggregation_locks(lock_keys: list[str]) -> tuple[list[str], str]:
     """Take every key or none. Returns the keys taken and this run's owner token."""
     token = uuid4().hex
     taken: list[str] = []
-    for key in lock_keys:
-        if not _acquire_aggregation_lock(key, token):
-            _release_aggregation_locks(taken, token)
-            return [], token
-        taken.append(key)
+    try:
+        for key in lock_keys:
+            if not _acquire_aggregation_lock(key, token):
+                _release_aggregation_locks(taken, token)
+                return [], token
+            taken.append(key)
+    except Exception:
+        # A cache fault partway through would otherwise strand the keys already
+        # taken for the full TTL, blocking every tier this run was going to write.
+        _release_aggregation_locks(taken, token)
+        raise
     return taken, token
 
 
@@ -398,6 +418,11 @@ def _release_aggregation_locks(lock_keys: list[str], token: str) -> None:
 
     Without the ownership check, a run whose lock had already expired would delete
     whichever run took the key next, letting a third in immediately.
+
+    This narrows that window to one cache round trip rather than closing it: the
+    read and the delete are separate calls and Django's cache API has no
+    compare-and-delete. Bounded, because the writes on either side are idempotent
+    upserts — a compare-and-delete would need a Redis-specific Lua eval.
     """
     for key in lock_keys:
         try:
@@ -413,46 +438,23 @@ def _acquire_aggregation_lock(lock_key: str, token: str) -> bool:
     A crashed run (OOM kill, SIGKILL) is recovered by the key's own
     AGGREGATION_LOCK_TIMEOUT TTL, and that is the only recovery path.
 
-    A token-bearing lock is never reclaimed by age. Reading a value, judging it
-    stale and replacing it is not atomic — two runs can both read the same
-    timestamp, both delete and both add, the second wiping the first's fresh lock
-    while both believe they hold it. The age check cannot tell a live holder from a
-    dead one anyway, since it compares a local clock against another worker's.
+    Never reclaimed by age. Reading a value, judging it stale and replacing it is
+    not atomic — two runs can both read the same timestamp, both delete and both
+    add, the second wiping the first's fresh lock while both believe they hold it.
+    The age check could not tell a live holder from a dead one anyway, since it
+    compares a local clock against another worker's.
 
-    The age check survives for values predating tokens only, which is what it was
-    written for: those may have been set without a TTL, so nothing else clears them.
-    A fresh one still blocks, so a rolling deploy does not steal a lock from an old
-    pod that is still working.
+    Exclusion does not span the key format. These keys are new in this release, so
+    a run on the previous image holds a different key and neither blocks the other;
+    the overlap is bounded by the rollout.
 
     Returns:
         True if the lock was acquired, False if another run is legitimately active.
     """
-    value = f"{token}:{time.time()}"
-    if cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT):
+    if cache.add(lock_key, f"{token}:{time.time()}", AGGREGATION_LOCK_TIMEOUT):
         return True
-
-    held = cache.get(lock_key)
-    if held is None:
-        # Expired between the add and the read.
-        return cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT)
-    if _lock_owner(lock_key) is not None:
-        return False
-
-    try:
-        age = time.time() - float(held)
-    except (TypeError, ValueError):
-        logger.warning("Reclaiming aggregation lock with invalid value: %s", held)
-    else:
-        if age <= AGGREGATION_LOCK_TIMEOUT:
-            return False
-        logger.warning(
-            "Reclaiming stale pre-token aggregation lock (age=%.0fs, timeout=%ds)",
-            age,
-            AGGREGATION_LOCK_TIMEOUT,
-        )
-
-    cache.delete(lock_key)
-    return cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT)
+    # Anything already here belongs to a run this code did not start.
+    return False
 
 
 @shared_task(
@@ -472,8 +474,8 @@ def aggregate_metrics_from_sources(
     """Aggregate source tables into the hourly, daily and monthly tiers.
 
     Three schedules call this: the hourly tier every 15 minutes, the daily and
-    monthly tiers hourly at :20, and a once-daily reconciliation pass over every
-    tier at a wider window. Hourly covers the last 24h, daily the source window,
+    monthly tiers hourly at :20, and a once-daily reconciliation pass over the
+    daily and monthly tiers at a wider window. Hourly covers the last 24h, daily the source window,
     monthly is rolled up from daily.
 
     Args:
@@ -483,10 +485,12 @@ def aggregate_metrics_from_sources(
         source_window_days: Daily-tier source lookback. The reconciliation pass
             reruns this task at DASHBOARD_RECONCILE_WINDOW_DAYS to repair gaps
             after downtime.
-        _ignored: Unknown kwargs are accepted, not rejected, so a rolling deploy —
-            migration from the new image, workerMetrics pods still on the old one —
-            does not turn every tick into a TypeError. Dropped keys are logged,
-            because the same tolerance would otherwise hide a mistyped schedule row.
+        _ignored: Unknown kwargs are accepted rather than rejected. This does NOT
+            protect the deploy that introduces a kwarg — a pod on the previous image
+            has the old signature and still raises TypeError; that window is bounded
+            by the rollout. What it buys is that a LATER release may add a kwarg to a
+            schedule row without breaking pods still running this one. Dropped keys
+            are logged, because the same tolerance would otherwise hide a typo.
 
     Returns:
         Dict with aggregation summary for the tiers that ran
@@ -809,8 +813,12 @@ def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
         # Before the upsert, while the stored value is still the old one.
         lowered = _months_the_rollup_would_lower(monthly_start)
     except Exception:
+        # `[]` alone would be indistinguishable from "checked, nothing lowered", and
+        # the backend's log is in a different process from the consumer that watches
+        # this schedule — so the payload has to carry the unknown, not just the log.
         logger.exception("Could not check whether the rollup lowers monthly totals")
         lowered = []
+        stats["monthly"]["lowered_check"] = "unavailable"
 
     try:
         stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
@@ -884,8 +892,14 @@ def _run_aggregation(
     # A tier with orgs to process, no error and nothing written is the regression
     # signature of narrowing the source window. Raised here rather than only in the
     # worker proxy, which the Celery transport never loads.
+    #
+    # Daily/monthly only. The prefilter shortlists orgs active in the last
+    # DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS days while the hourly tier queries 24h, so an
+    # org quiet for 2-7 days is shortlisted and contributes nothing — on the */15 row
+    # that would warn 96 times a day about a healthy weekend.
     wrote_nothing = (
-        active_org_ids
+        _writes_daily_monthly(tier)
+        and active_org_ids
         and not stats["errors"]
         and not any(
             stats[granularity]["upserted"]

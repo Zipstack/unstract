@@ -22,6 +22,7 @@ from django.db import migrations
 from django.utils import timezone
 
 RECONCILE_TASK_NAME = "dashboard_metrics_reconcile_source_window"
+EXISTING_AGGREGATE_ROW = "dashboard_metrics_aggregate_from_sources"
 RECONCILE_DESCRIPTION = (
     "Re-aggregate metrics over a 7 day source window to repair "
     "daily-tier gaps left by cron downtime"
@@ -50,11 +51,30 @@ PG_PERIODIC_TASKS = [
 ]
 
 
+def _inherited_ownership(periodic_task_model, pg_periodic_task_model):
+    """Which scheduler fires the existing aggregation row, so this one matches.
+
+    Hardcoding Beat would land the reconciliation pass with no firer wherever the
+    metrics periodics are already PG-adopted: the adopted row's Beat twin is
+    disabled and Beat may not be running at all. 0006 makes the same inference for
+    the row it adds; this pass is the only automatic repair for the narrowed source
+    window, so it is the worse one to strand.
+    """
+    beat = periodic_task_model.objects.filter(name=EXISTING_AGGREGATE_ROW).first()
+    pg = pg_periodic_task_model.objects.filter(name=EXISTING_AGGREGATE_ROW).first()
+    return {
+        "beat_enabled": True if beat is None else beat.enabled,
+        "pg_enabled": True if pg is None else pg.enabled,
+        "pg_owned": False if pg is None else pg.pg_owned,
+    }
+
+
 def create_reconciliation_task(apps, schema_editor):
     """Create the once-daily reconciliation periodic task on both transports."""
     crontab_model = apps.get_model("django_celery_beat", "CrontabSchedule")
     periodic_task_model = apps.get_model("django_celery_beat", "PeriodicTask")
     pg_periodic_task_model = apps.get_model("pg_queue", "PgPeriodicTask")
+    owner = _inherited_ownership(periodic_task_model, pg_periodic_task_model)
 
     schedule_4am, _ = crontab_model.objects.get_or_create(
         minute="40",
@@ -73,7 +93,7 @@ def create_reconciliation_task(apps, schema_editor):
                 "crontab": schedule_4am,
                 "queue": spec["queue"],
                 "kwargs": json.dumps(spec["task_kwargs"]),
-                "enabled": True,
+                "enabled": owner["beat_enabled"],
                 "description": RECONCILE_DESCRIPTION,
             },
         )
@@ -86,9 +106,9 @@ def create_reconciliation_task(apps, schema_editor):
                 "task_kwargs": spec["task_kwargs"],
                 "cron_string": spec["cron_string"],
                 "org_id": "",
-                "enabled": True,
-                # Inert until the rollout flag decides otherwise.
-                "pg_owned": False,
+                "enabled": owner["pg_enabled"],
+                # Inherited, not hardcoded: see _inherited_ownership.
+                "pg_owned": owner["pg_owned"],
             },
         )
 

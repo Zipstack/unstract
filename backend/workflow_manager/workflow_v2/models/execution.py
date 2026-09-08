@@ -272,8 +272,9 @@ class WorkflowExecution(BaseModel):
                     queue_message_id__isnull=True,
                 ),
             ),
-            # Bare created_at range scans, which no index above serves: none of them
-            # is keyed on created_at alone. See migration 0029.
+            # Bare created_at range scans, which no index above serves: the two that
+            # are keyed on created_at are partial, so neither covers the full range.
+            # See migration 0029.
             models.Index(fields=["created_at"], name="we_created_at_idx"),
         ]
 

@@ -35,7 +35,7 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 ```bash
 # Backfill historical data (run first!)
 # Before deploying this change, use the deploy-critical form instead — see
-# "Deploy Steps": backfill_metrics --days 62 --skip-hourly --skip-monthly
+# "Why 62 days": backfill_metrics --days 62 --skip-hourly --skip-monthly
 python manage.py backfill_metrics --days=30
 
 # Start metrics worker
@@ -50,7 +50,7 @@ celery -A backend beat -l info
 |------|----------|--------------|
 | `aggregate_from_sources` | Every 15 min | Aggregates source → **hourly tier only** (`tier=hourly`) |
 | `aggregate_from_sources` (daily+monthly) | Hourly at :20 | Aggregates source → daily; rolls monthly up from daily (`tier=daily_monthly`) |
-| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | All tiers over a 7-day source window, to repair gaps after downtime |
+| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | Daily + monthly tiers over a 7-day source window, to repair gaps after downtime |
 | `cleanup_hourly_data` | Daily 2 AM | Deletes hourly data > 30 days |
 | `cleanup_daily_data` | Weekly Sun 3 AM | Deletes daily data > 365 days |
 
@@ -347,7 +347,7 @@ Located in `tasks.py`:
 |-----------|-------------|----------|-------|---------|
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate the hourly tier (`tier=hourly`) |
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Hourly at :20 UTC | `dashboard_metric_events` | Aggregate the daily and monthly tiers (`tier=daily_monthly`) |
-| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, all tiers, `source_window_days=7` |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, daily + monthly tiers, `source_window_days=7` |
 | `cleanup_hourly_metrics` | `dashboard_metrics.cleanup_hourly_data` | Daily 2:00 AM UTC | `dashboard_metric_events` | Delete hourly data >30 days |
 | `cleanup_daily_metrics` | `dashboard_metrics.cleanup_daily_data` | Weekly Sun 3:00 AM UTC | `dashboard_metric_events` | Delete daily data >365 days |
 
@@ -423,9 +423,26 @@ image *before* the image reverts, which reverses both migrations together. A
 platform-driven rollback (an ArgoCD revision revert, an image tag pin) skips that by
 construction, so treat this release as blocking automated rollback.
 
-The forward direction is self-healing: this release's task accepts unknown kwargs, so a
-pod still on the old image during a rolling deploy is the only exposure, bounded by the
-rollout.
+**If the rollback already happened without that step**, the migration is gone with the
+image and `migrate dashboard_metrics 0004` has nothing to apply. The rows still carry
+kwargs the restored signatures reject, so all three tiers stop on both transports with
+no self-heal. Recovery is by hand, against both scheduler tables:
+
+```sql
+DELETE FROM django_celery_beat_periodictask
+ WHERE name IN ('dashboard_metrics_reconcile_source_window',
+                'dashboard_metrics_aggregate_daily_monthly');
+UPDATE django_celery_beat_periodictask SET kwargs = '{}'
+ WHERE name = 'dashboard_metrics_aggregate_from_sources';
+UPDATE django_celery_beat_periodictasks SET last_update = now() WHERE ident = 1;
+```
+
+and the same three against `pg_periodic_task` (`task_kwargs = '{}'::jsonb`).
+
+The forward direction is bounded rather than self-healing: a pod still on the old image
+during a rolling deploy has the old signature and raises `TypeError` per tick until the
+rollout completes. The `**_ignored` in this release does not help those pods — it is
+what lets a *later* release add a kwarg without breaking pods running this one.
 
 ### Why 62 days
 
