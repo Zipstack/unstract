@@ -16,6 +16,8 @@ reversing this migration too, **before** the image rolls back — ``migrate
 dashboard_metrics 0004``, which reverses 0006 and this one together.
 """
 
+import json
+
 from django.db import migrations
 from django.utils import timezone
 
@@ -32,7 +34,12 @@ PG_PERIODIC_TASKS = [
         "task_name": "dashboard_metrics.aggregate_from_sources",
         "queue": "dashboard_metric_events",
         "task_args": [],
-        "task_kwargs": {"source_window_days": 7},
+        # Scoped to the tier it repairs. Without a tier this runs ALL, and its
+        # hourly half is pure duplicated work — the hourly tier always covers the
+        # last 24h regardless of source_window_days — while being the only thing
+        # that writes event_metrics_hourly concurrently with the */15 run, whose
+        # per-tier lock is deliberately unable to block it.
+        "task_kwargs": {"source_window_days": 7, "tier": "daily_monthly"},
         # Beat: CrontabSchedule(minute=40, hour=4, every day) UTC — clear of the
         # 2:00 and 3:00 cleanup tasks, and off the aggregation's */15 grid
         # (:00 :15 :30 :45). That separates the starts on the PG scheduler only:
@@ -65,7 +72,7 @@ def create_reconciliation_task(apps, schema_editor):
                 "task": spec["task_name"],
                 "crontab": schedule_4am,
                 "queue": spec["queue"],
-                "kwargs": '{"source_window_days": 7}',
+                "kwargs": json.dumps(spec["task_kwargs"]),
                 "enabled": True,
                 "description": RECONCILE_DESCRIPTION,
             },

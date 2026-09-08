@@ -11,6 +11,7 @@ import time
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
+from uuid import uuid4
 
 from account_v2.models import Organization
 from celery import shared_task
@@ -50,10 +51,12 @@ DASHBOARD_SOURCE_WINDOW_DAYS = 2
 # in the schedule row's kwargs — editing this constant does not move the schedule.
 DASHBOARD_RECONCILE_WINDOW_DAYS = 7
 
-# Floor on the prefilter lookback: metrics keyed on another column (e.g.
-# approved_at) can land for an org whose executions are older. _active_org_ids
-# takes the wider of this and the run's own window, so the prefilter is never
-# narrower than what is being queried.
+# Floor on the prefilter lookback. _active_org_ids takes the wider of this and the
+# run's own window, so a widened source_window_days is never prefiltered back down.
+# It does NOT rescue a metric keyed on another column: get_hitl_completions windows
+# on approved_at, so an org approving today with no execution inside the floor is
+# still absent from the run. Widening a created_at lookback cannot reach it — only
+# unioning the shortlist with those orgs would.
 DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS = 7
 
 
@@ -364,62 +367,86 @@ def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> li
     ]
 
 
-def _acquire_aggregation_locks(lock_keys: list[str]) -> list[str]:
-    """Take every key or none; returns the keys taken, empty if the run must skip."""
+def _acquire_aggregation_locks(lock_keys: list[str]) -> tuple[list[str], str]:
+    """Take every key or none. Returns the keys taken and this run's owner token."""
+    token = uuid4().hex
     taken: list[str] = []
     for key in lock_keys:
-        if not _acquire_aggregation_lock(key):
-            for held in taken:
-                cache.delete(held)
-            return []
+        if not _acquire_aggregation_lock(key, token):
+            _release_aggregation_locks(taken, token)
+            return [], token
         taken.append(key)
-    return taken
+    return taken, token
 
 
-def _acquire_aggregation_lock(lock_key: str) -> bool:
-    """Acquire the distributed aggregation lock with self-healing.
+def _lock_owner(lock_key: str) -> str | None:
+    """The token holding a lock, or None if it is free or holds a legacy value."""
+    value = cache.get(lock_key)
+    if isinstance(value, str) and ":" in value:
+        return value.split(":", 1)[0]
+    return None
 
-    Stores a Unix timestamp as the lock value. A crashed run (OOM kill, SIGKILL)
-    is recovered by the key's own AGGREGATION_LOCK_TIMEOUT TTL. The age check below
-    is a belt-and-braces path for a value written without that TTL; it is not what
-    recovers the ordinary crash, and it does not help under clock skew — the age is
-    a local clock read minus another worker's, so a reader running ahead computes an
-    inflated age and can reclaim a lock whose holder is still working.
+
+def _release_aggregation_locks(lock_keys: list[str], token: str) -> None:
+    """Release only the keys this run still owns.
+
+    Without the ownership check, a run whose lock had already expired would delete
+    whichever run took the key next, letting a third in immediately.
+    """
+    for key in lock_keys:
+        try:
+            if _lock_owner(key) == token:
+                cache.delete(key)
+        except Exception:
+            logger.exception("Failed to release aggregation lock %s", key)
+
+
+def _acquire_aggregation_lock(lock_key: str, token: str) -> bool:
+    """Acquire one aggregation lock, storing this run's token with the timestamp.
+
+    A crashed run (OOM kill, SIGKILL) is recovered by the key's own
+    AGGREGATION_LOCK_TIMEOUT TTL, and that is the only recovery path.
+
+    A token-bearing lock is never reclaimed by age. Reading a value, judging it
+    stale and replacing it is not atomic — two runs can both read the same
+    timestamp, both delete and both add, the second wiping the first's fresh lock
+    while both believe they hold it. The age check cannot tell a live holder from a
+    dead one anyway, since it compares a local clock against another worker's.
+
+    The age check survives for values predating tokens only, which is what it was
+    written for: those may have been set without a TTL, so nothing else clears them.
+    A fresh one still blocks, so a rolling deploy does not steal a lock from an old
+    pod that is still working.
 
     Returns:
-        True if lock was acquired, False if another run is legitimately active.
+        True if the lock was acquired, False if another run is legitimately active.
     """
-    now = time.time()
-
-    # Fast path: lock is free
-    if cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT):
+    value = f"{token}:{time.time()}"
+    if cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT):
         return True
 
-    # Lock exists — check if it's stale (previous run died without releasing)
-    lock_value = cache.get(lock_key)
-    if lock_value is None:
-        # Expired between our check and get — lock is now free, try to acquire it
-        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
+    held = cache.get(lock_key)
+    if held is None:
+        # Expired between the add and the read.
+        return cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT)
+    if _lock_owner(lock_key) is not None:
+        return False
 
     try:
-        lock_time = float(lock_value)
+        age = time.time() - float(held)
     except (TypeError, ValueError):
-        # Corrupted value (e.g. old "running" string) — reclaim it
-        logger.warning("Reclaiming aggregation lock with invalid value: %s", lock_value)
-        cache.delete(lock_key)
-        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
-
-    age = now - lock_time
-    if age > AGGREGATION_LOCK_TIMEOUT:
+        logger.warning("Reclaiming aggregation lock with invalid value: %s", held)
+    else:
+        if age <= AGGREGATION_LOCK_TIMEOUT:
+            return False
         logger.warning(
-            "Reclaiming stale aggregation lock (age=%.0fs, timeout=%ds)",
+            "Reclaiming stale pre-token aggregation lock (age=%.0fs, timeout=%ds)",
             age,
             AGGREGATION_LOCK_TIMEOUT,
         )
-        cache.delete(lock_key)
-        return cache.add(lock_key, str(now), AGGREGATION_LOCK_TIMEOUT)
 
-    return False
+    cache.delete(lock_key)
+    return cache.add(lock_key, value, AGGREGATION_LOCK_TIMEOUT)
 
 
 @shared_task(
@@ -471,7 +498,7 @@ def aggregate_metrics_from_sources(
     source_window_days = _validate_source_window(source_window_days)
     lock_keys = _aggregation_lock_keys(tier, source_window_days)
 
-    held = _acquire_aggregation_locks(lock_keys)
+    held, token = _acquire_aggregation_locks(lock_keys)
     if not held:
         logger.warning(
             "Skipping the %s aggregation over %d day(s) — another run writing the "
@@ -493,11 +520,7 @@ def aggregate_metrics_from_sources(
         # Isolated per key: a raise here would replace the run's return value, reporting
         # a completed aggregation as a hard failure, and would strand the keys after it.
         # The TTL bounds whatever is not released.
-        for key in held:
-            try:
-                cache.delete(key)
-            except Exception:
-                logger.exception("Failed to release aggregation lock %s", key)
+        _release_aggregation_locks(held, token)
 
 
 def _aggregate_single_metric(
@@ -728,9 +751,9 @@ def _build_result(
     """Shape the task's return value from the accumulated stats."""
     result = {
         "tier": tier.value,
-        # Not a literal: every metric for every org can fail while each exception is
-        # caught per-metric, and the run would otherwise report 200 / success with
-        # zero rows written and the dashboard frozen.
+        # Reported, not enforced: _run answers 200 for any dict, so this does not
+        # fail the call. `errors` is what the worker alerts on and what switches the
+        # completion line to WARNING.
         "success": stats["errors"] == 0,
         "organizations_processed": stats["orgs_processed"],
         "hourly": stats["hourly"],

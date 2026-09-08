@@ -610,7 +610,8 @@ class TestMonthlyThroughTheTask(TestCase):
         self.org = Organization.objects.create(
             organization_id="entry-org", name="entry-org", display_name="Entry Org"
         )
-        now = timezone.now()
+        self.now = timezone.now()
+        now = self.now
         self.this_month = _truncate_to_month(now).date()
         self.last_month = _truncate_to_month(
             _truncate_to_month(now) - timedelta(days=1)
@@ -644,10 +645,13 @@ class TestMonthlyThroughTheTask(TestCase):
         )
 
     def _run(self, **kwargs):
+        # setUp derives this_month/last_month from one clock reading; the run must
+        # use the same one, or a run straddling a month boundary fails on the 1st.
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [self.org.id]
-            return _run_aggregation(**kwargs)
+            with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
+                return _run_aggregation(**kwargs)
 
     def test_the_window_covers_the_previous_month_and_spares_what_precedes_it(self):
         """monthly_start is the first of the *previous* month, and the sweep stops there."""
@@ -712,7 +716,10 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         # Offsets are derived from the month boundary, never fixed day counts: on the
         # 25th of a month a hardcoded "25 days ago" lands in the current month and the
         # cross-boundary coverage silently disappears.
-        now = timezone.now()
+        # One clock reading for setUp, _seed and the run: three separate ones put
+        # the seeds and the window in different months across a boundary.
+        self.now = timezone.now()
+        now = self.now
         first_of_this_month = _truncate_to_month(now)
         self.days_to_last_month_end = (now - first_of_this_month).days + 1
         self.days_to_last_month_start = (
@@ -721,7 +728,7 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
 
     def _seed(self, days_ago: int, count: int) -> None:
         """Seed `count` completed file executions dated `days_ago`."""
-        stamp = timezone.now() - timedelta(days=days_ago)
+        stamp = self.now - timedelta(days=days_ago)
         for n in range(count):
             execution = WorkflowExecution.objects.create(
                 workflow=self.workflow, status=ExecutionStatus.COMPLETED
@@ -767,9 +774,10 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [self.org.id]
-            result = _run_aggregation(
-                source_window_days=self.days_to_last_month_start + 1
-            )
+            with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
+                result = _run_aggregation(
+                    source_window_days=self.days_to_last_month_start + 1
+                )
 
         monthly_start = date.fromisoformat(result["period"]["monthly"]["start"])
         end_date = datetime.fromisoformat(result["period"]["monthly"]["end"])
@@ -797,9 +805,10 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [self.org.id]
-            result = _run_aggregation(
-                source_window_days=self.days_to_last_month_start + 1
-            )
+            with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
+                result = _run_aggregation(
+                    source_window_days=self.days_to_last_month_start + 1
+                )
 
         monthly_start = date.fromisoformat(result["period"]["monthly"]["start"])
         end_date = datetime.fromisoformat(result["period"]["monthly"]["end"])
@@ -810,7 +819,7 @@ class TestMonthlyMatchesTheOldDerivation(TestCase):
         assert self._written() == expected
 
         last_month_day = (
-            timezone.now() - timedelta(days=self.days_to_last_month_end)
+            self.now - timedelta(days=self.days_to_last_month_end)
         ).date()
         corrupted = EventMetricsDaily._base_manager.filter(
             date=last_month_day, metric_name="documents_processed"
@@ -858,21 +867,21 @@ class TestTheLockIsPerSchedule(TestCase):
         )
 
     def test_a_held_key_does_not_block_the_other_schedule(self):
-        assert _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))
+        assert _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))[0]
         # Same schedule: excluded, which is what the lock is for.
-        assert not _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))
+        assert not _acquire_aggregation_locks(self._keys(DASHBOARD_SOURCE_WINDOW_DAYS))[0]
         # The reconciliation pass proceeds regardless.
-        assert _acquire_aggregation_locks(self._keys(DASHBOARD_RECONCILE_WINDOW_DAYS))
+        assert _acquire_aggregation_locks(self._keys(DASHBOARD_RECONCILE_WINDOW_DAYS))[0]
 
     def test_a_stale_lock_is_reclaimed(self):
         key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
         cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
-        assert _acquire_aggregation_lock(key)
+        assert _acquire_aggregation_lock(key, "tok")
 
     def test_a_corrupted_lock_value_is_reclaimed(self):
         key = self._keys(DASHBOARD_SOURCE_WINDOW_DAYS)[0]
         cache.set(key, "running", 3600)
-        assert _acquire_aggregation_lock(key)
+        assert _acquire_aggregation_lock(key, "tok")
 
 
 class TestSourceWindowValidation(TestCase):
@@ -905,20 +914,27 @@ class TestSourceWindow(TestCase):
         self.org = Organization.objects.create(
             organization_id="window-org", name="window-org", display_name="Window Org"
         )
+        self.now = timezone.now()
 
     def _run_with_active_org(self, **kwargs):
-        """Run aggregation with the active-org prefilter stubbed to the fixture org."""
+        """Run aggregation with the active-org prefilter stubbed to the fixture org.
+
+        The clock is frozen to self.now so the run and the test's own expectation
+        derive from one reading. Unpinned, a run straddling midnight UTC truncates
+        to two different days and the assertion fails on no code change.
+        """
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [self.org.id]
-            return _run_aggregation(**kwargs)
+            with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
+                return _run_aggregation(**kwargs)
 
     def test_default_window_bounds_the_daily_query(self):
         """The per-run daily window is DASHBOARD_SOURCE_WINDOW_DAYS wide."""
         result = self._run_with_active_org()
 
         expected = _truncate_to_day(
-            timezone.now() - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
+            self.now - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
         )
         assert result["period"]["daily"]["start"] == expected.isoformat()
 
@@ -929,7 +945,7 @@ class TestSourceWindow(TestCase):
         )
 
         expected = _truncate_to_day(
-            timezone.now() - timedelta(days=DASHBOARD_RECONCILE_WINDOW_DAYS)
+            self.now - timedelta(days=DASHBOARD_RECONCILE_WINDOW_DAYS)
         )
         assert result["period"]["daily"]["start"] == expected.isoformat()
 
@@ -1055,8 +1071,12 @@ class TestReconciliationSchedule(TestCase):
         assert task.task == "dashboard_metrics.aggregate_from_sources"
         assert task.enabled
         assert task.queue == "dashboard_metric_events"
+        # The tier is part of the row: without it the pass runs ALL, and its hourly
+        # half both duplicates the */15 run's work and is the only thing writing
+        # event_metrics_hourly concurrently with it.
         assert json.loads(task.kwargs) == {
-            "source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS
+            "source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS,
+            "tier": "daily_monthly",
         }
         assert (task.crontab.hour, task.crontab.minute) == ("4", "40")
 
@@ -1068,7 +1088,10 @@ class TestReconciliationSchedule(TestCase):
         assert row.task_name == "dashboard_metrics.aggregate_from_sources"
         assert row.queue == "dashboard_metric_events"
         assert row.cron_string == "40 4 * * *"
-        assert row.task_kwargs == {"source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS}
+        assert row.task_kwargs == {
+            "source_window_days": DASHBOARD_RECONCILE_WINDOW_DAYS,
+            "tier": "daily_monthly",
+        }
         assert row.enabled
         # Inert until the rollout flag decides otherwise.
         assert not row.pg_owned

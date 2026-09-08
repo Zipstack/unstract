@@ -147,17 +147,17 @@ class TestTheLockCoversWhatIsWritten:
             cache.clear()
 
     def test_the_two_scheduled_tiers_never_block_each_other(self) -> None:
-        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
-        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))[0]
+        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))[0]
 
     def test_a_tier_blocks_itself(self) -> None:
-        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
-        assert not _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))[0]
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))[0]
 
     def test_all_is_blocked_by_either_half(self) -> None:
         """The exclusion a per-member key silently dropped."""
-        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
-        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))[0]
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))[0]
 
     def test_a_blocked_run_releases_whatever_it_took(self) -> None:
         """Keys are taken in sorted order, so ALL takes daily_monthly first.
@@ -165,20 +165,21 @@ class TestTheLockCoversWhatIsWritten:
         Holding hourly is what makes ALL fail on its *second* key, with the first
         already taken — the only ordering that exercises the rollback.
         """
-        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))
-        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))
-        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY))[0]
+        assert not _acquire_aggregation_locks(_keys(AggregationTier.ALL))[0]
+        assert _acquire_aggregation_locks(_keys(AggregationTier.DAILY_MONTHLY))[0]
 
     def test_a_wider_window_is_a_different_job(self) -> None:
         """The reconciliation pass is never retried, so it must not be starved by the
         15-minute schedule it races against.
         """
-        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY, 2))
-        assert _acquire_aggregation_locks(_keys(AggregationTier.ALL, 7))
+        assert _acquire_aggregation_locks(_keys(AggregationTier.HOURLY, 2))[0]
+        assert _acquire_aggregation_locks(_keys(AggregationTier.ALL, 7))[0]
 
 
 class TestTheLockSelfHeals:
-    """Both reclaim branches, neither of which was executed by any test."""
+    """Both reclaim branches. They apply to pre-token values only: a lock this
+    code wrote carries an owner and is recovered by its TTL, never by age."""
 
     @pytest.fixture(autouse=True)
     def _clear(self):
@@ -190,14 +191,14 @@ class TestTheLockSelfHeals:
     def test_a_lock_older_than_the_timeout_is_reclaimed(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]
         cache.set(key, str(time.time() - AGGREGATION_LOCK_TIMEOUT - 1), 3600)
-        assert _acquire_aggregation_lock(key)
+        assert _acquire_aggregation_lock(key, "tok")
 
     def test_a_fresh_lock_is_not_reclaimed(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]
         cache.set(key, str(time.time()), 3600)
-        assert not _acquire_aggregation_lock(key)
+        assert not _acquire_aggregation_lock(key, "tok")
 
     def test_a_corrupted_lock_value_is_reclaimed(self) -> None:
         key = _keys(AggregationTier.HOURLY)[0]
         cache.set(key, "running", 3600)
-        assert _acquire_aggregation_lock(key)
+        assert _acquire_aggregation_lock(key, "tok")

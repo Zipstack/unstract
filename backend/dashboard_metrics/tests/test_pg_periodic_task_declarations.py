@@ -59,7 +59,8 @@ _EXPECTED_CRON = {
     "dashboard_metrics_cleanup_hourly": "0 2 * * *",
     "dashboard_metrics_cleanup_daily": "0 3 * * 0",
     "dashboard_metrics_reconcile_source_window": "40 4 * * *",
-    # Added by 0006; off the */15 grid so it never starts alongside the hourly tier.
+    # Added by 0006; off the */15 grid, which separates the starts on the PG
+    # scheduler — the Beat twin is an IntervalSchedule whose phase drifts.
     "dashboard_metrics_aggregate_daily_monthly": "20 * * * *",
 }
 
@@ -316,11 +317,22 @@ class _SplitRecorder:
         return self
 
     def first(self) -> Any:
-        return self._existing
+        # Honours the filter, as a real queryset does. Returning _existing
+        # unconditionally made every ownership-inheritance assertion pass even when
+        # the migration filtered on the wrong name — the row it reads does not exist
+        # when 0006 runs, so a real database would return None and fall back to Beat.
+        if self._existing is None:
+            return None
+        return self._existing if self._filtered_on == _EXISTING_ROW else None
 
     def update(self, **kwargs: Any) -> int:
-        self.updated[self._filtered_on] = kwargs
-        return 1 if self.rows_present is None else self.rows_present
+        # A filtered update that matches nothing returns 0 and writes nothing; it
+        # never creates the row. Reporting 1 regardless made 0006's forward guard
+        # unreachable in test, while its mirror in the reverse direction was covered.
+        matched = 1 if self.rows_present is None else self.rows_present
+        if matched:
+            self.updated[self._filtered_on] = kwargs
+        return matched
 
     def update_or_create(
         self, name: str = "", defaults: dict[str, Any] | None = None, **_kw: Any
@@ -339,11 +351,19 @@ class _SplitRecorder:
         return (len(self.deleted), {})
 
 
-def _run_split(beat_row: Any = None, pg_row: Any = None) -> dict[str, _SplitRecorder]:
-    """Run 0006's forward function against fakes and capture every table it writes."""
+def _run_split(
+    beat_row: Any = None, pg_row: Any = None, rows_present: int | None = None
+) -> dict[str, _SplitRecorder]:
+    """Run 0006's forward function against fakes and capture every table it writes.
+
+    ``rows_present=0`` models the row 0006 splits being absent, which is the case
+    its forward guard exists to refuse rather than report as success.
+    """
     mod = importlib.import_module(_SPLIT_MIGRATION)
     beat = _SplitRecorder(existing=beat_row)
     pg = _SplitRecorder(existing=pg_row)
+    beat.rows_present = rows_present
+    pg.rows_present = rows_present
     crontab, tracker = _SplitRecorder(), _SplitRecorder()
 
     class _Apps:
@@ -478,11 +498,16 @@ class TestTheNewRowInheritsWhoeverFiresTheRowItSplitsFrom:
         assert split["beat"].created[_NEW_ROW]["enabled"] is False
         assert split["pg"].created[_NEW_ROW]["enabled"] is False
 
-    def test_a_missing_row_falls_back_to_beat(self) -> None:
-        """A fresh install applies 0002/0004 first, so this is defensive only."""
-        split = _run_split(beat_row=None, pg_row=None)
-        assert split["beat"].created[_NEW_ROW]["enabled"] is True
-        assert split["pg"].created[_NEW_ROW]["pg_owned"] is False
+    def test_a_missing_row_is_refused_rather_than_split(self) -> None:
+        """0006 raises rather than creating half a split.
+
+        This previously asserted the opposite — that the new row lands Beat-enabled —
+        which the forward guard makes unreachable: it raises before any row is
+        created. The fake could not tell, because its update() reported a match for
+        a row that was not there.
+        """
+        with pytest.raises(RuntimeError, match="expected a row on both schedulers"):
+            _run_split(beat_row=None, pg_row=None, rows_present=0)
 
 
 class TestARunningBeatIsToldToReload:
