@@ -68,7 +68,13 @@ AGGREGATION_SCHEDULES = [
         "tier": TIER_DAILY_MONTHLY,
         # Off the */15 grid (:00 :15 :30 :45): the per-tier locks are built so the
         # two runs cannot block each other, so a shared minute means two full
-        # prefilter scans and two per-org loops at once. Same cadence, no overlap.
+        # prefilter scans and two per-org loops at once.
+        #
+        # This separates the two starts on the PG scheduler, which evaluates
+        # cron_string against the wall clock. It does NOT on Beat, where 0002 gave
+        # the row an IntervalSchedule: that fires at last_run_at + 15min, so its
+        # phase is wherever the previous run landed and re-anchors on restart.
+        # Serialising the Celery path is the consumer's concurrency, not this.
         "cron_string": "20 * * * *",
         "crontab": {"minute": "20", "hour": "*"},
         "description": (

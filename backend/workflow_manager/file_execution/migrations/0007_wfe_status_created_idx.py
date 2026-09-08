@@ -3,7 +3,7 @@
 The dashboard metrics cron filters this table on status and a created_at window. No
 existing index leads with status or created_at — every secondary index is prefixed by
 the workflow_execution FK column — so the planner cannot drive from here and scans
-workflow_execution in full instead. Execution plan in UN-4045 (2026-08-31, which
+workflow_execution in full instead. Execution plan in UN-4094 (2026-08-31, which
 supersedes the earlier workflow_file_execution reading); cost measurements in UN-3883.
 
 Full rather than partial: get_failed_pages benefits at any window (ERROR is 0.40% of
@@ -13,8 +13,11 @@ scanned regardless. A partial index on ERROR would serve the first and never the
 
 Built CONCURRENTLY (atomic = False): a plain AddIndex holds a SHARE lock for the whole
 build and would block writes to a large, write-heavy table. Prefer building it out of
-band before the deploy, exactly this statement and no other:
+band before the deploy. Application tables are not in the default search path — the
+schema comes from DB_SCHEMA and is set per connection by the app's own wrapper, which a
+psql session does not inherit — so set it first:
 
+    SET search_path TO unstract;  -- or whatever DB_SCHEMA is set to
     CREATE INDEX CONCURRENTLY IF NOT EXISTS wfe_status_created_idx
         ON workflow_file_execution (status, created_at);
 

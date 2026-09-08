@@ -480,15 +480,45 @@ class TestActiveOrgPrefilter(TestCase):
         window_start = self.now - timedelta(days=30)
         assert self.org.id in _active_org_ids(self.now, window_start)
 
+    def test_the_floor_keeps_an_org_older_than_the_source_window(self):
+        """The only region the DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS floor governs.
+
+        Between the 2-day source window and the 7-day floor. The two cases above
+        bracket it without covering it: at 10 days the org is outside both bounds,
+        and the 30-day case pins only the window_start half of the min(). Drop the
+        floor and every org whose last execution is 3-7 days old silently leaves the
+        run — which is what the floor exists to prevent, since metrics keyed on
+        another column (approved_at) still land for them.
+        """
+        stale_org = Organization.objects.create(
+            organization_id="floor-org", name="floor", display_name="Floor"
+        )
+        workflow = Workflow.objects.create(
+            workflow_name="floor-wf", organization=stale_org
+        )
+        execution = WorkflowExecution.objects.create(
+            workflow_id=workflow.id, status=ExecutionStatus.COMPLETED
+        )
+        WorkflowExecution.objects.filter(pk=execution.pk).update(
+            created_at=self.now - timedelta(days=5)
+        )
+
+        window_start = self.now - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
+        assert stale_org.id in _active_org_ids(self.now, window_start)
+
 
 class TestMonthlyRollupFailurePosture(TestCase):
-    """The rollup's errors must reach the task's retry, not a stats counter."""
+    """The rollup's errors must be counted, so success is False without a retry."""
 
-    def test_a_database_error_propagates_instead_of_reporting_success(self):
-        """DatabaseError/OperationalError are what autoretry_for is configured for.
+    def test_a_database_error_is_counted_rather_than_raised(self):
+        """Raising bought a retry on one transport and a dropped message on the other.
 
-        Swallowed here they become one INFO line and success: True, and a persistent
-        fault leaves monthly permanently stale behind 96 clean-looking runs a day.
+        On Celery the exception reaches autoretry_for and each attempt re-runs the
+        whole aggregation — three more full passes in seconds, against a database
+        that just reported it is struggling. On the internal-HTTP path Task.retry
+        re-raises under called_directly, so nothing retries and MAX_ATTEMPTS=1 drops
+        the message. Counting it sets success: False on both, which is the signal
+        the raise was standing in for.
         """
         with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
             prefilter = mock_execution.objects.filter.return_value
@@ -497,8 +527,11 @@ class TestMonthlyRollupFailurePosture(TestCase):
                 "dashboard_metrics.tasks._rollup_monthly_from_daily",
                 side_effect=DatabaseError("lock timeout"),
             ):
-                with self.assertRaises(DatabaseError):
-                    _run_aggregation()
+                result = _run_aggregation()
+
+        assert result["success"] is False
+        assert result["errors"] == 1
+        assert result["monthly"]["failed"] is True
 
     def test_an_unexpected_error_is_counted_but_does_not_abort_the_run(self):
         """Everything outside the retry set stays non-fatal — the hourly and daily
@@ -610,7 +643,14 @@ class TestMonthlyThroughTheTask(TestCase):
         result = self._run()
 
         assert result["period"]["monthly"]["start"] == self.last_month.isoformat()
-        assert result["monthly"] == {"upserted": 2, "failed": False}
+        assert result["monthly"]["upserted"] == 2
+        assert result["monthly"]["failed"] is False
+        # One seeded day per month, so both are reported as covered short — which is
+        # what stops a partial rollup lowering a total with nothing saying so.
+        assert [m.split()[0] for m in result["monthly"]["incomplete_months"]] == [
+            f"{self.last_month:%Y-%m}",
+            f"{self.this_month:%Y-%m}",
+        ]
 
         rows = EventMetricsMonthly._base_manager.order_by("month")
         assert [r.month for r in rows] == [

@@ -151,8 +151,8 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 
 **Write Safety:**
 - Aggregation tables are **write-isolated** — only the Celery aggregation task (`aggregate_from_sources`) and the `backfill_metrics` management command write to them. No user-facing request path writes to these tables.
-- Writes use `update_or_create` with a unique constraint on `(organization, timestamp, metric_name, project, tag)`, making upserts idempotent. Running the aggregation task twice for the same period simply overwrites with the same values.
-- Aggregation tasks use `_base_manager` to bypass Django's `DefaultOrganizationManagerMixin`, which relies on `UserContext` (unavailable in Celery). This is safe because the task already scopes all queries by `organization_id`.
+- Writes use `bulk_create(update_conflicts=True)` against each tier's own unique constraint — `timestamp` for hourly, `date` for daily, `month` for monthly — making upserts idempotent. Running the aggregation task twice for the same period simply overwrites with the same values.
+- Aggregation tasks use `_base_manager` to bypass Django's `DefaultOrganizationManagerMixin`, which relies on `UserContext` (unavailable in Celery). Most call sites are per-organization; the monthly rollup deliberately is not, and groups by `organization_id` instead — see `_rollup_monthly_from_daily`.
 
 **Read Safety:**
 - Dashboard API endpoints read **only** from pre-aggregated tables, never from source tables (except `/live-summary/` and `/live-series/` which are for real-time fallback).
@@ -165,8 +165,8 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 
 **Failure Resilience:**
 - If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
-- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier always covers only the last 24h, so an hourly gap needs `backfill_metrics` regardless.
-- The 7-day window is also the ceiling on lag, not just on downtime. The source queries filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
+- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier re-queries the last 24h on every run regardless of tier or window, so an hourly gap shorter than 24h repairs itself on the next tick; only one older than 24h needs `backfill_metrics`.
+- The 7-day window is also the ceiling on lag, not just on downtime. `documents_processed` and `failed_pages` filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
 - Celery tasks have `max_retries=3` with exponential backoff.
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
@@ -385,7 +385,7 @@ The `aggregate_metrics_from_sources` task:
    - Queries source table with `MetricsQueryService`
    - Groups by time period (hour/day/month)
 3. **Upserts results** into the hourly and daily tables
-4. **Rolls monthly up from the daily tier** in one statement for all orgs. Upsert-only:
+4. **Rolls monthly up from the daily tier** for all orgs at once, streamed and batched. Upsert-only:
    a monthly row the daily tier no longer produces is left in place. A stale total is
    recoverable with `backfill_metrics`; a deleted one is not, because the daily rows
    that would rebuild it are exactly what is missing

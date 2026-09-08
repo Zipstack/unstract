@@ -2,14 +2,17 @@
 
 Serves bare "rows in this date window" queries with no leading column value — the
 dashboard metrics active-org prefilter today, and the grouped metric queries in
-UN-4045. The composite indexes lead with workflow_id / pipeline_id, so they are
-date-ordered only within one workflow or pipeline; the partial index is empty in
-steady state. Measurements in UN-3883.
+UN-4094. The composite indexes lead with workflow_id / pipeline_id, so they are
+date-ordered only within one workflow or pipeline, and neither partial index is
+keyed on created_at alone. Measurements in UN-3883.
 
 Built CONCURRENTLY (atomic = False): a plain AddIndex holds a SHARE lock for the
 whole build and would block every execution in flight. Prefer building it out of
-band before the deploy::
+band before the deploy. Application tables are not in the default search path — the
+schema comes from DB_SCHEMA and is set per connection by the app's own wrapper, which a
+psql session does not inherit — so set it first::
 
+    SET search_path TO unstract;  -- or whatever DB_SCHEMA is set to
     CREATE INDEX CONCURRENTLY IF NOT EXISTS we_created_at_idx
         ON workflow_execution (created_at);
 

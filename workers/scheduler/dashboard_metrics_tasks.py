@@ -91,47 +91,79 @@ def _call_internal(
     return response.json()
 
 
+def _log_if_failed(name: str, result: dict[str, Any]) -> None:
+    """Surface a cleanup that reported failure.
+
+    The backend catches every exception and answers 200 with ``success: False``,
+    so a permanently failing retention delete is otherwise invisible here.
+    """
+    if not result.get("success", True):
+        logger.warning("%s did not complete: %s", name, result.get("error", "no detail"))
+
+
 def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     """Surface a run that did nothing, whatever shape the backend reported it in.
 
-    Three of them, and only the first sets ``skipped``: the Redis lock was held
-    (``skipped``/``reason``), no organisation had recent activity
-    (``skipped_reason``), or every metric raised and was caught per-metric
-    (``errors``). Each is correct behaviour in isolation, but left at INFO a leaked
-    lock or a frozen source table looks like a day of successful runs.
+    Only the first sets ``skipped``: the Redis lock was held (``skipped``/
+    ``reason``), no organisation had recent activity (``skipped_reason``), one or
+    more metrics raised and were caught per-metric (``errors``), or the tier ran
+    cleanly and wrote nothing. Each is correct behaviour in isolation, but left at
+    INFO a leaked lock or a frozen source table looks like a day of successful runs.
 
-    ``skipped_reason`` reports the prefilter, not the whole run: the monthly rollup
-    is org-agnostic and can write with no active org at all, so the row count says
-    which happened.
+    The conditions are independent, not alternatives: an empty prefilter and a
+    failed monthly rollup co-occur, since the rollup is org-agnostic and runs even
+    when the org loop did not. Reported as an ``elif`` chain the failure would sit
+    behind a benign "no active orgs" line.
+
+    ``skipped_reason`` reports the prefilter, not the whole run, so the row count
+    says which happened.
     """
+    wrote = sum(
+        result.get(granularity, {}).get("upserted", 0)
+        for granularity in ("hourly", "daily", "monthly")
+    )
     if result.get("skipped"):
         logger.warning(
             "%s did no work: %s", name, result.get("reason", "reported skipped=True")
         )
-    elif result.get("skipped_reason"):
-        wrote = sum(
-            result.get(granularity, {}).get("upserted", 0)
-            for granularity in ("hourly", "daily", "monthly")
-        )
+        return
+
+    if result.get("skipped_reason"):
         logger.warning("%s: %s (rows written: %d)", name, result["skipped_reason"], wrote)
-    elif result.get("errors"):
+    if result.get("errors"):
         logger.warning(
             "%s completed with %s error(s) across %s organisation(s)",
             name,
             result["errors"],
             result.get("organizations_processed", "?"),
         )
+    if incomplete := result.get("monthly", {}).get("incomplete_months"):
+        logger.warning(
+            "%s rolled up an incomplete daily tier for %s", name, ", ".join(incomplete)
+        )
+    if not wrote and not result.get("skipped_reason") and not result.get("errors"):
+        # The signature of the regression this change could introduce: a tier with
+        # work to do, no error, and nothing written.
+        logger.warning("%s: %s tier wrote no rows", name, result.get("tier", "?"))
 
 
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
 def dashboard_metrics_aggregate(
-    tier: str | None = None, source_window_days: int | None = None
+    tier: str | None = None,
+    source_window_days: int | None = None,
+    **_ignored: Any,
 ) -> dict[str, Any]:
     """Aggregate source tables into the hourly/daily/monthly metrics tables.
 
     Both kwargs come from the schedule row and both are optional: ``tier`` selects
     which tiers to write, ``source_window_days`` widens the daily lookback for the
     reconciliation pass. Omitting either applies the backend task's own default.
+
+    Unknown kwargs are accepted rather than rejected: the rows are written by a
+    migration shipping in the backend image while this consumer ships in another,
+    so a row can carry a kwarg this signature predates. A TypeError here is dropped
+    at MAX_ATTEMPTS=1, and the once-daily reconciliation row has no next tick to
+    recover on.
     """
     body = {
         key: value
@@ -150,11 +182,15 @@ def dashboard_metrics_aggregate(
 def dashboard_metrics_cleanup_hourly(retention_days: int | None = None) -> dict[str, Any]:
     """Delete hourly metrics older than the retention window."""
     body = {"retention_days": retention_days} if retention_days is not None else None
-    return _call_internal(_CLEANUP_HOURLY_PATH, body=body)
+    result = _call_internal(_CLEANUP_HOURLY_PATH, body=body)
+    _log_if_failed("dashboard_metrics.cleanup_hourly_data", result)
+    return result
 
 
 @worker_task(name="dashboard_metrics.cleanup_daily_data")
 def dashboard_metrics_cleanup_daily(retention_days: int | None = None) -> dict[str, Any]:
     """Delete daily metrics older than the retention window."""
     body = {"retention_days": retention_days} if retention_days is not None else None
-    return _call_internal(_CLEANUP_DAILY_PATH, body=body)
+    result = _call_internal(_CLEANUP_DAILY_PATH, body=body)
+    _log_if_failed("dashboard_metrics.cleanup_daily_data", result)
+    return result

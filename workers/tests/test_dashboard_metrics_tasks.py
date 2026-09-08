@@ -210,3 +210,104 @@ class TestInternalCall:
         monkeypatch.delenv(missing)
         with pytest.raises(RuntimeError, match=missing):
             dmt._call_internal("v1/x/")
+
+
+class TestTheRunSummaryReachesTheLog:
+    """The proxy's log line is the only view of a run on the PG transport.
+
+    Every branch below existed with no test: deleting all of them left the whole
+    workers suite green, which is the same as having no operator signal at all.
+    """
+
+    def _run(self, caplog, result):
+        with caplog.at_level("WARNING"):
+            with patch.object(dmt, "_call_internal", return_value=result):
+                dmt.dashboard_metrics_aggregate()
+        return caplog.text
+
+    def test_an_empty_prefilter_reports_the_rows_the_rollup_still_wrote(self, caplog):
+        text = self._run(
+            caplog,
+            {
+                "success": True,
+                "skipped_reason": "no_active_orgs",
+                "tier": "daily_monthly",
+                "monthly": {"upserted": 7},
+            },
+        )
+        assert "no_active_orgs" in text
+        assert "rows written: 7" in text
+
+    def test_an_error_is_reported_even_alongside_an_empty_prefilter(self, caplog):
+        """The two co-occur: the rollup is org-agnostic and runs when the loop did not.
+
+        Reported as alternatives, the failure hides behind a benign "no active orgs".
+        """
+        text = self._run(
+            caplog,
+            {
+                "success": False,
+                "skipped_reason": "no_active_orgs",
+                "errors": 1,
+                "organizations_processed": 0,
+                "tier": "daily_monthly",
+                "monthly": {"upserted": 0, "failed": True},
+            },
+        )
+        assert "no_active_orgs" in text
+        assert "1 error(s)" in text
+
+    def test_an_incomplete_monthly_rollup_is_named(self, caplog):
+        text = self._run(
+            caplog,
+            {
+                "success": True,
+                "tier": "daily_monthly",
+                "monthly": {
+                    "upserted": 3,
+                    "incomplete_months": ["2026-08 (12 of 31 days)"],
+                },
+            },
+        )
+        assert "2026-08 (12 of 31 days)" in text
+
+    def test_a_clean_run_that_wrote_nothing_is_still_reported(self, caplog):
+        """The regression signature of narrowing the source window: work to do, no
+        error, nothing written. It passes every other branch silently.
+        """
+        text = self._run(
+            caplog,
+            {"success": True, "tier": "daily_monthly", "organizations_processed": 4},
+        )
+        assert "wrote no rows" in text
+
+    def test_a_normal_run_logs_no_warning(self, caplog):
+        """The control: the arms above must not fire on a healthy run."""
+        text = self._run(
+            caplog,
+            {
+                "success": True,
+                "tier": "hourly",
+                "organizations_processed": 4,
+                "hourly": {"upserted": 12},
+            },
+        )
+        assert text.strip() == ""
+
+
+class TestAnUnknownKwargDoesNotKillTheRun:
+    """The schedule rows and this consumer ship in different images.
+
+    A migration in the backend image can write a kwarg into a row while a
+    worker-unified pod is still on the previous image. The PG scheduler copies
+    task_kwargs verbatim into the payload and the consumer applies them, so a
+    signature that rejects the unknown key raises TypeError — not covered by
+    autoretry_for and dropped at MAX_ATTEMPTS=1. The */15 rows survive that on
+    their next tick; the once-daily reconciliation row does not.
+    """
+
+    def test_an_unrecognised_kwarg_is_accepted_and_not_forwarded(self):
+        with patch.object(dmt, "_call_internal", return_value={"success": True}) as call:
+            dmt.dashboard_metrics_aggregate(tier="hourly", some_future_kwarg=1)
+
+        assert call.call_args.kwargs["body"] == {"tier": "hourly"}

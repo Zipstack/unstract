@@ -197,6 +197,7 @@ class Command(BaseCommand):
                     start_date,
                     end_date,
                     org_identifier=org_identifier,
+                    skip_hourly=skip_hourly,
                 )
 
                 self.stdout.write(
@@ -299,8 +300,15 @@ class Command(BaseCommand):
         start_date: datetime,
         end_date: datetime,
         org_identifier: str | None = None,
+        skip_hourly: bool = False,
     ) -> tuple[dict, dict, dict]:
-        """Collect metrics from source tables for all granularities."""
+        """Collect metrics from source tables for all granularities.
+
+        ``skip_hourly`` skips the HOUR-granularity source queries, not just their
+        upsert. The prescribed deploy step passes it over a window measured in
+        weeks, and issuing those queries anyway would reinstate the scan this
+        change exists to remove.
+        """
         hourly_agg = {}
         daily_agg = {}
         monthly_agg = {}
@@ -363,9 +371,13 @@ class Command(BaseCommand):
                 monthly_agg[mkey]["value"] += value
                 monthly_agg[mkey]["count"] += 1
 
+        granularities = (
+            (Granularity.DAY,) if skip_hourly else (Granularity.HOUR, Granularity.DAY)
+        )
+
         # Fetch all 4 LLM metrics in one query per granularity
         try:
-            for granularity in (Granularity.HOUR, Granularity.DAY):
+            for granularity in granularities:
                 llm_split = MetricsQueryService.get_llm_metrics_split(
                     org_id, start_date, end_date, granularity
                 )
@@ -392,14 +404,15 @@ class Command(BaseCommand):
                 extra_kwargs["org_identifier"] = org_identifier
 
             try:
-                hourly_results = query_method(
-                    org_id,
-                    start_date,
-                    end_date,
-                    granularity=Granularity.HOUR,
-                    **extra_kwargs,
-                )
-                _ingest_results(hourly_results, metric_name, metric_type)
+                if not skip_hourly:
+                    hourly_results = query_method(
+                        org_id,
+                        start_date,
+                        end_date,
+                        granularity=Granularity.HOUR,
+                        **extra_kwargs,
+                    )
+                    _ingest_results(hourly_results, metric_name, metric_type)
 
                 daily_results = query_method(
                     org_id,

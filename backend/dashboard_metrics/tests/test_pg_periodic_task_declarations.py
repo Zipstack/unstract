@@ -396,14 +396,30 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         crontab = split["beat"].created[_NEW_ROW]["crontab"]
         assert (crontab["minute"], crontab["hour"]) == ("20", "*")
 
-    def test_the_two_rows_never_start_together(
+    def test_the_two_rows_never_start_together_on_the_pg_scheduler(
         self, split: dict[str, _SplitRecorder]
     ) -> None:
         """The per-tier locks are built so the two runs cannot block each other, so a
         shared minute is two full prefilter scans and two per-org loops at once — on a
         change whose object is flattening cron load.
+
+        Derived from the existing row's own declaration rather than hardcoded, and
+        scoped to the PG scheduler: it evaluates cron_string against the wall clock,
+        while the Beat twin is an IntervalSchedule whose phase drifts, so no minute
+        this test could assert would separate them there.
         """
-        fires_at = {0, 15, 30, 45}  # the existing row's */15
+        mod = importlib.import_module(_SPLIT_MIGRATION)
+        existing = next(
+            spec
+            for spec in mod.AGGREGATION_SCHEDULES
+            if spec["name"] == mod.EXISTING_AGGREGATE_ROW
+        )
+        minute_field = existing["cron_string"].split()[0]
+        fires_at = (
+            set(range(0, 60, int(minute_field.split("/")[1])))
+            if "/" in minute_field
+            else {int(minute_field)}
+        )
         minute = int(split["beat"].created[_NEW_ROW]["crontab"]["minute"])
         assert minute not in fires_at
 

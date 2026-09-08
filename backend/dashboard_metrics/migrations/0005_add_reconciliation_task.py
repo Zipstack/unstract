@@ -35,7 +35,9 @@ PG_PERIODIC_TASKS = [
         "task_kwargs": {"source_window_days": 7},
         # Beat: CrontabSchedule(minute=40, hour=4, every day) UTC — clear of the
         # 2:00 and 3:00 cleanup tasks, and off the aggregation's */15 grid
-        # (:00 :15 :30 :45) so the two never start together.
+        # (:00 :15 :30 :45). That separates the starts on the PG scheduler only:
+        # the Beat aggregation row is an IntervalSchedule (0002), which fires at
+        # last_run_at + 15min and drifts, so on that transport they can coincide.
         "cron_string": "40 4 * * *",
     },
 ]
