@@ -8,6 +8,7 @@ import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -73,6 +74,11 @@ function ManageLlmProfiles() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  // Editing or deleting an existing profile touches the owner's adapter
+  // config, so the backend refuses it (`IsParentToolOwner`). Creating a new
+  // profile and every other setting stays open to a shared user.
+  const canEdit = usePromptStudioCanEdit();
+  const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const MAX_PROFILE_COUNT = 4;
   const isMaxProfile = llmProfiles.length >= MAX_PROFILE_COUNT;
 
@@ -134,21 +140,24 @@ function ManageLlmProfiles() {
                 onClick={() => copyProfileId(item?.profile_id)}
               />
             </Tooltip>
-            <Button
-              data-testid={rowTestId("edit")}
-              size="small"
-              icon={<Pencil />}
-              disabled={isPublicSource}
-              onClick={() => handleEdit(item?.profile_id)}
-            />
+            <Tooltip title={ownerOnlyTitle}>
+              <Button
+                data-testid={rowTestId("edit")}
+                size="small"
+                icon={<Pencil />}
+                disabled={isPublicSource || !canEdit}
+                onClick={() => handleEdit(item?.profile_id)}
+              />
+            </Tooltip>
             <ConfirmModal
               handleConfirm={() => handleDelete(item?.profile_id)}
               content="The LLM profile will be permanently deleted."
             >
               <Tooltip
                 title={
-                  defaultLlmProfile === item?.profile_id &&
-                  "Default profile cannot be deleted"
+                  ownerOnlyTitle ||
+                  (defaultLlmProfile === item?.profile_id &&
+                    "Default profile cannot be deleted")
                 }
               >
                 <Button
@@ -156,7 +165,9 @@ function ManageLlmProfiles() {
                   size="small"
                   icon={<Trash2 />}
                   disabled={
-                    isPublicSource || defaultLlmProfile === item?.profile_id
+                    isPublicSource ||
+                    !canEdit ||
+                    defaultLlmProfile === item?.profile_id
                   }
                 />
               </Tooltip>
@@ -174,7 +185,7 @@ function ManageLlmProfiles() {
       };
     });
     setRows(modifiedRows);
-  }, [llmProfiles, defaultLlmProfile]);
+  }, [llmProfiles, defaultLlmProfile, canEdit, ownerOnlyTitle]);
 
   const handleAddNewLlmProfileBtnClick = () => {
     setEditLlmProfileId(null);
