@@ -2065,6 +2065,10 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Applied type conversion for: `{prompt_name}`")
 
+            # Lookup enrichment is another billable LLM call, and the webhook
+            # right after it is an outbound call to someone else's system that
+            # no later stop can take back. Check before both.
+            self._check_cancelled(context, prompt_id)
             records.extend(
                 run_lookup_enrichment(
                     output=output,

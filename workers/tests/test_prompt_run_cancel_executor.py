@@ -381,3 +381,122 @@ class TestAbortPredicate:
             assert check() is True
             # A second, contradicting answer must not un-stop the run.
             assert check() is True
+
+
+class TestLookupEnrichmentStop:
+    """Lookup enrichment is a billable LLM call with an outbound webhook right
+    behind it, so a stop has to be honoured there too (raised by QA).
+    """
+
+    def test_a_stop_is_not_reported_as_a_lookup_failure(self):
+        """The handler degrades gracefully on plugin drift. A stop is not
+        drift, and must not be logged as "lookup failed".
+        """
+        from executor.executors.lookup_enrichment import run_lookup_enrichment
+
+        lookup_cls = MagicMock()
+        lookup_cls.run_with_metrics.side_effect = AbortedError("stopped mid-call")
+        shim = MagicMock()
+
+        with (
+            patch(
+                "executor.executors.lookup_enrichment.ExecutorPluginLoader.get",
+                return_value=lookup_cls,
+            ),
+            pytest.raises(AbortedError),
+        ):
+            run_lookup_enrichment(
+                output={PSKeys.NAME: "field_a", "lookup_config": {"lookup_name": "L"}},
+                structured_output={"field_a": "a value"},
+                metadata={},
+                metrics={},
+                shim=shim,
+                usage_kwargs={},
+                llm_cls=MagicMock(),
+            )
+
+        # And nothing told the user the lookup broke.
+        assert not any(
+            "failed" in str(call).lower() for call in shim.stream_log.call_args_list
+        )
+
+    def test_plugin_failures_are_still_swallowed(self):
+        """The graceful-degradation contract this handler exists for."""
+        from executor.executors.lookup_enrichment import run_lookup_enrichment
+
+        lookup_cls = MagicMock()
+        lookup_cls.run_with_metrics.side_effect = TypeError("plugin contract drift")
+
+        with patch(
+            "executor.executors.lookup_enrichment.ExecutorPluginLoader.get",
+            return_value=lookup_cls,
+        ):
+            records = run_lookup_enrichment(
+                output={PSKeys.NAME: "field_a", "lookup_config": {"lookup_name": "L"}},
+                structured_output={"field_a": "a value"},
+                metadata={},
+                metrics={},
+                shim=MagicMock(),
+                usage_kwargs={},
+                llm_cls=MagicMock(),
+            )
+
+        assert records == []
+
+    def test_a_stop_lands_before_the_lookup_and_its_webhook(self, executor_env):
+        """The webhook fires immediately after enrichment and cannot be taken
+        back once another system has received it, so the checkpoint has to sit
+        in front of both — not after them.
+
+        The stop is timed to land *after* the model has answered, so the only
+        checkpoint that can catch it is the new one. A run stopped earlier
+        would never reach this part of the prompt at all, and would prove
+        nothing about it.
+        """
+        from executor.executors import legacy_executor as le
+
+        answered = {"yet": False}
+        llm = _mock_llm()
+        answer = llm.complete.return_value
+
+        def _answer_then_stop(*_args, **_kwargs):
+            answered["yet"] = True
+            return answer
+
+        llm.complete.side_effect = _answer_then_stop
+        prompts = [_prompt("field_a", PROMPT_A)]
+
+        with (
+            patch(
+                "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps",
+                return_value=_mock_deps(llm),
+            ),
+            patch.object(le, "run_lookup_enrichment", return_value=[]) as lookup,
+            patch.object(le, "run_webhook_postprocessing") as webhook,
+            patch(
+                "executor.executors.legacy_executor.is_cancelled",
+                side_effect=lambda *a, **k: answered["yet"],
+            ),
+        ):
+            result = executor_env()._handle_answer_prompt(_context(prompts))
+
+        # The prompt really did run — so the stop landed mid-prompt, not before.
+        assert answered["yet"] is True
+        assert result.metadata["cancelled_prompt_ids"] == [PROMPT_A]
+        # ...and neither the billable lookup nor the irreversible webhook ran.
+        lookup.assert_not_called()
+        webhook.assert_not_called()
+
+    def test_an_unstopped_run_still_enriches_and_posts(self, executor_env):
+        from executor.executors import legacy_executor as le
+
+        prompts = [_prompt("field_a", PROMPT_A)]
+        with (
+            patch.object(le, "run_lookup_enrichment", return_value=[]) as lookup,
+            patch.object(le, "run_webhook_postprocessing") as webhook,
+            patch("executor.executors.legacy_executor.is_cancelled", return_value=False),
+        ):
+            executor_env()._handle_answer_prompt(_context(prompts))
+
+        lookup.assert_called_once()
+        webhook.assert_called_once()
