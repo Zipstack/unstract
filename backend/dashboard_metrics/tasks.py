@@ -801,9 +801,18 @@ def _validate_source_window(source_window_days: int) -> int:
 
 def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
     """Derive the monthly tier from daily, recording a failure distinctly."""
+    # Its own try, and deliberately so: this is a diagnostic, and the rollup is the
+    # job. Sharing a try means a failing diagnostic query skips the upsert entirely
+    # and leaves monthly stale for a run that could have succeeded — and reports it
+    # as a failed rollup, contradicting the upserted count.
     try:
         # Before the upsert, while the stored value is still the old one.
         lowered = _months_the_rollup_would_lower(monthly_start)
+    except Exception:
+        logger.exception("Could not check whether the rollup lowers monthly totals")
+        lowered = []
+
+    try:
         stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
     except Exception:
         # Counted rather than raised, including DatabaseError/OperationalError.

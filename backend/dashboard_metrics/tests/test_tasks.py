@@ -1252,3 +1252,40 @@ class TestTheUnderCountCheckIsBounded(TestCase):
         assert "metric_value" in sql and "<" in sql, (
             "the comparison is not happening in the database:\n" + sql
         )
+
+
+class TestTheDiagnosticCannotBlockTheRollup(TestCase):
+    """The under-count check is a diagnostic; the rollup is the job.
+
+    This regressed once already. It was fixed by giving the diagnostic its own
+    try, then reintroduced while making the check a single database query — with
+    no test to catch it. Hence this one.
+    """
+
+    def _run(self, **patches):
+        with patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+            prefilter = mock_execution.objects.filter.return_value
+            prefilter.values_list.return_value.distinct.return_value = [1]
+            with patch(
+                "dashboard_metrics.tasks._months_the_rollup_would_lower",
+                side_effect=DatabaseError("diagnostic exploded"),
+            ):
+                return _run_aggregation(**patches)
+
+    def test_a_failing_diagnostic_still_lets_the_rollup_run(self):
+        with patch(
+            "dashboard_metrics.tasks._rollup_monthly_from_daily", return_value=7
+        ) as rollup:
+            result = self._run()
+
+        rollup.assert_called_once()
+        assert result["monthly"]["upserted"] == 7
+
+    def test_a_failing_diagnostic_is_not_reported_as_a_failed_rollup(self):
+        """Otherwise the run contradicts itself: upserted 7, failed True."""
+        with patch("dashboard_metrics.tasks._rollup_monthly_from_daily", return_value=7):
+            result = self._run()
+
+        assert result["monthly"]["failed"] is False
+        assert result["errors"] == 0
+        assert result["success"] is True
