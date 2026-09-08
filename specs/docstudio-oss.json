@@ -9,6 +9,7 @@
             "type": "string"
           },
           "api_name": {
+            "maxLength": 30,
             "readOnly": true,
             "type": "string"
           },
@@ -28,10 +29,12 @@
             "type": "string"
           },
           "description": {
+            "maxLength": 255,
             "readOnly": true,
             "type": "string"
           },
           "display_name": {
+            "maxLength": 30,
             "readOnly": true,
             "type": "string"
           },

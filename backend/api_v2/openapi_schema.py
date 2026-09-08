@@ -18,6 +18,7 @@ from drf_spectacular.utils import (
 from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
 
+from api_v2.models import API_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIExecutionResponseSerializer,
@@ -260,10 +261,11 @@ class APIDeploymentSummary(APIDeploymentListSerializer):
     # The model defaults these, so DRF reports them optional --- true of a
     # request body, wrong for a response the server always fills. Left alone,
     # a generated client types them nullable and every caller writes a check
-    # for a key that is always there.
-    api_name = serializers.CharField(read_only=True)
-    display_name = serializers.CharField(read_only=True)
-    description = serializers.CharField(read_only=True)
+    # for a key that is always there. The lengths are restated because DRF drops
+    # them from a read-only field.
+    api_name = serializers.CharField(read_only=True, max_length=API_NAME_MAX_LENGTH)
+    display_name = serializers.CharField(read_only=True, max_length=API_NAME_MAX_LENGTH)
+    description = serializers.CharField(read_only=True, max_length=DESCRIPTION_MAX_LENGTH)
     is_active = serializers.BooleanField(read_only=True)
 
 

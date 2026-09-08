@@ -11,7 +11,9 @@ import uuid
 
 from account_v2.models import Organization, User
 from django.conf import settings
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.services import create_api_user_for_key
 from rest_framework.test import APITestCase
@@ -182,6 +184,28 @@ class DeploymentListingTest(APITestCase):
         unannotated = APIDeploymentListSerializer(self.deployment).data
         self.assertEqual(unannotated["run_count"], 1)
         self.assertEqual(unannotated["last_run_time"], execution.created_at.isoformat())
+
+    def test_a_never_run_deployment_costs_no_extra_summary_query(self) -> None:
+        """Its run annotations come back `None`, which still counts as annotated:
+        reading the value rather than its presence sends every never-run row
+        back to the database.
+        """
+        key = str(self._make_key().key)
+
+        def executions(queries) -> int:
+            return len(
+                [query for query in queries if "workflow_execution" in query["sql"]]
+            )
+
+        with CaptureQueriesContext(connection) as one_row:
+            self._get(key)
+        for name in ("receipts", "contracts"):
+            self._make_deployment(self.org_a, api_name=name)
+        with CaptureQueriesContext(connection) as three_rows:
+            self._get(key)
+
+        # One per added row, for `last_5_run_statuses`, which is not annotated.
+        self.assertEqual(executions(three_rows) - executions(one_row), 2)
 
     def test_paging_reaches_every_deployment_exactly_once(self) -> None:
         """Deployments that have never run all tie on the primary ordering, and
