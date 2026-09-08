@@ -59,6 +59,12 @@ _TIERS = [
 _FIELDS = ["metric_name", "metric_type", "metric_value", "metric_count"]
 
 
+# Wide enough to reach the -3d and previous-month fixture rows. The tier split is
+# what is under test here, not the window: at the 2-day default those two rows feed
+# no tier at all, and the equivalence would be proven over a single day of data.
+_FIXTURE_WINDOW_DAYS = 40
+
+
 class TestTheSplitPreservesEveryFigure(TestCase):
     def setUp(self) -> None:
         self.org = Organization.objects.create(
@@ -68,10 +74,12 @@ class TestTheSplitPreservesEveryFigure(TestCase):
             workflow_name="tier-split-wf", organization=self.org
         )
         self.now = now = timezone.now()
-        # One row per window the aggregation reads — last 24h for the hourly tier, last
-        # 7 days for daily, inside the previous month for monthly. The two recent ones
-        # also make the org visible to the active-org prefilter, without which nothing
-        # runs at all.
+        # One row per window the aggregation reads. The two recent ones cover the
+        # hourly tier's 24h and also make the org visible to the active-org prefilter,
+        # without which nothing runs at all. The -3d and previous-month rows sit
+        # outside the 2-day default, so _run passes an explicit source_window_days
+        # wide enough to reach them — without that they contribute to no tier and the
+        # equivalence is proven over one day of data.
         #
         # The previous-month row is derived from the month boundary, not a fixed
         # "25 days ago": for the last few days of any month that lands in the *current*
@@ -157,7 +165,7 @@ class TestTheSplitPreservesEveryFigure(TestCase):
         """
         self._clear()
         with patch("dashboard_metrics.tasks.timezone.now", return_value=self.now):
-            _run_aggregation(tier)
+            _run_aggregation(tier, source_window_days=_FIXTURE_WINDOW_DAYS)
         return self._snapshot()
 
     def test_the_pre_split_run_writes_all_three_tiers(self) -> None:

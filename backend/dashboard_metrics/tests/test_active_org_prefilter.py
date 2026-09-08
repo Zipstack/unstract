@@ -44,7 +44,11 @@ from django.test import TestCase  # noqa: E402
 from django.test.utils import CaptureQueriesContext  # noqa: E402
 from workflow_manager.workflow_v2.models.workflow import Workflow  # noqa: E402
 
-from dashboard_metrics.tasks import AggregationTier, _run_aggregation  # noqa: E402
+from dashboard_metrics.tasks import (  # noqa: E402
+    DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS,
+    AggregationTier,
+    _run_aggregation,
+)
 
 INDEX_NAME = "we_created_at_idx"
 
@@ -114,8 +118,9 @@ class TestThePrefilterCanUseTheIndex(TestCase):
         """
         with connection.cursor() as cur:
             cur.execute(
-                "SELECT count(*) FILTER (WHERE created_at >= now() - interval '7 days')"
-                "::float / count(*) FROM workflow_execution"
+                "SELECT count(*) FILTER (WHERE created_at >= now() - %s::interval)"
+                "::float / count(*) FROM workflow_execution",
+                [f"{DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS} days"],
             )
             share = cur.fetchone()[0]
         assert 0 < share < 0.10

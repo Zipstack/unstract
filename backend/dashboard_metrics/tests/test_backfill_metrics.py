@@ -19,7 +19,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.management.commands.backfill_metrics import Command
 from dashboard_metrics.models import EventMetricsDaily, Granularity
-from dashboard_metrics.tasks import _truncate_to_day
+from dashboard_metrics.tasks import truncate_to_day
 
 
 class TestSkipHourlySkipsTheQueries(TestCase):
@@ -156,7 +156,7 @@ class TestTheOldestBackfilledDayIsWhole(TestCase):
             self._seed(days_ago=2, hour=23)
             call_command("backfill_metrics", days=2, skip_hourly=True, skip_monthly=True)
 
-        oldest_day = _truncate_to_day(frozen - timedelta(days=2)).date()
+        oldest_day = truncate_to_day(frozen - timedelta(days=2)).date()
         row = EventMetricsDaily._base_manager.get(
             organization=self.org, date=oldest_day, metric_name="documents_processed"
         )

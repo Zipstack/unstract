@@ -16,7 +16,6 @@ from uuid import uuid4
 from account_v2.models import Organization
 from celery import shared_task
 from django.core.cache import cache
-from django.db import transaction
 from django.db.models import F, Min, OuterRef, Subquery, Sum
 from django.db.models.functions import TruncMonth
 from django.db.utils import DatabaseError, OperationalError
@@ -88,8 +87,13 @@ def _truncate_to_hour(ts: float | datetime) -> datetime:
     return dt.replace(minute=0, second=0, microsecond=0)
 
 
-def _truncate_to_day(ts: datetime) -> datetime:
+def truncate_to_day(ts: datetime) -> datetime:
     """Truncate a datetime to midnight (start of day).
+
+    Public because backfill_metrics shares it: the day boundary is a contract
+    between the cron and the repair command, not an internal of either. An
+    untruncated boundary writes the oldest day as a partial bucket, which the
+    monthly rollup then makes permanent.
 
     Args:
         ts: datetime object
@@ -207,7 +211,7 @@ def _upsert_monthly(objects: list[EventMetricsMonthly]) -> int:
     return len(objects)
 
 
-def _months_the_rollup_would_lower(month_start: date) -> list[str]:
+def _pairs_the_rollup_would_lower(month_start: date) -> list[tuple]:
     """(org, month) pairs whose monthly total the pending rollup would reduce.
 
     Run before the upsert, while the stored value is still the old one, and
@@ -250,18 +254,31 @@ def _months_the_rollup_would_lower(month_start: date) -> list[str]:
         .distinct()
         .order_by("month", "organization_id")[: LOWERED_MONTHS_REPORT_LIMIT + 1]
     )
-    pairs = list(lowered)
+    return list(lowered)
+
+
+def _name_lowered_pairs(pairs: list[tuple]) -> list[str]:
+    """Render the pairs for a log line, capped.
+
+    A fleet-wide daily loss makes this one entry per tenant per month, which would
+    otherwise be joined into a single log line and returned in a JSON body.
+    """
     names = [f"{month:%Y-%m} (org {org_id})" for org_id, month in pairs]
     if len(names) > LOWERED_MONTHS_REPORT_LIMIT:
-        # Capped: a fleet-wide daily loss makes this one entry per tenant per month,
-        # which would be joined into a single log line and a JSON body.
         names = names[:LOWERED_MONTHS_REPORT_LIMIT]
         names.append(f"... and more (showing {LOWERED_MONTHS_REPORT_LIMIT})")
     return names
 
 
-def _rollup_monthly_from_daily(month_start: date) -> int:
+def _rollup_monthly_from_daily(month_start: date, skip: set | None = None) -> int:
     """Sum the daily tier from month_start into monthly, for all orgs at once.
+
+    Pairs in ``skip`` are left untouched: their stored total is higher than what the
+    daily tier now sums to, so rewriting them would replace a correct figure with a
+    known-short one. That is what makes the prescribed pre-deploy backfill a repair
+    step rather than a race against the first scheduled run — the schedule row 0006
+    adds goes live at the end of ``migrate``, so the backfill cannot be sequenced
+    before it.
 
     Upsert-only, per the design agreed on UN-3973: a monthly row the daily tier
     no longer produces *at all* is left in place rather than deleted. A stale total
@@ -272,7 +289,7 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
     so a month the daily tier still covers *partially* is overwritten with the sum
     of the days present — a smaller number, not the previous total. That overwrite
     changes values without changing the row count, so it is reported rather than
-    left for a reader to notice: see _months_the_rollup_would_lower.
+    left for a reader to notice: see _pairs_the_rollup_would_lower.
 
     metric_type is aggregated rather than grouped: it is not part of
     unique_monthly_metric, so grouping on it could yield two rows for one
@@ -291,32 +308,49 @@ def _rollup_monthly_from_daily(month_start: date) -> int:
             count=Sum("metric_count"),
             mtype=Min("metric_type"),
         )
+        # Ordered so two concurrent rollups take row locks in the same sequence and
+        # block rather than deadlock. The aggregate emits no stable order otherwise.
+        .order_by("organization_id", "month", "metric_name", "project", "tag")
     )
 
     upserted = 0
     batch: list[EventMetricsMonthly] = []
-    # One transaction for every chunk. A single bulk_create wrapped all its internal
-    # batches in one, so without this the streaming above would trade an atomic
-    # rewrite for a partially-rewritten tier if the run dies mid-loop.
-    with transaction.atomic():
-        for row in rows.iterator(chunk_size=MONTHLY_ROLLUP_BATCH_SIZE):
-            batch.append(
-                EventMetricsMonthly(
-                    organization_id=row["organization_id"],
-                    month=row["month"],
-                    metric_name=row["metric_name"],
-                    project=row["project"],
-                    tag=row["tag"],
-                    metric_type=row["mtype"],
-                    metric_value=row["value"],
-                    metric_count=row["count"],
-                )
+    # One transaction per batch, not one across the whole scan. A fleet-wide
+    # transaction holds row locks on every rewritten monthly row until the cursor
+    # drains, and two runs that do not share a lock key — the :20 row and the 04:40
+    # reconcile take different ones, namespaced by window — then contend for the
+    # winner's full rollup or deadlock. Each bulk_create is already one statement,
+    # so a batch is atomic without an explicit block.
+    #
+    # What that trades away is an all-or-nothing rewrite. Nothing needed it: every
+    # row written is correct as of this run, the upsert is idempotent, and a partial
+    # rollup is repaired on the next tick — the same tolerance the hourly and daily
+    # tiers in this function already accept. The merge-base had no transaction here
+    # at all; monthly was upserted per organization in autocommit.
+    skip = skip or set()
+    for row in rows.iterator(chunk_size=MONTHLY_ROLLUP_BATCH_SIZE):
+        if (row["organization_id"], row["month"]) in skip:
+            # This pair's stored total is higher than what the daily tier now sums
+            # to, so writing it would replace a good figure with a known-short one.
+            # Left alone until the daily tier is repaired; the caller warns.
+            continue
+        batch.append(
+            EventMetricsMonthly(
+                organization_id=row["organization_id"],
+                month=row["month"],
+                metric_name=row["metric_name"],
+                project=row["project"],
+                tag=row["tag"],
+                metric_type=row["mtype"],
+                metric_value=row["value"],
+                metric_count=row["count"],
             )
-            if len(batch) >= MONTHLY_ROLLUP_BATCH_SIZE:
-                upserted += _upsert_monthly(batch)
-                batch = []
-        if batch:
+        )
+        if len(batch) >= MONTHLY_ROLLUP_BATCH_SIZE:
             upserted += _upsert_monthly(batch)
+            batch = []
+    if batch:
+        upserted += _upsert_monthly(batch)
 
     return upserted
 
@@ -362,8 +396,12 @@ def _writes_daily_monthly(tier: AggregationTier) -> bool:
 
 
 AGGREGATION_LOCK_KEY_PREFIX = "dashboard_metrics:aggregation_lock"
-AGGREGATION_LOCK_TIMEOUT = 900  # must exceed time_limit (660s) and not outlive
-# the shortest schedule period (900s); three schedules now take these keys.
+# Expiry is the only recovery path, so this ordering is the whole guarantee. Equal to
+# the shortest schedule period, not under it, so a leaked lock frees exactly on the
+# next tick rather than before it. The Celery ceilings (time_limit 660s) sit below it
+# but bound only that transport — the internal-HTTP path calls the task body directly,
+# where the ceiling is gunicorn's request timeout instead.
+AGGREGATION_LOCK_TIMEOUT = 900
 
 
 def _aggregation_lock_keys(tier: AggregationTier, source_window_days: int) -> list[str]:
@@ -573,7 +611,7 @@ def _aggregate_single_metric(
         granularity=Granularity.DAY,
         **extra_kwargs,
     ):
-        day_ts = _truncate_to_day(row["period"])
+        day_ts = truncate_to_day(row["period"])
         key = (org_id, day_ts.date().isoformat(), metric_name, "default", "")
         _upsert_agg(daily_agg, key, metric_type, row["value"] or 0)
 
@@ -615,7 +653,7 @@ def _aggregate_llm_combined(
         end_date,
         granularity=Granularity.DAY,
     ):
-        day_str = _truncate_to_day(row["period"]).date().isoformat()
+        day_str = truncate_to_day(row["period"]).date().isoformat()
         for field, (metric_name, metric_type) in llm_combined_fields.items():
             key = (org_id, day_str, metric_name, "default", "")
             _upsert_agg(daily_agg, key, metric_type, row[field] or 0)
@@ -811,17 +849,19 @@ def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
     # as a failed rollup, contradicting the upserted count.
     try:
         # Before the upsert, while the stored value is still the old one.
-        lowered = _months_the_rollup_would_lower(monthly_start)
+        lowered_pairs = _pairs_the_rollup_would_lower(monthly_start)
     except Exception:
         # `[]` alone would be indistinguishable from "checked, nothing lowered", and
         # the backend's log is in a different process from the consumer that watches
         # this schedule — so the payload has to carry the unknown, not just the log.
         logger.exception("Could not check whether the rollup lowers monthly totals")
-        lowered = []
+        lowered_pairs = []
         stats["monthly"]["lowered_check"] = "unavailable"
 
     try:
-        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(monthly_start)
+        stats["monthly"]["upserted"] = _rollup_monthly_from_daily(
+            monthly_start, skip=set(lowered_pairs)
+        )
     except Exception:
         # Counted rather than raised, including DatabaseError/OperationalError.
         # Raising reaches autoretry_for only on the Celery transport, where each
@@ -833,12 +873,13 @@ def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
         stats["errors"] += 1
         return
 
-    if lowered:
+    if lowered_pairs:
+        lowered = _name_lowered_pairs(lowered_pairs)
         stats["monthly"]["lowered_months"] = lowered
         logger.warning(
-            "Monthly rollup lowered existing totals for %s — the daily tier does not "
-            "cover what it did before; repair daily for those months with "
-            "`backfill_metrics` before the figures are trusted",
+            "Monthly rollup left %s unchanged — the daily tier now sums lower than "
+            "the stored total, so the figures were kept rather than overwritten. "
+            "Repair daily for those months with `backfill_metrics`",
             ", ".join(lowered),
         )
 
@@ -854,7 +895,7 @@ def _run_aggregation(
 
     # Monthly spans the current and previous month.
     hourly_start = end_date - timedelta(hours=24)
-    daily_start = _truncate_to_day(end_date - timedelta(days=source_window_days))
+    daily_start = truncate_to_day(end_date - timedelta(days=source_window_days))
     monthly_start = _truncate_to_month(
         _truncate_to_month(end_date) - timedelta(days=1)
     ).date()

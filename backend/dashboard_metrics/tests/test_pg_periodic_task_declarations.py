@@ -59,8 +59,8 @@ _EXPECTED_CRON = {
     "dashboard_metrics_cleanup_hourly": "0 2 * * *",
     "dashboard_metrics_cleanup_daily": "0 3 * * 0",
     "dashboard_metrics_reconcile_source_window": "40 4 * * *",
-    # Added by 0006; off the */15 grid, which separates the starts on the PG
-    # scheduler — the Beat twin is an IntervalSchedule whose phase drifts.
+    # Added by 0006 from a CrontabSchedule, off the */15 grid. That separates the
+    # starts on the PG scheduler; the row it splits from is the IntervalSchedule.
     "dashboard_metrics_aggregate_daily_monthly": "20 * * * *",
 }
 

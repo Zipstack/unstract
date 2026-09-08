@@ -40,10 +40,10 @@ from dashboard_metrics.tasks import (
     _release_aggregation_locks,
     _active_org_ids,
     _aggregation_lock_keys,
-    _months_the_rollup_would_lower,
+    _pairs_the_rollup_would_lower,
     _rollup_monthly_from_daily,
     _run_aggregation,
-    _truncate_to_day,
+    truncate_to_day,
     _truncate_to_hour,
     _truncate_to_month,
     _validate_source_window,
@@ -87,10 +87,10 @@ class TestTimeHelpers(TestCase):
         assert result.hour == 14
         assert result.minute == 0
 
-    def test_truncate_to_day(self):
+    def testtruncate_to_day(self):
         """Test truncating a datetime to midnight."""
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
-        result = _truncate_to_day(dt)
+        result = truncate_to_day(dt)
 
         assert result.day == 15
         assert result.hour == 0
@@ -936,7 +936,7 @@ class TestSourceWindow(TestCase):
         """The per-run daily window is DASHBOARD_SOURCE_WINDOW_DAYS wide."""
         result = self._run_with_active_org()
 
-        expected = _truncate_to_day(
+        expected = truncate_to_day(
             self.now - timedelta(days=DASHBOARD_SOURCE_WINDOW_DAYS)
         )
         assert result["period"]["daily"]["start"] == expected.isoformat()
@@ -947,7 +947,7 @@ class TestSourceWindow(TestCase):
             source_window_days=DASHBOARD_RECONCILE_WINDOW_DAYS
         )
 
-        expected = _truncate_to_day(
+        expected = truncate_to_day(
             self.now - timedelta(days=DASHBOARD_RECONCILE_WINDOW_DAYS)
         )
         assert result["period"]["daily"]["start"] == expected.isoformat()
@@ -1183,14 +1183,16 @@ class TestALoweredTotalIsReported(TestCase):
         self._daily(self.covered, self.month + timedelta(days=1), value=40)
         self._daily(self.short, self.month, value=70)
 
-        lowered = _months_the_rollup_would_lower(self.month)
-        _rollup_monthly_from_daily(self.month)
+        lowered = _pairs_the_rollup_would_lower(self.month)
+        _rollup_monthly_from_daily(self.month, skip=set(lowered))
 
-        assert lowered == [f"{self.month:%Y-%m} (org {self.short.id})"]
+        assert lowered == [(self.short.id, self.month)]
 
         short_row = EventMetricsMonthly._base_manager.get(organization=self.short)
         covered_row = EventMetricsMonthly._base_manager.get(organization=self.covered)
-        assert short_row.metric_value == 70  # the under-count the warning is about
+        # Kept, not overwritten: writing 70 would replace a correct figure with a
+        # known-short one just because the daily tier has not been repaired yet.
+        assert short_row.metric_value == 80
         assert covered_row.metric_value == 80
 
     def test_a_tier_that_covers_everything_reports_nothing(self):
@@ -1198,7 +1200,7 @@ class TestALoweredTotalIsReported(TestCase):
         self._monthly(self.covered, value=40)
         self._daily(self.covered, self.month, value=40)
 
-        assert _months_the_rollup_would_lower(self.month) == []
+        assert _pairs_the_rollup_would_lower(self.month) == []
         _rollup_monthly_from_daily(self.month)
 
 
@@ -1241,7 +1243,7 @@ class TestTheUnderCountCheckIsBounded(TestCase):
 
     def test_it_costs_one_query_regardless_of_tenant_count(self):
         with CaptureQueriesContext(connection) as captured:
-            assert _months_the_rollup_would_lower(self.month) == []
+            assert _pairs_the_rollup_would_lower(self.month) == []
         assert len(captured.captured_queries) == 1, (
             "the under-count check should be a single database-side comparison, "
             f"got {len(captured.captured_queries)}:\n"
@@ -1251,7 +1253,7 @@ class TestTheUnderCountCheckIsBounded(TestCase):
     def test_it_does_not_select_every_monthly_row(self):
         """36 rows exist; the check must return only what is wrong, which is none."""
         with CaptureQueriesContext(connection) as captured:
-            _months_the_rollup_would_lower(self.month)
+            _pairs_the_rollup_would_lower(self.month)
         sql = captured.captured_queries[0]["sql"]
         assert "metric_value" in sql and "<" in sql, (
             "the comparison is not happening in the database:\n" + sql
@@ -1271,7 +1273,7 @@ class TestTheDiagnosticCannotBlockTheRollup(TestCase):
             prefilter = mock_execution.objects.filter.return_value
             prefilter.values_list.return_value.distinct.return_value = [1]
             with patch(
-                "dashboard_metrics.tasks._months_the_rollup_would_lower",
+                "dashboard_metrics.tasks._pairs_the_rollup_would_lower",
                 side_effect=DatabaseError("diagnostic exploded"),
             ):
                 return _run_aggregation(**patches)
@@ -1366,7 +1368,7 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
     def test_a_failed_check_is_reported_as_unavailable_not_as_clean(self):
         """`[]` alone would read as 'checked, nothing lowered'."""
         with patch(
-            "dashboard_metrics.tasks._months_the_rollup_would_lower",
+            "dashboard_metrics.tasks._pairs_the_rollup_would_lower",
             side_effect=DatabaseError("diagnostic exploded"),
         ):
             result = self._run(tier=AggregationTier.DAILY_MONTHLY)

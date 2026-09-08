@@ -32,7 +32,7 @@ from dashboard_metrics.models import (
     MetricType,
 )
 from dashboard_metrics.services import MetricsQueryService
-from dashboard_metrics.tasks import _truncate_to_day
+from dashboard_metrics.tasks import truncate_to_day
 
 logger = logging.getLogger(__name__)
 
@@ -135,7 +135,7 @@ class Command(BaseCommand):
         # Truncated to match the cron's daily_start: an untruncated boundary writes the
         # oldest day covering only part of it, and the monthly rollup now sums the
         # persisted daily tier rather than recomputing that day from source.
-        start_date = _truncate_to_day(end_date - timedelta(days=days))
+        start_date = truncate_to_day(end_date - timedelta(days=days))
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
         self.stdout.write(f"Days: {days}")
@@ -294,6 +294,16 @@ class Command(BaseCommand):
 
         return sorted(str(oid) for oid in all_org_ids)
 
+    @staticmethod
+    def _granularities(skip_hourly: bool) -> tuple:
+        """Which granularities to query.
+
+        `--skip-hourly` skips the HOUR *queries*, not just their upsert: the deploy
+        step passes it over a window measured in weeks, and issuing them anyway
+        reinstates the scan this change exists to remove.
+        """
+        return (Granularity.DAY,) if skip_hourly else (Granularity.HOUR, Granularity.DAY)
+
     def _collect_metrics(
         self,
         org_id: str,
@@ -371,13 +381,9 @@ class Command(BaseCommand):
                 monthly_agg[mkey]["value"] += value
                 monthly_agg[mkey]["count"] += 1
 
-        granularities = (
-            (Granularity.DAY,) if skip_hourly else (Granularity.HOUR, Granularity.DAY)
-        )
-
         # Fetch all 4 LLM metrics in one query per granularity
         try:
-            for granularity in granularities:
+            for granularity in self._granularities(skip_hourly):
                 llm_split = MetricsQueryService.get_llm_metrics_split(
                     org_id, start_date, end_date, granularity
                 )
@@ -404,7 +410,7 @@ class Command(BaseCommand):
                 extra_kwargs["org_identifier"] = org_identifier
 
             try:
-                if not skip_hourly:
+                if Granularity.HOUR in self._granularities(skip_hourly):
                     hourly_results = query_method(
                         org_id,
                         start_date,

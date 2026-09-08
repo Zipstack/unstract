@@ -3,10 +3,12 @@
 from datetime import datetime, timezone as dt_timezone
 from unittest.mock import patch
 
+# Imported under private aliases: pytest collects any TestCase subclass by name, so
+# a bare import would re-run all three base classes here, unfrozen, under boundary ids.
 from dashboard_metrics.tests.test_tasks import (
-    TestMonthlyMatchesTheOldDerivation,
-    TestMonthlyThroughTheTask,
-    TestSourceWindow,
+    TestMonthlyMatchesTheOldDerivation as _BaseMonthlyDerivation,
+    TestMonthlyThroughTheTask as _BaseMonthlyThroughTask,
+    TestSourceWindow as _BaseSourceWindow,
 )
 
 _BOUNDARIES = [
@@ -29,6 +31,9 @@ def _at(when):
 
 
 for _when in _BOUNDARIES:
-    for _cls in (TestSourceWindow, TestMonthlyThroughTheTask, TestMonthlyMatchesTheOldDerivation):
+    for _cls in (_BaseSourceWindow, _BaseMonthlyThroughTask, _BaseMonthlyDerivation):
         _frozen = _at(_when)(_cls)
         globals()[_frozen.__name__] = _frozen
+
+# Loop variables would otherwise be collected as test classes themselves.
+del _when, _cls, _frozen

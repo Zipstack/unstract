@@ -12,8 +12,11 @@ hardcoding Beat: it is one half of that row, and the same process should fire it
 
 The new row runs at minute 20, off the ``*/15`` grid. The hourly-tier run's per-tier
 lock is deliberately unable to block it, so what keeps the two apart is the schedule
-on the PG scheduler and the consumer's concurrency on Beat — see the note beside the
-new row's ``cron_string``.
+— on the PG scheduler, whose consumer also runs one at a time. On Beat nothing
+serialises them: the surviving row is an IntervalSchedule whose phase drifts, and the
+Celery consumer is not pinned to one worker. The overlap costs duplicated source
+reads, not wrong numbers, since every write is an idempotent upsert. See the note
+beside the new row's ``cron_string``.
 
 **Rolling back the code past this release requires reversing this migration first,
 from the outgoing image.** After it runs both scheduler rows carry a ``tier`` kwarg
@@ -76,7 +79,7 @@ AGGREGATION_SCHEDULES = [
         # cron_string against the wall clock. It does NOT on Beat, where 0002 gave
         # the row an IntervalSchedule: that fires at last_run_at + 15min, so its
         # phase is wherever the previous run landed and re-anchors on restart.
-        # Serialising the Celery path is the consumer's concurrency, not this.
+        # Nothing serialises the Celery path — see the module docstring.
         "cron_string": "20 * * * *",
         "crontab": {"minute": "20", "hour": "*"},
         "description": (
