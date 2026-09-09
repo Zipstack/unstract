@@ -33,6 +33,7 @@ from dashboard_metrics.models import (
 )
 from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.tasks import (
+    LOWERED_MONTHS_REPORT_LIMIT,
     DASHBOARD_RECONCILE_WINDOW_DAYS,
     DASHBOARD_SOURCE_WINDOW_DAYS,
     AggregationTier,
@@ -42,6 +43,7 @@ from dashboard_metrics.tasks import (
     _active_org_ids,
     _aggregation_lock_keys,
     _months_missing_days,
+    _name_lowered_pairs,
     _pairs_the_rollup_would_lower,
     _rollup_monthly_from_daily,
     _run_aggregation,
@@ -1781,3 +1783,30 @@ class TestTheReconciliationRowInheritsOwnership(TestCase):
         assert PgPeriodicTask.objects.get(
             name=self.migration.RECONCILE_TASK_NAME
         ).pg_owned is False
+
+
+class TestTheTruncatedListNamesTheTotal(TestCase):
+    """The count is what separates one tenant's gap from a fleet-wide one.
+
+    Reporting the cap instead of the total makes three affected tenants and four
+    thousand render identically, which is the difference between "look at that
+    org" and "the aggregation stopped running".
+    """
+
+    def _pairs(self, n):
+        month = _truncate_to_month(timezone.now()).date()
+        return [(i, month, "documents_processed", "default", "") for i in range(n)]
+
+    def test_under_the_cap_nothing_is_truncated(self):
+        names = _name_lowered_pairs(self._pairs(LOWERED_MONTHS_REPORT_LIMIT))
+
+        assert len(names) == LOWERED_MONTHS_REPORT_LIMIT
+        assert not any("more" in n for n in names)
+
+    def test_over_the_cap_the_tail_names_the_total_not_the_cap(self):
+        names = _name_lowered_pairs(self._pairs(LOWERED_MONTHS_REPORT_LIMIT + 5))
+
+        assert names[-1] == f"... and 5 more of {LOWERED_MONTHS_REPORT_LIMIT + 5}", (
+            "the tail must carry the real total; reporting the cap makes every "
+            f"overflow look identical:\n{names[-1]}"
+        )
