@@ -160,8 +160,13 @@ class DatabaseUtils:
         if error and has_error_col:
             values[TableColumns.ERROR_MESSAGE] = error
         if has_status_col:
+            # Use `.value` so the destination column stores the plain string
+            # ("SUCCESS"/"ERROR"), not the enum repr ("FileProcessingStatus.SUCCESS")
+            # that stringifying the member produces.
             values[TableColumns.STATUS] = (
-                FileProcessingStatus.ERROR if error else FileProcessingStatus.SUCCESS
+                FileProcessingStatus.ERROR.value
+                if error
+                else FileProcessingStatus.SUCCESS.value
             )
         if column_mode == ColumnModes.WRITE_JSON_TO_A_SINGLE_COLUMN:
             v2_col_name = f"{single_column_name}_v2"
