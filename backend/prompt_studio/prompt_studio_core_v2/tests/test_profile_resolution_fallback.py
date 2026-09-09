@@ -147,7 +147,14 @@ def _call(
         patch.object(helper, "validate_adapter_status", autospec=True),
         patch.object(helper, "validate_profile_manager_owner_access", autospec=True),
         patch.object(helper, "_get_platform_api_key", autospec=True, return_value="pk"),
-        patch.object(helper, "dynamic_extractor", autospec=True, return_value="text"),
+        # dynamic_extractor returns an ExtractResult (text + optional
+        # document_insights signature data), not a bare string.
+        patch.object(
+            helper,
+            "dynamic_extractor",
+            autospec=True,
+            return_value=psh.ExtractResult(text="text"),
+        ),
         # Must be a dict with a non-pending status: the builders early-return a
         # pending response (and no cb_kwargs) when indexing is still running.
         patch.object(

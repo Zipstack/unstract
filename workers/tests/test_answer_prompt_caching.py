@@ -142,6 +142,29 @@ def test_cached_and_uncached_share_postamble_formatting():
         assert piece in cached, f"missing from construct_cached_prompt: {piece!r}"
 
 
+def test_signature_context_lands_in_cached_prefix_and_matches_uncached():
+    """LLMWhisperer ``document_insights`` signature metadata is per-document,
+    so the cached builder must place it inside the reusable context prefix
+    (not the volatile question) and both builders must emit the same block.
+    """
+    args = dict(_ARGS)
+    args["signature_metadata"] = {
+        "0": [{"name": "Mr Dagan", "type": "signature", "desc": "Director"}]
+    }
+    flat = A.construct_prompt(**args)
+    prefix, volatile = A.construct_cached_prompt(**args)
+    for piece in ("[Document Signature Information]", "Page 1: Mr Dagan (signature)"):
+        assert piece in flat, f"missing from construct_prompt: {piece!r}"
+        assert piece in prefix, f"missing from cache_prefix: {piece!r}"
+        assert piece not in volatile, f"signature block leaked into volatile: {piece!r}"
+    # Signature block sits inside the context delimiters in both variants.
+    for text in (flat, prefix):
+        assert text.index("UNIT 101") < text.index("[Document Signature Information]")
+        assert text.index("[Document Signature Information]") < text.index(
+            "-----------------"
+        )
+
+
 # NOTE: the ENABLE_PROMPT_CACHING env-var master switch is owned by the SDK
 # (``unstract.sdk1.llm.is_prompt_caching_enabled``) and covered by its tests;
 # answer_prompt gates purely on the LLM's ``is_prompt_caching_active()`` probe
