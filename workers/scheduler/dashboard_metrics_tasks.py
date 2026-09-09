@@ -156,7 +156,9 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
         # against is under-counted without ever being "lowered".
         logger.warning(
             "%s rolled up an incomplete daily tier for %s — those totals are "
-            "under-counted. Repair daily with `backfill_metrics`",
+            "under-counted whether or not they were lowered. Repair with "
+            "`backfill_metrics` if the source tables hold those days; a date on "
+            "which nothing ran anywhere reads the same and needs no action",
             name,
             ", ".join(short),
         )
@@ -178,9 +180,17 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
             "stale for this run",
             name,
         )
-    if not wrote and not result.get("skipped_reason") and not result.get("errors"):
+    if (
+        result.get("tier") != "hourly"
+        and not wrote
+        and not result.get("skipped_reason")
+        and not result.get("errors")
+    ):
         # The signature of the regression this change could introduce: a tier with
-        # work to do, no error, and nothing written.
+        # work to do, no error, and nothing written. Not on the */15 hourly row,
+        # which writes nothing on a quiet weekend by design — the backend guards the
+        # same condition with _writes_daily_monthly, and without the guard here this
+        # warns 96 times a day about a healthy fleet.
         logger.warning("%s: %s tier wrote no rows", name, result.get("tier", "?"))
 
 

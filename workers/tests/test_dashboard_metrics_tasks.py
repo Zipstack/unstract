@@ -286,6 +286,30 @@ class TestTheRunSummaryReachesTheLog:
         assert "unchanged" in text and "backfill_metrics" in text
         assert "lowered existing" not in text
 
+    def test_a_quiet_hourly_run_is_not_reported_as_writing_nothing(self, caplog):
+        """The backend exempts the */15 row from this arm; the copy here did not.
+
+        An hourly run writes nothing whenever the shortlisted orgs had no activity
+        in the last 24h — a healthy weekend. Unguarded, on-call gets 96 warnings a
+        day for it, on the line whose own comment calls it "the signature of the
+        regression this change could introduce".
+        """
+        text = self._run(
+            caplog,
+            {"success": True, "tier": "hourly", "hourly": {"upserted": 0}},
+        )
+
+        assert "wrote no rows" not in text
+
+    def test_a_daily_monthly_run_that_wrote_nothing_is_still_reported(self, caplog):
+        """The control: the arm must still fire for the tier it was written for."""
+        text = self._run(
+            caplog,
+            {"success": True, "tier": "daily_monthly", "daily": {"upserted": 0}},
+        )
+
+        assert "wrote no rows" in text
+
     def test_an_incomplete_daily_tier_is_named(self, caplog):
         """Independent of the above: no stored total, so nothing was preserved."""
         text = self._run(

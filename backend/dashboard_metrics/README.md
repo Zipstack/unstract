@@ -33,9 +33,10 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 
 ### Quick Commands
 ```bash
-# Backfill historical data (run first!)
-# Before deploying this change, use the deploy-critical form instead — see
-# "Why 62 days": backfill_metrics --days 62 --skip-hourly --skip-monthly
+# Backfill historical data
+# The deploy step is a different invocation with its own ordering — see
+# "Why 62 days" below; do not run it from the outgoing image, where
+# --skip-hourly still issues the HOUR queries it skips here.
 python manage.py backfill_metrics --days=30
 
 # Start metrics worker
@@ -410,8 +411,11 @@ total to compare against, so a month with no monthly row yet — the first run o
 calendar month — is still written short. Missing whole days are reported separately,
 under `incomplete_daily_coverage`.
 
-Run this once before the first aggregation after deploying the monthly-from-daily
-rollup, so the tier it derives from is complete:
+Run this as soon as `migrate` finishes. It cannot be sequenced *before* the first
+aggregation: the schedule row `0006` adds goes live at the end of `migrate`, so the
+:20 run can fire while the backfill is still going. That first rollup may write a
+short month — it has no stored total to compare against, so the guard is blind to it
+— and the backfill repairs it. Expect one under-counted reading, not a race to lose:
 
 ```
 python manage.py backfill_metrics --days 62 --skip-hourly --skip-monthly
@@ -446,6 +450,15 @@ UPDATE django_celery_beat_periodictasks SET last_update = now() WHERE ident = 1;
 ```
 
 and the same three against `pg_periodic_task` (`task_kwargs = '{}'::jsonb`).
+
+**This recovery is a one-way door until you undo it.** The SQL changes rows, not
+`django_migrations`, which still records `0005` and `0006` as applied — so a later
+roll-forward of this release reports "No migrations to apply" and restores nothing.
+The install keeps running the single `*/15` row with `kwargs = '{}'`, which defaults
+`tier` to ALL: every tier written 96 times a day, the load this release removes, and
+no reconciliation pass at all. Nothing errors; the only trace is `tier=all` in the
+completion log. Before rolling forward again, run
+`migrate dashboard_metrics 0004 --fake` so `0005` and `0006` re-apply.
 
 The forward direction is bounded rather than self-healing: a pod still on the old image
 during a rolling deploy has the old signature and raises `TypeError` per tick until the
