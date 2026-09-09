@@ -23,7 +23,9 @@ class ToolExecutionInternalViewSet(viewsets.ModelViewSet):
     """Internal API for tool execution operations used by lightweight workers."""
 
     serializer_class = ToolInstanceSerializer
-    # Backward compat: remove once all workers pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; scoping runs through
+    # filter_queryset_by_organization, which fails closed, so a caller without
+    # X-Organization-ID gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):
