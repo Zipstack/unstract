@@ -87,9 +87,7 @@ class TestTheIndexGuardsAreRunnableSql(TransactionTestCase):
                 finally:
                     with connection.cursor() as cur:
                         cur.execute(f"DROP INDEX IF EXISTS {index_name}")
-                        cur.execute(
-                            f"CREATE INDEX {index_name} ON {table} {columns}"
-                        )
+                        cur.execute(f"CREATE INDEX {index_name} ON {table} {columns}")
 
     def test_each_guard_rejects_a_missing_index(self):
         for index_name, (_, table, columns) in _MIGRATIONS.items():

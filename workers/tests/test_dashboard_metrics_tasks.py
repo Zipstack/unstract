@@ -231,6 +231,16 @@ class TestTheRunSummaryReachesTheLog:
                 dmt.dashboard_metrics_aggregate()
         return caplog.text
 
+    @staticmethod
+    def _levels(caplog, needle):
+        """Levels of the records whose message contains `needle`.
+
+        Asserting on caplog.text alone cannot see severity, so an ERROR silently
+        downgraded to WARNING stays green — and severity is the only thing that
+        reaches an alert for a fire-and-forget periodic.
+        """
+        return {r.levelname for r in caplog.records if needle in r.getMessage()}
+
     def test_an_empty_prefilter_reports_the_rows_the_rollup_still_wrote(self, caplog):
         text = self._run(
             caplog,
@@ -285,6 +295,22 @@ class TestTheRunSummaryReachesTheLog:
         assert "2026-08 (org 3)" in text
         assert "unchanged" in text and "backfill_metrics" in text
         assert "lowered existing" not in text
+
+    def test_breakage_is_logged_at_error_not_warning(self, caplog):
+        """Both arms that mean "something broke" must reach an alert."""
+        self._run(
+            caplog,
+            {
+                "success": False,
+                "tier": "daily_monthly",
+                "errors": 2,
+                "organizations_processed": 7,
+                "monthly": {"upserted": 0, "failed": True},
+            },
+        )
+
+        assert self._levels(caplog, "error(s) across") == {"ERROR"}
+        assert self._levels(caplog, "the monthly rollup did not run") == {"ERROR"}
 
     def test_a_quiet_hourly_run_is_not_reported_as_writing_nothing(self, caplog):
         """The backend exempts the */15 row from this arm; the copy here did not.

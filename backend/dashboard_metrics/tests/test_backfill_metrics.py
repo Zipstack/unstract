@@ -216,6 +216,21 @@ class TestAWholesaleQueryFailureIsNotReportedAsSuccess(TestCase):
         assert "error(s) during backfill" in str(caught.exception)
         assert "BACKFILL FAILED" in out.getvalue()
 
+    def test_a_failing_llm_query_is_counted_too(self):
+        """The LLM split is caught in its own arm, separate from METRIC_CONFIGS."""
+        out = StringIO()
+        with patch.object(Command, "METRIC_CONFIGS", []):
+            with patch(
+                "dashboard_metrics.management.commands.backfill_metrics."
+                "MetricsQueryService.get_llm_metrics_split",
+                side_effect=RuntimeError("llm query exploded"),
+            ):
+                with self.assertRaises(CommandError):
+                    call_command(
+                        "backfill_metrics", days=1, skip_monthly=True, stdout=out
+                    )
+        assert "BACKFILL FAILED" in out.getvalue()
+
     def test_a_clean_run_still_reports_complete(self):
         """The control: without a failure the command stays green and returns."""
         out = StringIO()

@@ -457,8 +457,15 @@ roll-forward of this release reports "No migrations to apply" and restores nothi
 The install keeps running the single `*/15` row with `kwargs = '{}'`, which defaults
 `tier` to ALL: every tier written 96 times a day, the load this release removes, and
 no reconciliation pass at all. Nothing errors; the only trace is `tier=all` in the
-completion log. Before rolling forward again, run
-`migrate dashboard_metrics 0004 --fake` so `0005` and `0006` re-apply.
+completion log.
+
+To clear it, deploy the new image first, then from **that** image run
+`manage.py migrate dashboard_metrics 0004 --fake` followed by
+`manage.py migrate dashboard_metrics`. Both steps are needed: the entrypoint's own
+`migrate` runs before you get there and reports nothing to apply. Run the `--fake`
+from the OUTGOING image and it does nothing at all — `0005` and `0006` are not on
+disk there, so `0004` has no child to unapply and the command prints "No migrations
+to apply" while un-recording nothing.
 
 The forward direction is bounded rather than self-healing: a pod still on the old image
 during a rolling deploy has the old signature and raises `TypeError` per tick until the

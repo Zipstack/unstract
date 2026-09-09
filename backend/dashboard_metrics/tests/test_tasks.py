@@ -1442,8 +1442,12 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
         worker, so nothing crossed the seam.
         """
         yesterday = timezone.now().date() - timedelta(days=1)
-        if yesterday < self.month:
-            self.skipTest("no whole day of the current month has elapsed yet")
+        if yesterday <= self.month:
+            # On the 1st nothing has elapsed; on the 2nd exactly one whole day has,
+            # and the single seeded row covers it — so there is no gap to assert and
+            # the suite would go red for every PR in the repo on that date. The
+            # sibling class covers the logic itself under a frozen clock.
+            self.skipTest("fewer than two whole days of the month have elapsed")
         # A row for the month's first day and nothing since: every other whole day
         # of the month is missing.
         EventMetricsDaily._base_manager.create(
@@ -1457,6 +1461,21 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
         assert result["monthly"]["incomplete_daily_coverage"], (
             "the daily tier is missing whole days and the result dict did not say so"
         )
+
+    def test_a_failed_coverage_check_is_reported_as_unavailable(self):
+        """The sibling of the lowering check's arm, for the other key.
+
+        `coverage_check` was the one key with no assertion on either side of the
+        seam — renaming its literal left 190 backend tests green while the same
+        mutation on `needs_daily_repair` was caught.
+        """
+        with patch(
+            "dashboard_metrics.tasks._months_missing_days",
+            side_effect=DatabaseError("coverage check exploded"),
+        ):
+            result = self._run(tier=AggregationTier.DAILY_MONTHLY)
+
+        assert result["monthly"]["coverage_check"] == "unavailable"
 
     def test_a_failed_check_is_reported_as_unavailable_not_as_clean(self):
         """`[]` alone would read as 'checked, nothing lowered'."""

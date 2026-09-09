@@ -417,6 +417,17 @@ class TestTheSplitAddsOneRowAndRewritesOne:
         assert pg["queue"] == beat["queue"]
         assert pg["task_kwargs"] == json.loads(beat["kwargs"])
 
+    def test_the_new_beat_row_carries_no_interval_schedule(
+        self, split: dict[str, _SplitRecorder]
+    ) -> None:
+        """django-celery-beat rejects a row with both, and Beat reads interval first.
+
+        0002 created the row this splits from on an IntervalSchedule. Leaving it set
+        alongside the new crontab makes the crontab inert under Beat while the PG
+        mirror, which reads crontab first, adopts it — one row, two cadences.
+        """
+        assert split["beat"].created[_NEW_ROW]["interval"] is None
+
     def test_the_new_row_runs_hourly_on_both_tables(
         self, split: dict[str, _SplitRecorder]
     ) -> None:
