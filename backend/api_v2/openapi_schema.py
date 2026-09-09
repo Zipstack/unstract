@@ -173,8 +173,10 @@ EXECUTE_ERRORS = {
     ),
 }
 
+EXECUTE_SUMMARY = "Execute an API deployment against documents"
+
 EXECUTE_DESCRIPTION = (
-    "Execute an API deployment against one or more documents.\n\n"
+    "Runs an API deployment, authenticated by the deployment's own key.\n\n"
     "Supply the documents either as `files` (multipart upload) or as "
     "`presigned_urls` (HTTPS S3 URLs), or both — a request carrying neither is "
     f"rejected, and the two together may not exceed "
@@ -183,14 +185,16 @@ EXECUTE_DESCRIPTION = (
     "execution is queued; read the outcome from the status endpoint."
 )
 
+STATUS_SUMMARY = "Read the result of an execution"
+
 STATUS_DESCRIPTION = (
-    "Read the result of a previously started execution.\n\n"
-    "This read is one-shot: the first call that observes a completed execution "
-    "acknowledges it and the stored result is discarded, so every later call "
-    "for that execution answers 406. Poll while the execution is pending, and "
-    "keep the payload of the call that returns it — it cannot be fetched again."
-    "\n\nA still-running execution answers 422 carrying its current `status`, "
-    "so a polling loop should treat 422 as the normal reply and stop on 200. "
+    "Reads a previously started execution, authenticated by the deployment's "
+    "own key. The read is one-shot: the first call that observes a completed "
+    "execution acknowledges it and the stored result is discarded, so every "
+    "later call for that execution answers 406. Keep the payload of the call "
+    "that returns it — it cannot be fetched again.\n\n"
+    "A still-running execution answers 422 carrying its current `status`, so a "
+    "polling loop should treat 422 as the normal reply and stop on 200. "
     "Clients that raise on any non-2xx need to allow for that."
 )
 
@@ -200,6 +204,7 @@ STATUS_DESCRIPTION = (
 DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
     post=extend_schema(
         operation_id="execute",
+        summary=EXECUTE_SUMMARY,
         tags=["deployment"],
         auth=DEPLOYMENT_AUTH,
         parameters=DEPLOYMENT_PATH_PARAMETERS,
@@ -221,6 +226,7 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
     ),
     get=extend_schema(
         operation_id="status",
+        summary=STATUS_SUMMARY,
         tags=["deployment"],
         auth=DEPLOYMENT_AUTH,
         parameters=DEPLOYMENT_PATH_PARAMETERS + [ExecutionQuerySerializer],
@@ -294,27 +300,26 @@ API_DEPLOYMENT_LIST_QUERY_PARAMETERS = [
     ),
 ]
 
+LIST_API_DEPLOYMENTS_SUMMARY = "List an organisation's API deployments"
+
 LIST_API_DEPLOYMENTS_DESCRIPTION = (
-    "List the API deployments of an organisation.\n\n"
-    "Each entry carries the `api_name` and `api_endpoint` an execution call "
-    "needs, alongside the `display_name` and `description` that say what the "
-    "deployment is for. A key holder can therefore discover what is deployed "
-    "without being told, having resolved `org_id` once from `whoami`.\n\n"
-    "An entry also describes who owns the deployment and how it has been "
-    "running lately, including the creator's email address. This is the same "
-    "view of the organisation its own members have in the web app.\n\n"
+    "Lists what an organisation has deployed, authenticated by a platform API "
+    "key that belongs to it. Each entry carries the `api_name` and "
+    "`api_endpoint` an execution call needs, the `display_name` and "
+    "`description` that say what the deployment is for, and who owns it and "
+    "how it has been running lately, including the creator's email address.\n\n"
     "The deployment's own API key is not part of this listing, so a platform "
     "key cannot be widened into the ability to execute a deployment by "
     "reading it. Executing still needs the deployment key.\n\n"
-    "Results are ordered by most recent run first, then by identifier so that "
-    "paging is stable. Pass `page` and `page_size`, and read `count` and "
-    "`next` from the envelope."
+    "Results are ordered by most recent run first, then by identifier, so "
+    "paging is stable."
 )
 
 
 API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
     list=extend_schema(
         operation_id="list_deployments",
+        summary=LIST_API_DEPLOYMENTS_SUMMARY,
         tags=["deployment"],
         auth=[{"platformKey": []}],
         parameters=API_DEPLOYMENT_LIST_QUERY_PARAMETERS,

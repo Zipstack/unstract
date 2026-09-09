@@ -355,6 +355,46 @@ def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
         assert status_op["responses"]["406"]["description"].strip()
 
 
+# What each description asserts about how the server behaves. Prose that makes
+# a promise is contract text, and reaches the caller as the client's docstring
+# and the CLI's help, so it is pinned like any other part of the contract.
+BEHAVIOUR_PROMISED_IN_PROSE = {
+    "whoami": ["GET only", "no organisation segment", "rejected as unauthenticated"],
+    "list_deployments": ["not part of this listing", "ordered by most recent run"],
+    "execute": ["carrying neither is rejected", "`timeout` of -1"],
+    "status": ["one-shot", "422"],
+}
+
+
+def test_every_operation_carries_a_summary_a_command_list_can_show() -> None:
+    """A generated client headlines its method with the summary, and a CLI
+    built from this spec lists each command by it. Without one the listing
+    falls back to the operation id, or to nothing at all.
+    """
+    for path, method, operation in _operations(_committed()):
+        summary = operation.get("summary", "")
+        assert summary, f"{method} {path}"
+        # Long enough to say something, short enough for one terminal row.
+        assert 20 <= len(summary) <= 60, f"{method} {path}: {summary}"
+        assert not summary.endswith("."), f"{method} {path}: {summary}"
+        assert summary != operation["description"], f"{method} {path}"
+
+
+def test_each_description_still_promises_what_it_promised() -> None:
+    """These sentences are the only place a caller learns the behaviour they
+    describe, and nothing else fails when one is edited away.
+    """
+    described = {
+        operation["operationId"]: operation["description"]
+        for _, _, operation in _operations(_committed())
+    }
+
+    assert set(described) == set(BEHAVIOUR_PROMISED_IN_PROSE)
+    for operation_id, promises in BEHAVIOUR_PROMISED_IN_PROSE.items():
+        for promise in promises:
+            assert promise in described[operation_id], f"{operation_id}: {promise}"
+
+
 def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
     """A bare DRF FileField documents as `format: uri`, which generators turn
     into a string parameter and no multipart upload.
