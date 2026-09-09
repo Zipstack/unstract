@@ -326,16 +326,6 @@
             },
             "description": "No usable platform API key was supplied \u2014 absent, malformed, unknown, or revoked."
           },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlatformKeyError"
-                }
-              }
-            },
-            "description": "The key was recognised but refused: its permission tier is not one this deployment knows, or the request named an organisation the key does not belong to."
-          },
           "500": {
             "description": "The request could not be served. The body is not guaranteed to be JSON."
           }

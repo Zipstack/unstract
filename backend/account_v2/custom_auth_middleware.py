@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import uuid
 
@@ -14,6 +15,30 @@ from backend.constants import RequestHeader
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 logger = logging.getLogger(__name__)
+
+
+def _client_ip(request: HttpRequest) -> str:
+    """Best-effort caller address for a rejection log line."""
+    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.META.get("REMOTE_ADDR", "unknown")
+
+
+def _log_key_rejection(request: HttpRequest, token: str, reason: str) -> None:
+    """Record a rejected Bearer credential without recording the credential.
+
+    The fingerprint is a truncated SHA-256 of the presented token: enough to
+    correlate repeated attempts against one candidate, useless for replay.
+    """
+    fingerprint = hashlib.sha256(token.encode("utf-8", "replace")).hexdigest()[:12]
+    logger.warning(
+        "Platform key rejected (%s), fingerprint %s, path %s, from %s",
+        reason,
+        fingerprint,
+        request.path,
+        _client_ip(request),
+    )
 
 
 class CustomAuthMiddleware:
@@ -81,6 +106,12 @@ class CustomAuthMiddleware:
         try:
             key_uuid = uuid.UUID(token_str)
         except (ValueError, AttributeError):
+            # Logged like the branch below: these two are the ones an attacker
+            # traverses, and until now neither left a trace, so "was this key
+            # ever presented?" had no data to answer from. The token is never
+            # logged -- only a truncated SHA-256, which is enough to correlate
+            # repeated attempts against one candidate without storing it.
+            _log_key_rejection(request, token_str, "malformed key")
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
         try:
@@ -88,12 +119,22 @@ class CustomAuthMiddleware:
                 "created_by", "api_user", "organization"
             ).get(key=key_uuid, is_active=True)
         except PlatformApiKey.DoesNotExist:
+            _log_key_rejection(request, token_str, "unknown or inactive key")
             return JsonResponse({"message": "Invalid or inactive API key"}, status=401)
 
         # Validate the key belongs to the org in the URL
         if request.organization_id and str(key.organization.organization_id) != str(
             request.organization_id
         ):
+            # The highest-signal security event in this file: a valid key aimed
+            # at an organisation it does not belong to.
+            logger.warning(
+                "Platform key %s (org %s) refused for org %s from %s",
+                key.id,
+                key.organization.organization_id,
+                request.organization_id,
+                _client_ip(request),
+            )
             return JsonResponse(
                 {"message": "API key does not belong to this organization"},
                 status=403,

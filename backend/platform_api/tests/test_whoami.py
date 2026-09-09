@@ -25,9 +25,17 @@ ORG_B = "org-b"
 
 WHOAMI_URL = f"/{settings.PATH_PREFIX}/unstract/whoami/"
 
-# Trimmed from the production chain, preserving its relative order. The cloud
-# test settings drop CustomAuthMiddleware, so pinning the list keeps this suite
-# behaving the same in both trees.
+# Trimmed from the production chain, preserving its relative order, so the suite
+# does not depend on entries irrelevant to this route.
+#
+# The justification this comment used to carry -- that the cloud test settings
+# drop CustomAuthMiddleware -- was wrong: `unstract-cloud`'s `test_cloud.py`
+# states the opposite in as many words ("No middleware is excluded"). It was
+# copied from `test_platform_key_middleware.py`, where it is equally wrong.
+#
+# Pinning the chain hides the one ordering this endpoint depends on, so
+# `test_the_shipped_middleware_order_is_the_one_this_suite_assumes` asserts that
+# separately, against the real setting, outside the override.
 _MIDDLEWARE = [
     "middleware.request_id.CustomRequestIDMiddleware",
     settings.TENANT_MIDDLEWARE,
@@ -36,6 +44,20 @@ _MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     settings.CUSTOM_AUTH_MIDDLEWARE,
 ]
+
+
+def test_the_shipped_middleware_order_is_the_one_this_suite_assumes() -> None:
+    """`request.organization_id` is set only by OrganizationMiddleware and read
+    by bare attribute access in CustomAuthMiddleware, so the relative order of
+    the two is load-bearing for this route: reverse it in settings and every
+    whoami request raises AttributeError in production.
+
+    The class below pins MIDDLEWARE, so it would stay green through exactly that
+    change. This reads the real setting and is deliberately outside the override.
+    """
+    assert settings.MIDDLEWARE.index(settings.TENANT_MIDDLEWARE) < settings.MIDDLEWARE.index(
+        settings.CUSTOM_AUTH_MIDDLEWARE
+    )
 
 
 @pytest.mark.critical_path("platform-key-whoami")

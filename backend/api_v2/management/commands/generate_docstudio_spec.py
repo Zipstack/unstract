@@ -30,7 +30,12 @@ REGENERATE = "uv run python manage.py generate_docstudio_spec"
 # private prefix would send every generated client to a URL only that
 # installation answers. Written as literals rather than read from settings, so
 # an override fails the gate rather than being baked into the artifact.
-PUBLISHED_PATH_PREFIXES = ("deployment", "api/v1/unstract")
+#
+# Each entry is the *route*, not the mount it hangs off. `api/v1/unstract` alone
+# is exactly `TENANT_SUBFOLDER_PREFIX`, so with a `startswith` over the union an
+# `API_DEPLOYMENT_PATH_PREFIX` pointed anywhere under the tenant mount --
+# `api/v1/unstract/deploy`, say -- passed the gate this comment says it fails.
+PUBLISHED_PATH_PREFIXES = ("deployment", "api/v1/unstract/whoami")
 # Named in every failure message: the repos that regenerate from this file are
 # the ones a spec change actually breaks, and nothing there watches this repo.
 DOWNSTREAM = (

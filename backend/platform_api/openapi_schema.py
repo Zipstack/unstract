@@ -7,15 +7,20 @@ request time imports one by accident, matching ``api_v2.openapi_schema``.
 Their docstrings and help texts are published as the client-facing
 descriptions, so they are written for the caller rather than the maintainer.
 
-This operation publishes two error shapes, because it really sends two.
-``whoami`` is deliberately absent from ``WHITELISTED_PATHS``, so
-``CustomAuthMiddleware`` authenticates it and answers almost every credential
-failure itself, before DRF is entered, with a bare ``{"message": ...}`` --- that
-is ``PlatformKeyError``. The one it does not reach --- a caller who is
-authenticated but carries no platform key --- is answered by the view in that
-same shape, deliberately, so one declaration covers both. Anything DRF itself raises after that point still goes
-through the project exception handler and comes back as ``ErrorResponse``; a
-method this view does not implement is the reachable case.
+This operation publishes **one** error shape. ``whoami`` is deliberately absent
+from ``WHITELISTED_PATHS``, so ``CustomAuthMiddleware`` authenticates it and
+answers every credential failure itself, before DRF is entered, with a bare
+``{"message": ...}`` --- that is ``PlatformKeyError``. The one case it does not
+reach --- a caller who is authenticated but carries no platform key --- is
+answered by the view in that same shape, deliberately, so one declaration covers
+both.
+
+The wire carries a second shape that this operation does not publish: anything
+DRF raises after that point goes through the project exception handler and comes
+back as ``{type, errors[]}``, a method this view does not implement being the
+reachable case. That is not declared here on purpose --- attaching a 405 to the
+``get`` operation would describe a response ``GET`` cannot produce, since
+OpenAPI hangs responses off operations rather than paths.
 """
 
 from drf_spectacular.utils import (
@@ -126,12 +131,13 @@ WHOAMI_SCHEMA = extend_schema_view(
                 description="No usable platform API key was supplied — absent, "
                 "malformed, unknown, or revoked.",
             ),
-            403: OpenApiResponse(
-                PlatformKeyError,
-                description="The key was recognised but refused: its permission "
-                "tier is not one this deployment knows, or the request named an "
-                "organisation the key does not belong to.",
-            ),
+            # No 403. Every route to one is closed on the published path: the
+            # belongs-to-org guard is skipped (the whitelist leaves
+            # organization_id None), `ApiKeyPermission.allows` admits GET at
+            # every tier, and an unknown tier is barred by the check constraint
+            # in migration 0003. The organisation-qualified alias *can* 403, but
+            # it is not a published path -- see the identity test that pins the
+            # spec to organisation-free paths.
             500: OpenApiResponse(
                 description="The request could not be served. The body is not "
                 "guaranteed to be JSON.",

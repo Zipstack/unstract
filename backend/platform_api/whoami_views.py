@@ -13,6 +13,13 @@ organisation. That is why this route carries no organisation segment.
 same key. It predates this endpoint and spells the tier ``permission_tier``;
 this one uses ``permission``, matching the model field. Adding a field to either
 does not add it to the other.
+
+The organisation fields are the trap in that pairing, not the tier. MCP's
+``organization`` holds an **identifier**, not a display name
+(``mcp_server/platform_views.py`` sets it from ``organization_id``), whereas
+this endpoint splits the two into ``organization_id`` and ``organization_name``.
+Aligning the two surfaces by field name would map ``organization`` onto
+``organization_name`` and ship an id where a name is expected.
 """
 
 from rest_framework import status, views
@@ -53,10 +60,17 @@ class WhoAmIView(views.APIView):
             # and SessionAuthentication offers none -- so a raise here would
             # answer 403 to a request whose problem is a missing credential.
             # The body matches what CustomAuthMiddleware sends for the same
-            # class of failure, so one shape covers every rejection.
+            # class of failure. It does not cover every rejection this operation
+            # publishes -- the declared 500 says its own body may not be JSON.
+            #
+            # WWW-Authenticate is required on a 401 by RFC 9110 s11.6.1, and
+            # nothing upstream adds it: the middleware's own 401s omit it too.
+            # Spelled as in mcp_server/transport.py, the one other place in the
+            # codebase that emits it for this same credential.
             return Response(
                 {"message": "This endpoint requires a platform API key."},
                 status=status.HTTP_401_UNAUTHORIZED,
+                headers={"WWW-Authenticate": 'Bearer realm="platform"'},
             )
 
         organization = key.organization

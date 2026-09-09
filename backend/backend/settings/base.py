@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -734,8 +735,22 @@ WHITELISTED_PATHS.append("/health")
 # Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
 # Anchored: `re.match` is a prefix test, so without the `$` an organisation
 # literally named `whoami` would have its entire API treated as organisation-less.
+#
+# Built from TENANT_SUBFOLDER_PREFIX rather than re-spelling the mount: if the
+# mount moves, a second literal here would silently stop matching and every
+# organisation-less `whoami` call would start answering 403, with no startup
+# error and no failing test. `re.escape` because PATH_PREFIX comes from the
+# environment and would otherwise be interpreted as a pattern.
+#
+# Adding an entry to this list disarms BOTH organisation guards in
+# CustomAuthMiddleware for that path -- the key-belongs-to-org check at the
+# Bearer branch and the org-access-denied check on the session branch -- because
+# each is conditioned on `request.organization_id` being truthy and this branch
+# sets it to None. `whoami` is safe because its view derives the organisation
+# from the key row and refuses a session caller outright; a new entry inherits
+# neither of those properties by default.
 ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
-    rf"^/{PATH_PREFIX}/unstract/whoami/$",
+    rf"^/{re.escape(TENANT_SUBFOLDER_PREFIX)}/whoami/$",
 ]
 
 # Social Auth Settings

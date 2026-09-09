@@ -47,10 +47,12 @@ _PROMOTED_FILE_RESULT_FIELDS = {"extracted_text"}
 #: non-error body for a status the standardized-errors schema class also
 #: injects a handler-shaped example for. Recorded rather than silently skipped:
 #: the check below fails on any *new* instance, and this list is the debt.
+#: Keyed by schema name as well, so that a response later declaring a
+#: *different* non-`ErrorResponse` body stops inheriting the suppression.
 _KNOWN_EXAMPLE_DIVERGENCES = {
-    ("status", "406", "NotAcceptable"),
-    ("status", "500", "APIException"),
-    ("execute", "500", "APIException"),
+    ("status", "406", "NotAcceptable", "AcknowledgedResponse"),
+    ("status", "500", "APIException", "StatusResponse"),
+    ("execute", "500", "APIException", "ExecuteResponse"),
 }
 
 #: The operations served by an API deployment, as opposed to the platform-key
@@ -192,11 +194,15 @@ def test_the_deployment_operations_take_the_deployment_key() -> None:
 
 
 def test_clients_can_branch_on_every_failure_they_will_see() -> None:
-    """Every operation authenticates and can fail on the server, so these three
+    """Every operation authenticates and can fail on the server, so these two
     are the branches a client needs whatever it is calling.
+
+    403 is not universal: it moved to the deployment check below once `whoami`
+    became the first operation that authenticates but cannot refuse. Keeping it
+    here would have forced a status the published path can never send.
     """
     for path, method, operation in _operations(_committed()):
-        assert {"401", "403", "500"} <= set(operation["responses"]), f"{method} {path}"
+        assert {"401", "500"} <= set(operation["responses"]), f"{method} {path}"
 
 
 def test_the_deployment_operations_document_a_rejected_request_and_a_missing_one() -> (
@@ -207,9 +213,9 @@ def test_the_deployment_operations_document_a_rejected_request_and_a_missing_one
     a status an operation cannot return hands clients a dead branch.
     """
     for path, method, operation in _operations(_committed()):
-        declared = {"400", "404"} & set(operation["responses"])
+        declared = {"400", "403", "404"} & set(operation["responses"])
         if operation["operationId"] in DEPLOYMENT_OPERATIONS:
-            assert declared == {"400", "404"}, f"{method} {path}"
+            assert declared == {"400", "403", "404"}, f"{method} {path}"
         else:
             assert not declared, f"{method} {path}"
 
@@ -344,11 +350,13 @@ def test_the_identity_reads_errors_are_the_shape_the_middleware_sends() -> None:
     # the day the operation id moves.
     assert reads
     for path, operation in reads:
-        for code in ("401", "403"):
-            ref = operation["responses"][code]["content"]["application/json"]["schema"][
-                "$ref"
-            ]
-            assert ref.endswith("/PlatformKeyError"), f"{code} on {path}: {ref}"
+        # 401 only: the published path cannot 403 (see the note beside the
+        # response declaration), so declaring one would be a dead branch.
+        assert "403" not in operation["responses"], path
+        ref = operation["responses"]["401"]["content"]["application/json"]["schema"][
+            "$ref"
+        ]
+        assert ref.endswith("/PlatformKeyError"), f"401 on {path}: {ref}"
     assert set(_schema("PlatformKeyError")["properties"]) == {"message"}
 
 
@@ -361,6 +369,7 @@ def test_no_published_example_contradicts_its_own_schema() -> None:
     Checked structurally rather than by name: any response declaring a body
     other than `ErrorResponse` must carry no handler-shaped example.
     """
+    matched: set[tuple[str, str, str, str]] = set()
     for path, method, operation in _operations(_committed()):
         for code, response in operation["responses"].items():
             media = response.get("content", {}).get("application/json", {})
@@ -368,16 +377,40 @@ def test_no_published_example_contradicts_its_own_schema() -> None:
             if ref.endswith("/ErrorResponse"):
                 continue
             for name, example in media.get("examples", {}).items():
-                if (
-                    operation["operationId"],
-                    code,
-                    name,
-                ) in _KNOWN_EXAMPLE_DIVERGENCES:
+                key = (operation["operationId"], code, name, ref.split("/")[-1])
+                if key in _KNOWN_EXAMPLE_DIVERGENCES:
+                    matched.add(key)
                     continue
                 assert "errors" not in example.get("value", {}), (
                     f"{method} {path} {code}: example {name!r} shows the handler "
                     f"body, but the response declares {ref.split('/')[-1]!r}"
                 )
+
+    # Debt that pays itself down: once a divergence is fixed upstream its entry
+    # stops matching and fails here, instead of lingering and silently
+    # suppressing a future regression at the same coordinate.
+    assert matched == _KNOWN_EXAMPLE_DIVERGENCES, (
+        "these recorded divergences no longer occur and should be deleted: "
+        f"{sorted(_KNOWN_EXAMPLE_DIVERGENCES - matched)}"
+    )
+
+
+def test_the_example_contradiction_check_actually_fires() -> None:
+    """Every real candidate is currently in `_KNOWN_EXAMPLE_DIVERGENCES`, so the
+    assertion above runs zero times against the committed spec. Without this, a
+    defect in the check itself would be undetectable.
+    """
+    media = {
+        "schema": {"$ref": "#/components/schemas/ExecutionResponse"},
+        "examples": {"Handler": {"value": {"type": "client_error", "errors": []}}},
+    }
+    ref = media["schema"]["$ref"]
+    offending = [
+        name
+        for name, example in media["examples"].items()
+        if not ref.endswith("/ErrorResponse") and "errors" in example.get("value", {})
+    ]
+    assert offending == ["Handler"]
 
 
 def test_the_identity_read_asks_for_no_organisation() -> None:
