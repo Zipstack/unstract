@@ -149,16 +149,11 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Every write here edits the project itself -- its name, its settings,
-        # its default profile -- so shared access stays read-only (UN-2868).
-        if self.action in [
-            "destroy",
-            "add_co_owner",
-            "remove_co_owner",
-            "update",
-            "partial_update",
-            "make_profile_default",
-        ]:
+        # Settings are collaborative (UN-2868); only the project's existence
+        # and who it is shared with stay with the owner. Renaming is blocked
+        # per-field in the serializer, since it shares an endpoint with
+        # every settings write.
+        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]

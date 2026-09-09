@@ -21,7 +21,6 @@ import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
-import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
@@ -108,7 +107,6 @@ function Header({
     isSimplePromptStudio,
     details,
   } = useCustomToolStore();
-  const canEdit = usePromptStudioCanEdit();
   const runGate = usePromptRunGate(promptDetails);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
@@ -264,7 +262,6 @@ function Header({
                     <Checkbox
                       checked={required === "all"}
                       onChange={() => handleRequiredChange("all")}
-                      disabled={!canEdit}
                     >
                       All JSON Values Required
                     </Checkbox>
@@ -278,7 +275,6 @@ function Header({
                     <Checkbox
                       checked={required === "any"}
                       onChange={() => handleRequiredChange("any")}
-                      disabled={!canEdit}
                     >
                       At least 1 JSON Value Required
                     </Checkbox>
@@ -300,7 +296,6 @@ function Header({
                     checked={webhookEnabled}
                     onChange={handleWebhookEnabledChange}
                     onClick={(e) => e.stopPropagation()}
-                    disabled={!canEdit}
                   >
                     Enable Postprocessing Webhook{" "}
                     <Tooltip title="Enable external webhook call to postprocess JSON responses before returning to user.">
@@ -316,7 +311,6 @@ function Header({
                         value={webhookUrl}
                         onChange={(e) => handleWebhookUrlChange(e.target.value)}
                         onClick={(e) => e.stopPropagation()}
-                        disabled={!canEdit}
                         size="small"
                         style={{ width: "280px" }}
                       />
@@ -352,8 +346,7 @@ function Header({
           isCoverageLoading ||
           isSinglePassExtractLoading ||
           indexDocs?.includes(selectedDoc?.document_id) ||
-          isPublicSource ||
-          !canEdit,
+          isPublicSource,
       },
     ];
     if (LookupMenuItem && !isSimplePromptStudio) {

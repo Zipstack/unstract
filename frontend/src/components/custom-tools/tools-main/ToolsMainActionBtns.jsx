@@ -7,7 +7,6 @@ import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -59,7 +58,6 @@ function ToolsMainActionBtns() {
     selectedDoc,
     updateCustomTool,
   } = useCustomToolStore();
-  const canEdit = usePromptStudioCanEdit();
 
   const navigate = useNavigate();
   const { setPostHogCustomEvent } = usePostHogEvents();
@@ -142,19 +140,12 @@ function ToolsMainActionBtns() {
             disabled={isMultiPassExtractLoading || isSinglePassExtractLoading}
           />
         </Tooltip>
-        <Tooltip
-          title={
-            canEdit
-              ? "Reorder the list of prompts"
-              : "Only the owner can change this"
-          }
-        >
+        <Tooltip title="Reorder the list of prompts">
           <Button
             data-testid="ps-reorder-prompts-btn"
             icon={<List />}
             onClick={() => setOpenReorderModal(true)}
             loading={isNewOrderLoading}
-            disabled={!canEdit}
           />
         </Tooltip>
       </Space>

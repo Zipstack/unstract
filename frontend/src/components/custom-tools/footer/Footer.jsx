@@ -4,13 +4,11 @@ import { Button } from "@/components/ui/shims/antd-button";
 
 import "./Footer.css";
 import { promptType } from "../../../helpers/GetStaticData";
-import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { FooterLayout } from "../footer-layout/FooterLayout";
 
 function Footer({ activeKey, addPromptInstance }) {
   const { isPublicSource } = useCustomToolStore();
-  const canEdit = usePromptStudioCanEdit();
   if (activeKey === "1") {
     return (
       <FooterLayout>
@@ -20,7 +18,7 @@ function Footer({ activeKey, addPromptInstance }) {
               type="link"
               icon={<Plus />}
               onClick={() => addPromptInstance(promptType.notes)}
-              disabled={isPublicSource || !canEdit}
+              disabled={isPublicSource}
             >
               Notes
             </Button>
@@ -30,7 +28,7 @@ function Footer({ activeKey, addPromptInstance }) {
               type="link"
               icon={<Plus />}
               onClick={() => addPromptInstance(promptType.prompt)}
-              disabled={isPublicSource || !canEdit}
+              disabled={isPublicSource}
             >
               Prompt
             </Button>

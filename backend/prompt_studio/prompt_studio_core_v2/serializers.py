@@ -7,6 +7,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from tenant_account_v2.sharing_helpers import (
+    is_org_admin,
     serialize_group_refs,
     serialize_owner_refs,
 )
@@ -124,7 +125,19 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     }
 
     def validate_tool_name(self, value: str) -> str:
-        return validate_name_field(value, field_name="Tool name")
+        value = validate_name_field(value, field_name="Tool name")
+        # Settings and the project's name share this endpoint, and settings are
+        # collaborative -- so the rename is gated here rather than on the view
+        # (UN-2868).
+        request = self.context.get("request")
+        if not self.instance or not request or value == self.instance.tool_name:
+            return value
+        user = request.user
+        if getattr(user, "is_service_account", False):
+            return value
+        if not self.instance.is_owner(user) and not is_org_admin(user):
+            raise ValidationError("Only the owner can rename this project.")
+        return value
 
     def validate_description(self, value: str) -> str:
         if value is None:

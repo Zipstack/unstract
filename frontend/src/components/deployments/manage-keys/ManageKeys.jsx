@@ -7,6 +7,7 @@ import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Table } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -27,6 +28,10 @@ const ManageKeys = ({
   type,
 }) => {
   const { sessionDetails } = useSessionStore();
+  // Keys are managed by the deployment's owner, so a shared user reads them
+  // but cannot add one or change its state (UN-2868).
+  const canEdit = canEditResource(selectedApiRow, sessionDetails);
+  const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [isTableLoading, setIsTableLoading] = useState(false);
@@ -256,13 +261,16 @@ const ManageKeys = ({
       dataIndex: "is_active",
       align: "center",
       render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateKeyStatus(record);
-          }}
-        />
+        <Tooltip title={ownerOnlyTitle}>
+          <Switch
+            size="small"
+            checked={record.is_active}
+            disabled={!canEdit}
+            onChange={(e) => {
+              updateKeyStatus(record);
+            }}
+          />
+        </Tooltip>
       ),
     },
     {
@@ -298,14 +306,17 @@ const ManageKeys = ({
         footer={null}
       >
         <div className="display-flex-right new-key-btn">
-          <CustomButton
-            type="primary"
-            size="small"
-            icon={<Plus />}
-            onClick={openAddModal}
-          >
-            New Key
-          </CustomButton>
+          <Tooltip title={ownerOnlyTitle}>
+            <CustomButton
+              type="primary"
+              size="small"
+              icon={<Plus />}
+              disabled={!canEdit}
+              onClick={openAddModal}
+            >
+              New Key
+            </CustomButton>
+          </Tooltip>
         </div>
         <div className="keys-table">
           <Table

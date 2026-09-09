@@ -8,7 +8,6 @@ import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
 import { Collapse } from "@/components/ui/shims/antd-overlays";
 import { Card } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
-import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
@@ -84,7 +83,6 @@ function PromptCardItems({
     details,
     singlePassExtractMode,
   } = useCustomToolStore();
-  const canEdit = usePromptStudioCanEdit();
 
   const [isEditingPrompt, setIsEditingPrompt] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -292,8 +290,7 @@ function PromptCardItems({
                           isCoverageLoading ||
                           isSinglePassExtractLoading ||
                           indexDocs.includes(selectedDoc?.document_id) ||
-                          isPublicSource ||
-                          !canEdit
+                          isPublicSource
                         }
                         onChange={(value) => handleTypeChange(value)}
                       />
