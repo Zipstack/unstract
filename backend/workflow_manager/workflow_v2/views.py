@@ -44,6 +44,7 @@ from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import SchemaEntity, SchemaType
 from workflow_manager.workflow_v2.exceptions import (
     InternalException,
+    WorkflowDeletionError,
     WorkflowDoesNotExistError,
     WorkflowGenerationError,
     WorkflowRegenerationError,
@@ -172,6 +173,31 @@ class WorkflowViewSet(
             logger.error(f"Error creating workflow endpoints: {e}")
             raise WorkflowGenerationError
         return workflow
+
+    def perform_destroy(self, instance: Workflow) -> None:
+        """Block deletion when the workflow is in use by any pipeline/API.
+
+        The frontend gates the delete button via `can_update`, but direct API
+        callers can still hit DELETE. Without this guard, the CASCADE FK on
+        Pipeline/APIDeployment would silently drop their rows along with
+        the workflow.
+
+        Check and delete run in one transaction with the workflow row locked:
+        a concurrent Pipeline/APIDeployment INSERT referencing it takes a
+        KEY SHARE lock on the row, which conflicts with FOR UPDATE, so it waits
+        for this transaction and then fails its FK check instead of being
+        silently cascade-deleted.
+        """
+        with transaction.atomic():
+            instance = Workflow.objects.select_for_update().get(pk=instance.pk)
+            usage = WorkflowHelper.can_update_workflow(str(instance.id))
+            if not usage.get("can_update", False):
+                raise WorkflowDeletionError(
+                    detail=WorkflowHelper.build_workflow_in_use_message(
+                        instance.workflow_name, usage
+                    )
+                )
+            super().perform_destroy(instance)
 
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override partial_update to handle sharing notifications."""
