@@ -212,7 +212,7 @@ def _upsert_monthly(objects: list[EventMetricsMonthly]) -> int:
 
 
 def _pairs_the_rollup_would_lower(month_start: date) -> list[tuple]:
-    """(org, month) pairs whose monthly total the pending rollup would reduce.
+    """Conflict keys whose monthly total the pending rollup would reduce.
 
     Run before the upsert, while the stored value is still the old one, and
     evaluated in the database: one statement returning only the offending pairs,
@@ -250,9 +250,11 @@ def _pairs_the_rollup_would_lower(month_start: date) -> list[tuple]:
         EventMetricsMonthly._base_manager.filter(month__gte=month_start)
         .annotate(new_total=new_total)
         .filter(new_total__lt=F("metric_value"))
-        .values_list("organization_id", "month")
-        .distinct()
-        .order_by("month", "organization_id")[: LOWERED_MONTHS_REPORT_LIMIT + 1]
+        # The full conflict key, not just (org, month): the comparison is per metric,
+        # project and tag, so skipping at a coarser grain would freeze a metric whose
+        # own total is fine just because a sibling metric's is short.
+        .values_list("organization_id", "month", "metric_name", "project", "tag")
+        .order_by("month", "organization_id", "metric_name")
     )
     return list(lowered)
 
@@ -263,7 +265,8 @@ def _name_lowered_pairs(pairs: list[tuple]) -> list[str]:
     A fleet-wide daily loss makes this one entry per tenant per month, which would
     otherwise be joined into a single log line and returned in a JSON body.
     """
-    names = [f"{month:%Y-%m} (org {org_id})" for org_id, month in pairs]
+    seen = sorted({(org_id, month) for org_id, month, *_ in pairs})
+    names = [f"{month:%Y-%m} (org {org_id})" for org_id, month in seen]
     if len(names) > LOWERED_MONTHS_REPORT_LIMIT:
         names = names[:LOWERED_MONTHS_REPORT_LIMIT]
         names.append(f"... and more (showing {LOWERED_MONTHS_REPORT_LIMIT})")
@@ -329,10 +332,18 @@ def _rollup_monthly_from_daily(month_start: date, skip: set | None = None) -> in
     # at all; monthly was upserted per organization in autocommit.
     skip = skip or set()
     for row in rows.iterator(chunk_size=MONTHLY_ROLLUP_BATCH_SIZE):
-        if (row["organization_id"], row["month"]) in skip:
-            # This pair's stored total is higher than what the daily tier now sums
-            # to, so writing it would replace a good figure with a known-short one.
-            # Left alone until the daily tier is repaired; the caller warns.
+        key = (
+            row["organization_id"],
+            row["month"],
+            row["metric_name"],
+            row["project"],
+            row["tag"],
+        )
+        if key in skip:
+            # This row's stored total is higher than what the daily tier now sums to,
+            # so writing it would replace a good figure with a known-short one. Left
+            # alone until the daily tier is repaired; the caller warns. Scoped to the
+            # exact row, so a sibling metric that is fine still gets its update.
             continue
         batch.append(
             EventMetricsMonthly(

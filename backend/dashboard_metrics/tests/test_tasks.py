@@ -1186,7 +1186,9 @@ class TestALoweredTotalIsReported(TestCase):
         lowered = _pairs_the_rollup_would_lower(self.month)
         _rollup_monthly_from_daily(self.month, skip=set(lowered))
 
-        assert lowered == [(self.short.id, self.month)]
+        assert lowered == [
+            (self.short.id, self.month, "documents_processed", "default", "")
+        ]
 
         short_row = EventMetricsMonthly._base_manager.get(organization=self.short)
         covered_row = EventMetricsMonthly._base_manager.get(organization=self.covered)
@@ -1194,6 +1196,35 @@ class TestALoweredTotalIsReported(TestCase):
         # known-short one just because the daily tier has not been repaired yet.
         assert short_row.metric_value == 80
         assert covered_row.metric_value == 80
+
+    def test_a_healthy_sibling_metric_is_still_updated(self):
+        """The skip is per conflict key, not per (org, month).
+
+        Skipping the whole org-month would freeze a metric whose own total is fine
+        because a sibling metric's daily rows are short.
+        """
+        self._monthly(self.short, value=80)
+        EventMetricsMonthly._base_manager.create(
+            organization=self.short, month=self.month, metric_name="pages_processed",
+            metric_type=MetricType.COUNTER, metric_value=5, metric_count=1,
+            project="default", tag="",
+        )
+        self._daily(self.short, self.month, value=70)  # short — will be skipped
+        EventMetricsDaily._base_manager.create(
+            organization=self.short, date=self.month, metric_name="pages_processed",
+            metric_type=MetricType.COUNTER, metric_value=50, metric_count=1,
+            project="default", tag="",
+        )
+
+        lowered = _pairs_the_rollup_would_lower(self.month)
+        _rollup_monthly_from_daily(self.month, skip=set(lowered))
+
+        rows = {
+            r.metric_name: r.metric_value
+            for r in EventMetricsMonthly._base_manager.filter(organization=self.short)
+        }
+        assert rows["documents_processed"] == 80, "the short metric must be preserved"
+        assert rows["pages_processed"] == 50, "the healthy metric must still update"
 
     def test_a_tier_that_covers_everything_reports_nothing(self):
         """The control: no total fell, so no warning — however few days are seeded."""
