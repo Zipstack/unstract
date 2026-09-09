@@ -417,8 +417,8 @@ class Command(BaseCommand):
                     else:
                         _ingest_daily_results(data, metric_name, metric_type)
         except Exception:
-            # Counted, not just logged: this is the PR's mandatory pre-deploy step,
-            # and a wholesale failure here used to print BACKFILL COMPLETE and exit 0.
+            # Counted: every metric query is caught individually, so a failure here
+            # never reaches the per-org handler that owns the error counter.
             failures += 1
             logger.exception("Error querying LLM metrics for org %s", org_id)
 

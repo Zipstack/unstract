@@ -932,20 +932,13 @@ def _run_diagnostic(
     key: str,
     what: str,
 ) -> list:
-    """Run one pre-rollup check, recording unavailability rather than raising.
+    """Run one pre-rollup check, returning [] if it fails rather than aborting.
 
-    These are diagnostics and the rollup is the job, so a failing check must not
-    skip the upsert — that would leave monthly stale for a run that could have
-    succeeded, and report it as a failed rollup, contradicting the upserted count.
-    Each check gets its own call so one failing does not disable the other.
-
-    The failure is still counted: `[]` alone is indistinguishable from "checked,
-    nothing found", and the backend logs in a different process from the consumer
-    watching this schedule, so the payload has to carry the unknown. Counting it
-    flips `success` to False and lights the worker's `errors` arm, which is the only
-    arm anything alerts on — "did not block the rollup" and "succeeded" are
-    separable claims, and a failed lowering check means the upsert proceeds with
-    that guard OFF.
+    The rollup is the job and these only inform it, so a failing check must not
+    skip the upsert. It is still counted: `[]` alone reads as "checked, nothing
+    found", and a failed lowering check means the upsert runs with that guard off.
+    One call each, so one failing does not disable the other. The soft time limit
+    is the exception and does propagate.
     """
     try:
         return check(month_start)
