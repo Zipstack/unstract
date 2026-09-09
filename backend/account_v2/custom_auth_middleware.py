@@ -18,10 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 def _client_ip(request: HttpRequest) -> str:
-    """Best-effort caller address for a rejection log line."""
-    forwarded = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """Peer address for a rejection log line.
+
+    Deliberately `REMOTE_ADDR` only. `X-Forwarded-For` is caller-supplied and
+    nothing in this project validates a forwarding chain, so trusting it would
+    let the party being logged choose what gets recorded about them -- which
+    defeats the one purpose these lines have. It would also put an unvalidated
+    header value into the log stream. `internal_api_auth.py` and
+    `internal_base_urls.py`, the only other places that log a caller address,
+    read the same field.
+
+    Behind a proxy this records the proxy. Recovering the real client needs a
+    trusted-proxy setting this project does not have; adding one is the correct
+    fix, and guessing at the hop count here is not.
+    """
     return request.META.get("REMOTE_ADDR", "unknown")
 
 
