@@ -12,7 +12,7 @@ from tenant_account_v2.sharing_helpers import (
     serialize_owner_refs,
 )
 from utils.FileValidator import FileValidator
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -110,6 +110,13 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
+        # LLM-facing text legitimately contains XML-like markup.
+        html_safe_fields = (
+            "summarize_prompt",
+            "preamble",
+            "postamble",
+            "output",
+        )
 
     def get_is_owner(self, instance: CustomTool) -> bool:
         request = self.context.get("request")
@@ -138,11 +145,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         if not self.instance.is_owner(user) and not is_org_admin(user):
             raise ValidationError("Only the owner can rename this project.")
         return value
-
-    def validate_description(self, value: str) -> str:
-        if value is None:
-            return value
-        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""

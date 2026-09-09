@@ -14,7 +14,7 @@ This module provides a metrics dashboard for monitoring document processing, API
 ### Data Flow
 ```
 Source Tables (usage_v2, page_usage, workflow_execution, workflow_file_execution)
-       ↓ [Celery task every 15 min]
+       ↓ [Celery: hourly tier every 15 min, daily+monthly hourly at :20]
 Aggregated Tables (EventMetricsHourly → Daily → Monthly)
        ↓
 API Endpoints (/overview/, /summary/, /series/)
@@ -33,7 +33,10 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 
 ### Quick Commands
 ```bash
-# Backfill historical data (run first!)
+# Backfill historical data
+# The deploy step is a different invocation with its own ordering — see
+# "Why 62 days" below; do not run it from the outgoing image, where
+# --skip-hourly still issues the HOUR queries it skips here.
 python manage.py backfill_metrics --days=30
 
 # Start metrics worker
@@ -46,7 +49,9 @@ celery -A backend beat -l info
 ### Celery Tasks & Schedule
 | Task | Schedule | What It Does |
 |------|----------|--------------|
-| `aggregate_from_sources` | Every 15 min | Aggregates source → hourly/daily/monthly |
+| `aggregate_from_sources` | Every 15 min | Aggregates source → **hourly tier only** (`tier=hourly`) |
+| `aggregate_from_sources` (daily+monthly) | Hourly at :20 | Aggregates source → daily; rolls monthly up from daily (`tier=daily_monthly`) |
+| `aggregate_from_sources` (reconcile) | Daily 4:40 AM | Daily + monthly tiers over a 7-day source window, to repair gaps after downtime |
 | `cleanup_hourly_data` | Daily 2 AM | Deletes hourly data > 30 days |
 | `cleanup_daily_data` | Weekly Sun 3 AM | Deletes daily data > 365 days |
 
@@ -109,7 +114,7 @@ celery -A backend beat -l info
 │ EventMetrics    │      │ EventMetrics    │      │ EventMetrics    │
 │ Hourly          │      │ Daily           │      │ Monthly         │
 │                 │      │                 │      │                 │
-│ • 24h query     │      │ • 7 day query   │      │ • 2 month query │
+│ • 24h query     │      │ • 2 day query   │      │ • from daily    │
 │ • 30 day retain │      │ • 365 day retain│      │ • No cleanup    │
 └────────┬────────┘      └────────┬────────┘      └────────┬────────┘
          │                        │                        │
@@ -149,8 +154,8 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 
 **Write Safety:**
 - Aggregation tables are **write-isolated** — only the Celery aggregation task (`aggregate_from_sources`) and the `backfill_metrics` management command write to them. No user-facing request path writes to these tables.
-- Writes use `update_or_create` with a unique constraint on `(organization, timestamp, metric_name, project, tag)`, making upserts idempotent. Running the aggregation task twice for the same period simply overwrites with the same values.
-- Aggregation tasks use `_base_manager` to bypass Django's `DefaultOrganizationManagerMixin`, which relies on `UserContext` (unavailable in Celery). This is safe because the task already scopes all queries by `organization_id`.
+- Writes use `bulk_create(update_conflicts=True)` against each tier's own unique constraint — `timestamp` for hourly, `date` for daily, `month` for monthly — making upserts idempotent. Running the aggregation task twice for the same period simply overwrites with the same values.
+- Aggregation tasks use `_base_manager` to bypass Django's `DefaultOrganizationManagerMixin`, which relies on `UserContext` (unavailable in Celery). Most call sites are per-organization; the monthly rollup deliberately is not, and groups by `organization_id` instead — see `_rollup_monthly_from_daily`.
 
 **Read Safety:**
 - Dashboard API endpoints read **only** from pre-aggregated tables, never from source tables (except `/live-summary/` and `/live-series/` which are for real-time fallback).
@@ -162,7 +167,9 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 - Source table performance is unaffected by the dashboard feature. If the aggregation task is slow or fails, source tables continue working normally.
 
 **Failure Resilience:**
-- If the aggregation task fails, the dashboard shows stale data (up to 15 minutes old) rather than crashing.
+- If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
+- A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier re-queries the last 24h on every run regardless of tier or window, so an hourly gap shorter than 24h repairs itself on the next tick; only one older than 24h needs `backfill_metrics`.
+- The 7-day window is also the ceiling on lag, not just on downtime. `documents_processed` and `failed_pages` filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
 - Celery tasks have `max_retries=3` with exponential backoff.
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
@@ -298,8 +305,8 @@ cost = (input_cost_per_token × input_tokens) + (output_cost_per_token × output
 | Table | Model | Time Column | Granularity | Query Window | Retention |
 |-------|-------|-------------|-------------|--------------|-----------|
 | `event_metrics_hourly` | `EventMetricsHourly` | `timestamp` | Hour | Last 24 hours | 30 days |
-| `event_metrics_daily` | `EventMetricsDaily` | `date` | Day | Last 7 days | 365 days |
-| `event_metrics_monthly` | `EventMetricsMonthly` | `month` | Month | Last 2 months | Forever |
+| `event_metrics_daily` | `EventMetricsDaily` | `date` | Day | Last 2 days (7 on the daily reconciliation pass) | 365 days |
+| `event_metrics_monthly` | `EventMetricsMonthly` | `month` | Month | Rolled up from the daily tier, current + previous month | Forever |
 
 ### Table Schema
 
@@ -339,7 +346,9 @@ Located in `tasks.py`:
 
 | Task Name | Celery Name | Schedule | Queue | Purpose |
 |-----------|-------------|----------|-------|---------|
-| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate from source tables |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate the hourly tier (`tier=hourly`) |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Hourly at :20 UTC | `dashboard_metric_events` | Aggregate the daily and monthly tiers (`tier=daily_monthly`) |
+| `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Daily 4:40 AM UTC | `dashboard_metric_events` | Reconciliation pass, daily + monthly tiers, `source_window_days=7` |
 | `cleanup_hourly_metrics` | `dashboard_metrics.cleanup_hourly_data` | Daily 2:00 AM UTC | `dashboard_metric_events` | Delete hourly data >30 days |
 | `cleanup_daily_metrics` | `dashboard_metrics.cleanup_daily_data` | Weekly Sun 3:00 AM UTC | `dashboard_metric_events` | Delete daily data >365 days |
 
@@ -378,15 +387,96 @@ The `aggregate_metrics_from_sources` task:
 2. **For each metric**:
    - Queries source table with `MetricsQueryService`
    - Groups by time period (hour/day/month)
-3. **Upserts results** into aggregated tables using `update_or_create`
-4. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
+3. **Upserts results** into the hourly and daily tables
+4. **Rolls monthly up from the daily tier** for all orgs at once, streamed and batched. Upsert-only:
+   a monthly row the daily tier no longer produces is left in place. A stale total is
+   recoverable with `backfill_metrics`; a deleted one is not, because the daily rows
+   that would rebuild it are exactly what is missing
+5. **Uses `_base_manager`** to bypass Django's organization filter in Celery context
 
 ```python
 # Query windows
-hourly_start = end_date - timedelta(hours=24)    # Last 24 hours
-daily_start = end_date - timedelta(days=7)       # Last 7 days
-monthly_start = first_of_previous_month          # Last 2 months
+hourly_start = end_date - timedelta(hours=24)                 # Last 24 hours
+daily_start = truncate_to_day(end_date - source_window_days)  # 2 days, 7 on reconcile
+monthly_start = first_of_previous_month                       # summed from daily
 ```
+
+The monthly tier has no source queries of its own. `backfill_metrics` still computes
+monthly from source, so within the rollup window (current + previous month) its output
+is overwritten by the sum of the daily tier on the next daily/monthly pass — see that
+command's help text. **Backfill daily before relying on monthly:** where a month's
+stored total is already higher than what daily now sums to, the rollup keeps the
+stored figure and reports it under `needs_daily_repair`. That guard needs a stored
+total to compare against, so a month with no monthly row yet — the first run of any
+calendar month — is still written short. Missing whole days are reported separately,
+under `incomplete_daily_coverage`.
+
+Run this as soon as `migrate` finishes. It cannot be sequenced *before* the first
+aggregation: the schedule row `0006` adds goes live at the end of `migrate`, so the
+:20 run can fire while the backfill is still going. That first rollup may write a
+short month — it has no stored total to compare against, so the guard is blind to it
+— and the backfill repairs it. Expect one under-counted reading, not a race to lose:
+
+```
+python manage.py backfill_metrics --days 62 --skip-hourly --skip-monthly
+```
+
+### Rolling this release back
+
+`0005` and `0006` write task kwargs into both scheduler tables. The previous release's
+zero-argument signatures reject them with `TypeError`, which nothing retries. **Reverting
+the image alone is not enough** — run `migrate dashboard_metrics 0004` from the outgoing
+image *before* the image reverts, which reverses both migrations together. A
+platform-driven rollback (an ArgoCD revision revert, an image tag pin) skips that by
+construction, so treat this release as blocking automated rollback.
+
+**If the rollback already happened without that step**, the migration is gone with the
+image and `migrate dashboard_metrics 0004` has nothing to apply. The rows still carry
+kwargs the restored signatures reject, so all three tiers stop on both transports with
+no self-heal. Recovery is by hand, against both scheduler tables:
+
+```sql
+-- Application tables are not in the default search path: the schema comes from
+-- DB_SCHEMA and is set per connection by the app's own wrapper, which a psql
+-- session does not inherit.
+SET search_path TO unstract;  -- or whatever DB_SCHEMA is set to
+
+DELETE FROM django_celery_beat_periodictask
+ WHERE name IN ('dashboard_metrics_reconcile_source_window',
+                'dashboard_metrics_aggregate_daily_monthly');
+UPDATE django_celery_beat_periodictask SET kwargs = '{}'
+ WHERE name = 'dashboard_metrics_aggregate_from_sources';
+UPDATE django_celery_beat_periodictasks SET last_update = now() WHERE ident = 1;
+```
+
+and the same three against `pg_periodic_task` (`task_kwargs = '{}'::jsonb`).
+
+**This recovery is a one-way door until you undo it.** The SQL changes rows, not
+`django_migrations`, which still records `0005` and `0006` as applied — so a later
+roll-forward of this release reports "No migrations to apply" and restores nothing.
+The install keeps running the single `*/15` row with `kwargs = '{}'`, which defaults
+`tier` to ALL: every tier written 96 times a day, the load this release removes, and
+no reconciliation pass at all. Nothing errors; the only trace is `tier=all` in the
+completion log.
+
+To clear it, deploy the new image first, then from **that** image run
+`manage.py migrate dashboard_metrics 0004 --fake` followed by
+`manage.py migrate dashboard_metrics`. Both steps are needed: the entrypoint's own
+`migrate` runs before you get there and reports nothing to apply. Run the `--fake`
+from the OUTGOING image and it does nothing at all — `0005` and `0006` are not on
+disk there, so `0004` has no child to unapply and the command prints "No migrations
+to apply" while un-recording nothing.
+
+The forward direction is bounded rather than self-healing: a pod still on the old image
+during a rolling deploy has the old signature and raises `TypeError` per tick until the
+rollout completes. The `**_ignored` in this release does not help those pods — it is
+what lets a *later* release add a kwarg without breaking pods running this one.
+
+### Why 62 days
+
+62, not 60: the rollup window reaches back to the first of the previous month, which is
+61 days before a run on the 31st. `--skip-monthly` is deliberate — repair daily and let
+the rollup derive monthly from it.
 
 ---
 
@@ -706,13 +796,15 @@ Populates aggregated tables from historical source data.
 ```bash
 python manage.py backfill_metrics [options]
 
-Options:
+Options (run --help for the authoritative text; the three --skip-* flags carry
+caveats that do not fit one line):
   --days=N          Number of days to backfill (default: 30)
   --org-id=UUID     Specific organization (default: all)
+  --active-only     Only orgs with an active subscription
   --dry-run         Show what would be done
-  --skip-hourly     Skip hourly aggregation
-  --skip-daily      Skip daily aggregation
-  --skip-monthly    Skip monthly aggregation
+  --skip-hourly     Skip the HOUR source queries, not just their upsert
+  --skip-daily      Leave the daily tier short; the rollup then freezes the month
+  --skip-monthly    Largely a no-op inside the rollup window
 ```
 
 ---
