@@ -2,7 +2,7 @@
 
 import json
 import time
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -40,6 +40,7 @@ from dashboard_metrics.tasks import (
     _release_aggregation_locks,
     _active_org_ids,
     _aggregation_lock_keys,
+    _months_missing_days,
     _pairs_the_rollup_would_lower,
     _rollup_monthly_from_daily,
     _run_aggregation,
@@ -680,7 +681,7 @@ class TestMonthlyThroughTheTask(TestCase):
         # A correct rollup lowers nothing, so it says nothing. The detector fires on
         # a total that actually fell, not on a calendar heuristic that would flag an
         # idle day or a fresh install as damage.
-        assert "lowered_months" not in result["monthly"]
+        assert "needs_daily_repair" not in result["monthly"]
 
         rows = EventMetricsMonthly._base_manager.order_by("month")
         assert [r.month for r in rows] == [
@@ -1324,8 +1325,20 @@ class TestTheDiagnosticCannotBlockTheRollup(TestCase):
             result = self._run()
 
         assert result["monthly"]["failed"] is False
-        assert result["errors"] == 0
-        assert result["success"] is True
+
+    def test_a_failing_diagnostic_still_fails_the_run(self):
+        """"Did not block the rollup" and "succeeded" are separable claims.
+
+        A failing check leaves ``skip`` empty, so the upsert runs with the guard OFF
+        and overwrites every total it would have protected. That is the opposite of
+        a clean run, and ``errors`` is the only field anything alerts on.
+        """
+        with patch("dashboard_metrics.tasks._rollup_monthly_from_daily", return_value=7):
+            result = self._run()
+
+        assert result["errors"] == 1
+        assert result["success"] is False
+        assert result["monthly"]["lowered_check"] == "unavailable"
 
 
 class TestTheLockIsReleasedOnlyByItsOwner(TestCase):
@@ -1392,7 +1405,7 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
 
         result = self._run(tier=AggregationTier.DAILY_MONTHLY)
 
-        assert result["monthly"]["lowered_months"], (
+        assert result["monthly"]["needs_daily_repair"], (
             "the rollup lowered a total and the result dict did not say so"
         )
 
@@ -1405,4 +1418,109 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
             result = self._run(tier=AggregationTier.DAILY_MONTHLY)
 
         assert result["monthly"]["lowered_check"] == "unavailable"
-        assert "lowered_months" not in result["monthly"]
+        assert "needs_daily_repair" not in result["monthly"]
+
+
+class TestAnIncompleteDailyTierIsReported(TestCase):
+    """The two gaps the lowering check is structurally blind to.
+
+    `_pairs_the_rollup_would_lower` needs a stored monthly total to compare
+    against. So it says nothing on the first run of a calendar month, when no row
+    exists yet — and nothing ever again once a short total IS stored, because from
+    then on every sum is higher and the total is never "lowered". Both leave an
+    under-count permanent and silent. Day coverage reads the daily tier itself, so
+    neither blind spot applies. It does not replace the per-tenant check: that one
+    still catches a single tenant losing a day the rest of the fleet covered.
+    """
+
+    NOW = datetime(2026, 3, 10, 12, 0, tzinfo=UTC)
+    MONTH = date(2026, 3, 1)
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="cov-org", name="cov", display_name="Cov"
+        )
+
+    def _daily(self, day, org=None):
+        EventMetricsDaily._base_manager.create(
+            organization=self.org if org is None else org,
+            date=date(2026, 3, day),
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=1,
+            metric_count=1,
+            project="default",
+            tag="",
+        )
+
+    def _missing(self):
+        with patch("dashboard_metrics.tasks.timezone.now", return_value=self.NOW):
+            return _months_missing_days(self.MONTH)
+
+    def test_a_gap_is_reported_with_no_monthly_row_to_compare_against(self):
+        """The no-prior-row escape: nothing is 'lowered', yet March is short."""
+        for day in (1, 2, 3, 4, 6, 7, 8, 9):  # the 5th never landed
+            self._daily(day)
+
+        assert _pairs_the_rollup_would_lower(self.MONTH) == [], (
+            "precondition: with no stored monthly row there is nothing to lower, "
+            "which is exactly why that check cannot see this"
+        )
+        assert self._missing() == ["2026-03 (8/9 days)"]
+
+    def test_a_fully_covered_month_is_silent(self):
+        for day in range(1, 10):
+            self._daily(day)
+
+        assert self._missing() == []
+
+    def test_a_month_with_no_daily_rows_at_all_is_silent(self):
+        """A fresh install has no rows, which is not the same as missing days."""
+        assert self._missing() == []
+
+    def test_todays_partial_row_is_not_counted_as_a_gap(self):
+        """Today is partial by construction until its last run of the day."""
+        for day in range(1, 11):  # 10th == "today" under the frozen clock
+            self._daily(day)
+
+        assert self._missing() == []
+
+
+class TestAnOrgLessDailyRowIsNotRolledUp(TestCase):
+    """`organization` is nullable and `unique_monthly_metric` includes it.
+
+    Postgres unique indexes are NULLS DISTINCT, so ON CONFLICT never matches such a
+    row: the upsert INSERTs another duplicate on every run rather than updating one.
+    No writer originates one today — both take the org from a loop — but the rollup
+    reads the column rather than a loop variable, so nothing structural stops it.
+    """
+
+    def setUp(self):
+        self.month = _truncate_to_month(timezone.now()).date()
+        EventMetricsDaily._base_manager.create(
+            organization=None,
+            date=self.month,
+            metric_name="documents_processed",
+            metric_type=MetricType.COUNTER,
+            metric_value=5,
+            metric_count=1,
+            project="default",
+            tag="",
+        )
+
+    def test_it_produces_no_monthly_row(self):
+        _rollup_monthly_from_daily(self.month)
+
+        assert not EventMetricsMonthly._base_manager.filter(
+            organization__isnull=True
+        ).exists()
+
+    def test_repeated_runs_do_not_accumulate_duplicates(self):
+        """The actual damage: unbounded growth, not one wrong row."""
+        for _ in range(3):
+            _rollup_monthly_from_daily(self.month)
+
+        assert (
+            EventMetricsMonthly._base_manager.filter(organization__isnull=True).count()
+            == 0
+        )

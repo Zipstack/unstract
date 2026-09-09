@@ -403,9 +403,12 @@ monthly_start = first_of_previous_month                       # summed from dail
 The monthly tier has no source queries of its own. `backfill_metrics` still computes
 monthly from source, so within the rollup window (current + previous month) its output
 is overwritten by the sum of the daily tier on the next daily/monthly pass — see that
-command's help text. **Backfill daily before relying on monthly:** the rollup writes
-whatever daily holds, so a month whose daily tier is short produces an under-counted
-monthly total.
+command's help text. **Backfill daily before relying on monthly:** where a month's
+stored total is already higher than what daily now sums to, the rollup keeps the
+stored figure and reports it under `needs_daily_repair`. That guard needs a stored
+total to compare against, so a month with no monthly row yet — the first run of any
+calendar month — is still written short. Missing whole days are reported separately,
+under `incomplete_daily_coverage`.
 
 Run this once before the first aggregation after deploying the monthly-from-daily
 rollup, so the tier it derives from is complete:
@@ -429,6 +432,11 @@ kwargs the restored signatures reject, so all three tiers stop on both transport
 no self-heal. Recovery is by hand, against both scheduler tables:
 
 ```sql
+-- Application tables are not in the default search path: the schema comes from
+-- DB_SCHEMA and is set per connection by the app's own wrapper, which a psql
+-- session does not inherit.
+SET search_path TO unstract;  -- or whatever DB_SCHEMA is set to
+
 DELETE FROM django_celery_beat_periodictask
  WHERE name IN ('dashboard_metrics_reconcile_source_window',
                 'dashboard_metrics_aggregate_daily_monthly');

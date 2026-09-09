@@ -107,8 +107,8 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     Only the first sets ``skipped``. The conditions reported are: the Redis lock was
     held (``skipped``/``reason``), no organisation had recent activity
     (``skipped_reason``), something raised and was caught — per metric, per org, or
-    the monthly rollup (``errors``), the rollup lowered existing totals
-    (``lowered_months``) or could not check (``lowered_check``), the rollup itself
+    the monthly rollup (``errors``), the rollup KEPT totals the daily tier now sums
+    below (``needs_daily_repair``) or could not check (``lowered_check``), it itself
     failed (``monthly.failed``), or the tier ran cleanly and wrote nothing. Each is
     correct behaviour in isolation, but left at INFO a leaked lock or a frozen source
     table looks like a day of successful runs.
@@ -134,15 +134,39 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     if result.get("skipped_reason"):
         logger.warning("%s: %s (rows written: %d)", name, result["skipped_reason"], wrote)
     if result.get("errors"):
-        logger.warning(
+        # ERROR, not WARNING: a periodic on the PG transport is fire-and-forget, so
+        # nothing records a task status either way and severity is the only signal
+        # that reaches an alert. Raising instead would buy a poison-drop at
+        # MAX_ATTEMPTS=1 and no retry.
+        logger.error(
             "%s completed with %s error(s) across %s organisation(s)",
             name,
             result["errors"],
             result.get("organizations_processed", "?"),
         )
-    if lowered := result.get("monthly", {}).get("lowered_months"):
+    if stale := result.get("monthly", {}).get("needs_daily_repair"):
+        # Same wording as the backend's own line: these months were KEPT, not
+        # overwritten. Saying "lowered" here points at a rollback when the fix is a
+        # backfill, and on-call sees this line first on the PG transport.
         logger.warning(
-            "%s lowered existing monthly totals for %s", name, ", ".join(lowered)
+            "%s left %s unchanged — the daily tier now sums lower than the stored "
+            "total, so the figures were kept rather than overwritten. Repair daily "
+            "for those months with `backfill_metrics`",
+            name,
+            ", ".join(stale),
+        )
+    if short := result.get("monthly", {}).get("incomplete_daily_coverage"):
+        # Independent of needs_daily_repair: a month with no stored total to compare
+        # against is under-counted without ever being "lowered".
+        logger.warning(
+            "%s rolled up an incomplete daily tier for %s — those totals are "
+            "under-counted. Repair daily with `backfill_metrics`",
+            name,
+            ", ".join(short),
+        )
+    if result.get("monthly", {}).get("coverage_check") == "unavailable":
+        logger.warning(
+            "%s could not check whether the daily tier is missing whole days", name
         )
     if result.get("monthly", {}).get("lowered_check") == "unavailable":
         # Distinct from "nothing was lowered": the check itself did not run, so this
@@ -153,7 +177,7 @@ def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
     if result.get("monthly", {}).get("failed"):
         # Distinct from a per-org metric error: the rollup is org-agnostic, so its
         # failure leaves EVERY tenant's monthly tier stale for this run.
-        logger.warning(
+        logger.error(
             "%s: the monthly rollup did not run; every tenant's monthly tier is "
             "stale for this run",
             name,

@@ -151,6 +151,13 @@ def split_schedules(apps, schema_editor):
             defaults={
                 "task": AGGREGATE_TASK_NAME,
                 "crontab": schedule,
+                # Cleared explicitly: 0002 created this row on an IntervalSchedule,
+                # and django-celery-beat rejects a row carrying both on any later
+                # save. The historical model has no such validation, so the row
+                # would be written here and only raise later, through the admin.
+                # Beat also reads `interval` first, so the new crontab would be
+                # inert until then.
+                "interval": None,
                 "queue": AGGREGATE_QUEUE,
                 "kwargs": json.dumps(kwargs),
                 "enabled": owner["beat_enabled"],

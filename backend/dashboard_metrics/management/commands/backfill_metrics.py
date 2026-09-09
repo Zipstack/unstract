@@ -5,9 +5,10 @@ tables from historical data in source tables (Usage, PageUsage, WorkflowExecutio
 
 The current and previous month are recomputed from the daily tier by the aggregation
 task's daily/monthly pass, so inside that window this command's monthly output is
-overwritten and --skip-monthly is a no-op. --skip-daily is worse than useless there:
-monthly is rebuilt from a tier this run did not populate, producing an under-count.
-Never --skip-daily without --skip-monthly.
+overwritten and --skip-monthly is largely a no-op. --skip-daily leaves that tier short
+on purpose: the rollup will not lower a stored monthly total it would reduce, so the
+month is not under-counted, but it is frozen at the stored figure until daily is
+repaired, and the daily tier the dashboards read stays wrong meanwhile. Repair daily.
 
 Usage:
     python manage.py backfill_metrics --days=30
@@ -21,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from account_v2.models import Organization
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from dashboard_metrics.models import (
@@ -100,17 +101,19 @@ class Command(BaseCommand):
             "--skip-daily",
             action="store_true",
             help=(
-                "Skip daily aggregation. Unsafe for the current and previous month: "
-                "the aggregation task rebuilds monthly from daily there, so monthly "
-                "ends up under-counted."
+                "Skip daily aggregation. Leaves the daily tier short for the "
+                "current and previous month. The rollup's guard keeps monthly from "
+                "being lowered, so the month freezes at its stored total rather than "
+                "under-counting — but daily stays wrong until it is repaired."
             ),
         )
         parser.add_argument(
             "--skip-monthly",
             action="store_true",
             help=(
-                "Skip monthly aggregation. A no-op for the current and previous "
-                "month, which the aggregation task owns."
+                "Skip monthly aggregation. Largely a no-op for the current and "
+                "previous month: the aggregation task rederives them from daily, "
+                "except where its guard preserves a higher stored total."
             ),
         )
         parser.add_argument(
@@ -143,9 +146,9 @@ class Command(BaseCommand):
         if skip_daily and not skip_monthly:
             self.stdout.write(
                 self.style.WARNING(
-                    "--skip-daily without --skip-monthly: the aggregation task "
-                    "rebuilds the current and previous month from the daily tier, "
-                    "so monthly will be overwritten with an under-count."
+                    "--skip-daily without --skip-monthly: the daily tier is left "
+                    "short, so the rollup's guard will freeze the current and "
+                    "previous month at their stored totals. Repair daily."
                 )
             )
 
@@ -170,6 +173,10 @@ class Command(BaseCommand):
             "monthly": {"upserted": 0},
             "errors": 0,
         }
+        # Per-query failures inside _collect_metrics. The per-org catch below only
+        # sees exceptions that escape it, and none do — every metric query is caught
+        # individually, so without this an org whose every query failed looks clean.
+        self._query_failures = 0
 
         # Pre-resolve org identifiers for PageUsage queries (avoids
         # redundant Organization lookups inside the metric query loop).
@@ -230,12 +237,23 @@ class Command(BaseCommand):
                 logger.exception("Error backfilling org %s", current_org_id)
 
         # Print summary
+        total_stats["errors"] += self._query_failures
+        failed = total_stats["errors"]
         self.stdout.write("\n" + "=" * 50)
-        self.stdout.write(self.style.SUCCESS("BACKFILL COMPLETE"))
+        style = self.style.ERROR if failed else self.style.SUCCESS
+        self.stdout.write(style("BACKFILL FAILED" if failed else "BACKFILL COMPLETE"))
         self.stdout.write(f"Hourly: {total_stats['hourly']['upserted']} upserted")
         self.stdout.write(f"Daily: {total_stats['daily']['upserted']} upserted")
         self.stdout.write(f"Monthly: {total_stats['monthly']['upserted']} upserted")
-        self.stdout.write(f"Errors: {total_stats['errors']}")
+        self.stdout.write(f"Errors: {failed}")
+        if failed:
+            # Non-zero exit, so a deploy runbook cannot tick this step green. The
+            # rows that did land are kept: this repairs the daily tier, and a partial
+            # repair is worth more than a rollback.
+            raise CommandError(
+                f"{failed} error(s) during backfill; the metrics tiers are "
+                "incomplete. Re-run before the next aggregation."
+            )
 
     def _resolve_org_ids(
         self,
@@ -396,8 +414,11 @@ class Command(BaseCommand):
                         _ingest_results(data, metric_name, metric_type)
                     else:
                         _ingest_daily_results(data, metric_name, metric_type)
-        except Exception as e:
-            logger.warning("Error querying LLM metrics for org %s: %s", org_id, e)
+        except Exception:
+            # Counted, not just logged: this is the PR's mandatory pre-deploy step,
+            # and a wholesale failure here used to print BACKFILL COMPLETE and exit 0.
+            self._query_failures += 1
+            logger.exception("Error querying LLM metrics for org %s", org_id)
 
         # Fetch remaining (non-LLM) metrics individually
         for metric_name, query_method, is_histogram in self.METRIC_CONFIGS:
@@ -429,8 +450,9 @@ class Command(BaseCommand):
                 )
                 _ingest_daily_results(daily_results, metric_name, metric_type)
 
-            except Exception as e:
-                logger.warning("Error querying %s for org %s: %s", metric_name, org_id, e)
+            except Exception:
+                self._query_failures += 1
+                logger.exception("Error querying %s for org %s", metric_name, org_id)
 
         return hourly_agg, daily_agg, monthly_agg
 

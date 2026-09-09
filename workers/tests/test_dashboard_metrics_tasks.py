@@ -263,7 +263,14 @@ class TestTheRunSummaryReachesTheLog:
         assert "no_active_orgs" in text
         assert "1 error(s)" in text
 
-    def test_a_lowered_monthly_total_is_named(self, caplog):
+    def test_a_preserved_monthly_total_is_named_and_not_called_a_lowering(self, caplog):
+        """The backend KEPT these months; the worker used to say it lowered them.
+
+        Naming the month was all this asserted, so an inverted verb passed. The two
+        processes then emitted opposite remediations for one event — and on the PG
+        transport this line is what on-call sees first. "Lowered" points at a
+        rollback; the fix is a backfill.
+        """
         text = self._run(
             caplog,
             {
@@ -271,11 +278,29 @@ class TestTheRunSummaryReachesTheLog:
                 "tier": "daily_monthly",
                 "monthly": {
                     "upserted": 3,
-                    "lowered_months": ["2026-08 (org 3)"],
+                    "needs_daily_repair": ["2026-08 (org 3)"],
                 },
             },
         )
         assert "2026-08 (org 3)" in text
+        assert "unchanged" in text and "backfill_metrics" in text
+        assert "lowered existing" not in text
+
+    def test_an_incomplete_daily_tier_is_named(self, caplog):
+        """Independent of the above: no stored total, so nothing was preserved."""
+        text = self._run(
+            caplog,
+            {
+                "success": True,
+                "tier": "daily_monthly",
+                "monthly": {
+                    "upserted": 3,
+                    "incomplete_daily_coverage": ["2026-03 (8/9 days)"],
+                },
+            },
+        )
+        assert "2026-03 (8/9 days)" in text
+        assert "under-counted" in text
 
     def test_a_clean_run_that_wrote_nothing_is_still_reported(self, caplog):
         """The regression signature of narrowing the source window: work to do, no

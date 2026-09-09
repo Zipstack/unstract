@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from account_v2.models import Organization
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.utils import timezone
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -20,6 +21,11 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from dashboard_metrics.management.commands.backfill_metrics import Command
 from dashboard_metrics.models import EventMetricsDaily, Granularity
 from dashboard_metrics.tasks import truncate_to_day
+
+
+def _explode(*args, **kwargs):
+    """Stand-in for a metric query that fails, e.g. on a statement timeout."""
+    raise RuntimeError("metric query exploded")
 
 
 class TestSkipHourlySkipsTheQueries(TestCase):
@@ -164,9 +170,56 @@ class TestTheOldestBackfilledDayIsWhole(TestCase):
 
 
 class TestSkipDailyWithoutSkipMonthlyWarns(TestCase):
-    """The combination that produces an under-count rather than a no-op."""
+    """The combination that leaves the daily tier short on purpose.
+
+    The rollup's guard keeps monthly from being lowered, so this freezes the month
+    at its stored total rather than under-counting it — but daily stays wrong, and
+    the month cannot be updated again until it is repaired.
+    """
 
     def test_the_warning_is_emitted(self):
         out = StringIO()
         call_command("backfill_metrics", days=1, skip_daily=True, stdout=out)
         assert "--skip-daily without --skip-monthly" in out.getvalue()
+
+
+class TestAWholesaleQueryFailureIsNotReportedAsSuccess(TestCase):
+    """The pre-deploy step must not print green when every query failed.
+
+    Each metric query is caught individually inside ``_collect_metrics``, so none
+    of them ever reaches the per-organisation handler that owns the error counter.
+    The command therefore used to print ``BACKFILL COMPLETE`` and exit 0 with the
+    daily tier untouched — and the monthly rollup, which now derives from that
+    tier, would then run against it.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="fail-org", name="fail", display_name="Fail"
+        )
+
+    def test_a_failing_metric_query_raises_and_exits_non_zero(self):
+        out = StringIO()
+        with patch.object(
+            Command,
+            "METRIC_CONFIGS",
+            [("documents_processed", _explode, False)],
+        ):
+            with self.assertRaises(CommandError) as caught:
+                call_command(
+                    "backfill_metrics",
+                    days=1,
+                    skip_hourly=True,
+                    skip_monthly=True,
+                    stdout=out,
+                )
+        assert "error(s) during backfill" in str(caught.exception)
+        assert "BACKFILL FAILED" in out.getvalue()
+
+    def test_a_clean_run_still_reports_complete(self):
+        """The control: without a failure the command stays green and returns."""
+        out = StringIO()
+        call_command(
+            "backfill_metrics", days=1, skip_hourly=True, skip_monthly=True, stdout=out
+        )
+        assert "BACKFILL COMPLETE" in out.getvalue()
