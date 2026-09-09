@@ -198,6 +198,14 @@ class WorkflowFileExecution(BaseModel):
                 ],
                 name="wf_provider_uuid_path_stat_idx",
             ),
+            # Every other index on this table is prefixed by the workflow_execution
+            # FK column, so none can serve a status + created_at filter. Serves both
+            # get_failed_pages and, since UN-3973 narrowed the source window, the
+            # COMPLETED path. See migration 0007.
+            models.Index(
+                fields=["status", "created_at"],
+                name="wfe_status_created_idx",
+            ),
         ]
         constraints = [
             models.UniqueConstraint(
