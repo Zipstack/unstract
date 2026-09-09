@@ -190,6 +190,27 @@ class IsParentToolOwner(permissions.BasePermission):
     orphan rows.
     """
 
+    def has_permission(self, request: Request, view: APIView) -> bool:
+        """Gate ``create``, which DRF never routes through the object check.
+
+        There is no object yet, so the parent tool is resolved from the
+        payload. A profile belongs to the project, not to whoever created
+        it, so a shared user adding one would be editing someone else's
+        project (UN-2868).
+        """
+        if getattr(view, "action", None) != "create":
+            return True
+        if _is_service_account(request) or _is_organization_admin(request):
+            return True
+        # Imported here: the models pull in this module at import time.
+        from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+        tool = CustomTool.objects.filter(
+            tool_id=request.data.get(ProfileManagerKeys.PROMPT_STUDIO_TOOL)
+        ).first()
+        return bool(tool and _is_resource_owner(request.user, tool))
+
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True

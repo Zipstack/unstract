@@ -74,9 +74,8 @@ function ManageLlmProfiles() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
-  // Editing or deleting an existing profile touches the owner's adapter
-  // config, so the backend refuses it (`IsParentToolOwner`). Creating a new
-  // profile and every other setting stays open to a shared user.
+  // A profile is keyed to the project, not to whoever added it, so the
+  // backend refuses every write here from a shared user (`IsParentToolOwner`).
   const canEdit = usePromptStudioCanEdit();
   const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const MAX_PROFILE_COUNT = 4;
@@ -179,7 +178,7 @@ function ManageLlmProfiles() {
             data-testid={rowTestId("select-default")}
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
-            disabled={isPublicSource}
+            disabled={isPublicSource || !canEdit}
           />
         ),
       };
@@ -276,15 +275,16 @@ function ManageLlmProfiles() {
       <div className="display-flex-right">
         <Tooltip
           title={
-            isMaxProfile
+            ownerOnlyTitle ||
+            (isMaxProfile
               ? `Max profile count(${MAX_PROFILE_COUNT})`
-              : "Add New LLM Profile"
+              : "Add New LLM Profile")
           }
         >
           <CustomButton
             type="primary"
             onClick={handleAddNewLlmProfileBtnClick}
-            disabled={isMaxProfile || isPublicSource}
+            disabled={isMaxProfile || isPublicSource || !canEdit}
           >
             Add New LLM Profile
           </CustomButton>

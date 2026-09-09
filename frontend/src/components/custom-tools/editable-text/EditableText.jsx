@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/shims/antd-inputs";
 
 import "./EditableText.css";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 
 function EditableText({
@@ -23,6 +24,9 @@ function EditableText({
   const [isHovered, setIsHovered] = useState(false);
   const divRef = useRef(null);
   const { isSinglePassExtractLoading, isPublicSource } = useCustomToolStore();
+  // A prompt belongs to the project, so a shared user reads it but cannot
+  // change it (UN-2868).
+  const canEdit = usePromptStudioCanEdit();
 
   useEffect(() => {
     setText(defaultText);
@@ -87,7 +91,10 @@ function EditableText({
         onBlur={handleBlur}
         onClick={() => setIsEditing(true)}
         disabled={
-          isCoverageLoading || isSinglePassExtractLoading || isPublicSource
+          isCoverageLoading ||
+          isSinglePassExtractLoading ||
+          isPublicSource ||
+          !canEdit
         }
       />
     );
@@ -109,7 +116,10 @@ function EditableText({
       onBlur={handleBlur}
       onClick={() => setIsEditing(true)}
       disabled={
-        isCoverageLoading || isSinglePassExtractLoading || isPublicSource
+        isCoverageLoading ||
+        isSinglePassExtractLoading ||
+        isPublicSource ||
+        !canEdit
       }
     />
   );

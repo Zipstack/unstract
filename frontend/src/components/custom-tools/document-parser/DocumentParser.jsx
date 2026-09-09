@@ -6,6 +6,7 @@ import "./DocumentParser.css";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
@@ -56,6 +57,7 @@ function DocumentParser({
     isChallengeEnabled,
     isPublicSource,
   } = useCustomToolStore();
+  const canEdit = usePromptStudioCanEdit();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -259,8 +261,12 @@ function DocumentParser({
 
     return (
       <EmptyState
-        text="Add prompt or a note and choose the LLM profile"
-        btnText="Add Prompt"
+        text={
+          canEdit
+            ? "Add prompt or a note and choose the LLM profile"
+            : "This project has no prompts yet"
+        }
+        btnText={canEdit ? "Add Prompt" : ""}
         handleClick={() => addPromptInstance(promptType.prompt)}
       />
     );

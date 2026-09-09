@@ -21,6 +21,7 @@ import { Avatar, Tag } from "@/components/ui/shims/antd-leaves";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { useSessionStore } from "../../../store/session-store";
 import {
   ApiEndpointSection,
@@ -324,12 +325,19 @@ function createPipelineCardConfig({
 
             <Space size={16} className="card-list-actions">
               <Tooltip
-                title={pipeline.active ? "Disable pipeline" : "Enable pipeline"}
+                title={
+                  canEditResource(pipeline, sessionDetails)
+                    ? pipeline.active
+                      ? "Disable pipeline"
+                      : "Enable pipeline"
+                    : "Only the owner can change this"
+                }
               >
                 <Switch
                   size="small"
                   checked={pipeline.active}
                   data-testid={`pipeline-toggle-${pipeline.id}`}
+                  disabled={!canEditResource(pipeline, sessionDetails)}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     handleEnablePipeline(checked, pipeline.id);

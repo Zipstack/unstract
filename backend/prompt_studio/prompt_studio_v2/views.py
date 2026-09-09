@@ -60,5 +60,12 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         Returns:
             Response: The HTTP response indicating the status of the reorder operation.
         """
+        # Routed without a pk, so DRF runs no object check of its own; resolve
+        # the prompt so reordering is gated like every other write here.
+        prompt = ToolStudioPrompt.objects.filter(
+            prompt_id=request.data.get(ToolStudioPromptKeys.PROMPT_ID)
+        ).first()
+        if prompt:
+            self.check_object_permissions(request, prompt)
         prompt_studio_controller = PromptStudioController()
         return prompt_studio_controller.reorder_prompts(request, ToolStudioPrompt)

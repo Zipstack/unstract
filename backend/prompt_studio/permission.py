@@ -14,10 +14,11 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 class PromptAcesssToUser(permissions.BasePermission):
     """Is the crud to Prompt/Notes allowed to user.
 
-    A user qualifies when they own the parent ``CustomTool``, are a direct
-    viewer (VIEWER membership, UN-2202), reach the project via group sharing
-    (``ResourceGroupShare`` on the parent tool), or are an org admin
-    (org-wide admin override, UN-3479).
+    Owners (creator + co-owners) and org admins get full access. Shared
+    access -- a direct viewer (VIEWER membership, UN-2202) or group sharing
+    (``ResourceGroupShare`` on the parent tool) -- is read-only: a prompt is
+    part of the project definition, so editing one rewrites the project for
+    its owner and everyone else it is shared with (UN-2868).
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
@@ -26,10 +27,12 @@ class PromptAcesssToUser(permissions.BasePermission):
         tool = obj.tool_id
         if _is_resource_owner(request.user, tool):
             return True
-        if _is_resource_viewer(request.user, tool):
+        if request.method in permissions.SAFE_METHODS and (
+            _is_resource_viewer(request.user, tool)
+            or has_group_access(request.user, tool)
+        ):
             return True
-        if has_group_access(request.user, tool):
-            return True
+        # Left last: the admin lookup is uncached, so reads resolve without it.
         return OrganizationMemberService.is_user_organization_admin(request.user)
 
 

@@ -149,7 +149,16 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
+        # Every write here edits the project itself -- its name, its settings,
+        # its default profile -- so shared access stays read-only (UN-2868).
+        if self.action in [
+            "destroy",
+            "add_co_owner",
+            "remove_co_owner",
+            "update",
+            "partial_update",
+            "make_profile_default",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
