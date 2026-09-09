@@ -1524,3 +1524,201 @@ class TestAnOrgLessDailyRowIsNotRolledUp(TestCase):
             EventMetricsMonthly._base_manager.filter(organization__isnull=True).count()
             == 0
         )
+
+
+class TestTheGuardComparesWithinOneMonth(TestCase):
+    """The rollup window spans two months; every other guard test seeds one.
+
+    `month_start` is the first of the PREVIOUS month, so the subquery has to
+    correlate each candidate row to its own month. Seeded inside a single month
+    that correlation is inert — deleting it leaves the suite green while, in
+    production, one month's stored total is compared against two months of daily
+    rows. The sum is then always larger, nothing is ever "lowered", and the guard
+    silently stops guarding.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="two-month-org", name="two", display_name="Two"
+        )
+        this_month = _truncate_to_month(timezone.now()).date()
+        self.previous = (this_month - timedelta(days=1)).replace(day=1)
+        self.current = this_month
+
+    def _daily(self, day, value):
+        EventMetricsDaily._base_manager.create(
+            organization=self.org, date=day, metric_name="documents_processed",
+            metric_type=MetricType.COUNTER, metric_value=value, metric_count=1,
+            project="default", tag="",
+        )
+
+    def _monthly(self, month, value):
+        EventMetricsMonthly._base_manager.create(
+            organization=self.org, month=month, metric_name="documents_processed",
+            metric_type=MetricType.COUNTER, metric_value=value, metric_count=1,
+            project="default", tag="",
+        )
+
+    def test_a_short_month_is_flagged_even_when_its_neighbour_is_whole(self):
+        # Previous month is complete and matches its stored total.
+        self._monthly(self.previous, value=100)
+        self._daily(self.previous, value=100)
+        # Current month lost days: stored 80, daily now sums to 70.
+        self._monthly(self.current, value=80)
+        self._daily(self.current, value=70)
+
+        lowered = _pairs_the_rollup_would_lower(self.previous)
+
+        # Uncorrelated, the current month's candidate would be compared against
+        # 100 + 70 = 170 and pass as healthy.
+        assert lowered == [
+            (self.org.id, self.current, "documents_processed", "default", "")
+        ], "the short month must be flagged, and the whole one must not be"
+
+    def test_the_whole_neighbour_is_not_frozen_by_its_short_sibling(self):
+        self._monthly(self.previous, value=100)
+        self._daily(self.previous, value=100)
+        self._monthly(self.current, value=80)
+        self._daily(self.current, value=70)
+
+        lowered = _pairs_the_rollup_would_lower(self.previous)
+        _rollup_monthly_from_daily(self.previous, skip=set(lowered))
+
+        rows = {
+            r.month: r.metric_value
+            for r in EventMetricsMonthly._base_manager.filter(organization=self.org)
+        }
+        assert rows[self.current] == 80, "the short month must keep its stored total"
+        assert rows[self.previous] == 100, "the whole month must still be rewritten"
+
+
+class TestTheTaskAcquiresAndReleasesForReal(TestCase):
+    """The task's own lock round trip, against a real cache backend.
+
+    The helper-level tests exercise `_acquire_aggregation_locks` and
+    `_release_aggregation_locks` directly, and the one test that drives the task
+    patches BOTH the acquire helper and `cache` wholesale — so nothing executed
+    acquire -> run -> `finally` release end to end.
+
+    That gap is not cosmetic: AGGREGATION_LOCK_TIMEOUT is 900s and the hourly
+    schedule fires every 900s, so a release that silently stopped working would
+    leave the key held for exactly one period and skip roughly every other run —
+    while every run still returns success, because a lock-held skip is reported as
+    `{"success": True, "skipped": True}`.
+    """
+
+    def setUp(self):
+        override = override_settings(CACHES=_LOCMEM_CACHE)
+        override.enable()
+        self.addCleanup(override.disable)
+        cache.clear()
+        self.addCleanup(cache.clear)
+        self.keys = _aggregation_lock_keys(AggregationTier.ALL, DASHBOARD_SOURCE_WINDOW_DAYS)
+
+    def _held(self):
+        return [k for k in self.keys if cache.get(k) is not None]
+
+    def test_the_keys_are_held_during_the_run_and_gone_after(self):
+        seen = {}
+
+        def _record(*args, **kwargs):
+            seen["during"] = self._held()
+            return {"success": True}
+
+        with patch("dashboard_metrics.tasks._run_aggregation", side_effect=_record):
+            aggregate_metrics_from_sources()
+
+        assert seen["during"] == self.keys, "the run must hold every key it claimed"
+        assert self._held() == [], "the finally must release every key"
+
+    def test_a_second_run_is_locked_out_while_the_first_holds(self):
+        def _reentrant(*args, **kwargs):
+            # A second tick firing mid-run is exactly what the lock exists for.
+            seen["inner"] = aggregate_metrics_from_sources()
+            return {"success": True}
+
+        seen = {}
+        with patch("dashboard_metrics.tasks._run_aggregation", side_effect=_reentrant):
+            aggregate_metrics_from_sources()
+
+        assert seen["inner"]["skipped"] is True
+        assert seen["inner"]["reason"] == "lock_held"
+        assert self._held() == [], "the outer run still releases on the way out"
+
+    def test_the_keys_are_released_when_the_run_raises(self):
+        """Otherwise one failure silences the schedule for a full period."""
+        with patch(
+            "dashboard_metrics.tasks._run_aggregation",
+            side_effect=DatabaseError("aggregation exploded"),
+        ):
+            with self.assertRaises(DatabaseError):
+                aggregate_metrics_from_sources()
+
+        assert self._held() == [], "a raising run must not strand its keys"
+
+
+class TestTheReconciliationRowInheritsOwnership(TestCase):
+    """0005's `_inherited_ownership` on the branch it exists for.
+
+    Every other test on this migration runs with no aggregation row present, which
+    exercises only the `is None` fallbacks — hardcoding `True/True/False` would
+    pass all of them. The branch that matters is the opposite one: where the
+    metrics periodics are already PG-adopted, the Beat twin is disabled and Beat
+    may not be running at all, so a hardcoded Beat row would land the pass with no
+    firer. This is the only automatic repair for the narrowed source window, so it
+    is the worst row to strand. 0006's equivalent is covered; this one was not.
+    """
+
+    def setUp(self):
+        self.migration = import_module(
+            "dashboard_metrics.migrations.0005_add_reconciliation_task"
+        )
+        self.existing = self.migration.EXISTING_AGGREGATE_ROW
+
+    def _adopt_by_pg(self):
+        """The shape after the metrics periodics move to the PG scheduler."""
+        interval, _ = apps.get_model(
+            "django_celery_beat", "IntervalSchedule"
+        ).objects.get_or_create(every=15, period="minutes")
+        PeriodicTask.objects.create(
+            name=self.existing,
+            task="dashboard_metrics.aggregate_from_sources",
+            interval=interval,
+            enabled=False,
+        )
+        PgPeriodicTask.objects.create(
+            name=self.existing,
+            task_name="dashboard_metrics.aggregate_from_sources",
+            cron_string="*/15 * * * *",
+            org_id="",
+            enabled=True,
+            pg_owned=True,
+        )
+
+    def test_a_pg_adopted_fleet_gets_a_pg_owned_row_not_a_beat_one(self):
+        self._adopt_by_pg()
+
+        self.migration.create_reconciliation_task(apps, None)
+
+        beat = PeriodicTask.objects.get(name=self.migration.RECONCILE_TASK_NAME)
+        pg = PgPeriodicTask.objects.get(name=self.migration.RECONCILE_TASK_NAME)
+        assert beat.enabled is False, (
+            "the Beat twin must stay disabled, matching the row it follows — "
+            "otherwise both transports fire the same reconciliation pass"
+        )
+        assert pg.enabled is True
+        assert pg.pg_owned is True, (
+            "hardcoding pg_owned=False strands the pass: the PG scheduler skips a "
+            "row it does not own and Beat's copy is disabled"
+        )
+
+    def test_the_fallback_still_applies_with_no_row_to_inherit_from(self):
+        """The control, so the assertions above cannot pass by coincidence."""
+        self.migration.create_reconciliation_task(apps, None)
+
+        assert PeriodicTask.objects.get(
+            name=self.migration.RECONCILE_TASK_NAME
+        ).enabled is True
+        assert PgPeriodicTask.objects.get(
+            name=self.migration.RECONCILE_TASK_NAME
+        ).pg_owned is False
