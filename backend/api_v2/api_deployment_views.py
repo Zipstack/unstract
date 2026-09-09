@@ -311,7 +311,8 @@ class APIDeploymentViewSet(
             .order_by(F("last_run_time_annotated").desc(nulls_last=True), "pk")
         )
 
-        # Filter by workflow ID if provided
+        # TODO: replace the hand-read params and their OpenApiParameter
+        # restatements with a FilterSet so the spec cannot drift from the code
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
             try:
