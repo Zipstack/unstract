@@ -638,6 +638,7 @@ def aggregate_metrics_from_sources(
 
 def _aggregate_single_metric(
     query_method,
+    *,
     metric_name: str,
     metric_type: str,
     org_id: str,
@@ -683,6 +684,7 @@ def _aggregate_single_metric(
 
 def _aggregate_llm_combined(
     org_id: str,
+    *,
     hourly_start: datetime,
     daily_start: datetime,
     end_date: datetime,
@@ -750,6 +752,7 @@ LLM_COMBINED_FIELDS = {
 
 def _collect_org_metrics(
     org: Organization,
+    *,
     hourly_start: datetime,
     daily_start: datetime,
     end_date: datetime,
@@ -778,16 +781,16 @@ def _collect_org_metrics(
         try:
             _aggregate_single_metric(
                 query_method,
-                metric_name,
-                metric_type,
-                org_id,
-                hourly_start,
-                daily_start,
-                end_date,
-                hourly_agg,
-                daily_agg,
-                tier,
-                extra_kwargs,
+                metric_name=metric_name,
+                metric_type=metric_type,
+                org_id=org_id,
+                hourly_start=hourly_start,
+                daily_start=daily_start,
+                end_date=end_date,
+                hourly_agg=hourly_agg,
+                daily_agg=daily_agg,
+                tier=tier,
+                extra_kwargs=extra_kwargs,
             )
         except SoftTimeLimitExceeded:
             # Ahead of the broad catch: it subclasses Exception, so swallowing it
@@ -803,13 +806,13 @@ def _collect_org_metrics(
     try:
         _aggregate_llm_combined(
             org_id,
-            hourly_start,
-            daily_start,
-            end_date,
-            hourly_agg,
-            daily_agg,
-            LLM_COMBINED_FIELDS,
-            tier,
+            hourly_start=hourly_start,
+            daily_start=daily_start,
+            end_date=end_date,
+            hourly_agg=hourly_agg,
+            daily_agg=daily_agg,
+            llm_combined_fields=LLM_COMBINED_FIELDS,
+            tier=tier,
         )
     except SoftTimeLimitExceeded:
         raise
@@ -822,6 +825,7 @@ def _collect_org_metrics(
 
 def _aggregate_org(
     org: Organization,
+    *,
     hourly_start: datetime,
     daily_start: datetime,
     end_date: datetime,
@@ -830,7 +834,11 @@ def _aggregate_org(
 ) -> None:
     """Aggregate one organization and upsert the tiers this run writes."""
     hourly_agg, daily_agg, errors = _collect_org_metrics(
-        org, hourly_start, daily_start, end_date, tier
+        org,
+        hourly_start=hourly_start,
+        daily_start=daily_start,
+        end_date=end_date,
+        tier=tier,
     )
     stats["errors"] += errors
 
@@ -1035,7 +1043,14 @@ def _run_aggregation(
 
     for org in organizations:
         try:
-            _aggregate_org(org, hourly_start, daily_start, end_date, tier, stats)
+            _aggregate_org(
+                org,
+                hourly_start=hourly_start,
+                daily_start=daily_start,
+                end_date=end_date,
+                tier=tier,
+                stats=stats,
+            )
         except SoftTimeLimitExceeded:
             raise
         except Exception:
