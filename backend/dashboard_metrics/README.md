@@ -789,13 +789,15 @@ Populates aggregated tables from historical source data.
 ```bash
 python manage.py backfill_metrics [options]
 
-Options:
+Options (run --help for the authoritative text; the three --skip-* flags carry
+caveats that do not fit one line):
   --days=N          Number of days to backfill (default: 30)
   --org-id=UUID     Specific organization (default: all)
+  --active-only     Only orgs with an active subscription
   --dry-run         Show what would be done
-  --skip-hourly     Skip hourly aggregation
-  --skip-daily      Skip daily aggregation
-  --skip-monthly    Skip monthly aggregation
+  --skip-hourly     Skip the HOUR source queries, not just their upsert
+  --skip-daily      Leave the daily tier short; the rollup then freezes the month
+  --skip-monthly    Largely a no-op inside the rollup window
 ```
 
 ---
