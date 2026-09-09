@@ -671,7 +671,10 @@ SPECTACULAR_SETTINGS = {
             "deploymentKey": {
                 "type": "http",
                 "scheme": "bearer",
-                "description": "The API deployment's own key.",
+                "description": (
+                    "A key that runs an API deployment: the deployment's own "
+                    "key, or a global API deployment key with access to it."
+                ),
             },
             "platformKey": {
                 "type": "http",

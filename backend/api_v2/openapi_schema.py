@@ -176,7 +176,9 @@ EXECUTE_ERRORS = {
 EXECUTE_SUMMARY = "Execute an API deployment against documents"
 
 EXECUTE_DESCRIPTION = (
-    "Runs an API deployment, authenticated by the deployment's own key.\n\n"
+    "Runs an API deployment. Takes a deployment key — either the "
+    "deployment's own key, or a global API deployment key that has access "
+    "to it.\n\n"
     "Supply the documents either as `files` (multipart upload) or as "
     "`presigned_urls` (HTTPS S3 URLs), or both — a request carrying neither is "
     f"rejected, and the two together may not exceed "
@@ -188,8 +190,8 @@ EXECUTE_DESCRIPTION = (
 STATUS_SUMMARY = "Read the result of an execution"
 
 STATUS_DESCRIPTION = (
-    "Reads a previously started execution, authenticated by the deployment's "
-    "own key. The read is one-shot: the first call that observes a completed "
+    "Reads a previously started execution, taking the same deployment key "
+    "that ran it. The read is one-shot: the first call that observes a completed "
     "execution acknowledges it and the stored result is discarded, so every "
     "later call for that execution answers 406. Keep the payload of the call "
     "that returns it — it cannot be fetched again.\n\n"

@@ -361,7 +361,11 @@ def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
 BEHAVIOUR_PROMISED_IN_PROSE = {
     "whoami": ["GET only", "no organisation segment", "rejected as unauthenticated"],
     "list_deployments": ["not part of this listing", "ordered by most recent run"],
-    "execute": ["carrying neither is rejected", "`timeout` of -1"],
+    "execute": [
+        "global API deployment key",
+        "carrying neither is rejected",
+        "`timeout` of -1",
+    ],
     "status": ["one-shot", "422"],
 }
 

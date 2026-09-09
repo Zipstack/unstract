@@ -411,7 +411,7 @@
     },
     "securitySchemes": {
       "deploymentKey": {
-        "description": "The API deployment's own key.",
+        "description": "A key that runs an API deployment: the deployment's own key, or a global API deployment key with access to it.",
         "scheme": "bearer",
         "type": "http"
       },
@@ -593,7 +593,7 @@
     },
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
-        "description": "Reads a previously started execution, authenticated by the deployment's own key. The read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
+        "description": "Reads a previously started execution, taking the same deployment key that ran it. The read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
         "operationId": "status",
         "parameters": [
           {
@@ -825,7 +825,7 @@
         ]
       },
       "post": {
-        "description": "Runs an API deployment, authenticated by the deployment's own key.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
+        "description": "Runs an API deployment. Takes a deployment key \u2014 either the deployment's own key, or a global API deployment key that has access to it.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
         "operationId": "execute",
         "parameters": [
           {
