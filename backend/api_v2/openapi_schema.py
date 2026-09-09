@@ -306,8 +306,8 @@ LIST_API_DEPLOYMENTS_SUMMARY = "List an organisation's API deployments"
 LIST_API_DEPLOYMENTS_DESCRIPTION = (
     "Lists what an organisation has deployed, authenticated by a platform API "
     "key that belongs to it.\n\n"
-    "The deployment's own API key is not part of this listing; executing a "
-    "deployment still needs that key.\n\n"
+    "A deployment key is not part of this listing; executing a deployment "
+    "still needs one.\n\n"
     "Ordered by most recent run first, then by identifier, so paging is stable."
 )
 

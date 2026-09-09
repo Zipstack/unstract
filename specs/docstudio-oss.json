@@ -470,7 +470,7 @@
     },
     "/api/v1/unstract/{org_id}/api/deployment/": {
       "get": {
-        "description": "Lists what an organisation has deployed, authenticated by a platform API key that belongs to it.\n\nThe deployment's own API key is not part of this listing; executing a deployment still needs that key.\n\nOrdered by most recent run first, then by identifier, so paging is stable.",
+        "description": "Lists what an organisation has deployed, authenticated by a platform API key that belongs to it.\n\nA deployment key is not part of this listing; executing a deployment still needs one.\n\nOrdered by most recent run first, then by identifier, so paging is stable.",
         "operationId": "list_deployments",
         "parameters": [
           {
