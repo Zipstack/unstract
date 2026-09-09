@@ -105,13 +105,7 @@ WHOAMI_DESCRIPTION = (
     "the key itself, so this route carries no organisation segment. Call it "
     "once and store `organization_id`; every other endpoint takes it as a path "
     "segment.\n\n"
-    "An API deployment key is rejected as unauthenticated — it authenticates "
-    "against a different table, on a path that never reaches this endpoint.\n\n"
-    "This route serves GET only.\n\n"
-    "The same route also answers under an organisation segment "
-    "(`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong "
-    "to the organisation named. Prefer the form documented here: it is the one "
-    "that needs no organisation to begin with."
+    "An API deployment key is rejected as unauthenticated."
 )
 
 

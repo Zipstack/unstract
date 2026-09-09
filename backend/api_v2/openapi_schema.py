@@ -196,8 +196,7 @@ STATUS_DESCRIPTION = (
     "later call for that execution answers 406. Keep the payload of the call "
     "that returns it — it cannot be fetched again.\n\n"
     "A still-running execution answers 422 carrying its current `status`, so a "
-    "polling loop should treat 422 as the normal reply and stop on 200. "
-    "Clients that raise on any non-2xx need to allow for that."
+    "polling loop should treat 422 as the normal reply and stop on 200."
 )
 
 
@@ -306,15 +305,10 @@ LIST_API_DEPLOYMENTS_SUMMARY = "List an organisation's API deployments"
 
 LIST_API_DEPLOYMENTS_DESCRIPTION = (
     "Lists what an organisation has deployed, authenticated by a platform API "
-    "key that belongs to it. Each entry carries the `api_name` and "
-    "`api_endpoint` an execution call needs, the `display_name` and "
-    "`description` that say what the deployment is for, and who owns it and "
-    "how it has been running lately, including the creator's email address.\n\n"
-    "The deployment's own API key is not part of this listing, so a platform "
-    "key cannot be widened into the ability to execute a deployment by "
-    "reading it. Executing still needs the deployment key.\n\n"
-    "Results are ordered by most recent run first, then by identifier, so "
-    "paging is stable."
+    "key that belongs to it.\n\n"
+    "The deployment's own API key is not part of this listing; executing a "
+    "deployment still needs that key.\n\n"
+    "Ordered by most recent run first, then by identifier, so paging is stable."
 )
 
 

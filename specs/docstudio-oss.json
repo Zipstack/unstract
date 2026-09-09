@@ -430,7 +430,7 @@
   "paths": {
     "/api/v1/unstract/whoami/": {
       "get": {
-        "description": "Takes a platform API key and nothing else: the organisation is read from the key itself, so this route carries no organisation segment. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nAn API deployment key is rejected as unauthenticated \u2014 it authenticates against a different table, on a path that never reaches this endpoint.\n\nThis route serves GET only.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
+        "description": "Takes a platform API key and nothing else: the organisation is read from the key itself, so this route carries no organisation segment. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nAn API deployment key is rejected as unauthenticated.",
         "operationId": "whoami",
         "responses": {
           "200": {
@@ -470,7 +470,7 @@
     },
     "/api/v1/unstract/{org_id}/api/deployment/": {
       "get": {
-        "description": "Lists what an organisation has deployed, authenticated by a platform API key that belongs to it. Each entry carries the `api_name` and `api_endpoint` an execution call needs, the `display_name` and `description` that say what the deployment is for, and who owns it and how it has been running lately, including the creator's email address.\n\nThe deployment's own API key is not part of this listing, so a platform key cannot be widened into the ability to execute a deployment by reading it. Executing still needs the deployment key.\n\nResults are ordered by most recent run first, then by identifier, so paging is stable.",
+        "description": "Lists what an organisation has deployed, authenticated by a platform API key that belongs to it.\n\nThe deployment's own API key is not part of this listing; executing a deployment still needs that key.\n\nOrdered by most recent run first, then by identifier, so paging is stable.",
         "operationId": "list_deployments",
         "parameters": [
           {
@@ -593,7 +593,7 @@
     },
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
-        "description": "Reads a previously started execution, taking the same deployment key that ran it. The read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
+        "description": "Reads a previously started execution, taking the same deployment key that ran it. The read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200.",
         "operationId": "status",
         "parameters": [
           {

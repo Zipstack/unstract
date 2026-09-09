@@ -359,8 +359,8 @@ def test_the_one_shot_read_is_documented_where_a_client_will_see_it() -> None:
 # a promise is contract text, and reaches the caller as the client's docstring
 # and the CLI's help, so it is pinned like any other part of the contract.
 BEHAVIOUR_PROMISED_IN_PROSE = {
-    "whoami": ["GET only", "no organisation segment", "rejected as unauthenticated"],
-    "list_deployments": ["not part of this listing", "ordered by most recent run"],
+    "whoami": ["no organisation segment", "rejected as unauthenticated"],
+    "list_deployments": ["not part of this listing", "most recent run first"],
     "execute": [
         "global API deployment key",
         "carrying neither is rejected",
