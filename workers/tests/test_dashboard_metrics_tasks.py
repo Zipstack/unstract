@@ -388,7 +388,10 @@ class TestTheDiagnosticBlindSpotIsReported:
                 },
             ):
                 dmt.dashboard_metrics_aggregate()
-        assert "could not check whether the rollup lowered" in caplog.text
+        # "would lower", not "lowered": the check never ran, so nothing was lowered
+        # — the same past-tense slip the payload rename removed from the other arm.
+        assert "could not check whether the rollup would lower" in caplog.text
+        assert "rollup lowered" not in caplog.text
 
     def test_a_failed_rollup_is_named_as_fleet_wide(self, caplog):
         """Distinct from a per-org metric error, which reads the same otherwise."""

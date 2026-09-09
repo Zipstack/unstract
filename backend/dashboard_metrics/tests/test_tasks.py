@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from account_v2.models import Organization
+from celery.exceptions import SoftTimeLimitExceeded
 from django.apps import apps
 from django.core.cache import cache
 from django.db import connection
@@ -1326,8 +1327,30 @@ class TestTheDiagnosticCannotBlockTheRollup(TestCase):
 
         assert result["monthly"]["failed"] is False
 
+    def test_the_soft_time_limit_is_not_swallowed_by_the_diagnostic(self):
+        """The broad catch here is the same hazard the per-org catches guard.
+
+        SoftTimeLimitExceeded subclasses Exception, so swallowing it would hand an
+        empty `skip` to the rollup — the heaviest write in the task — with the guard
+        off and under a minute left before the hard limit kills the worker. It would
+        then overwrite exactly the totals the guard exists to preserve, and once a
+        short total is stored the lowering check can never see it again.
+        """
+        with patch(
+            "dashboard_metrics.tasks._rollup_monthly_from_daily"
+        ) as rollup, patch(
+            "dashboard_metrics.tasks._pairs_the_rollup_would_lower",
+            side_effect=SoftTimeLimitExceeded(),
+        ), patch("dashboard_metrics.tasks.WorkflowExecution") as mock_execution:
+            prefilter = mock_execution.objects.filter.return_value
+            prefilter.values_list.return_value.distinct.return_value = [1]
+            with self.assertRaises(SoftTimeLimitExceeded):
+                _run_aggregation(tier=AggregationTier.DAILY_MONTHLY)
+
+        rollup.assert_not_called()
+
     def test_a_failing_diagnostic_still_fails_the_run(self):
-        """"Did not block the rollup" and "succeeded" are separable claims.
+        """Did not block the rollup and succeeded are separable claims.
 
         A failing check leaves ``skip`` empty, so the upsert runs with the guard OFF
         and overwrites every total it would have protected. That is the opposite of
@@ -1409,6 +1432,30 @@ class TestTheRunSurfacesWhatTheDiagnosticFound(TestCase):
             "the rollup lowered a total and the result dict did not say so"
         )
 
+    def test_an_incomplete_daily_tier_reaches_the_result_dict(self):
+        """The sibling of the assertion above, for the other check.
+
+        Returning `[]` from the coverage check, or typoing the key it is stored
+        under, left the whole suite green — the key is hand-duplicated into the
+        worker, so nothing crossed the seam.
+        """
+        yesterday = timezone.now().date() - timedelta(days=1)
+        if yesterday < self.month:
+            self.skipTest("no whole day of the current month has elapsed yet")
+        # A row for the month's first day and nothing since: every other whole day
+        # of the month is missing.
+        EventMetricsDaily._base_manager.create(
+            organization=self.org, date=self.month,
+            metric_name="documents_processed", metric_type=MetricType.COUNTER,
+            metric_value=1, metric_count=1, project="default", tag="",
+        )
+
+        result = self._run(tier=AggregationTier.DAILY_MONTHLY)
+
+        assert result["monthly"]["incomplete_daily_coverage"], (
+            "the daily tier is missing whole days and the result dict did not say so"
+        )
+
     def test_a_failed_check_is_reported_as_unavailable_not_as_clean(self):
         """`[]` alone would read as 'checked, nothing lowered'."""
         with patch(
@@ -1466,6 +1513,18 @@ class TestAnIncompleteDailyTierIsReported(TestCase):
             "precondition: with no stored monthly row there is nothing to lower, "
             "which is exactly why that check cannot see this"
         )
+        assert self._missing() == ["2026-03 (8/9 days)"]
+
+    def test_a_gap_is_still_seen_once_todays_row_has_landed(self):
+        """The production shape, and the one the pair below could not reach.
+
+        Counting today while measuring against yesterday let today's row cancel
+        exactly one missing earlier day — so a single missed aggregation, the case
+        this check exists for, was silent from the day's first run onward.
+        """
+        for day in (1, 2, 3, 4, 6, 7, 8, 9, 10):  # the 5th never landed; 10th is today
+            self._daily(day)
+
         assert self._missing() == ["2026-03 (8/9 days)"]
 
     def test_a_fully_covered_month_is_silent(self):

@@ -173,10 +173,6 @@ class Command(BaseCommand):
             "monthly": {"upserted": 0},
             "errors": 0,
         }
-        # Per-query failures inside _collect_metrics. The per-org catch below only
-        # sees exceptions that escape it, and none do — every metric query is caught
-        # individually, so without this an org whose every query failed looks clean.
-        self._query_failures = 0
 
         # Pre-resolve org identifiers for PageUsage queries (avoids
         # redundant Organization lookups inside the metric query loop).
@@ -199,13 +195,14 @@ class Command(BaseCommand):
                 org_identifier = org_identifiers.get(org_id_key)
 
                 # Collect all metric data for this org
-                hourly_data, daily_data, monthly_data = self._collect_metrics(
+                hourly_data, daily_data, monthly_data, failures = self._collect_metrics(
                     current_org_id,
                     start_date,
                     end_date,
                     org_identifier=org_identifier,
                     skip_hourly=skip_hourly,
                 )
+                total_stats["errors"] += failures
 
                 self.stdout.write(
                     f"  Collected: {len(hourly_data)} hourly, "
@@ -237,7 +234,6 @@ class Command(BaseCommand):
                 logger.exception("Error backfilling org %s", current_org_id)
 
         # Print summary
-        total_stats["errors"] += self._query_failures
         failed = total_stats["errors"]
         self.stdout.write("\n" + "=" * 50)
         style = self.style.ERROR if failed else self.style.SUCCESS
@@ -329,14 +325,20 @@ class Command(BaseCommand):
         end_date: datetime,
         org_identifier: str | None = None,
         skip_hourly: bool = False,
-    ) -> tuple[dict, dict, dict]:
+    ) -> tuple[dict, dict, dict, int]:
         """Collect metrics from source tables for all granularities.
+
+        Returns the aggregations plus a count of failed metric queries. Each query
+        is caught individually, so a failure never reaches the per-organisation
+        handler that owns the error counter — it has to be carried back explicitly,
+        the same way ``_collect_org_metrics`` does in ``tasks.py``.
 
         ``skip_hourly`` skips the HOUR-granularity source queries, not just their
         upsert. The prescribed deploy step passes it over a window measured in
         weeks, and issuing those queries anyway would reinstate the scan this
         change exists to remove.
         """
+        failures = 0
         hourly_agg = {}
         daily_agg = {}
         monthly_agg = {}
@@ -417,7 +419,7 @@ class Command(BaseCommand):
         except Exception:
             # Counted, not just logged: this is the PR's mandatory pre-deploy step,
             # and a wholesale failure here used to print BACKFILL COMPLETE and exit 0.
-            self._query_failures += 1
+            failures += 1
             logger.exception("Error querying LLM metrics for org %s", org_id)
 
         # Fetch remaining (non-LLM) metrics individually
@@ -451,10 +453,10 @@ class Command(BaseCommand):
                 _ingest_daily_results(daily_results, metric_name, metric_type)
 
             except Exception:
-                self._query_failures += 1
+                failures += 1
                 logger.exception("Error querying %s for org %s", metric_name, org_id)
 
-        return hourly_agg, daily_agg, monthly_agg
+        return hourly_agg, daily_agg, monthly_agg, failures
 
     def _truncate_to_hour(self, ts: datetime) -> datetime:
         """Truncate datetime to hour."""

@@ -9,6 +9,7 @@ Tasks:
 import calendar
 import logging
 import time
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from enum import StrEnum
 from typing import Any
@@ -276,13 +277,23 @@ def _months_missing_days(month_start: date) -> list[str]:
     at once. Counted per tenant it would instead flag every organisation that was
     merely idle that day, which is normal and constant.
 
-    Only whole days are counted — today is partial by construction until its last
-    run, and a month with no rows at all is skipped rather than reported as wholly
-    missing, so a fresh install is silent.
+    That grain is also the limit: one row from any tenant for any metric marks a
+    date covered, so a day lost by a single tenant or a single metric is invisible
+    here. `_pairs_the_rollup_would_lower` is what covers that case, and only where a
+    stored total actually falls — neither check sees a partial loss on a month with
+    no stored total.
+
+    Whole days only, on both sides of the comparison. A date on which nothing ran
+    anywhere reads as a gap and will be reported for the rest of the window; that is
+    a false alarm this cannot distinguish from a real one without querying the
+    source tables, which is the load this whole change exists to remove.
     """
     yesterday = timezone.now().date() - timedelta(days=1)
     covered = (
-        EventMetricsDaily._base_manager.filter(date__gte=month_start)
+        # Whole days on BOTH sides. Counting today while measuring against yesterday
+        # lets today's row cancel exactly one missing earlier day, which hides the
+        # single-missing-day case entirely once the day's first run has landed.
+        EventMetricsDaily._base_manager.filter(date__gte=month_start, date__lte=yesterday)
         .annotate(month=TruncMonth("date"))
         .values("month")
         .annotate(days=Count("date", distinct=True))
@@ -292,8 +303,6 @@ def _months_missing_days(month_start: date) -> list[str]:
     short = []
     for row in covered:
         month = row["month"]
-        if isinstance(month, datetime):
-            month = month.date()
         last_day = month.replace(day=calendar.monthrange(month.year, month.month)[1])
         last_complete = min(last_day, yesterday)
         expected = (last_complete - month).days + 1
@@ -350,12 +359,8 @@ def _rollup_monthly_from_daily(month_start: date, skip: set | None = None) -> in
     with tenant count — and on the PG transport this runs inside a request worker.
     """
     rows = (
-        # organization is nullable and unique_monthly_metric includes it, so a
-        # NULL-org daily row would not merely produce a wrong monthly row: Postgres
-        # unique indexes are NULLS DISTINCT, so ON CONFLICT never matches and every
-        # run INSERTs another duplicate. No writer originates one today — both take
-        # the org from a loop — but this reads the column rather than a loop
-        # variable, so the impossibility is no longer structural.
+        # NULLS DISTINCT: a NULL-org row never matches ON CONFLICT, so it would be
+        # re-inserted every run. Latent — but this reads the column, not a loop var.
         EventMetricsDaily._base_manager.filter(date__gte=month_start)
         .exclude(organization_id__isnull=True)
         .annotate(month=TruncMonth("date"))
@@ -793,11 +798,8 @@ def _collect_org_metrics(
                 extra_kwargs=extra_kwargs,
             )
         except SoftTimeLimitExceeded:
-            # Ahead of the broad catch: it subclasses Exception, so swallowing it
-            # logs a per-org DB error, continues the loop, and burns the remaining
-            # 60s until the hard limit kills the worker mid-write. Re-raising is
-            # what makes the soft limit a graceful wind-down rather than a slower
-            # SIGKILL.
+            # Ahead of the broad catch: it subclasses Exception, and swallowing it
+            # defeats the soft limit's whole purpose.
             raise
         except Exception:
             logger.exception("Error querying %s for org %s", metric_name, org_id)
@@ -923,7 +925,13 @@ def _validate_source_window(source_window_days: int) -> int:
     return days
 
 
-def _run_diagnostic(what: str, run, stats: dict[str, Any], key: str, default):
+def _run_diagnostic(
+    check: Callable[[date], list],
+    month_start: date,
+    stats: dict[str, Any],
+    key: str,
+    what: str,
+) -> list:
     """Run one pre-rollup check, recording unavailability rather than raising.
 
     These are diagnostics and the rollup is the job, so a failing check must not
@@ -940,69 +948,75 @@ def _run_diagnostic(what: str, run, stats: dict[str, Any], key: str, default):
     that guard OFF.
     """
     try:
-        return run()
+        return check(month_start)
+    except SoftTimeLimitExceeded:
+        # Swallowing it would hand an empty `skip` to the rollup, guard off.
+        raise
     except Exception:
         logger.exception("Could not %s", what)
         stats["monthly"][key] = "unavailable"
         stats["errors"] += 1
-        return default
+        return []
+
+
+_KEPT_MSG = (
+    "Monthly rollup left %s unchanged — the daily tier now sums lower than the "
+    "stored total, so the figures were kept rather than overwritten. Repair daily "
+    "for those months with `backfill_metrics`"
+)
+
+_SHORT_TIER_MSG = (
+    "Monthly rollup ran against an incomplete daily tier for %s — those totals are "
+    "under-counted whether or not they were lowered. Repair with `backfill_metrics` "
+    "if the source tables hold those days; a date on which nothing ran anywhere "
+    "reads the same and needs no action"
+)
+
+
+def _report(stats: dict[str, Any], key: str, names: list[str], message: str) -> None:
+    """Record one monthly-tier gap in the result and the log, if there is one."""
+    if not names:
+        return
+    stats["monthly"][key] = names
+    logger.warning(message, ", ".join(names))
 
 
 def _roll_up_monthly(monthly_start: date, stats: dict[str, Any]) -> None:
     """Derive the monthly tier from daily, recording a failure distinctly."""
     # Before the upsert, while the stored values are still the old ones.
     lowered_pairs = _run_diagnostic(
-        "check whether the rollup lowers monthly totals",
-        lambda: _pairs_the_rollup_would_lower(monthly_start),
+        _pairs_the_rollup_would_lower,
+        monthly_start,
         stats,
         "lowered_check",
-        [],
+        "check whether the rollup lowers monthly totals",
     )
     missing_days = _run_diagnostic(
-        "check whether the daily tier is missing whole days",
-        lambda: _months_missing_days(monthly_start),
+        _months_missing_days,
+        monthly_start,
         stats,
         "coverage_check",
-        [],
+        "check whether the daily tier is missing whole days",
     )
 
     try:
         stats["monthly"]["upserted"] = _rollup_monthly_from_daily(
             monthly_start, skip=set(lowered_pairs)
         )
+    except SoftTimeLimitExceeded:
+        raise
     except Exception:
-        # Counted rather than raised, including DatabaseError/OperationalError.
-        # Raising reaches autoretry_for only on the Celery transport, where each
-        # retry re-runs the whole aggregation; on the internal-HTTP path
-        # Task.retry re-raises under called_directly and nothing retries at all.
-        # errors > 0 already makes success False, which is what surfaces this.
+        # Counted, not raised: autoretry_for is a no-op on the internal-HTTP path,
+        # where Task.retry re-raises under called_directly. errors > 0 is the signal.
         logger.exception("Error rolling up monthly metrics from %s", monthly_start)
         stats["monthly"]["failed"] = True
         stats["errors"] += 1
         return
 
-    if lowered_pairs:
-        lowered = _name_lowered_pairs(lowered_pairs)
-        stats["monthly"]["needs_daily_repair"] = lowered
-        logger.warning(
-            "Monthly rollup left %s unchanged — the daily tier now sums lower than "
-            "the stored total, so the figures were kept rather than overwritten. "
-            "Repair daily for those months with `backfill_metrics`",
-            ", ".join(lowered),
-        )
-
-    if missing_days:
-        # Reported, not skipped. Refusing to write a month whose coverage is short
-        # would leave dashboards empty rather than slightly low, and the shortfall
-        # can be a genuinely idle day. The pairs above are different: there a
-        # known-good stored total exists to preserve.
-        stats["monthly"]["incomplete_daily_coverage"] = missing_days
-        logger.warning(
-            "Monthly rollup ran against an incomplete daily tier for %s — those "
-            "totals are under-counted whether or not they were lowered. Repair "
-            "daily with `backfill_metrics`",
-            ", ".join(missing_days),
-        )
+    _report(stats, "needs_daily_repair", _name_lowered_pairs(lowered_pairs), _KEPT_MSG)
+    # Reported, not skipped: refusing to write a short month leaves dashboards empty
+    # rather than slightly low, and there is no stored total here to preserve.
+    _report(stats, "incomplete_daily_coverage", missing_days, _SHORT_TIER_MSG)
 
 
 def _run_aggregation(
