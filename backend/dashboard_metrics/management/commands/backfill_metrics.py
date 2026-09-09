@@ -95,7 +95,10 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-hourly",
             action="store_true",
-            help="Skip hourly aggregation (only do daily/monthly)",
+            help=(
+                "Skip the HOUR-granularity source queries, not just their upsert. "
+                "The deploy step passes it over a window measured in weeks."
+            ),
         )
         parser.add_argument(
             "--skip-daily",
