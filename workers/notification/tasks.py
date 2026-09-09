@@ -26,6 +26,7 @@ from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
+from unstract.core.network.ssrf import safe_host
 from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)
@@ -328,8 +329,11 @@ def send_webhook_notification(
             # itself, so no attempt can change it. Dead-letter now instead of
             # re-resolving a tenant-supplied hostname up to max_retries times.
             if result.get("details", {}).get("retryable") is False:
+                # The host, not the URL: a webhook URL routinely carries a
+                # token in its query string and this line goes to shared logs.
                 logger.error(
-                    f"Webhook to {url} refused and not retryable: {error_message}"
+                    f"Webhook to host={safe_host(url)} refused and not "
+                    f"retryable: {error_message}"
                 )
                 _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
                 if raise_on_final_failure:

@@ -54,6 +54,23 @@ _NOT_GLOBALLY_REACHABLE = (
     ipaddress.ip_network("5f00::/16"),  # NOSONAR - SRv6 SIDs (RFC 9602)
 )
 
+# Ranges that carry an IPv4 address in their low 32 bits. ``is_global`` judges
+# these on the prefix alone and reports them global, but what gets dialled is
+# the embedded IPv4 — ``64:ff9b::7f00:1`` is 127.0.0.1 through a NAT64
+# translator. The payload is re-checked rather than the prefix refused as a
+# block, because a NAT64 route to a public IPv4 is legitimate and only the
+# embedded address says which case this is.
+#
+# ``::ffff:0:0/96`` (IPv4-mapped) is deliberately absent: the stdlib already
+# resolves those through ``ipv4_mapped``. 6to4 (``2002::/16``) and the NAT64
+# local-use prefix (``64:ff9b:1::/48``) are absent for the same reason —
+# ``is_global`` is already False across both. These are registry entries, not
+# deployment addresses. NOSONAR
+_EMBEDS_IPV4 = (
+    ipaddress.ip_network("64:ff9b::/96"),  # NOSONAR - NAT64 well-known prefix (RFC 6052)
+    ipaddress.ip_network("::/96"),  # NOSONAR - IPv4-compatible, deprecated (RFC 4291)
+)
+
 
 def _normalize_host(host: str | None) -> str:
     """Reduce a host to the form the transport will dial.
@@ -137,6 +154,9 @@ def _is_public(addr: str) -> bool:
         return False
     # ``in`` is version-safe: _BaseNetwork.__contains__ returns False on a
     # version mismatch rather than raising, so no explicit guard is needed.
+    if any(ip in net for net in _EMBEDS_IPV4):
+        # Recurses exactly once: the payload is IPv4, which matches no entry.
+        return _is_public(str(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF)))
     return not any(ip in net for net in _NOT_GLOBALLY_REACHABLE)
 
 
@@ -199,14 +219,22 @@ def webhook_url_refusal(
 
     literal = _as_ip(host)
 
+    # RFC 6761 reserves this subtree to loopback, so the answer is known without
+    # asking a resolver — and must not depend on one. Whether a lookup would
+    # catch it varies by libc and image: glibc's nss-myhostname answers for the
+    # whole subtree, musl only for the bare apex, a minimal container for
+    # neither. Where it does not resolve, falling through would report
+    # UNRESOLVABLE, which is the one reason sinks retry, so a webhook aimed at
+    # ``api.localhost`` would burn every attempt before dead-lettering.
+    if host in _LOOPBACK_NAMES or host.endswith(".localhost"):
+        return REFUSED_INTERNAL_LITERAL
+
     if not resolve:
         # No DNS on this path. An address literal is still checked, since that
         # needs no lookup and is how most internal targets are written — in any
         # of the encodings ``_as_ip`` understands, not just dotted-quad. A
         # hostname is accepted here and caught at the sink.
         if literal is not None and not _is_public(str(literal)):
-            return REFUSED_INTERNAL_LITERAL
-        if host in _LOOPBACK_NAMES or host.endswith(".localhost"):
             return REFUSED_INTERNAL_LITERAL
         return None
 

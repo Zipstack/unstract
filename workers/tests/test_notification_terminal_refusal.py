@@ -14,6 +14,7 @@ and no ``Retry``.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import patch
 
 import pytest
@@ -41,7 +42,9 @@ class _RefusingProvider:
         }
 
 
-def _run(*, retryable: bool, max_retries: int, raise_on_final_failure: bool):
+def _run(
+    *, retryable: bool, max_retries: int, raise_on_final_failure: bool, url: str = _URL
+):
     provider = _RefusingProvider(retryable=retryable)
     marks: list[bool] = []
     with (
@@ -56,7 +59,7 @@ def _run(*, retryable: bool, max_retries: int, raise_on_final_failure: bool):
         raised: BaseException | None = None
         try:
             send_webhook_notification.apply(
-                args=[_URL, {"text": "hi"}, {"Content-Type": "application/json"}, 30],
+                args=[url, {"text": "hi"}, {"Content-Type": "application/json"}, 30],
                 kwargs={
                     "max_retries": max_retries,
                     "retry_delay": 10,
@@ -101,3 +104,21 @@ def test_a_retryable_failure_still_retries(raise_on_final):
     )
     assert isinstance(raised, Retry)
     assert marks == []  # not dead-lettered while attempts remain
+
+
+def test_the_refusal_log_line_carries_the_host_not_the_url(caplog):
+    """A webhook URL routinely carries a token in its query string.
+
+    ``ssrf`` and ``notification_utils`` both log ``safe_host(url)`` for exactly
+    this reason, and these lines go to shared logs. The terminal-refusal branch
+    is the one path built to enforce that discipline, so it is the last place
+    that should undo it.
+    """
+    token = "s3cr3t-webhook-token"  # noqa: S105 - not a credential, a canary
+    url = f"https://127.0.0.1/hook?token={token}"
+    with caplog.at_level(logging.ERROR, logger="notification.tasks"):
+        _run(retryable=False, max_retries=3, raise_on_final_failure=False, url=url)
+    logged = "\n".join(r.getMessage() for r in caplog.records)
+    assert token not in logged
+    assert url not in logged
+    assert "127.0.0.1" in logged  # the host is still there to act on

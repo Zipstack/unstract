@@ -103,10 +103,27 @@ def test_internal_targets_are_refused(url):
         "https://[ff02::1]/hook",  # IPv6 multicast, all-nodes
         "https://192.88.99.1/hook",  # 6to4 relay anycast
         "https://[5f00::1]/hook",  # SRv6 SIDs
+        # Prefixes that embed an IPv4 address in their low 32 bits. is_global
+        # reports these on the prefix alone, without looking at the payload the
+        # translator would actually dial.
+        "https://[64:ff9b::7f00:1]/hook",  # NAT64 well-known prefix -> 127.0.0.1
+        "https://[64:ff9b::a9fe:a9fe]/hook",  # NAT64 WKP -> 169.254.169.254
+        "https://[64:ff9b::a00:5]/hook",  # NAT64 WKP -> 10.0.0.5
+        "https://[::7f00:1]/hook",  # IPv4-compatible, deprecated -> 127.0.0.1
     ],
 )
 def test_ranges_the_stdlib_calls_global_are_still_refused(url):
     assert is_safe_webhook_url(url) is False
+
+
+def test_an_embedded_public_ipv4_is_still_allowed():
+    """The payload decides, not the prefix.
+
+    64:ff9b::/96 is a legitimate route to an IPv4 host through a NAT64
+    translator. Refusing the whole prefix would block that; what makes an
+    address unsafe is the IPv4 it embeds, so that is what is re-checked.
+    """
+    assert is_safe_webhook_url("https://[64:ff9b::808:808]/hook") is True  # 8.8.8.8
 
 
 @pytest.mark.parametrize(
@@ -148,7 +165,7 @@ def test_public_targets_are_allowed(url):
     ],
 )
 def test_unresolvable_hosts_return_false_rather_than_raising(url, monkeypatch):
-    """getaddrinfo raises UnicodeError on these instead of failing to resolve.
+    """Getaddrinfo raises UnicodeError on these instead of failing to resolve.
 
     Callers treat this as a boolean check, so an escaping exception becomes a
     500 in the notification serializer and an error in the delivery task.
@@ -263,6 +280,10 @@ def test_legacy_loopback_encodings_are_refused_without_dns(url):
     """
     assert is_safe_webhook_url(url, resolve=False) is False
     assert is_safe_webhook_url(url) is False
+    # The boolean alone is also False for UNRESOLVABLE, which the sinks retry.
+    # These are properties of the URL, so no attempt can change the outcome.
+    assert is_retryable_refusal(webhook_url_refusal(url, resolve=False)) is False
+    assert is_retryable_refusal(webhook_url_refusal(url)) is False
 
 
 class TestRefusalReason:
@@ -285,6 +306,26 @@ class TestRefusalReason:
             webhook_url_refusal("https://127.0.0.1/hook", resolve=False)
             == REFUSED_INTERNAL_LITERAL
         )
+
+    def test_rfc6761_loopback_names_do_not_depend_on_the_resolver(self):
+        """``.localhost`` is reserved to loopback, so no lookup decides it.
+
+        The stub resolver answers for none of these, which is what a minimal
+        container image does — musl only special-cases the bare apex, and many
+        base images resolve neither. Falling through to DNS would report
+        UNRESOLVABLE, which ``is_retryable_refusal`` calls retryable, so a
+        webhook aimed at ``api.localhost`` would be retried to the cap before
+        dead-lettering instead of being refused outright.
+        """
+        for url in (
+            "https://localhost/hook",
+            "https://api.localhost/hook",
+            "https://DB.LocalHost/hook",
+        ):
+            for resolve in (True, False):
+                reason = webhook_url_refusal(url, resolve=resolve)
+                assert reason == REFUSED_INTERNAL_LITERAL, (url, resolve)
+                assert is_retryable_refusal(reason) is False
 
     def test_reason_distinguishes_the_syntactic_checks(self):
         assert (
@@ -371,7 +412,8 @@ class TestNotificationSink:
 
 class TestRetryabilityIsClassifiedOnce:
     """Every sink asks the guard whether a refusal can clear, rather than
-    re-deriving it — a new reason has to be classified in one place."""
+    re-deriving it — a new reason has to be classified in one place.
+    """
 
     def test_only_a_resolver_outage_is_retryable(self):
         assert is_retryable_refusal(UNRESOLVABLE) is True
