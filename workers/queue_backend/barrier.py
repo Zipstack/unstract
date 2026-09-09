@@ -39,7 +39,6 @@ import os
 from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
 
 from celery import chord
-
 from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT
 
 from .fairness import FairnessKey

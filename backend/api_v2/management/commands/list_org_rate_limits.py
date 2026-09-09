@@ -37,7 +37,7 @@ class Command(BaseCommand):
                     usage = APIDeploymentRateLimiter.get_current_usage(org)
                     pct = (usage["org_count"] / limit * 100) if limit > 0 else 0
                     self.stdout.write(
-                        f'  Usage: {usage["org_count"]}/{limit} ({pct:.1f}%)'
+                        f"  Usage: {usage['org_count']}/{limit} ({pct:.1f}%)"
                     )
                 except Exception as e:
                     self.stdout.write(f"  Usage: Error - {e}")

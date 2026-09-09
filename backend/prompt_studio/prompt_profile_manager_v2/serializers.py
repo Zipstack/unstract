@@ -3,9 +3,9 @@ from typing import Any
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.models import AdapterInstance
+from backend.serializers import AuditSerializer
 from rest_framework.serializers import ValidationError
 
-from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
 
 from .models import ProfileManager

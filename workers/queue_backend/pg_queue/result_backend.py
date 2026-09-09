@@ -60,7 +60,6 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
 import redis
-
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.polling import poll_for_row

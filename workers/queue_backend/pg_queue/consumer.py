@@ -35,7 +35,6 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from celery import current_app
-
 from unstract.core.data_models import ContinuationSpec, TaskPayload
 
 from ..barrier import callback_recovery_identity

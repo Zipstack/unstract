@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from backend.constants import RequestHeader
 from django.conf import settings
 from django.urls import reverse
 from rest_framework.request import Request
@@ -9,7 +10,6 @@ from utils.request.constants import RequestConstants
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
-from backend.constants import RequestHeader
 from pipeline_v2.constants import PipelineKey, PipelineURL
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
