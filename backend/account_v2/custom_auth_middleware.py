@@ -81,6 +81,12 @@ class CustomAuthMiddleware:
 
         if is_authenticated:
             organization_id = UserSessionUtils.get_organization_id(request=request)
+            # `request.organization_id` is None on two kinds of path: one with no
+            # organisation segment at all, and one matched by
+            # ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS, which sets it to None
+            # deliberately. Either way this guard does not run, so a route added
+            # to that whitelist loses this check as well as the Bearer branch's
+            # -- see the note beside the setting.
             if request.organization_id and not organization_id:
                 return JsonResponse({"message": "Organization access denied"}, status=403)
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
