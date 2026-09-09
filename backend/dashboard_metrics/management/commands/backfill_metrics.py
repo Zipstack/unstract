@@ -3,6 +3,13 @@
 This command populates EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
 tables from historical data in source tables (Usage, PageUsage, WorkflowExecution, etc.)
 
+The current and previous month are recomputed from the daily tier by the aggregation
+task's daily/monthly pass, so inside that window this command's monthly output is
+overwritten and --skip-monthly is largely a no-op. --skip-daily leaves that tier short
+on purpose: the rollup will not lower a stored monthly total it would reduce, so the
+month is not under-counted, but it is frozen at the stored figure until daily is
+repaired, and the daily tier the dashboards read stays wrong meanwhile. Repair daily.
+
 Usage:
     python manage.py backfill_metrics --days=30
     python manage.py backfill_metrics --days=90 --org-id=5
@@ -15,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from account_v2.models import Organization
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from dashboard_metrics.models import (
@@ -26,6 +33,7 @@ from dashboard_metrics.models import (
     MetricType,
 )
 from dashboard_metrics.services import MetricsQueryService
+from dashboard_metrics.tasks import truncate_to_day
 
 logger = logging.getLogger(__name__)
 
@@ -87,17 +95,29 @@ class Command(BaseCommand):
         parser.add_argument(
             "--skip-hourly",
             action="store_true",
-            help="Skip hourly aggregation (only do daily/monthly)",
+            help=(
+                "Skip the HOUR-granularity source queries, not just their upsert. "
+                "The deploy step passes it over a window measured in weeks."
+            ),
         )
         parser.add_argument(
             "--skip-daily",
             action="store_true",
-            help="Skip daily aggregation",
+            help=(
+                "Skip daily aggregation. Leaves the daily tier short for the "
+                "current and previous month. The rollup's guard keeps monthly from "
+                "being lowered, so the month freezes at its stored total rather than "
+                "under-counting — but daily stays wrong until it is repaired."
+            ),
         )
         parser.add_argument(
             "--skip-monthly",
             action="store_true",
-            help="Skip monthly aggregation",
+            help=(
+                "Skip monthly aggregation. Largely a no-op for the current and "
+                "previous month: the aggregation task rederives them from daily, "
+                "except where its guard preserves a higher stored total."
+            ),
         )
         parser.add_argument(
             "--active-only",
@@ -118,10 +138,22 @@ class Command(BaseCommand):
         active_only = options["active_only"]
 
         end_date = timezone.now()
-        start_date = end_date - timedelta(days=days)
+        # Truncated to match the cron's daily_start: an untruncated boundary writes the
+        # oldest day covering only part of it, and the monthly rollup now sums the
+        # persisted daily tier rather than recomputing that day from source.
+        start_date = truncate_to_day(end_date - timedelta(days=days))
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
         self.stdout.write(f"Days: {days}")
+
+        if skip_daily and not skip_monthly:
+            self.stdout.write(
+                self.style.WARNING(
+                    "--skip-daily without --skip-monthly: the daily tier is left "
+                    "short, so the rollup's guard will freeze the current and "
+                    "previous month at their stored totals. Repair daily."
+                )
+            )
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN - no changes will be made"))
@@ -166,12 +198,14 @@ class Command(BaseCommand):
                 org_identifier = org_identifiers.get(org_id_key)
 
                 # Collect all metric data for this org
-                hourly_data, daily_data, monthly_data = self._collect_metrics(
+                hourly_data, daily_data, monthly_data, failures = self._collect_metrics(
                     current_org_id,
                     start_date,
                     end_date,
                     org_identifier=org_identifier,
+                    skip_hourly=skip_hourly,
                 )
+                total_stats["errors"] += failures
 
                 self.stdout.write(
                     f"  Collected: {len(hourly_data)} hourly, "
@@ -203,12 +237,22 @@ class Command(BaseCommand):
                 logger.exception("Error backfilling org %s", current_org_id)
 
         # Print summary
+        failed = total_stats["errors"]
         self.stdout.write("\n" + "=" * 50)
-        self.stdout.write(self.style.SUCCESS("BACKFILL COMPLETE"))
+        style = self.style.ERROR if failed else self.style.SUCCESS
+        self.stdout.write(style("BACKFILL FAILED" if failed else "BACKFILL COMPLETE"))
         self.stdout.write(f"Hourly: {total_stats['hourly']['upserted']} upserted")
         self.stdout.write(f"Daily: {total_stats['daily']['upserted']} upserted")
         self.stdout.write(f"Monthly: {total_stats['monthly']['upserted']} upserted")
-        self.stdout.write(f"Errors: {total_stats['errors']}")
+        self.stdout.write(f"Errors: {failed}")
+        if failed:
+            # Non-zero exit, so a deploy runbook cannot tick this step green. The
+            # rows that did land are kept: this repairs the daily tier, and a partial
+            # repair is worth more than a rollback.
+            raise CommandError(
+                f"{failed} error(s) during backfill; the metrics tiers are "
+                "incomplete. Re-run before the next aggregation."
+            )
 
     def _resolve_org_ids(
         self,
@@ -267,14 +311,37 @@ class Command(BaseCommand):
 
         return sorted(str(oid) for oid in all_org_ids)
 
+    @staticmethod
+    def _granularities(skip_hourly: bool) -> tuple:
+        """Which granularities to query.
+
+        `--skip-hourly` skips the HOUR *queries*, not just their upsert: the deploy
+        step passes it over a window measured in weeks, and issuing them anyway
+        reinstates the scan this change exists to remove.
+        """
+        return (Granularity.DAY,) if skip_hourly else (Granularity.HOUR, Granularity.DAY)
+
     def _collect_metrics(
         self,
         org_id: str,
         start_date: datetime,
         end_date: datetime,
         org_identifier: str | None = None,
-    ) -> tuple[dict, dict, dict]:
-        """Collect metrics from source tables for all granularities."""
+        skip_hourly: bool = False,
+    ) -> tuple[dict, dict, dict, int]:
+        """Collect metrics from source tables for all granularities.
+
+        Returns the aggregations plus a count of failed metric queries. Each query
+        is caught individually, so a failure never reaches the per-organisation
+        handler that owns the error counter — it has to be carried back explicitly,
+        the same way ``_collect_org_metrics`` does in ``tasks.py``.
+
+        ``skip_hourly`` skips the HOUR-granularity source queries, not just their
+        upsert. The prescribed deploy step passes it over a window measured in
+        weeks, and issuing those queries anyway would reinstate the scan this
+        change exists to remove.
+        """
+        failures = 0
         hourly_agg = {}
         daily_agg = {}
         monthly_agg = {}
@@ -339,7 +406,7 @@ class Command(BaseCommand):
 
         # Fetch all 4 LLM metrics in one query per granularity
         try:
-            for granularity in (Granularity.HOUR, Granularity.DAY):
+            for granularity in self._granularities(skip_hourly):
                 llm_split = MetricsQueryService.get_llm_metrics_split(
                     org_id, start_date, end_date, granularity
                 )
@@ -352,8 +419,11 @@ class Command(BaseCommand):
                         _ingest_results(data, metric_name, metric_type)
                     else:
                         _ingest_daily_results(data, metric_name, metric_type)
-        except Exception as e:
-            logger.warning("Error querying LLM metrics for org %s: %s", org_id, e)
+        except Exception:
+            # Counted: every metric query is caught individually, so a failure here
+            # never reaches the per-org handler that owns the error counter.
+            failures += 1
+            logger.exception("Error querying LLM metrics for org %s", org_id)
 
         # Fetch remaining (non-LLM) metrics individually
         for metric_name, query_method, is_histogram in self.METRIC_CONFIGS:
@@ -366,14 +436,15 @@ class Command(BaseCommand):
                 extra_kwargs["org_identifier"] = org_identifier
 
             try:
-                hourly_results = query_method(
-                    org_id,
-                    start_date,
-                    end_date,
-                    granularity=Granularity.HOUR,
-                    **extra_kwargs,
-                )
-                _ingest_results(hourly_results, metric_name, metric_type)
+                if Granularity.HOUR in self._granularities(skip_hourly):
+                    hourly_results = query_method(
+                        org_id,
+                        start_date,
+                        end_date,
+                        granularity=Granularity.HOUR,
+                        **extra_kwargs,
+                    )
+                    _ingest_results(hourly_results, metric_name, metric_type)
 
                 daily_results = query_method(
                     org_id,
@@ -384,10 +455,11 @@ class Command(BaseCommand):
                 )
                 _ingest_daily_results(daily_results, metric_name, metric_type)
 
-            except Exception as e:
-                logger.warning("Error querying %s for org %s: %s", metric_name, org_id, e)
+            except Exception:
+                failures += 1
+                logger.exception("Error querying %s for org %s", metric_name, org_id)
 
-        return hourly_agg, daily_agg, monthly_agg
+        return hourly_agg, daily_agg, monthly_agg, failures
 
     def _truncate_to_hour(self, ts: datetime) -> datetime:
         """Truncate datetime to hour."""
