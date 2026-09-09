@@ -13,6 +13,7 @@ not exposed to end users.
 
 import json
 import logging
+import uuid
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -63,6 +64,51 @@ def _parse_json_body(request):
             {"success": False, "error": _ERR_INVALID_JSON},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+def _validated_uuids(raw_ids, field_name):
+    """``raw_ids`` parsed as UUIDs, or ``(None, JsonResponse)`` for a 400.
+
+    These are UUID columns, so a non-UUID entry makes ``filter()`` raise
+    Django's ``ValidationError`` while the query is being *built* — before any
+    row-count check downstream can notice. That lands in the generic
+    ``except Exception`` and returns a 500, which the worker's client retries
+    three times with backoff on a value no retry can change. Same reasoning as
+    ``_resolve_profile``: fail outside the {500,502,503,504} retry set.
+
+    ``utils.uuid_validation.validated_uuid`` is the equivalent for the DRF
+    views and is deliberately not reused here: it raises DRF's
+    ``ValidationError``, and nothing maps that to a response in a plain Django
+    view, so it would reach that same ``except Exception`` and 500 for a new
+    reason.
+    """
+    if not isinstance(raw_ids, (list, tuple)):
+        # A non-sequence here would raise TypeError on the loop below, outside
+        # any handler, so it has to be rejected rather than iterated.
+        return None, JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    f"'{field_name}' must be a JSON array, got "
+                    f"{type(raw_ids).__name__}."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    parsed = []
+    for raw in raw_ids:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError, TypeError):
+            return None, JsonResponse(
+                {
+                    "success": False,
+                    "error": f"'{field_name}' must contain only valid UUIDs.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    return parsed, None
 
 
 @csrf_exempt
@@ -125,6 +171,19 @@ def prompt_output(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    # Both reach a UUID column below — prompt_ids the filter, document_id the
+    # DocumentManager lookup inside handle_prompt_output_update — so both are
+    # parsed before the query is built rather than after it raises. Ordered
+    # last among the 400s so the shape checks above keep reporting first; the
+    # only constraint is that this runs before the ORM does.
+    prompt_ids, err = _validated_uuids(prompt_ids, "prompt_ids")
+    if err:
+        return err
+    document_ids, err = _validated_uuids([document_id], "document_id")
+    if err:
+        return err
+    document_id = document_ids[0]
+
     try:
         from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
             OutputManagerHelper,
@@ -147,7 +206,9 @@ def prompt_output(request):
         # set, because no retry resolves a prompt the scope hides.
         requested = set(prompt_ids)
         if len(prompts) != len(requested):
-            resolved = {str(p.prompt_id) for p in prompts}
+            # Both sides are uuid.UUID: prompt_ids was parsed above and
+            # prompt_id is a UUIDField, so the difference below is real.
+            resolved = {p.prompt_id for p in prompts}
             logger.error(
                 "prompt_output: %d of %d prompts resolved for document %s; "
                 "unresolved=%s. Refusing to persist a partial run.",

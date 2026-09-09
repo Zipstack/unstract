@@ -284,6 +284,19 @@ class CrossOrgIsolationTest(TestCase):
             == 1
         )
 
+    def test_delete_for_ide_refuses_a_malformed_document_id_with_400(self):
+        """FileInfoIdeSerializer types document_id as a plain CharField.
+
+        DocumentManager.pk is a UUID column, so an unparseable value makes the
+        lookup raise Django's ValidationError while the query is *built*.
+        get_object_or_404 only converts DoesNotExist, and
+        drf_standardized_errors maps neither, so it escaped as a 500 for what
+        is a client error.
+        """
+        response = self._delete_for_ide(self.a.tool, "not-a-uuid")
+
+        assert response.status_code == 400, response.data
+
     def test_delete_for_ide_refuses_a_sibling_tool_document(self):
         """Same org, different tool: the ``tool=`` predicate is the only guard.
 

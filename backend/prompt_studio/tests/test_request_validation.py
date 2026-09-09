@@ -184,11 +184,11 @@ class InternalCallbackResolutionTest(TestCase):
         """Only the attribute the mismatch log reads is needed here."""
         return SimpleNamespace(prompt_id=prompt_id or uuid.uuid4())
 
-    def _prompt_output(self, resolved):
+    def _prompt_output(self, resolved, **overrides):
         """Drive prompt_output with ``resolved`` prompts coming back."""
         from prompt_studio.prompt_studio_core_v2 import internal_views
 
-        payload = self._payload()
+        payload = self._payload(**overrides)
         request = APIRequestFactory().post(
             "/internal/v1/prompt-studio/prompt-output/",
             json.dumps(payload),
@@ -228,6 +228,48 @@ class InternalCallbackResolutionTest(TestCase):
 
     def test_prompt_output_proceeds_when_every_prompt_resolves(self):
         """Without this, a handler that refused everything would pass above."""
+        response, handler = self._prompt_output([self._prompt(), self._prompt()])
+
+        assert response.status_code == 200, response.content
+        handler.assert_called_once()
+
+    # --- malformed ids: 400, before the query is built ----------------------
+
+    def test_a_malformed_prompt_id_is_400_not_a_retryable_500(self):
+        """``filter(prompt_id__in=...)`` raises while the query is *built*.
+
+        That is Django's ValidationError, not a DoesNotExist, so it lands in
+        the generic ``except Exception`` below and returns a 500 — inside the
+        client's retry set, on a value no retry can change. The resolved-count
+        check cannot catch it: the query never runs.
+        """
+        response, handler = self._prompt_output(
+            [self._prompt()], prompt_ids=["not-a-uuid"]
+        )
+
+        assert response.status_code == 400, response.content
+        handler.assert_not_called()
+
+    def test_a_malformed_document_id_is_400_not_a_retryable_500(self):
+        """Same failure one field over: handle_prompt_output_update looks up
+        DocumentManager by pk, so a non-UUID raises there instead."""
+        response, handler = self._prompt_output(
+            [self._prompt(), self._prompt()], document_id="not-a-uuid"
+        )
+
+        assert response.status_code == 400, response.content
+        handler.assert_not_called()
+
+    def test_prompt_ids_that_are_not_a_list_is_400(self):
+        """A non-sequence would raise TypeError on the parse loop itself,
+        outside any handler, which is a 500 for a new reason."""
+        response, handler = self._prompt_output([self._prompt()], prompt_ids=42)
+
+        assert response.status_code == 400, response.content
+        handler.assert_not_called()
+
+    def test_well_formed_ids_still_reach_the_helper(self):
+        """Without this, a parse that rejected everything would pass above."""
         response, handler = self._prompt_output([self._prompt(), self._prompt()])
 
         assert response.status_code == 200, response.content

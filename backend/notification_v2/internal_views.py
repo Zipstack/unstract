@@ -5,11 +5,12 @@ Handles webhook notification related endpoints for internal services.
 import logging
 from typing import Any
 
+from django.db.models import Q
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from utils.organization_utils import filter_queryset_by_organization
+from utils.organization_utils import organization_from_request
 
 from notification_v2.enums import AuthorizationType, NotificationType, PlatformType
 
@@ -28,20 +29,41 @@ logger = logging.getLogger(__name__)
 APPLICATION_JSON = "application/json"
 
 
+def notifications_for_organization(request):
+    """Notifications belonging to the request's organization, failing closed.
+
+    ``Notification`` carries no organization column of its own — it reaches one
+    through whichever of ``pipeline`` and ``api`` is set, and both parents get
+    ``organization`` from ``DefaultOrganizationMixin``. Routing it through
+    ``filter_queryset_by_organization`` would build ``.filter(organization=...)``
+    and raise ``FieldError``, so the boundary is drawn across both FKs instead.
+    This mirrors what ``internal_api_views`` already does for the same model,
+    where the parent is scoped first and its notifications read off it.
+
+    A notification with neither FK set belongs to no organization and is served
+    to nobody, which is the fail-closed direction.
+    """
+    organization = organization_from_request(request)
+    if organization is None:
+        return Notification.objects.none()
+    return Notification.objects.filter(
+        Q(pipeline__organization=organization) | Q(api__organization=organization)
+    )
+
+
 class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
     """Internal API ViewSet for Webhook/Notification operations."""
 
     serializer_class = NotificationSerializer
     lookup_field = "id"
     # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
-    # filter_queryset_by_organization. That helper fails closed, so a caller
-    # without X-Organization-ID gets zero rows.
+    # notifications_for_organization. That fails closed, so a caller without
+    # X-Organization-ID gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):
         """Get notifications filtered by organization context."""
-        queryset = Notification.objects.all()
-        return filter_queryset_by_organization(queryset, self.request)
+        return notifications_for_organization(self.request)
 
     def list(self, request, *args, **kwargs):
         """List notifications with filtering options."""
@@ -62,7 +84,14 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(notification_type=filters["notification_type"])
             if filters.get("platform"):
                 queryset = queryset.filter(platform=filters["platform"])
-            if filters.get("is_active") is not None:
+            # Membership in query_params, not filters.get(): request.query_params
+            # is a QueryDict, and DRF's BooleanField reports HTML-form input as
+            # False when the key is absent rather than leaving it out of
+            # validated_data. So filters["is_active"] is False on every request
+            # that omits it, and this filtered an unfiltered list down to the
+            # inactive notifications only. Unreachable until now — the org
+            # filter above raised FieldError before this line ran.
+            if "is_active" in request.query_params:
                 queryset = queryset.filter(is_active=filters["is_active"])
 
             notifications = NotificationSerializer(queryset, many=True).data
@@ -193,17 +222,19 @@ class WebhookMetricsAPIView(APIView):
         """Get webhook delivery metrics."""
         try:
             # Get query parameters
-            organization_id = request.query_params.get("organization_id")
             start_date = request.query_params.get("start_date")
             end_date = request.query_params.get("end_date")
 
             # Get base queryset
-            queryset = Notification.objects.all()
-            queryset = filter_queryset_by_organization(queryset, request)
+            queryset = notifications_for_organization(request)
 
-            # Apply filters
-            if organization_id:
-                queryset = queryset.filter(organization_id=organization_id)
+            # The organization comes from X-Organization-ID, which is what
+            # WebhookAPIClient.get_webhook_metrics sends and what the boundary
+            # above reads. An organization_id query parameter was also read
+            # here and filtered on, but Notification has no such column, so any
+            # caller passing one got a FieldError; accepting it would also let
+            # one organization ask for another's counts.
+            organization_id = getattr(request, "organization_id", None)
 
             if start_date:
                 from datetime import datetime

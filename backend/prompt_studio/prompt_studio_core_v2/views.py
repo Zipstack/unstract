@@ -1128,7 +1128,15 @@ class PromptStudioCoreView(
         custom_tool = self.get_object()
         serializer = FileInfoIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
+        # FileInfoIdeSerializer types this as a plain CharField, so it arrives
+        # unparsed. DocumentManager.pk is a UUID column: a non-UUID value makes
+        # the lookup below raise Django's ValidationError while the query is
+        # built, which drf_standardized_errors does not map, so it surfaced as
+        # a 500 instead of the 400 it is.
+        document_id = validated_uuid(
+            serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID),
+            ToolStudioPromptKeys.DOCUMENT_ID,
+        )
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
         # Scope to the tool the caller already passed authz on — tighter than

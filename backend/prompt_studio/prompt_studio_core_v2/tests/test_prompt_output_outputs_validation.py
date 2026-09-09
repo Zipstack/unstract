@@ -13,12 +13,21 @@ executor can 500 the backend the same way.
 """
 
 import json
+import uuid
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from prompt_studio.prompt_studio_core_v2.internal_views import prompt_output
 
 _VIEWS = "prompt_studio.prompt_studio_core_v2.internal_views"
+
+# Real UUIDs, not "p1"/"doc-1": both reach UUID columns, so prompt_output parses
+# them at the boundary now rather than letting the query build raise. Placeholder
+# ids only ever worked here because the ORM is mocked, and the subject of these
+# tests is the shape of ``outputs``, not the ids. The in-backend path at the
+# bottom of this file does not go through that boundary and keeps its own.
+_PROMPT_ID = str(uuid.uuid4())
+_DOC_ID = str(uuid.uuid4())
 
 
 def _request(outputs):
@@ -29,9 +38,9 @@ def _request(outputs):
     request.body = json.dumps(
         {
             "run_id": "run-1",
-            "prompt_ids": ["p1"],
+            "prompt_ids": [_PROMPT_ID],
             "outputs": outputs,
-            "document_id": "doc-1",
+            "document_id": _DOC_ID,
             "is_single_pass_extract": True,
         }
     )
@@ -72,8 +81,8 @@ def test_non_mapping_metadata_rejected():
     request.method = "POST"
     request.body = json.dumps(
         {
-            "prompt_ids": ["p1"],
-            "document_id": "doc-1",
+            "prompt_ids": [_PROMPT_ID],
+            "document_id": _DOC_ID,
             "outputs": {"invoice_number": "INV-001"},
             "metadata": [],
         }
@@ -116,7 +125,7 @@ def test_dict_outputs_still_reach_the_helper():
         "prompt_studio.prompt_studio_output_manager_v2."
         "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
     ) as handler:
-        prompts.filter.return_value.order_by.return_value = _resolved("p1")
+        prompts.filter.return_value.order_by.return_value = _resolved(_PROMPT_ID)
         handler.return_value = []
         response = prompt_output(_request({"invoice_number": "INV-001"}))
     handler.assert_called_once()
@@ -127,14 +136,14 @@ def test_missing_outputs_defaults_to_empty_dict_and_is_accepted():
     """Absent `outputs` has always meant {}; the guard must not change that."""
     request = MagicMock()
     request.method = "POST"
-    request.body = json.dumps({"prompt_ids": ["p1"], "document_id": "doc-1"})
+    request.body = json.dumps({"prompt_ids": [_PROMPT_ID], "document_id": _DOC_ID})
     with patch(
         "prompt_studio.prompt_studio_v2.models.ToolStudioPrompt.objects"
     ) as prompts, patch(
         "prompt_studio.prompt_studio_output_manager_v2."
         "output_manager_helper.OutputManagerHelper.handle_prompt_output_update"
     ) as handler:
-        prompts.filter.return_value.order_by.return_value = _resolved("p1")
+        prompts.filter.return_value.order_by.return_value = _resolved(_PROMPT_ID)
         handler.return_value = []
         response = prompt_output(request)
     assert response.status_code == 200

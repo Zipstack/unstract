@@ -108,6 +108,25 @@ def filter_queryset_by_organization(queryset, request, organization_field="organ
         The queryset filtered to the request's organization, or an empty
         queryset when the organization is absent or unresolvable.
     """
+    organization = organization_from_request(request)
+    if organization is None:
+        return queryset.none()
+
+    return queryset.filter(**{organization_field: organization})
+
+
+def organization_from_request(request) -> Organization | None:
+    """The request's organization, or None when it is absent or unresolvable.
+
+    Same two conditions ``filter_queryset_by_organization`` fails closed on,
+    and the same warnings, split out for the models that cannot express the
+    boundary as one field lookup. ``Notification`` is the case: it has no
+    organization column and reaches one through whichever of its ``pipeline``
+    and ``api`` FKs is set, so its view needs the resolved organization and a
+    ``Q``, not a field name. Returning None here means *serve no rows* — a
+    caller that treats it as *serve every row* reopens the hole the helper
+    above was written to close.
+    """
     org_id = getattr(request, "organization_id", None)
     if not org_id:
         logger.warning(
@@ -116,11 +135,11 @@ def filter_queryset_by_organization(queryset, request, organization_field="organ
             "query the model directly instead of using this helper.",
             getattr(request, "path", "<unknown path>"),
         )
-        return queryset.none()
+        return None
 
     organization = resolve_organization(org_id, raise_on_not_found=False)
     if not organization:
         logger.warning("Organization %s not found; returning no rows.", org_id)
-        return queryset.none()
+        return None
 
-    return queryset.filter(**{organization_field: organization})
+    return organization

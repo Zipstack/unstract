@@ -11,6 +11,9 @@ call sites take: ``get_queryset()`` (five of the six internal viewsets) and a
 ``get_object()`` that deliberately bypasses ``get_queryset()`` for single-object
 lookups (only FileExecutionInternalViewSet).
 
+WebhookInternalViewSet is covered separately below because it is the one call
+site whose model has no organization column to scope on.
+
 ``X-Organization-ID`` is what ``InternalAPIAuthMiddleware`` turns into
 ``request.organization_id``. The middleware warns and continues when the header
 is absent, so "no organization_id attribute" is a reachable request state and is
@@ -23,6 +26,10 @@ import pytest
 from account_v2.models import Organization
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
+from notification_v2.enums import NotificationType
+from notification_v2.internal_views import WebhookInternalViewSet
+from notification_v2.models import Notification
+from pipeline_v2.models import Pipeline
 from workflow_manager.file_execution.internal_views import FileExecutionInternalViewSet
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.internal_views import WorkflowExecutionInternalViewSet
@@ -132,3 +139,74 @@ class InternalViewSetOrgScopingTest(TestCase):
 
         assert response.status_code == 200, response.data
         assert str(response.data["id"]) == str(file_execution_a.id)
+
+
+@pytest.mark.django_db
+class WebhookViewSetOrgScopingTest(TestCase):
+    """The one scoped model that has no organization column of its own.
+
+    ``Notification`` reaches an organization only through ``pipeline`` or
+    ``api``. Routing it through ``filter_queryset_by_organization`` built
+    ``.filter(organization=...)``, which raises ``FieldError`` — so with the
+    header present this endpoint was a 500 either way, and without it the
+    fail-closed change turned that into a silent zero rows. Neither is
+    scoping, which is why this needs its own case rather than another
+    parametrization above.
+    """
+
+    def setUp(self) -> None:
+        self.factory = APIRequestFactory()
+        self.a = self._org_with_notification("a")
+        self.b = self._org_with_notification("b")
+
+    def _org_with_notification(self, tag: str):
+        slug = f"webhook-{tag}-{secrets.token_hex(3)}"
+        org = Organization.objects.create(
+            name=slug, display_name=slug, organization_id=slug
+        )
+        workflow = Workflow._base_manager.create(
+            workflow_name=f"wf-{slug}", organization=org
+        )
+        pipeline = Pipeline._base_manager.create(
+            pipeline_name=f"pl-{slug}", workflow=workflow, organization=org
+        )
+        notification = Notification._base_manager.create(
+            name=f"hook-{slug}",
+            url="https://example.com/hook",
+            notification_type=NotificationType.WEBHOOK.value,
+            pipeline=pipeline,
+        )
+        return org, pipeline, notification
+
+    def _list(self, organization_id=_ABSENT):
+        view = WebhookInternalViewSet.as_view({"get": "list"})
+        request = self.factory.get("/internal/v1/webhook/")
+        if organization_id is not _ABSENT:
+            request.organization_id = organization_id
+        return view(request)
+
+    def _ids(self, response) -> set[str]:
+        return {str(row["id"]) for row in response.data["notifications"]}
+
+    def test_list_with_the_header_is_not_a_500(self):
+        """The regression: .filter(organization=...) raised FieldError here."""
+        response = self._list(self.a[0].organization_id)
+        assert response.status_code == 200, response.data
+
+    def test_list_serves_only_the_callers_own_org(self):
+        response = self._list(self.a[0].organization_id)
+
+        assert response.status_code == 200, response.data
+        ids = self._ids(response)
+        assert str(self.a[2].id) in ids
+        assert str(self.b[2].id) not in ids
+
+    def test_list_without_the_header_serves_no_rows(self):
+        response = self._list()
+        assert response.status_code == 200, response.data
+        assert self._ids(response) == set()
+
+    def test_list_with_an_unresolvable_org_serves_no_rows(self):
+        response = self._list("org-that-does-not-exist")
+        assert response.status_code == 200, response.data
+        assert self._ids(response) == set()
