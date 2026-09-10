@@ -98,22 +98,14 @@ class PlatformKeyError(serializers.Serializer):
     message = serializers.CharField(help_text="Human-readable reason for the refusal.")
 
 
+WHOAMI_SUMMARY = "Resolve the organisation a platform key belongs to"
+
 WHOAMI_DESCRIPTION = (
-    "Resolve the organisation a platform API key belongs to.\n\n"
-    "The organisation is read from the key itself, so this route carries no "
-    "organisation segment and needs nothing but the key. Call it once and store "
-    "`organization_id`; every other endpoint takes it as a path segment.\n\n"
-    "Only a platform API key is accepted. An API deployment key authenticates "
-    "against a different table on a path that never reaches this endpoint, and "
-    "is rejected as unauthenticated.\n\n"
-    "This route serves GET only. Another method is refused either by the "
-    "key's permission tier or by the route itself; neither refusal is "
-    "described here, because OpenAPI attaches responses to an operation and "
-    "there is no operation for a method the route does not serve.\n\n"
-    "The same route also answers under an organisation segment "
-    "(`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong "
-    "to the organisation named. Prefer the form documented here: it is the one "
-    "that needs no organisation to begin with."
+    "Takes a platform API key and nothing else: the organisation is read from "
+    "the key itself, so this route carries no organisation segment. Call it "
+    "once and store `organization_id`; every other endpoint takes it as a path "
+    "segment.\n\n"
+    "An API deployment key is rejected as unauthenticated."
 )
 
 
@@ -122,6 +114,7 @@ WHOAMI_DESCRIPTION = (
 WHOAMI_SCHEMA = extend_schema_view(
     get=extend_schema(
         operation_id="whoami",
+        summary=WHOAMI_SUMMARY,
         tags=["identity"],
         auth=[{"platformKey": []}],
         responses={

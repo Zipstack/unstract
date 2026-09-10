@@ -1,6 +1,102 @@
 {
   "components": {
     "schemas": {
+      "APIDeploymentSummary": {
+        "description": "One API deployment, as it appears in an organisation's listing.\n\n`api_name` and `api_endpoint` are what an execution call needs;\n`display_name` and `description` say what the deployment is for.",
+        "properties": {
+          "api_endpoint": {
+            "readOnly": true,
+            "type": "string"
+          },
+          "api_name": {
+            "maxLength": 30,
+            "readOnly": true,
+            "type": "string"
+          },
+          "co_owners_count": {
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_by": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "integer"
+          },
+          "created_by_email": {
+            "description": "Get the email of the creator.",
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "description": {
+            "maxLength": 255,
+            "readOnly": true,
+            "type": "string"
+          },
+          "display_name": {
+            "maxLength": 30,
+            "readOnly": true,
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "readOnly": true,
+            "type": "string"
+          },
+          "is_active": {
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "is_owner": {
+            "readOnly": true,
+            "type": "boolean"
+          },
+          "last_5_run_statuses": {
+            "description": "Fetch the last 5 execution statuses with timestamps for this API deployment.",
+            "items": {
+              "additionalProperties": {},
+              "type": "object"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
+          "last_run_time": {
+            "nullable": true,
+            "readOnly": true,
+            "type": "string"
+          },
+          "run_count": {
+            "readOnly": true,
+            "type": "integer"
+          },
+          "workflow": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "workflow_name": {
+            "readOnly": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "api_endpoint",
+          "api_name",
+          "co_owners_count",
+          "created_by",
+          "created_by_email",
+          "description",
+          "display_name",
+          "id",
+          "is_active",
+          "is_owner",
+          "last_5_run_statuses",
+          "last_run_time",
+          "run_count",
+          "workflow",
+          "workflow_name"
+        ],
+        "type": "object"
+      },
       "AcknowledgedResponse": {
         "description": "The execution's result was handed to an earlier call and discarded.",
         "properties": {
@@ -218,6 +314,37 @@
         ],
         "type": "object"
       },
+      "PaginatedAPIDeploymentSummaryList": {
+        "properties": {
+          "count": {
+            "example": 123,
+            "type": "integer"
+          },
+          "next": {
+            "example": "http://api.example.org/accounts/?page=4",
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "previous": {
+            "example": "http://api.example.org/accounts/?page=2",
+            "format": "uri",
+            "nullable": true,
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/APIDeploymentSummary"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "count",
+          "results"
+        ],
+        "type": "object"
+      },
       "PlatformKeyError": {
         "description": "Why a platform-key request was refused.\n\nProduced by the authentication middleware rather than by the project's\nexception handler, so it carries a single human-readable message and none\nof the per-field structure the organisation-scoped endpoints return. It is\nthe shape of this operation's credential failures specifically, not of\nevery failure it can return.",
         "properties": {
@@ -284,7 +411,7 @@
     },
     "securitySchemes": {
       "deploymentKey": {
-        "description": "The API deployment's own key.",
+        "description": "A key that runs an API deployment: the deployment's own key, or a global API deployment key with access to it.",
         "scheme": "bearer",
         "type": "http"
       },
@@ -303,7 +430,7 @@
   "paths": {
     "/api/v1/unstract/whoami/": {
       "get": {
-        "description": "Resolve the organisation a platform API key belongs to.\n\nThe organisation is read from the key itself, so this route carries no organisation segment and needs nothing but the key. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nOnly a platform API key is accepted. An API deployment key authenticates against a different table on a path that never reaches this endpoint, and is rejected as unauthenticated.\n\nThis route serves GET only. Another method is refused either by the key's permission tier or by the route itself; neither refusal is described here, because OpenAPI attaches responses to an operation and there is no operation for a method the route does not serve.\n\nThe same route also answers under an organisation segment (`/api/v1/unstract/{org}/whoami/`), where the key must additionally belong to the organisation named. Prefer the form documented here: it is the one that needs no organisation to begin with.",
+        "description": "Takes a platform API key and nothing else: the organisation is read from the key itself, so this route carries no organisation segment. Call it once and store `organization_id`; every other endpoint takes it as a path segment.\n\nAn API deployment key is rejected as unauthenticated.",
         "operationId": "whoami",
         "responses": {
           "200": {
@@ -335,14 +462,138 @@
             "platformKey": []
           }
         ],
+        "summary": "Resolve the organisation a platform key belongs to",
         "tags": [
           "identity"
         ]
       }
     },
+    "/api/v1/unstract/{org_id}/api/deployment/": {
+      "get": {
+        "description": "Lists what an organisation has deployed, authenticated by a platform API key that belongs to it.\n\nA deployment key is not part of this listing; executing a deployment still needs one.\n\nOrdered by most recent run first, then by identifier, so paging is stable.",
+        "operationId": "list_deployments",
+        "parameters": [
+          {
+            "description": "Return only the deployment with exactly this `api_name`.",
+            "in": "query",
+            "name": "api_name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Which field to use when ordering the results.",
+            "in": "query",
+            "name": "ordering",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "A page number within the paginated result set.",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of results to return per page.",
+            "in": "query",
+            "name": "page_size",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Return only deployments whose display name contains this text, case-insensitively.",
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only the deployments of this workflow.",
+            "in": "query",
+            "name": "workflow",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The organisation the request is scoped to, as `whoami` reports it in `organization_id`.",
+            "in": "path",
+            "name": "org_id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedAPIDeploymentSummaryList"
+                }
+              }
+            },
+            "description": "One page of the organisation's API deployments."
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "A query parameter was malformed."
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "No usable platform API key was supplied \u2014 absent, malformed, unknown, or revoked."
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformKeyError"
+                }
+              }
+            },
+            "description": "The key was recognised but refused: it does not belong to the organisation named in the path, or its permission tier is not one this deployment knows."
+          },
+          "500": {
+            "description": "The request could not be served. The body is not guaranteed to be JSON."
+          }
+        },
+        "security": [
+          {
+            "platformKey": []
+          }
+        ],
+        "summary": "List an organisation's API deployments",
+        "tags": [
+          "deployment"
+        ]
+      }
+    },
     "/deployment/api/{org_name}/{api_name}/": {
       "get": {
-        "description": "Read the result of a previously started execution.\n\nThis read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Poll while the execution is pending, and keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200. Clients that raise on any non-2xx need to allow for that.",
+        "description": "Reads a previously started execution, taking the same deployment key that ran it. The read is one-shot: the first call that observes a completed execution acknowledges it and the stored result is discarded, so every later call for that execution answers 406. Keep the payload of the call that returns it \u2014 it cannot be fetched again.\n\nA still-running execution answers 422 carrying its current `status`, so a polling loop should treat 422 as the normal reply and stop on 200.",
         "operationId": "status",
         "parameters": [
           {
@@ -568,12 +819,13 @@
             "deploymentKey": []
           }
         ],
+        "summary": "Read the result of an execution",
         "tags": [
           "deployment"
         ]
       },
       "post": {
-        "description": "Execute an API deployment against one or more documents.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
+        "description": "Runs an API deployment. Takes a deployment key \u2014 either the deployment's own key, or a global API deployment key that has access to it.\n\nSupply the documents either as `files` (multipart upload) or as `presigned_urls` (HTTPS S3 URLs), or both \u2014 a request carrying neither is rejected, and the two together may not exceed 32 documents.\n\nWith the default `timeout` of -1 the call returns as soon as the execution is queued; read the outcome from the status endpoint.",
         "operationId": "execute",
         "parameters": [
           {
@@ -805,6 +1057,7 @@
             "deploymentKey": []
           }
         ],
+        "summary": "Execute an API deployment against documents",
         "tags": [
           "deployment"
         ]
@@ -813,7 +1066,7 @@
   },
   "tags": [
     {
-      "description": "Run an API deployment against one or more documents and poll the result.",
+      "description": "Discover an organisation's API deployments, run one against one or more documents, and poll the result.",
       "name": "deployment"
     },
     {
