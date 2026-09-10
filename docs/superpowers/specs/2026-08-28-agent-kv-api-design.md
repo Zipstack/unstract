@@ -337,54 +337,132 @@ a soundness proof — the sandbox carries the real weight).
 
 ## 7. API contract (approved)
 
+### 7.0 Extractor-scoped wire format (amended 2026-09-10, Arun)
+
+The v1 shape put every field at the top level. That was fine while one extractor
+existed, but `qa`, `challenge`, `extraction_mode`, `calculations`,
+`structured_output` are **KV-extractor knobs**, meaningless to a Table Extractor,
+and there was no way to express "run these extractors over this document". One
+result blob and one `usage_summary` could not say what each extractor produced or
+cost. The architecture review (UN-4044) called this a freeze risk: cheap to fix
+before launch, a v2 endpoint afterwards.
+
+The request therefore carries an **array of extractors, each with its own `keys`
+and `options`**; job-level fields stay top level. Stage reporting and the result
+are keyed by extractor for the same reason.
+
+**Deliberate divergence from APS v2, decided by Arun.** APS v2 composes
+extractors *in the schema*: one mandatory PRIMARY plus optional SPECIALIZED
+agents whose output is substituted into a named placeholder
+(`{{TABLE_EXTRACTOR_AGENT_OUTPUT}}`) in one shared, project-level schema. This
+API instead treats extractors as **peers, each with its own schema and its own
+result**. The reasoning: APS v2's shared schema is a Studio *project* concept,
+and this API has no project — every call is standalone — so a per-call,
+per-extractor schema is the more natural unit here, and peers keep each
+extractor self-describing rather than coupled through a magic placeholder
+string.
+
+The cost is stated plainly: two composition models exist in one platform, and a
+caller wanting a table folded *into* an invoice record must stitch the results
+itself. APS v2 is **not** being changed to match — it keeps its own model, and if
+its owner later prefers this one, that is their call to make. Recorded here so
+the divergence is a decision on the record rather than an accident, and so the
+shared extractor registry (review §6.2) is designed knowing the two front doors
+disagree on composition.
+
 ### 7.1 Submit — `POST /agent-kv/` (multipart)
+
+**Job-level fields** — they describe the request and are shared by every extractor:
 
 | Field | Required | Notes |
 |---|---|---|
 | `file` | yes | One document per job (D12). |
-| `keys` | yes | `keys.json` (file part or inline JSON string). Compiled synchronously; invalid ⇒ 400, nothing billed. |
-| `document_class` | no | Free-text hint (as CLI). |
-| `key_notes` | no | Free-text notes appended to the prompt (as CLI). |
-| `calculations` | no | Post-processing instructions; opt-in codegen (§6.3). |
-| `page_start`, `page_end` | no | 1-based inclusive range. |
-| `qa` | no | Default **on**. |
-| `challenge` | no | Default **on** (~doubles LLM spend; meter records what ran). |
-| `extraction_mode` | no | `whole-doc` (default) \| `per-page`. |
-| `structured_output` | no | Default off. |
+| `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
+| `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the §6.1 page cap, so it cannot differ between extractors reading the same document. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline (§5.3) and returns the result inline if the job completes, else 202 with the job id. |
 | `tags`, `custom_data` | no | Echoed through. |
-| `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. Delivered under the §6.7 SSRF controls. In v1 (column ships with the model). |
+| `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. Delivered under the §6.7 SSRF controls. |
+
+**Extractor entry:**
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | yes | Registry key. **v1 accepts `kv` only**; any other value ⇒ 400. A second entry ⇒ 400 (`multiple extractors are not supported yet`) — the format is being fixed now, the fan-out execution is not built. |
+| `keys` | yes | This extractor's `keys.json`. Compiled and capped per §6.1 independently. |
+| `options` | no | This extractor's own knobs. Unknown keys ⇒ 400, so a knob aimed at the wrong extractor is a loud failure rather than a silent no-op. |
+
+`kv` options: `qa` (default on), `challenge` (default on — ~doubles LLM spend; the
+meter records what ran), `extraction_mode` (`whole-doc` default \| `per-page`),
+`structured_output` (default off), `calculations` (opt-in codegen, §6.3),
+`document_class`, `key_notes`.
 
 Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking budgets.
 
-Response `202`: `{job_id, status, status_url, created_at}` (or `200` with the full result
-when `timeout` was set and the job finished in time).
+**No backward-compatible alias.** The previous flat fields are removed outright, not
+deprecated: the API has no consumers (no PR merged, no customers — only this repo's
+own e2e lane and docs), so a dual path would cost two validation routes, precedence
+rules for requests carrying both, and tests for all of it, to protect nobody.
+
+Response `202`: `{job_id, status, status_url, created_at}` (or `200` with the full
+result when `timeout` was set and the job finished in time).
 
 ### 7.2 Status — `GET /agent-kv/{job_id}`
 
-Verbose, agent-centric, stage-level:
+Verbose, agent-centric, stage-level — **keyed by extractor**. The stage list is
+extractor-specific (`qa`/`challenge`/`codegen` mean nothing to a Table Extractor),
+and `stages` is returned to clients, so it is wire format and namespaced with
+everything else:
 
 ```json
 {
-  "job_id": "…", "status": "running", "stage": "challenge",
-  "stages": [
-    {"name": "document_processing", "status": "done", "seconds": 6.2, "pages": 14},
-    {"name": "extraction",          "status": "done", "seconds": 11.4},
-    {"name": "qa",                  "status": "done", "seconds": 4.1,
-     "keys_checked": 22, "flagged": 2},
-    {"name": "challenge",           "status": "running", "fields_repulled": 1}
-  ],
+  "job_id": "…", "status": "running",
+  "extractors": {
+    "kv": {
+      "stage": "challenge",
+      "stages": [
+        {"name": "document_processing", "status": "done", "seconds": 6.2, "pages": 14},
+        {"name": "extraction",          "status": "done", "seconds": 11.4},
+        {"name": "qa",                  "status": "done", "seconds": 4.1,
+         "keys_checked": 22, "flagged": 2},
+        {"name": "challenge",           "status": "running", "fields_repulled": 1}
+      ]
+    }
+  },
+  "pages_total": 14,
   "created_at": "…", "started_at": "…"
 }
 ```
 
-Stage list (superset; only stages that run appear): `document_processing`, `extraction`,
-`qa`, `challenge`, `normalize`, `constraints`, `codegen`, `code_execution`.
+`status` stays top level: it is the **job's** state, and a job is not complete until
+every extractor is. The `kv` stage list (superset; only stages that run appear):
+`document_processing`, `extraction`, `qa`, `challenge`, `normalize`, `constraints`,
+`codegen`, `code_execution`.
 
 ### 7.3 Result — `GET /agent-kv/{job_id}/result`
 
-The engine's full result object (§4), re-readable until `expires_at` (D11). 404 after
-expiry or deletion. Failed jobs: `{success: false, error, timing}` with a user-safe error.
+Each extractor's full result object (§4) under its own key, re-readable until
+`expires_at` (D11). 404 after expiry or deletion.
+
+```json
+{
+  "extractors": {
+    "kv": {"record": {...}, "normalized_record": {...}, "keys": [...],
+           "qa_passed": true, "challenge_passed": true,
+           "calculations_applied": true, "calculation_rows": [...],
+           "execution": {"success": true, "rows_written": 1, "error": null}}
+  },
+  "usage_summary": {
+    "total": {"pages": 14, "input_tokens": 0, "output_tokens": 0, "total_cost": 0.0},
+    "by_extractor": {"kv": {"pages": 14, "input_tokens": 0, "output_tokens": 0,
+                            "total_cost": 0.0}}
+  }
+}
+```
+
+`usage_summary.total` is the billing figure and stays authoritative;
+`by_extractor` exists so a multi-extractor job can be attributed. Failed jobs:
+`{success: false, status: "failed", error}` with a user-safe error, unchanged —
+a failure is the job's, not one extractor's, while only one extractor can run.
 
 ### 7.4 Other endpoints
 

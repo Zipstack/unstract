@@ -59,12 +59,15 @@ def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jo
     resp = ev.JobStatusView.as_view()(_authed(), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
+    # `status` is the JOB's, so it stays top level; stage reporting is
+    # extractor-scoped (spec §7.2).
     assert resp.data["status"] == "running"
-    assert resp.data["stage"] == "extraction"
+    kv = resp.data["extractors"]["kv"]
+    assert kv["stage"] == "extraction"
     # STAGE_NAMES order is document_processing, extraction, ... -- "qa" and
     # every other configured stage name is absent from job.stages, so only
     # these two appear, in that order.
-    assert [s["name"] for s in resp.data["stages"]] == [
+    assert [s["name"] for s in kv["stages"]] == [
         "document_processing",
         "extraction",
     ]
@@ -128,7 +131,11 @@ def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
     resp = ev.JobResultView.as_view()(_authed(), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
-    assert resp.data == {"success": True, "fields": {}}
+    # The stored blob is the engine's own result; the response namespaces it
+    # per extractor and adds per-extractor usage attribution (spec §7.3).
+    assert resp.data["extractors"] == {"kv": {"success": True, "fields": {}}}
+    assert set(resp.data["usage_summary"]) == {"total", "by_extractor"}
+    assert list(resp.data["usage_summary"]["by_extractor"]) == ["kv"]
     m_read.assert_called_once_with(job.result_ref)
 
 

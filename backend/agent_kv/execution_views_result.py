@@ -15,6 +15,7 @@ status at ``SubmitView``'s wait loop) -- and the expired/blank-``result_ref``
 building the right body once "terminal" is already a given.
 """
 
+from agent_kv.constants import V1_EXTRACTOR_NAME
 from agent_kv.models import JobStatus
 from agent_kv.storage import read_result
 
@@ -32,7 +33,20 @@ def result_payload(job) -> dict:
     above.
     """
     if job.status == JobStatus.COMPLETED:
-        return read_result(job.result_ref)
+        # Wrapped at READ time, not stored wrapped: the stored blob is the
+        # engine's own result object, and namespacing it here keeps the cloud
+        # engine and every already-written result untouched (spec §7.3).
+        usage = job.usage_summary or {}
+        return {
+            "extractors": {V1_EXTRACTOR_NAME: read_result(job.result_ref)},
+            # `total` stays the authoritative billing figure; `by_extractor`
+            # exists so a multi-extractor job can be attributed. With one
+            # extractor they are necessarily the same numbers.
+            "usage_summary": {
+                "total": usage,
+                "by_extractor": {V1_EXTRACTOR_NAME: usage},
+            },
+        }
     if job.status == JobStatus.FAILED:
         return {
             "success": False,

@@ -1,3 +1,8 @@
+#: v1 accepts exactly one extractor (`kv`), so the job row does not carry which
+#: one it ran. When fan-out lands this becomes per-job state rather than a
+#: constant -- the wire format (spec §7.0) is already shaped for that.
+V1_EXTRACTOR_NAME = "kv"
+
 STAGE_NAMES = [
     "document_processing",
     "extraction",

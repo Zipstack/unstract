@@ -22,10 +22,34 @@ def _pdf_upload(name="doc.pdf"):
         return SimpleUploadedFile(name, f.read(), content_type="application/pdf")
 
 
+# Fields that describe the REQUEST rather than an extractor (spec §7.1).
+# Anything else passed to _data() is routed into the kv extractor's options,
+# so each test still reads as "submit with this one thing changed".
+_JOB_LEVEL = {
+    "file", "extractors", "page_start", "page_end",
+    "timeout", "tags", "custom_data", "webhook_url",
+}
+
+
 def _data(**over):
-    d = {"file": _pdf_upload(), "keys": json.dumps(VALID_KEYS)}
+    """Build a submit payload in the extractor-scoped wire format (§7.0)."""
+    keys = over.pop("keys", VALID_KEYS)
+    options = {k: over.pop(k) for k in list(over) if k not in _JOB_LEVEL}
+    d = {
+        "file": _pdf_upload(),
+        "extractors": json.dumps([{"name": "kv", "keys": keys, "options": options}]),
+    }
     d.update(over)
     return d
+
+
+def _errs(s):
+    """All validation errors as one string.
+
+    Per-extractor failures surface nested under `extractors`, so asserting on a
+    specific top-level key would just be asserting on DRF's nesting shape rather
+    than on the rejection actually happening."""
+    return str(s.errors)
 
 
 def _defaults(m):
@@ -43,10 +67,15 @@ def test_valid_submit_compiles_and_counts_pages():
     s = SubmitSerializer(data=_data())
     assert s.is_valid(), s.errors
     assert s.pages_total == 2
-    assert [k.path for k in s.compiled.key_specs] == ["total"]
-    assert s.validated_data["qa"] is True
-    assert s.validated_data["challenge"] is True
-    assert s.validated_data["extraction_mode"] == "whole-doc"
+    # `compiled` is keyed by extractor now -- a multi-extractor job compiles
+    # one schema per entry, so a single bare schema could not hold them.
+    assert list(s.compiled) == ["kv"]
+    assert [k.path for k in s.compiled["kv"].key_specs] == ["total"]
+    entry = s.validated_data["extractors"][0]
+    assert entry["name"] == "kv"
+    assert entry["options"]["qa"] is True
+    assert entry["options"]["challenge"] is True
+    assert entry["options"]["extraction_mode"] == "whole-doc"
 
 
 def test_disallowed_extension_rejected():
@@ -75,15 +104,15 @@ def test_page_cap_rejected():
 
 
 def test_bad_schema_is_field_error_not_500():
-    s = SubmitSerializer(data=_data(keys=json.dumps({"a": {"format": "string"}})))
+    s = SubmitSerializer(data=_data(keys={"a": {"format": "string"}}))
     assert not s.is_valid()
-    assert "keys" in s.errors
+    assert "keys" in _errs(s)
 
 
-def test_keys_not_json_rejected():
-    s = SubmitSerializer(data=_data(keys="{not json"))
+def test_extractors_not_json_rejected():
+    s = SubmitSerializer(data=_data(extractors="{not json"))
     assert not s.is_valid()
-    assert "keys" in s.errors
+    assert "extractors" in s.errors
 
 
 def test_calculations_cap():
@@ -95,8 +124,8 @@ def test_calculations_cap():
         m.AGENT_KV_CALCULATIONS_ENABLED = True
         s = SubmitSerializer(data=_data(calculations="x" * 30_000))
         assert not s.is_valid()
-        assert "calculations" in s.errors
-        assert "20000 bytes" in str(s.errors["calculations"])
+        assert "calculations" in _errs(s)
+        assert "20000 bytes" in _errs(s)
 
 
 def test_timeout_bounds():
@@ -128,7 +157,7 @@ def test_calculations_rejected_when_disabled():
         _defaults(m); m.AGENT_KV_CALCULATIONS_ENABLED = False
         s = SubmitSerializer(data=_data(calculations="annualize rent"))
         assert not s.is_valid()
-        assert "not available" in str(s.errors["calculations"])
+        assert "not available" in _errs(s)
 
 
 def test_calculations_accepted_when_enabled():
@@ -142,10 +171,65 @@ def test_structured_output_rejected_when_disabled():
         _defaults(m); m.AGENT_KV_STRUCTURED_OUTPUT_ENABLED = False
         s = SubmitSerializer(data=_data(structured_output=True))
         assert not s.is_valid()
-        assert "structured_output" in s.errors
+        assert "structured_output" in _errs(s)
 
 
 def test_empty_calculations_and_false_structured_output_pass_when_disabled():
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
         assert SubmitSerializer(data=_data()).is_valid()
+
+
+# ---------------------------------------------------------------------------
+# Extractor-scoped wire format (spec §7.0/§7.1). These rules exist so a caller
+# learns immediately that something is unsupported, rather than having the
+# request quietly run as something other than what they asked for.
+# ---------------------------------------------------------------------------
+def test_unknown_extractor_name_rejected():
+    s = SubmitSerializer(data=_data(extractors=json.dumps(
+        [{"name": "table", "keys": VALID_KEYS}]
+    )))
+    assert not s.is_valid()
+    assert "unknown extractor" in _errs(s)
+
+
+def test_multiple_extractors_rejected_until_fan_out_exists():
+    """The FORMAT is fixed before launch; the fan-out execution is not built.
+
+    Accepting two entries and running only the first would be the silent kind
+    of wrong -- the caller is billed for a job that ignored half the request.
+    """
+    two = [{"name": "kv", "keys": VALID_KEYS}, {"name": "kv", "keys": VALID_KEYS}]
+    s = SubmitSerializer(data=_data(extractors=json.dumps(two)))
+    assert not s.is_valid()
+    assert "multiple extractors are not supported yet" in _errs(s)
+
+
+def test_empty_or_non_list_extractors_rejected():
+    for bad in ("[]", '{"name": "kv"}', '"kv"'):
+        s = SubmitSerializer(data=_data(extractors=bad))
+        assert not s.is_valid(), bad
+        assert "non-empty JSON array" in _errs(s)
+
+
+def test_unknown_option_is_rejected_not_silently_dropped():
+    """DRF drops unknown fields by default; for per-extractor options that would
+    mean a typo'd or misaddressed knob silently changing what the job runs."""
+    s = SubmitSerializer(data=_data(qaa=True))  # typo for `qa`
+    assert not s.is_valid()
+    assert "unknown options for extractor 'kv'" in _errs(s)
+    assert "qaa" in _errs(s)
+
+
+def test_old_flat_format_is_no_longer_accepted():
+    """Hard switch (§7.1): the pre-§7.0 shape has no alias. A caller still
+    sending the flat form must get a clear 400, not a job that silently ran
+    with default options."""
+    s = SubmitSerializer(data={
+        "file": _pdf_upload(),
+        "keys": json.dumps(VALID_KEYS),
+        "qa": "false",
+        "calculations": "annualize rent",
+    })
+    assert not s.is_valid()
+    assert "extractors" in s.errors  # the now-required field is missing

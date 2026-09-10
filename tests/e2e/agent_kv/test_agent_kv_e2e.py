@@ -66,6 +66,7 @@ from tests.e2e.agent_kv.conftest import (
     delete,
     invalid_schema,
     invoice_schema,
+    kv_result_body,
     poll,
     result,
     submit,
@@ -248,7 +249,7 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
 
     resp = result(agent_kv_key, job_id)
     assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = kv_result_body(resp)
     assert body["success"] is True, body
 
     record = body["record"]
@@ -597,7 +598,7 @@ def test_excel_submit_extracts(agent_kv_key: AgentKVAuth, require_llm: None) -> 
     )
     doc = poll(agent_kv_key, job_id)
     assert doc["status"] == "completed", doc
-    body = result(agent_kv_key, job_id).json()
+    body = kv_result_body(result(agent_kv_key, job_id))
     assert body.get("success") is True, body
     audited = {entry["key_path"] for entry in body["keys"]}
     assert set(INVOICE_FIELDS) <= audited, (audited, body["keys"])
@@ -722,7 +723,7 @@ def test_calculation_happy_path(agent_kv_key: AgentKVAuth, require_llm: None) ->
 
     resp = result(agent_kv_key, job_id)
     assert resp.status_code == 200, resp.text
-    body = resp.json()
+    body = kv_result_body(resp)
     assert body["success"] is True, body
     assert body["calculations_applied"] is True, body
     assert body["execution"]["success"] is True, body["execution"]

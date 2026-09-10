@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from unstract.agent_kv_schema.compile import SchemaError, compile_schema
 
-from agent_kv.constants import STAGE_NAMES
+from agent_kv.constants import STAGE_NAMES, V1_EXTRACTOR_NAME
 from agent_kv.dispatch import DispatchError, dispatch_job
 from agent_kv.exceptions import EngineUnavailable, JobNotFound, RateLimited
 from agent_kv.execution_serializers import SubmitSerializer
@@ -42,13 +42,22 @@ def _status_document(job) -> dict:
     stages_json = job.stages or {}
     doc = {
         "job_id": str(job.id),
+        # The JOB's state, not an extractor's: a job is not complete until every
+        # extractor is, so this stays top level (spec §7.2).
         "status": job.status.lower(),
-        "stage": job.stage,
-        "stages": [
-            {"name": name, **stages_json[name]}
-            for name in STAGE_NAMES
-            if name in stages_json
-        ],
+        # Stage names are extractor-specific (`qa`/`challenge`/`codegen` mean
+        # nothing to a Table Extractor) and they ARE returned to clients, so
+        # they are wire format and namespaced with everything else.
+        "extractors": {
+            V1_EXTRACTOR_NAME: {
+                "stage": job.stage,
+                "stages": [
+                    {"name": name, **stages_json[name]}
+                    for name in STAGE_NAMES
+                    if name in stages_json
+                ],
+            }
+        },
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
@@ -118,9 +127,9 @@ class SubmitView(APIView):
                 return denied
 
         data = request.data.copy()
-        keys_part = data.get("keys")
-        if hasattr(keys_part, "read"):  # `keys` uploaded as a file part (§7.1)
-            data["keys"] = keys_part.read().decode("utf-8", errors="replace")
+        part = data.get("extractors")
+        if hasattr(part, "read"):  # `extractors` uploaded as a file part (§7.1)
+            data["extractors"] = part.read().decode("utf-8", errors="replace")
         serializer = SubmitSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
@@ -152,22 +161,18 @@ class SubmitView(APIView):
                 job_saved=job_saved,
             )
 
-        options = {
-            k: v[k]
-            for k in (
-                "qa",
-                "challenge",
-                "extraction_mode",
-                "structured_output",
-                "page_start",
-                "page_end",
-                "document_class",
-                "key_notes",
-                "calculations",
-            )
-        }
+        # Unpack the single extractor entry into the FROZEN OSS<->cloud
+        # executor_params contract (`schema` + `options`). The wire format
+        # changed at the API edge only: the engine still receives exactly the
+        # option names it always did, so no cloud change is required.
+        entry = v["extractors"][0]
+        options = dict(entry["options"])
+        # Job-level, but the engine reads them from `options` (§7.1: the page
+        # range drives the shared OCR pass, so it cannot be per-extractor).
+        options["page_start"] = v["page_start"]
+        options["page_end"] = v["page_end"]
         try:
-            dispatch_job(job, schema=v["keys"], options=options)
+            dispatch_job(job, schema=entry["keys"], options=options)
         except DispatchError:
             logger.error("agent-kv dispatch failed for job %s", job.id, exc_info=True)
             return _fail_job_response(

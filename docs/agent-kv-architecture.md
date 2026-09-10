@@ -171,6 +171,12 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
   `execution.success: true`; sandbox held read-only rootfs with 0 restarts; auth negatives
   (no key / bad key → 403); schema-DoS guard (600-deep schema → `200 valid:false "exceeds
   max_depth=6"`, zero 500s). Reproduce with the scratch `curl-smoke.sh` recipe.
+- **Wire format is extractor-scoped** (2026-09-10, spec §7.0): a submit carries
+  `extractors: [{name, keys, options}]` rather than flat top-level knobs, and status and
+  result are keyed by extractor. Done before launch precisely because it could not be
+  done after — see the deliberate divergence from APS v2's composition model recorded in
+  §7.0. Currently one extractor (`kv`) is accepted; the format is in place for
+  multi-extractor jobs, the fan-out execution is not.
 - **Not yet validated:** a real **Kubernetes** deploy. The chart, the NetworkPolicy-based
   sandbox containment, the minimal Secret, and the sandbox result-backend wiring are
   helm-unittest-rendered but never applied to a cluster. **This is the one outstanding

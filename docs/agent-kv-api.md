@@ -155,21 +155,45 @@ Copied verbatim from spec §7.1 and cross-checked field-by-field against
 the shipped serializer exactly; no drift found in the submit contract itself (see the
 notes after the table for two spec-vs-code nuances worth flagging).
 
+The request is **extractor-scoped**: a per-extractor schema and its knobs live inside
+`extractors`, and only fields describing the request itself stay top level.
+
+**Job-level fields:**
+
 | Field | Required | Notes |
 |---|---|---|
 | `file` | yes | One document per job (D12). |
-| `keys` | yes | `keys.json` (file part or inline JSON string). Compiled synchronously; invalid ⇒ 400, nothing billed. |
-| `document_class` | no | Free-text hint (as CLI). |
-| `key_notes` | no | Free-text notes appended to the prompt (as CLI). |
-| `calculations` | no | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
-| `page_start`, `page_end` | no | 1-based inclusive range. |
-| `qa` | no | Default **on**. |
-| `challenge` | no | Default **on** (~doubles LLM spend; meter records what ran). |
-| `extraction_mode` | no | `whole-doc` (default) \| `per-page`. |
-| `structured_output` | no | Disabled by default; enabled per deployment via `AGENT_KV_STRUCTURED_OUTPUT_ENABLED`. |
+| `extractors` | yes | JSON array (file part or inline JSON string), one entry per extractor. Compiled synchronously; invalid ⇒ 400, nothing billed. |
+| `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the page cap, so it cannot differ between extractors reading the same document. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
 | `tags`, `custom_data` | no | Echoed through. |
 | `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. |
+
+**Each `extractors` entry:**
+
+| Field | Required | Notes |
+|---|---|---|
+| `name` | yes | Which extractor. **Currently `kv` only**; anything else ⇒ 400. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
+| `keys` | yes | This extractor's `keys.json` (see [§2](#2-the-extraction-schema-keys-field)). |
+| `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
+
+**`kv` options:**
+
+| Option | Notes |
+|---|---|
+| `qa` | Default **on**. |
+| `challenge` | Default **on** (~doubles LLM spend; meter records what ran). |
+| `extraction_mode` | `whole-doc` (default) \| `per-page`. |
+| `structured_output` | Disabled by default; enabled per deployment via `AGENT_KV_STRUCTURED_OUTPUT_ENABLED`. |
+| `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
+| `document_class` | Free-text hint (as CLI). |
+| `key_notes` | Free-text notes appended to the prompt (as CLI). |
+
+> **No backward compatibility with the pre-`extractors` flat shape.** `keys`, `qa`,
+> `challenge`, `extraction_mode`, `structured_output`, `calculations`,
+> `document_class` and `key_notes` are no longer accepted at top level — a request
+> using the old form gets a 400 for the missing `extractors` field. The API had no
+> consumers when this changed, so no alias was kept.
 
 Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking budgets.
 
@@ -218,20 +242,23 @@ deployment returns `501` before ever reaching it.
 curl -X POST https://api.unstract.example/agent-kv/ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
   -F "file=@invoice.pdf" \
-  -F 'keys={
-        "quotation_number": {"description": "The quote number", "required": true},
-        "customer": {"name": {"description": "Bill-to name"}},
-        "line_items": {
-          "description": "One row per line",
-          "_key": "sku",
-          "_array": {
-            "sku": {"description": "SKU"},
-            "total": {"description": "Line total", "format": "currency"}
-          }
+  -F 'extractors=[{
+        "name": "kv",
+        "keys": {
+          "quotation_number": {"description": "The quote number", "required": true},
+          "customer": {"name": {"description": "Bill-to name"}},
+          "line_items": {
+            "description": "One row per line",
+            "_key": "sku",
+            "_array": {
+              "sku": {"description": "SKU"},
+              "total": {"description": "Line total", "format": "currency"}
+            }
+          },
+          "_constraints": ["count(\"line_items\") >= 1"]
         },
-        "_constraints": ["count(\"line_items\") >= 1"]
-      }' \
-  -F "challenge=false" \
+        "options": {"challenge": false}
+      }]' \
   -F "webhook_url=https://example.com/hooks/agent-kv"
 ```
 
@@ -246,13 +273,17 @@ codegen, code_execution`.
 {
   "job_id": "5b6e9b0a-...",
   "status": "running",
-  "stage": "challenge",
-  "stages": [
-    {"name": "document_processing", "status": "done", "seconds": 6.2},
-    {"name": "extraction", "status": "done", "seconds": 11.4},
-    {"name": "qa", "status": "done", "seconds": 4.1},
-    {"name": "challenge", "status": "running"}
-  ],
+  "extractors": {
+    "kv": {
+      "stage": "challenge",
+      "stages": [
+        {"name": "document_processing", "status": "done", "seconds": 6.2},
+        {"name": "extraction", "status": "done", "seconds": 11.4},
+        {"name": "qa", "status": "done", "seconds": 4.1},
+        {"name": "challenge", "status": "running"}
+      ]
+    }
+  },
   "created_at": "2026-08-28T10:15:00.123456+00:00",
   "started_at": "2026-08-28T10:15:01.500000+00:00",
   "completed_at": null,
@@ -324,29 +355,47 @@ curl https://api.unstract.example/agent-kv/5b6e9b0a-.../result \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
+The payload is **keyed by extractor**, with usage attributed per extractor
+alongside the authoritative total:
+
 ```json
 {
-  "success": true,
-  "record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
-  "normalized_record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
-  "keys": [
-    {"key_path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
-  ],
-  "qa_passed": true,
-  "challenge_passed": true,
-  "consistency_violations": [],
-  "cost_summary": {
-    "total_cost": 0.0,
-    "input_tokens": 3120,
-    "output_tokens": 480,
-    "agents": {
-      "kv_extractor": {"input_tokens": 2400, "output_tokens": 360, "cost": 0.0},
-      "kv_qa": {"input_tokens": 720, "output_tokens": 120, "cost": 0.0}
+  "extractors": {
+    "kv": {
+      "success": true,
+      "record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
+      "normalized_record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
+      "keys": [
+        {"key_path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
+      ],
+      "qa_passed": true,
+      "challenge_passed": true,
+      "consistency_violations": [],
+      "cost_summary": {
+        "total_cost": 0.0,
+        "input_tokens": 3120,
+        "output_tokens": 480,
+        "agents": {
+          "kv_extractor": {"input_tokens": 2400, "output_tokens": 360, "cost": 0.0},
+          "kv_qa": {"input_tokens": 720, "output_tokens": 120, "cost": 0.0}
+        }
+      },
+      "timing": {"document_processing": 6.2, "extraction": 11.4}
     }
   },
-  "timing": {"document_processing": 6.2, "extraction": 11.4}
+  "usage_summary": {
+    "total": {"pages": 3, "input_tokens": 3120, "output_tokens": 480, "total_cost": 0.0},
+    "by_extractor": {
+      "kv": {"pages": 3, "input_tokens": 3120, "output_tokens": 480, "total_cost": 0.0}
+    }
+  }
 }
 ```
+
+`usage_summary.total` is the billing figure; `by_extractor` exists so a
+multi-extractor job can be attributed. With one extractor they are the same numbers.
+Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a
+failure belongs to the job, not to one extractor.
 
 **`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
 zeroes the engine's per-token price fields (they were stale hardcoded list prices), so

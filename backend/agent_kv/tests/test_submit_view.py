@@ -27,19 +27,33 @@ def _authed_post(data=None):
     return req
 
 
+# Fields describing the REQUEST rather than an extractor (spec §7.1); anything
+# else an override names is routed into the kv extractor's options, so each test
+# still reads as "submit with this one thing changed".
+_JOB_LEVEL = {
+    "file", "extractors", "page_start", "page_end",
+    "timeout", "tags", "custom_data", "webhook_url",
+}
+
+
 def _valid_validated_data(**overrides):
-    data = {
-        "file": mock.Mock(name="uploaded_file"),
-        "keys": {"total": {"description": "Grand total"}},
-        "document_class": "",
-        "key_notes": "",
-        "calculations": "",
-        "page_start": 1,
-        "page_end": None,
+    """`SubmitSerializer.validated_data` in the extractor-scoped shape (§7.0)."""
+    keys = overrides.pop("keys", {"total": {"description": "Grand total"}})
+    options = {
         "qa": True,
         "challenge": True,
         "extraction_mode": "whole-doc",
         "structured_output": False,
+        "calculations": "",
+        "document_class": "",
+        "key_notes": "",
+    }
+    options.update({k: overrides.pop(k) for k in list(overrides) if k not in _JOB_LEVEL})
+    data = {
+        "file": mock.Mock(name="uploaded_file"),
+        "extractors": [{"name": "kv", "keys": keys, "options": options}],
+        "page_start": 1,
+        "page_end": None,
         "timeout": 0,
         "tags": [],
         "custom_data": None,

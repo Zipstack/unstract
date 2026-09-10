@@ -89,6 +89,24 @@ def agent_kv_key(
     return AgentKVAuth(base=base, key=body["key"], org_id=org_id)
 
 
+#: Submit fields that describe the REQUEST rather than one extractor (§7.1).
+#: The page range drives the shared OCR pass and the page cap, so it cannot be
+#: per-extractor.
+JOB_LEVEL_SUBMIT_FIELDS = frozenset(
+    {"page_start", "page_end", "timeout", "tags", "custom_data", "webhook_url"}
+)
+
+
+def kv_result_body(resp: requests.Response) -> dict:
+    """The `kv` extractor's own result out of an extractor-keyed payload (§7.3).
+
+    The result endpoint returns `{"extractors": {...}, "usage_summary": {...}}`,
+    so a test asserting on the engine's own fields has to reach through one
+    level. Centralised here so the reach is spelled out once.
+    """
+    return resp.json()["extractors"]["kv"]
+
+
 def submit_raw(
     auth: AgentKVAuth,
     file_bytes: bytes,
@@ -99,12 +117,22 @@ def submit_raw(
     """POST a submit request and return the raw response -- no assertions.
 
     For tests that need to inspect a non-202 outcome (403, 400, 429, ...).
-    ``keys=None`` omits the field entirely (covers submits that intend to
+    ``keys=None`` omits ``extractors`` entirely (covers submits that intend to
     fail before schema validation is even reached).
+
+    Builds the extractor-scoped wire format (spec §7.0): per-extractor schema
+    and knobs go inside ``extractors``; only fields describing the request stay
+    top level. Callers keep passing knobs as plain kwargs and this routes them,
+    so a test still reads as "submit with this one thing changed".
     """
-    data = {str(k): v for k, v in fields.items()}
+    data: dict[str, object] = {}
+    options: dict[str, object] = {}
+    for k, v in fields.items():
+        (data if str(k) in JOB_LEVEL_SUBMIT_FIELDS else options)[str(k)] = v
     if keys is not None:
-        data["keys"] = json.dumps(keys)
+        data["extractors"] = json.dumps(
+            [{"name": "kv", "keys": keys, "options": options}]
+        )
     return requests.post(
         auth.exec_url,
         headers=auth.headers,
