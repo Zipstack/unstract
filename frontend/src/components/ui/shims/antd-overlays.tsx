@@ -565,7 +565,17 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
          * for the same reason.
          */}
         <TooltipTrigger asChild {...anchorProps}>
-          {children}
+          {/*
+           * A disabled control swallows pointer events, so the trigger never
+           * receives mouseenter and the tooltip explaining WHY it is disabled
+           * never opens. Wrap it so the events land on the wrapper instead.
+           */}
+          {React.isValidElement(children) &&
+          (children.props as { disabled?: boolean })?.disabled ? (
+            <span className="inline-flex">{children}</span>
+          ) : (
+            children
+          )}
         </TooltipTrigger>
         <TooltipContent
           side={

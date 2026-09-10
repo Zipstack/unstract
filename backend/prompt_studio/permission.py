@@ -20,13 +20,12 @@ def _can_access_tool(user: Any, tool: Any) -> bool:
     ``CustomToolSerializer.validate_tool_name`` because it shares an endpoint
     with every settings write. Sharing onward is open to shared users; only
     removing access and co-ownership are owner-only.
-
-    Note this admits direct viewers, group members and admins but NOT
-    ``shared_to_org``, which ``IsOwnerOrSharedUserOrSharedToOrg`` does admit.
     """
     if _is_resource_owner(user, tool):
         return True
     if _is_resource_viewer(user, tool):
+        return True
+    if tool.shared_to_org:
         return True
     if has_group_access(user, tool):
         return True
