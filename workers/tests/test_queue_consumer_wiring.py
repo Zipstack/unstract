@@ -35,6 +35,11 @@ RUN_WORKER = REPO_ROOT / "workers" / "run-worker.sh"
 # (ExecutionContext(executor_name="agentic_kv") -> celery_executor_agentic_kv).
 AGENT_KV_QUEUE = "celery_executor_agentic_kv"
 
+# The terminal-callback queue. Its consumer is what moves a job out of
+# RUNNING: finalize persists the result, deletes the staged input, releases
+# the concurrency slot and fires the webhook.
+AGENT_KV_CALLBACK_QUEUE = "agent_kv_callback"
+
 # The env var the live PG consumer reads. Named here so a future rename has to
 # touch this constant rather than silently bypassing every assertion below.
 PG_QUEUE_VAR = "WORKER_PG_QUEUE_CONSUMER_QUEUE"
@@ -173,3 +178,29 @@ def test_sandbox_hardening_is_preserved():
     assert not svc.get("extra_hosts"), (
         "the sandbox must not get host_gateway — it must not reach the host"
     )
+
+
+def test_pg_ide_callback_drains_the_agent_kv_callback_queue():
+    """Without this the job runs to SUCCESS and then never completes.
+
+    The executor enqueues its terminal continuation onto `agent_kv_callback`;
+    if no consumer drains it the row sits in pg_queue_message and the job stays
+    RUNNING forever, with nothing logged at the producer. The Celery
+    ide_callback worker has carried both queues since the callbacks landed --
+    its PG twin did not, and the cloud chart wires it correctly, so only the
+    OSS stacks were affected. Found by running a real job end to end.
+    """
+    env = _service_env(DEV_COMPOSE, "worker-pg-ide-callback")
+    raw = env.get(PG_QUEUE_VAR)
+    assert raw is not None, "worker-pg-ide-callback sets no consumer queue"
+    assert AGENT_KV_CALLBACK_QUEUE in _queues(raw), (
+        f"{AGENT_KV_CALLBACK_QUEUE} has no consumer -- Agent-KV jobs will "
+        f"finish executing and never leave RUNNING."
+    )
+
+
+def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
+    text = RUN_WORKER.read_text()
+    match = re.search(r'\["\$PG_ROLE_IDE_CALLBACK"\]="ide_callback;([^"]+)"', text)
+    assert match, "could not find the PG_ROLE_IDE_CALLBACK entry in run-worker.sh"
+    assert AGENT_KV_CALLBACK_QUEUE in _queues(match.group(1))

@@ -586,7 +586,13 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-ide-callback
       - WORKER_BARRIER_BACKEND=pg
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=ide_callback
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
+      # agent_kv_callback carries the Agent-KV terminal callbacks (finalize:
+      # persist the result, delete the staged input, release the concurrency
+      # slot, fire the webhook). Without it a job runs to success and then
+      # sits in RUNNING forever -- the executor's continuation is enqueued
+      # and nothing drains it. The Celery ide_callback worker has carried
+      # both queues since the callbacks landed; its PG twin did not.
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback,agent_kv_callback
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
       # Log publisher — see the note on the backend service (UN-4046).

@@ -88,7 +88,7 @@ declare -rA PG_CONSUMER_ROLES=(
     # succeeds, so nothing errors at the producer.
     ["$PG_ROLE_NOTIFICATION"]="notification;notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     # Prompt Studio IDE callbacks (ide_index_*/ide_prompt_*/extraction_*).
-    ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback"
+    ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback,agent_kv_callback"
     # Codegen sandbox (execute_sandboxed_code). Runs the SAME hardened
     # workers/sandbox/tasks.py as the Celery `sandbox` worker -- only the
     # transport differs, so every §6.3 layer (AST gate, scrubbed subprocess,
