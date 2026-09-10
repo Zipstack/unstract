@@ -1,4 +1,5 @@
 from django.db.models import QuerySet
+from django.shortcuts import get_object_or_404
 from permissions.permission import WorkflowOwnerMutationMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -97,6 +98,7 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
             Response: The HTTP response containing the serialized list of
                 endpoints.
         """
-        endpoints = WorkflowEndpointUtils.get_endpoints_for_workflow(pk)
+        workflow = get_object_or_404(Workflow.objects.for_user(request.user), pk=pk)
+        endpoints = WorkflowEndpointUtils.get_endpoints_for_workflow(workflow.id)
         serializer = WorkflowEndpointSerializer(endpoints, many=True)
         return Response(serializer.data)

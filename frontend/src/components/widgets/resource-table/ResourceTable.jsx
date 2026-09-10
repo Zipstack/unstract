@@ -294,6 +294,9 @@ function ResourceTable({
     // available. Sharing onward stays open to shared users.
     const canEdit = canEditResource(item, sessionDetails);
     const locked = !canEdit;
+    // Frictionless adapters are platform-provisioned: any org member may
+    // delete them, so the ownership lock covers Edit but not Delete.
+    const deleteLocked = locked && !item?.is_friction_less;
     const lockedTitle = "Only the owner can change this";
     return (
       <Space
@@ -337,7 +340,7 @@ function ResourceTable({
          * because every row has one.
          */}
         <Popconfirm
-          disabled={locked}
+          disabled={deleteLocked}
           title={`Delete the ${type}`}
           description={`Are you sure to delete ${item?.[titleProp]}`}
           okText="Yes"
@@ -351,8 +354,8 @@ function ResourceTable({
             className="action-icon-btn"
             aria-label={`Delete ${type}`}
             data-testid={rowTestId(item, "delete")}
-            aria-disabled={locked}
-            title={locked ? lockedTitle : undefined}
+            aria-disabled={deleteLocked}
+            title={deleteLocked ? lockedTitle : undefined}
           >
             <Trash2 className="action-icon-buttons delete-icon" />
           </button>

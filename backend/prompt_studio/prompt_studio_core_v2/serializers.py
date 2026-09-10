@@ -5,7 +5,7 @@ from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from tenant_account_v2.sharing_helpers import (
     is_org_admin,
     serialize_group_refs,
@@ -143,7 +143,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         if getattr(user, "is_service_account", False):
             return value
         if not self.instance.is_owner(user) and not is_org_admin(user):
-            raise ValidationError("Only the owner can rename this project.")
+            raise PermissionDenied("Only the owner can rename this project.")
         return value
 
     def validate_summarize_llm_adapter(self, value):
