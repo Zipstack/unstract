@@ -15,9 +15,14 @@ def _can_access_tool(user: Any, tool: Any) -> bool:
     """Whether ``user`` may work on ``tool``.
 
     Prompt Studio is shared for collaboration (UN-2868): a shared user edits
-    the project's prompts and settings, the same as its owner. Only the
-    project's name, its existence and who else it is shared with stay with
-    the owner, and those are gated on the project viewset.
+    the project's prompts and settings, the same as its owner. Renaming and
+    deleting stay with the owner -- delete on the viewset, rename in
+    ``CustomToolSerializer.validate_tool_name`` because it shares an endpoint
+    with every settings write. Sharing onward is open to shared users; only
+    removing access and co-ownership are owner-only.
+
+    Note this admits direct viewers, group members and admins but NOT
+    ``shared_to_org``, which ``IsOwnerOrSharedUserOrSharedToOrg`` does admit.
     """
     if _is_resource_owner(user, tool):
         return True
@@ -59,7 +64,6 @@ class ParentToolAccess(permissions.BasePermission):
             return True
         if getattr(request.user, "is_service_account", False):
             return True
-        # Imported here: the models pull in this module at import time.
         from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
         from prompt_studio.prompt_studio_core_v2.models import CustomTool
 
