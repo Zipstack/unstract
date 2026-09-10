@@ -173,51 +173,6 @@ class WorkflowViewSet(
             raise WorkflowGenerationError
         return workflow
 
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override partial_update to handle sharing notifications."""
-        workflow = self.get_object()
-        before = self.snapshot_share_axes(workflow)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(workflow, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        workflow: Workflow,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(workflow, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.WORKFLOW.value,
-                resource_name=workflow.workflow_name,
-                resource_id=str(workflow.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=workflow,
-            )
-            logger.info(
-                "Sent sharing notifications for workflow %s to %d users",
-                workflow.id,
-                len(users_diff.added),
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification, continuing update though: %s",
-                str(e),
-            )
-
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)
         return Response(make_execution_response(execution), status=status.HTTP_200_OK)

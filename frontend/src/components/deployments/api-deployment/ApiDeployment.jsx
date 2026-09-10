@@ -65,8 +65,7 @@ function ApiDeployment() {
     coOwnerAllUsers,
     coOwnerResourceId,
     handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
+    onApplyCoOwners,
   } = useCoOwnerManagement({
     service: apiDeploymentsApiService,
     setAlertDetails,
@@ -408,10 +407,8 @@ function ApiDeployment() {
         resourceType="API Deployment"
         allUsers={coOwnerAllUsers}
         coOwners={coOwnerData.coOwners}
-        createdBy={coOwnerData.createdBy}
         loading={coOwnerLoading}
-        onAddCoOwner={onAddCoOwner}
-        onRemoveCoOwner={onRemoveCoOwner}
+        onApplyCoOwners={onApplyCoOwners}
       />
     </>
   );

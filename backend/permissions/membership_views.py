@@ -86,6 +86,11 @@ class OwnerManagementMixin:
     # --- notifications: reuse the user-sharing service, best-effort ---
 
     def _notification_context(self, resource: Any) -> tuple[str, str] | None:
+        """``(resource_type, resource_name)``, or ``None`` if not notifiable.
+
+        Also used by ``ResourceShareManagementMixin``, which every host mixes
+        in alongside this one.
+        """
         if not notification_plugin or not self.notification_resource_name_field:
             return None
         resource_type = self.get_notification_resource_type(resource)

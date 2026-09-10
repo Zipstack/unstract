@@ -1,21 +1,25 @@
 """Shared share-management surface for resource ViewSets.
 
-The mixin is **axis-agnostic** — it operates over the sharing "axes" declared
-in :attr:`ResourceShareManagementMixin.share_axes`. ``shared_users`` is an M2M
-on the resource model, while ``shared_groups`` is stored polymorphically in
-``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers; new
-axes can be added by extending that attribute.
+The mixin reads the sharing "axes" named in ``_SUPPORTED_SHARE_AXES``.
+``shared_users`` is the direct-viewer axis, backed by VIEWER membership rows,
+while ``shared_groups`` is stored polymorphically in ``ResourceGroupShare``
+(not an M2M) and routed through the sharing helpers.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, ClassVar
+import logging
+from typing import Any
 
 from django.db.models import Model
+from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
+
+notification_plugin = get_plugin("notification")
 
 _SUPPORTED_SHARE_AXES = ("shared_users", "shared_groups", "shared_to_org")
 
@@ -55,30 +59,64 @@ def _coerce_id_list(axis: str, value: Any) -> list[int]:
     return coerced
 
 
-@dataclass
-class AxisDiff:
-    """Pre/post snapshot for a single share axis (M2M field)."""
+def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
+    """Narrow ``users`` to those with no remaining access to ``instance``.
 
-    before: set[Any] = field(default_factory=set)
-    after: set[Any] = field(default_factory=set)
+    Someone dropped from ``shared_users`` may still reach the resource via a
+    group or an org-wide share; telling them their access was removed would be
+    wrong.
+    """
+    if not users:
+        return []
+    if getattr(instance, "shared_to_org", False):
+        # Org-wide share still covers everyone — nobody lost access, and
+        # answering it via ``compute_effective_members`` would hydrate every
+        # member of the org to say so.
+        return []
+    from tenant_account_v2.sharing_helpers import compute_effective_members
 
-    @property
-    def added(self) -> set[Any]:
-        return self.after - self.before
+    retained = {member["user_id"] for member in compute_effective_members(instance)}
+    return [user for user in users if user.pk not in retained]
 
-    @property
-    def removed(self) -> set[Any]:
-        return self.before - self.after
+
+def _send_share_notification(
+    instance: Model, context: tuple[str, str], users: set[Any], actor: Any
+) -> None:
+    """Email users newly granted direct access. Best-effort."""
+    resource_type, resource_name = context
+    try:
+        notification_plugin["service_class"]().send_sharing_notification(
+            resource_type=resource_type,
+            resource_name=resource_name,
+            resource_id=str(instance.pk),
+            shared_by=actor,
+            shared_to=list(users),
+            resource_instance=instance,
+        )
+    except Exception:
+        logger.exception("Failed to send sharing notification for %s", instance.pk)
+
+
+def _send_revoke_notification(
+    instance: Model, context: tuple[str, str], users: list[Any], actor: Any
+) -> None:
+    """Email users whose direct access was revoked. Best-effort."""
+    resource_type, resource_name = context
+    try:
+        notification_plugin["service_class"]().send_access_removed_notification(
+            resource_type=resource_type,
+            resource_name=resource_name,
+            resource_id=str(instance.pk),
+            removed_from=users,
+            removed_by=actor,
+            resource_instance=instance,
+        )
+    except Exception:
+        logger.exception("Failed to send access-removed notification for %s", instance.pk)
 
 
 class ResourceShareManagementMixin:
-    """Adds the shared share-management surface to a resource ViewSet.
-
-    Subclasses declare share axes via :attr:`share_axes`. The default
-    covers ``shared_users`` + ``shared_groups``.
-    """
-
-    share_axes: ClassVar[tuple[str, ...]] = ("shared_users", "shared_groups")
+    """Adds the shared share-management surface to a resource ViewSet."""
 
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
@@ -91,14 +129,61 @@ class ResourceShareManagementMixin:
         users, group-membership for groups) live in
         ``ShareAuthorizationService``.
         """
+        from tenant_account_v2.share_notifications import (
+            notify_resource_group_share_changed,
+        )
         from tenant_account_v2.sharing_helpers import ShareAuthorizationService
 
         resource = self.get_object()  # type: ignore[attr-defined]
         desired = _extract_desired_share_state(request.data)
+        users_before = self._read_axis(resource, "shared_users")
+        groups_before = self._read_axis(resource, "shared_groups")
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
+        # ``_commit`` is the only atomic block on this path, so it has already
+        # committed — the diffs read persisted state and can never announce a
+        # share that rolled back.
+        resource.refresh_from_db()
+        users_after = self._read_axis(resource, "shared_users")
+        groups_after = self._read_axis(resource, "shared_groups")
+        notify_resource_group_share_changed(
+            resource=resource,
+            added=groups_after - groups_before,
+            removed=groups_before - groups_after,
+            actor=request.user,
+        )
+        self._notify_shared_users(
+            resource, users_after - users_before, users_before - users_after, request.user
+        )
         return Response(status=status.HTTP_200_OK)
+
+    def _notify_shared_users(
+        self,
+        instance: Any,
+        added: set[Any],
+        removed: set[Any],
+        actor: Any,
+        /,
+    ) -> None:
+        """Email users granted or denied direct access. Best-effort.
+
+        Resource type and name come from the host's ``OwnerManagementMixin``
+        seam. The share has already committed by the time this runs, so no
+        failure here — a raising seam, a dropped DB connection — may surface
+        as a 500 on a share that succeeded.
+        """
+        try:
+            context = self._notification_context(instance)  # type: ignore[attr-defined]
+            if context is None:
+                return
+            if added:
+                _send_share_notification(instance, context, added, actor)
+            revoked = _users_left_without_access(instance, removed)
+            if revoked:
+                _send_revoke_notification(instance, context, revoked, actor)
+        except Exception:
+            logger.exception("Failed to send share notifications for %s", instance.pk)
 
     @action(detail=True, methods=["get"], url_path="effective-members")
     def effective_members(self, request: Request, pk: str | None = None) -> Response:
@@ -112,36 +197,6 @@ class ResourceShareManagementMixin:
         # ``get_object`` is provided by the DRF ``GenericAPIView`` host class.
         members = compute_effective_members(self.get_object())  # type: ignore[attr-defined]
         return Response(EffectiveMemberSerializer(members, many=True).data)
-
-    def snapshot_share_axes(self, instance: Model) -> dict[str, set[Any]]:
-        """Capture every declared axis's current contents.
-
-        Call BEFORE ``super().partial_update(...)``; pair with
-        :meth:`diff_share_axes` afterward.
-        """
-        return {axis: self._read_axis(instance, axis) for axis in self.share_axes}
-
-    def diff_share_axes(
-        self,
-        instance: Model,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-    ) -> dict[str, AxisDiff]:
-        """Diff each axis that was touched by the request.
-
-        Returns a dict keyed by axis name with only the axes present in
-        ``request_data`` — callers can skip notification fan-out for axes
-        the client did not modify.
-        """
-        instance.refresh_from_db()
-        return {
-            axis: AxisDiff(
-                before=before[axis],
-                after=self._read_axis(instance, axis),
-            )
-            for axis in self.share_axes
-            if axis in request_data
-        }
 
     @staticmethod
     def _read_axis(instance: Model, axis: str) -> set[Any]:
