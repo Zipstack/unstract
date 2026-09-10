@@ -499,6 +499,9 @@ class ExecutionQuerySerializer(Serializer):
         return str(uuid_obj)
 
 
+_UNANNOTATED = object()
+
+
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
@@ -528,7 +531,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "co_owners_count",
         ]
 
-    def get_created_by_email(self, obj):
+    def get_created_by_email(self, obj) -> str | None:
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
 
@@ -539,12 +542,20 @@ class APIDeploymentListSerializer(ModelSerializer):
     def get_co_owners_count(self, obj) -> int:
         return obj.co_owners_count()
 
+    # Both read the list view's annotations when they are there, and fall back
+    # to a query for the callers that serialize a plain queryset. A deployment
+    # that has never run annotates to `None`, so absence is what decides, not
+    # the value.
     def get_run_count(self, instance) -> int:
-        """Get total execution count for this API deployment."""
+        annotated = getattr(instance, "run_count_annotated", _UNANNOTATED)
+        if annotated is not _UNANNOTATED:
+            return annotated
         return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
 
     def get_last_run_time(self, instance) -> str | None:
-        """Get the timestamp of the most recent execution."""
+        annotated = getattr(instance, "last_run_time_annotated", _UNANNOTATED)
+        if annotated is not _UNANNOTATED:
+            return annotated.isoformat() if annotated else None
         last_execution = (
             WorkflowExecution.objects.filter(pipeline_id=instance.id)
             .order_by("-created_at")
