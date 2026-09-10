@@ -1,15 +1,14 @@
 from django.db.models import QuerySet
-from django.shortcuts import get_object_or_404
 from permissions.permission import WorkflowOwnerMutationMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.serializers import WorkflowEndpointSerializer
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.workflow_v2.exceptions import WorkflowDoesNotExistError
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
@@ -98,7 +97,12 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
             Response: The HTTP response containing the serialized list of
                 endpoints.
         """
-        workflow = get_object_or_404(Workflow.objects.for_user(request.user), pk=pk)
-        endpoints = WorkflowEndpointUtils.get_endpoints_for_workflow(workflow.id)
+        # for_user, not a bare get: this action serialises connector_metadata
+        # decrypted, so an unscoped lookup hands any org member another
+        # workflow's credentials. Raises the same 404 the sibling actions do.
+        workflow = Workflow.objects.for_user(request.user).filter(pk=pk).first()
+        if not workflow:
+            raise WorkflowDoesNotExistError
+        endpoints = WorkflowEndpoint.objects.filter(workflow=workflow)
         serializer = WorkflowEndpointSerializer(endpoints, many=True)
         return Response(serializer.data)

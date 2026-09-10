@@ -2,7 +2,9 @@
  * Whether the current user may change a shared resource.
  *
  * Sharing — direct, via group, or org-wide — grants READ only. Owners,
- * co-owners and org admins may edit and delete. The backend is the authority
+ * co-owners and org admins may edit. Delete is usually theirs too, but not
+ * always: any org member may delete a frictionless adapter, so callers gating
+ * delete check `is_friction_less` alongside this. The backend is the authority
  * (`is_workflow_mutator` and the `IsOwner` family); this only decides what the
  * UI offers, so nobody fills in a form that can only fail.
  *

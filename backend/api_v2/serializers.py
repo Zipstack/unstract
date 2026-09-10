@@ -45,6 +45,10 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     # explicitly so ``fields = "__all__"`` continues to expose it. Share
     # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # Carried here as well as on the list serializer: a consumer seeding a
+    # store from a retrieve/create/update response would otherwise see no
+    # is_owner at all, which canEditResource reads as "editable".
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -55,6 +59,10 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return obj.is_owner(request.user) if request else False
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
