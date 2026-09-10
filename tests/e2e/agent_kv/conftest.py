@@ -129,7 +129,17 @@ def submit_raw(
     options: dict[str, object] = {}
     for k, v in fields.items():
         (data if str(k) in JOB_LEVEL_SUBMIT_FIELDS else options)[str(k)] = v
-    if keys is not None:
+    if keys is None:
+        # `extractors` is omitted entirely, so there is nowhere for per-extractor
+        # options to go. Silently dropping them would make a test look like it
+        # exercised a knob it never sent -- and it would still pass, because
+        # these submits are expected to fail on the missing field anyway.
+        assert not options, (
+            f"submit_raw(keys=None) cannot carry extractor options {sorted(options)}; "
+            f"pass a schema, or move the field to JOB_LEVEL_SUBMIT_FIELDS if it "
+            f"belongs there"
+        )
+    else:
         data["extractors"] = json.dumps(
             [{"name": "kv", "keys": keys, "options": options}]
         )
