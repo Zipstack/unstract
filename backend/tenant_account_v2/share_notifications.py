@@ -10,18 +10,15 @@ backend does the ORM and plugin work. Transport is the PG queue, the only one
 there is (UN-4046) — the ``notifications`` queue the notification consumer
 polls.
 
-The group feature sits behind its own Flipt flag, evaluated once here at
-enqueue: a blind Flipt, a missing org, or any dispatch error means no
-notification, never a broken share. Turning the flag off stops new enqueues; a
-message already queued still delivers. Direct-user share and revoke mail
-(``ResourceShareManagementMixin``) is not on this flag — like the co-owner mail
-it reuses, it is gated only by the cloud ``ENABLE_EMAIL_NOTIFICATIONS`` setting.
+A missing org or any dispatch error means no notification, never a broken
+share. Like the direct-user mail in ``ResourceShareManagementMixin`` and the
+co-owner mail it reuses, sending is bounded only by the cloud
+``ENABLE_EMAIL_NOTIFICATIONS`` setting.
 """
 
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Iterable
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any
@@ -29,7 +26,6 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 from tenant_account_v2.shareable_resources import kind_for_instance
-from unstract.flags.feature_flag import check_feature_flag_status
 
 if TYPE_CHECKING:
     from account_v2.models import User
@@ -37,9 +33,6 @@ if TYPE_CHECKING:
     from tenant_account_v2.models import OrganizationGroup
 
 logger = logging.getLogger(__name__)
-
-# Rollout flag for the whole feature — one constant so a grep finds every gate.
-GROUP_NOTIFICATION_FLAG_KEY = "group_sharing_notifications_enabled"
 
 NOTIFY_RESOURCE_SHARED_TASK = "notify_resource_shared_with_group"
 NOTIFY_MEMBERSHIP_CHANGED_TASK = "notify_group_membership_changed"
@@ -103,14 +96,14 @@ def _notify_group_share(
     group_ids = sorted(group.pk for group in groups)
     if not group_ids:
         return
-    # Stamped before the Flipt round-trip below: a member joining inside that
-    # window would be mailed a revocation for access they never held.
+    # Stamped at the moment of the revoke, not at delivery: a member joining
+    # after it would otherwise be mailed about access they never held.
     revoked_at = (
         timezone.now().isoformat() if share_action is ShareAction.REVOKED else None
     )
     organization_id = _organization_slug(resource)
     kind = kind_for_instance(resource)
-    if not organization_id or kind is None or not _feature_enabled(organization_id):
+    if not organization_id or kind is None:
         return
     kwargs: dict[str, Any] = {
         "group_ids": group_ids,
@@ -146,7 +139,7 @@ def notify_group_membership_changed(
     if not recipients:
         return
     organization_id = _organization_slug(group)
-    if not organization_id or not _feature_enabled(organization_id):
+    if not organization_id:
         return
     _dispatch_quietly(
         task_name=NOTIFY_MEMBERSHIP_CHANGED_TASK,
@@ -159,37 +152,6 @@ def notify_group_membership_changed(
         },
         organization_id=organization_id,
     )
-
-
-def _feature_enabled(organization_id: str) -> bool:
-    """Whether group-sharing notifications are on for this org. Fails closed."""
-    # Parse exactly as FliptClient does (``.lower()``, no ``.strip()``) so the
-    # two can never disagree on a value like " true".
-    if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
-        logger.warning(
-            "group-notification: FLIPT_SERVICE_AVAILABLE != true (Flipt blind) "
-            "for org %s; skipping",
-            organization_id,
-        )
-        return False
-    try:
-        enabled = bool(
-            check_feature_flag_status(
-                flag_key=GROUP_NOTIFICATION_FLAG_KEY,
-                entity_id=organization_id,
-                context={"organization_id": organization_id},
-            )
-        )
-    except Exception:
-        logger.warning(
-            "group-notification: Flipt evaluation failed for org %s; skipping",
-            organization_id,
-            exc_info=True,
-        )
-        return False
-    if not enabled:
-        logger.info("group-notification: flag off for org %s; skipping", organization_id)
-    return enabled
 
 
 def _organization_slug(obj: Any) -> str | None:
