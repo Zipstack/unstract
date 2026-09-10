@@ -14,7 +14,8 @@ This module provides a metrics dashboard for monitoring document processing, API
 ### Data Flow
 ```
 Source Tables (usage_v2, page_usage, workflow_execution, workflow_file_execution)
-       ↓ [Celery: hourly tier every 15 min, daily+monthly hourly at :20]
+       ↓ [PG scheduler fires; hourly tier every 15 min, daily+monthly hourly at :20]
+       ↓ [worker-pg-metrics drains dashboard_metric_events → POSTs the internal API]
 Aggregated Tables (EventMetricsHourly → Daily → Monthly)
        ↓
 API Endpoints (/overview/, /summary/, /series/)
@@ -26,7 +27,8 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 | File | Purpose |
 |------|---------|
 | `services.py` | Queries source tables (9 methods, one per metric) |
-| `tasks.py` | Celery tasks for aggregation and cleanup |
+| `tasks.py` | The aggregation and cleanup task bodies (run by both transports) |
+| `internal_views.py` | Internal API the PG consumer POSTs to, which calls `tasks.py` |
 | `views.py` | REST API endpoints |
 | `cache.py` | Redis caching layer (bucket-based MGET) |
 | `models.py` | Aggregated tables (Hourly/Daily/Monthly) |
@@ -39,14 +41,15 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 # --skip-hourly still issues the HOUR queries it skips here.
 python manage.py backfill_metrics --days=30
 
-# Start metrics worker
-celery -A backend worker -Q dashboard_metric_events -l info
+# Start the metrics consumer (PG transport — the default; see "Transport" below)
+(cd workers/ && ./run-worker.sh pg-metrics)
 
-# Start scheduler (for periodic aggregation)
+# Legacy Celery transport — rollback only, needs PG_SCHEDULER_ENABLED=false
+celery -A backend worker -Q dashboard_metric_events -l info
 celery -A backend beat -l info
 ```
 
-### Celery Tasks & Schedule
+### Scheduled Tasks & Schedule
 | Task | Schedule | What It Does |
 |------|----------|--------------|
 | `aggregate_from_sources` | Every 15 min | Aggregates source → **hourly tier only** (`tier=hourly`) |
@@ -77,7 +80,8 @@ celery -A backend beat -l info
 - [Metrics Definitions](#metrics-definitions)
 - [Source Tables](#source-tables)
 - [Aggregated Tables](#aggregated-tables)
-- [Celery Tasks](#celery-tasks)
+- [Scheduled Tasks](#scheduled-tasks)
+- [Transport: how the cron actually fires](#transport-how-the-cron-actually-fires)
 - [API Endpoints](#api-endpoints)
 - [Caching Strategy](#caching-strategy)
 - [Frontend Components](#frontend-components)
@@ -338,13 +342,18 @@ This enables upsert operations during aggregation.
 
 ---
 
-## Celery Tasks
+## Scheduled Tasks
+
+The task bodies live in `tasks.py` and carry `@shared_task`, but **which process fires
+and runs them depends on the transport** — see
+[Transport](#transport-how-the-cron-actually-fires) below. The task name, the queue and
+the schedule are the same on both.
 
 ### Task Configuration
 
 Located in `tasks.py`:
 
-| Task Name | Celery Name | Schedule | Queue | Purpose |
+| Task Name | Task Name (wire) | Schedule | Queue | Purpose |
 |-----------|-------------|----------|-------|---------|
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate the hourly tier (`tier=hourly`) |
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Hourly at :20 UTC | `dashboard_metric_events` | Aggregate the daily and monthly tiers (`tier=daily_monthly`) |
@@ -354,7 +363,9 @@ Located in `tasks.py`:
 
 ### Queue Configuration
 
-In `backend/celery_config.py`:
+The queue name `dashboard_metric_events` is shared by both transports: on the PG
+transport it is a `pg_queue_message` queue, on the Celery transport a RabbitMQ one.
+The routing below is the **Celery** half, in `backend/celery_config.py`:
 
 ```python
 task_queues = [
@@ -367,16 +378,6 @@ task_routes = {
     "dashboard_metrics.cleanup_hourly_data": {"queue": "dashboard_metric_events"},
     "dashboard_metrics.cleanup_daily_data": {"queue": "dashboard_metric_events"},
 }
-```
-
-### Running the Worker
-
-```bash
-# Start the dashboard metrics worker
-celery -A backend worker --loglevel=info -Q dashboard_metric_events
-
-# Start Celery Beat for periodic tasks
-celery -A backend beat --loglevel=info
 ```
 
 ### Aggregation Task Details
@@ -477,6 +478,85 @@ what lets a *later* release add a kwarg without breaking pods running this one.
 62, not 60: the rollup window reaches back to the first of the previous month, which is
 61 days before a run on the 31st. `--skip-monthly` is deliberate — repair daily and let
 the rollup derive monthly from it.
+
+---
+
+## Transport: how the cron actually fires
+
+There are two transports. **The PG queue is the default and the one a current deploy
+uses**; Celery Beat is the rollback target. Both run the same function in the backend
+process — the difference is what schedules it and what carries it.
+
+### Schedule rows are dual-written
+
+Every `dashboard_metrics.*` schedule exists as a **pair** of rows, written from a single
+spec by the same migration so the two cannot drift: a `django_celery_beat.PeriodicTask`
+and a `pg_queue.PgPeriodicTask`. See `migrations/0006_split_aggregation_schedule.py`
+(`split_schedules`). A row's `pg_owned` flag says which scheduler fires it.
+
+### PG transport (default)
+
+```text
+pg_periodic_task row (pg_owned=true, cron_string)
+       ↓  leader-elected orchestrator tick evaluates the cron
+          workers/queue_backend/pg_queue/pg_scheduler.py :: dispatch_due_periodic_tasks
+       ↓  enqueue + advance next_run_at IN ONE TRANSACTION (a crash cannot double-fire)
+pg_queue_message on `dashboard_metric_events`
+       ↓  worker-pg-metrics (a generic pg-queue-consumer pinned to that queue)
+workers/scheduler/dashboard_metrics_tasks.py  ← an HTTP proxy, NOT the real work
+       ↓  POST v1/dashboard-metrics/aggregate/  (internal API auth, no X-Organization-ID)
+backend/dashboard_metrics/internal_views.py
+       ↓  calls tasks.py verbatim
+aggregate_metrics_from_sources(...)
+```
+
+The workers image has **no Django**, so the ORM-heavy aggregation cannot run there —
+hence the proxy hop. The windows, the Redis lock and the upsert logic are reused
+unchanged, not reimplemented.
+
+`worker-pg-metrics` is a dedicated service rather than another queue on
+`worker-pg-scheduler` because the consumer's health heartbeat freezes while a task runs,
+so `HEALTH_STALE` doubles as an upper bound on one task's wall clock. The aggregation
+runs for minutes and would trip the scheduler's 240s liveness bound; the metrics
+consumer is sized at 900s/960s. See `docker/docker-compose.yaml` (`worker-pg-metrics`).
+
+### Celery transport (legacy / rollback)
+
+Beat reads the `PeriodicTask` row and publishes over RabbitMQ to
+`celery -A backend worker -Q dashboard_metric_events`, which runs the task body
+in-process. No proxy hop.
+
+### Which one is live
+
+`converge_pg_scheduler` decides, and `backend/entrypoint.sh` runs it on **every backend
+start**, so ownership is a values change rather than a remembered procedure:
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `PG_SCHEDULER_ENABLED` | **`true`** | PG scheduler owns the pipeline schedules; matching Beat rows are disabled |
+| `PG_SCHEDULER_ADOPT_PERIODICS` | unset (`false`) | Must be `true` to also move the `dashboard_metrics.*` rows — it passes `--periodics` |
+
+Both gates are required for the metrics cron. The periodics are separate because
+adopting them needs `worker-pg-metrics` deployed first. The default compose stack sets
+`PG_SCHEDULER_ADOPT_PERIODICS=true` and defines **no** `celery-beat` or `worker-metrics`
+service at all.
+
+> **Rolling back is not just the env var.** Converging to Beat restores *ownership*, not
+> *capacity*. Beat publishes to RabbitMQ, so a released schedule fires again only if
+> `workerMetrics` is actually running. Flip it back on in the **same** change that sets
+> `PG_SCHEDULER_ENABLED=false`, or you have moved the outage rather than fixed it.
+
+### Failure modes worth knowing
+
+- On the PG transport a periodic is **fire-and-forget** — nothing records a task status.
+  `MAX_ATTEMPTS=1`, so a raised exception is logged and dropped rather than retried; the
+  next cron tick supersedes it. Severity in the logs is the only alerting signal, which
+  is why `dashboard_metrics_tasks.py` logs at ERROR rather than raising.
+- The backend's `autoretry_for=(DatabaseError, OperationalError)` is a **no-op on the PG
+  path** — it is Celery machinery, and the internal-HTTP call is not a Celery task.
+- A schedule adopted with no PG scheduler running, or released with `workerMetrics`
+  scaled to zero, has **no firer**: no error, no queue depth, no failed pod. Check
+  `pg_owned` against what is actually deployed.
 
 ---
 
@@ -732,7 +812,7 @@ uv sync
 ```
 
 Required packages in `pyproject.toml`:
-- `django-celery-beat` - For periodic task scheduling
+- `django-celery-beat` - Holds the Beat half of every schedule row (see [Transport](#transport-how-the-cron-actually-fires)); still required even when the PG scheduler is the firer
 - `django-redis` - For MGET/pipeline operations
 
 ### 2. Run Migrations
@@ -743,7 +823,7 @@ python manage.py migrate dashboard_metrics
 
 This creates:
 - Three aggregated tables
-- Periodic task schedules in `django_celery_beat`
+- Periodic task schedules — written to **both** `django_celery_beat.PeriodicTask` and `pg_queue.PgPeriodicTask`, from one spec
 
 ### 3. Backfill Historical Data
 
@@ -760,6 +840,20 @@ python manage.py backfill_metrics --days=7 --dry-run
 
 ### 4. Start Workers
 
+The PG transport is the default. It needs the metrics consumer, and the schedule rows
+adopted onto the PG scheduler (`PG_SCHEDULER_ENABLED=true` **and**
+`PG_SCHEDULER_ADOPT_PERIODICS=true`, which `entrypoint.sh` converges on backend start):
+
+```bash
+# Dashboard metrics consumer — drains dashboard_metric_events off pg_queue
+(cd workers/ && ./run-worker.sh pg-metrics)
+```
+
+The scheduler tick itself is leader-elected inside the reaper/orchestrator loop, so
+there is no separate Beat-equivalent process to start.
+
+Celery transport, for rollback only — requires `PG_SCHEDULER_ENABLED=false`:
+
 ```bash
 # Terminal 1: Dashboard metrics worker
 celery -A backend worker --loglevel=info -Q dashboard_metric_events
@@ -771,9 +865,16 @@ celery -A backend beat --loglevel=info
 ### 5. Verify Setup
 
 ```bash
-# Check periodic tasks are registered
+# Check periodic tasks are registered, and WHICH scheduler owns them.
+# pg_owned=True  -> the PG scheduler fires it (the Beat twin should be disabled)
+# pg_owned=False -> Celery Beat fires it, and workerMetrics must be running
 python manage.py shell -c "
 from django_celery_beat.models import PeriodicTask
+from pg_queue.models import PgPeriodicTask
+print('-- pg_queue (default transport) --')
+for t in PgPeriodicTask.objects.filter(name__startswith='dashboard'):
+    print(f'{t.name}: enabled={t.enabled} pg_owned={t.pg_owned} cron={t.cron_string}')
+print('-- celery beat (rollback transport) --')
 for t in PeriodicTask.objects.filter(name__startswith='dashboard'):
     print(f'{t.name}: enabled={t.enabled}')
 "
@@ -822,11 +923,19 @@ caveats that do not fit one line):
 **Fix**:
 1. Check source tables have data
 2. Run backfill command
-3. Verify Celery worker is running
+3. Verify the metrics consumer is running — `worker-pg-metrics` on the default
+   transport, `workerMetrics` if you have rolled back to Celery
 
-#### 3. Celery task not running
-**Cause**: Task not routed to correct queue
-**Fix**: Ensure `celery_config.py` has the task route:
+#### 3. Aggregation task never runs
+**Cause (PG transport, most common)**: the schedule has **no firer**. This is silent —
+no error, no queue depth, no failed pod.
+**Fix**: check ownership matches what is deployed (see step 5 of
+[Setup](#5-verify-setup)). `pg_owned=False` with no `workerMetrics` running, or
+`pg_owned=True` with no PG scheduler, both fire nothing. Ownership is converged from
+`PG_SCHEDULER_ENABLED` + `PG_SCHEDULER_ADOPT_PERIODICS` on backend start.
+
+**Cause (Celery transport)**: task not routed to the correct queue.
+**Fix**: ensure `celery_config.py` has the task route:
 ```python
 "dashboard_metrics.aggregate_from_sources": {"queue": "dashboard_metric_events"},
 ```
@@ -880,7 +989,9 @@ backend/dashboard_metrics/
 ├── models.py                   # EventMetricsHourly/Daily/Monthly models
 ├── serializers.py              # DRF serializers
 ├── services.py                 # MetricsQueryService (source table queries)
-├── tasks.py                    # Celery tasks (aggregation, cleanup)
+├── tasks.py                    # Task bodies (aggregation, cleanup) — both transports
+├── internal_urls.py            # Internal API routes (PG transport)
+├── internal_views.py           # Internal API views the PG consumer POSTs to
 ├── urls.py                     # URL routing
 ├── views.py                    # API ViewSet
 ├── README.md                   # This file
@@ -889,8 +1000,12 @@ backend/dashboard_metrics/
 │       └── backfill_metrics.py # Backfill historical data
 ├── migrations/
 │   ├── 0001_initial.py                    # Create 3 aggregation tables
-│   └── 0002_setup_periodic_tasks.py       # Register Celery Beat schedules
-└── tests/
+│   ├── 0002_setup_periodic_tasks.py       # Register the Beat schedules
+│   ├── 0003_alter_eventmetricsdaily_organization_and_more.py
+│   ├── 0004_pg_periodic_tasks.py          # Mirror the schedules onto pg_queue
+│   ├── 0005_add_reconciliation_task.py    # Daily 04:40 UTC 7-day repair pass
+│   └── 0006_split_aggregation_schedule.py # Split aggregation into two rows by tier
+└── tests/                      # 9 suites — tiers, dispatch, prefilter, backfill, ...
     └── test_tasks.py
 ```
 
