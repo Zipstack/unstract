@@ -29,10 +29,12 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
 
     serializer_class = WorkflowFileExecutionSerializer
     lookup_field = "id"
-    # Backward compat: workers may call without X-Organization-ID during
-    # rolling deployments. Safe because internal APIs require service API key
-    # and get_queryset() applies org filtering when header is present.
-    # Remove once all workers reliably pass X-Organization-ID.
+    # OrganizationFilterBackend is off here. Unlike the other viewsets with
+    # this pattern, get_object() below does not go through get_queryset() — it
+    # builds its own queryset to skip the 3-table JOIN — so the two scope
+    # independently, each via filter_queryset_by_organization, which fails
+    # closed. X-Organization-ID is therefore required in practice on both
+    # paths: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_object(self):

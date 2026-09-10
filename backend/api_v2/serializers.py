@@ -29,7 +29,7 @@ from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     serialize_owner_refs,
 )
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
@@ -83,11 +83,6 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def validate_display_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Display name")
-
-    def validate_description(self, value: str) -> str:
-        if value is None:
-            return value
-        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
@@ -504,6 +499,9 @@ class ExecutionQuerySerializer(Serializer):
         return str(uuid_obj)
 
 
+_UNANNOTATED = object()
+
+
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
@@ -535,7 +533,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "owner_emails",
         ]
 
-    def get_created_by_email(self, obj):
+    def get_created_by_email(self, obj) -> str | None:
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
 
@@ -551,12 +549,20 @@ class APIDeploymentListSerializer(ModelSerializer):
         # (UN-2202) and stays the service account on platform-key creates.
         return obj.owner_emails()
 
+    # Both read the list view's annotations when they are there, and fall back
+    # to a query for the callers that serialize a plain queryset. A deployment
+    # that has never run annotates to `None`, so absence is what decides, not
+    # the value.
     def get_run_count(self, instance) -> int:
-        """Get total execution count for this API deployment."""
+        annotated = getattr(instance, "run_count_annotated", _UNANNOTATED)
+        if annotated is not _UNANNOTATED:
+            return annotated
         return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
 
     def get_last_run_time(self, instance) -> str | None:
-        """Get the timestamp of the most recent execution."""
+        annotated = getattr(instance, "last_run_time_annotated", _UNANNOTATED)
+        if annotated is not _UNANNOTATED:
+            return annotated.isoformat() if annotated else None
         last_execution = (
             WorkflowExecution.objects.filter(pipeline_id=instance.id)
             .order_by("-created_at")
