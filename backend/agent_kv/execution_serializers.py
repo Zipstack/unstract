@@ -7,13 +7,18 @@ from django.conf import settings
 from rest_framework import serializers
 from unstract.agent_kv_schema import SchemaError, compile_schema
 
+from agent_kv.constants import V1_EXTRACTOR_NAME
+
 ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".tiff"}
 PDF_LIKE = {".pdf"}
 IMAGE_LIKE = {".png", ".jpg", ".jpeg", ".tiff"}
 EXTRACTION_MODES = ("whole-doc", "per-page")
 
 
-SUPPORTED_EXTRACTORS = ("kv",)
+# Derived, not repeated: the result and status documents key their payloads by
+# V1_EXTRACTOR_NAME, so a second literal here would let the serializer accept a
+# name the responses file under something else.
+SUPPORTED_EXTRACTORS = (V1_EXTRACTOR_NAME,)
 
 
 class KVOptionsSerializer(serializers.Serializer):
