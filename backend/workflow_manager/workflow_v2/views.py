@@ -94,6 +94,7 @@ class WorkflowViewSet(
             "update",
             "add_co_owner",
             "remove_co_owner",
+            "clear_file_marker",
         ]:
             return [IsOwner()]
 
