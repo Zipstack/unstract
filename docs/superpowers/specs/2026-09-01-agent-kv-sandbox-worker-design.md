@@ -132,11 +132,20 @@ assertions, mutation-checked). Compose/dev mirrors what it can (`read_only`,
 ### 8a. Accepted v1 residual — arbitrary in-pod file reads (R12)
 
 Generated calculation code legitimately needs `open()` (it reads its input JSON and
-writes its output JSONL), and the AST gate's import allowlist includes `pathlib` — so
-untrusted code **can read any world-readable file in its own pod** and emit the
-contents as a calculation row. This is **not robustly closable at the AST layer**
-(`open`, `pathlib`, `io`, `json.load(open(...))` are all needed or reachable), so v1
-**accepts it** as a bounded residual, contained by layers 2–5 rather than layer 1:
+writes its output JSONL). `open` is a **builtin** — it does not pass through the import
+allowlist, and it cannot be denylisted without breaking the runner stub contract the
+codegen prompts are written against. So untrusted code **can read a world-readable file
+in its own pod** and emit the contents as a calculation row. This is **not robustly
+closable at the AST layer** (`open` and `json.load(open(...))` are both needed), so v1
+**accepts it** as a bounded residual, contained by layers 2–5 rather than layer 1.
+
+**Scope correction (2026-09-10, confirmed against `workers/sandbox/gate.py`).** An earlier
+revision of this section claimed the allowlist includes `pathlib`. It does not. The
+allowlist is exactly `{json, math, statistics, decimal, datetime, re, collections,
+itertools, functools, sys}` — `pathlib`, `os`, `io`, `socket` and `urllib` are all
+**outside** it. The residual is therefore a **single read of an already-known path**, not
+directory traversal (no listing helper is reachable) and not exfiltration (no network
+module is reachable). Containment:
 
 - the pod carries **no secrets** (§8 / R11 — no LLM/OCR/storage creds, and critically
   not the platform master `ENCRYPTION_KEY`; only its own broker/result-backend DB

@@ -808,10 +808,13 @@ beyond `docker compose up`:
     deferred syscall-sandbox mitigation (see the accepted v1 residual below). Do not
     treat an AST-gate pass alone as proof generated code is safe.
 
-    **Accepted v1 residual (arbitrary in-pod file reads):** because generated code
-    legitimately needs `open()`/`pathlib` for its input and output files, untrusted
-    calculation code can read world-readable files inside its own sandbox pod and
-    return the contents to the submitter. This is contained — not by the AST gate, but
+    **Accepted v1 residual (in-pod file reads):** because generated code
+    legitimately needs the `open()` builtin for its input and output files, untrusted
+    calculation code can read a world-readable file inside its own sandbox pod and
+    return the contents to the submitter. The import allowlist is exactly `{json, math,
+    statistics, decimal, datetime, re, collections, itertools, functools, sys}` —
+    `pathlib`, `os`, `io`, `socket` and `urllib` are all outside it, so this is a single
+    read of a known path, not directory traversal and not an exfiltration path. This is contained — not by the AST gate, but
     by the pod's layers 2–5: no secrets in the pod (not even the platform
     `ENCRYPTION_KEY`), non-root on a read-only rootfs, default-deny egress (no
     exfiltration), per-job isolation, and results returned only to the submitting

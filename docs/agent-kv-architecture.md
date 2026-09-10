@@ -126,9 +126,13 @@ trusting the client):
 The sandbox receives only `{record JSON + generated code}` — no document, no schema, no
 tenant identifiers; output is validated JSONL, row- and byte-capped.
 
-**Accepted v1 residual (R12):** generated code legitimately needs `open()`/`pathlib`, so
-it can read a world-readable file *in its own pod* and return it to the submitting
-customer. Contained by layers 2–5 (no secrets, non-root read-only rootfs, no egress,
+**Accepted v1 residual (R12):** generated code legitimately needs the `open()` builtin
+(it reads its input JSON and writes its output JSONL), so it can read a world-readable
+file *in its own pod* and return it to the submitting customer. The import allowlist is
+exactly `{json, math, statistics, decimal, datetime, re, collections, itertools,
+functools, sys}` — `pathlib`, `os`, `io`, `socket` and `urllib` are all **outside** it, so
+the residual is a **single read of a known path**, not directory traversal and not an
+exfiltration path. Contained by layers 2–5 (no secrets, non-root read-only rootfs, no egress,
 per-job tempdir, results only to the caller's own key) → worst case is disclosure of a
 **non-sensitive** container file to the caller who submitted the job. This is why the
 default-deny egress and no-secrets invariants are load-bearing and must not be relaxed.
