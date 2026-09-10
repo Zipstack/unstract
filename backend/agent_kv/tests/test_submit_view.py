@@ -610,3 +610,98 @@ def test_plugin_without_a_service_class_still_proceeds(
     resp = ev.SubmitView.as_view()(_authed_post())
 
     assert resp.status_code == 429  # reached the concurrency limiter, not a 500
+
+
+# ---------------------------------------------------------------------------
+# Integration: the REAL serializer through the REAL view.
+#
+# Every other test in this module patches SubmitSerializer and feeds the view a
+# `validated_data` built by _valid_validated_data() -- so the view is asserted
+# against a shape this file makes up, not the one the serializer actually
+# emits. The serializer suite has the mirror-image blind spot: it validates
+# payloads and never runs a view. Both pass even if the two disagree, which is
+# precisely the seam an extractor-scoped wire format (§7.0) moves.
+#
+# This test builds a real multipart upload, runs it through the real serializer
+# and the real view, and asserts what reaches dispatch_job -- the frozen
+# OSS<->cloud contract on the far side.
+# ---------------------------------------------------------------------------
+def _real_multipart_post(extractors, **job_level):
+    import json as _json  # noqa: PLC0415
+    import os as _os  # noqa: PLC0415
+
+    from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: PLC0415
+
+    fixture = _os.path.join(_os.path.dirname(__file__), "fixtures", "two_page.pdf")
+    with open(fixture, "rb") as fh:
+        upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
+    payload = {"file": upload, "extractors": _json.dumps(extractors), **job_level}
+    req = APIRequestFactory().post("/agent-kv/", payload, format="multipart")
+    req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
+    return req
+
+
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)  # autospec: see _stamp_created_at
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_real_serializer_through_real_view_reaches_dispatch_intact(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
+):
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+    schema = {"total": {"description": "Grand total"}}
+
+    resp = ev.SubmitView.as_view()(
+        _real_multipart_post(
+            [{"name": "kv", "keys": schema,
+              "options": {"qa": False, "extraction_mode": "per-page"}}],
+            page_start=2, page_end=5,
+        )
+    )
+
+    assert resp.status_code == 202, resp.data
+    kwargs = m_dispatch.call_args.kwargs
+    # The extractor's own schema is what the engine is asked to extract...
+    assert kwargs["schema"] == schema
+    # ...its options survive the round trip with defaults filled in...
+    assert kwargs["options"]["qa"] is False
+    assert kwargs["options"]["extraction_mode"] == "per-page"
+    assert kwargs["options"]["challenge"] is True  # untouched default
+    # ...and the job-level page range is folded into options, because that is
+    # where the engine reads it from (the frozen executor_params contract).
+    assert kwargs["options"]["page_start"] == 2
+    assert kwargs["options"]["page_end"] == 5
+
+
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m_rate):
+    """End-to-end proof of the hard switch: a caller on the pre-§7.0 format gets
+    a 400 from the real stack, not a job that quietly ran with defaults."""
+    import json as _json  # noqa: PLC0415
+    import os as _os  # noqa: PLC0415
+
+    from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: PLC0415
+
+    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    fixture = _os.path.join(_os.path.dirname(__file__), "fixtures", "two_page.pdf")
+    with open(fixture, "rb") as fh:
+        upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")
+    req = APIRequestFactory().post(
+        "/agent-kv/",
+        {"file": upload, "keys": _json.dumps({"total": {"description": "T"}}),
+         "qa": "false"},
+        format="multipart",
+    )
+    req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
+
+    resp = ev.SubmitView.as_view()(req)
+
+    assert resp.status_code == 400
+    assert "extractors" in str(resp.data)
