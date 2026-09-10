@@ -190,7 +190,7 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 ```json
 {
   "job_id": "5b6e9b0a-...",
-  "status": "DISPATCHED",
+  "status": "dispatched",
   "status_url": "/agent-kv/5b6e9b0a-...",
   "created_at": "2026-08-28T10:15:00.123456+00:00"
 }
@@ -203,6 +203,13 @@ endpoint.
 `501`: [engine unavailable](#11-when-the-engine-is-unavailable-501-behavior).
 `429`: rate-limited (per-key request rate, or per-org concurrent-job limit — see
 [§13](#13-environment-reference)).
+`402`: the organization's subscription does not permit the request — its trial has
+expired, or the subscription is inactive. Nothing is dispatched and nothing is
+billed. This is the same gate, the same policy and the same response bodies an
+API deployment execute gets from the cloud subscription middleware; Agent-KV
+applies it in the submit view instead, because its URL carries no org segment for
+that middleware to resolve an organization from. Cloud-only: an OSS-only
+deployment returns `501` before ever reaching it.
 `400`: serializer/schema validation failure — nothing billed.
 
 ### Example

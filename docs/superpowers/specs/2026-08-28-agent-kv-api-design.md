@@ -295,8 +295,23 @@ key prevent stale-config replay (the FileHistory lesson).
 
 ### 6.6 Billing integrity
 
-- Worst-case job spend bounded pre-dispatch (page cap × known pricing); admission gated
-  by the cloud subscription plugin — **fail-closed**. Precision from review: the only
+- **Implemented 2026-09-10, narrower than specified below.** We follow what API
+  deployments actually do rather than the reserve scheme this section described:
+  `SubmitView` calls the cloud `agent_kv` plugin's `service_class` gate, which calls
+  the same `SubscriptionHelper.get_subscription` + `verify_subscription` that cloud's
+  `SubscriptionMiddleware` calls for `/deployment/api/...`. Same policy, same 402
+  bodies, no restatement — so the two paths cannot drift. It is applied in the view
+  because that middleware resolves the org from the URL, and Agent-KV's URL carries no
+  org segment; the org lives in the Bearer key, so the middleware resolved `None` and
+  admitted every request. Two consequences worth stating plainly: **(a)** there is no
+  spend reservation — an org with a valid subscription can still run unlimited jobs,
+  because Unstract enforces no such thing anywhere; **(b)** an org with **no**
+  subscription row is admitted, matching the middleware exactly (and differing from
+  `validate_etl_run`, which denies). Both are properties of the shared policy, not of
+  Agent-KV, and tightening them should tighten it for every caller at once.
+- *(Original intent, not implemented:)* Worst-case job spend bounded pre-dispatch
+  (page cap × known pricing); admission gated by the cloud subscription plugin —
+  **fail-closed**. Precision from review: the only
   OSS subscription seam today (`utils/subscription_usage_decorator.py`) is fail-*open*
   and keyed on file executions; the fail-closed reserve check for agent-kv is **new**,
   provided by the cloud plugin and invoked by the submit view only when the §5.1

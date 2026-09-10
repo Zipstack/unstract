@@ -487,3 +487,112 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
         "error": "LLM provider timed out",
     }
     assert not m_sleep.called
+
+
+# ---------------------------------------------------------------------------
+# Subscription admission (§6.6, following the API deployment path).
+#
+# Deployments are billed-gated by cloud's SubscriptionMiddleware, which resolves
+# the org from the URL (/deployment/api/{org_name}/...). Agent-KV's URL carries
+# no org segment -- the org lives in the Bearer key -- so that middleware
+# resolves org_id=None for these requests and lets every one of them through.
+# The gate is therefore invoked here, after key validation.
+# ---------------------------------------------------------------------------
+def _key_with_org(slug="acme-slug", pk=42):
+    """A key whose FK pk and org slug are deliberately DIFFERENT values.
+
+    `Subscription.organization_id` is a CharField holding the slug; the FK pk is
+    an int. Making them differ is what lets the tests below detect the wrong one
+    being passed -- with a single shared value the assertion would pass either
+    way and the gate could silently never match a subscription row.
+    """
+    from account_v2.models import Organization  # noqa: PLC0415
+
+    key = AgentKVKey(name="k", is_active=True)
+    key.organization = Organization(id=pk, organization_id=slug)
+    return key
+
+
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(AgentKVKey, "objects")
+def test_subscription_denial_is_returned_verbatim_and_starts_no_work(
+    m_keys, m_rate, m_serializer_cls, m_limiter, m_stage, m_save
+):
+    """A 402 from the gate must reach the client unchanged -- same status and
+    body an API deployment returns for the same subscription state -- and must
+    stop the request before any billable work, slot or row."""
+    from django.http import HttpResponse  # noqa: PLC0415
+
+    m_keys.get.return_value = _key_with_org()
+    _mock_serializer(m_serializer_cls)
+    denial = HttpResponse(b'{"errors": "Trial period expired."}', status=402)
+    gate = mock.Mock()
+    gate.check.return_value = denial
+
+    with mock.patch.object(
+        ev, "get_plugin", return_value={"module": object(), "service_class": lambda: gate}
+    ):
+        resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 402
+    assert not m_save.called
+    assert not m_stage.called
+    assert not m_limiter.check_and_acquire.called
+
+
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(AgentKVKey, "objects")
+def test_subscription_gate_is_passed_the_org_slug_not_the_fk_pk(
+    m_keys, m_rate, m_serializer_cls, m_limiter
+):
+    """The gate must receive `key.organization.organization_id` (the slug that
+    `Subscription.organization_id` is keyed on), NOT `key.organization_id` (the
+    Organization FK primary key).
+
+    Passing the pk matches no subscription row, and the shared policy reads "no
+    row" as "nothing to enforce" -- so the gate would admit every request while
+    looking fully wired. This test is the only thing standing between that
+    one-attribute slip and a billing gate that never fires.
+    """
+    m_keys.get.return_value = _key_with_org(slug="acme-slug", pk=42)
+    _mock_serializer(m_serializer_cls)
+    m_limiter.check_and_acquire.return_value = False  # stop early; gate already ran
+    gate = mock.Mock()
+    gate.check.return_value = None
+
+    with mock.patch.object(
+        ev, "get_plugin", return_value={"module": object(), "service_class": lambda: gate}
+    ):
+        ev.SubmitView.as_view()(_authed_post())
+
+    assert gate.check.called
+    passed_org = gate.check.call_args.args[0]
+    assert passed_org == "acme-slug", f"gate got {passed_org!r}, expected the org slug"
+    assert passed_org != 42
+
+
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_plugin_without_a_service_class_still_proceeds(
+    m_keys, m_plugin, m_rate, m_serializer_cls, m_limiter
+):
+    """A cloud build predating the gate exposes no `service_class`. The view
+    must degrade to today's behaviour rather than 500 -- the capability probe
+    above already 501s an engine-less deployment, so this only covers the
+    version skew between an older plugin and a newer backend."""
+    m_keys.get.return_value = _key_with_org()
+    _mock_serializer(m_serializer_cls)
+    m_limiter.check_and_acquire.return_value = False
+
+    resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 429  # reached the concurrency limiter, not a 500

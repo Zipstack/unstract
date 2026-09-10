@@ -85,10 +85,37 @@ class SubmitView(APIView):
 
     @AgentKVKeyValidator.validate_api_key
     def post(self, request, *args, agent_kv_key=None, **kwargs):
-        if not get_plugin("agent_kv"):
+        plugin = get_plugin("agent_kv")
+        if not plugin:
             raise EngineUnavailable()
         if not check_key_rate(str(agent_kv_key.id)):
             raise RateLimited()
+
+        # Subscription admission (§6.6). A submit dispatches paid work, so it is
+        # gated exactly as an API deployment execute is -- same policy, same 402
+        # bodies -- via the cloud plugin's gate, which calls the very
+        # `SubscriptionHelper` that cloud's `SubscriptionMiddleware` calls.
+        #
+        # Why here and not in that middleware: it resolves the org from the URL
+        # (`/deployment/api/{org_name}/...`). Agent-KV's URL carries no org
+        # segment -- the org is inside the Bearer key -- so the middleware's
+        # `get_organization_id` returns None for these requests, finds no
+        # subscription row, and admits every one of them. This is the first
+        # point where the org is actually known.
+        #
+        # `organization.organization_id` is the org SLUG -- the CharField
+        # `Subscription.organization_id` is keyed on, and what the deployment
+        # URL supplies as `org_name`. NOT `agent_kv_key.organization_id`, which
+        # is the Organization FK primary key: that matches no row, and the
+        # shared policy reads "no row" as "nothing to enforce", so the gate
+        # would silently admit everything while looking correctly wired.
+        gate_factory = plugin.get("service_class")
+        if gate_factory:  # absent on a cloud build predating the gate
+            denied = gate_factory().check(
+                agent_kv_key.organization.organization_id, request
+            )
+            if denied is not None:
+                return denied
 
         data = request.data.copy()
         keys_part = data.get("keys")

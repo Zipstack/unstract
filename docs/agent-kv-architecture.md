@@ -195,11 +195,21 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
 - **Status:** unit-tested and runs whenever a job completes; asserting a `usage_v2` row
   end-to-end is a staging check (not separately asserted in the compose run).
 
+**Subscription admission — built** (2026-09-10, following the API deployment path):
+`SubmitView` gates on the org's subscription via the cloud plugin's `service_class`,
+reusing the same `SubscriptionHelper` policy cloud's `SubscriptionMiddleware` applies to
+`/deployment/api/...` — same 402 bodies, no restatement. It runs in the view rather than
+that middleware because Agent-KV's URL has no org segment for the middleware to resolve
+from, so it resolved `None` and admitted everything. Expired trial or inactive
+subscription → **402**, nothing dispatched or billed.
+
 **Not built — deferred to the billing sub-project:**
-- **Fail-closed pre-dispatch admission / quota reserve** (design §6.6): submit today gates
-  on capability (501), per-key rate (429), schema caps, and concurrency (429) — but **not**
-  a billing quota reservation. A job can run and record usage even if the org is over
-  quota; enforcement is deferred.
+- **Spend reservation.** The gate checks subscription *status*, not budget: an org inside
+  a valid subscription can still run unlimited jobs. Unstract enforces no spend
+  reservation anywhere, so matching the platform means not inventing one here.
+- **No-subscription-row orgs are admitted**, matching the middleware exactly (and
+  differing from `validate_etl_run`, which denies). A hole in the shared policy rather
+  than in Agent-KV; worth closing for all callers at once.
 - **Stripe / invoicing** (billing sub-project): not started — turning recorded usage into
   charges.
 
