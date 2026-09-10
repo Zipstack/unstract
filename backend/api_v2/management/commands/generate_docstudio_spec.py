@@ -37,7 +37,11 @@ REGENERATE = "uv run python manage.py generate_docstudio_spec"
 # is exactly `TENANT_SUBFOLDER_PREFIX`, so with a `startswith` over the union an
 # `API_DEPLOYMENT_PATH_PREFIX` pointed anywhere under the tenant mount --
 # `api/v1/unstract/deploy`, say -- passed the gate this comment says it fails.
-PUBLISHED_PATH_PREFIXES = ("deployment", "api/v1/unstract/whoami")
+PUBLISHED_PATH_PREFIXES = (
+    "deployment",
+    "api/v1/unstract/whoami",
+    "api/v1/unstract/{org_id}/api/deployment",
+)
 # Named in every failure message: the repos that regenerate from this file are
 # the ones a spec change actually breaks, and nothing there watches this repo.
 DOWNSTREAM = (
