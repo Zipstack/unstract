@@ -41,8 +41,10 @@ Frontend Dashboard (MetricsSummary, MetricsChart, MetricsTable)
 # --skip-hourly still issues the HOUR queries it skips here.
 python manage.py backfill_metrics --days=30
 
-# Start the metrics consumer (PG transport — the default; see "Transport" below)
+# PG transport (the default; see "Transport" below) — BOTH are required.
+# The consumer drains the queue; the reaper is what actually fires the schedule.
 (cd workers/ && ./run-worker.sh pg-metrics)
+(cd workers/ && ./run-worker.sh reaper)
 
 # Legacy Celery transport — rollback only, needs PG_SCHEDULER_ENABLED=false
 celery -A backend worker -Q dashboard_metric_events -l info
@@ -84,7 +86,7 @@ celery -A backend beat -l info
 - [Transport: how the cron actually fires](#transport-how-the-cron-actually-fires)
 - [API Endpoints](#api-endpoints)
 - [Caching Strategy](#caching-strategy)
-- [Frontend Components](#frontend-components)
+- [UI Data Flow](#ui-data-flow--what-shows-where)
 - [Setup & Configuration](#setup--configuration)
 - [Management Commands](#management-commands)
 
@@ -174,7 +176,7 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 - If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
 - A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier re-queries the last 24h on every run regardless of tier or window, so an hourly gap shorter than 24h repairs itself on the next tick; only one older than 24h needs `backfill_metrics`.
 - The 7-day window is also the ceiling on lag, not just on downtime. `documents_processed` and `failed_pages` filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
-- Celery tasks have `max_retries=3` with exponential backoff.
+- Retry behaviour depends on the transport: on Celery the tasks carry `max_retries=3` with exponential backoff; on the PG transport (the default) there is **no** retry — `MAX_ATTEMPTS=1`, and the next scheduled tick supersedes a failed run. See [Transport](#transport-how-the-cron-actually-fires).
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
 ---
@@ -353,7 +355,7 @@ the schedule are the same on both.
 
 Located in `tasks.py`:
 
-| Task Name | Task Name (wire) | Schedule | Queue | Purpose |
+| Python Function | Registered Task Name | Schedule | Queue | Purpose |
 |-----------|-------------|----------|-------|---------|
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate the hourly tier (`tier=hourly`) |
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Hourly at :20 UTC | `dashboard_metric_events` | Aggregate the daily and monthly tiers (`tier=daily_monthly`) |
@@ -498,8 +500,8 @@ and a `pg_queue.PgPeriodicTask`. See `migrations/0006_split_aggregation_schedule
 
 ```text
 pg_periodic_task row (pg_owned=true, cron_string)
-       ↓  leader-elected orchestrator tick evaluates the cron
-          workers/queue_backend/pg_queue/pg_scheduler.py :: dispatch_due_periodic_tasks
+       ↓  leader-elected orchestrator tick evaluates the cron — this is worker-pg-reaper
+          workers/queue_backend/pg_queue/reaper.py -> pg_scheduler.dispatch_due_periodic_tasks
        ↓  enqueue + advance next_run_at IN ONE TRANSACTION (a crash cannot double-fire)
 pg_queue_message on `dashboard_metric_events`
        ↓  worker-pg-metrics (a generic pg-queue-consumer pinned to that queue)
@@ -554,9 +556,11 @@ service at all.
   is why `dashboard_metrics_tasks.py` logs at ERROR rather than raising.
 - The backend's `autoretry_for=(DatabaseError, OperationalError)` is a **no-op on the PG
   path** — it is Celery machinery, and the internal-HTTP call is not a Celery task.
-- A schedule adopted with no PG scheduler running, or released with `workerMetrics`
-  scaled to zero, has **no firer**: no error, no queue depth, no failed pod. Check
-  `pg_owned` against what is actually deployed.
+- A schedule adopted with no **`worker-pg-reaper`** running, or released with
+  `workerMetrics` scaled to zero, has **no firer**: no error, no queue depth, no failed
+  pod. Check `pg_owned` against what is actually deployed. Note the service to check is
+  `worker-pg-reaper`, **not** `worker-pg-scheduler` — despite the name, the latter is
+  the pipeline-task consumer and fires no periodics.
 
 ---
 
@@ -845,12 +849,21 @@ adopted onto the PG scheduler (`PG_SCHEDULER_ENABLED=true` **and**
 `PG_SCHEDULER_ADOPT_PERIODICS=true`, which `entrypoint.sh` converges on backend start):
 
 ```bash
-# Dashboard metrics consumer — drains dashboard_metric_events off pg_queue
+# 1. The firer — the leader-elected loop that fires due pg_owned schedules.
+#    This is the Beat replacement; without it NOTHING is ever enqueued.
+(cd workers/ && ./run-worker.sh reaper)
+
+# 2. The consumer — drains dashboard_metric_events off pg_queue.
 (cd workers/ && ./run-worker.sh pg-metrics)
 ```
 
-The scheduler tick itself is leader-elected inside the reaper/orchestrator loop, so
-there is no separate Beat-equivalent process to start.
+**Both are required**, the same way the Celery path needed Beat *and* a worker. The
+scheduler tick is not a daemon of its own: it is leader-elected inside the
+reaper/orchestrator loop (`reaper.py` calls `dispatch_due_periodic_tasks` each cycle).
+In compose that loop is the `worker-pg-reaper` service, which is already declared — so
+this second process is easy to miss when moving from compose to a local run, and
+missing it produces exactly the silent no-firer state described under
+[Transport](#transport-how-the-cron-actually-fires).
 
 Celery transport, for rollback only — requires `PG_SCHEDULER_ENABLED=false`:
 
@@ -1005,7 +1018,7 @@ backend/dashboard_metrics/
 │   ├── 0004_pg_periodic_tasks.py          # Mirror the schedules onto pg_queue
 │   ├── 0005_add_reconciliation_task.py    # Daily 04:40 UTC 7-day repair pass
 │   └── 0006_split_aggregation_schedule.py # Split aggregation into two rows by tier
-└── tests/                      # 9 suites — tiers, dispatch, prefilter, backfill, ...
+└── tests/                      # Test suites (not exhaustively listed)
     └── test_tasks.py
 ```
 
