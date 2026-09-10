@@ -30,11 +30,7 @@ class ProfileManagerSerializer(AuditSerializer):
 
     def validate_prompt_studio_tool(self, value):
         """Refuse reparenting: the gate authorises against the stored parent."""
-        if (
-            self.instance
-            and self.instance.prompt_studio_tool
-            and value != self.instance.prompt_studio_tool
-        ):
+        if self.instance and value != self.instance.prompt_studio_tool:
             raise ValidationError("A profile cannot be moved to another project.")
         return value
 

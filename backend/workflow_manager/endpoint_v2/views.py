@@ -97,7 +97,9 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
             Response: The HTTP response containing the serialized list of
                 endpoints.
         """
-        # Scoped: this action serialises connector_metadata decrypted.
+        # Scoped to workflows the requester can reach. This does NOT redact
+        # connector_metadata, which the nested serializer still returns
+        # decrypted to shared users.
         if not Workflow.objects.for_user(request.user).filter(pk=pk).exists():
             raise WorkflowDoesNotExistError
         endpoints = self.get_queryset().filter(workflow_id=pk)
