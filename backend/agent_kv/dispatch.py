@@ -21,10 +21,14 @@ class DispatchError(Exception):
 
 
 def _dispatcher():
-    from backend.celery_service import app as celery_app
+    # No `celery_app`: UN-4046 removed that parameter when the routing
+    # dispatcher's Celery branch went with the pg_queue_enabled flag. Passing it
+    # raises TypeError, so every submit failed to dispatch -- and because it
+    # fails at the call rather than at import, nothing catches it until a real
+    # request is made.
     from pg_queue.executor_rpc import get_executor_dispatcher
 
-    return get_executor_dispatcher(celery_app=celery_app)
+    return get_executor_dispatcher()
 
 
 def _platform_api_key(job) -> str:

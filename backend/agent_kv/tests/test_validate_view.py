@@ -15,6 +15,7 @@ from rest_framework.test import APIRequestFactory  # noqa: E402
 from agent_kv import execution_views as ev  # noqa: E402
 from agent_kv.exceptions import RateLimited  # noqa: E402
 from agent_kv.models import AgentKVKey  # noqa: E402
+from agent_kv.tests._factories import kv_key  # noqa: E402
 from unstract.agent_kv_schema.compile import SchemaError, compile_schema  # noqa: E402
 
 
@@ -35,7 +36,7 @@ def _authed(method="post", path="/agent-kv/validate", data=None):
 # ---------------------------------------------------------------------------
 @mock.patch.object(AgentKVKey, "objects")
 def test_validate_valid_schema_returns_counts(m_keys):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     schema = {
         "quotation_number": {"description": "The quote number", "required": True},
         "customer": {"name": {"description": "Bill-to name"}},
@@ -68,7 +69,7 @@ def test_validate_valid_schema_returns_counts(m_keys):
 # ---------------------------------------------------------------------------
 @mock.patch.object(AgentKVKey, "objects")
 def test_validate_invalid_schema_returns_error(m_keys):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     # Pass a non-dict as top-level schema
     req = _authed(data={"keys": "not a dict"})
 
@@ -95,8 +96,8 @@ def test_validate_no_key_returns_403():
 @mock.patch("agent_kv.execution_views.check_key_rate", return_value=False)
 @mock.patch.object(AgentKVKey, "objects")
 def test_validate_over_rate_limit_returns_429(m_keys, m_check_rate):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
-    key = AgentKVKey(id=uuid.uuid4(), name="k", is_active=True)
+    # A concrete id, because the rate limiter is keyed on it.
+    key = kv_key(id=uuid.uuid4())
     m_keys.get.return_value = key
     req = _authed(data={"keys": {}})
 
@@ -110,7 +111,7 @@ def test_validate_over_rate_limit_returns_429(m_keys, m_check_rate):
 # ---------------------------------------------------------------------------
 @mock.patch.object(AgentKVKey, "objects")
 def test_validate_missing_keys_returns_400(m_keys):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     req = _authed(data={})
 
     resp = ev.ValidateView.as_view()(req)

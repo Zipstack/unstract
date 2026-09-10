@@ -15,6 +15,7 @@ from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import execution_views as ev  # noqa: E402
 from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
+from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
 def _post(data=None):
@@ -90,7 +91,7 @@ def _stamp_created_at(job, *args, **kwargs):
 @mock.patch.object(ev, "get_plugin", return_value=None)
 @mock.patch.object(AgentKVKey, "objects")
 def test_absent_plugin_501s_before_anything(m_keys, m_plugin):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     resp = ev.SubmitView.as_view()(_authed_post())
     assert resp.status_code == 501
 
@@ -102,7 +103,7 @@ def test_absent_plugin_501s_before_anything(m_keys, m_plugin):
 @mock.patch.object(ev, "get_plugin", return_value={"module": object()})
 @mock.patch.object(AgentKVKey, "objects")
 def test_key_rate_limited_429s(m_keys, m_plugin, m_rate):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     resp = ev.SubmitView.as_view()(_authed_post())
     assert resp.status_code == 429
     assert m_rate.called
@@ -122,7 +123,7 @@ def test_key_rate_limited_429s(m_keys, m_plugin, m_rate):
 def test_concurrency_limited_429s_with_no_job_row(
     m_keys, m_plugin, m_rate, m_serializer_cls, m_limiter, m_stage, m_save
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = False
 
@@ -146,7 +147,7 @@ def test_concurrency_limited_429s_with_no_job_row(
 def test_stage_input_failure_releases_slot_and_500s_with_safe_body(
     m_keys, m_plugin, m_rate, m_serializer_cls, m_stage, m_limiter
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = True
     m_stage.side_effect = OSError("object store unreachable: leaked-secret-bucket-key")
@@ -191,7 +192,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_save,
     m_dispatch,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
@@ -244,7 +245,7 @@ def test_dispatch_job_called_with_expected_options_and_schema(
     m_save,
     m_dispatch,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     keys_schema = {"total": {"description": "Grand total"}}
     _mock_serializer(
         m_serializer_cls,
@@ -304,7 +305,7 @@ def test_dispatch_failure_marks_job_failed_releases_slot_and_500s(
     m_mark_terminal,
     m_limiter,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = True
     m_dispatch.side_effect = ev.DispatchError("broker credentials: super-secret-token")
@@ -352,7 +353,7 @@ def test_dispatch_job_raising_non_dispatch_error_is_still_caught_and_cleaned_up(
     m_mark_terminal,
     m_limiter,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = True
     m_dispatch.side_effect = RuntimeError("unexpected: leaked-secret-abc")
@@ -397,7 +398,7 @@ def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
     # ev.dispatch_job is intentionally left real here — only the platform-key
     # lookup deep inside it is mocked to raise, proving the widened
     # dispatch.py try (Fix 2a) plus the view's cleanup (Fix 2b) work together.
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls)
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
@@ -438,7 +439,7 @@ def test_timeout_zero_returns_immediately_without_polling(
     m_dispatch,
     m_sleep,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls, timeout=0)
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
@@ -480,7 +481,7 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
     m_dispatch,
     m_sleep,
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     _mock_serializer(m_serializer_cls, timeout=5)
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
@@ -651,7 +652,7 @@ def _real_multipart_post(extractors, **job_level):
 def test_real_serializer_through_real_view_reaches_dispatch_intact(
     m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
     schema = {"total": {"description": "Grand total"}}
@@ -689,7 +690,7 @@ def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m
 
     from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: PLC0415
 
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     fixture = _os.path.join(_os.path.dirname(__file__), "fixtures", "two_page.pdf")
     with open(fixture, "rb") as fh:
         upload = SimpleUploadedFile("doc.pdf", fh.read(), content_type="application/pdf")

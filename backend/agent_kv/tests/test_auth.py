@@ -42,7 +42,13 @@ def test_unknown_key_is_forbidden(m_objects):
 
 @mock.patch.object(AgentKVKey, "objects")
 def test_valid_key_injected_into_kwargs(m_objects):
+    from account_v2.models import Organization  # noqa: PLC0415
+
     key_obj = AgentKVKey(name="k", is_active=True)
+    # A usable key always has an organization: every downstream use is
+    # org-scoped, and the validator refuses one without (see the org-less test
+    # at the bottom of this module).
+    key_obj.organization = Organization(id=1, organization_id="acme-slug")
     m_objects.get.return_value = key_obj
     out = _wrapped()(mock.Mock(), _request(f"Bearer {uuid.uuid4()}"))
     assert out is key_obj
@@ -84,3 +90,32 @@ def test_public_url_wiring_and_decorator_enforced():
     request = APIRequestFactory().post(f"/{settings.AGENT_KV_PATH_PREFIX}/")
     response = SubmitView.as_view()(request)
     assert response.status_code == 403
+
+
+def test_key_without_an_organization_is_refused():
+    """`organization` is nullable on AgentKVKey, but every downstream use of a
+    key is org-scoped -- the subscription gate, the concurrency limiter, the
+    storage prefix, every job lookup. Before this guard the first of those to
+    touch `key.organization` raised AttributeError and the caller got a 500;
+    found by running a real submit against a stack whose key had no org.
+    """
+    from unittest import mock  # noqa: PLC0415
+
+    from api_v2.exceptions import Forbidden  # noqa: PLC0415
+
+    from agent_kv.key_validator import AgentKVKeyValidator  # noqa: PLC0415
+    from agent_kv.models import AgentKVKey  # noqa: PLC0415
+
+    orgless = AgentKVKey(name="k", is_active=True)
+    assert orgless.organization_id is None
+    with mock.patch.object(AgentKVKey, "objects") as m_objects:
+        m_objects.get.return_value = orgless
+        try:
+            AgentKVKeyValidator.validate_and_process(
+                object(), object(), lambda *a, **k: "reached the view",
+                "123e4567-e89b-12d3-a456-426614174001",
+            )
+        except Forbidden:
+            pass
+        else:
+            raise AssertionError("an org-less key must not reach the view")

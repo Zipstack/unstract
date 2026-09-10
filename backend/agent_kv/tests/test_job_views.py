@@ -16,6 +16,7 @@ from rest_framework.test import APIRequestFactory  # noqa: E402
 from agent_kv import execution_views as ev  # noqa: E402
 from agent_kv import execution_views_result as evr  # noqa: E402
 from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
+from agent_kv.tests._factories import kv_key  # noqa: E402
 
 
 def _authed(method="get", path="/agent-kv/x"):
@@ -30,7 +31,7 @@ def _authed(method="get", path="/agent-kv/x"):
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_foreign_org_job_is_404(m_keys, m_jobs):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     m_jobs.get.side_effect = AgentKVJob.DoesNotExist
     resp = ev.JobStatusView.as_view()(_authed(), job_id=uuid.uuid4())
     assert resp.status_code == 404
@@ -43,7 +44,7 @@ def test_foreign_org_job_is_404(m_keys, m_jobs):
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jobs):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.RUNNING,
         stage="extraction",
@@ -82,7 +83,7 @@ def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jo
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_result_before_completion_is_409_with_current_status(m_keys, m_jobs):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     m_jobs.get.return_value = job
 
@@ -99,7 +100,7 @@ def test_result_before_completion_is_409_with_current_status(m_keys, m_jobs):
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_result_after_expiry_is_404(m_keys, m_jobs, m_read):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.COMPLETED,
         result_ref="org/o/agent_kv/j/result.json",
@@ -120,7 +121,7 @@ def test_result_after_expiry_is_404(m_keys, m_jobs, m_read):
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.COMPLETED,
         result_ref="org/o/agent_kv/j/result.json",
@@ -152,7 +153,7 @@ def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
 def test_result_for_failed_job_is_200_with_success_false_and_error(
     m_keys, m_jobs, m_read
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.FAILED,
         error="LLM provider timed out",
@@ -179,7 +180,7 @@ def test_result_for_failed_job_is_200_with_success_false_and_error(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_read):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.CANCELLED,
         expires_at=timezone.now() + timedelta(days=1),
@@ -202,7 +203,7 @@ def test_result_for_cancelled_job_is_200_with_cancelled_body(m_keys, m_jobs, m_r
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_result_completed_with_blank_ref_is_404(m_keys, m_jobs, m_read):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.COMPLETED,
         result_ref="",
@@ -226,7 +227,7 @@ def test_result_completed_with_blank_ref_is_404(m_keys, m_jobs, m_read):
 def test_cancel_on_running_marks_terminal_and_200s(
     m_keys, m_jobs, m_mark_terminal, m_release
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
@@ -252,7 +253,7 @@ def test_cancel_on_running_marks_terminal_and_200s(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m_release):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.PENDING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
@@ -272,7 +273,7 @@ def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_cancel_loss_does_not_release_slot(m_keys, m_jobs, m_mark_terminal, m_release):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.COMPLETED)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
@@ -294,7 +295,7 @@ def test_cancel_loss_does_not_release_slot(m_keys, m_jobs, m_mark_terminal, m_re
 def test_cancel_on_completed_is_409_and_result_untouched(
     m_keys, m_jobs, m_mark_terminal, m_read
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.COMPLETED)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
@@ -319,7 +320,7 @@ def test_cancel_on_completed_is_409_and_result_untouched(
 def test_delete_calls_delete_job_files_and_blanks_refs(
     m_keys, m_jobs, m_delete_files, m_save
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(
         status=JobStatus.COMPLETED,
         input_ref="org/o/agent_kv/j/input.pdf",
@@ -349,7 +350,7 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
 def test_delete_on_running_job_cancels_before_deleting_files(
     m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
@@ -378,7 +379,7 @@ def test_delete_on_running_job_cancels_before_deleting_files(
 def test_delete_on_terminal_job_does_not_call_mark_terminal(
     m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
 ):
-    m_keys.get.return_value = AgentKVKey(name="k", is_active=True)
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.COMPLETED)
     job.organization_id = "org1"
     m_jobs.get.return_value = job

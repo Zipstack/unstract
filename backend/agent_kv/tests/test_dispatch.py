@@ -163,3 +163,29 @@ def test_raw_exception_from_platform_key_lookup_is_wrapped_as_dispatch_error(
 
     # Never got far enough to enqueue.
     assert not m_disp.return_value.dispatch_with_callback.called
+
+
+def test_dispatcher_factory_call_matches_the_live_signature():
+    """Guard the OSS seam that a platform change can silently move.
+
+    UN-4046 removed `get_executor_dispatcher(celery_app=...)`; our call site
+    kept passing it, so every submit raised TypeError inside dispatch_job and
+    failed the job. Nothing caught it -- the mismatch is invisible to a mocked
+    dispatcher and only appears when a real request is made.
+
+    Binding our actual call against the real signature fails loudly the next
+    time that function's parameters change.
+    """
+    from unittest import mock  # noqa: PLC0415
+
+    from agent_kv import dispatch as d  # noqa: PLC0415
+
+    # autospec=True makes the stub enforce the REAL function's signature, so
+    # this asserts our call site against it rather than against a permissive
+    # Mock. Re-adding `celery_app=` here raises TypeError, exactly as production
+    # did.
+    with mock.patch(
+        "pg_queue.executor_rpc.get_executor_dispatcher", autospec=True
+    ) as m_factory:
+        d._dispatcher()
+    m_factory.assert_called_once_with()
