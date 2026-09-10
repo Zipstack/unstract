@@ -928,17 +928,15 @@ class TestStructureToolSingleDispatch:
         assert "answer_params" in ctx.executor_params
         assert "pipeline_options" in ctx.executor_params
 
-        # Fairness header lands on the dispatch call. A regression that
-        # drops ``headers=`` or flips ``NON_API``→``API`` here would
-        # otherwise stay green — keep this assertion paired with the
-        # ``_fairness_headers`` unit test in test_structure_tool_task.py.
-        assert dispatcher.dispatch.call_args.kwargs["headers"] == {
-            "x-fairness-key": {
-                "org_id": "org-1",
-                "workload_type": "non_api",
-                "pipeline_priority": 5,
-            }
-        }
+        # No ``headers`` on the dispatch call, and that is the assertion now
+        # (UN-4046). This used to pin the fairness header; the routing dispatcher
+        # that accepted ``headers=`` is gone, ``PgExecutionDispatcher.dispatch``
+        # takes no such argument, and passing one raises TypeError — which is
+        # exactly what shipped and broke every extraction until it was caught.
+        # Fairness is not lost: PG carries org routing in the enqueue payload
+        # (``transport.enqueue(..., org_id=...)``), which is queue_backend's to
+        # cover, not this call site's.
+        assert "headers" not in dispatcher.dispatch.call_args.kwargs
 
 
 # ---------------------------------------------------------------------------

@@ -80,6 +80,7 @@ class Adapterkit:
                     "icon": icon,
                     "adapter_type": adapter_type,
                     "json_schema": json_schema,
+                    "doc_url": m.get_doc_url(),
                 }
             )
         return adapters

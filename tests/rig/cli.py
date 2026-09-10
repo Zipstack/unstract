@@ -371,8 +371,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
         baseline_corrupt = True
+    # A skipped tier emits no junit, so scoping to the groups that reported keeps
+    # its paths as gaps rather than regressions — nothing regressed, it never ran.
+    # A group that ran and went red still reports, so real regressions survive.
+    # `optional` groups are excluded: they are documented as non-blocking, and
+    # leaving them in scope would let a red one gate the build through a
+    # regression instead.
+    scope_groups = [r.name for r in group_results if not manifest.get(r.name).optional]
     statuses = cp.evaluate(
-        registry, groups_run_green=green, baseline=baseline, marker_proven=proven
+        registry,
+        groups_run_green=green,
+        baseline=baseline,
+        scope_groups=scope_groups,
+        marker_proven=proven,
     )
     write_summary(
         reports_dir=reports_dir,
@@ -386,6 +397,42 @@ def cmd_report(args: argparse.Namespace) -> int:
             f"[rig] ❌ @pytest.mark.critical_path references unknown path "
             f"id(s): {', '.join(unknown_marker_ids)} "
             f"(not in tests/critical_paths.yaml)",
+            file=sys.stderr,
+        )
+    # cmd_run gates on the regressions it can see, but only within its own tier.
+    # This is the only cross-tier evaluation, so it is the only place a regression
+    # spanning tiers can be gated on.
+    # A covering group that ran green without attesting means its marked test
+    # was skipped or unmarked; a group that went red means the test failed. The
+    # remedies differ, so the two are reported apart rather than as one count.
+    unproven: list[cp.CriticalPathStatus] = []
+    uncovered: list[cp.CriticalPathStatus] = []
+    for s in statuses:
+        if s.state != "regression":
+            continue
+        target = unproven if any(g in green for g in s.path.covered_by) else uncovered
+        target.append(s)
+    regressions = unproven + uncovered
+    if uncovered:
+        ids = ", ".join(s.path.id for s in uncovered)
+        print(
+            f"\n[rig] ❌ {len(uncovered)} critical-path regression(s) — no covering "
+            f"group ran green: {ids}",
+            file=sys.stderr,
+        )
+    if unproven:
+        ids = ", ".join(s.path.id for s in unproven)
+        print(
+            f"\n[rig] ❌ {len(unproven)} critical-path regression(s) — covering group "
+            f"ran green but no passing @pytest.mark.critical_path test attested "
+            f"them (skipped or unmarked?): {ids}",
+            file=sys.stderr,
+        )
+    if regressions:
+        print(
+            "[rig] to accept a deliberate removal, drop or re-point the path in "
+            "tests/critical_paths.yaml in the same PR — the baseline is keyed off "
+            "that registry.",
             file=sys.stderr,
         )
     if args.update_baseline:
@@ -404,7 +451,9 @@ def cmd_report(args: argparse.Namespace) -> int:
             return 1
         cp.merge_into_baseline(statuses, baseline_path)
         print(f"[rig] merged into baseline: {baseline_path}")
-    return 1 if unknown_marker_ids else 0
+    # A corrupt baseline makes "regression" unreachable, so the gate above would
+    # pass vacuously; it has to fail on its own.
+    return 1 if unknown_marker_ids or regressions or baseline_corrupt else 0
 
 
 def cmd_run(args: argparse.Namespace) -> int:
@@ -863,6 +912,7 @@ def _execute_group(
     env.update(group_env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
+        env.setdefault("UNSTRACT_FRONTEND_URL", endpoints.frontend_url)
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
         env.setdefault("UNSTRACT_PLATFORM_SERVICE_URL", endpoints.platform_service_url)
         env.setdefault("UNSTRACT_RUNNER_URL", endpoints.runner_url)
@@ -889,6 +939,19 @@ def _execute_group(
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
         _write_synthetic_junit_safe(junit, group.name, exit_code)
+    elif group.runner in ("vitest", "playwright"):
+        # Playwright's JUnit path comes from its config, not a flag; the config
+        # reads this. Harmless for vitest, which takes --outputFile.
+        env.setdefault("PLAYWRIGHT_JUNIT_OUTPUT_NAME", str(junit))
+        cmd = _node_command(group, junit=junit)
+        exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
+        # Both runners write real JUnit themselves, so there is nothing to
+        # synthesise on the happy path. A crash before the reporter flushes
+        # (missing node_modules, a config error) leaves no file at all, which
+        # `parse_junit` reports as a missing group rather than a failure — so
+        # backfill one to keep a red run visible in the summary.
+        if not junit.exists():
+            _write_synthetic_junit_safe(junit, group.name, exit_code)
     elif (isolation_error := _config_isolation_error(group, workdir)) is not None:
         print(isolation_error, file=sys.stderr)
         # 4 is pytest's usage-error code, so this gates like any hard failure.
@@ -1147,6 +1210,54 @@ def _pytest_command(
         # Paths are relative to workdir so pytest runs as `cd workdir && pytest <path>`.
         for p in group.paths:
             cmd.append(p)
+    return cmd
+
+
+def _node_command(
+    group: GroupDefinition,
+    *,
+    junit: Path,
+) -> list[str]:
+    """Build the command for a Node-based group (`vitest` / `playwright`).
+
+    Both write JUnit natively, so the rig points their reporter straight at the
+    same `junit.xml` every other group writes and `parse_junit` reads it
+    unchanged — vitest's `<testsuites>` root is already the shape it expects.
+
+    `npx --no-install` on purpose: silently downloading a runner mid-run would
+    turn a missing dependency into a slow, network-dependent surprise. Without
+    `node_modules` this exits non-zero and the caller backfills a red junit.
+    """
+    if not shutil.which("npx"):
+        # Same convention as `_hurl_command`'s empty-file case: exit 5 reads as
+        # "nothing collected" rather than a failure, so a machine without Node
+        # does not turn the whole run red.
+        print(
+            f"[rig] npx not found; skipping {group.name} (runner={group.runner})",
+            file=sys.stderr,
+        )
+        return ["sh", "-c", "exit 5"]
+
+    if group.runner == "vitest":
+        cmd = [
+            "npx",
+            "--no-install",
+            "vitest",
+            "run",
+            "--reporter=junit",
+            f"--outputFile={junit}",
+        ]
+        # `paths` are optional for vitest: with none it runs the whole suite,
+        # which is what the `frontend` group wants.
+        cmd += [str(p) for p in group.paths if p not in (".", "")]
+        return cmd
+
+    # Playwright takes its reporter output path from config, not a CLI flag, so
+    # the config reads PLAYWRIGHT_JUNIT_OUTPUT_NAME — which the rig exports in
+    # `_group_env`. `--timeout` is per-test milliseconds, distinct from the
+    # rig's whole-group timeout, so it is deliberately not derived from it.
+    cmd = ["npx", "--no-install", "playwright", "test"]
+    cmd += [str(p) for p in group.paths if p not in (".", "")]
     return cmd
 
 

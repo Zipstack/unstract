@@ -162,7 +162,7 @@ services:
   # V2 Workers - Build configurations with memory-optimized settings
   # All use --pool=threads and --concurrency=2 for lower memory footprint
 
-  worker-api-deployment-v2:
+  worker-pg-orchestrator-api:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -179,7 +179,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
-  worker-callback-v2:
+  worker-pg-callback:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -196,7 +196,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
-  worker-file-processing-v2:
+  worker-pg-fileproc:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -213,7 +213,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
-  worker-general-v2:
+  worker-pg-orchestrator-general:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -230,7 +230,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
-  worker-notification-v2:
+  worker-pg-notification:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -247,7 +247,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
-  worker-log-consumer-v2:
+  worker-log-stream-consumer:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -270,7 +270,7 @@ services:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
 
-  worker-scheduler-v2:
+  worker-pg-scheduler:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
@@ -289,16 +289,20 @@ services:
 
   #########################################################################################################
   # IDE callback worker (workers image, processes ide_callback queue)
-  worker-ide-callback:
+  worker-pg-ide-callback:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
-  # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
-  worker-metrics:
+  # PG consumer for the dashboard_metrics.* periodics fired by the PG scheduler
+  # tick. Must build the WORKER image: the base file runs `pg-queue-consumer`,
+  # which the backend image's entrypoint rejects outright ("Unknown argument"),
+  # so building backend.Dockerfile here crash-loops the pod and leaves
+  # dashboard_metric_events with no consumer. No `command:` override either —
+  # the base file's is correct.
+  worker-pg-metrics:
     build:
-      dockerfile: docker/dockerfiles/backend.Dockerfile
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
       context: ..
-    command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=2,1"
     develop:
       watch:
         - action: sync+restart

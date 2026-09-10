@@ -1,7 +1,12 @@
+import logging
+
+from django.core.exceptions import ValidationError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
 from api_v2.notification import APINotification
+
+logger = logging.getLogger(__name__)
 
 
 class APIDeploymentUtils:
@@ -15,11 +20,24 @@ class APIDeploymentUtils:
         Returns:
             Optional[APIDeployment]: The APIDeployment instance if found,
                 otherwise None.
+
+        A malformed identifier is "not found", not a fault: ``pk`` is a UUID
+        column, so a non-UUID string raises ``ValidationError`` out of
+        ``to_python`` rather than ``DoesNotExist``. Callers reach this with
+        unvalidated caller input (path segments are ``<str:>``, and request
+        bodies are read before the serializer runs), so letting that escape
+        turns ordinary client garbage into a 500.
         """
         try:
             api_deployment: APIDeployment = APIDeployment.objects.get(pk=api_id)
             return api_deployment
         except APIDeployment.DoesNotExist:
+            return None
+        except ValidationError:
+            # Logged so a malformed identifier stays distinguishable from an
+            # absent row: both answer 404, and without this the difference is
+            # invisible when triaging.
+            logger.debug("Malformed API deployment identifier: %s", api_id)
             return None
 
     @staticmethod

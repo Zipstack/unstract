@@ -12,6 +12,35 @@ from kombu import Connection
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
+#: Transport for the log-streaming hop between this publisher and the log consumer.
+#: ``celery`` (default) publishes a Celery-protocol message to RabbitMQ; ``redis``
+#: RPUSHes onto a Redis list drained by the PG-era log consumer.
+#:
+#: Deliberately an env var rather than the ``pg_queue_enabled`` Flipt flag. The flag
+#: routes *per execution*, which is meaningless here: the consumer is a single
+#: deployment reading from exactly one place, so a per-org split would strand half the
+#: logs in a queue nobody drains. Producer and consumer must agree cluster-wide, which
+#: makes this deployment config. It must be flipped in step with the flag rollout.
+_LOG_TRANSPORT_ENV = "LOG_TRANSPORT"
+_LOG_TRANSPORT_REDIS = "redis"
+
+#: Redis list used when ``LOG_TRANSPORT=redis``. Distinct from ``log_history_queue``,
+#: which is the *downstream* durable buffer the consumer writes to — this one is the
+#: transport itself, and is normally near-empty.
+_LOG_STREAM_QUEUE_ENV = "LOG_STREAM_QUEUE_NAME"
+_LOG_STREAM_QUEUE_DEFAULT = "log_stream_queue"
+
+#: Cap mirroring ``store_execution_log``'s (unstract/core/log_utils.py): without it a
+#: stopped consumer grows this list until Redis OOMs, which would take down far more
+#: than logging. Dropping is the correct behaviour for this payload — logs are already
+#: best-effort and are discarded at the same cap one hop downstream.
+_LOG_STREAM_MAX_SIZE_ENV = "LOG_STREAM_QUEUE_MAX_SIZE"
+_LOG_STREAM_MAX_SIZE_DEFAULT = 10000
+
+
+def _use_redis_log_transport() -> bool:
+    return os.getenv(_LOG_TRANSPORT_ENV, "celery").strip().lower() == _LOG_TRANSPORT_REDIS
+
 
 class LogPublisher:
     broker_url = str(
@@ -160,27 +189,30 @@ class LogPublisher:
         """Publish a message to the queue."""
         try:
             event = f"logs:{channel_id}"
-            with cls.kombu_conn.Producer(serializer="json") as producer:
-                task_message = cls._get_task_message(
-                    user_session_id=channel_id,
-                    event=event,
-                    message=payload,
-                )
-                headers = cls._get_task_header(LogProcessingTask.TASK_NAME)
-                # Publish the message to the queue
-                producer.publish(
-                    body=task_message,
-                    exchange="",
-                    headers=headers,
-                    routing_key=LogProcessingTask.QUEUE_NAME,
-                    compression=None,
-                    retry=True,
-                )
-                logging.debug(f"Published '{channel_id}' <= {payload}")
+            task_message = cls._get_task_message(
+                user_session_id=channel_id,
+                event=event,
+                message=payload,
+            )
+            if _use_redis_log_transport():
+                cls._publish_via_redis(task_message)
+            else:
+                with cls.kombu_conn.Producer(serializer="json") as producer:
+                    headers = cls._get_task_header(LogProcessingTask.TASK_NAME)
+                    # Publish the message to the queue
+                    producer.publish(
+                        body=task_message,
+                        exchange="",
+                        headers=headers,
+                        routing_key=LogProcessingTask.QUEUE_NAME,
+                        compression=None,
+                        retry=True,
+                    )
+            logging.debug(f"Published '{channel_id}' <= {payload}")
 
-                # Persisting messages for unified notification
-                if payload.get("type") == "LOG":
-                    cls.store_for_unified_notification(event, payload)
+            # Persisting messages for unified notification
+            if payload.get("type") == "LOG":
+                cls.store_for_unified_notification(event, payload)
         except Exception as e:
             logging.error(
                 f"Failed to publish '{channel_id}' <= {payload}"
@@ -188,6 +220,42 @@ class LogPublisher:
             )
             return False
         return True
+
+    @classmethod
+    def _publish_via_redis(cls, task_message: dict[str, Any]) -> None:
+        """RPUSH the log envelope onto the Redis transport list.
+
+        The envelope carries the task name alongside the kwargs so the consumer
+        dispatches by name exactly as the Celery header did — a bare kwargs blob would
+        leave the consumer guessing, and a name mismatch is the silent failure mode
+        (message read, no handler, dropped with nothing at the publish site to trace).
+
+        Raises on Redis failure; ``publish()`` owns the swallow, so a logging fault can
+        never break an execution.
+        """
+        queue_name = os.getenv(_LOG_STREAM_QUEUE_ENV, _LOG_STREAM_QUEUE_DEFAULT)
+        max_size = int(
+            os.getenv(_LOG_STREAM_MAX_SIZE_ENV, str(_LOG_STREAM_MAX_SIZE_DEFAULT))
+        )
+        redis_client = cls._get_redis_client()
+
+        # O(1), and the same llen-then-push shape store_execution_log already uses one
+        # hop downstream. Two Redis round trips per log line is the price of not letting
+        # a stopped consumer OOM Redis.
+        if redis_client.llen(queue_name) >= max_size:
+            logging.warning(
+                f"Log stream queue '{queue_name}' at capacity ({max_size}), "
+                "dropping current log - log consumer may be down or falling behind"
+            )
+            return
+
+        envelope = json.dumps(
+            {
+                "task": LogProcessingTask.TASK_NAME,
+                "kwargs": task_message["kwargs"],
+            }
+        )
+        redis_client.rpush(queue_name, envelope)
 
     @classmethod
     def store_for_unified_notification(cls, event: str, payload: dict[str, Any]) -> None:

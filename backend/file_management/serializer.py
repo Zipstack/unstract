@@ -50,11 +50,5 @@ class FileUploadIdeSerializer(serializers.Serializer):
     )
 
 
-class FileInfoIdeSerializer(serializers.Serializer):
-    document_id = serializers.CharField()
-    tool_id = serializers.CharField()
-    view_type = serializers.CharField(required=False)
-
-
 class FileListRequestIdeSerializer(serializers.Serializer):
     tool_id = serializers.CharField()

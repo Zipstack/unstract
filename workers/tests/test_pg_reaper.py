@@ -31,6 +31,7 @@ from queue_backend.pg_queue.reaper import (
     dedup_retention_from_env,
     reaper_interval_from_env,
     reaper_sweep_interval_from_env,
+    promote_due_scheduled,
     rearm_expired_claims,
     recover_expired_barriers,
     sweep_expired_results,
@@ -49,6 +50,7 @@ from queue_backend.pg_queue.schema import qualified
 def stub_scheduler_tick(monkeypatch):
     mock = MagicMock(return_value=0)
     monkeypatch.setattr(reaper_mod, "dispatch_due_schedules", mock)
+    monkeypatch.setattr(reaper_mod, "dispatch_due_periodic_tasks", MagicMock(return_value=0))
     return mock
 
 
@@ -60,6 +62,16 @@ def stub_scheduler_tick(monkeypatch):
 def stub_queue_rearm(monkeypatch):
     mock = MagicMock(return_value=0)
     monkeypatch.setattr(reaper_mod, "rearm_expired_claims", mock)
+    return mock
+
+
+# The leader tick also promotes due scheduled queue messages (UN-3843 delayed
+# visibility). Same reason as the re-arm stub above: the leadership / connection
+# tests drive dummy connections that would blow up on a real UPDATE.
+@pytest.fixture(autouse=True)
+def stub_queue_promote(monkeypatch):
+    mock = MagicMock(return_value=0)
+    monkeypatch.setattr(reaper_mod, "promote_due_scheduled", mock)
     return mock
 
 
@@ -417,6 +429,82 @@ class TestQueueRearmTick:
         assert reaper.metrics.queue_rearm_failures._value.get() == 1
 
 
+class TestQueuePromoteTick:
+    """UN-3843: the leader promotes due scheduled queue messages each cycle, next to
+    the re-arm sweep. Promotion SQL is in TestRetentionSweepSql; here we assert the
+    wiring, gating, metric guard and error posture (the autouse
+    ``stub_queue_promote`` patches the helper).
+
+    Cadence matters more here than for the other sweeps: this is the DELIVERY path
+    for every countdown/eta dispatch, so running it anywhere but the per-tick
+    recovery block would add latency to each delayed message.
+    """
+
+    def _reaper(self, lease):
+        return PgReaper(
+            lease, interval_seconds=0.01, sweep_conn=object(), api_client=object()
+        )
+
+    def test_leader_runs_promotion(self, stub_queue_promote):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            reaper.tick()
+        stub_queue_promote.assert_called_once()
+
+    def test_standby_does_not_promote(self, stub_queue_promote):
+        # Two promoters would race on the same rows; leadership is what serialises it.
+        reaper = self._reaper(_FakeLease(acquires=False))
+        with patch.object(reaper_mod, "recover_expired_barriers"):
+            reaper.tick()
+        stub_queue_promote.assert_not_called()
+
+    def test_promotion_runs_after_rearm_before_schedule(
+        self, stub_queue_rearm, stub_queue_promote, stub_scheduler_tick
+    ):
+        order = []
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_queue_rearm.side_effect = lambda *_: order.append("rearm") or 0
+        stub_queue_promote.side_effect = lambda *_: order.append("promote") or 0
+        stub_scheduler_tick.side_effect = lambda *_: order.append("schedule")
+        with patch.object(
+            reaper_mod,
+            "recover_expired_barriers",
+            side_effect=lambda *_, **__: order.append("recover") or [],
+        ):
+            reaper.tick()
+        assert order == ["recover", "rearm", "promote", "schedule"]
+
+    def test_metric_incremented_only_when_nonzero(self, stub_queue_promote):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        counter = reaper.metrics.queue_promoted
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            stub_queue_promote.return_value = 0  # nothing due
+            reaper.tick()
+            assert counter._value.get() == 0  # guarded by `if promoted:`
+            stub_queue_promote.return_value = 2
+            reaper.tick()
+            assert counter._value.get() == 2
+
+    def test_promote_error_discards_conn_and_counts_failure(self, stub_queue_promote):
+        # Failure must not be swallowed: the symptom of a silently-stalled promotion
+        # sweep is delayed messages that simply never fire, with no error at the
+        # enqueue site to trace it back from. Dedicated counter, discard, re-raise.
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=0.01,
+            api_client=object(),
+        )
+        owned = MagicMock()
+        owned.closed = False
+        reaper._sweep_conn = owned
+        stub_queue_promote.side_effect = psycopg2.OperationalError("db gone")
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            with pytest.raises(psycopg2.OperationalError):
+                reaper.tick()
+        assert reaper._sweep_conn is None  # discarded
+        assert reaper.metrics.queue_promote_failures._value.get() == 1
+
+
 class TestRetentionSweepSql:
     """The sweep helpers' SQL contract (mock cursor, no DB). These call the real
     helpers (imported at module load), unaffected by the autouse stub which patches
@@ -462,17 +550,31 @@ class TestRetentionSweepSql:
         assert "WHERE state = 'claimed' AND vt <= now()" in sql
         conn.commit.assert_called_once()
 
+    def test_promote_due_scheduled_sql(self):
+        # UN-3843 delayed-visibility helper. The predicate is the whole contract:
+        # 'scheduled' scopes it to deferred rows (so it can never re-arm a claimed
+        # message), and `available_at <= now()` is what makes delivery "not before"
+        # the requested time. Its integration test is Postgres-gated.
+        conn, cur = self._conn_cur(2)
+        assert promote_due_scheduled(conn) == 2
+        sql = cur.execute.call_args[0][0]
+        assert f"UPDATE {qualified('pg_queue_message')}" in sql
+        assert "SET state = 'ready'" in sql
+        assert "WHERE state = 'scheduled' AND available_at <= now()" in sql
+        conn.commit.assert_called_once()
+
     @pytest.mark.parametrize(
         "sweep",
         [
             lambda conn: sweep_expired_results(conn),
             lambda conn: sweep_orphan_dedup(conn, 60),
             lambda conn: rearm_expired_claims(conn),
+            lambda conn: promote_due_scheduled(conn),
         ],
-        ids=["expired_results", "orphan_dedup", "rearm_claims"],
+        ids=["expired_results", "orphan_dedup", "rearm_claims", "promote_scheduled"],
     )
     def test_sweep_rolls_back_on_error(self, sweep):
-        # Both helpers have their own try/except/rollback — exercise each.
+        # Each helper owns its try/except/rollback — exercise every one.
         cur = MagicMock()
         cur.execute.side_effect = psycopg2.OperationalError("dead")
         conn = MagicMock()

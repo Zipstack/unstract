@@ -1,22 +1,13 @@
-import {
-  DatabaseOutlined,
-  InfoCircleOutlined,
-  PlayCircleFilled,
-  PlayCircleOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Divider,
-  Image,
-  Radio,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
 import { AnimatePresence, motion } from "framer-motion";
+import { CirclePlay, Database, FastForward, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Col, Space } from "@/components/ui/shims/antd-layout";
+import { Divider } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import {
   displayPromptResult,
@@ -32,6 +23,7 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { ProfileIcon } from "./ProfileIcon";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
 import { PromptRunTimer } from "./PromptRunTimer";
@@ -130,7 +122,7 @@ function PromptOutput({
   const noHighlightEnforceType = !["table", "record"].includes(enforceType);
   const tooltipContent = (adapterConf) => (
     <div>
-      {Object.entries(adapterConf)?.map(([key, value]) => (
+      {Object.entries(adapterConf || {}).map(([key, value]) => (
         <div key={key}>
           <strong>{key}:</strong> {value}
         </div>
@@ -276,6 +268,7 @@ function PromptOutput({
               }}
             />
             <PromptOutputExpandBtn
+              testId={`ps-prompt-expand-output-${promptDetails?.prompt_id}`}
               promptId={promptDetails?.prompt_id}
               llmProfiles={llmProfileDetails}
               enforceType={enforceType}
@@ -300,6 +293,11 @@ function PromptOutput({
           const promptId = promptDetails?.prompt_id;
           const docId = selectedDoc?.document_id;
           const profileId = profile?.profile_id;
+          // Every control below repeats once per prompt AND per profile, so
+          // both ids are needed to address one of them uniquely. Ids go last,
+          // per the Test IDs convention in FRONTEND_DEV_GUIDE.md.
+          const profileTestId = (action) =>
+            `ps-prompt-profile-${action}-${promptId}-${profileId}`;
           const tokenUsageId = promptId + "__" + docId + "__" + profileId;
           let promptOutputData = {};
           if (promptOutputs && Object.keys(promptOutputs)) {
@@ -355,13 +353,7 @@ function PromptOutput({
                 >
                   <div className="llm-info">
                     <div className="llm-info-left">
-                      <Image
-                        src={profile?.icon}
-                        width={15}
-                        height={15}
-                        preview={false}
-                        className="prompt-card-llm-icon"
-                      />
+                      <ProfileIcon icon={profile?.icon} />
                       <Typography.Text
                         className="prompt-card-llm-title"
                         ellipsis={{ tooltip: profile?.conf?.LLM }}
@@ -372,10 +364,14 @@ function PromptOutput({
                     <div className="llm-info-right">
                       <Space>
                         <Tooltip title={tooltipContent(profile?.conf)}>
-                          <InfoCircleOutlined className="prompt-card-actions-head" />
+                          <Info
+                            data-testid={profileTestId("info")}
+                            className="prompt-card-actions-head"
+                          />
                         </Tooltip>
                         <Tooltip title="Chunk used">
-                          <DatabaseOutlined
+                          <Database
+                            data-testid={profileTestId("chunk")}
                             onClick={() => {
                               setIsIndexOpen(true);
                               setOpenIndexProfile(promptOutputData?.context);
@@ -395,6 +391,7 @@ function PromptOutput({
                         {isNotSingleLlmProfile && (
                           <Tooltip title="Select Default">
                             <Radio
+                              data-testid={profileTestId("select-default")}
                               checked={profileId === selectedLlmProfileId}
                               onChange={() => handleSelectDefaultLLM(profileId)}
                               disabled={isPublicSource}
@@ -430,6 +427,7 @@ function PromptOutput({
                   <div className="prompt-info">
                     <Tooltip title="Run LLM for current document">
                       <Button
+                        data-testid={profileTestId("run-doc")}
                         size="small"
                         type="text"
                         className="prompt-card-action-button"
@@ -447,11 +445,12 @@ function PromptOutput({
                           isPublicSource
                         }
                       >
-                        <PlayCircleOutlined className="prompt-card-actions-head" />
+                        <CirclePlay className="prompt-card-actions-head" />
                       </Button>
                     </Tooltip>
                     <Tooltip title="Run LLM for all documents">
                       <Button
+                        data-testid={profileTestId("run-all-docs")}
                         size="small"
                         type="text"
                         className="prompt-card-action-button"
@@ -469,10 +468,13 @@ function PromptOutput({
                           isPublicSource
                         }
                       >
-                        <PlayCircleFilled className="prompt-card-actions-head" />
+                        {/* All-documents run; the current-document button
+                            beside it keeps CirclePlay. */}
+                        <FastForward className="prompt-card-actions-head" />
                       </Button>
                     </Tooltip>
                     <PromptOutputExpandBtn
+                      testId={profileTestId("expand")}
                       promptId={promptDetails?.prompt_id}
                       llmProfiles={llmProfileDetails}
                       enforceType={enforceType}

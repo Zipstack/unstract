@@ -9,7 +9,7 @@ Quick reference for LLM and embedding provider features supported via LiteLLM.
 | OpenAI | ✅ o1/o3 | ❌ | ✅ | ✅ | ✅ |
 | Anthropic | ❌ | ✅ Claude 3.7+ | ✅ | ✅ | ✅ |
 | Azure OpenAI | ✅ o1/o3 | ❌ | ✅ | ✅ | ✅ |
-| AWS Bedrock | ❌ | ✅ Claude 3.7+ | ✅ | ✅ | ✅ |
+| AWS Bedrock | ✅ GPT-5.x, GPT-OSS, Nova 2 | ✅ Claude 3.7+ | ✅ | ✅ | ✅ |
 | VertexAI | ✅ Gemini 2.5 | ✅ Gemini 2.5 | ✅ | ✅ | ✅ |
 | Mistral | ✅ Magistral | ❌ | ✅ | ✅ | ✅ |
 | Ollama | ❌ | ❌ | ✅ | ✅ | ✅ |
@@ -63,7 +63,7 @@ max_tokens, temperature, enable_reasoning, reasoning_effort
 ```
 aws_access_key_id, aws_secret_access_key, region_name
 aws_profile_name (SSO), model_id (inference profile ARN)
-model, max_tokens, enable_thinking, budget_tokens
+model, max_tokens, enable_thinking, budget_tokens (Claude), reasoning_effort
 ```
 
 ### VertexAI LLM
@@ -108,7 +108,7 @@ api_key, api_base, model, max_tokens, max_retries, timeout
 | OpenAI | `openai/` | (none) |
 | Anthropic | `anthropic/` | N/A |
 | Azure | `azure/` | `azure/` |
-| AWS Bedrock | `bedrock/` | `bedrock/` |
+| AWS Bedrock | `bedrock/`, or `bedrock_mantle/` for Mantle-served models | `bedrock/` |
 | VertexAI | `vertex_ai/` | `vertex_ai/` |
 | Mistral | `mistral/` | N/A |
 | Ollama | `ollama_chat/` | `ollama/` |

@@ -1,23 +1,13 @@
-import {
-  ArrowLeftOutlined,
-  CaretRightOutlined,
-  DownOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Collapse,
-  Form,
-  Input,
-  Row,
-  Select,
-  Space,
-  Typography,
-  theme,
-} from "antd";
+import { ArrowLeft, ChevronDown, ChevronRight, Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Collapse } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
+import { cn } from "@/lib/utils";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
@@ -58,10 +48,26 @@ function AddLlmProfile({
   const { details, llmProfiles, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const { token } = theme.useToken();
+  // P4: antd's theme token replaced by the Midnight Bloom CSS variable.
+  const token = { colorBgContainer: "var(--card)" };
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { getStrategies } = useRetrievalStrategies();
+
+  const editedProfile = llmProfiles?.find(
+    (item) => item?.profile_id === editLlmProfileId,
+  );
+
+  const adapterOptions = (items, field) => {
+    const id = editedProfile?.[`${field}_id`];
+    if (!id || items?.some((item) => item?.value === id)) {
+      return items;
+    }
+    return [
+      ...items,
+      { value: id, label: editedProfile?.[field], disabled: true },
+    ];
+  };
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
@@ -121,38 +127,18 @@ function AddLlmProfile({
 
     setModalTitle("Edit LLM Profile");
 
-    const llmProfileDetails = [...llmProfiles].find(
-      (item) => item?.profile_id === editLlmProfileId,
-    );
-
-    const llmItem = llmItems.find(
-      (item) => item?.label === llmProfileDetails?.llm,
-    );
-
-    const vectorDbItem = vectorDbItems.find(
-      (item) => item?.label === llmProfileDetails?.vector_store,
-    );
-
-    const embeddingItem = embeddingItems.find(
-      (item) => item?.label === llmProfileDetails?.embedding_model,
-    );
-
-    const x2TextItem = x2TextItems.find(
-      (item) => item?.label === llmProfileDetails?.x2text,
-    );
-
     setResetForm(true);
     setFormDetails({
-      profile_name: llmProfileDetails?.profile_name,
-      llm: llmItem?.value || null,
-      chunk_size: llmProfileDetails?.chunk_size,
-      vector_store: vectorDbItem?.value || null,
-      chunk_overlap: llmProfileDetails?.chunk_overlap,
-      embedding_model: embeddingItem?.value || null,
-      x2text: x2TextItem?.value || null,
-      retrieval_strategy: llmProfileDetails?.retrieval_strategy,
-      similarity_top_k: llmProfileDetails?.similarity_top_k,
-      section: llmProfileDetails?.section,
+      profile_name: editedProfile?.profile_name,
+      llm: editedProfile?.llm_id || null,
+      chunk_size: editedProfile?.chunk_size,
+      vector_store: editedProfile?.vector_store_id || null,
+      chunk_overlap: editedProfile?.chunk_overlap,
+      embedding_model: editedProfile?.embedding_model_id || null,
+      x2text: editedProfile?.x2text_id || null,
+      retrieval_strategy: editedProfile?.retrieval_strategy,
+      similarity_top_k: editedProfile?.similarity_top_k,
+      section: editedProfile?.section,
       prompt_studio_tool: details?.tool_id,
     });
     setActiveKey(true);
@@ -238,7 +224,6 @@ function AddLlmProfile({
     {
       key: "1",
       label: "Advanced Settings",
-      className: "add-llm-profile-panel",
       children: (
         <div>
           <Form.Item
@@ -273,11 +258,11 @@ function AddLlmProfile({
                   : "Select retrieval strategy"}
               </span>
               <div className="retrieval-strategy-actions">
-                <SettingOutlined
+                <Settings
                   className="retrieval-strategy-settings-icon"
                   title="Configure retrieval strategy"
                 />
-                <DownOutlined className="retrieval-strategy-dropdown-icon" />
+                <ChevronDown className="retrieval-strategy-dropdown-icon" />
               </div>
             </button>
           </Form.Item>
@@ -376,7 +361,14 @@ function AddLlmProfile({
   };
 
   const handleCaretIcon = (isActive) => {
-    return <CaretRightOutlined rotate={isActive ? 90 : 0} />;
+    // `rotate` was an antd icon-font prop; lucide ships SVGs and ignores it, so
+    // the caret stayed pointing right and the panel read as collapsed while
+    // open. Tailwind's transform does what the prop used to.
+    return (
+      <ChevronRight
+        className={cn("transition-transform", isActive && "rotate-90")}
+      />
+    );
   };
 
   const handleLlmChangeForTokens = async (value) => {
@@ -460,7 +452,7 @@ function AddLlmProfile({
         <SpaceWrapper>
           <div>
             <Button size="small" type="text" onClick={() => setIsAddLlm(false)}>
-              <ArrowLeftOutlined />
+              <ArrowLeft />
             </Button>
             <Typography.Text className="add-cus-tool-header">
               {modalTitle}
@@ -501,7 +493,8 @@ function AddLlmProfile({
                   help={getBackendErrorDetail("llm", backendErrors)}
                 >
                   <Select
-                    options={llmItems}
+                    showSearch
+                    options={adapterOptions(llmItems, "llm")}
                     onSelect={handleLlmChangeForTokens}
                   />
                 </Form.Item>
@@ -556,7 +549,10 @@ function AddLlmProfile({
                   }
                   help={getBackendErrorDetail("vector_store", backendErrors)}
                 >
-                  <Select options={vectorDbItems} />
+                  <Select
+                    showSearch
+                    options={adapterOptions(vectorDbItems, "vector_store")}
+                  />
                 </Form.Item>
               </Col>
               <Col span={1} />
@@ -598,7 +594,10 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("embedding_model", backendErrors)}
             >
-              <Select options={embeddingItems} />
+              <Select
+                showSearch
+                options={adapterOptions(embeddingItems, "embedding_model")}
+              />
             </Form.Item>
             <Form.Item
               label="Text Extractor"
@@ -615,9 +614,13 @@ function AddLlmProfile({
               }
               help={getBackendErrorDetail("x2text", backendErrors)}
             >
-              <Select options={x2TextItems} />
+              <Select
+                showSearch
+                options={adapterOptions(x2TextItems, "x2text")}
+              />
             </Form.Item>
             <Collapse
+              className="add-llm-profile-advanced"
               expandIcon={({ isActive }) => handleCaretIcon(isActive)}
               size="small"
               style={{

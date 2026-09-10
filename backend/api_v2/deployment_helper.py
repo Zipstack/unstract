@@ -9,6 +9,7 @@ from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
+from global_api_deployment_key.models import GlobalApiDeploymentKey
 from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -33,6 +34,7 @@ from api_v2.exceptions import (
     InactiveAPI,
     InvalidAPIRequest,
     PresignedURLFetchError,
+    UnauthorizedKey,
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
@@ -61,31 +63,63 @@ class DeploymentHelper(BaseAPIKeyValidator):
         """Fetch API deployment and validate API key."""
         api_name = kwargs.get("api_name") or request.data.get("api_name")
         api_deployment = DeploymentHelper.get_deployment_by_api_name(api_name=api_name)
-        DeploymentHelper.validate_api(api_deployment=api_deployment, api_key=api_key)
+        global_key = DeploymentHelper.validate_api(
+            api_deployment=api_deployment, api_key=api_key
+        )
 
         deployment_execution_dto = DeploymentExecutionDTO(
-            api=api_deployment, api_key=api_key
+            api=api_deployment, api_key=api_key, global_key=global_key
         )
         kwargs["deployment_execution_dto"] = deployment_execution_dto
         return func(self, request, *args, **kwargs)
 
     @staticmethod
-    def validate_api(api_deployment: APIDeployment | None, api_key: str) -> None:
-        """Validating API and API key.
+    def validate_api(
+        api_deployment: APIDeployment | None, api_key: str
+    ) -> GlobalApiDeploymentKey | None:
+        """Validate API deployment and API key.
+
+        Tries deployment-specific key first. If that fails, falls back to
+        Global API Deployment Key validation.
 
         Args:
-            api_deployment (Optional[APIDeployment]): _description_
-            api_key (str): _description_
+            api_deployment: The API deployment instance
+            api_key: The bearer token value
+
+        Returns:
+            The authorizing ``GlobalApiDeploymentKey`` when the request was
+            authenticated via a global key, else ``None`` (deployment-specific
+            key). Returning the key (not a bool) preserves audit identity.
 
         Raises:
-            APINotFound: _description_
-            InactiveAPI: _description_
+            APINotFound: If deployment not found
+            InactiveAPI: If deployment is inactive
+            UnauthorizedKey: If key validation fails
         """
         if not api_deployment:
             raise APINotFound()
         if not api_deployment.is_active:
             raise InactiveAPI()
-        KeyHelper.validate_api_key(api_key=api_key, instance=api_deployment)
+
+        try:
+            KeyHelper.validate_api_key(api_key=api_key, instance=api_deployment)
+            return None
+        except UnauthorizedKey:
+            logger.debug(
+                "Deployment-specific key auth failed for API '%s'; falling back "
+                "to global API deployment key validation.",
+                api_deployment.api_name,
+            )
+            global_key = KeyHelper.validate_global_api_deployment_key(
+                api_key=api_key, api_deployment=api_deployment
+            )
+            logger.info(
+                "API '%s' authorized via global API deployment key '%s' (%s).",
+                api_deployment.api_name,
+                global_key.name,
+                global_key.id,
+            )
+            return global_key
 
     @staticmethod
     def validate_and_get_workflow(workflow_id: str) -> Workflow:

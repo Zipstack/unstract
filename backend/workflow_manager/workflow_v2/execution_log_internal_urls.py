@@ -33,4 +33,9 @@ urlpatterns = [
         execution_log_internal_views.ProcessLogHistoryAPIView.as_view(),
         name="process_log_history",
     ),
+    path(
+        "sweep-undispatched-executions/",
+        execution_log_internal_views.SweepUndispatchedExecutionsAPIView.as_view(),
+        name="sweep_undispatched_executions",
+    ),
 ]

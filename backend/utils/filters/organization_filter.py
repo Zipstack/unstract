@@ -40,6 +40,13 @@ class OrganizationFilterBackend(BaseFilterBackend):
                 "pipeline__workflow__organization",
                 "api__workflow__organization",
             ]
+
+    Precedence: org_filter_paths wins over the model's pin in
+    ORG_PATH_OVERRIDES, and is checked before get_org_path is ever called. So
+    a viewset that sets both scopes through the paths here, not the pin, while
+    OrgAwareManager on the same model still uses the pin. Prefer the pin —
+    it applies at both layers. Reach for org_filter_paths only when the model
+    genuinely needs OR across several nullable paths.
     """
 
     def filter_queryset(self, request, queryset, view):

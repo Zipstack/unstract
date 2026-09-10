@@ -6,9 +6,9 @@ asynchronously — the caller's request returns as soon as the write lands.
 
 The sending itself runs in ``workers/``, which is Django-free, so the worker
 task is a thin HTTP shim back to :mod:`tenant_account_v2.internal_views`; the
-backend does the ORM and plugin work. Transport is resolved per resource/group
-id by the same ``resolve_transport`` gate the execution path uses — the PG
-queue where that is enabled, Celery otherwise.
+backend does the ORM and plugin work. Transport is the PG queue, the only one
+there is (UN-4046) — the ``notifications`` queue the notification consumer
+polls.
 
 The group feature sits behind its own Flipt flag, evaluated once here at
 enqueue: a blind Flipt, a missing org, or any dispatch error means no
@@ -29,7 +29,6 @@ from typing import TYPE_CHECKING, Any
 from django.utils import timezone
 
 from tenant_account_v2.shareable_resources import kind_for_instance
-from unstract.core.data_models import is_pg_transport
 from unstract.flags.feature_flag import check_feature_flag_status
 
 if TYPE_CHECKING:
@@ -39,8 +38,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Rollout flag for the whole feature. Sibling of ``pg_queue.flags`` — kept in
-# one place so a grep on the constant finds every gate.
+# Rollout flag for the whole feature — one constant so a grep finds every gate.
 GROUP_NOTIFICATION_FLAG_KEY = "group_sharing_notifications_enabled"
 
 NOTIFY_RESOURCE_SHARED_TASK = "notify_resource_shared_with_group"
@@ -99,9 +97,8 @@ def _notify_group_share(
 
     A revoke carries ``revoked_at`` so that fresh lookup can still exclude
     anyone who joined the group *after* the access was taken away — they never
-    held it through this group, and the queue can lag (see the PG rollout
-    ordering note). One timestamp rather than the whole member list, which
-    would grow the payload with the group.
+    held it through this group, and the queue can lag. One timestamp rather
+    than the whole member list, which would grow the payload with the group.
     """
     group_ids = sorted(group.pk for group in groups)
     if not group_ids:
@@ -129,7 +126,6 @@ def _notify_group_share(
         task_name=NOTIFY_RESOURCE_SHARED_TASK,
         kwargs=kwargs,
         organization_id=organization_id,
-        entity_id=str(resource.pk),
     )
 
 
@@ -162,7 +158,6 @@ def notify_group_membership_changed(
             "organization_id": organization_id,
         },
         organization_id=organization_id,
-        entity_id=str(group.pk),
     )
 
 
@@ -201,7 +196,7 @@ def _organization_slug(obj: Any) -> str | None:
     """The owning org's string identifier (``Organization.organization_id``).
 
     This is the ``X-Organization-ID`` value the worker echoes back, not the DB
-    pk, and it is what ``resolve_transport`` expects.
+    pk, and it is what the queue row records for fairness/routing.
     """
     organization = getattr(obj, "organization", None)
     return getattr(organization, "organization_id", None)
@@ -212,9 +207,8 @@ def _dispatch_quietly(
     task_name: str,
     kwargs: dict[str, Any],
     organization_id: str,
-    entity_id: str,
 ) -> None:
-    """Dispatch on the resolved transport; never let a failure reach the caller.
+    """Enqueue on the PG queue; never let a failure reach the caller.
 
     The share or membership change has already been committed by the time this
     runs — losing its email is not a reason to fail the request the user made.
@@ -224,7 +218,6 @@ def _dispatch_quietly(
             task_name=task_name,
             kwargs=kwargs,
             organization_id=organization_id,
-            entity_id=entity_id,
         )
     except Exception:
         logger.exception(
@@ -239,30 +232,20 @@ def _dispatch(
     task_name: str,
     kwargs: dict[str, Any],
     organization_id: str,
-    entity_id: str,
 ) -> None:
-    # Lazy imports — ``backend.celery_service`` and ``pg_queue`` are heavier
-    # than this leaf module and importing them at load time risks a cycle
-    # during Django app loading.
+    # Lazy import — ``pg_queue`` is heavier than this leaf module and importing
+    # it at load time risks a cycle during Django app loading.
     from pg_queue.producer import enqueue_task
-    from workflow_manager.workflow_v2.transport import resolve_transport
 
-    from backend.celery_service import app as celery_app
-
-    transport = resolve_transport(execution_id=entity_id, organization_id=organization_id)
-    if is_pg_transport(transport):
-        msg_id = enqueue_task(
-            task_name=task_name,
-            queue=NOTIFICATION_QUEUE,
-            kwargs=kwargs,
-            org_id=organization_id,
-        )
-        logger.info(
-            "group-notification: %s enqueued on PG queue %r (msg_id=%s)",
-            task_name,
-            NOTIFICATION_QUEUE,
-            msg_id,
-        )
-        return
-    celery_app.send_task(task_name, kwargs=kwargs, queue=NOTIFICATION_QUEUE)
-    logger.info("group-notification: %s dispatched on Celery", task_name)
+    msg_id = enqueue_task(
+        task_name=task_name,
+        queue=NOTIFICATION_QUEUE,
+        kwargs=kwargs,
+        org_id=organization_id,
+    )
+    logger.info(
+        "group-notification: %s enqueued on PG queue %r (msg_id=%s)",
+        task_name,
+        NOTIFICATION_QUEUE,
+        msg_id,
+    )

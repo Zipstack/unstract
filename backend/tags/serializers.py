@@ -3,11 +3,12 @@ import re
 
 from rest_framework import serializers
 from rest_framework.serializers import CharField, ValidationError
+from utils.serializer import ModelSerializer
 
 from tags.models import Tag
 
 
-class TagSerializer(serializers.ModelSerializer):
+class TagSerializer(ModelSerializer):
     class Meta:
         model = Tag
         fields = ["id", "name", "description"]

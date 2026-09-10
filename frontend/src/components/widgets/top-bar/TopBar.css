@@ -12,10 +12,31 @@
   gap: 10px;
 }
 
+.topbar-heading {
+  display: flex;
+  align-items: center;
+}
+
+/* The icon sizes itself off the row, not the SVG's own 24px default. */
+.topbar-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+.topbar-back svg {
+  width: 20px;
+  height: 20px;
+}
+
 .topbar-title {
   font-weight: 600;
   font-size: 18px;
-  display: inline;
   line-height: 24px;
   padding-left: 10px;
 }

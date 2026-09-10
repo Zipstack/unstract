@@ -75,6 +75,7 @@ class AdapterProcessor:
                     AdapterKeys.DESCRIPTION: each_adapter.get(AdapterKeys.DESCRIPTION),
                     AdapterKeys.ICON: each_adapter.get(AdapterKeys.ICON),
                     AdapterKeys.ADAPTER_TYPE: each_adapter.get(AdapterKeys.ADAPTER_TYPE),
+                    AdapterKeys.DOC_URL: each_adapter.get(AdapterKeys.DOC_URL, ""),
                 }
             )
         return supported_adapters
@@ -107,6 +108,37 @@ class AdapterProcessor:
             )
             raise InValidAdapterId()
         return updated_adapters[0].get(key_value)
+
+    @staticmethod
+    def get_icon(adapter: AdapterInstance) -> str:
+        """Registry icon for an adapter, or the warning icon if unresolvable."""
+        if not adapter.is_available:
+            return AdapterKeys.UNAVAILABLE_ICON
+        try:
+            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                adapter.adapter_id
+            )
+        except Exception as e:
+            logger.warning(
+                "Adapter %s is not in the SDK registry: %s", adapter.adapter_id, e
+            )
+            return AdapterKeys.UNAVAILABLE_ICON
+        return adapter_class.get_icon() or AdapterKeys.UNAVAILABLE_ICON
+
+    @staticmethod
+    def get_model_label(adapter: AdapterInstance) -> str:
+        """Model name from the adapter metadata.
+
+        Adapters without a model use the adapter id's provider prefix.
+        """
+        try:
+            model = adapter.metadata.get("model")
+        except Exception as e:
+            logger.error(
+                "Could not read metadata for adapter %s: %s", adapter.adapter_id, e
+            )
+            model = None
+        return model or adapter.adapter_id.split("|")[0]
 
     @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
@@ -212,27 +244,6 @@ class AdapterProcessor:
                 raise e
             else:
                 raise InternalServiceError()
-
-    @staticmethod
-    def get_adapter_instance_by_id(adapter_instance_id: str) -> Adapter:
-        """Get the adapter instance by its ID.
-
-        Parameters:
-        - adapter_instance_id (str): The ID of the adapter instance.
-
-        Returns:
-        - Adapter: The adapter instance with the specified ID.
-
-        Raises:
-        - Exception: If there is an error while fetching the adapter instance.
-        """
-        try:
-            adapter = AdapterInstance.objects.get(id=adapter_instance_id)
-        except Exception as e:
-            logger.error(f"Unable to fetch adapter: {e}")
-        if not adapter:
-            logger.error("Unable to fetch adapter")
-        return adapter.adapter_name
 
     @staticmethod
     def get_adapters_by_type(

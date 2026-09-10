@@ -27,9 +27,21 @@ from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
+from unstract.core.network.ssrf import safe_host
 from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)
+
+
+class TerminalWebhookRefusal(Exception):
+    """A refusal no retry can clear, already dead-lettered by its raiser.
+
+    Distinct from the errors below it so ``send_webhook_notification``'s broad
+    ``except Exception`` cannot route it back into ``self.retry`` — a plain
+    ``Exception`` here was retried ``max_retries`` times for a URL that will
+    never be dialable, and dead-lettered the buffer rows a second time.
+    """
+
 
 # Initialize worker configuration
 config = WorkerConfig.from_env("NOTIFICATION")
@@ -312,9 +324,30 @@ def send_webhook_notification(
             _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=True)
             return None  # Success - matches original behavior
         else:
-            # Failed delivery - raise exception for retry handling
             error_message = result.get("message", "Unknown webhook delivery error")
+
+            # A refusal the sink marked non-retryable is a property of the URL
+            # itself, so no attempt can change it. Dead-letter now instead of
+            # re-resolving a tenant-supplied hostname up to max_retries times.
+            if result.get("details", {}).get("retryable") is False:
+                # The host, not the URL: a webhook URL routinely carries a
+                # token in its query string and this line goes to shared logs.
+                logger.error(
+                    f"Webhook to host={safe_host(url)} refused and not "
+                    f"retryable: {error_message}"
+                )
+                _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
+                if raise_on_final_failure:
+                    raise TerminalWebhookRefusal(error_message)
+                return None
+
+            # Failed delivery - raise exception for retry handling
             raise Exception(error_message)
+
+    except TerminalWebhookRefusal:
+        # Buffer rows are already dead-lettered above and no attempt can change
+        # the outcome. Surface FAILURE to the caller without re-entering retry.
+        raise
 
     except (ValidationError, DeliveryError) as e:
         # Handle provider-specific errors
@@ -475,8 +508,8 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 
 
 # Retries for a transient backend problem (restart, 5xx). Kept inside the task
-# because only the PG transport redelivers a failed message — on Celery a raise
-# is terminal, so without this a rolling deploy would silently drop the email.
+# so a brief blip is absorbed here rather than costing a full lease-expiry
+# redelivery (minutes) plus one of the consumer's bounded attempts.
 _GROUP_NOTIFICATION_ATTEMPTS = 3
 _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
 
@@ -485,9 +518,9 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     """POST a group-notification job to the backend and insist it succeeded.
 
     Unlike ``_mark_buffer_outcome`` this deliberately **raises** on failure:
-    there is no reaper behind these rows, so a swallowed error would be a
-    silently unsent email. On the PG transport the raise also leaves the
-    message on the queue for redelivery, bounded by the consumer's attempt cap.
+    nothing tracks an unsent group email, so a swallowed error would be a
+    silent drop. The raise leaves the message on the queue for redelivery,
+    bounded by the consumer's attempt cap.
 
     A sub-500 response ends the in-process attempts — a rejected payload will
     be rejected again. Delivery is at-least-once: a response lost after the

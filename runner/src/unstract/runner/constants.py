@@ -44,3 +44,10 @@ class Env:
     CELERY_BROKER_BASE_URL = "CELERY_BROKER_BASE_URL"
     CELERY_BROKER_USER = "CELERY_BROKER_USER"
     CELERY_BROKER_PASS = "CELERY_BROKER_PASS"
+    # Log-streaming transport (UN-3755). Must reach the SIDECAR: it is the process
+    # that calls LogPublisher.publish for tool logs
+    # (tool_sidecar/log_processor.py:165), and the sidecar's environment is a
+    # hand-picked allowlist rather than an inherited one — so anything absent here is
+    # silently absent there, and it falls back to publishing on Celery/RabbitMQ.
+    LOG_TRANSPORT = "LOG_TRANSPORT"
+    LOG_STREAM_QUEUE_NAME = "LOG_STREAM_QUEUE_NAME"

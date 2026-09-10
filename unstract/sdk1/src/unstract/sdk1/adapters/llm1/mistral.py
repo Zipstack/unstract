@@ -36,5 +36,9 @@ class MistralLLMAdapter(MistralLLMParameters, BaseAdapter):
         return "/icons/adapter-icons/Mistral%20AI.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/llms/mistral_llm/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM

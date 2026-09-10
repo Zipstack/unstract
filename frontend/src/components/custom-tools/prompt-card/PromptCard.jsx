@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 
 import {
   PROMPT_RUN_API_STATUSES,
@@ -27,6 +27,10 @@ try {
 const useEnforceTypeSwitchGate =
   useEnforceTypeSwitchGatePlugin || (() => () => null);
 
+// Fields with an inline error renderer on the card. Anything else falls back
+// to the global alert, so widening the sanitizer cannot silence a rejection.
+const RENDERABLE_FIELD_ERRORS = new Set(["prompt_key"]);
+
 const PromptCard = memo(
   ({
     promptDetails,
@@ -53,6 +57,11 @@ const PromptCard = memo(
     const [promptKey, setPromptKey] = useState("");
     const [promptText, setPromptText] = useState("");
     const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
+    const [fieldErrors, setFieldErrors] = useState({});
+    // Per-field attempt counter. The key input is debounced, not disabled
+    // while saving, so a slow rejection can land after a newer attempt has
+    // already been accepted; only the latest attempt may touch state.
+    const attemptGen = useRef({});
 
     const [isCoverageLoading, setIsCoverageLoading] = useState(false);
     const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
@@ -152,10 +161,33 @@ const PromptCard = memo(
         value = event.target.value;
       }
 
-      const prevPromptDetailsState = { ...promptDetailsState };
+      /*
+       * Functional update, NOT a spread of the captured snapshot. Header's
+       * debounced savers hold on to the `handleChange` from the render they
+       * were called in, so a save can land against newer state than it was
+       * built from. Spreading the snapshot wrote every *other* field back as
+       * it stood then: ticking "Enable Postprocessing Webhook" and typing the
+       * URL inside the 300ms toggle debounce made the URL save re-assert
+       * `enable_postprocessing_webhook: false`, unticking the box the user
+       * had just ticked (the PATCH itself only ever carries `name`, so the
+       * server kept both values and a refresh looked correct).
+       */
+      const prevValue = promptDetailsState?.[name];
 
-      const updatedPromptDetailsState = { ...promptDetailsState };
-      updatedPromptDetailsState[name] = value;
+      const generation = (attemptGen.current[name] =
+        (attemptGen.current[name] || 0) + 1);
+      const isLatestAttempt = () => attemptGen.current[name] === generation;
+
+      const clearFieldError = () =>
+        setFieldErrors((prev) => {
+          if (!(name in prev)) return prev;
+          const next = { ...prev };
+          delete next[name];
+          return next;
+        });
+
+      // New attempt — drop any prior inline error for this field.
+      clearFieldError();
 
       handleUpdateStatus(
         isUpdateStatus,
@@ -163,14 +195,40 @@ const PromptCard = memo(
         promptStudioUpdateStatus.isUpdating,
         setUpdateStatus,
       );
-      setPromptDetailsState(updatedPromptDetailsState);
-      return handleChangePromptCard(name, value, promptId)
+      setPromptDetailsState((prev) => ({ ...prev, [name]: value }));
+
+      // Collected here but applied in the rejection handler, so the inline
+      // error and the rollback below always land in the same render.
+      let inlineErrors = null;
+      const reportFieldError = (errors) => {
+        // A superseded attempt reports nothing: the newer one owns the field
+        // and surfaces its own outcome, so an alert here would contradict the
+        // value the user can see was accepted.
+        if (!isLatestAttempt()) {
+          return true;
+        }
+        const renderable = Object.entries(errors).filter(([attr]) =>
+          RENDERABLE_FIELD_ERRORS.has(attr),
+        );
+        // Nothing renderable — the caller falls back to the global alert so a
+        // rejected value can never fail silently.
+        if (!renderable.length) {
+          return false;
+        }
+        inlineErrors = Object.fromEntries(renderable);
+        return true;
+      };
+
+      return handleChangePromptCard(name, value, promptId, reportFieldError)
         .then((res) => {
           const data = res?.data;
           setUpdatedPromptsCopy((prev) => {
             prev[promptId] = data;
             return prev;
           });
+          if (isLatestAttempt()) {
+            clearFieldError();
+          }
           handleUpdateStatus(
             isUpdateStatus,
             promptId,
@@ -178,9 +236,20 @@ const PromptCard = memo(
             setUpdateStatus,
           );
         })
-        .catch(() => {
+        .catch((err) => {
           handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
-          setPromptDetailsState(prevPromptDetailsState);
+          if (isLatestAttempt()) {
+            // Roll the field back to the stored value even when the rejected
+            // text stays in the input: outputs, highlights and confidence are
+            // keyed off prompt_key and have to track the server.
+            setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
+            if (inlineErrors) {
+              setFieldErrors((prev) => ({ ...prev, ...inlineErrors }));
+            }
+          }
+          // Callers keeping their own copy of the value (Header's webhook and
+          // toggle state) roll back off this rejection.
+          throw err;
         })
         .finally(() => {
           if (isUpdateStatus) {
@@ -193,11 +262,12 @@ const PromptCard = memo(
 
     const handleSelectDefaultLLM = (llmProfileId) => {
       setSelectedLlmProfileId(llmProfileId);
+      // Error already surfaced by handleChange; no local copy to roll back.
       handleChange(
         llmProfileId,
         promptDetailsState?.prompt_id,
         "profile_manager",
-      );
+      ).catch(() => {});
     };
 
     const addCoordsToFlattened = (coords, flattened) => {
@@ -279,7 +349,12 @@ const PromptCard = memo(
         setAlertDetails({ type: "error", content: block.reason });
         return;
       }
-      handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
+      handleChange(
+        value,
+        promptDetailsState?.prompt_id,
+        "enforce_type",
+        true,
+      ).catch(() => {});
     };
 
     const handleSpsLoading = (docId, isLoadingStatus) => {
@@ -381,6 +456,7 @@ const PromptCard = memo(
           coverageCountData={coverageCountData}
           isChallenge={isChallenge}
           handleSelectHighlight={handleSelectHighlight}
+          fieldErrors={fieldErrors}
         />
         <OutputForDocModal
           open={openOutputForDoc}

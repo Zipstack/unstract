@@ -10,8 +10,10 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.utils import timezone as django_timezone
 
 from pg_queue import producer
+from unstract.core.data_models import QueueMessageState
 
 _MODEL = "pg_queue.producer.PgQueueMessage"
 
@@ -176,3 +178,90 @@ class TestEnqueueTask:
             )
         msg = model.objects.create.call_args.kwargs["message"]
         assert msg["on_success"]["kwargs"]["callback_kwargs"]["doc_id"] == str(uid)
+
+
+class TestDelayedVisibility:
+    """UN-3843 — ``countdown``/``eta`` defer delivery via ``scheduled`` + ``available_at``.
+
+    A deferred row is written ``state='scheduled'`` so it is absent from the claim's
+    partial index; the reaper promotes it when due. These pin the producer half of
+    that contract — that the right ``(available_at, state)`` pair reaches the row, and
+    that every non-deferred call still writes exactly what it wrote before this
+    parameter existed.
+    """
+
+    @staticmethod
+    def _create_kwargs(model):
+        return model.objects.create.call_args.kwargs
+
+    def test_no_delay_is_unchanged_and_ready(self):
+        # The zero-regression case: every pre-existing call site lands here.
+        before = django_timezone.now()
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q")
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.READY.value
+        assert before <= kw["available_at"] <= django_timezone.now()
+
+    def test_countdown_defers_and_marks_scheduled(self):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            before = django_timezone.now()
+            producer.enqueue_task(task_name="t", queue="q", countdown=90)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        # ~90s out; generous window so a slow CI box can't flake it.
+        delta = (kw["available_at"] - before).total_seconds()
+        assert 89 <= delta <= 95
+
+    def test_eta_defers_and_marks_scheduled(self):
+        eta = django_timezone.now() + datetime.timedelta(minutes=5)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=eta)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        assert kw["available_at"] == eta
+
+    def test_naive_eta_is_read_as_utc(self):
+        # USE_TZ makes `now()` aware; a naive eta would raise on comparison. Treat
+        # it as UTC rather than rejecting an otherwise valid call.
+        naive = (
+            django_timezone.now() + datetime.timedelta(hours=1)
+        ).replace(tzinfo=None)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=naive)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        assert kw["available_at"].tzinfo is not None
+
+    @pytest.mark.parametrize("countdown", [0, -5])
+    def test_non_positive_countdown_stays_on_the_immediate_path(self, countdown):
+        # A stagger computes `i * delay`; step 0 must not pay a reaper tick just to
+        # become claimable.
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", countdown=countdown)
+        assert self._create_kwargs(model)["state"] == QueueMessageState.READY.value
+
+    def test_past_eta_stays_on_the_immediate_path(self):
+        past = django_timezone.now() - datetime.timedelta(minutes=1)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=past)
+        assert self._create_kwargs(model)["state"] == QueueMessageState.READY.value
+
+    def test_countdown_and_eta_together_are_rejected(self):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            with pytest.raises(ValueError, match="mutually exclusive"):
+                producer.enqueue_task(
+                    task_name="t",
+                    queue="q",
+                    countdown=10,
+                    eta=django_timezone.now(),
+                )
+            # Rejected before any row is written — no half-enqueued message.
+            model.objects.create.assert_not_called()

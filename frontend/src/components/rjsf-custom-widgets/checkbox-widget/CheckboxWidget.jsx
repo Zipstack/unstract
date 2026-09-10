@@ -1,5 +1,7 @@
-import { Checkbox, Space, Typography } from "antd";
 import PropTypes from "prop-types";
+import { Checkbox } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./CheckboxWidget.css";
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";

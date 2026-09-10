@@ -4,9 +4,8 @@
 payload and hands it to the transport. Nothing here touches the ORM or sends
 mail, so the module is patched at its three seams — ``kind_for_instance``,
 ``_feature_enabled`` and ``_dispatch`` — and these run in the rig's unit tier
-with no Postgres. The transport itself is covered by ``pg_queue.tests`` and
-``workflow_manager.workflow_v2.tests.test_transport``; the delivery side by
-``ResourceShareNotificationTests`` in ``tenant_account_v2.tests``.
+with no Postgres. The transport itself is covered by ``pg_queue.tests``; the
+delivery side by ``ResourceShareNotificationTests`` in ``tenant_account_v2.tests``.
 """
 
 from __future__ import annotations
@@ -49,7 +48,6 @@ class TestNotifyResourceGroupShareChanged:
         call = dispatch.call_args.kwargs
         assert call["task_name"] == sn.NOTIFY_RESOURCE_SHARED_TASK
         assert call["organization_id"] == "org-a"
-        assert call["entity_id"] == "wf-1"
         assert call["kwargs"] == {
             "group_ids": [2, 5],  # sorted, so the payload is stable
             "actor_id": 7,
@@ -158,7 +156,6 @@ class TestNotifyGroupMembershipChanged:
             )
         call = dispatch.call_args.kwargs
         assert call["task_name"] == sn.NOTIFY_MEMBERSHIP_CHANGED_TASK
-        assert call["entity_id"] == "9"
         assert call["kwargs"] == {
             "group_id": 9,
             "actor_id": 7,

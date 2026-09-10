@@ -1,7 +1,8 @@
-import { InfoCircleOutlined } from "@ant-design/icons";
-import { Col, Popover, Row } from "antd";
+import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Popover } from "@/components/ui/shims/antd-overlays";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -383,7 +384,7 @@ function ConfigureDs({
             trigger="click"
             placement="bottomRight"
           >
-            <InfoCircleOutlined className="config-doc-icon" />
+            <Info className="config-doc-icon" />
           </Popover>
         </div>
       )}

@@ -48,15 +48,15 @@
 }
 
 .custom-data-icon-success {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .custom-data-icon-warning {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .custom-data-variable-undefined {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .custom-data-variable-status {

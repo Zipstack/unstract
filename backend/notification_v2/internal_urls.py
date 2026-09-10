@@ -7,12 +7,8 @@ from rest_framework.routers import DefaultRouter
 
 from . import internal_api_views
 from .internal_views import (
-    WebhookBatchAPIView,
-    WebhookBatchStatusAPIView,
     WebhookInternalViewSet,
     WebhookMetricsAPIView,
-    WebhookSendAPIView,
-    WebhookStatusAPIView,
     WebhookTestAPIView,
 )
 
@@ -66,13 +62,7 @@ urlpatterns = [
         name="get_api_data",
     ),
     # Webhook operation endpoints
-    path("send/", WebhookSendAPIView.as_view(), name="webhook-send"),
-    path("batch/", WebhookBatchAPIView.as_view(), name="webhook-batch"),
     path("test/", WebhookTestAPIView.as_view(), name="webhook-test"),
-    path("status/<str:task_id>/", WebhookStatusAPIView.as_view(), name="webhook-status"),
-    path(
-        "batch-status/", WebhookBatchStatusAPIView.as_view(), name="webhook-batch-status"
-    ),
     path("metrics/", WebhookMetricsAPIView.as_view(), name="webhook-metrics"),
     # Webhook configuration CRUD (via router)
     path("", include(router.urls)),

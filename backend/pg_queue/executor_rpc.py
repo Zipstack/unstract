@@ -1,14 +1,14 @@
 """Executor-RPC for the PG path — backend (Django) transport adapter.
 
-The gate + reply_key/timeout orchestration + routing live ONCE in
+The reply_key/timeout orchestration lives ONCE in
 ``unstract.workflow_execution.executor_rpc`` (shared with the workers). This module
 is the thin Django half: a :class:`DjangoQueueTransport` that enqueues via the ORM
 (``enqueue_task``) and polls ``PgTaskResult``, plus the :func:`get_executor_dispatcher`
 factory that wires them together.
 
-Zero-regression: with the ``pg_queue_enabled`` Flipt flag off the routing dispatcher
-delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
-``pg_task_result`` row is created.
+Since UN-4046 the factory returns the PG dispatcher unconditionally: there is no
+gate, no routing dispatcher and no Celery fall-through, so a ``pg_task_result``
+row is written on every request-reply dispatch.
 """
 
 from __future__ import annotations
@@ -21,14 +21,11 @@ from django.db import close_old_connections
 from pg_queue.models import PgTaskResult
 from pg_queue.producer import enqueue_task
 from unstract.core.polling import poll_for_row
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
     ExecResultRow,
     PgExecutionDispatcher,
     QueueTransport,
-    RoutingExecutionDispatcher,
-    resolve_pg_transport,
 )
 
 if TYPE_CHECKING:
@@ -41,18 +38,8 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "DjangoQueueTransport",
     "PgExecutionDispatcher",
-    "RoutingExecutionDispatcher",
     "get_executor_dispatcher",
-    "resolve_executor_transport",
 ]
-
-
-def resolve_executor_transport(context: ExecutionContext) -> bool:
-    """True → route this executor dispatch over PG; False → Celery (default).
-
-    The single ``pg_queue_enabled`` Flipt flag (fail-closed).
-    """
-    return resolve_pg_transport(context)
 
 
 class DjangoQueueTransport(QueueTransport):
@@ -122,12 +109,15 @@ class DjangoQueueTransport(QueueTransport):
         return row
 
 
-def get_executor_dispatcher(
-    celery_app: object | None = None,
-) -> RoutingExecutionDispatcher:
-    """Factory: the gate-routed executor dispatcher (PG when enabled, else Celery)."""
-    return RoutingExecutionDispatcher(
-        celery=ExecutionDispatcher(celery_app=celery_app),
-        pg=PgExecutionDispatcher(DjangoQueueTransport()),
-        resolve=resolve_executor_transport,
-    )
+def get_executor_dispatcher() -> PgExecutionDispatcher:
+    """Factory: the executor dispatcher.
+
+    Takes no arguments. It used to accept a ``celery_app`` that fed the Celery
+    branch of the routing dispatcher; that branch went with the ``pg_queue_enabled``
+    flag (UN-4046), and the parameter was kept for a while so the call sites did not
+    all need editing at once. Keeping an ignored parameter made the signature
+    decoration rather than a contract — and it read as "this dispatcher may use
+    Celery", which is exactly the belief that left a ``headers=`` argument at three
+    call sites and broke every extraction. Removed.
+    """
+    return PgExecutionDispatcher(DjangoQueueTransport())

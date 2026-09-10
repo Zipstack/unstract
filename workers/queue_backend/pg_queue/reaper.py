@@ -70,7 +70,7 @@ from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
 from .metrics import ReaperMetrics
-from .pg_scheduler import dispatch_due_schedules
+from .pg_scheduler import dispatch_due_periodic_tasks, dispatch_due_schedules
 from .recovery import mark_execution_error
 from .schema import qualified
 
@@ -173,6 +173,46 @@ def reaper_interval_from_env() -> float:
             f"Unset it to default to {_DEFAULT_REAPER_INTERVAL_SECONDS}s."
         )
     return value
+
+
+#: How long an execution must sit non-terminal with EVERY file already terminal before
+#: the safety net finalizes it (``WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS``).
+#:
+#: Ten minutes, and deliberately NOT the barrier stuck-timeout it used to default to.
+#: Those answer different questions: the barrier timeout bounds how long a batch may
+#: make no progress (hours, because a single file can legitimately take that long),
+#: whereas this must outlast the worst-case callback latency after the last file goes
+#: terminal (see below — that is what sizes it).
+#:
+#: **The threshold IS load-bearing — do not lower it casually.** It was not, once: the
+#: only guard was all-files-terminal (``internal_views.py``: ``total == 0 or
+#: terminal < total → skipped``), and against that guard the value genuinely did not
+#: matter. It does now. The selection also requires ``last_file_at < cutoff``, because
+#: all-files-terminal alone leaves a live race: between the last file going terminal and
+#: the callback finalizing, a HEALTHY execution passes every other check, and a sweep
+#: landing there finalizes it first — the status guard then refuses the callback's own
+#: write and the notification is lost. This threshold is what sizes that window, so it
+#: must exceed the worst-case callback latency after the last file completes. An earlier
+#: version of this comment said "seconds" and "no matter how short this is"; acting on
+#: that today reopens the race.
+#:
+#: What remains true is that inheriting the multi-hour barrier timeout is wrong — it
+#: answers a different question (how long a batch may make no progress, where one file
+#: can legitimately take hours) and it cost a lot: a
+#: stranded execution — the common shape being a Celery run whose callback worker was
+#: removed by a deploy (its grace is 300s while file-processing gets 7200s) — sat dead
+#: for ~2.5 h before anything noticed.
+#:
+#: A DEFAULT rather than something operators set, because production and on-prem have
+#: no operator and no Flipt. A value that only exists as an env override is a value
+#: those environments never get, and they are exactly the ones that cannot diagnose a
+#: hung execution themselves.
+#:
+#: Not lowered further because ``total`` counts the file rows that EXIST, not
+#: ``execution.total_files`` — while discovery is still creating rows, a brief
+#: "all existing rows terminal" moment is possible. Ten minutes clears that comfortably.
+#: Comparing against ``total_files`` would close the window properly and allow less.
+_DEFAULT_STUCK_RECOVERY_SECONDS = 600
 
 
 def _positive_duration_from_env(name: str, default: _N, cast: Callable[[str], _N]) -> _N:
@@ -334,6 +374,47 @@ def rearm_expired_claims(conn: PgConnection) -> int:
             rearmed = cur.rowcount
         conn.commit()
         return rearmed
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_queue_message")
+        raise
+
+
+def promote_due_scheduled(conn: PgConnection) -> int:
+    """Make deferred queue messages claimable: ``scheduled`` + due -> ``ready``.
+
+    Delayed visibility (UN-3843, Celery ``countdown``/``eta`` parity). A deferred
+    row is enqueued ``state='scheduled'`` with a future ``available_at`` and is
+    **absent from the claim's partial index**, so consumers cannot see it and it
+    costs the hot claim path nothing while it waits. This sweep is the only thing
+    that promotes it, which makes the reaper part of the delivery path for delayed
+    messages — not just the recovery path. It is already the mandatory singleton for
+    crash redelivery, so no new deployment dependency, but a queue that uses delays
+    inherits its liveness alert.
+
+    Consequence to hold onto: delivery is **"not before ``available_at``"**, never
+    early, with granularity of the reaper tick (default 5s) — not exact ETA. Celery's
+    countdown is likewise approximate, and every consumer of this (staggered sends,
+    retry backoff) needs a floor rather than an instant.
+
+    Cheap and bounded: ``pg_queue_message_scheduled_idx`` (partial, ``scheduled``
+    only, keyed on ``available_at``) means a backlog of far-future rows costs one
+    index seek rather than a scan. Queue-agnostic — one statement promotes every due
+    row across all queues. Idempotent (a promoted row leaves the predicate); rolls
+    back on error. Runs every **leader** tick alongside
+    :func:`rearm_expired_claims`; see :meth:`PgReaper.tick`.
+    """
+    ready = QueueMessageState.READY.value
+    scheduled = QueueMessageState.SCHEDULED.value
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE {qualified('pg_queue_message')} "
+                f"SET state = '{ready}' "
+                f"WHERE state = '{scheduled}' AND available_at <= now()"
+            )
+            promoted = cur.rowcount
+        conn.commit()
+        return promoted
     except Exception:
         _rollback_after_sweep_failure(conn, "pg_queue_message")
         raise
@@ -1038,15 +1119,13 @@ class PgReaper:
         )
         if self._dedup_retention <= 0:
             raise ValueError("dedup_retention_seconds must be positive")
-        # Safety-net recovery of PG executions stranded non-terminal after all files
+        # Safety-net recovery of executions stranded non-terminal after all files
         # completed (barrier gone → invisible to the PG-table sweeps). Enablement +
-        # kill-switch semantics live in stuck_recovery_enabled_from_env(); the stuck
-        # window (below) defaults to the barrier stuck-timeout so it never races a
-        # legitimately long execution.
+        # kill-switch semantics live in stuck_recovery_enabled_from_env().
         self._stuck_recovery_enabled = stuck_recovery_enabled_from_env()
         self._stuck_recovery_seconds = _positive_duration_from_env(
             "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS",
-            self._stuck_timeout_seconds,
+            _DEFAULT_STUCK_RECOVERY_SECONDS,
             int,
         )
         # None → "never swept", so the first leader tick sweeps immediately; set to
@@ -1186,6 +1265,31 @@ class PgReaper:
             )
             self._discard_owned_sweep_conn()
             raise
+        # Delayed-visibility delivery (UN-3843): promote due 'scheduled' rows so
+        # consumers can claim them. Placed with the re-arm sweep because it shares
+        # its cadence requirement — this is the DELIVERY path for delayed messages,
+        # so a slower interval would directly add latency to every countdown/eta
+        # dispatch. Same failure posture as the re-arm above (dedicated counter,
+        # re-raise, discard the conn): a stalled promotion sweep means delayed
+        # messages silently never fire, which must not be swallowed.
+        try:
+            promoted = promote_due_scheduled(self._get_sweep_conn())
+            if promoted:
+                self._metrics.queue_promoted.inc(promoted)
+                logger.info(
+                    "Reaper: promoted %s due scheduled queue message(s) to 'ready' "
+                    "(delayed-visibility delivery)",
+                    promoted,
+                )
+        except Exception:
+            self._metrics.queue_promote_failures.inc()
+            logger.exception(
+                "Reaper: promotion sweep failed — delayed (countdown/eta) queue "
+                "messages will not become claimable this tick "
+                "(see pg_reaper_queue_promote_failures_total)"
+            )
+            self._discard_owned_sweep_conn()
+            raise
         # Orchestrator's second job: fire due PG-owned schedules (Beat
         # replacement). Ordered AFTER recovery so this cycle's recovery has
         # already completed before any scheduler error can propagate (the except
@@ -1193,6 +1297,17 @@ class PgReaper:
         # nothing until rows are pg_owned.
         try:
             dispatch_due_schedules(self._get_sweep_conn())
+        except Exception:
+            self._discard_owned_sweep_conn()
+            raise
+        # ...and the non-pipeline periodics (UN-3796): dashboard_metrics.*,
+        # log-history, audit, anything an operator adds. Separate call because each
+        # row carries its own task/args/queue rather than the pipeline trigger's one
+        # fixed shape; same leader gating, same dark-by-default posture (nothing
+        # fires until a row is pg_owned). Ordered after the pipeline dispatch so a
+        # fault here cannot stop pipelines, which are the customer-visible ones.
+        try:
+            dispatch_due_periodic_tasks(self._get_sweep_conn())
         except Exception:
             self._discard_owned_sweep_conn()
             raise
@@ -1249,7 +1364,58 @@ class PgReaper:
                 dedup,
                 claims,
             )
+        self._sweep_undispatched_executions()
         self._maybe_recover_stuck_executions()
+
+    def _sweep_undispatched_executions(self) -> None:
+        """Terminalise executions created but never dispatched (backend-side).
+
+        The gap this closes: an abort between ``create_workflow_execution`` and
+        ``execute_workflow_async`` commits a PENDING row that was never queued. No
+        queue message and no barrier are ever created, so
+        :func:`recover_expired_barriers` — which scans ``pg_barrier_state`` — cannot
+        see it, and PENDING is not terminal, so nothing else resolves it either.
+        Observed as 967 orphans from one load test whose API tier shed 71% of traffic.
+
+        Delegated to the backend rather than done here: this reaper deliberately never
+        touches backend tables (it reads/writes execution state through the internal
+        API), and the sweep also needs the rate limiter.
+        The reaper contributes what it uniquely has — leader election, so exactly one
+        instance sweeps — while the backend owns the logic.
+
+        Cadence-gated with the retention sweeps: these rows are already older than the
+        grace period, so there is nothing to gain from running it every tick.
+
+        **Swallowed on failure**, unlike barrier recovery. This cleans up work that is
+        already dead; a fault here must not discard the connection or abort the tick
+        and thereby defer schedule dispatch, which serves live traffic.
+        """
+        try:
+            response = self._get_api_client().sweep_undispatched_executions()
+        except Exception:
+            self._metrics.undispatched_sweep_failures.inc()
+            logger.warning(
+                "Reaper: undispatched-execution sweep failed; retrying next sweep",
+                exc_info=True,
+            )
+            return
+        # sweep_undispatched_executions() is typed `-> dict[str, Any]` and returns the
+        # parsed body verbatim — {"swept": N}, no {"data": ...} envelope. Reading
+        # `.data` off a plain dict yields None, so this counter was always 0: the
+        # metric never incremented and the "terminalised N" line never fired, leaving
+        # the 967-orphan condition this sweep exists to detect completely invisible.
+        # The sibling recover_stuck_pg_executions() hits the same flat-body shape and
+        # documents it (execution_client.py:352-358); it wraps there instead, which is
+        # why that one works. Read the dict directly here rather than add a second
+        # wrapping convention.
+        swept = (response if isinstance(response, dict) else {}).get("swept", 0)
+        if swept:
+            self._metrics.undispatched_swept.inc(swept)
+            logger.info(
+                "Reaper: terminalised %s undispatched execution(s) "
+                "(created but never queued)",
+                swept,
+            )
 
     def _maybe_recover_stuck_executions(self) -> None:
         """Opt-in safety-net: finalize PG executions stranded non-terminal after all

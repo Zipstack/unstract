@@ -1,7 +1,9 @@
-import { InfoCircleFilled } from "@ant-design/icons";
-import { Space, Spin, Typography } from "antd";
+import { Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Spin } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import {
   displayPromptResult,
@@ -88,7 +90,7 @@ function DisplayPromptResult({
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
-          <InfoCircleFilled className="info-circle-colored" />
+          <Info className="info-circle-colored" />
         </span>{" "}
         Yet to run
       </Typography.Text>

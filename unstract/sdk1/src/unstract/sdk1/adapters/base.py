@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 
+from unstract.sdk1.adapters.constants import AdapterDocs
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,10 @@ class Adapter(ABC):
     @abstractmethod
     def get_icon() -> str:
         return ""
+
+    @classmethod
+    def get_doc_url(cls) -> str:
+        return AdapterDocs.type_index_url(cls.get_adapter_type())
 
     @classmethod
     def get_json_schema(cls) -> str:

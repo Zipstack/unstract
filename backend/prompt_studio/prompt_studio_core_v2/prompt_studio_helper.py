@@ -26,7 +26,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -70,6 +69,7 @@ from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
 )
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (  # noqa: E501
+    ExtractionStatusResult,
     PromptStudioIndexHelper,
 )
 from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
@@ -327,15 +327,17 @@ class PromptStudioHelper:
     def _get_dispatcher():
         """Executor dispatcher for the executor worker.
 
-        Gate-routed: when ``pg_queue_enabled`` is on the blocking
-        ``dispatch()`` rides the PG request-reply transport; otherwise — and for
-        all async/callback dispatches — it is the unchanged Celery
-        ``ExecutionDispatcher``. The decision is read per dispatch, so flipping
-        the flag is an instant, no-redeploy rollout/rollback.
+        Always the PG request-reply dispatcher since UN-4046. This used to be
+        gate-routed per dispatch on ``pg_queue_enabled``, falling back to the
+        Celery ``ExecutionDispatcher``; with the flag gone the factory returns
+        the PG dispatcher directly. It is kept as a factory call rather than a
+        direct construction on purpose — UN-3779 was a hardcoded
+        ``ExecutionDispatcher`` here that published to RabbitMQ and hung for its
+        full 1200s timeout with no consumer.
         """
         from pg_queue.executor_rpc import get_executor_dispatcher
 
-        return get_executor_dispatcher(celery_app=celery_app)
+        return get_executor_dispatcher()
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
@@ -714,6 +716,36 @@ class PromptStudioHelper:
         return context, cb_kwargs
 
     @staticmethod
+    def _resolve_profile_manager(
+        tool: Any, prompt: Any = None, profile_manager_id: str | None = None
+    ) -> Any:
+        """Resolve the profile a run executes under.
+
+        The ladder, in order: an explicitly passed ``profile_manager_id``, then
+        the prompt's own FK, then the project default. A prompt need not carry
+        its own FK - falling back to the project default matches what
+        index_document and single-pass extraction already do.
+
+        ``get_default_llm_profile`` raises ``DefaultProfileError`` when no
+        project default exists, so this never returns a falsy value.
+
+        Args:
+            tool (CustomTool): Prompt Studio project the prompt belongs to
+            prompt (ToolStudioPrompt | None): Prompt whose FK to consult, if any
+            profile_manager_id (str | None): Explicitly requested profile
+
+        Returns:
+            ProfileManager: The resolved profile
+        """
+        if profile_manager_id:
+            return ProfileManagerHelper.get_profile_manager(
+                profile_manager_id=profile_manager_id
+            )
+        if prompt is not None and prompt.profile_manager:
+            return prompt.profile_manager
+        return ProfileManager.get_default_llm_profile(tool)
+
+    @staticmethod
     def _resolve_llm_ids(tool: Any) -> tuple[str, str]:
         """Resolve monitor_llm and challenge_llm IDs for the tool."""
         monitor_llm_instance = tool.monitor_llm
@@ -766,14 +798,9 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
@@ -960,7 +987,11 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(prompt.prompt_id)],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None) argument.
+            # The callback otherwise re-resolves the project default, so a
+            # default change mid-run would book output against a different
+            # profile than the one that produced it.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -989,15 +1020,10 @@ class PromptStudioHelper:
         Returns:
             (context, cb_kwargs) or (None, pending_response_dict)
         """
-        profile_manager = (
-            ProfileManagerHelper.get_profile_manager(profile_manager_id)
-            if profile_manager_id
-            else None
+        # No single prompt to consult here, so the FK rung is skipped.
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, profile_manager_id=profile_manager_id
         )
-        if not profile_manager:
-            profile_manager = ProfileManager.get_default_llm_profile(tool)
-        if not profile_manager:
-            raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(
@@ -1154,7 +1180,9 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
-            "profile_manager_id": profile_manager_id,
+            # Record the profile actually used, not the (possibly None)
+            # argument - same reason as build_fetch_response_payload above.
+            "profile_manager_id": str(profile_manager.profile_id),
             "is_single_pass": False,
         }
 
@@ -1701,13 +1729,26 @@ class PromptStudioHelper:
                     user_id=user_id,
                     request_user=request_user,
                 )
+            # Book the output against the profile the run actually used, the
+            # same ladder _fetch_response applies. Forwarding the raw (possibly
+            # None) argument makes _handle_response re-resolve the project
+            # default, so a prompt carrying its own FK would run under that FK
+            # but have its output stored under the project default.
+            resolved_profile_id = str(
+                PromptStudioHelper._resolve_profile_manager(
+                    tool=tool,
+                    prompt=prompt_instance,
+                    profile_manager_id=profile_manager_id,
+                ).profile_id
+            )
+
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,
                 prompts=prompts,
                 document_id=document_id,
                 is_single_pass=False,
-                profile_manager_id=profile_manager_id,
+                profile_manager_id=resolved_profile_id,
             )
         except APIException:
             # Validation responses are user-facing; DRF renders them as-is.
@@ -1836,14 +1877,52 @@ class PromptStudioHelper:
                 "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
             }
 
+        outputs = response["output"]
+        metadata = response["metadata"]
+        # Same guard as the internal API (UN-4017). This is the in-backend
+        # execution path — it dispatches the identical single_pass_extraction
+        # executor, so it can receive the identical bad shape. Without this,
+        # handle_prompt_output_update does outputs.get(prompt.prompt_key) on a
+        # list and raises AttributeError, which surfaces as a bare 500.
+        # `metadata` is indexed five times at the top of
+        # handle_prompt_output_update, unconditionally and before its
+        # `if not prompts` early exit, so it has the same exposure as `outputs`
+        # and had been left unchecked here.
+        for field_name, value in (("outputs", outputs), ("metadata", metadata)):
+            if isinstance(value, dict):
+                continue
+            # Name the type rather than asserting a shape: this fires for
+            # NoneType, int and bool too, and "LLM returned a JSON array
+            # (got NoneType)" contradicts itself.
+            detail = (
+                f"LLM response could not be used as the {field_name} map — a "
+                "single JSON object keyed by field name is expected (got "
+                f"{type(value).__name__})."
+            )
+            # Only for `outputs`. `metadata` is assembled by the executor, not
+            # returned by the LLM, so telling the user to rephrase a prompt
+            # would be a dead end for a defect that is ours — the same
+            # misdirection the shape claim above was rewritten to avoid.
+            if is_single_pass and field_name == "outputs":
+                detail += (
+                    " In single-pass extraction all prompts share one response,"
+                    " so a prompt that asks for a list or for separate JSON"
+                    " entries can change the shape of the entire result."
+                    " Rephrase that prompt to describe the value of its own"
+                    " field, or run these prompts with single-pass extraction"
+                    " turned off."
+                )
+            logger.error("%s run_id=%s document_id=%s", detail, run_id, document_id)
+            raise AnswerFetchError(detail, status_code=422)
+
         return OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
-            outputs=response["output"],
+            outputs=outputs,
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            metadata=response["metadata"],
+            metadata=metadata,
         )
 
     @staticmethod
@@ -1880,14 +1959,9 @@ class PromptStudioHelper:
             Any: Output from LLM
         """
         # Fetch the ProfileManager instance using the profile_manager_id if provided
-        profile_manager = prompt.profile_manager
-        if profile_manager_id:
-            profile_manager = ProfileManagerHelper.get_profile_manager(
-                profile_manager_id=profile_manager_id
-            )
-
-        if not profile_manager:
-            raise DefaultProfileError()
+        profile_manager = PromptStudioHelper._resolve_profile_manager(
+            tool=tool, prompt=prompt, profile_manager_id=profile_manager_id
+        )
 
         monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
         monitor_llm: str | None = None
@@ -2501,7 +2575,7 @@ class PromptStudioHelper:
         result = dispatcher.dispatch(extract_context)
         if not result.success:
             msg = result.error or "Unknown extraction error"
-            success = PromptStudioIndexHelper.mark_extraction_status(
+            status_result = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 x2text_config_hash=x2text_config_hash,
@@ -2509,7 +2583,7 @@ class PromptStudioHelper:
                 extracted=False,
                 error_message=msg,
             )
-            if not success:
+            if status_result is not ExtractionStatusResult.OK:
                 logger.warning(
                     f"Failed to mark extraction failure for document {document_id}. "
                     f"Extraction failed but status not saved."
@@ -2519,13 +2593,16 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
-        success = PromptStudioIndexHelper.mark_extraction_status(
+        # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
+        # still read above. Rebinding it to an ExtractionStatusResult made
+        # ``result.data`` correct only by branch ordering.
+        status_result = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
             x2text_config_hash=x2text_config_hash,
             enable_highlight=enable_highlight,
         )
-        if not success:
+        if status_result is not ExtractionStatusResult.OK:
             logger.warning(
                 f"Failed to mark extraction success for document {document_id}. "
                 f"Extraction completed but status not saved."

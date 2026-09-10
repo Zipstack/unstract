@@ -1,7 +1,9 @@
 import json
 import logging
+from enum import Enum
 
-from django.db import transaction
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.db import DatabaseError, transaction
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import IndexingAPIError
@@ -10,6 +12,19 @@ from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManag
 from .models import IndexManager
 
 logger = logging.getLogger(__name__)
+
+
+class ExtractionStatusResult(Enum):
+    """Why ``mark_extraction_status`` did or did not write.
+
+    A plain bool collapsed "the document is gone" into "the write failed",
+    and the internal API turned both into a 500 — which the worker's client
+    retries. A missing document never becomes present on retry.
+    """
+
+    OK = "ok"
+    DOCUMENT_MISSING = "document_missing"
+    WRITE_FAILED = "write_failed"
 
 
 class PromptStudioIndexHelper:
@@ -75,7 +90,7 @@ class PromptStudioIndexHelper:
         enable_highlight: bool,
         extracted: bool = True,
         error_message: str | None = None,
-    ) -> bool:
+    ) -> ExtractionStatusResult:
         """Marks the extraction status for a given document.
 
         Uses x2text_config_hash (hash of X2Text config metadata) as the key.
@@ -90,7 +105,10 @@ class PromptStudioIndexHelper:
             error_message (str | None): Error message if extraction failed.
 
         Returns:
-            bool: True if the status is successfully updated, False otherwise.
+            ExtractionStatusResult: OK on success; DOCUMENT_MISSING when the
+                document is gone, hidden by the org scope, or named by a
+                malformed id; WRITE_FAILED for a genuine write error. Callers
+                that only need "did it write" compare against OK.
 
         """
         try:
@@ -109,12 +127,13 @@ class PromptStudioIndexHelper:
 
                 # Lock the row (or create an empty one) so concurrent callers
                 # merge into the same dict rather than clobbering each other.
-                index_manager, created = (
-                    IndexManager.objects.select_for_update().get_or_create(
-                        document_manager=document,
-                        profile_manager=profile_manager,
-                        defaults={"extraction_status": {}},
-                    )
+                # of=("self",) keeps the lock on index_manager rows only.
+                index_manager, created = IndexManager.objects.select_for_update(
+                    of=("self",)
+                ).get_or_create(
+                    document_manager=document,
+                    profile_manager=profile_manager,
+                    defaults={"extraction_status": {}},
                 )
 
                 # Merge in place — update_or_create(defaults=...) would replace
@@ -147,17 +166,31 @@ class PromptStudioIndexHelper:
                         f"Error: {error_message}"
                     )
 
-            return True
+            return ExtractionStatusResult.OK
 
-        except DocumentManager.DoesNotExist:
-            logger.error(f"Document with ID {document_id} does not exist.")
-            return False
-
-        except Exception as e:
-            logger.exception(
-                f"Unexpected error marking extraction status for document {document_id}: {e}"
+        except (DocumentManager.DoesNotExist, ValidationError):
+            # Three ways to get here: the row is gone, the org-scoped manager
+            # hides it from this caller, or ``document_id`` is not a UUID and
+            # ``get(pk=...)`` raised while building the query. All three mean
+            # the status was not written and none is fixed by trying again, so
+            # they share the 404 branch rather than the retryable 500 an
+            # unmapped ValidationError used to produce.
+            logger.error(
+                "Document %s not found or not visible in the current "
+                "organization; extraction status not recorded.",
+                document_id,
             )
-            return False
+            return ExtractionStatusResult.DOCUMENT_MISSING
+
+        except (DatabaseError, TypeError, ImproperlyConfigured):
+            # DatabaseError covers IntegrityError/OperationalError, TypeError a
+            # malformed extraction_status payload, ImproperlyConfigured a bad
+            # org path pin. Anything else propagates rather than being
+            # reported as a write failure it is not.
+            logger.exception(
+                "Failed to mark extraction status for document %s", document_id
+            )
+            return ExtractionStatusResult.WRITE_FAILED
 
     @staticmethod
     def check_extraction_status(

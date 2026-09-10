@@ -1,0 +1,9 @@
+{
+  "name": "@unstract/ui-e2e",
+  "private": true,
+  "type": "module",
+  "//": "These specs live here to sit alongside the other e2e suites, but the Playwright binary and @playwright/test are installed in ../../../frontend. This manifest points Node's resolver there so the specs can import them from outside that tree; frontend/playwright.config.js supplies testDir.",
+  "dependencies": {
+    "@playwright/test": "^1.49.0"
+  }
+}

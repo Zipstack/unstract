@@ -1,8 +1,9 @@
 import PropTypes from "prop-types";
 import { memo, useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./PromptsReorder.css";
-import { Card, Typography } from "antd";
 
 const ItemTypes = {
   PROMPT: "prompt",

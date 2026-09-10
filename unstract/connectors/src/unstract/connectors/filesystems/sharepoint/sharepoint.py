@@ -456,6 +456,10 @@ class SharePointFS(UnstractFileSystem):
         return "/icons/connector-icons/SharePoint.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/sharepoint_filesystem/"
+
+    @staticmethod
     def get_json_schema() -> str:
         schema_path = os.path.join(
             os.path.dirname(__file__),

@@ -1,6 +1,6 @@
-import { DatePicker } from "antd";
 import moment from "moment";
 import PropTypes from "prop-types";
+import { DatePicker } from "@/components/ui/shims/antd-datetime";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 

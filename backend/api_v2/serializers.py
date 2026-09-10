@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 
 from django.apps import apps
 from django.core.validators import RegexValidator
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers
@@ -27,7 +29,7 @@ from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     serialize_owner_refs,
 )
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
@@ -81,11 +83,6 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def validate_display_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Display name")
-
-    def validate_description(self, value: str) -> str:
-        if value is None:
-            return value
-        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
@@ -218,6 +215,13 @@ class APIKeySerializer(AuditSerializer):
         return representation
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class UploadField(FileField):
+    """A bare ``FileField`` maps to ``format: uri`` -- correct on output, wrong
+    for a multipart upload, and generators emit ``str`` for it.
+    """
+
+
 class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
@@ -256,8 +260,27 @@ class ExecutionRequestSerializer(TagParamsSerializer):
 
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
-    hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
-    hitl_packet_id = CharField(required=False, allow_null=True, allow_blank=True)
+    # Help text is published as the client-facing description of these fields.
+    hitl_queue_name = CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text=(
+            "Document class name for the manual review queue. Requires the "
+            "enterprise manual-review capability; an installation without it "
+            "rejects the request with 400."
+        ),
+    )
+    hitl_packet_id = CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        help_text=(
+            "Groups documents reviewed together into one packet. Requires the "
+            "enterprise manual-review capability; an installation without it "
+            "rejects the request with 400."
+        ),
+    )
     custom_data = JSONField(required=False, allow_null=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
@@ -320,7 +343,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         return value
 
     files = ListField(
-        child=FileField(),
+        child=UploadField(),
         required=False,
         allow_empty=True,
     )
@@ -401,6 +424,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # Get context from serializer
         api = self.context.get("api")
         api_key = self.context.get("api_key")
+        is_global_key = self.context.get("is_global_key", False)
 
         if not api or not api_key:
             raise ValidationError("Unable to validate LLM profile ownership")
@@ -410,6 +434,29 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             profile = ProfileManager.objects.get(profile_id=value)
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
+
+        # Global API Keys are org-level (not tied to a single user), so the
+        # per-user ownership check below does not apply. We must still confirm
+        # the profile belongs to the same organization as the deployment,
+        # otherwise a caller could reference another org's profile by UUID.
+        # ``ProfileManager.objects`` is not org-scoped by default, so this
+        # check is load-bearing, not merely defense-in-depth.
+        if is_global_key:
+            # A profile's org is only derivable through its prompt studio tool.
+            # That FK is nullable, and an unattached profile therefore has no
+            # org to compare against — ``None`` never equals a real org id, so
+            # such a profile is rejected. That is deliberate: with no way to
+            # attribute the profile to an organization, the org-scoped key must
+            # fail closed rather than accept it.
+            profile_org_id = (
+                profile.prompt_studio_tool.organization_id
+                if profile.prompt_studio_tool_id
+                else None
+            )
+            if profile_org_id != api.organization_id:
+                # Generic error avoids confirming another org's profile exists.
+                raise ValidationError("Profile not found")
+            return value
 
         # Get the specific API key being used
         try:

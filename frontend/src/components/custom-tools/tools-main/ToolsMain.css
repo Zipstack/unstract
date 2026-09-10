@@ -15,6 +15,33 @@
   margin: 0px;
 }
 
+/* The doc-manager toolbar sets `align-items: center`, but the tab labels still
+ * sat 5.6px above the file name and buttons beside them. antd's tab nav filled
+ * its wrapper, so the 4px top padding never showed; the shadcn nav is shorter
+ * than the neighbouring 32px controls, and `.ant-tabs` is a block wrapping the
+ * nav AND the content panel — so the 23.6px nav stayed pinned to the top of a
+ * 31.6px box.
+ *
+ * Centre at both levels. Scoped to this toolbar: here the panels are empty
+ * (each view renders elsewhere) and only the nav is on screen. ToolsMain
+ * shares `.tools-main-tabs` but DOES render its panels below the nav, so it
+ * must keep the default block flow. */
+.doc-manager-header .tools-main-tabs,
+.doc-manager-header .tools-main-tabs .ant-tabs {
+  display: flex;
+  align-items: center;
+}
+
+/* The shim pads line-style tabs `12px 0` to match antd's 46px nav, which is
+ * right everywhere the nav stands alone. Here it is not: this toolbar puts the
+ * tabs in a row with a file name and 32px buttons, and the padding inflates the
+ * label's own box so the TEXT sits above the row's centre line. Strip it for
+ * this one toolbar rather than leaving every other nav short. */
+.doc-manager-header .tools-main-tabs [role="tab"] {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 .tools-main-body {
   flex: 1;
   padding: 0px 12px;
