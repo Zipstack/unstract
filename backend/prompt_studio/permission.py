@@ -14,12 +14,9 @@ from tenant_account_v2.organization_member_service import OrganizationMemberServ
 def _can_access_tool(user: Any, tool: Any) -> bool:
     """Whether ``user`` may work on ``tool``.
 
-    Prompt Studio is shared for collaboration (UN-2868): a shared user edits
-    the project's prompts and settings, the same as its owner. Renaming and
-    deleting stay with the owner -- delete on the viewset, rename in
-    ``CustomToolSerializer.validate_tool_name`` because it shares an endpoint
-    with every settings write. Sharing onward is open to shared users; only
-    removing access and co-ownership are owner-only.
+    Prompt Studio is shared for collaboration: a shared user edits the
+    project's prompts and settings, the same as its owner. Renaming, deleting
+    and removing access stay with the owner; sharing onward does not.
     """
     if _is_resource_owner(user, tool):
         return True

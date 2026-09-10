@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.serializers import ValidationError
 
 from backend.serializers import AuditSerializer
 
@@ -23,6 +24,12 @@ class ToolStudioPromptListSerializer(serializers.ModelSerializer):
 
 
 class ToolStudioPromptSerializer(AuditSerializer):
+    def validate_tool_id(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.tool_id:
+            raise ValidationError("A prompt cannot be moved to another project.")
+        return value
+
     class Meta:
         model = ToolStudioPrompt
         fields = "__all__"

@@ -31,10 +31,8 @@ class WorkflowEndpointSerializer(ModelSerializer):
         context is available.
         """
         fields = super().get_fields()
-        # User-scoped, not merely org-scoped: the nested read serializer echoes
-        # connector_metadata back decrypted, so an org-wide queryset would let
-        # any member point their own endpoint at a colleague's connector and
-        # read its credentials out of the PATCH response.
+        # User-scoped: the nested read serializer echoes connector_metadata
+        # back decrypted, so an org-wide queryset leaks other users' credentials.
         request = self.context.get("request")
         fields["connector_instance_id"].queryset = (
             ConnectorInstance.objects.for_user(request.user)

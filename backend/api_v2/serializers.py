@@ -45,9 +45,8 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     # explicitly so ``fields = "__all__"`` continues to expose it. Share
     # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
-    # Carried here as well as on the list serializer: a consumer seeding a
-    # store from a retrieve/create/update response would otherwise see no
-    # is_owner at all, which canEditResource reads as "editable".
+    # Also on the list serializer; a detail response without it reads as
+    # editable to the UI.
     is_owner = serializers.SerializerMethodField()
 
     class Meta:
@@ -179,6 +178,18 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
 
 
 class APIKeySerializer(AuditSerializer):
+    def validate_api(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.api:
+            raise ValidationError("A key cannot be moved to another deployment.")
+        return value
+
+    def validate_pipeline(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.pipeline:
+            raise ValidationError("A key cannot be moved to another pipeline.")
+        return value
+
     class Meta:
         model = APIKey
         fields = "__all__"

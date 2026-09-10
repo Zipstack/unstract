@@ -1619,9 +1619,7 @@ class WorkflowEndpointAPIView(APIView):
                 "authenticated_via": getattr(request, "authenticated_via", None),
                 "path": request.path,
             }
-            # Headers are deliberately not logged: they carry the internal
-            # service bearer key, and this view returns decrypted connector
-            # metadata for any workflow in any organization.
+            # Headers omitted: they carry the internal service bearer key.
             logger.debug("WorkflowEndpointAPIView debug - %s", request_debug)
 
             # Get workflow using the DefaultOrganizationManagerMixin which automatically filters by organization

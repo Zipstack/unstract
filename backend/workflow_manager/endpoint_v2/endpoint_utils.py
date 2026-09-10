@@ -22,14 +22,6 @@ class WorkflowEndpointUtils:
         DestinationConnector.create_endpoint_for_workflow(workflow)
 
     @staticmethod
-    def get_endpoints_for_workflow(workflow_id: str) -> list[WorkflowEndpoint]:
-        workflow = WorkflowHelper.get_workflow_by_id(workflow_id)
-        endpoints: list[WorkflowEndpoint] = WorkflowEndpoint.objects.filter(
-            workflow=workflow
-        )
-        return endpoints
-
-    @staticmethod
     def get_endpoint_for_workflow_by_type(
         workflow_id: str, endpoint_type: WorkflowEndpoint.EndpointType
     ) -> WorkflowEndpoint:

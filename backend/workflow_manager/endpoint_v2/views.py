@@ -33,7 +33,7 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
         # Get endpoints for those workflows
         queryset = (
             WorkflowEndpoint.objects.all()
-            .select_related("workflow")
+            .select_related("workflow", "connector_instance")
             .filter(workflow__in=accessible_workflows)
         )
         workflow_filter = self.request.query_params.get("workflow", None)
@@ -97,12 +97,9 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
             Response: The HTTP response containing the serialized list of
                 endpoints.
         """
-        # for_user, not a bare get: this action serialises connector_metadata
-        # decrypted, so an unscoped lookup hands any org member another
-        # workflow's credentials. Raises the same 404 the sibling actions do.
-        workflow = Workflow.objects.for_user(request.user).filter(pk=pk).first()
-        if not workflow:
+        # Scoped: this action serialises connector_metadata decrypted.
+        if not Workflow.objects.for_user(request.user).filter(pk=pk).exists():
             raise WorkflowDoesNotExistError
-        endpoints = WorkflowEndpoint.objects.filter(workflow=workflow)
-        serializer = WorkflowEndpointSerializer(endpoints, many=True)
+        endpoints = self.get_queryset().filter(workflow_id=pk)
+        serializer = self.get_serializer(endpoints, many=True)
         return Response(serializer.data)
