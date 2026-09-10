@@ -572,7 +572,12 @@ const Tooltip = React.forwardRef<HTMLDivElement, TooltipProps>(function Tooltip(
            */}
           {React.isValidElement(children) &&
           (children.props as { disabled?: boolean })?.disabled ? (
-            <span className="inline-flex">{children}</span>
+            <span
+              className="inline-flex [&>*]:pointer-events-none"
+              tabIndex={0}
+            >
+              {children}
+            </span>
           ) : (
             children
           )}
