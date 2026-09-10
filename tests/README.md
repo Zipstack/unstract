@@ -100,6 +100,7 @@ Optional knobs (see `groups.yaml` for examples):
 
 | Key | Purpose |
 |---|---|
+| `runner` | `pytest` (default), `hurl`, `vitest`, `playwright`. See "Frontend groups". |
 | `markers` | Forwarded to pytest `-m` (e.g. `"unit and not slow"`). |
 | `pytest_extra` | Extra pytest CLI flags. |
 | `env` | Env vars set for this group's pytest process. |
@@ -113,6 +114,57 @@ Optional knobs (see `groups.yaml` for examples):
 | `critical` | Marks the group as covering a critical path. |
 | `timeout_seconds` | Override the default 600s. |
 | `optional` | Two effects: (1) skip silently if paths/workdir are missing (placeholders, gitignored cloud-only dirs); (2) **non-blocking** — if the group runs and fails, its red result still shows in the summary but does not gate the overall exit code. Use for groups that need infra CI doesn't provision (e.g. live-DB connector tests) where a red run shouldn't block merge. |
+
+### Frontend groups (`vitest` / `playwright`)
+
+Two groups run Node suites rather than pytest:
+
+| Group | Tier | Runner | What it covers |
+|---|---|---|---|
+| `frontend` | unit | `vitest` | Vitest + React Testing Library over jsdom — the antd→shadcn shims and the components on top of them. Workdir `frontend`. |
+| `ui` | e2e | `playwright` | Browser e2e against the real UI. Specs live in `tests/e2e/ui/`, beside the other e2e suites. |
+
+```bash
+python -m tests.rig run frontend           # the whole vitest suite
+python -m tests.rig run ui                 # boots the platform, then playwright
+cd frontend    && npm test                 # unchanged; the rig is additive
+cd tests/e2e/ui && npm install             # one-off: @playwright/test
+cd tests/e2e/ui && npx playwright install chromium
+```
+
+`tests/e2e/ui` is self-contained — specs, `playwright.config.js` and its own
+`node_modules` — so it resolves without reaching into `frontend/`.
+
+Both emit **real JUnit**, so `parse_junit` reports per-test counts exactly like
+a pytest group (unlike `hurl`, which gets one synthetic row). Vitest takes
+`--outputFile`; Playwright reads `PLAYWRIGHT_JUNIT_OUTPUT_NAME`, which the rig
+exports — that is why the config reads it.
+
+Both are `optional`, deliberately. They shell out via `npx --no-install`, so a
+machine or CI image without `node_modules` (or without the browser binaries)
+**skips** instead of failing the build. The runner returns exit 5 — the rig's
+"nothing collected" convention — when `npx` is missing entirely. If a Node
+runner dies before its reporter flushes, the rig backfills a synthetic junit so
+the failure still shows in the summary rather than vanishing as a missing group.
+
+**Auth.** The `ui` suite runs against both deployments. `UNSTRACT_AUTH_MODE`
+picks the flow, or it auto-detects:
+
+| Mode | Flow |
+|---|---|
+| `oss` | Django mock-login: form POST to `/api/v1/login`, then the org handshake. Mirrors `tests/e2e/conftest.py::authed_session`, so a change to that flow breaks both suites together. |
+| `auth0` | Enterprise. The IdP owns the credential exchange, so the hosted login form is driven in the browser and the app completes its own callback. |
+| _auto_ (default) | Try OSS first; a backend that 302s on login but then 401s on `/api/v1/organization` is cloud-auth, so fall through to `auth0`. |
+
+Credentials come from `UNSTRACT_ADMIN_USER`/`UNSTRACT_ADMIN_PASSWORD` (or the
+`UNSTRACT_AUTH0_*` pair). Specs **skip** rather than fail when authentication
+does not succeed, matching the group's `optional` flag.
+
+Why `ui` exists at all: jsdom computes no layout, so overflow, positioning and
+visual state are unobservable in the `frontend` group. Every UI defect found
+during the shadcn migration — a toggle rendering blank, a nav arrow anchored to
+the wrong month, a filter row breaking on a date range — was caught by a human
+in a browser, not by the unit suite. That is the gap `ui` is for.
 
 ### `critical_paths.yaml` — what we promise not to break
 
@@ -169,7 +221,7 @@ Only `LLM` completions are mocked, not embeddings: `provisioned_workflow` pins `
 
 ### Fan-out (`MAX_PARALLEL_FILE_BATCHES`)
 
-Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay defaults it to `3` on `backend`, which is what normally takes effect: workers ask the backend for this value and fall back to their own env only when they can't reach it or it carries no value (the overlay sets it on `worker-api-deployment-v2` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
+Defaults to `1`, meaning every file of a multi-file run lands in one batch and is processed serially — so a fan-out test would pass without any fan-out happening. The overlay defaults it to `3` on `backend`, which is what normally takes effect: workers ask the backend for this value and fall back to their own env only when they can't reach it or it carries no value (the overlay sets it on `worker-pg-orchestrator-api` too, to keep the fallback in step). Batches are `min(MAX_PARALLEL_FILE_BATCHES, num_files)`, so N files with the same N gives one batch each.
 
 **The fan-out half is an open gap** (`workflow-execution-fan-out` in `critical_paths.yaml`), and closing it needs a product change, not a cleverer test. Nothing persists a batch or task id: the batch index is a discarded loop local, and the celery task id only ever reaches worker stdout. That leaves per-file timing as the only proxy, and timing does not work here — measured on CI, three files genuinely fanned out finished *further* apart (durations `6.6 / 18.1 / 22.9`) than the ~2s steps seen when they share a batch, because three concurrent tool containers on a loaded runner cost more in contention than they gain in overlap. No threshold separates those two distributions, and no delay value fixes it: the contention scales with the parallelism being measured.
 

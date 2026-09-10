@@ -26,7 +26,6 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
-from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -70,6 +69,7 @@ from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
 )
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
 from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (  # noqa: E501
+    ExtractionStatusResult,
     PromptStudioIndexHelper,
 )
 from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
@@ -327,15 +327,17 @@ class PromptStudioHelper:
     def _get_dispatcher():
         """Executor dispatcher for the executor worker.
 
-        Gate-routed: when ``pg_queue_enabled`` is on the blocking
-        ``dispatch()`` rides the PG request-reply transport; otherwise — and for
-        all async/callback dispatches — it is the unchanged Celery
-        ``ExecutionDispatcher``. The decision is read per dispatch, so flipping
-        the flag is an instant, no-redeploy rollout/rollback.
+        Always the PG request-reply dispatcher since UN-4046. This used to be
+        gate-routed per dispatch on ``pg_queue_enabled``, falling back to the
+        Celery ``ExecutionDispatcher``; with the flag gone the factory returns
+        the PG dispatcher directly. It is kept as a factory call rather than a
+        direct construction on purpose — UN-3779 was a hardcoded
+        ``ExecutionDispatcher`` here that published to RabbitMQ and hung for its
+        full 1200s timeout with no consumer.
         """
         from pg_queue.executor_rpc import get_executor_dispatcher
 
-        return get_executor_dispatcher(celery_app=celery_app)
+        return get_executor_dispatcher()
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
@@ -2573,7 +2575,7 @@ class PromptStudioHelper:
         result = dispatcher.dispatch(extract_context)
         if not result.success:
             msg = result.error or "Unknown extraction error"
-            success = PromptStudioIndexHelper.mark_extraction_status(
+            status_result = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
                 x2text_config_hash=x2text_config_hash,
@@ -2581,7 +2583,7 @@ class PromptStudioHelper:
                 extracted=False,
                 error_message=msg,
             )
-            if not success:
+            if status_result is not ExtractionStatusResult.OK:
                 logger.warning(
                     f"Failed to mark extraction failure for document {document_id}. "
                     f"Extraction failed but status not saved."
@@ -2591,13 +2593,16 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
-        success = PromptStudioIndexHelper.mark_extraction_status(
+        # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
+        # still read above. Rebinding it to an ExtractionStatusResult made
+        # ``result.data`` correct only by branch ordering.
+        status_result = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
             x2text_config_hash=x2text_config_hash,
             enable_highlight=enable_highlight,
         )
-        if not success:
+        if status_result is not ExtractionStatusResult.OK:
             logger.warning(
                 f"Failed to mark extraction success for document {document_id}. "
                 f"Extraction completed but status not saved."

@@ -1,5 +1,4 @@
-import { FilterOutlined } from "@ant-design/icons";
-import { Button, Card, Dropdown, Empty, Spin } from "antd";
+import { Filter } from "lucide-react";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 import {
@@ -14,6 +13,10 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Empty, Spin } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
 
 import "./MetricsDashboard.css";
 
@@ -49,11 +52,11 @@ function formatDate(dateStr) {
 /**
  * Format a number for display in tooltips.
  *
- * @param {number} value - Number to format
+ * @param {number|null|undefined} value - Number to format
  * @return {string} Formatted number
  */
 function formatValue(value) {
-  if (value === null || value === undefined) {
+  if (value == null) {
     return "0";
   }
   if (value >= 1000000) {
@@ -328,7 +331,7 @@ function TrendAnalysisChart({ data, loading }) {
         }}
         trigger={["click"]}
       >
-        <Button icon={<FilterOutlined />} size="small">
+        <Button icon={<Filter />} size="small">
           Filter
         </Button>
       </Dropdown>

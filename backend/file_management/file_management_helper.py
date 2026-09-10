@@ -226,14 +226,6 @@ class FileManagerHelper:
         return base_path
 
     @staticmethod
-    def delete_file(file_system: UnstractFileSystem, path: str, file_name: str) -> bool:
-        fs = file_system.get_fsspec_fs()
-        base_path = FileManagerHelper._get_base_path(file_system, path)
-        file_path = str(Path(base_path) / file_name)
-        FileManagerHelper._delete_file(fs, file_path)
-        return True
-
-    @staticmethod
     def delete_related_files(
         file_system: UnstractFileSystem,
         path: str,

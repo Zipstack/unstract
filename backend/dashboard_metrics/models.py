@@ -144,7 +144,7 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
     """Daily aggregated metrics for dashboard display.
 
     Stores metric events aggregated by day for efficient querying.
-    Pre-computed by the scheduled aggregation task every 15 minutes.
+    Pre-computed by the scheduled aggregation task's daily/monthly pass.
 
     Attributes:
         id: UUID primary key
@@ -241,7 +241,7 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
     """Monthly aggregated metrics for dashboard display.
 
     Stores metric events aggregated by month for efficient querying.
-    Pre-computed by the scheduled aggregation task every 15 minutes.
+    Rolled up from the daily tier by the aggregation task's daily/monthly pass.
 
     Attributes:
         id: UUID primary key

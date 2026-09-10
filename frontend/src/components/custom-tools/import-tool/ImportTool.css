@@ -9,12 +9,17 @@
 }
 
 .import-tool-uploader:hover {
-  border-color: #1890ff;
+  border-color: var(--primary);
 }
 
 .import-tool-uploader .ant-upload-drag-icon {
   font-size: 48px;
-  color: #1890ff;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 48px;
+  height: 48px;
+  color: var(--primary);
   margin-bottom: 16px;
 }
 
@@ -26,5 +31,5 @@
 
 .import-tool-uploader .ant-upload-hint {
   color: rgba(0, 0, 0, 0.45);
-  font-size: 14px;
+  font-size: 13px;
 }

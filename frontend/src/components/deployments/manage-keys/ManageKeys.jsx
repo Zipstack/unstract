@@ -1,12 +1,11 @@
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from "@ant-design/icons";
-import { Input, Modal, Space, Switch, Table, Tooltip, Typography } from "antd";
+import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Input, Switch } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -242,7 +241,7 @@ const ManageKeys = ({
               className="cursorPointer"
               onClick={() => copyText(record?.api_key)}
             >
-              <CopyOutlined />
+              <Copy />
             </Tooltip>
           </div>
           <div>
@@ -274,12 +273,12 @@ const ManageKeys = ({
         <>
           <Space className="actions" onClick={() => openEditModal(record)}>
             <Tooltip title="edit" className="cursorPointer">
-              <EditOutlined />
+              <Pencil />
             </Tooltip>
           </Space>
           <Space className="actions" onClick={() => showDeleteModal(record)}>
             <Tooltip title="delete" className="cursorPointer">
-              <DeleteOutlined />
+              <Trash2 />
             </Tooltip>
           </Space>
         </>
@@ -302,7 +301,7 @@ const ManageKeys = ({
           <CustomButton
             type="primary"
             size="small"
-            icon={<PlusOutlined />}
+            icon={<Plus />}
             onClick={openAddModal}
           >
             New Key

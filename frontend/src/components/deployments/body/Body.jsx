@@ -49,6 +49,7 @@ function Body({
           cardConfig={cardConfig}
           loading={isTableLoading}
           onCardClick={onCardClick}
+          testIdPrefix={`${type}-deployment-list`}
           rowKey="id"
           listMode={listMode}
           forceExpandedId={forceExpandedId}

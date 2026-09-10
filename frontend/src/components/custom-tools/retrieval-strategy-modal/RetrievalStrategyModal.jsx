@@ -1,39 +1,33 @@
 import {
-  ForkOutlined,
-  MergeCellsOutlined,
-  QuestionCircleOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  ShareAltOutlined,
-  TableOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Divider,
-  Modal,
-  Radio,
-  Space,
-  Spin,
-  Typography,
-} from "antd";
+  CircleHelp,
+  GitFork,
+  Merge,
+  RotateCw,
+  Search,
+  Share2,
+  Table,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Divider, Spin } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Paragraph, Text, Title } from "@/components/ui/shims/antd-typography";
 
 import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
 import "./RetrievalStrategyModal.css";
 
-const { Title, Text, Paragraph } = Typography;
-
 const ICON_MAP = {
-  SearchOutlined: <SearchOutlined />,
-  QuestionCircleOutlined: <QuestionCircleOutlined />,
-  ForkOutlined: <ForkOutlined />,
-  ReloadOutlined: <ReloadOutlined />,
-  ShareAltOutlined: <ShareAltOutlined />,
-  TableOutlined: <TableOutlined />,
-  MergeCellsOutlined: <MergeCellsOutlined />,
+  Search: <Search />,
+  CircleHelp: <CircleHelp />,
+  GitFork: <GitFork />,
+  RotateCw: <RotateCw />,
+  Share2: <Share2 />,
+  Table: <Table />,
+  Merge: <Merge />,
 };
 
 const RetrievalStrategyModal = ({
@@ -71,7 +65,7 @@ const RetrievalStrategyModal = ({
   // Transform strategies to include React icons
   const strategiesWithIcons = retrievalStrategies.map((strategy) => ({
     ...strategy,
-    icon: ICON_MAP[strategy.icon] || <SearchOutlined />,
+    icon: ICON_MAP[strategy.icon] || <Search />,
   }));
 
   const selectedDetails = strategiesWithIcons.find(

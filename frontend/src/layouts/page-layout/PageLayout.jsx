@@ -1,6 +1,6 @@
-import { Layout } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Layout } from "@/components/ui/shims/antd-structure";
 import "./PageLayout.css";
 
 import { LazyOutlet } from "../../components/error/LazyOutlet/LazyOutlet.jsx";

@@ -1,7 +1,7 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { MicrosoftLoginButton } from "react-social-login-buttons";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./MicrosoftOAuthButton.css";
 

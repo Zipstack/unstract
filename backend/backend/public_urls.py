@@ -28,8 +28,6 @@ urlpatterns = [
     path(f"{path_prefix}/", include("account.urls")),
     # Connector OAuth
     path(f"{path_prefix}/", include("connector_auth.urls")),
-    # Docs
-    path(f"{path_prefix}/", include("docs.urls")),
     # API deployment
     path(f"{api_path_prefix}/", include("api.urls")),
     path(f"{api_path_prefix}/pipeline/", include("pipeline.public_api_urls")),

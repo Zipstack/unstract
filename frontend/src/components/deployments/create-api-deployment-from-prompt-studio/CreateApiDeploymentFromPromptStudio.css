@@ -48,7 +48,7 @@
   h4 {
   text-align: center;
   margin-bottom: 24px;
-  color: #52c41a;
+  color: var(--success);
 }
 
 .create-api-deployment-from-prompt-studio-modal .success-content .ant-btn {

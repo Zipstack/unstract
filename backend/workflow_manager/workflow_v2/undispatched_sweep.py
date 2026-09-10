@@ -21,9 +21,10 @@ executions were left PENDING** — 2914 execution rows from 2444 requests, becau
 row outlived the request. ``pg_queue_message`` was completely empty, confirming the
 work was never enqueued rather than enqueued-and-lost.
 
-**Not PG-specific.** The create-then-dispatch ordering sits *upstream* of
-``resolve_transport``, so the Celery path has the identical window. The predicate here
-is transport-aware for exactly that reason.
+**Not PG-specific.** The create-then-dispatch ordering sits *upstream* of transport
+selection, so the Celery path had the identical window (UN-4046 removed that path;
+the predicate stays transport-aware because rows dispatched before the upgrade carry
+``task_id`` rather than ``queue_message_id``).
 
 **The predicate.** ``workflow_helper.py:566/570`` stamps ``queue_message_id`` (PG) or
 ``task_id`` (Celery) immediately after a successful dispatch, and the model documents

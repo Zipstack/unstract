@@ -118,5 +118,5 @@
 }
 
 .warning-icon {
-  color: #faad14;
+  color: var(--warning);
 }

@@ -1,6 +1,10 @@
-import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
-import { Button, Radio, Table, Tooltip, Typography } from "antd";
+import { Copy, Pencil, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Radio } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -110,6 +114,9 @@ function ManageLlmProfiles() {
 
   useEffect(() => {
     const modifiedRows = llmProfiles.map((item) => {
+      // One id per profile — every action below repeats once per table row.
+      const rowTestId = (action) =>
+        `ps-llm-profile-${action}-${item?.profile_id}`;
       return {
         key: item?.profile_id,
         name: item?.profile_name || "",
@@ -121,14 +128,16 @@ function ManageLlmProfiles() {
           <div className="action-buttons-container">
             <Tooltip title="Copy Profile ID">
               <Button
+                data-testid={rowTestId("copy-id")}
                 size="small"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 onClick={() => copyProfileId(item?.profile_id)}
               />
             </Tooltip>
             <Button
+              data-testid={rowTestId("edit")}
               size="small"
-              icon={<EditOutlined />}
+              icon={<Pencil />}
               disabled={isPublicSource}
               onClick={() => handleEdit(item?.profile_id)}
             />
@@ -143,8 +152,9 @@ function ManageLlmProfiles() {
                 }
               >
                 <Button
+                  data-testid={rowTestId("delete")}
                   size="small"
-                  icon={<DeleteOutlined />}
+                  icon={<Trash2 />}
                   disabled={
                     isPublicSource || defaultLlmProfile === item?.profile_id
                   }
@@ -155,6 +165,7 @@ function ManageLlmProfiles() {
         ),
         select: (
           <Radio
+            data-testid={rowTestId("select-default")}
             checked={defaultLlmProfile === item?.profile_id}
             onClick={() => handleDefaultLlm(item?.profile_id)}
             disabled={isPublicSource}

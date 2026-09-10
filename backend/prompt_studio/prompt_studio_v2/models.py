@@ -4,6 +4,7 @@ from account_v2.models import User
 from django.db import models
 from django.utils import timezone
 from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -14,6 +15,10 @@ class ToolStudioPrompt(BaseModel):
 
     It has Many to one relation with CustomTool for ToolStudio.
     """
+
+    # See DocumentManager.objects for why scoping lives at the manager.
+    # tool_id is nullable, so prompts orphaned from their tool are excluded.
+    objects = OrgAwareManager()
 
     class EnforceType(models.TextChoices):
         TEXT = "text", "Response sent as Text"

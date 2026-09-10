@@ -1,6 +1,10 @@
-import { UploadOutlined } from "@ant-design/icons";
-import { Button, Upload } from "antd";
+// Aliased: antd's `Upload` component (still in use until P3) would otherwise be
+// shadowed by the lucide icon of the same name.
+
+import { Upload as UploadIcon } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Upload } from "@/components/ui/shims/antd-structure";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
@@ -20,7 +24,7 @@ const FileWidget = ({ id, onChange, label, schema, required, readonly }) => {
       required={required}
     >
       <Upload id={id} onChange={handleFileChange} disabled={readonly}>
-        <Button icon={<UploadOutlined />}>Upload File</Button>
+        <Button icon={<UploadIcon className="size-4" />}>Upload File</Button>
       </Upload>
     </RjsfWidgetLayout>
   );

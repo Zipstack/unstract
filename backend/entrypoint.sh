@@ -35,11 +35,11 @@ if [ "$migrate" = true ]; then
     #
     # READ THIS BEFORE ASSUMING A RESTART IS INERT. This is NOT the earlier
     # `--mirror-only` invocation, and it does NOT leave Beat alone: with
-    # PG_SCHEDULER_ENABLED=true it flips pg_owned and DISABLES the Beat PeriodicTask
-    # row for every mirrored pipeline THE pg_queue_enabled FLAG SELECTS — ownership is
-    # additionally per-schedule Flipt-gated and fails closed, so with Flipt blind or the
-    # flag at 0% this moves nothing and Beat keeps every row. A rolling restart therefore can move schedules
-    # off Beat. (A comment here used to describe --mirror-only and state that
+    # PG_SCHEDULER_ENABLED it flips pg_owned and DISABLES the Beat PeriodicTask row
+    # for EVERY mirrored pipeline. There is no second gate any more: UN-4046 removed
+    # the pg_queue_enabled flag, and PG_SCHEDULER_ENABLED now DEFAULTS TO TRUE, so the
+    # first start after an upgrade moves every schedule off Beat unless you set it to
+    # false. Do not read this comment as "a restart is inert" — it no longer is. (A comment here used to describe --mirror-only and state that
     # "ownership hand-over stays an explicit operator action" — it survived the switch
     # to converge_pg_scheduler and told an SRE auditing exactly this question the
     # opposite of the truth.)
