@@ -74,18 +74,26 @@ services:
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
 
-  # Codegen sandbox worker (WorkerType.SANDBOX) — consumes sandbox_codegen and
+  # Codegen sandbox worker (WorkerType.SANDBOX) — drains sandbox_codegen and
   # runs generated code out-of-process in a scrubbed, rlimit-bounded
-  # subprocess (spec §6.3). Hardened and isolated: no host_gateway (must not
-  # reach the host), no published ports (SANDBOX_HEALTH_PORT=8092 is an
-  # internal-only metrics endpoint — 8090/8091 are reserved for
-  # pg_queue_consumer / pluggable-worker auto-discovery), read-only rootfs,
-  # all capabilities dropped, no privilege escalation.
+  # subprocess (spec §6.3).
+  #
+  # On the PG transport, not the broker: UN-4046 retired RabbitMQ as the task
+  # transport, so a broker-only consumer accepts work and drains none — silently
+  # (the producer's enqueue still succeeds). It loads the SAME
+  # workers/sandbox/tasks.py as before via WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE,
+  # so every §6.3 layer is enforced identically; only the transport changed.
+  #
+  # Hardened and isolated: no host_gateway (must not reach the host), no
+  # published ports (the health port is internal-only — 8090/8091 are reserved
+  # for pg_queue_consumer / pluggable-worker auto-discovery, 8092 is the
+  # sandbox's fixed slot), read-only rootfs, all capabilities dropped, no
+  # privilege escalation.
   worker-sandbox:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-sandbox
     restart: unless-stopped
-    command: ["sandbox"]
+    command: ["pg-queue-consumer"]
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -99,12 +107,12 @@ services:
     depends_on:
       - db
       - redis
-      - rabbitmq
     environment:
       - APPLICATION_NAME=unstract-worker-sandbox
-      - WORKER_TYPE=sandbox
       - WORKER_NAME=sandbox-worker
-      - SANDBOX_HEALTH_PORT=8092
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
     labels:
       - traefik.enable=false
 
@@ -526,7 +534,7 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-executor
       - WORKER_BARRIER_BACKEND=pg
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       # Log publisher — see the note on the backend service (UN-4046).
       - LOG_TRANSPORT=redis

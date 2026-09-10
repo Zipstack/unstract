@@ -44,7 +44,14 @@ services:
       # §12 item 2) without dropping the queues other e2e lanes' tools dispatch
       # to on this same worker -- this is a superset of docker-compose.yaml's
       # own default, not a replacement for it.
-      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table,celery_executor_agentic_kv}
+      #
+      # This MUST be WORKER_PG_QUEUE_CONSUMER_QUEUE, not CELERY_QUEUES_EXECUTOR:
+      # since UN-4046 made the PG transport unconditional this service runs
+      # `pg-queue-consumer`, which reads WORKER_PG_QUEUE_CONSUMER_QUEUE.
+      # CELERY_QUEUES_EXECUTOR is read only by workers/executor/worker.py -- the
+      # now-disabled Celery executor -- so setting it here drained nothing and
+      # the agent-kv lane hung in DISPATCHED with no error at the producer.
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv}
       # Agent-KV engine config, read by the cloud `agentic_kv` executor plugin
       # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.
       # `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of `anthropic`|`openai`.
@@ -88,7 +95,12 @@ services:
   worker-sandbox:
     image: unstract/worker-unified:${UNSTRACT_TEST_VERSION:-latest}
     environment:
-      - SANDBOX_HEALTH_PORT=8092
+      # The health port moved with the transport: on the PG consumer path the
+      # launcher reads WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT, not the Celery
+      # worker's SANDBOX_HEALTH_PORT. 8092 stays the sandbox's fixed slot.
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # The SANDBOX_* caps below are read by workers/sandbox/tasks.py itself, so
+      # they are transport-independent and keep their names.
       - SANDBOX_MAX_CODE_BYTES=${SANDBOX_MAX_CODE_BYTES:-}
       - SANDBOX_MAX_INPUT_BYTES=${SANDBOX_MAX_INPUT_BYTES:-}
       - SANDBOX_MAX_OUTPUT_BYTES=${SANDBOX_MAX_OUTPUT_BYTES:-}

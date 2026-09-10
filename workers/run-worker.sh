@@ -60,6 +60,7 @@ readonly PG_ROLE_EXECUTOR="pg-executor"
 readonly PG_ROLE_METRICS="pg-metrics"
 readonly PG_ROLE_NOTIFICATION="pg-notification"
 readonly PG_ROLE_IDE_CALLBACK="pg-ide-callback"
+readonly PG_ROLE_SANDBOX="pg-sandbox"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
@@ -72,7 +73,7 @@ declare -rA PG_CONSUMER_ROLES=(
     # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
-    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test"
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv"
     # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
     # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
     # role rather than a queue bolted onto pg-scheduler: the consumer's health
@@ -88,6 +89,13 @@ declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_NOTIFICATION"]="notification;notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     # Prompt Studio IDE callbacks (ide_index_*/ide_prompt_*/extraction_*).
     ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback"
+    # Codegen sandbox (execute_sandboxed_code). Runs the SAME hardened
+    # workers/sandbox/tasks.py as the Celery `sandbox` worker -- only the
+    # transport differs, so every §6.3 layer (AST gate, scrubbed subprocess,
+    # rlimits) is enforced identically. On PG rather than the broker because
+    # UN-4046 retired the broker as a task transport: a broker-only consumer
+    # would drain nothing once the fleet flips.
+    ["$PG_ROLE_SANDBOX"]="sandbox;sandbox_codegen"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -101,6 +109,7 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_METRICS"]=1
     ["$PG_ROLE_NOTIFICATION"]=1
     ["$PG_ROLE_IDE_CALLBACK"]=1
+    ["$PG_ROLE_SANDBOX"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
