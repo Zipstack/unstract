@@ -67,6 +67,7 @@ from tests.e2e.agent_kv.conftest import (
     invalid_schema,
     invoice_schema,
     kv_result_body,
+    kv_stages,
     poll,
     result,
     submit,
@@ -242,9 +243,9 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
     status_doc = poll(agent_kv_key, job_id, timeout_s=600)
     assert status_doc["status"] == "completed", status_doc
 
-    stages_by_name = {s["name"]: s for s in status_doc["stages"]}
+    stages_by_name = {s["name"]: s for s in kv_stages(status_doc)}
     for expected in ("document_processing", "extraction"):
-        assert expected in stages_by_name, status_doc["stages"]
+        assert expected in stages_by_name, kv_stages(status_doc)
         assert stages_by_name[expected]["status"] == "done", stages_by_name[expected]
 
     resp = result(agent_kv_key, job_id)
@@ -270,7 +271,9 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
     # acknowledged-and-gone 4xx like the one-shot api-deployment result.
     again = result(agent_kv_key, job_id)
     assert again.status_code == 200, again.text
-    assert again.json() == body, "result must be byte-for-byte stable on re-read"
+    assert kv_result_body(again) == body, (
+        "result must be byte-for-byte stable on re-read"
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -534,9 +537,9 @@ def test_resubmit_same_document_hits_document_cache(
     assert second_doc["status"] == "completed", second_doc
 
     def _stage_seconds(status_doc: dict) -> float:
-        stages = {s["name"]: s for s in status_doc["stages"]}
+        stages = {s["name"]: s for s in kv_stages(status_doc)}
         stage = stages.get("document_processing")
-        assert stage is not None, status_doc["stages"]
+        assert stage is not None, kv_stages(status_doc)
         assert stage["status"] == "done", stage
         assert "seconds" in stage, stage
         return float(stage["seconds"])
@@ -578,8 +581,11 @@ def test_sync_wait_submit_returns_result_inline(
         f"inline result): {resp.text}"
     )
     body = resp.json()
+    # `success`/`status` are top level on every terminal payload; the engine's
+    # own record is namespaced per extractor (spec §7.3).
     assert body.get("success") is True, body
-    assert set(INVOICE_FIELDS) <= set(body.get("record", {})), body.get("record")
+    record = kv_result_body(resp).get("record", {})
+    assert set(INVOICE_FIELDS) <= set(record), record
 
 
 # ---------------------------------------------------------------------------

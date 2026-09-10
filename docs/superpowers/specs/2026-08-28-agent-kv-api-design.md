@@ -445,6 +445,8 @@ Each extractor's full result object (§4) under its own key, re-readable until
 
 ```json
 {
+  "success": true,
+  "status": "completed",
   "extractors": {
     "kv": {"record": {...}, "normalized_record": {...}, "keys": [...],
            "qa_passed": true, "challenge_passed": true,
@@ -459,10 +461,14 @@ Each extractor's full result object (§4) under its own key, re-readable until
 }
 ```
 
+`success` and `status` stay at TOP level on every terminal payload — completed,
+failed and cancelled alike — so a client branches on one key rather than having
+to know that only the failure shapes carry it. They describe the **job**; each
+extractor keeps its own `success` inside its own block.
 `usage_summary.total` is the billing figure and stays authoritative;
 `by_extractor` exists so a multi-extractor job can be attributed. Failed jobs:
-`{success: false, status: "failed", error}` with a user-safe error, unchanged —
-a failure is the job's, not one extractor's, while only one extractor can run.
+`{success: false, status: "failed", error}` with a user-safe error — not
+extractor-keyed, because a failure is the job's, not one extractor's.
 
 ### 7.4 Other endpoints
 

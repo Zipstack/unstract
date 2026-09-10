@@ -360,6 +360,8 @@ alongside the authoritative total:
 
 ```json
 {
+  "success": true,
+  "status": "completed",
   "extractors": {
     "kv": {
       "success": true,
@@ -392,6 +394,9 @@ alongside the authoritative total:
 }
 ```
 
+`success` and `status` are at the **top level on every terminal payload** —
+completed, failed and cancelled — so a client branches on one key. They describe
+the job; each extractor keeps its own `success` inside its own block.
 `usage_summary.total` is the billing figure; `by_extractor` exists so a
 multi-extractor job can be attributed. With one extractor they are the same numbers.
 Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a

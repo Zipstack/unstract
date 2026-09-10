@@ -94,7 +94,13 @@ class ExtractorSerializer(serializers.Serializer):
         # Size is capped on the SERIALIZED form: the cap exists to bound parse
         # and compile cost, and `keys` arrives here already parsed out of the
         # `extractors` JSON.
-        if len(json.dumps(spec).encode("utf-8")) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
+        # ensure_ascii=False so this measures the SAME bytes the outer
+        # `extractors` cap measured. With the default, non-ASCII schema text is
+        # counted as \uXXXX escapes (6 bytes/char) rather than its UTF-8 length
+        # (2-3), so a CJK- or accent-heavy schema could clear the outer cap and
+        # then be rejected here as "too large" for no reason the caller can see.
+        serialized = json.dumps(spec, ensure_ascii=False).encode("utf-8")
+        if len(serialized) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
             raise serializers.ValidationError("keys schema too large")
         try:
             self.compiled = compile_schema(spec)
@@ -103,6 +109,16 @@ class ExtractorSerializer(serializers.Serializer):
         return spec
 
     def validate(self, data):
+        # Same reason the options block rejects unknowns, one level up: DRF drops
+        # unrecognised keys, so `"option"` or `"Options"` for `"options"` would
+        # be discarded whole, `options` would default to {}, and the job would
+        # run with qa=True/challenge=True -- roughly double the LLM spend the
+        # caller asked for, with a 202 and no indication anything was ignored.
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown keys on extractor entry: {sorted(unknown)}"
+            )
         opts = KVOptionsSerializer(data=data.get("options") or {})
         opts.is_valid(raise_exception=True)
         data["options"] = opts.validated_data

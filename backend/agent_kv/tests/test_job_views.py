@@ -134,6 +134,10 @@ def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
     assert resp.status_code == 200
     # The stored blob is the engine's own result; the response namespaces it
     # per extractor and adds per-extractor usage attribution (spec §7.3).
+    # `success`/`status` at top level on every terminal payload, so a client
+    # branches the same way for completed, failed and cancelled.
+    assert resp.data["success"] is True
+    assert resp.data["status"] == "completed"
     assert resp.data["extractors"] == {"kv": {"success": True, "fields": {}}}
     assert set(resp.data["usage_summary"]) == {"total", "by_extractor"}
     assert list(resp.data["usage_summary"]["by_extractor"]) == ["kv"]

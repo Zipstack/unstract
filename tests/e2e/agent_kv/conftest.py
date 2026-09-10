@@ -107,6 +107,16 @@ def kv_result_body(resp: requests.Response) -> dict:
     return resp.json()["extractors"]["kv"]
 
 
+def kv_stages(status_doc: dict) -> list[dict]:
+    """The `kv` extractor's stage list out of an extractor-keyed status doc.
+
+    Stage reporting moved under `extractors.<name>` (spec §7.2) because stage
+    names are extractor-specific -- `qa`/`challenge`/`codegen` mean nothing to a
+    Table Extractor. Centralised here so the reach is spelled out once.
+    """
+    return status_doc["extractors"]["kv"]["stages"]
+
+
 def submit_raw(
     auth: AgentKVAuth,
     file_bytes: bytes,

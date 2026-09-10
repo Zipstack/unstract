@@ -233,3 +233,40 @@ def test_old_flat_format_is_no_longer_accepted():
     })
     assert not s.is_valid()
     assert "extractors" in s.errors  # the now-required field is missing
+
+
+def test_unknown_key_on_the_extractor_entry_is_rejected():
+    """`options` rejects unknowns; the entry itself must too.
+
+    DRF drops unrecognised keys, so a near-miss like `option` (singular) for
+    `options` would be discarded whole: `options` defaults to {}, the job runs
+    with qa=True and challenge=True, and the caller gets a 202 with no sign
+    their configuration was ignored -- at roughly double the LLM spend they
+    asked for, since `challenge` alone about doubles it.
+    """
+    s = SubmitSerializer(data=_data(extractors=json.dumps(
+        [{"name": "kv", "keys": VALID_KEYS, "option": {"qa": False, "challenge": False}}]
+    )))
+    assert not s.is_valid()
+    assert "unknown keys on extractor entry" in _errs(s)
+    assert "option" in _errs(s)
+
+
+def test_non_ascii_schema_is_measured_as_utf8_not_escapes():
+    """The inner cap must measure the same bytes the outer `extractors` cap did.
+
+    `json.dumps` defaults to ensure_ascii=True, which counts a CJK character as
+    a 6-byte \\uXXXX escape rather than its 3-byte UTF-8 form -- so a schema
+    could clear the outer raw-byte cap and then be rejected by the inner one as
+    "too large", with nothing in the message to explain the discrepancy.
+    """
+    cjk_keys = {f"項目_{i}": {"description": "請求書の合計金額"} for i in range(40)}
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        # A budget that fits the UTF-8 encoding but NOT the escaped form.
+        utf8_len = len(json.dumps(cjk_keys, ensure_ascii=False).encode("utf-8"))
+        escaped_len = len(json.dumps(cjk_keys).encode("utf-8"))
+        assert escaped_len > utf8_len, "fixture must actually differ between encodings"
+        m.AGENT_KV_MAX_SCHEMA_BYTES = utf8_len + 2_000
+        s = SubmitSerializer(data=_data(keys=cjk_keys))
+        assert s.is_valid(), s.errors

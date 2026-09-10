@@ -23,7 +23,8 @@ from agent_kv.storage import read_result
 def result_payload(job) -> dict:
     """Return the result/outcome payload for a terminal ``job``.
 
-    - COMPLETED: the stored engine result, unchanged.
+    - COMPLETED: ``{success, status, extractors, usage_summary}`` -- the stored
+      engine result namespaced per extractor (spec §7.3), not the bare blob.
     - FAILED: ``{"success": False, "status": "failed", "error": <user-safe>}``.
     - CANCELLED: ``{"success": False, "status": "cancelled"}``.
 
@@ -38,6 +39,13 @@ def result_payload(job) -> dict:
         # engine and every already-written result untouched (spec §7.3).
         usage = job.usage_summary or {}
         return {
+            # `success`/`status` stay at TOP level on every terminal payload --
+            # completed, failed and cancelled alike -- so a client branches on
+            # one key rather than having to know that only the failure shapes
+            # carry it. They describe the JOB; each extractor keeps its own
+            # `success` inside its own block.
+            "success": True,
+            "status": JobStatus.COMPLETED.lower(),
             "extractors": {V1_EXTRACTOR_NAME: read_result(job.result_ref)},
             # `total` stays the authoritative billing figure; `by_extractor`
             # exists so a multi-extractor job can be attributed. With one
