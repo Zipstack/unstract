@@ -328,6 +328,30 @@ class LLMWhispererHelper:
         return retrieve_response
 
     @staticmethod
+    def get_processed_page_count(response: dict[str, Any]) -> int | None:
+        """Pages LLMWhisperer actually processed for this extraction.
+
+        This is the same count LLMWhisperer bills, so reading it keeps Unstract's
+        page usage in step with a `pages_to_extract` range instead of counting
+        every page in the uploaded file (UN-4042).
+
+        Args:
+            response: Decoded `/whisper-retrieve` body returned by `make_request`.
+
+        Returns:
+            The processed page count, or None if the response does not carry a
+            usable one — callers fall back to counting the input file.
+        """
+        metadata = response.get("whisper_metadata")
+        if not isinstance(metadata, dict):
+            return None
+        page_count = metadata.get("processed_page_count")
+        # bool is a subclass of int, so it has to be rejected explicitly.
+        if isinstance(page_count, bool) or not isinstance(page_count, int):
+            return None
+        return page_count if page_count > 0 else None
+
+    @staticmethod
     def extract_text_from_response(
         output_file_path: str | None,
         response: dict[str, Any],

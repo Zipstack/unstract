@@ -115,7 +115,12 @@ class X2Text:
             input_file_path, output_file_path, fs, **kwargs
         )
         # The will be executed each and every time text extraction takes place
-        self.push_usage_details(input_file_path, mime_type, fs=fs)
+        self.push_usage_details(
+            input_file_path,
+            mime_type,
+            fs=fs,
+            page_count=text_extraction_result.page_count,
+        )
         return text_extraction_result
 
     def push_usage_details(
@@ -123,31 +128,50 @@ class X2Text:
         input_file_path: str,
         mime_type: str,
         fs: FileStorage | None = None,
+        page_count: int | None = None,
     ) -> None:
+        """Report the pages consumed by a completed extraction.
+
+        Args:
+            input_file_path: File that was extracted.
+            mime_type: MIME type of that file.
+            fs: File storage to read the file through.
+            page_count: Pages the extractor actually processed, when it reports
+                them. Preferred over counting the input file, because an adapter
+                configured with a `pages_to_extract` range reads fewer pages than
+                the document holds (UN-4042). None for adapters that report no
+                count, which keeps the earlier file-based behaviour.
+        """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         file_size = ToolUtils.get_file_size(input_file_path, fs)
 
         if mime_type == MimeType.PDF:
-            pdf_contents = io.BytesIO(fs.read(path=input_file_path, mode="rb"))
-            with pdfplumber.open(pdf_contents) as pdf:
-                # calculate the number of pages
-                page_count = len(pdf.pages)
-            Audit().push_page_usage_data(
-                platform_api_key=self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
-                file_size=file_size,
-                file_type=mime_type,
-                page_count=page_count,
-                kwargs=self._usage_kwargs,
+            billable_pages = (
+                page_count
+                if page_count is not None and page_count > 0
+                else self._get_pdf_page_count(input_file_path, fs)
             )
         else:
             # TODO: Calculate page usage for other file types (3000 words = 1 page)
             # We are allowing certain image types,and raw texts. We will consider them
             # as single page documents as there in no concept of page numbers.
-            Audit().push_page_usage_data(
-                platform_api_key=self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
-                file_size=file_size,
-                file_type=mime_type,
-                page_count=1,
-                kwargs=self._usage_kwargs,
-            )
+            # Deliberately not using the extractor's count here: LLMWhisperer
+            # applies the 3000-words rule to sheets and text, so adopting it would
+            # raise these bills. Tracked separately in UN-4043.
+            billable_pages = 1
+
+        Audit().push_page_usage_data(
+            platform_api_key=self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY),
+            file_size=file_size,
+            file_type=mime_type,
+            page_count=billable_pages,
+            kwargs=self._usage_kwargs,
+        )
+
+    @staticmethod
+    def _get_pdf_page_count(input_file_path: str, fs: FileStorage) -> int:
+        """Number of pages held by the PDF at `input_file_path`."""
+        pdf_contents = io.BytesIO(fs.read(path=input_file_path, mode="rb"))
+        with pdfplumber.open(pdf_contents) as pdf:
+            return len(pdf.pages)
