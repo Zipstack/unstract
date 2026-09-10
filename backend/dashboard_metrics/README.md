@@ -176,7 +176,7 @@ The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `eve
 - If the aggregation task fails, the dashboard shows stale data rather than crashing — up to 15 minutes old for hourly figures, up to an hour for daily and monthly.
 - A daily 04:40 UTC reconciliation pass reruns the same task over a 7-day source window, so a **daily- or monthly-tier** gap shorter than that repairs itself without a manual backfill. The hourly tier re-queries the last 24h on every run regardless of tier or window, so an hourly gap shorter than 24h repairs itself on the next tick; only one older than 24h needs `backfill_metrics`.
 - The 7-day window is also the ceiling on lag, not just on downtime. `documents_processed` and `failed_pages` filter on a terminal status but window and bucket on `created_at`, so a row whose status turns terminal more than 7 days after it was created is counted in no daily row — and therefore in no monthly total either, since monthly is the sum of daily. Before the monthly tier was derived from daily this was caught by the wider monthly source window.
-- Retry behaviour depends on the transport: on Celery the tasks carry `max_retries=3` with exponential backoff; on the PG transport (the default) there is **no** retry — `MAX_ATTEMPTS=1`, and the next scheduled tick supersedes a failed run. See [Transport](#transport-how-the-cron-actually-fires).
+- Retry behaviour depends on the transport: on Celery the tasks carry `max_retries=3` with exponential backoff; on the PG transport (the default) retries are governed by the consumer's `MAX_ATTEMPTS`, which compose sets to `1` — a failed run is dropped and the next scheduled tick supersedes it. See [Transport](#transport-how-the-cron-actually-fires).
 - Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
 
 ---
@@ -491,10 +491,20 @@ process — the difference is what schedules it and what carries it.
 
 ### Schedule rows are dual-written
 
-Every `dashboard_metrics.*` schedule exists as a **pair** of rows, written from a single
-spec by the same migration so the two cannot drift: a `django_celery_beat.PeriodicTask`
-and a `pg_queue.PgPeriodicTask`. See `migrations/0006_split_aggregation_schedule.py`
-(`split_schedules`). A row's `pg_owned` flag says which scheduler fires it.
+Every `dashboard_metrics.*` schedule exists as a **pair** of rows: a
+`django_celery_beat.PeriodicTask` and a `pg_queue.PgPeriodicTask`. A row's `pg_owned`
+flag says which scheduler fires it.
+
+How the pair is kept in step differs by row, which matters when you edit one:
+
+| Rows | Declared in | Drift risk |
+|------|-------------|------------|
+| The two aggregation rows, and the reconciliation row | One spec in a single migration — `0005_add_reconciliation_task.py`, `0006_split_aggregation_schedule.py` (`split_schedules`) | None by construction |
+| The three original rows (`aggregate_from_sources`, both cleanups) | **Two separate migrations** — `0002_setup_periodic_tasks.py` (Beat) and its PG twin `0004_pg_periodic_tasks.py` | Real — edit one and forget the other and they diverge |
+
+The second row is guarded only by a test, `tests/test_pg_periodic_task_declarations.py`,
+which exists for exactly that failure mode. If you change one of those three schedules,
+change both migrations.
 
 ### PG transport (default)
 
@@ -507,6 +517,8 @@ pg_queue_message on `dashboard_metric_events`
        ↓  worker-pg-metrics (a generic pg-queue-consumer pinned to that queue)
 workers/scheduler/dashboard_metrics_tasks.py  ← an HTTP proxy, NOT the real work
        ↓  POST v1/dashboard-metrics/aggregate/  (internal API auth, no X-Organization-ID)
+          relative to INTERNAL_API_BASE_URL, which ends /internal — the full path
+          is /internal/v1/dashboard-metrics/aggregate/
 backend/dashboard_metrics/internal_views.py
        ↓  calls tasks.py verbatim
 aggregate_metrics_from_sources(...)
@@ -519,8 +531,10 @@ unchanged, not reimplemented.
 `worker-pg-metrics` is a dedicated service rather than another queue on
 `worker-pg-scheduler` because the consumer's health heartbeat freezes while a task runs,
 so `HEALTH_STALE` doubles as an upper bound on one task's wall clock. The aggregation
-runs for minutes and would trip the scheduler's 240s liveness bound; the metrics
-consumer is sized at 900s/960s. See `docker/docker-compose.yaml` (`worker-pg-metrics`).
+runs for minutes and would trip the scheduler's liveness bound (~4 min) where the
+metrics consumer's is far higher (~15 min). Both are `${VAR:-default}` overrides — read
+the current numbers from `docker/docker-compose.yaml` (`worker-pg-metrics`), and note
+the values that apply in k8s come from the chart in a separate repo.
 
 ### Celery transport (legacy / rollback)
 
@@ -530,32 +544,54 @@ in-process. No proxy hop.
 
 ### Which one is live
 
-`converge_pg_scheduler` decides, and `backend/entrypoint.sh` runs it on **every backend
-start**, so ownership is a values change rather than a remembered procedure:
+`converge_pg_scheduler` decides, and `backend/entrypoint.sh` runs it on every backend
+start **that runs migrations** — the whole block is gated on `--migrate`, which the
+default compose stack passes. Ownership is then a values change rather than a remembered
+procedure. **Where migrations run as a separate job or init-container rather than in the
+backend's own start, this does not fire and ownership will not follow the env var.**
 
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `PG_SCHEDULER_ENABLED` | **`true`** | PG scheduler owns the pipeline schedules; matching Beat rows are disabled |
-| `PG_SCHEDULER_ADOPT_PERIODICS` | unset (`false`) | Must be `true` to also move the `dashboard_metrics.*` rows — it passes `--periodics` |
+| `PG_SCHEDULER_ADOPT_PERIODICS` | unset (`false`) | Must be `true` to also move the periodics, which is what carries the `dashboard_metrics.*` rows — it passes `--periodics`, and that flag covers **every** mirrored non-pipeline periodic, not only these |
 
 Both gates are required for the metrics cron. The periodics are separate because
 adopting them needs `worker-pg-metrics` deployed first. The default compose stack sets
 `PG_SCHEDULER_ADOPT_PERIODICS=true` and defines **no** `celery-beat` or `worker-metrics`
 service at all.
 
-> **Rolling back is not just the env var.** Converging to Beat restores *ownership*, not
-> *capacity*. Beat publishes to RabbitMQ, so a released schedule fires again only if
-> `workerMetrics` is actually running. Flip it back on in the **same** change that sets
-> `PG_SCHEDULER_ENABLED=false`, or you have moved the outage rather than fixed it.
+> **Rolling back is not just the env var — and do not unset both gates.**
+>
+> `PG_SCHEDULER_ADOPT_PERIODICS` must stay **`true`** while `PG_SCHEDULER_ENABLED` goes
+> to `false`. It gates `--periodics`, which the release direction needs just as much as
+> the adopt direction: without it `converge_pg_scheduler` never touches the
+> `dashboard_metrics.*` rows at all. Turn both off together — the intuitive "roll it all
+> back" — and those rows keep `pg_owned=True` with their Beat twins still disabled,
+> which is the no-firer state below, reached by following the runbook.
+>
+> Converging to Beat also restores *ownership*, not *capacity*. Beat publishes to
+> RabbitMQ, so a released schedule fires again only if `workerMetrics` is actually
+> running. Flip it back on in the **same** change, or you have moved the outage rather
+> than fixed it.
 
 ### Failure modes worth knowing
 
-- On the PG transport a periodic is **fire-and-forget** — nothing records a task status.
-  `MAX_ATTEMPTS=1`, so a raised exception is logged and dropped rather than retried; the
-  next cron tick supersedes it. Severity in the logs is the only alerting signal, which
-  is why `dashboard_metrics_tasks.py` logs at ERROR rather than raising.
-- The backend's `autoretry_for=(DatabaseError, OperationalError)` is a **no-op on the PG
-  path** — it is Celery machinery, and the internal-HTTP call is not a Celery task.
+- On the PG transport a periodic is **fire-and-forget** — nothing records a task status,
+  so log severity is the only signal that reaches an alert. The proxy therefore splits
+  the two cases: a non-200 or a transport failure **raises** (marking the message
+  failed), while a 200 that reports per-org `errors` is logged at ERROR rather than
+  raised, since the run did happen. See `dashboard_metrics_tasks.py`.
+- **Retries are effectively off, but that is a deployment setting, not a property of the
+  transport.** Compose sets `WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS=1`, so a failed
+  message is dropped and the next cron tick supersedes it; the consumer's own default is
+  5. Check the value your environment sets before assuming either. Independently, the
+  proxy's `httpx` client retries connection *establishment* three times — it never
+  re-sends a request the server already received.
+- The backend's `autoretry_for=(DatabaseError, OperationalError)` **does not retry on
+  the PG path.** The decorator is still in the call path — `internal_views.py` invokes
+  the decorated task object — but Celery's `retry()` re-raises instead of retrying when
+  a task is called directly rather than dispatched by a worker. Worth knowing before
+  reasoning about `throws=` or `on_failure` here.
 - A schedule adopted with no **`worker-pg-reaper`** running, or released with
   `workerMetrics` scaled to zero, has **no firer**: no error, no queue depth, no failed
   pod. Check `pg_owned` against what is actually deployed. Note the service to check is
@@ -827,7 +863,7 @@ python manage.py migrate dashboard_metrics
 
 This creates:
 - Three aggregated tables
-- Periodic task schedules — written to **both** `django_celery_beat.PeriodicTask` and `pg_queue.PgPeriodicTask`, from one spec
+- Periodic task schedules — a paired row in **both** `django_celery_beat.PeriodicTask` and `pg_queue.PgPeriodicTask` (see [Transport](#transport-how-the-cron-actually-fires) for which migration declares which)
 
 ### 3. Backfill Historical Data
 
@@ -846,7 +882,8 @@ python manage.py backfill_metrics --days=7 --dry-run
 
 The PG transport is the default. It needs the metrics consumer, and the schedule rows
 adopted onto the PG scheduler (`PG_SCHEDULER_ENABLED=true` **and**
-`PG_SCHEDULER_ADOPT_PERIODICS=true`, which `entrypoint.sh` converges on backend start):
+`PG_SCHEDULER_ADOPT_PERIODICS=true`, which `entrypoint.sh` converges on a `--migrate`
+start):
 
 ```bash
 # 1. The firer — the leader-elected loop that fires due pg_owned schedules.
