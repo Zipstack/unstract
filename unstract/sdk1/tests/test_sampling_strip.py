@@ -1,9 +1,9 @@
 """Tests for the Claude sampling-parameter strip.
 
-Covers Claude Opus 4.7 and every model released since (Opus 4.8, Sonnet 5,
-Fable 5, Mythos 5), all of which reject `temperature`/`top_p`/`top_k`. Sonnet 5
-is the model behind the reported Azure AI Foundry `temperature is deprecated`
-failure.
+Covers Claude Opus 4.7 and every model released since — every Opus release from
+4.7 onwards (4.7, 4.8, 4.9, Opus 5+) plus Sonnet 5, Fable 5 and Mythos 5 — all
+of which reject `temperature`/`top_p`/`top_k`. Sonnet 5 is the model behind the
+reported Azure AI Foundry `temperature is deprecated` failure.
 
 Pins the detection regex and the four-adapter wiring against the failure
 modes that surfaced in PR #1934 review:
@@ -65,6 +65,25 @@ OPUS_47_POSITIVES: list[str] = [
     # Version tag accepted only as `v\d` after the trailing edge
     "claude-opus-4-7v1",
     "claude-opus-4-7v9",
+    # Opus 4.8 / 4.9 — same deprecation, representative encodings
+    "claude-opus-4-8",
+    "anthropic/claude-opus-4-8",
+    "anthropic.claude-opus-4-8-20260101-v1:0",
+    "us.anthropic.claude-opus-4-8-20260101-v1:0",
+    "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-opus-4-8-20260101-v1:0",
+    "vertex_ai/claude-opus-4-8@20260101",
+    "azure_ai/claude-opus-4-8",
+    "azure_ai/my-claude-opus-4-8-deployment",
+    "claude.opus.4.8",
+    "claude-opus-4-9",
+    # Opus 5 and later
+    "claude-opus-5",
+    "claude-opus-5-0",
+    "anthropic/claude-opus-5-0",
+    "anthropic.claude-opus-5-0-20270101-v1:0",
+    "us.anthropic.claude-opus-5-0-20270101-v1:0",
+    "vertex_ai/claude-opus-5-0@20270101",
+    "claude-opus-6-0",
 ]
 
 
@@ -73,8 +92,9 @@ def test_has_deprecated_sampling_params_positive(model: str) -> None:
     assert _has_deprecated_sampling_params(model)
 
 
-# Every Claude model released after Opus 4.7 also rejects sampling params
-# (Opus 4.8, Sonnet 5, Fable 5, Mythos 5). Sonnet 5 is the model behind the
+# Every Claude model released after Opus 4.7 also rejects sampling params.
+# Opus 4.8+ is covered above; the non-Opus families (Sonnet 5, Fable 5,
+# Mythos 5) are listed as literal stems. Sonnet 5 is the model behind the
 # reported Azure AI Foundry `temperature is deprecated` failure.
 POST_47_POSITIVES: list[str] = [
     # Sonnet 5 — native, Azure AI Foundry (prefixed by validate_model), case,
@@ -90,10 +110,6 @@ POST_47_POSITIVES: list[str] = [
     "claude-sonnet-5v1",  # version tag
     "anthropic.claude-sonnet-5-20260101-v1:0",  # Bedrock foundation model id
     "vertex_ai/claude-sonnet-5@20260101",  # Vertex AI
-    # Opus 4.8
-    "claude-opus-4-8",
-    "anthropic.claude-opus-4-8-20260101-v1:0",
-    "azure_ai/claude-opus-4-8",
     # Fable 5 / Mythos 5
     "claude-fable-5",
     "vertex_ai/claude-fable-5@20260101",
@@ -142,6 +158,13 @@ NEGATIVES: list[str | None] = [
     "claude-opus-4-7verbose",
     "claude-opus-4-7vnext",
     "claude-opus-4-7variant",
+    # Opus 5+ boundary: the major must end at a delimiter, not run into more
+    # digits or letters.
+    "claude-opus-50",
+    "claude-opus-5verbose",
+    # Opus 4.1–4.6 still accept sampling params; only 4.7+ is deprecated.
+    "claude-opus-4-1",
+    "anthropic.claude-opus-4-1-20250805-v1:0",
     # Opaque Bedrock Application Inference Profile ARN — model id is not
     # recoverable from the string. Strip-detection is expected to skip;
     # callers must keep the standard id in `model` or `model_id`.
