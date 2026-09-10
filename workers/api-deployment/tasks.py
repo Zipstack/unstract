@@ -221,7 +221,39 @@ def _unified_api_execution(
         converted_files = FileProcessingUtils.convert_file_hash_data(hash_values_of_files)
 
         if not converted_files:
-            logger.warning("No valid files to process after conversion")
+            # convert_file_hash_data swallows per-file errors and returns only what
+            # converted, so {} means "nothing was dispatched" OR "every file failed
+            # to convert". Reporting the second as COMPLETED would turn a total
+            # failure into a silent success with no results and no error.
+            if hash_values_of_files:
+                error_message = (
+                    f"None of the {len(hash_values_of_files)} dispatched files could "
+                    "be converted for processing"
+                )
+                logger.error(error_message)
+                api_client.update_workflow_execution_status(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.ERROR.value,
+                    error_message=error_message,
+                    total_files=len(hash_values_of_files),
+                    successful_files=0,
+                    failed_files=len(hash_values_of_files),
+                )
+                return {
+                    "execution_id": execution_id,
+                    "status": "ERROR",
+                    "message": error_message,
+                    "files_processed": 0,
+                }
+
+            logger.warning("No files dispatched for this execution")
+            # Returning COMPLETED is not enough: without this write the row keeps
+            # whatever status it was dispatched with, and the caller polls forever.
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.COMPLETED.value,
+                total_files=0,
+            )
             return {
                 "execution_id": execution_id,
                 "status": "COMPLETED",
