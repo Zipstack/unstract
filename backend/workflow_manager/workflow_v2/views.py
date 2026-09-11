@@ -302,9 +302,10 @@ class WorkflowViewSet(
         execution_action: str | None = None,
         execution_id: str | None = None,
         pipeline_guid: str | None = None,
-        hash_values_of_files: dict[str, FileHash] = {},
+        hash_values_of_files: dict[str, FileHash] | None = None,
         use_file_history: bool = False,
     ) -> ExecutionResponse:
+        hash_values_of_files = hash_values_of_files or {}
         # Detect if this is an API execution by checking connector types
         is_api_execution = WorkflowEndpointUtils.is_api_workflow(workflow)
 
