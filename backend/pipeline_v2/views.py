@@ -13,6 +13,7 @@ from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
+from platform_api.services import owner_user_for
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -159,7 +160,8 @@ class PipelineViewSet(
                 # Grant before the API key so the creator's access is committed
                 # with the row itself, matching api_deployment_views.create().
                 pipeline_instance.memberships.get_or_create(
-                    user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
+                    user_id=owner_user_for(request.user).id,
+                    defaults={"role": ResourceRole.OWNER},
                 )
                 # Create API key using the created instance
                 KeyHelper.create_api_key(pipeline_instance, request)

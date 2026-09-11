@@ -27,6 +27,7 @@ import {
   formattedDateTime,
   shortenApiEndpoint,
 } from "../../../helpers/GetStaticData";
+import { resolveOwnerDisplay } from "../owner-display";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -139,11 +140,7 @@ CardActionBox.propTypes = {
  * @return {JSX.Element} Rendered owner field row
  */
 function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
-  const isOwner = item?.is_owner ?? item.created_by === sessionDetails?.userId;
-  const email = item.created_by_email;
-  const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
-  const extra =
-    item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+  const { email, name, extra } = resolveOwnerDisplay(item, sessionDetails);
   const ownerDisplay = `${name}${extra}`;
 
   const ownerContent = (

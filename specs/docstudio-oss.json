@@ -65,6 +65,13 @@
             "readOnly": true,
             "type": "string"
           },
+          "owner_emails": {
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
           "run_count": {
             "readOnly": true,
             "type": "integer"
@@ -91,6 +98,7 @@
           "is_owner",
           "last_5_run_statuses",
           "last_run_time",
+          "owner_emails",
           "run_count",
           "workflow",
           "workflow_name"

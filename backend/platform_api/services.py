@@ -15,6 +15,10 @@ if TYPE_CHECKING:
 
     from platform_api.models import PlatformApiKey
 
+# Reserved domain for service-account addresses. The frontend matches on it to
+# label an ownerless resource "Platform key" instead of naming a machine.
+SERVICE_ACCOUNT_EMAIL_DOMAIN = "platform.internal"
+
 # Business app labels whose models may carry created_by / membership rows.
 # Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
 _BUSINESS_APP_LABELS = {
@@ -45,7 +49,7 @@ def create_api_user_for_key(
         name_slug = _slugify_for_email(platform_api_key.name)
         user = User(
             username=f"svc-{name_slug}-{uid[:8]}",
-            email=f"{name_slug}-{uid[:8]}@platform.internal",
+            email=f"{name_slug}-{uid[:8]}@{SERVICE_ACCOUNT_EMAIL_DOMAIN}",
             user_id=uid,
             is_service_account=True,
         )
@@ -61,6 +65,37 @@ def create_api_user_for_key(
         platform_api_key.api_user = user
         platform_api_key.save(update_fields=["api_user"])
     return user
+
+
+def owner_user_for(user: User) -> User:
+    """Resolve the human who should own a resource created by ``user``.
+
+    A platform key authenticates as a service account, and service accounts are
+    filtered out of every owner surface (``HasMembersMixin``), so a resource
+    granted to one has no human owner: it is invisible to its creator and only
+    an org admin can manage it. Attribute it to the key's creator instead — the
+    same successor :func:`delete_api_user_for_key` already hands ownership to.
+
+    Returns ``user`` unchanged for a normal session, and for the residual case
+    where the key's creator has since been deleted (``created_by`` is
+    ``SET_NULL``) — such a resource stays deliberately ownerless and the UI
+    labels it "Platform key".
+
+    Org membership of the creator is deliberately not re-checked: a key can
+    outlive its creator's membership, and granting to an ex-member matches what
+    :func:`delete_api_user_for_key` already does. The row is inert until they
+    rejoin, which beats leaving the resource with no owner at all.
+    """
+    if not getattr(user, "is_service_account", False):
+        return user
+
+    # Imported here so the module keeps its models import behind TYPE_CHECKING.
+    from platform_api.models import PlatformApiKey
+
+    key = (
+        PlatformApiKey.objects.filter(api_user=user).select_related("created_by").first()
+    )
+    return key.created_by if key and key.created_by else user
 
 
 def _get_user_fk_fields(model: type) -> list[str]:
