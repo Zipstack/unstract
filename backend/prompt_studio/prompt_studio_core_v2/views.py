@@ -152,6 +152,10 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
+        # Settings are collaborative (UN-2868); only the project's existence
+        # and who it is shared with stay with the owner. Renaming is blocked
+        # per-field in the serializer, since it shares an endpoint with
+        # every settings write.
         if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 

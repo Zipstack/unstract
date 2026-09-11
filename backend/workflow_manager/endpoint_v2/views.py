@@ -1,18 +1,30 @@
 from django.db.models import QuerySet
+from permissions.permission import WorkflowOwnerMutationMixin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from workflow_manager.endpoint_v2.destination import DestinationConnector
-from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.serializers import WorkflowEndpointSerializer
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.workflow_v2.exceptions import WorkflowDoesNotExistError
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
-class WorkflowEndpointViewSet(viewsets.ModelViewSet):
+class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet):
+    """Workflow source / destination endpoints.
+
+    Config here selects the connector and its settings -- the destination
+    folder for filesystem, the table for database. Shared users may read
+    it; only owners and org admins may change it.
+    """
+
     serializer_class = WorkflowEndpointSerializer
+    mutation_denied_message = (
+        "Only the workflow owner or an organization admin can change its "
+        "connector configuration."
+    )
 
     def get_queryset(self) -> QuerySet:
         # Get workflows accessible to the user (owned or shared)
@@ -21,7 +33,7 @@ class WorkflowEndpointViewSet(viewsets.ModelViewSet):
         # Get endpoints for those workflows
         queryset = (
             WorkflowEndpoint.objects.all()
-            .select_related("workflow")
+            .select_related("workflow", "connector_instance")
             .filter(workflow__in=accessible_workflows)
         )
         workflow_filter = self.request.query_params.get("workflow", None)
@@ -85,6 +97,11 @@ class WorkflowEndpointViewSet(viewsets.ModelViewSet):
             Response: The HTTP response containing the serialized list of
                 endpoints.
         """
-        endpoints = WorkflowEndpointUtils.get_endpoints_for_workflow(pk)
-        serializer = WorkflowEndpointSerializer(endpoints, many=True)
+        # Scoped to workflows the requester can reach. This does NOT redact
+        # connector_metadata, which the nested serializer still returns
+        # decrypted to shared users.
+        if not Workflow.objects.for_user(request.user).filter(pk=pk).exists():
+            raise WorkflowDoesNotExistError
+        endpoints = self.get_queryset().filter(workflow_id=pk)
+        serializer = self.get_serializer(endpoints, many=True)
         return Response(serializer.data)

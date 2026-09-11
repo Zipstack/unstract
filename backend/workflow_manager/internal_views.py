@@ -1615,12 +1615,12 @@ class WorkflowEndpointAPIView(APIView):
                 "usercontext_org_name": organization_from_context.display_name
                 if organization_from_context
                 else None,
-                "headers": dict(request.headers),
                 "internal_service": getattr(request, "internal_service", False),
                 "authenticated_via": getattr(request, "authenticated_via", None),
                 "path": request.path,
             }
-            logger.info(f"WorkflowEndpointAPIView debug - {request_debug}")
+            # Headers omitted: they carry the internal service bearer key.
+            logger.debug("WorkflowEndpointAPIView debug - %s", request_debug)
 
             # Get workflow using the DefaultOrganizationManagerMixin which automatically filters by organization
             try:

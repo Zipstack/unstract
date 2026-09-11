@@ -31,5 +31,14 @@ class WorkflowEndpointSerializer(ModelSerializer):
         context is available.
         """
         fields = super().get_fields()
-        fields["connector_instance_id"].queryset = ConnectorInstance.objects.all()
+        # User-scoped, so an endpoint cannot be pointed at a connector the
+        # requester has no access to. Note the nested READ still returns
+        # connector_metadata decrypted to anyone the workflow is shared with --
+        # see the note on ConnectorInstanceSerializer.
+        request = self.context.get("request")
+        fields["connector_instance_id"].queryset = (
+            ConnectorInstance.objects.for_user(request.user)
+            if request
+            else ConnectorInstance.objects.none()
+        )
         return fields

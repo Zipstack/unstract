@@ -1,5 +1,9 @@
 from django.shortcuts import get_object_or_404
-from permissions.permission import _is_resource_owner, _is_resource_viewer
+from permissions.permission import (
+    _is_resource_owner,
+    _is_resource_viewer,
+    is_workflow_mutator,
+)
 from rest_framework.permissions import BasePermission
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
@@ -45,3 +49,14 @@ class IsWorkflowOwnerOrShared(BasePermission):
         )
 
         return has_access
+
+
+class IsWorkflowOwnerForFileHistoryWrite(IsWorkflowOwnerOrShared):
+    """Owner-only gate for deleting a workflow's file history."""
+
+    message = "Only the workflow owner or an organization admin can delete file history"
+
+    def has_permission(self, request, view):
+        return super().has_permission(request, view) and is_workflow_mutator(
+            request, request._workflow_cache
+        )

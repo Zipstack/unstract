@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/shims/antd-inputs";
 import { Flex, Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { canEditResource } from "../../../helpers/resourceAccess";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {
@@ -97,15 +98,18 @@ function createApiDeploymentCardConfig({
             <Space size={16} className="card-list-actions">
               <Tooltip
                 title={
-                  deployment.is_active
-                    ? "Disable API deployment"
-                    : "Enable API deployment"
+                  canEditResource(deployment, sessionDetails)
+                    ? deployment.is_active
+                      ? "Disable API deployment"
+                      : "Enable API deployment"
+                    : "Only the owner can change this"
                 }
               >
                 <Switch
                   size="small"
                   checked={deployment.is_active}
                   data-testid={`api-deployment-toggle-${deployment.id}`}
+                  disabled={!canEditResource(deployment, sessionDetails)}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     updateStatus(deployment);
