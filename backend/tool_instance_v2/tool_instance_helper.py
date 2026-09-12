@@ -486,33 +486,57 @@ class ToolInstanceHelper:
         adapter_ids: set[str] = set()
 
         for llm in tool.properties.adapter.language_models:
+            adapter_id = None
             if llm.is_enabled and llm.adapter_id:
-                adapter_id = tool_meta[llm.adapter_id]
+                adapter_id = tool_meta.get(llm.adapter_id)
             elif llm.is_enabled:
-                adapter_id = tool_meta[AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID]
+                adapter_id = tool_meta.get(AdapterPropertyKey.DEFAULT_LLM_ADAPTER_ID)
 
-            adapter_ids.add(adapter_id)
+            # UN-2953: a tool instance may carry "" for an adapter id.
+            # Adding it made the schema validator compare "" against the
+            # UUID enum and raise, once per validation pass.
+            if adapter_id:
+                adapter_ids.add(adapter_id)
         for vdb in tool.properties.adapter.vector_stores:
+            adapter_id = None
             if vdb.is_enabled and vdb.adapter_id:
-                adapter_id = tool_meta[vdb.adapter_id]
+                adapter_id = tool_meta.get(vdb.adapter_id)
             elif vdb.is_enabled:
-                adapter_id = tool_meta[AdapterPropertyKey.DEFAULT_VECTOR_DB_ADAPTER_ID]
+                adapter_id = tool_meta.get(
+                    AdapterPropertyKey.DEFAULT_VECTOR_DB_ADAPTER_ID
+                )
 
-            adapter_ids.add(adapter_id)
+            # UN-2953: a tool instance may carry "" for an adapter id.
+            # Adding it made the schema validator compare "" against the
+            # UUID enum and raise, once per validation pass.
+            if adapter_id:
+                adapter_ids.add(adapter_id)
         for embedding in tool.properties.adapter.embedding_services:
+            adapter_id = None
             if embedding.is_enabled and embedding.adapter_id:
-                adapter_id = tool_meta[embedding.adapter_id]
+                adapter_id = tool_meta.get(embedding.adapter_id)
             elif embedding.is_enabled:
-                adapter_id = tool_meta[AdapterPropertyKey.DEFAULT_EMBEDDING_ADAPTER_ID]
+                adapter_id = tool_meta.get(
+                    AdapterPropertyKey.DEFAULT_EMBEDDING_ADAPTER_ID
+                )
 
-            adapter_ids.add(adapter_id)
+            # UN-2953: a tool instance may carry "" for an adapter id.
+            # Adding it made the schema validator compare "" against the
+            # UUID enum and raise, once per validation pass.
+            if adapter_id:
+                adapter_ids.add(adapter_id)
         for text_extractor in tool.properties.adapter.text_extractors:
+            adapter_id = None
             if text_extractor.is_enabled and text_extractor.adapter_id:
-                adapter_id = tool_meta[text_extractor.adapter_id]
+                adapter_id = tool_meta.get(text_extractor.adapter_id)
             elif text_extractor.is_enabled:
-                adapter_id = tool_meta[AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID]
+                adapter_id = tool_meta.get(AdapterPropertyKey.DEFAULT_X2TEXT_ADAPTER_ID)
 
-            adapter_ids.add(adapter_id)
+            # UN-2953: a tool instance may carry "" for an adapter id.
+            # Adding it made the schema validator compare "" against the
+            # UUID enum and raise, once per validation pass.
+            if adapter_id:
+                adapter_ids.add(adapter_id)
 
         ToolInstanceHelper.validate_adapter_access(user=user, adapter_ids=adapter_ids)
 

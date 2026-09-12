@@ -2,6 +2,7 @@ import logging
 import re
 
 import openai
+from litellm import exceptions as litellm_exceptions
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,23 @@ class RateLimitError(SdkError):
     DEFAULT_MESSAGE = "Running into rate limit errors, please try again later"
 
 
+class ContextWindowExceededError(SdkError):
+    """The prompt (plus context) exceeded the model's context window.
+
+    UN-3133: litellm raises ``ContextWindowExceededError``, which derives from
+    ``BadRequestError`` and so from ``openai.APIError``. Without a distinct
+    class it was wrapped as a plain ``SdkError`` carrying the provider's raw
+    400 text, so the UI showed a generic "Error from <provider>" and the real
+    cause was only findable by reading worker logs.
+    """
+
+    DEFAULT_MESSAGE = (
+        "The document and prompt together exceed the model's context window. "
+        "Reduce the chunk size, limit the pages extracted, or use a model with "
+        "a larger context window."
+    )
+
+
 class FileStorageError(SdkError):
     DEFAULT_MESSAGE = (
         "Error while connecting with the storage. "
@@ -156,6 +174,26 @@ def parse_litellm_err(e: Exception, provider_name: str | None = None) -> SdkErro
     )
 
     cleaned_message = strip_litellm_prefix(str(e))
+
+    # UN-3133: surface a context-window overflow as its own error type with an
+    # actionable message. It is a BadRequestError subclass, so without this it
+    # collapses into the generic wrap below and the user sees only the
+    # provider's raw 400.
+    if isinstance(e, litellm_exceptions.ContextWindowExceededError):
+        err = ContextWindowExceededError(
+            ContextWindowExceededError.DEFAULT_MESSAGE,
+            actual_err=e,
+            status_code=status_code,
+        )
+        # Return early: the generic tail below would overwrite the actionable
+        # guidance with "Error from <provider>." and leave only the raw 400.
+        # The provider text is kept underneath it for support/debugging.
+        err.message = (
+            f"{ContextWindowExceededError.DEFAULT_MESSAGE}"
+            f"\n```\n{cleaned_message}\n```"
+        )
+        return err
+
     err = SdkError(cleaned_message, actual_err=e, status_code=status_code)
 
     if not provider_name:
