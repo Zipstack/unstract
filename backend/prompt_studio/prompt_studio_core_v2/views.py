@@ -530,8 +530,18 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
-        # Bind the run to this tool so a later cancel can be checked against it.
-        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
+        # Bind the run to this tool so a later cancel can be checked against
+        # it. The binding is immutable, so a caller cannot dispatch under
+        # someone else's live run id to take ownership of it and then cancel
+        # it through a tool they control.
+        if not remember_run_owner(org_id, run_id, str(custom_tool.tool_id)):
+            logger.warning(
+                "Refused dispatch under run %s: it belongs to another tool", run_id
+            )
+            return Response(
+                {"error": f"run_id {run_id} belongs to another tool."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         user_id = custom_tool.created_by.user_id
         try:
             prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
@@ -696,8 +706,18 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
-        # Bind the run to this tool so a later cancel can be checked against it.
-        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
+        # Bind the run to this tool so a later cancel can be checked against
+        # it. The binding is immutable, so a caller cannot dispatch under
+        # someone else's live run id to take ownership of it and then cancel
+        # it through a tool they control.
+        if not remember_run_owner(org_id, run_id, str(custom_tool.tool_id)):
+            logger.warning(
+                "Refused dispatch under run %s: it belongs to another tool", run_id
+            )
+            return Response(
+                {"error": f"run_id {run_id} belongs to another tool."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         user_id = custom_tool.created_by.user_id
 
         prompts = list(
@@ -815,8 +835,18 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
-        # Bind the run to this tool so a later cancel can be checked against it.
-        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
+        # Bind the run to this tool so a later cancel can be checked against
+        # it. The binding is immutable, so a caller cannot dispatch under
+        # someone else's live run id to take ownership of it and then cancel
+        # it through a tool they control.
+        if not remember_run_owner(org_id, run_id, str(custom_tool.tool_id)):
+            logger.warning(
+                "Refused dispatch under run %s: it belongs to another tool", run_id
+            )
+            return Response(
+                {"error": f"run_id {run_id} belongs to another tool."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         user_id = custom_tool.created_by.user_id
 
         # Build file path

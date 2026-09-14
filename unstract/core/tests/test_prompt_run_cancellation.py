@@ -17,6 +17,7 @@ class FakeRedis:
 
     def __init__(self, fail: bool = False):
         self.sets: dict[str, set[str]] = {}
+        self.strings: dict[str, str] = {}
         self.expiries: dict[str, int] = {}
         self.fail = fail
 
@@ -39,6 +40,19 @@ class FakeRedis:
     def delete(self, key):
         self._check()
         self.sets.pop(key, None)
+
+    def set(self, key, value, ex=None, nx=False):
+        self._check()
+        if nx and key in self.strings:
+            return None
+        self.strings[key] = value
+        if ex is not None:
+            self.expiries[key] = ex
+        return True
+
+    def get(self, key):
+        self._check()
+        return self.strings.get(key)
 
     def pipeline(self):
         return _FakePipeline(self)
@@ -168,3 +182,48 @@ class SentinelContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRunOwnership(unittest.TestCase):
+    """The run -> tool binding a cancel is authorised against (UN-1031).
+
+    Run ids arrive from the browser, so the binding has to be immutable: an
+    overwritable record would be no protection at all, since a caller could
+    rebind someone else's live run to a tool they control and cancel it
+    through that tool (raised by Greptile on PR #2283).
+    """
+
+    def setUp(self):
+        self.redis = FakeRedis()
+        self.patcher = mock.patch.object(prc, "_get_client", return_value=self.redis)
+        self.patcher.start()
+        self.addCleanup(self.patcher.stop)
+
+    def test_first_writer_takes_the_binding(self):
+        assert prc.remember_run_owner("org", "run-1", "tool-a") is True
+        assert prc.run_owner("org", "run-1") == "tool-a"
+
+    def test_another_tool_cannot_rebind_a_live_run(self):
+        prc.remember_run_owner("org", "run-1", "tool-a")
+
+        assert prc.remember_run_owner("org", "run-1", "tool-b") is False
+        # The original owner survives, so a cancel through tool-b is refused.
+        assert prc.run_owner("org", "run-1") == "tool-a"
+
+    def test_the_same_tool_may_rebind_its_own_run(self):
+        """A retry or a second dispatch under the same run id is legitimate."""
+        prc.remember_run_owner("org", "run-1", "tool-a")
+
+        assert prc.remember_run_owner("org", "run-1", "tool-a") is True
+
+    def test_an_unreachable_store_never_blocks_a_dispatch(self):
+        """Fail open: refusing to start work because Redis blinked would be
+        far worse than leaving one run unverifiable.
+        """
+        self.redis.fail = True
+
+        assert prc.remember_run_owner("org", "run-1", "tool-a") is True
+        assert prc.run_owner("org", "run-1") is None
+
+    def test_an_unknown_run_has_no_owner(self):
+        assert prc.run_owner("org", "never-dispatched") is None

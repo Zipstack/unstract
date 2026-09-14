@@ -99,24 +99,46 @@ def owner_key(org_id: str, run_id: str) -> str:
     return f"{_OWNER_PREFIX}{org_id}:{run_id}"
 
 
-def remember_run_owner(org_id: str, run_id: str, tool_id: str) -> None:
-    """Record that *run_id* was dispatched by *tool_id*.
+def remember_run_owner(org_id: str, run_id: str, tool_id: str) -> bool:
+    """Bind *run_id* to *tool_id*, if it is not already bound to another tool.
 
-    Best effort: a run whose owner could not be recorded simply cannot be
-    checked later, which is the behaviour that predates this record. Never
-    raises — a signal-store blip must not stop a run from being dispatched.
+    The binding is IMMUTABLE: the first writer wins. Run ids arrive from the
+    browser, so an overwritable record would be no protection at all — a
+    caller could rebind someone else's live run to a tool they control simply
+    by dispatching work under that run id, and then cancel it through that
+    tool (UN-1031).
+
+    Returns:
+        ``True`` if *tool_id* owns the run — either it has just been bound, or
+        it already held the binding. ``False`` means another tool owns it and
+        the caller must not proceed under this run id.
+
+        A signal-store failure also returns ``True``: it leaves the run
+        unverifiable, which is the behaviour that predates this record, and
+        refusing to dispatch because Redis blinked would be far worse.
     """
     client = _get_client()
     if client is None:
-        return
+        return True
+    key = owner_key(org_id, run_id)
     try:
-        client.set(owner_key(org_id, run_id), tool_id, ex=CANCEL_TTL_SECONDS)
+        if client.set(key, tool_id, ex=CANCEL_TTL_SECONDS, nx=True):
+            return True
+        # Already bound. Ours is fine — a retry or a second dispatch of the
+        # same run through the same tool. Anyone else's is not.
+        existing = client.get(key)
+        if existing is None:
+            # Expired between the SET and the GET; treat as unowned.
+            return True
+        existing = existing.decode() if isinstance(existing, bytes) else str(existing)
+        return existing == tool_id
     except Exception:
         logger.warning(
             "prompt-run cancellation: could not record the owner of run_id=%s",
             run_id,
             exc_info=True,
         )
+        return True
 
 
 def run_owner(org_id: str, run_id: str) -> str | None:
