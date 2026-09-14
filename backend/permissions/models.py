@@ -76,3 +76,18 @@ class HasMembersMixin:
             m.user_id == user.id and m.role == ResourceRole.OWNER
             for m in self.memberships.all()  # type: ignore[attr-defined]
         )
+
+    def grant_owner(self, user: Any) -> None:
+        """Grant OWNER on create, to the person behind ``user``.
+
+        ``user`` is a platform key's service account on the bearer path, and
+        granting to one leaves the resource with no human owner. Resolving it
+        here rather than at each create site keeps that from being a rule every
+        new resource has to remember -- the reason a site was missed before.
+        """
+        # Imported lazily: platform_api.services reads permissions.roles.
+        from platform_api.services import owner_user_for
+
+        self.memberships.get_or_create(  # type: ignore[attr-defined]
+            user=owner_user_for(user), defaults={"role": ResourceRole.OWNER}
+        )

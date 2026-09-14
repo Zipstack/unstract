@@ -15,8 +15,6 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
-from platform_api.services import owner_user_for
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -272,10 +270,7 @@ class AdapterInstanceViewSet(
             instance = serializer.save(organization=UserContext.get_organization())
             # ``created_by`` is audit-only; the creator's access flows through
             # an OWNER membership row (UN-2202 co-owners).
-            instance.memberships.get_or_create(
-                user_id=owner_user_for(request.user).id,
-                defaults={"role": ResourceRole.OWNER},
-            )
+            instance.grant_owner(request.user)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
