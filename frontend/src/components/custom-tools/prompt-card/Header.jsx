@@ -116,10 +116,11 @@ function Header({
   // True once a Stop has been sent for this prompt: the run keeps going until
   // the executor reaches its next checkpoint, so the button says "stopping"
   // rather than pretending the work is already over (UN-1031).
+  // Only this prompt's own Stop counts. In a bulk run the other prompts are
+  // still going and still billing, so their buttons must stay live (UN-1031).
   const isStopping = usePromptRunStatusStore((state) =>
-    Object.values(state.activeRuns || {}).some(
-      (run) =>
-        run?.stopping && run?.promptIds?.includes(promptDetails?.prompt_id),
+    Object.values(state.activeRuns || {}).some((run) =>
+      run?.stoppingPromptIds?.includes(promptDetails?.prompt_id),
     ),
   );
   // An abort normally lands in seconds. When it does not, say why rather than

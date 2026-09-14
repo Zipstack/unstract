@@ -500,3 +500,103 @@ class TestLookupEnrichmentStop:
 
         lookup.assert_called_once()
         webhook.assert_called_once()
+
+
+class TestIndexCleanupIsScopedToThisRun:
+    """A stop must not delete an index this run never wrote (code review).
+
+    ``is_document_indexed`` embeds a query to probe the vector store, and that
+    embedding call is itself abortable. By then ``doc_id`` already names a
+    document a PREVIOUS run may have indexed completely — so cleaning up on
+    that path destroys good vectors.
+    """
+
+    @staticmethod
+    def _index_context() -> ExecutionContext:
+        return ExecutionContext(
+            executor_name="legacy",
+            operation=Operation.INDEX.value,
+            executor_params={
+                "embedding_instance_id": "emb-1",
+                "vector_db_instance_id": "vdb-1",
+                "x2text_instance_id": "x2t-1",
+                "file_path": "/tmp/doc.pdf",
+                "file_hash": "hash",
+                "extracted_text": "some extracted text",
+                "platform_api_key": "pk",
+                "tool_id": "tool-1",
+            },
+            run_id="run-1",
+            execution_source="ide",
+            organization_id="org-1",
+        )
+
+    def _run_with_abort_at(self, executor_env, *, abort_during_probe: bool):
+        """Abort either during the existence probe or during real indexing."""
+        from executor.executors import legacy_executor as le
+
+        index = MagicMock()
+        index.generate_index_key.return_value = "doc-id-1"
+        if abort_during_probe:
+            index.is_document_indexed.side_effect = AbortedError("stopped")
+        else:
+            index.is_document_indexed.return_value = False
+            index.perform_indexing.side_effect = AbortedError("stopped")
+
+        with (
+            patch.object(
+                le.LegacyExecutor,
+                "_get_indexing_deps",
+                return_value=(MagicMock(return_value=index), MagicMock(), MagicMock()),
+            ),
+            # Storage is env-configured and irrelevant here.
+            patch(
+                "executor.executors.legacy_executor.FileUtils.get_fs_instance",
+                return_value=MagicMock(),
+            ),
+            patch("executor.executors.legacy_executor.is_cancelled", return_value=False),
+        ):
+            executor_env().execute(self._index_context())
+        return index
+
+    def test_a_stop_during_the_existence_probe_deletes_nothing(self, executor_env):
+        """The dangerous case: the document is already fully indexed."""
+        index = self._run_with_abort_at(executor_env, abort_during_probe=True)
+
+        index.delete_nodes.assert_not_called()
+
+    def test_a_stop_while_writing_still_cleans_up(self, executor_env):
+        """The case the cleanup exists for must keep working."""
+        index = self._run_with_abort_at(executor_env, abort_during_probe=False)
+
+        index.delete_nodes.assert_called_once()
+
+
+class TestStoppedProgressCount:
+    def test_a_whole_run_stop_does_not_count_unreached_prompts_as_done(
+        self, executor_env
+    ):
+        """A whole-run stop breaks the loop, so prompts it never reached are in
+        neither list. Subtracting counted them as answered (code review).
+        """
+        prompts = [
+            _prompt("field_a", PROMPT_A),
+            _prompt("field_b", PROMPT_B),
+            _prompt("field_c", PROMPT_C),
+        ]
+        shim = MagicMock()
+        with (
+            patch(
+                "executor.executors.legacy_executor.ExecutorToolShim", return_value=shim
+            ),
+            patch(
+                "executor.executors.legacy_executor.is_cancelled",
+                side_effect=_stop_run_except(PROMPT_A),
+            ),
+        ):
+            executor_env()._handle_answer_prompt(_context(prompts))
+
+        said = " ".join(str(c) for c in shim.stream_log.call_args_list)
+        # One prompt answered before the stop; C was never reached.
+        assert "Stopped by user after 1 of 3 prompts" in said
+        assert "2 of 3" not in said

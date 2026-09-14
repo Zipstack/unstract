@@ -22,17 +22,30 @@ const usePromptRunStatusStore = create((setState, getState) => ({
     setState((state) => ({
       activeRuns: {
         ...state.activeRuns,
-        [runId]: { ...runDetails, stopping: false },
+        [runId]: { ...runDetails, stopping: false, stoppingPromptIds: [] },
       },
     }));
   },
-  markRunsStopping: (runIds) => {
+  // `promptIds` narrows the mark to the prompts actually being stopped. A
+  // bulk run covers many prompts, and stopping one must not make the others
+  // look like they are stopping too — their work carries on, and their Stop
+  // buttons have to keep working (UN-1031). Omit it to mark the whole run.
+  markRunsStopping: (runIds, promptIds) => {
     setState((state) => {
       const activeRuns = { ...state.activeRuns };
       (runIds || []).forEach((runId) => {
-        if (activeRuns[runId]) {
-          activeRuns[runId] = { ...activeRuns[runId], stopping: true };
+        const run = activeRuns[runId];
+        if (!run) {
+          return;
         }
+        const stoppingPromptIds = promptIds
+          ? [...new Set([...(run.stoppingPromptIds || []), ...promptIds])]
+          : run.promptIds || [];
+        activeRuns[runId] = {
+          ...run,
+          stopping: true,
+          stoppingPromptIds,
+        };
       });
       return { activeRuns };
     });
@@ -45,7 +58,11 @@ const usePromptRunStatusStore = create((setState, getState) => ({
       const activeRuns = { ...state.activeRuns };
       (runIds || []).forEach((runId) => {
         if (activeRuns[runId]) {
-          activeRuns[runId] = { ...activeRuns[runId], stopping: false };
+          activeRuns[runId] = {
+            ...activeRuns[runId],
+            stopping: false,
+            stoppingPromptIds: [],
+          };
         }
       });
       return { activeRuns };

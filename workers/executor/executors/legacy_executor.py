@@ -1302,6 +1302,11 @@ class LegacyExecutor(BaseExecutor):
         embedding = None
         index = None
         doc_id = ""
+        # Whether THIS run has begun writing nodes. The existence probe below
+        # embeds a query, which is itself abortable, so a stop can land while
+        # `doc_id` already names a document a PREVIOUS run indexed completely.
+        # Cleaning up on that path would delete good vectors we never wrote.
+        wrote_nodes = False
         try:
             index = index_cls(
                 tool=shim,
@@ -1353,6 +1358,7 @@ class LegacyExecutor(BaseExecutor):
             shim.stream_log(
                 "Re-indexing document" if doc_id_found else "Indexing document"
             )
+            wrote_nodes = True
             index.perform_indexing(
                 vector_db=vector_db,
                 doc_id=doc_id,
@@ -1376,7 +1382,7 @@ class LegacyExecutor(BaseExecutor):
             # this document — and `is_document_indexed` would later report it
             # as indexed, leaving every future prompt to search half a
             # document. Remove what was written.
-            if vector_db is not None and index is not None and doc_id:
+            if wrote_nodes and vector_db is not None and index is not None and doc_id:
                 try:
                     index.delete_nodes(vector_db, doc_id)
                     logger.info(
@@ -1673,7 +1679,10 @@ class LegacyExecutor(BaseExecutor):
             raise
 
         if cancelled_prompt_ids:
-            done = len(prompts) - len(cancelled_prompt_ids)
+            # Count what actually answered. A whole-run stop breaks out of the
+            # loop, so prompts it never reached are absent from BOTH lists —
+            # subtracting would report them as done (UN-1031).
+            done = len(structured_output)
             pipeline_shim.stream_log(
                 f"Stopped by user after {done} of {len(prompts)} prompts"
             )

@@ -190,6 +190,76 @@ describe("stopping prompt runs", () => {
     );
   });
 
+  // Both raised in code review: a per-prompt Stop was disabling its siblings'
+  // buttons, and was too weak to stop a run it was the only prompt of.
+  it("stopping one prompt of a bulk run leaves its siblings alone", () => {
+    const { result } = renderUsePromptRun();
+
+    act(() => {
+      result.current.runPrompt([`${PROMPT_A}__${DOC}__${PROFILE}`]);
+    });
+    const [runId] = Object.keys(usePromptRunStatusStore.getState().activeRuns);
+    act(() => {
+      usePromptRunStatusStore.getState().registerRun(runId, {
+        promptIds: [PROMPT_A, PROMPT_B],
+        docId: DOC,
+        profileId: PROFILE,
+      });
+    });
+
+    act(() => {
+      result.current.stopPromptRuns(PROMPT_A);
+    });
+
+    const run = usePromptRunStatusStore.getState().activeRuns[runId];
+    // B is still running and still billing, so its Stop must stay usable.
+    expect(run.stoppingPromptIds).toEqual([PROMPT_A]);
+    expect(run.stoppingPromptIds).not.toContain(PROMPT_B);
+  });
+
+  it("stops the whole run when no other prompt of it is left running", () => {
+    const { result } = renderUsePromptRun();
+
+    act(() => {
+      result.current.runPrompt([`${PROMPT_A}__${DOC}__${PROFILE}`]);
+    });
+
+    act(() => {
+      result.current.stopPromptRuns(PROMPT_A);
+    });
+
+    const [cancel] = cancelRequests();
+    const [runId] = Object.keys(usePromptRunStatusStore.getState().activeRuns);
+    // No prompt_ids: naming one would spare the extraction and indexing this
+    // run's prompts share — but there is no sibling left to spare them for.
+    expect(cancel.data.runs).toEqual([{ run_id: runId }]);
+  });
+
+  it("still spares the shared stages while a sibling is running", () => {
+    const { result } = renderUsePromptRun();
+
+    act(() => {
+      result.current.runPrompt([`${PROMPT_A}__${DOC}__${PROFILE}`]);
+    });
+    const [runId] = Object.keys(usePromptRunStatusStore.getState().activeRuns);
+    act(() => {
+      usePromptRunStatusStore.getState().registerRun(runId, {
+        promptIds: [PROMPT_A, PROMPT_B],
+        docId: DOC,
+        profileId: PROFILE,
+      });
+    });
+
+    act(() => {
+      result.current.stopPromptRuns(PROMPT_A);
+    });
+
+    const [cancel] = cancelRequests();
+    expect(cancel.data.runs).toEqual([
+      { run_id: runId, prompt_ids: [PROMPT_A] },
+    ]);
+  });
+
   it("sends nothing when there is nothing running", () => {
     const { result } = renderUsePromptRun();
 

@@ -28,8 +28,18 @@ function RunAllPrompts() {
   const canStop = isRunning && stoppableRuns.length > 0;
   // Every in-flight run has already been told to stop; the button stays out of
   // the way until the executors reach their next checkpoints.
+  // Spent only when every prompt of every run is already stopping. A
+  // per-prompt Stop must not disable Stop All while its siblings run on.
   const isStopping =
-    canStop && Object.values(activeRuns).every((run) => run?.stopping);
+    canStop &&
+    Object.values(activeRuns).every((run) => {
+      const promptIds = run?.promptIds || [];
+      const stoppingIds = run?.stoppingPromptIds || [];
+      return (
+        promptIds.length > 0 &&
+        promptIds.every((id) => stoppingIds.includes(id))
+      );
+    });
   const isStoppingSlowly = useLingeringStop(isStopping);
   let stopTooltip = "Stop all running prompts";
   if (isStopping) {

@@ -182,7 +182,15 @@ def ide_index_complete(
         # Check executor-level failure
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
-            logger.error("ide_index executor reported failure: %s", error_msg)
+            # A stop reaches here as a failure result whenever the executor
+            # converted it at a handler boundary rather than raising. It is
+            # still a stop, and must not be shown to the user as an error
+            # (UN-1031) — the same check `ide_index_error` already makes.
+            cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
+            if cancelled:
+                logger.info("ide_index stopped by user: run_id=%s", run_id)
+            else:
+                logger.error("ide_index executor reported failure: %s", error_msg)
             api.remove_document_indexing(
                 org_id=org_id,
                 user_id=user_id,
@@ -196,10 +204,13 @@ def ide_index_complete(
                 "index_document",
                 tool_id=tool_id,
                 extra={"document_id": document_id},
-                status="failed",
-                error=error_msg,
+                status="cancelled" if cancelled else "failed",
+                error="" if cancelled else error_msg,
             )
-            return {"status": "failed", "error": error_msg}
+            return {
+                "status": "cancelled" if cancelled else "failed",
+                "error": "" if cancelled else error_msg,
+            }
 
         doc_id = result_dict.get("data", {}).get("doc_id", doc_id_key)
 
@@ -392,7 +403,13 @@ def ide_prompt_complete(
         # Check executor-level failure
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
-            logger.error("ide_prompt executor reported failure: %s", error_msg)
+            # As above: a stop converted at a handler boundary arrives as a
+            # failure result, and must still be reported as a stop (UN-1031).
+            cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
+            if cancelled:
+                logger.info("ide_prompt stopped by user: run_id=%s", run_id)
+            else:
+                logger.error("ide_prompt executor reported failure: %s", error_msg)
             _emit_event(
                 api,
                 log_events_id,
@@ -405,10 +422,13 @@ def ide_prompt_complete(
                     "document_id": document_id,
                     "profile_manager_id": profile_manager_id,
                 },
-                status="failed",
-                error=error_msg,
+                status="cancelled" if cancelled else "failed",
+                error="" if cancelled else error_msg,
             )
-            return {"status": "failed", "error": error_msg}
+            return {
+                "status": "cancelled" if cancelled else "failed",
+                "error": "" if cancelled else error_msg,
+            }
 
         data = result_dict.get("data", {})
         outputs = _json_safe(data.get("output", {}))

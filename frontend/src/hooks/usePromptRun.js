@@ -293,13 +293,31 @@ const usePromptRun = () => {
     const { activeRuns } = usePromptRunStatusStore.getState();
     const runs = Object.entries(activeRuns)
       .filter(([, run]) => run?.promptIds?.includes(promptId))
-      .map(([runId]) => ({ run_id: runId, prompt_ids: [promptId] }));
+      .map(([runId, run]) => {
+        // Naming prompt_ids deliberately spares the stages a run's prompts
+        // SHARE — extraction and indexing — because the others still need
+        // them. When no other prompt of this run is left running, there is
+        // nothing to spare, so stop the whole run and its shared stages
+        // too. Otherwise a single-prompt run ignores Stop for the whole of
+        // extraction (UN-1031).
+        const promptIds = run?.promptIds || [];
+        const stoppingIds = run?.stoppingPromptIds || [];
+        const remaining = promptIds.filter(
+          (id) => id !== promptId && !stoppingIds.includes(id),
+        );
+        return remaining.length
+          ? { run_id: runId, prompt_ids: [promptId] }
+          : { run_id: runId };
+      });
 
     if (!runs.length) {
       return;
     }
 
-    markRunsStopping(runs.map((run) => run.run_id));
+    markRunsStopping(
+      runs.map((run) => run.run_id),
+      [promptId],
+    );
     postCancel(runs);
   };
 
