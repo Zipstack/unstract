@@ -353,7 +353,9 @@ class WorkflowViewSet(
         response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
         return Response(response, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=["get"])
+    # POST, not GET: this clears execution markers, so a GET made it reachable
+    # by prefetch or a pasted URL with no CSRF in the way.
+    @action(detail=True, methods=["post"])
     def clear_file_marker(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         workflow = self.get_object()
         response: dict[str, Any] = WorkflowHelper.clear_file_marker(

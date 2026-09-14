@@ -82,10 +82,10 @@ class IsRegistryToolOwner(permissions.BasePermission):
     """Is unpublishing an exported tool allowed to user.
 
     A ``PromptStudioRegistry`` row is not itself a membership resource, so
-    ownership is inherited from the linked ``CustomTool`` -- mirroring
-    ``IsParentToolOwner``, which does the same for ``ProfileManager``. Falls
-    back to the row's own owner for unlinked legacy rows (``custom_tool`` is
-    nullable).
+    ownership is inherited from the linked ``CustomTool``. Unlike
+    ``ParentToolAccess``, which lets collaborators manage a project's
+    profiles, unpublishing stays with the owner. Falls back to the row's own
+    owner for unlinked legacy rows (``custom_tool`` is nullable).
 
     Read access is deliberately broader (see
     ``PromptStudioRegistry.objects.list_tools``); deleting is restricted to
