@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid as _uuid
 from typing import TYPE_CHECKING
@@ -14,6 +15,8 @@ if TYPE_CHECKING:
     from account_v2.models import Organization
 
     from platform_api.models import PlatformApiKey
+
+logger = logging.getLogger(__name__)
 
 # Reserved domain for service-account addresses. The frontend matches on it to
 # label an ownerless resource "Platform key" instead of naming a machine.
@@ -70,21 +73,22 @@ def create_api_user_for_key(
 def owner_user_for(user: User) -> User:
     """Resolve the human who should own a resource created by ``user``.
 
-    A platform key authenticates as a service account, and service accounts are
-    filtered out of every owner surface (``HasMembersMixin``), so a resource
-    granted to one has no human owner: it is invisible to its creator and only
-    an org admin can manage it. Attribute it to the key's creator instead — the
-    same successor :func:`delete_api_user_for_key` already hands ownership to.
+    A platform key authenticates as a service account, which ``owners()``,
+    ``owner_email()`` and ``owner_emails()`` all filter out, so a resource
+    granted to one names no human owner and only an org admin can manage it.
+    Attribute it to the key's creator instead — the successor
+    :func:`delete_api_user_for_key` already hands ownership to.
 
-    Returns ``user`` unchanged for a normal session, and for the residual case
-    where the key's creator has since been deleted (``created_by`` is
-    ``SET_NULL``) — such a resource stays deliberately ownerless and the UI
-    labels it "Platform key".
+    Returns ``user`` unchanged for a normal session, and whenever no live
+    creator can be named: no key row, a creator deleted since (``created_by``
+    is ``SET_NULL``), or a creator who has left the organization. The OWNER row
+    then goes to the service account, which the owner surfaces filter out, and
+    the UI labels the resource "Platform key".
 
-    Org membership of the creator is deliberately not re-checked: a key can
-    outlive its creator's membership, and granting to an ex-member matches what
-    :func:`delete_api_user_for_key` already does. The row is inert until they
-    rejoin, which beats leaving the resource with no owner at all.
+    The membership check is required, not optional: ``_is_resource_owner``
+    grants on any surviving OWNER row without checking live membership, which
+    is why ``cleanup_user_org_access`` purges those rows when a user leaves.
+    Minting a fresh one for an ex-member would reopen that rejoin backdoor.
     """
     if not getattr(user, "is_service_account", False):
         return user
@@ -93,9 +97,28 @@ def owner_user_for(user: User) -> User:
     from platform_api.models import PlatformApiKey
 
     key = (
-        PlatformApiKey.objects.filter(api_user=user).select_related("created_by").first()
+        PlatformApiKey.objects.filter(api_user=user)
+        .select_related("created_by", "organization")
+        .first()
     )
-    return key.created_by if key and key.created_by else user
+    if not (key and key.created_by):
+        logger.warning(
+            "Platform key %s has no creator; resource gets no human owner",
+            key.id if key else None,
+        )
+        return user
+    # ``_base_manager`` because the default manager is org-scoped by
+    # ``UserContext``, which is None outside a request — an empty result would
+    # silently strip every resource of its owner. The org is filtered here.
+    if not OrganizationMember._base_manager.filter(
+        user=key.created_by, organization=key.organization
+    ).exists():
+        logger.warning(
+            "Creator of platform key %s has left the org; resource gets no human owner",
+            key.id,
+        )
+        return user
+    return key.created_by
 
 
 def _get_user_fk_fields(model: type) -> list[str]:

@@ -17,6 +17,7 @@ import secrets
 import uuid
 from unittest.mock import patch
 
+from account_v2.enums import UserRole
 from account_v2.models import Organization, User
 from django.conf import settings
 from django.test import override_settings
@@ -24,6 +25,7 @@ from permissions.roles import ResourceRole
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.services import create_api_user_for_key
 from rest_framework.test import APITestCase
+from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -50,6 +52,12 @@ class PlatformKeyResourceOwnershipTest(APITestCase):
         email = f"creator-{uuid.uuid4().hex[:8]}@example.com"
         self.creator = User.objects.create_user(
             username=email, email=email, password=secrets.token_urlsafe()
+        )
+        # ``IsOrganizationAdmin`` resolves the caller's membership before
+        # allowing key creation, so a key's creator is always a member of its
+        # org -- and ``owner_user_for`` re-checks that before granting.
+        OrganizationMember.objects.create(
+            user=self.creator, organization=self.org, role=UserRole.ADMIN.value
         )
         self.key = PlatformApiKey.objects.create(
             name=f"key-{uuid.uuid4().hex[:8]}",
