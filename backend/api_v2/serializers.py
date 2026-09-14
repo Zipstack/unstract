@@ -545,8 +545,11 @@ class APIDeploymentListSerializer(ModelSerializer):
         return obj.co_owners_count()
 
     def get_owner_emails(self, obj) -> list[str]:
-        # Names the actual owner in "Owned By"; ``created_by`` is audit-only
-        # (UN-2202) and stays the service account on platform-key creates.
+        """Email of each owner, earliest first. Empty if none is a person."""
+        # This docstring is the published description: APIDeploymentSummary
+        # subclasses this serializer, so the field reaches platform-key callers
+        # beside the created_by_email they already received. Kept deliberately
+        # -- the UI reads the same endpoint and needs it to name the owner.
         return obj.owner_emails()
 
     # Both read the list view's annotations when they are there, and fall back

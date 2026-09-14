@@ -66,6 +66,7 @@
             "type": "string"
           },
           "owner_emails": {
+            "description": "Email of each owner, earliest first. Empty if none is a person.",
             "items": {
               "type": "string"
             },
