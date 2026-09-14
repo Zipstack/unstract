@@ -21,9 +21,8 @@ function resolveOwnerDisplay(item, sessionDetails, ownerEmailsProp) {
   const rawEmail =
     (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
     item?.created_by_email;
-  // Reached only when a platform key's creator has since been deleted, so no
-  // human can be named. Suppress the synthetic address rather than dress a
-  // machine identity up as a colleague.
+  // Suppress the synthetic address rather than dress a machine identity up as
+  // a colleague. Reachability is stated at the fallback above.
   const isPlatformKey = Boolean(rawEmail?.endsWith(PLATFORM_KEY_EMAIL_DOMAIN));
   const email = isPlatformKey ? undefined : rawEmail;
   // "Me" must track the DISPLAYED owner, not the viewer's own membership —

@@ -215,6 +215,35 @@ class PlatformKeyResourceOwnershipTest(APITestCase):
             self._fetch(ConnectorInstance, response.json()["id"])
         )
 
+    def test_prompt_studio_project_import(self) -> None:
+        """The import path grants its own OWNER row, separately from create.
+
+        ``create_tool_from_import_data`` is reached by ``project-transfer/``
+        and by ``sync-prompts/`` with ``create_copy``, and takes ``request.user``
+        directly. Called here rather than over HTTP because the endpoint's other
+        work -- profile managers, prompt import, adapter validation -- is not
+        what is under test, and stubbing it would pin the stubs.
+        """
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+            PromptStudioHelper,
+        )
+
+        tool = PromptStudioHelper.create_tool_from_import_data(
+            {
+                "tool_metadata": {
+                    "tool_name": f"imported-{uuid.uuid4().hex[:8]}",
+                    "author": "test",
+                    "description": "imported through a platform key",
+                },
+                "tool_settings": {},
+            },
+            f"imported-{uuid.uuid4().hex[:8]}",
+            self.org,
+            self.key.api_user,
+        )
+        self._assert_owned_by_creator(self._fetch(CustomTool, tool.pk))
+
     def test_adapter(self) -> None:
         from adapter_processor_v2.models import AdapterInstance
 

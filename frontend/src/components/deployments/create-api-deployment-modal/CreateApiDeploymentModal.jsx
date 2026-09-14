@@ -30,6 +30,7 @@ const CreateApiDeploymentModal = ({
   workflowEndpointList = [],
   setDeploymentName,
   onDeploymentCreated,
+  refreshList,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
@@ -109,8 +110,11 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          // Add new deployment to list
-          setTableData((prev) => [res?.data, ...prev]);
+          // Refetch rather than splice the create response: it is a summary
+          // carrying none of the owner fields the list renders, so a spliced
+          // row shows no owner until the next fetch. The response is still
+          // what the code modal needs -- only it carries the API key.
+          refreshList?.();
           setSelectedRow(res?.data);
           openCodeModal(true);
         }
@@ -294,6 +298,7 @@ CreateApiDeploymentModal.propTypes = {
   workflowEndpointList: PropTypes.object,
   setDeploymentName: PropTypes.func,
   onDeploymentCreated: PropTypes.func,
+  refreshList: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };

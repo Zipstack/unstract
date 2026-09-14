@@ -360,6 +360,7 @@ function ApiDeployment() {
           openCodeModal={setOpenCodeModal}
           setSelectedRow={setSelectedRow}
           workflowEndpointList={workflowEndpointList}
+          refreshList={() => fetchRef.current?.()}
         />
       )}
       <ManageKeys
