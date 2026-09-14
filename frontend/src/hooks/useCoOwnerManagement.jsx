@@ -54,15 +54,21 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     // branch) after the user has moved to a different resource. Mutation
     // callers pass the token captured BEFORE their POSTs so a modal switch
     // during the mutation itself is caught too, not just one mid-refresh.
-    // Returns true when the resource turned out to be gone, so the caller can
-    // leave that alert standing instead of overwriting it with its own.
+    // Returns the verdict rather than leaving each caller to re-derive it:
+    // "stale" (superseded — touch no shared state), "gone" (404, alert already
+    // raised), "ok" (proceed).
     async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
-        if (latestRequestRef.current !== requestId) return;
+        if (latestRequestRef.current !== requestId) {
+          return "stale";
+        }
         setCoOwnerData({ coOwners: res.data?.co_owners || [] });
+        return "ok";
       } catch (err) {
-        if (latestRequestRef.current !== requestId) return;
+        if (latestRequestRef.current !== requestId) {
+          return "stale";
+        }
         if (err?.response?.status === 404) {
           setCoOwnerOpen(false);
           onListRefresh?.();
@@ -71,11 +77,12 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
             content:
               "This resource is no longer accessible. It may have been removed or your access has been revoked.",
           });
-          return true;
+          return "gone";
         }
         setAlertDetails(
           handleException(err, "Unable to refresh co-owner data"),
         );
+        return "ok";
       }
     },
     [service, onListRefresh, setAlertDetails, handleException],
@@ -95,7 +102,9 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           service.getSharedUsers(resourceId),
         ]);
 
-        if (latestRequestRef.current !== requestId) return;
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
 
         const userList =
           usersResponse?.data?.members?.map((member) => ({
@@ -108,7 +117,9 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           coOwners: sharedUsersResponse.data?.co_owners || [],
         });
       } catch (err) {
-        if (latestRequestRef.current !== requestId) return;
+        if (latestRequestRef.current !== requestId) {
+          return;
+        }
         setAlertDetails(
           handleException(err, "Unable to fetch co-owner information"),
         );
@@ -142,10 +153,21 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       // Adds first: the backend rejects removing the last owner, so a one-shot
       // owner swap has to grow the roster before it shrinks it.
       await run(addUsers, (id) => service.addCoOwner(resourceId, id));
-      await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
+      if (failed.length) {
+        // The roster never grew, so removing now can strip the very owner the
+        // swap was meant to replace. Report them rather than attempt them.
+        failed.push(...removeUsers);
+      } else {
+        await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
+      }
       // Reconverge the modal on true server state regardless of partial outcome.
-      const gone = await refreshCoOwnerData(resourceId, requestId);
-      if (gone) {
+      const outcome = await refreshCoOwnerData(resourceId, requestId);
+      if (outcome === "stale") {
+        // The user has opened another resource since Apply. Closing the modal
+        // or alerting now would hit that one instead of this.
+        return false;
+      }
+      if (outcome === "gone") {
         // The refresh already closed the modal, refreshed the list and raised
         // its own alert — an apply summary on top of it would only mislead.
         return true;

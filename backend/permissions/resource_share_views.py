@@ -145,6 +145,9 @@ class ResourceShareManagementMixin:
         # committed — the diffs read persisted state and can never announce a
         # share that rolled back.
         resource.refresh_from_db()
+        # Only the two per-recipient axes notify. ``shared_to_org`` is left out
+        # deliberately: a toggle has no recipient list short of the whole org,
+        # and it is read below as a reason someone KEPT access, not lost it.
         users_after = self._read_axis(resource, "shared_users")
         groups_after = self._read_axis(resource, "shared_groups")
         notify_resource_group_share_changed(

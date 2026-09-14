@@ -1,6 +1,6 @@
 import { CircleHelp, Trash2, User } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Select } from "@/components/ui/shims/antd-inputs";
 import { Avatar } from "@/components/ui/shims/antd-leaves";
@@ -32,9 +32,15 @@ function CoOwnerManagement({
   // after an Apply. Doubles as the reset — most hosts leave this modal mounted,
   // and the hook can close it without ``handleCancel`` (404 / fetch-error), so
   // staged edits must not leak into the next resource.
-  useEffect(() => {
+  //
+  // Done during render, not in an effect: an effect commits after the one that
+  // reveals the new roster, so the first frame of a new resource would render
+  // the previous resource's staged list (and enable Apply on that diff).
+  const [seededFrom, setSeededFrom] = useState(null);
+  if (seededFrom !== ownersList) {
+    setSeededFrom(ownersList);
     setSelectedOwners(ownersList);
-  }, [ownersList]);
+  }
 
   const selectedIds = useMemo(
     () => new Set(selectedOwners.map((u) => u?.id?.toString())),
@@ -79,8 +85,8 @@ function CoOwnerManagement({
     }
     setApplying(true);
     try {
-      // Close only on a clean apply; a partial failure keeps the modal open so
-      // the user can see what was rejected and retry.
+      // Close only on a clean apply. A partial failure keeps the modal open on
+      // the refreshed server roster, with the alert naming who was rejected.
       if (await onApplyCoOwners(resourceId, { addUsers, removeUsers })) {
         setOpen(false);
       }
@@ -111,7 +117,7 @@ function CoOwnerManagement({
       closable={true}
       className="co-owner-modal"
     >
-      {loading ? (
+      {loading || applying ? (
         <SpinnerLoader />
       ) : (
         <>

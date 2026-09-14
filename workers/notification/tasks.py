@@ -510,6 +510,11 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 # Retries for a transient backend problem (restart, 5xx). Kept inside the task
 # so a brief blip is absorbed here rather than costing a full lease-expiry
 # redelivery (minutes) plus one of the consumer's bounded attempts.
+#
+# These two bound the task's wall time, which must stay under the consumer's
+# visibility timeout (300s): ``HTTPTransport(retries=2)`` retries the CONNECT,
+# so one post is up to 3 x 30s, and three attempts plus the sleeps reach ~274s.
+# Raising either constant, or the per-post timeout, overruns the VT.
 _GROUP_NOTIFICATION_ATTEMPTS = 3
 _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
 
@@ -524,8 +529,11 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
 
     A sub-500 response ends the in-process attempts — a rejected payload will
     be rejected again. Delivery is at-least-once: a response lost after the
-    backend already sent re-posts the same payload, and the send path writes
-    nothing, so the only effect is a duplicate email.
+    backend already sent re-posts the *whole* payload, and the backend mails
+    group by group with no checkpoint, so a failure partway through the fan-out
+    re-mails the groups that already succeeded. The send path writes nothing, so
+    duplicate email is the only effect — but the bound is these 3 attempts times
+    the consumer's attempt cap, not one.
     """
     base_url = os.getenv("INTERNAL_API_BASE_URL")
     api_key = os.getenv("INTERNAL_SERVICE_API_KEY")

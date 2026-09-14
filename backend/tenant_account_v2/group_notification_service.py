@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Any
 
 from account_v2.models import Organization, User
 from django.apps import apps
+from django.conf import settings
 from django.db.models import QuerySet
 from plugins import get_plugin
 
@@ -98,6 +99,8 @@ def send_resource_shared(
         )
         return
     retained = _retained_user_ids(shared.instance, share_action)
+    if retained is None:
+        return
     for group in _groups_to_mail(organization, group_ids, shared.instance, share_action):
         recipients = _group_recipients(organization, group, retained, revoked_at)
         logger.info(
@@ -162,7 +165,16 @@ def send_membership_changed(
 def _service() -> Any | None:
     """The cloud email service, or ``None`` when the plugin is absent (OSS)."""
     if not notification_plugin:
-        logger.debug("group-notification: notification plugin unavailable, skipping")
+        # An absent plugin is normal in OSS. Absent while email is switched on
+        # can only be a broken build, and the plugin loader swallows the import
+        # error at DEBUG, so this is the only place it can surface.
+        if getattr(settings, "ENABLE_EMAIL_NOTIFICATIONS", False):
+            logger.warning(
+                "group-notification: email is enabled but the notification "
+                "plugin did not load — no mail is being sent"
+            )
+        else:
+            logger.debug("group-notification: notification plugin unavailable, skipping")
         return None
     return notification_plugin["service_class"]()
 
@@ -181,7 +193,7 @@ def _get_user(organization: Organization, user_id: int) -> User | None:
     return member.user if member else None
 
 
-def _retained_user_ids(resource: Any, share_action: str) -> set[int]:
+def _retained_user_ids(resource: Any, share_action: str) -> set[int] | None:
     """Users who still reach ``resource``; empty on the share direction.
 
     A revoked group's members may keep access through another group, a direct
@@ -189,9 +201,22 @@ def _retained_user_ids(resource: Any, share_action: str) -> set[int]:
     and the revoke email also repoints their CTA at the dashboard. Owners sit
     outside ``compute_effective_members`` by design, so add them back: an owner
     in the revoked group has lost nothing.
+
+    ``None`` means an org-wide share still covers everyone, so the caller skips
+    the fan-out entirely.
     """
     if share_action != ShareAction.REVOKED.value:
         return set()
+    if getattr(resource, "shared_to_org", False):
+        # Org-wide share still covers everyone — nobody lost access, and
+        # answering it via ``compute_effective_members`` would hydrate every
+        # member of the org to say so (same guard as the direct-share path).
+        logger.info(
+            "group-notification: revoke on an org-shared resource %s — "
+            "nobody lost access, no mail",
+            resource.pk,
+        )
+        return None
     from tenant_account_v2.sharing_helpers import compute_effective_members
 
     return {member["user_id"] for member in compute_effective_members(resource)} | {
@@ -219,7 +244,15 @@ def _groups_to_mail(
     from tenant_account_v2.sharing_helpers import get_resource_share_groups
 
     live = {group.pk for group in get_resource_share_groups(resource)}
-    return [group for group in groups if group.pk in live]
+    to_mail = [group for group in groups if group.pk in live]
+    if len(to_mail) != len(groups):
+        logger.info(
+            "group-notification: dropped %d of %d groups "
+            "(access revoked or group gone since enqueue)",
+            len(groups) - len(to_mail),
+            len(groups),
+        )
+    return to_mail
 
 
 def _group_recipients(

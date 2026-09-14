@@ -104,6 +104,18 @@ def _notify_group_share(
     organization_id = _organization_slug(resource)
     kind = kind_for_instance(resource)
     if not organization_id or kind is None:
+        # Neither is a routine skip: a shareable resource always resolves an
+        # org, and a kind the registry does not carry means the resource
+        # reached a share endpoint it was never registered for.
+        logger.warning(
+            "group-notification: skipping %s share for %s %s "
+            "(organization=%s kind=%s)",
+            share_action,
+            type(resource).__name__,
+            resource.pk,
+            organization_id,
+            kind,
+        )
         return
     kwargs: dict[str, Any] = {
         "group_ids": group_ids,
@@ -140,6 +152,11 @@ def notify_group_membership_changed(
         return
     organization_id = _organization_slug(group)
     if not organization_id:
+        logger.warning(
+            "group-notification: skipping membership change for group %s "
+            "(no resolvable organization)",
+            group.pk,
+        )
         return
     _dispatch_quietly(
         task_name=NOTIFY_MEMBERSHIP_CHANGED_TASK,
@@ -195,6 +212,13 @@ def _dispatch(
     kwargs: dict[str, Any],
     organization_id: str,
 ) -> None:
+    """Enqueue on the PG queue.
+
+    Deploy the notification worker at or before the backend: the consumer polls
+    the queue by name, so a pod still on the previous image claims these rows,
+    cannot resolve the task, and DELETES them (no dead-letter — nothing here
+    passes ``reply_key`` or ``on_error``).
+    """
     # Lazy import — ``pg_queue`` is heavier than this leaf module and importing
     # it at load time risks a cycle during Django app loading.
     from pg_queue.producer import enqueue_task
