@@ -59,6 +59,17 @@ class Migration(migrations.Migration):
     dependencies = [
         ("tenant_account_v2", "0005_resource_membership"),
         ("platform_api", "0004_alter_platformapikey_organization"),
+        # UN-2202's backfills write an OWNER row from ``created_by``, which is
+        # the service account on a key-created resource. They must land before
+        # this one or their rows are written after the repair and stay
+        # ownerless -- ordering that was otherwise alphabetical accident, and
+        # already wrong for workflow_v2.
+        ("adapter_processor_v2", "0005_absorb_shared_users"),
+        ("api_v2", "0005_absorb_shared_users"),
+        ("connector_v2", "0007_absorb_shared_users"),
+        ("pipeline_v2", "0005_absorb_shared_users"),
+        ("prompt_studio_core_v2", "0009_absorb_shared_users"),
+        ("workflow_v2", "0022_absorb_shared_users"),
     ]
 
     # Irreversible in substance: which rows were the service account's is not

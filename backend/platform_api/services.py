@@ -70,6 +70,28 @@ def create_api_user_for_key(
     return user
 
 
+def live_key_creator(platform_api_key: PlatformApiKey) -> User | None:
+    """The key's creator if they still belong to the key's organization.
+
+    ``_is_resource_owner`` grants on any surviving OWNER row without checking
+    live membership, which is why ``cleanup_user_org_access`` purges those rows
+    when a user leaves. Handing an ex-member a fresh row -- at create, on key
+    deletion, or in a backfill -- reopens that rejoin backdoor, so every path
+    that names a successor asks this one question.
+    """
+    creator = platform_api_key.created_by
+    if creator is None:
+        return None
+    # ``_base_manager`` because the default manager is org-scoped by
+    # ``UserContext``, which is None outside a request — an empty result would
+    # silently strip every resource of its owner. The org is filtered here.
+    if not OrganizationMember._base_manager.filter(
+        user=creator, organization=platform_api_key.organization
+    ).exists():
+        return None
+    return creator
+
+
 def owner_user_for(user: User) -> User:
     """Resolve the human who should own a resource created by ``user``.
 
@@ -85,10 +107,7 @@ def owner_user_for(user: User) -> User:
     then goes to the service account, which the owner surfaces filter out, and
     the UI labels the resource "Platform key".
 
-    The membership check is required, not optional: ``_is_resource_owner``
-    grants on any surviving OWNER row without checking live membership, which
-    is why ``cleanup_user_org_access`` purges those rows when a user leaves.
-    Minting a fresh one for an ex-member would reopen that rejoin backdoor.
+    Naming a successor is :func:`live_key_creator`'s question, not this one's.
     """
     if not getattr(user, "is_service_account", False):
         return user
@@ -101,24 +120,20 @@ def owner_user_for(user: User) -> User:
         .select_related("created_by", "organization")
         .first()
     )
-    if not (key and key.created_by):
+    if key is None:
         logger.warning(
-            "Platform key %s has no creator; resource gets no human owner",
-            key.id if key else None,
+            "Service account %s backs no platform key; resource gets no human owner",
+            user.id,
         )
         return user
-    # ``_base_manager`` because the default manager is org-scoped by
-    # ``UserContext``, which is None outside a request — an empty result would
-    # silently strip every resource of its owner. The org is filtered here.
-    if not OrganizationMember._base_manager.filter(
-        user=key.created_by, organization=key.organization
-    ).exists():
+    creator = live_key_creator(key)
+    if creator is None:
         logger.warning(
-            "Creator of platform key %s has left the org; resource gets no human owner",
+            "Platform key %s has no live creator; resource gets no human owner",
             key.id,
         )
         return user
-    return key.created_by
+    return creator
 
 
 def _get_user_fk_fields(model: type) -> list[str]:
@@ -231,11 +246,16 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
-    """Transfer ownership to key creator, then delete the service account."""
+    """Transfer ownership to the key's creator, then delete the service account.
+
+    A creator who has left the org is not a successor -- ``transfer_ownership``
+    short-circuits on ``None`` and the rows are dropped with the account, which
+    is what ``cleanup_user_org_access`` would have done to them anyway.
+    """
     api_user = platform_api_key.api_user
     if not api_user:
         return
 
     with transaction.atomic():
-        transfer_ownership(from_user=api_user, to_user=platform_api_key.created_by)
+        transfer_ownership(from_user=api_user, to_user=live_key_creator(platform_api_key))
         api_user.delete()

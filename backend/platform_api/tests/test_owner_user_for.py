@@ -1,6 +1,6 @@
-"""The `owner_user_for` resolver in isolation.
+"""The ownership resolvers in isolation.
 
-End-to-end coverage of the create sites that call it lives in
+End-to-end coverage of the create sites that call them lives in
 `test_platform_key_resource_ownership.py`.
 """
 
@@ -11,6 +11,7 @@ from account_v2.enums import UserRole
 from account_v2.models import Organization, User
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
+from permissions.roles import ResourceRole
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.services import create_api_user_for_key, owner_user_for
 from rest_framework.test import APITestCase
@@ -26,8 +27,8 @@ def _make_user() -> User:
     )
 
 
-class OwnerUserForTest(APITestCase):
-    """The resolver in isolation."""
+class _KeyFixture:
+    """Org, a member who mints keys, and the minting path itself."""
 
     def setUp(self) -> None:
         self.org = Organization.objects.create(
@@ -59,6 +60,10 @@ class OwnerUserForTest(APITestCase):
         create_api_user_for_key(key, self.org)
         key.refresh_from_db()
         return key
+
+
+class OwnerUserForTest(_KeyFixture, APITestCase):
+    """The resolver in isolation."""
 
     def test_a_normal_user_is_returned_unchanged(self) -> None:
         user = _make_user()
@@ -116,3 +121,43 @@ class OwnerUserForTest(APITestCase):
         )
         key = self._make_key(created_by=creator)
         self.assertEqual(owner_user_for(key.api_user), key.api_user)
+
+
+class KeyDeletionSuccessorTest(_KeyFixture, APITestCase):
+    """Deleting a key must not hand its rows to a departed creator.
+
+    ``delete_api_user_for_key`` re-points the service account's rows to the
+    key's creator. That is the same grant ``owner_user_for`` refuses at create
+    time, so it asks the same question -- otherwise deleting a key reopens the
+    rejoin backdoor the resolver closes.
+    """
+
+    def _owner_row_users(self, resource):
+        return {m.user_id for m in resource.memberships.filter(role=ResourceRole.OWNER)}
+
+    def _key_owned_workflow(self, creator):
+        from workflow_manager.workflow_v2.models.workflow import Workflow
+
+        key = self._make_key(created_by=creator)
+        workflow = Workflow.objects.create(
+            workflow_name=f"wf-{uuid.uuid4().hex[:8]}", organization=self.org
+        )
+        workflow.memberships.create(
+            user=key.api_user, role=ResourceRole.OWNER, organization=self.org
+        )
+        return key, workflow
+
+    def test_a_live_creator_inherits_the_rows(self) -> None:
+        creator = self._make_member()
+        key, workflow = self._key_owned_workflow(creator)
+        key.delete()
+        self.assertEqual(self._owner_row_users(workflow), {creator.id})
+
+    def test_a_departed_creator_inherits_nothing(self) -> None:
+        creator = self._make_member()
+        key, workflow = self._key_owned_workflow(creator)
+        OrganizationMember._base_manager.filter(
+            user=creator, organization=self.org
+        ).delete()
+        key.delete()
+        self.assertNotIn(creator.id, self._owner_row_users(workflow))

@@ -22,7 +22,7 @@ function resolveOwnerDisplay(item, sessionDetails, ownerEmailsProp) {
     (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
     item?.created_by_email;
   // Suppress the synthetic address rather than dress a machine identity up as
-  // a colleague. Reachability is stated at the fallback above.
+  // a colleague.
   const isPlatformKey = Boolean(rawEmail?.endsWith(PLATFORM_KEY_EMAIL_DOMAIN));
   const email = isPlatformKey ? undefined : rawEmail;
   // "Me" must track the DISPLAYED owner, not the viewer's own membership —

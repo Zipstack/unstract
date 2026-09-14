@@ -85,7 +85,8 @@ class HasMembersMixin:
         here rather than at each create site keeps that from being a rule every
         new resource has to remember -- the reason a site was missed before.
         """
-        # Imported lazily: platform_api.services reads permissions.roles.
+        # Imported lazily: this module is imported while models load, and
+        # platform_api.services pulls in models at import time.
         from platform_api.services import owner_user_for
 
         self.memberships.get_or_create(  # type: ignore[attr-defined]
