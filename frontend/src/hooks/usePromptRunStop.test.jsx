@@ -88,6 +88,7 @@ describe("stopping prompt runs", () => {
     // Pretend this run covers two prompts, as a bulk run does.
     act(() => {
       usePromptRunStatusStore.getState().registerRun(runId, {
+        toolId: TOOL_ID,
         promptIds: [PROMPT_A, PROMPT_B],
         docId: DOC,
         profileId: PROFILE,
@@ -201,6 +202,7 @@ describe("stopping prompt runs", () => {
     const [runId] = Object.keys(usePromptRunStatusStore.getState().activeRuns);
     act(() => {
       usePromptRunStatusStore.getState().registerRun(runId, {
+        toolId: TOOL_ID,
         promptIds: [PROMPT_A, PROMPT_B],
         docId: DOC,
         profileId: PROFILE,
@@ -244,6 +246,7 @@ describe("stopping prompt runs", () => {
     const [runId] = Object.keys(usePromptRunStatusStore.getState().activeRuns);
     act(() => {
       usePromptRunStatusStore.getState().registerRun(runId, {
+        toolId: TOOL_ID,
         promptIds: [PROMPT_A, PROMPT_B],
         docId: DOC,
         profileId: PROFILE,
@@ -258,6 +261,37 @@ describe("stopping prompt runs", () => {
     expect(cancel.data.runs).toEqual([
       { run_id: runId, prompt_ids: [PROMPT_A] },
     ]);
+  });
+
+  // Raised by Greptile: active runs are global and outlive navigating between
+  // projects, so an unrelated project's run was reachable from this one.
+  it("never stops a run belonging to another project", () => {
+    const { result } = renderUsePromptRun();
+
+    act(() => {
+      result.current.runPrompt([`${PROMPT_A}__${DOC}__${PROFILE}`]);
+    });
+    const [ourRunId] = Object.keys(
+      usePromptRunStatusStore.getState().activeRuns,
+    );
+
+    // A run left behind by a project the user visited earlier.
+    act(() => {
+      usePromptRunStatusStore.getState().registerRun("run-from-other-tool", {
+        toolId: "some-other-tool",
+        promptIds: [PROMPT_B],
+        docId: DOC,
+        profileId: PROFILE,
+      });
+    });
+
+    act(() => {
+      result.current.stopAllRuns();
+    });
+
+    const [cancel] = cancelRequests();
+    expect(cancel.data.runs).toEqual([{ run_id: ourRunId }]);
+    expect(JSON.stringify(cancel.data)).not.toContain("run-from-other-tool");
   });
 
   it("sends nothing when there is nothing running", () => {

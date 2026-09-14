@@ -75,6 +75,7 @@ const usePromptRun = () => {
       profileId,
       statusKey,
       operation: "fetch_response",
+      toolId: details?.tool_id,
     });
 
     makeApiRequest(requestOptions)
@@ -167,6 +168,7 @@ const usePromptRun = () => {
       profileId,
       statusKey,
       operation: "fetch_response",
+      toolId: details?.tool_id,
     });
     const nonces = {};
     promptIds.forEach((promptId) => {
@@ -292,7 +294,11 @@ const usePromptRun = () => {
 
     const { activeRuns } = usePromptRunStatusStore.getState();
     const runs = Object.entries(activeRuns)
-      .filter(([, run]) => run?.promptIds?.includes(promptId))
+      .filter(
+        ([, run]) =>
+          run?.toolId === details?.tool_id &&
+          run?.promptIds?.includes(promptId),
+      )
       .map(([runId, run]) => {
         // Naming prompt_ids deliberately spares the stages a run's prompts
         // SHARE — extraction and indexing — because the others still need
@@ -330,7 +336,12 @@ const usePromptRun = () => {
     });
 
     const { activeRuns } = usePromptRunStatusStore.getState();
-    const runIds = Object.keys(activeRuns);
+    // Runs are tracked globally and survive navigating between projects, so
+    // without this a Stop All in one project would cancel another project's
+    // runs that happen to still be in the store.
+    const runIds = Object.keys(activeRuns).filter(
+      (runId) => activeRuns[runId]?.toolId === details?.tool_id,
+    );
     if (!runIds.length) {
       return;
     }

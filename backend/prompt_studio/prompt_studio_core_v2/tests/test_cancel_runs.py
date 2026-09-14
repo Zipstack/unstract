@@ -13,6 +13,7 @@ NOTE: run via a Django-bootstrapped harness, same as ``test_task_status``.
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from prompt_studio.prompt_studio_core_v2 import views as _views_mod
 from prompt_studio.prompt_studio_core_v2.exceptions import PromptRunCancelled
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
@@ -25,20 +26,30 @@ _PATCH_REQUEST_CANCEL = "prompt_studio.prompt_studio_core_v2.views.request_cance
 _PATCH_ORG = (
     "prompt_studio.prompt_studio_core_v2.views.UserSessionUtils" ".get_organization_id"
 )
+_PATCH_RUN_OWNER = "prompt_studio.prompt_studio_core_v2.views.run_owner"
+
+_TOOL = "44444444-4444-4444-4444-444444444444"
 
 
 def _view():
     view = PromptStudioCoreView()
     view.get_object = MagicMock()  # bypass permission/object lookup
+    view.get_object.return_value.tool_id = _TOOL
     return view
 
 
-def _call(runs, *, recorded=True):
-    """Invoke the action with *runs* as the body; returns (response, mock)."""
+def _call(runs, *, recorded=True, owner=None):
+    """Invoke the action with *runs* as the body; returns (response, mock).
+
+    *owner* is what the signal store reports as the run's owning tool.
+    ``None`` means "not recorded", which is the pre-existing behaviour and
+    must stay permissive.
+    """
     request = MagicMock()
     request.data = {"runs": runs} if runs is not None else {}
     with (
         patch(_PATCH_ORG, return_value="org-1"),
+        patch(_PATCH_RUN_OWNER, return_value=owner),
         patch(_PATCH_REQUEST_CANCEL, return_value=recorded) as cancel,
     ):
         response = _view().cancel_runs(request)
@@ -210,3 +221,47 @@ class TestRunEndpointsAnswerACancel:
         response = self._post(action, builder)
 
         assert response.data["run_id"] == _RUN_A
+
+
+class TestRunOwnership:
+    """A run id is minted in the browser and arrives unverified, so the
+    endpoint must not cancel a run dispatched by a different tool — one the
+    caller may only be able to view (raised by Greptile).
+    """
+
+    def test_a_run_owned_by_another_tool_is_refused(self):
+        response, cancel = _call([{"run_id": _RUN_A}], owner="another-tool-id")
+
+        assert response.status_code == 403
+        # Nothing recorded: a refusal must not stop the run either.
+        cancel.assert_not_called()
+
+    def test_a_run_owned_by_this_tool_is_cancelled(self):
+        response, cancel = _call([{"run_id": _RUN_A}], owner=_TOOL)
+
+        assert response.status_code == 202
+        cancel.assert_called_once_with("org-1", _RUN_A, None)
+
+    def test_an_unrecorded_owner_stays_permissive(self):
+        """Unknown is not "not ours": Redis may be unreachable, or the run may
+        predate the record. Refusing then would break legitimate stops, and
+        buys nothing — with Redis down the cancel cannot be recorded anyway.
+        """
+        response, _ = _call([{"run_id": _RUN_A}], owner=None)
+
+        assert response.status_code == 202
+
+    def test_one_foreign_run_refuses_the_whole_request(self):
+        """Same all-or-nothing rule the id validation already follows."""
+        owners = {_RUN_A: _TOOL, _RUN_B: "another-tool-id"}
+        request = MagicMock()
+        request.data = {"runs": [{"run_id": _RUN_A}, {"run_id": _RUN_B}]}
+        with (
+            patch(_PATCH_ORG, return_value="org-1"),
+            patch(_PATCH_RUN_OWNER, side_effect=lambda _o, r: owners[r]),
+            patch(_PATCH_REQUEST_CANCEL, return_value=True) as cancel,
+        ):
+            response = _view().cancel_runs(request)
+
+        assert response.status_code == 403
+        cancel.assert_not_called()

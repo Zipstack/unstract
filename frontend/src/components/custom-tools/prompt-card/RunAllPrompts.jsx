@@ -15,6 +15,7 @@ function RunAllPrompts() {
     isMultiPassExtractLoading,
     isSinglePassExtractLoading,
     isPublicSource,
+    details,
   } = useCustomToolStore();
   const { handlePromptRunRequest, stopAllRuns } = usePromptRun();
   const activeRuns = usePromptRunStatusStore((state) => state.activeRuns);
@@ -24,7 +25,12 @@ function RunAllPrompts() {
   // (the cloud single-pass button, until it registers its run_id) has no id to
   // name, so we keep today's disabled-while-running buttons rather than
   // offering a Stop that would do nothing (UN-1031).
-  const stoppableRuns = Object.keys(activeRuns || {});
+  // Scoped to this project: the store is global and survives navigating
+  // between projects, so another project's run must not make this button
+  // appear — or be stopped by it.
+  const stoppableRuns = Object.entries(activeRuns || {})
+    .filter(([, run]) => run?.toolId === details?.tool_id)
+    .map(([runId]) => runId);
   const canStop = isRunning && stoppableRuns.length > 0;
   // Every in-flight run has already been told to stop; the button stays out of
   // the way until the executors reach their next checkpoints.
@@ -32,7 +38,8 @@ function RunAllPrompts() {
   // per-prompt Stop must not disable Stop All while its siblings run on.
   const isStopping =
     canStop &&
-    Object.values(activeRuns).every((run) => {
+    stoppableRuns.every((runId) => {
+      const run = activeRuns[runId];
       const promptIds = run?.promptIds || [];
       const stoppingIds = run?.stoppingPromptIds || [];
       return (

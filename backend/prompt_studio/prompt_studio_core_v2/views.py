@@ -84,7 +84,11 @@ from prompt_studio.tool_usage import (
     join_deployment_types,
 )
 from unstract.core.data_models import PgTaskStatus
-from unstract.core.prompt_run_cancellation import request_cancel
+from unstract.core.prompt_run_cancellation import (
+    remember_run_owner,
+    request_cancel,
+    run_owner,
+)
 from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
@@ -526,6 +530,8 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
+        # Bind the run to this tool so a later cancel can be checked against it.
+        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
         user_id = custom_tool.created_by.user_id
         try:
             prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
@@ -690,6 +696,8 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
+        # Bind the run to this tool so a later cancel can be checked against it.
+        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
         user_id = custom_tool.created_by.user_id
 
         prompts = list(
@@ -807,6 +815,8 @@ class PromptStudioCoreView(
             run_id = CommonUtils.generate_uuid()
 
         org_id = UserSessionUtils.get_organization_id(request)
+        # Bind the run to this tool so a later cancel can be checked against it.
+        remember_run_owner(org_id, run_id, str(custom_tool.tool_id))
         user_id = custom_tool.created_by.user_id
 
         # Build file path
@@ -1002,6 +1012,32 @@ class PromptStudioCoreView(
             validated.append((str(run_id), prompt_ids))
 
         org_id = UserSessionUtils.get_organization_id(request)
+
+        # A run id is minted in the browser and reaches us unverified, so a
+        # caller could otherwise name a run belonging to a different tool —
+        # one they may only be able to view — and stop its billable work. Only
+        # runs this tool dispatched may be cancelled through it.
+        #
+        # An unrecorded owner is "unknown", not "not ours": it means Redis was
+        # unreachable or the run predates the record. Refusing then would break
+        # legitimate stops during a blip, and it buys nothing — with Redis down
+        # `request_cancel` cannot record the intent either, so the cancel fails
+        # anyway and is reported in `failed`.
+        tool_id = str(custom_tool.tool_id)
+        for run_id, _ in validated:
+            owner = run_owner(org_id, run_id)
+            if owner is not None and owner != tool_id:
+                logger.warning(
+                    "Refused cancel of run %s through tool %s: it belongs to %s",
+                    run_id,
+                    tool_id,
+                    owner,
+                )
+                return Response(
+                    {"error": f"run_id {run_id} does not belong to this tool."},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         cancelled: list[str] = []
         failed: list[str] = []
         for run_id, prompt_ids in validated:

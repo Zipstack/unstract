@@ -46,7 +46,9 @@ __all__ = [
     "cancelled_prompt_ids",
     "clear_cancel",
     "is_cancelled",
+    "remember_run_owner",
     "request_cancel",
+    "run_owner",
 ]
 
 # Sentinel member meaning "cancel the whole run", as opposed to a prompt id.
@@ -66,6 +68,12 @@ CANCEL_TTL_SECONDS: Final = 7260
 
 _KEY_PREFIX: Final = "ps:cancel:"
 
+# Records which tool a run belongs to, so a cancel can be checked against the
+# tool it is being requested through. A run id is minted in the browser and
+# never persisted relationally, so without this there is nothing server-side
+# tying a run to anything (UN-1031).
+_OWNER_PREFIX: Final = "ps:run-tool:"
+
 # Cooldown before rebuilding a Redis client that failed to build. A transient
 # blip (restart/failover) must not disable cancellation for the life of the
 # process, but we also must not attempt a rebuild on every checkpoint — the
@@ -84,6 +92,55 @@ def cancel_key(org_id: str, run_id: str) -> str:
     other payload.
     """
     return f"{_KEY_PREFIX}{org_id}:{run_id}"
+
+
+def owner_key(org_id: str, run_id: str) -> str:
+    """Redis key recording which tool dispatched one run."""
+    return f"{_OWNER_PREFIX}{org_id}:{run_id}"
+
+
+def remember_run_owner(org_id: str, run_id: str, tool_id: str) -> None:
+    """Record that *run_id* was dispatched by *tool_id*.
+
+    Best effort: a run whose owner could not be recorded simply cannot be
+    checked later, which is the behaviour that predates this record. Never
+    raises — a signal-store blip must not stop a run from being dispatched.
+    """
+    client = _get_client()
+    if client is None:
+        return
+    try:
+        client.set(owner_key(org_id, run_id), tool_id, ex=CANCEL_TTL_SECONDS)
+    except Exception:
+        logger.warning(
+            "prompt-run cancellation: could not record the owner of run_id=%s",
+            run_id,
+            exc_info=True,
+        )
+
+
+def run_owner(org_id: str, run_id: str) -> str | None:
+    """The tool that dispatched *run_id*, or ``None`` if not recorded.
+
+    ``None`` is genuinely "unknown", not "no owner": Redis may be unreachable,
+    or the run may predate this record. Callers must decide what an unknown
+    owner means for them.
+    """
+    client = _get_client()
+    if client is None:
+        return None
+    try:
+        value = client.get(owner_key(org_id, run_id))
+    except Exception:
+        logger.warning(
+            "prompt-run cancellation: could not read the owner of run_id=%s",
+            run_id,
+            exc_info=True,
+        )
+        return None
+    if value is None:
+        return None
+    return value.decode() if isinstance(value, bytes) else str(value)
 
 
 def _get_client() -> redis.Redis | None:
