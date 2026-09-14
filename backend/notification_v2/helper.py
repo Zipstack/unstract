@@ -7,6 +7,7 @@ from typing import Any
 
 from account_v2.models import Organization
 from django.utils import timezone
+from unstract.core.data_models import is_failure_run as _core_is_failure_run
 
 from notification_v2.enums import (
     AuthorizationType,
@@ -14,7 +15,6 @@ from notification_v2.enums import (
     PlatformType,
 )
 from notification_v2.models import Notification, NotificationBuffer
-from unstract.core.data_models import is_failure_run as _core_is_failure_run
 
 logger = logging.getLogger(__name__)
 

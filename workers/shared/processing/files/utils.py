@@ -409,8 +409,7 @@ class FileProcessingUtils:
         else:
             # Single item - wrap in dict
             logger.warning(
-                f"Unexpected file data type: {type(files_data)}. "
-                "Wrapping as single file."
+                f"Unexpected file data type: {type(files_data)}. Wrapping as single file."
             )
             return {"single_file": {"file_data": files_data}}
 

@@ -3,6 +3,7 @@ from typing import Any
 
 import filetype
 import magic
+
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.constants import FileOperationParams
 from unstract.sdk1.file_storage.impl import FileStorage

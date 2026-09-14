@@ -65,10 +65,10 @@ class Command(BaseCommand):
 
             self.stdout.write("\n--- Current Usage ---")
             self.stdout.write(
-                f'Organization: {usage["org_count"]}/{usage["org_limit"]} concurrent requests'
+                f"Organization: {usage['org_count']}/{usage['org_limit']} concurrent requests"
             )
             self.stdout.write(
-                f'Global System: {usage["global_count"]}/{usage["global_limit"]} concurrent requests'
+                f"Global System: {usage['global_count']}/{usage['global_limit']} concurrent requests"
             )
 
             # Usage percentage

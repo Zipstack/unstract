@@ -67,7 +67,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from celery.canvas import Signature
-
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT
 
