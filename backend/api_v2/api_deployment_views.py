@@ -3,12 +3,14 @@ import logging
 import uuid
 from typing import Any
 
-from django.db.models import F, OuterRef, QuerySet, Subquery
+from django.db.models import Count, F, IntegerField, OuterRef, QuerySet, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
+from platform_api.openapi_schema import PlatformKeyAutoSchema
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -33,7 +35,10 @@ from api_v2.exceptions import (
     contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
-from api_v2.openapi_schema import DEPLOYMENT_EXECUTION_SCHEMA
+from api_v2.openapi_schema import (
+    API_DEPLOYMENT_LIST_SCHEMA,
+    DEPLOYMENT_EXECUTION_SCHEMA,
+)
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
@@ -246,10 +251,17 @@ class DeploymentExecution(views.APIView):
         )
 
 
+@API_DEPLOYMENT_LIST_SCHEMA
 class APIDeploymentViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
     pagination_class = CustomPagination
+
+    # For schema generation only; get_queryset replaces it on every request.
+    queryset = APIDeployment.objects.none()
+
+    # Error examples have to match what the auth middleware sends.
+    schema = PlatformKeyAutoSchema()
     notification_resource_name_field = "display_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
@@ -275,19 +287,42 @@ class APIDeploymentViewSet(
             .order_by("-created_at")
             .values("created_at")[:1]
         )
+        run_count_subquery = (
+            WorkflowExecution.objects.filter(pipeline_id=OuterRef("id"))
+            .values("pipeline_id")
+            .annotate(total=Count("id"))
+            .values("total")
+        )
 
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             APIDeployment.objects.for_user(self.request.user)
             .select_related("created_by")
             .prefetch_related("memberships__user")
-            .annotate(last_run_time_annotated=Subquery(last_run_subquery))
-            .order_by(F("last_run_time_annotated").desc(nulls_last=True))
+            .annotate(
+                last_run_time_annotated=Subquery(last_run_subquery),
+                run_count_annotated=Coalesce(
+                    Subquery(run_count_subquery, output_field=IntegerField()), 0
+                ),
+            )
+            # `pk` last because the primary ordering ties on every deployment
+            # that has never run, and a paging client would then see a row
+            # twice or not at all.
+            .order_by(F("last_run_time_annotated").desc(nulls_last=True), "pk")
         )
 
-        # Filter by workflow ID if provided
+        # TODO: replace the hand-read params and their OpenApiParameter
+        # restatements with a FilterSet so the spec cannot drift from the code
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
+            try:
+                uuid.UUID(workflow_filter)
+            except ValueError:
+                # Django raises on evaluation, past the handler that turns a bad
+                # request into a 400.
+                raise serializers.ValidationError(
+                    {"workflow": "Must be a valid UUID."}
+                ) from None
             queryset = queryset.filter(workflow_id=workflow_filter)
 
         # Search by display name

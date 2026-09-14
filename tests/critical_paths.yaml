@@ -76,6 +76,11 @@ paths:
     covered_by: [integration-backend]
     proof: marker
 
+  - id: platform-key-whoami
+    description: "A platform API key resolves its own organisation over the org-less whoami endpoint; the org comes from the key row, not the URL."
+    covered_by: [integration-backend]
+    proof: marker
+
   - id: prompt-studio-author
     description: "Create a Prompt Studio project and add a prompt to it."
     covered_by: [integration-backend]

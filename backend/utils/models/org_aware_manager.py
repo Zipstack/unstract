@@ -58,20 +58,50 @@ class OrgAwareManager(BaseModelManager):
 
         try:
             org = UserContext.get_organization()
-        except (RuntimeError, OperationalError, ProgrammingError):
+        except (RuntimeError, OperationalError, ProgrammingError) as exc:
             # OperationalError: DB not reachable (startup, migrations)
             # ProgrammingError: schema not ready (during migrations)
             # RuntimeError: pytest-django blocks DB access outside
-            #   @pytest.mark.django_db. Note: this is a broad catch — any
-            #   RuntimeError (e.g. from StateStore/middleware) returns an
-            #   unfiltered queryset (fail-open). This is acceptable because
-            #   OrgAwareManager is defense-in-depth; OrganizationFilterBackend
-            #   at the view layer is the primary security boundary and
-            #   fails-closed independently.
+            #   @pytest.mark.django_db.
+            #
+            # Deliberately fail open: these are all "the request context does
+            # not exist yet", not "this caller may not see these rows".
+            # OrganizationFilterBackend is the primary boundary and fails
+            # closed independently at the view layer.
+            #
+            # The RuntimeError arm is broader than its stated cause:
+            # StateStore compares an env string against a ConcurrencyMode
+            # member, which never matches, so it raises whenever
+            # CONCURRENCY_MODE is set at all — including to the documented
+            # "thread". Hence the log line. This path is rare (startup,
+            # migrations, tests), so it is signal rather than noise, and it is
+            # the only way an unexpected fail-open becomes visible.
+            logger.warning(
+                "OrgAwareManager: no organization context for %s (%s: %s); "
+                "returning an unfiltered queryset.",
+                self.model._meta.label,
+                type(exc).__name__,
+                exc,
+            )
             return qs
 
         if org is None:
-            # No request context (Celery, management commands, shell)
+            if UserContext.get_organization_identifier():
+                # An identifier is set but did not resolve to a row —
+                # Organization.DoesNotExist or ProgrammingError inside
+                # get_organization(), both of which it flattens to None. That
+                # happens *inside* a request, so returning everything here
+                # would cross tenants. Only the no-identifier case below is
+                # the "no request context" one.
+                logger.warning(
+                    "OrgAwareManager: organization identifier is set but did "
+                    "not resolve for %s; returning an empty queryset.",
+                    self.model._meta.label,
+                )
+                return qs.none()
+            # No request context at all: Celery, management commands, shell.
+            # Not logged — this is the normal state for every query those
+            # make, and a line per queryset would drown the cases above.
             return qs
 
         path = get_org_path(self.model)
