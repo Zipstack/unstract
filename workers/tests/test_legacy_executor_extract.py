@@ -592,3 +592,274 @@ class TestExecuteErrorCatching:
 
         assert result.success is False
         assert result.error == "custom error"
+
+
+# --- 12. Whisper hash capture and reporting (UN-3142) ---
+
+
+class TestWhisperHashTracing:
+    """The whisper hash is the handle that ties an execution to the
+    LLMWhisperer call behind it. It used to be captured only when highlight
+    was enabled, so it was missing from most executions.
+    """
+
+    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_hash_captured_when_highlight_disabled(
+        self, mock_x2text_cls, mock_get_fs, mock_dump
+    ):
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(
+            whisper_hash="whash-no-highlight"
+        )
+        mock_x2text.x2text_instance = MagicMock(spec=LLMWhispererV2)
+        mock_x2text_cls.return_value = mock_x2text
+        mock_get_fs.return_value = MagicMock()
+
+        tool_meta = {}
+        ctx = _make_context(
+            execution_source="tool",
+            executor_params={
+                "x2text_instance_id": "x2t-whisperer",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+                "enable_highlight": False,
+                "execution_data_dir": "/run/data",
+                "tool_execution_metadata": tool_meta,
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        # Highlight is off, but the hash must still be recorded
+        mock_dump.assert_called_once()
+        assert mock_dump.call_args.kwargs["json_to_dump"] == {
+            X2TextConstants.WHISPER_HASH: "whash-no-highlight"
+        }
+        assert tool_meta[X2TextConstants.WHISPER_HASH] == "whash-no-highlight"
+
+    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_extractor_without_hash_writes_no_metadata(
+        self, mock_x2text_cls, mock_get_fs, mock_dump
+    ):
+        """Non-Whisperer extractors return no hash — nothing to record."""
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(whisper_hash=None)
+        mock_x2text.x2text_instance = MagicMock()
+        mock_x2text_cls.return_value = mock_x2text
+        mock_get_fs.return_value = MagicMock()
+
+        ctx = _make_context(
+            execution_source="tool",
+            executor_params={
+                "x2text_instance_id": "x2t-generic",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+                "execution_data_dir": "/run/data",
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        mock_dump.assert_not_called()
+
+    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_missing_execution_data_dir_does_not_crash(
+        self, mock_x2text_cls, mock_get_fs, mock_dump
+    ):
+        """No data dir means nowhere to dump, but the run must still succeed
+        and the in-memory metadata must still be populated.
+        """
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(
+            whisper_hash="whash-789"
+        )
+        mock_x2text.x2text_instance = MagicMock(spec=LLMWhispererV2)
+        mock_x2text_cls.return_value = mock_x2text
+        mock_get_fs.return_value = MagicMock()
+
+        tool_meta = {}
+        ctx = _make_context(
+            execution_source="tool",
+            executor_params={
+                "x2text_instance_id": "x2t-whisperer",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+                "enable_highlight": True,
+                "tool_execution_metadata": tool_meta,
+                # no execution_data_dir
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        mock_dump.assert_not_called()
+        assert tool_meta[X2TextConstants.WHISPER_HASH] == "whash-789"
+
+    @patch("executor.executors.legacy_executor.ExecutorToolShim")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_hash_reported_in_customer_facing_log(
+        self, mock_x2text_cls, mock_get_fs, mock_shim_cls
+    ):
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(
+            whisper_hash="whash-logged"
+        )
+        mock_x2text.x2text_instance = MagicMock(spec=LLMWhispererV2)
+        mock_x2text_cls.return_value = mock_x2text
+        mock_get_fs.return_value = MagicMock()
+        mock_shim = MagicMock()
+        mock_shim_cls.return_value = mock_shim
+
+        ctx = _make_context(
+            execution_source="ide",
+            executor_params={
+                "x2text_instance_id": "x2t-whisperer",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        logged = " | ".join(
+            str(call.args[0]) for call in mock_shim.stream_log.call_args_list
+        )
+        assert "whash-logged" in logged
+
+    @patch("executor.executors.legacy_executor.ExecutorToolShim")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_completion_log_clean_without_hash(
+        self, mock_x2text_cls, mock_get_fs, mock_shim_cls
+    ):
+        """Extractors with no hash must not emit a dangling empty suffix."""
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(whisper_hash=None)
+        mock_x2text.x2text_instance = MagicMock()
+        mock_x2text_cls.return_value = mock_x2text
+        mock_get_fs.return_value = MagicMock()
+        mock_shim = MagicMock()
+        mock_shim_cls.return_value = mock_shim
+
+        ctx = _make_context(execution_source="ide")
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        messages = [str(call.args[0]) for call in mock_shim.stream_log.call_args_list]
+        assert "Text extraction completed" in messages
+
+    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_existing_metadata_preserved(self, mock_x2text_cls, mock_get_fs, mock_dump):
+        """METADATA.json is shared — source name/hash written before extraction
+        must survive the whisper hash being recorded.
+        """
+        import json as _json
+
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(
+            whisper_hash="whash-merge"
+        )
+        mock_x2text.x2text_instance = MagicMock(spec=LLMWhispererV2)
+        mock_x2text_cls.return_value = mock_x2text
+
+        mock_fs = MagicMock()
+        mock_fs.exists.return_value = True
+        mock_fs.read.return_value = _json.dumps(
+            {"source_name": "invoice.pdf", "source_hash": "abc123"}
+        )
+        mock_get_fs.return_value = mock_fs
+
+        ctx = _make_context(
+            execution_source="tool",
+            executor_params={
+                "x2text_instance_id": "x2t-whisperer",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+                "enable_highlight": True,
+                "execution_data_dir": "/run/data",
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        dumped = mock_dump.call_args.kwargs["json_to_dump"]
+        assert dumped[X2TextConstants.WHISPER_HASH] == "whash-merge"
+        # Pre-existing keys must not be clobbered
+        assert dumped["source_name"] == "invoice.pdf"
+        assert dumped["source_hash"] == "abc123"
+
+    @patch("executor.executors.legacy_executor.ToolUtils.dump_json")
+    @patch("executor.executors.legacy_executor.FileUtils.get_fs_instance")
+    @patch("executor.executors.legacy_executor.X2Text")
+    def test_unreadable_metadata_still_records_hash(
+        self, mock_x2text_cls, mock_get_fs, mock_dump
+    ):
+        """A corrupt METADATA.json must not fail the extraction."""
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = _mock_process_response(
+            whisper_hash="whash-corrupt"
+        )
+        mock_x2text.x2text_instance = MagicMock(spec=LLMWhispererV2)
+        mock_x2text_cls.return_value = mock_x2text
+
+        mock_fs = MagicMock()
+        mock_fs.exists.return_value = True
+        mock_fs.read.return_value = "{not valid json"
+        mock_get_fs.return_value = mock_fs
+
+        ctx = _make_context(
+            execution_source="tool",
+            executor_params={
+                "x2text_instance_id": "x2t-whisperer",
+                "file_path": "/data/test.pdf",
+                "platform_api_key": "sk-key",
+                "enable_highlight": True,
+                "execution_data_dir": "/run/data",
+            },
+        )
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        assert mock_dump.call_args.kwargs["json_to_dump"] == {
+            X2TextConstants.WHISPER_HASH: "whash-corrupt"
+        }
