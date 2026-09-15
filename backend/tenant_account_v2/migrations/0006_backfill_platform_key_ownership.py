@@ -16,17 +16,17 @@ OWNER = "owner"
 
 
 def _forward(apps, schema_editor):
-    ResourceMembership = apps.get_model("tenant_account_v2", "ResourceMembership")
-    OrganizationMember = apps.get_model("tenant_account_v2", "OrganizationMember")
-    PlatformApiKey = apps.get_model("platform_api", "PlatformApiKey")
+    resource_membership_model = apps.get_model("tenant_account_v2", "ResourceMembership")
+    organization_member_model = apps.get_model("tenant_account_v2", "OrganizationMember")
+    platform_api_key_model = apps.get_model("platform_api", "PlatformApiKey")
 
     # Successor per service account. Keyed off the key rows rather than
     # ``is_service_account`` so only accounts that actually back a key move.
     successor: dict[int, int] = {}
-    for key in PlatformApiKey.objects.exclude(api_user_id=None).exclude(
+    for key in platform_api_key_model.objects.exclude(api_user_id=None).exclude(
         created_by_id=None
     ):
-        if OrganizationMember.objects.filter(
+        if organization_member_model.objects.filter(
             user_id=key.created_by_id, organization_id=key.organization_id
         ).exists():
             successor[key.api_user_id] = key.created_by_id
@@ -34,10 +34,12 @@ def _forward(apps, schema_editor):
     if not successor:
         return
 
-    rows = ResourceMembership.objects.filter(role=OWNER, user_id__in=successor.keys())
+    rows = resource_membership_model.objects.filter(
+        role=OWNER, user_id__in=successor.keys()
+    )
     for row in rows.iterator():
         new_user_id = successor[row.user_id]
-        clash = ResourceMembership.objects.filter(
+        clash = resource_membership_model.objects.filter(
             user_id=new_user_id,
             content_type_id=row.content_type_id,
             object_id=row.object_id,
