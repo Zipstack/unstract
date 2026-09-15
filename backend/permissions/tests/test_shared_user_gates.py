@@ -20,7 +20,14 @@ from permissions.tests.base import CoOwnerOrgTestMixin
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
+from django.contrib.contenttypes.models import ContentType
+from tenant_account_v2.models import (
+    GroupMembership,
+    OrganizationGroup,
+    ResourceGroupShare,
+)
 from tool_instance_v2.views import ToolInstanceViewSet
+from workflow_manager.workflow_v2.file_history_views import FileHistoryViewSet
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.views import WorkflowEndpointViewSet
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -329,3 +336,50 @@ class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
         )
         force_authenticate(request, user=self.owner)
         self.assertEqual(view(request).status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class GroupSharedWorkflowFileHistoryTests(CoOwnerOrgTestMixin, TestCase):
+    """Reaching a workflow through a group grants its sub-pages too.
+
+    ``Workflow.objects.for_user`` has always included group shares, so a
+    group-shared workflow is visible in the list. Its file history was gated
+    on a check that stopped at direct viewers, so opening the workflow worked
+    and the File History tab returned 403.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-group", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+
+        group = OrganizationGroup.objects.create(
+            name="team-fh", organization=self.org, created_by=self.owner
+        )
+        GroupMembership.objects.create(group=group, user=self.viewer)
+        ResourceGroupShare.objects.create(
+            group=group,
+            content_type=ContentType.objects.get_for_model(Workflow),
+            object_id=str(self.workflow.pk),
+            organization=self.org,
+        )
+        self.factory = APIRequestFactory()
+
+    def _list(self, actor: User) -> Response:
+        view = FileHistoryViewSet.as_view({"get": "list"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, workflow_id=str(self.workflow.pk))
+
+    def test_group_member_can_view_file_history(self) -> None:
+        self.assertEqual(self._list(self.viewer).status_code, status.HTTP_200_OK)
+
+    def test_owner_can_view_file_history(self) -> None:
+        self.assertEqual(self._list(self.owner).status_code, status.HTTP_200_OK)
+
+    def test_a_user_with_no_access_still_cannot(self) -> None:
+        # Widening to groups must not widen to everyone in the org.
+        self.assertEqual(
+            self._list(self.outsider).status_code, status.HTTP_403_FORBIDDEN
+        )

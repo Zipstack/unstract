@@ -2,6 +2,7 @@ from django.shortcuts import get_object_or_404
 from permissions.permission import (
     _is_resource_owner,
     _is_resource_viewer,
+    has_group_access,
     is_workflow_mutator,
 )
 from rest_framework.permissions import BasePermission
@@ -16,7 +17,11 @@ class IsWorkflowOwnerOrShared(BasePermission):
     Checks:
     1. User owns the workflow (OWNER membership; ``created_by`` is audit-only).
     2. User is a direct viewer (VIEWER membership).
-    3. Workflow is shared to user's organization (shared_to_org).
+    3. User reaches it through a group it is shared with.
+    4. Workflow is shared to user's organization (shared_to_org).
+
+    Mirrors ``Workflow.objects.for_user``: a gate that admits less than the
+    queryset makes a resource visible but its sub-pages 403.
 
     Caches the workflow on request object to avoid duplicate fetching.
     """
@@ -44,6 +49,7 @@ class IsWorkflowOwnerOrShared(BasePermission):
         has_access = (
             _is_resource_owner(user, workflow)
             or _is_resource_viewer(user, workflow)
+            or has_group_access(user, workflow)
             or (workflow.shared_to_org and workflow.organization == user.organization)
             or OrganizationMemberService.is_user_organization_admin(user)
         )
