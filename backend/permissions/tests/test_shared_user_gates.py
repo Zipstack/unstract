@@ -238,9 +238,10 @@ class SharedPromptStudioProjectTests(CoOwnerOrgTestMixin, TestCase):
 class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
     """Adding a prompt or an LLM profile is gated by access to the project.
 
-    Both are custom ``@action``s, so DRF never calls ``get_object()`` by
-    itself -- a pk in the route does not change that -- and the object gate
-    has to be reached explicitly.
+    The two halves are gated differently: ``create_prompt`` is a custom
+    ``@action`` that has to resolve the parent itself, while profiles go
+    through a plain DRF ``create`` whose parent is read from the payload in
+    ``ParentToolAccess.has_permission``.
     """
 
     def setUp(self) -> None:
