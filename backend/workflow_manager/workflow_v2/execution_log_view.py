@@ -7,13 +7,13 @@ from django.db.models import Q
 from django.db.models.query import QuerySet
 from django.http import HttpResponse
 from django.utils import timezone
-from permissions.permission import IsOwner
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.pagination import CustomPagination
 
+from workflow_manager.execution.access import assert_execution_accessible
 from workflow_manager.workflow_v2.filters import ExecutionLogFilter
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionLogSerializer
@@ -26,9 +26,11 @@ logger = logging.getLogger(__name__)
 MAX_SYNC_EXPORT_ROWS = 50_000
 
 
-class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
+class WorkflowExecutionLogViewSet(viewsets.ReadOnlyModelViewSet):
+    # Read-only: rows are written by the log-consumer task, and ``create`` is the
+    # one handler that would skip the gate in ``get_queryset``.
     versioning_class = URLPathVersioning
-    permission_classes = [IsAuthenticated, IsOwner]
+    permission_classes = [IsAuthenticated]
     serializer_class = WorkflowExecutionLogSerializer
     pagination_class = CustomPagination
     ordering_fields = ["event_time"]
@@ -38,8 +40,12 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     def get_queryset(self) -> QuerySet:
         execution_id = self.kwargs.get("pk")
 
-        # Query by execution_id for backward compatibility
-        # Remove filter after execution_id is removed
+        # The execution id in the URL is all that addresses these logs (UN-2651).
+        assert_execution_accessible(self.request.user, execution_id)
+
+        # ``execution_id`` is the deprecated pre-``wf_execution`` column. Org
+        # scoping joins through ``wf_execution``, so this term matches nothing in
+        # request context; it stays until those rows are rotated out.
         return ExecutionLog.objects.filter(
             Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )

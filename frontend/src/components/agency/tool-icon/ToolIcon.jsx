@@ -1,6 +1,6 @@
-import { Image } from "antd";
 import emojiRegex from "emoji-regex";
 import PropTypes from "prop-types";
+import { Image } from "@/components/ui/shims/antd-leaves";
 
 import "./ToolIcon.css";
 

@@ -22,9 +22,20 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
 def _age(execution, seconds):
-    """Backdate modified_at (auto_now) via a direct UPDATE that bypasses auto_now."""
-    WorkflowExecution.objects.filter(pk=execution.pk).update(
-        modified_at=timezone.now() - timedelta(seconds=seconds)
+    """Backdate modified_at (auto_now) via a direct UPDATE that bypasses auto_now.
+
+    Ages the FILE rows too, because that is where ``recover_stuck_pg_executions``
+    measures staleness: the execution row's ``modified_at`` is effectively its start
+    time (file completions write the file row, not the execution row), so ageing only
+    the execution would describe a run that started long ago and finished a moment
+    ago — a live execution mid-callback, which the endpoint must NOT touch. A real
+    strand has quiet files, and that is what this reproduces. Tests that specifically
+    need the two timestamps to diverge override the file rows after calling this.
+    """
+    stale = timezone.now() - timedelta(seconds=seconds)
+    WorkflowExecution.objects.filter(pk=execution.pk).update(modified_at=stale)
+    WorkflowFileExecution.objects.filter(workflow_execution=execution).update(
+        modified_at=stale
     )
 
 
@@ -46,9 +57,9 @@ class RecoverStuckPgExecutionsTests(TestCase):
             )
         return ex
 
-    def _call(self, stuck_seconds=60):
+    def _call(self, stuck_seconds=60, limit=100):
         req = MagicMock()
-        req.data = {"stuck_seconds": stuck_seconds, "limit": 100}
+        req.data = {"stuck_seconds": stuck_seconds, "limit": limit}
         return self.view.recover_stuck_pg_executions(req).data
 
     def test_all_files_completed_recovers_to_completed(self):
@@ -102,28 +113,81 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert out["scanned"] == 0
         assert ex.status == ExecutionStatus.EXECUTING.value
 
-    def test_file_less_stuck_is_skipped_not_failed(self):
-        # A file-less PG exec may still be QUEUED (a backlog/outage can outlast the
-        # stuck window) — it must NOT be failed, so a delayed worker can still
-        # finalize it (the one-way guard would otherwise block recovery).
+    def test_file_less_stuck_is_left_alone_and_no_longer_consumes_the_window(self):
+        """A file-less PG exec may still be QUEUED (a backlog/outage can outlast the
+        stuck window) — it must NOT be failed, so a delayed worker can still finalize
+        it (the one-way guard would otherwise block recovery). That invariant is
+        unchanged and is what the status assertion below pins.
+
+        The COUNTER expectation is deliberately updated: this used to assert
+        ``skipped == 1``, i.e. the row was selected and then rejected downstream.
+        It is now filtered out at selection instead, so it is never scanned. The
+        mechanism moved because a downstream skip leaves ``modified_at`` untouched,
+        so these rows were re-selected on every sweep forever and crowded genuinely
+        recoverable executions out of the window — see the starvation test below.
+        """
         ex = self._exec(ExecutionStatus.PENDING, files=[])
         _age(ex, 9999)
         out = self._call()
         ex.refresh_from_db()
-        assert out["skipped"] == 1
+        assert out["scanned"] == 0
+        assert out["skipped"] == 0
+        assert out["failed"] == 0
         assert ex.status == ExecutionStatus.PENDING.value
 
-    def test_celery_execution_never_scanned(self):
+    def test_celery_execution_IS_now_recovered(self):
+        """INVERTED deliberately (UN-3796). This asserted `scanned == 0` — that a
+        Celery execution is never touched.
+
+        That exclusion is the bug. A PG cutover removes the Celery workers, and an
+        execution whose files all finished but whose chord callback never fired then
+        sits EXECUTING forever: the callback is gone, there is no pg_barrier_state to
+        recover from, and this endpoint refused to look. Nothing else could close it.
+
+        The finalization logic was always transport-agnostic — it reads file statuses
+        and recomputes the terminal status. Only the selection was narrow.
+        """
         ex = self._exec(
             ExecutionStatus.EXECUTING, pg=False, files=[ExecutionStatus.COMPLETED]
         )
         _age(ex, 9999)
         out = self._call()
         ex.refresh_from_db()
-        assert out["scanned"] == 0  # queue_message_id IS NULL → PG filter excludes it
+        assert out["recovered"] == 1
+        assert ex.status == ExecutionStatus.COMPLETED.value
+
+    def test_a_NEVER_DISPATCHED_execution_is_left_to_the_undispatched_sweep(self):
+        """The disjointness guard. Both handles NULL means the request died before
+        dispatch — undispatched_sweep.py's row, which marks it ERROR with "did not
+        start, safe to re-run".
+
+        Both sweeps run on the same reaper cadence against the same table, so an
+        overlap would be live from the first tick: one marking it ERROR while the
+        other finalized it from whatever files happened to exist.
+        """
+        ex = WorkflowExecution.objects.create(
+            workflow=self.wf,
+            status=ExecutionStatus.EXECUTING.value,
+            queue_message_id=None,
+            task_id=None,
+        )
+        WorkflowFileExecution.objects.create(
+            workflow_execution=ex, file_name="f", status=ExecutionStatus.COMPLETED.value
+        )
+        _age(ex, 9999)
+        out = self._call()
+        ex.refresh_from_db()
+        assert out["scanned"] == 0
         assert ex.status == ExecutionStatus.EXECUTING.value
 
-    def test_still_processing_is_skipped(self):
+    def test_still_processing_is_never_finalized(self):
+        """A non-terminal file means work may still be in flight — finalizing would
+        terminalize a live execution, and the one-way guard then blocks any correction.
+        That invariant is unchanged.
+
+        Counter expectation updated for the same reason as the file-less case: the row
+        is now excluded at selection rather than skipped after being scanned.
+        """
         ex = self._exec(
             ExecutionStatus.EXECUTING,
             files=[ExecutionStatus.COMPLETED, ExecutionStatus.EXECUTING],
@@ -131,7 +195,8 @@ class RecoverStuckPgExecutionsTests(TestCase):
         _age(ex, 9999)
         out = self._call()
         ex.refresh_from_db()
-        assert out["skipped"] == 1
+        assert out["scanned"] == 0
+        assert out["failed"] == 0
         assert ex.status == ExecutionStatus.EXECUTING.value
 
     def test_recently_modified_not_recovered(self):
@@ -141,7 +206,160 @@ class RecoverStuckPgExecutionsTests(TestCase):
         assert out["scanned"] == 0
         assert ex.status == ExecutionStatus.EXECUTING.value
 
+    def test_backlog_of_unrecoverable_rows_does_not_starve_a_recoverable_one(self):
+        """THE regression. Selection is oldest-first with a hard ``limit``, so any row
+        that is selected but never finalized occupies a slot on every future sweep —
+        a skip does not advance ``modified_at``, so the same rows come back forever.
+        A recoverable execution behind them is never reached: not scanned, not
+        skipped, invisible.
 
+        Found live during the UN-3796 cutover rehearsal: 1964 candidates, 1122 of them
+        permanently unrecoverable (476 file-less, 646 with a non-terminal file), and a
+        freshly stranded execution at rank 1964 that every sweep failed to see while
+        logging a healthy-looking "scanned 100, recovered 0".
+
+        Mutation check: drop either ``Exists`` clause from the selection query and this
+        fails — the backlog fills the window and ``recovered`` is 0.
+        """
+        limit = 3
+        # Older than the victim, and permanently unrecoverable: the two shapes that
+        # made up the real backlog.
+        for i in range(limit * 2):
+            junk = self._exec(
+                ExecutionStatus.EXECUTING,
+                files=[] if i % 2 else [ExecutionStatus.EXECUTING],
+            )
+            _age(junk, 9000)
+        victim = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        _age(victim, 100)  # NEWEST → last in oldest-first order
+
+        out = self._call(limit=limit)
+
+        victim.refresh_from_db()
+        assert out["recovered"] == 1
+        assert victim.status == ExecutionStatus.COMPLETED.value
+
+    def test_window_is_spent_only_on_rows_that_can_finalize(self):
+        """The drain property that makes oldest-first safe: everything scanned is
+        finalized, so it leaves the candidate set and the backlog shrinks. If skips
+        can consume the window the queue stops moving and FIFO stops being fair.
+        """
+        for _ in range(5):
+            _age(self._exec(ExecutionStatus.EXECUTING, files=[]), 9000)
+            _age(
+                self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.EXECUTING]),
+                9000,
+            )
+        _age(
+            self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED]), 9000
+        )
+
+        out = self._call()
+
+        assert out["scanned"] == 1
+        assert out["recovered"] == 1
+        assert out["skipped"] == 0
+
+    def test_execution_time_comes_from_the_last_file_not_from_now(self):
+        """``update_execution()`` stamps ``execution_time = now - created_at`` on any
+        terminal transition. Correct for a live finalization; wrong here, where the
+        sweep may finalize work that ended long ago — it would record how late the
+        reaper was, not how long the run took. The integration backlog would have
+        written multi-day runtimes onto executions that ran for minutes.
+        """
+        ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        _age(ex, 9000)
+        # Set the timestamps AFTER _age — it backdates the file rows too, so doing this
+        # first would have them overwritten and the assertion would read 0.0.
+        created = timezone.now() - timedelta(seconds=9000)
+        # modified_at MUST be passed explicitly here. BaseModelManager.update() does
+        # `kwargs.setdefault("modified_at", timezone.now())`, so updating created_at
+        # alone silently re-stamps modified_at to NOW and un-ages the row _age() just
+        # aged — the execution then fails `modified_at__lt=cutoff`, the endpoint reports
+        # scanned=0, and the test fails on STATUS with no hint that a timestamp moved.
+        # That cost a CI round trip; the manager's docstring documents the override.
+        WorkflowExecution.objects.filter(pk=ex.pk).update(
+            created_at=created,
+            modified_at=timezone.now() - timedelta(seconds=9000),
+        )
+        WorkflowFileExecution.objects.filter(workflow_execution=ex).update(
+            modified_at=created + timedelta(seconds=42)
+        )
+
+        self._call()
+
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.COMPLETED.value
+        assert ex.execution_time == 42.0
+
+    def test_execution_time_left_alone_when_no_file_timestamp(self):
+        """No usable timestamp → keep whatever is there rather than write a worse
+        guess. Pins the early return, which a refactor could silently drop.
+
+        Exercised directly rather than through the endpoint: ``modified_at`` is
+        ``auto_now`` and never NULL in practice, and a row with no file timestamp can
+        no longer be SELECTED anyway (staleness is measured on the files now, and NULL
+        does not satisfy ``< cutoff``). Driving it through the endpoint would assert
+        the selection filter, not the early return this test exists to pin.
+        """
+        ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        # modified_at is NOT NULL at the database level, so it cannot be forced to NULL
+        # to reach the early return — an earlier version of this test tried and died on
+        # an IntegrityError. Patch the aggregate instead, which is the only way the
+        # helper can legitimately see a missing timestamp.
+        ex.execution_time = 7.5
+        ex.save(update_fields=["execution_time"])
+
+        with patch(
+            "workflow_manager.file_execution.models.WorkflowFileExecution.objects"
+        ) as objects:
+            objects.filter.return_value.aggregate.return_value = {"last": None}
+            self.view._restamp_execution_time_from_files(ex)
+
+        ex.refresh_from_db()
+        assert ex.execution_time == 7.5
+
+    def test_execution_whose_files_JUST_finished_is_not_recovered(self):
+        """The callback's window. ``workflow_execution.modified_at`` is effectively the
+        START time — file completions write the file row, not the execution row — so any
+        run longer than ``stuck_seconds`` is formally "stuck" while still running.
+
+        The all-files-terminal filter stops that being catastrophic, but on its own it
+        leaves a live race: between the last file going terminal and the callback
+        finalizing, a perfectly healthy execution passes every other check. A sweep
+        landing in that window finalizes it first, the terminal-one-way guard then
+        refuses the callback's write, and the notification is silently lost.
+
+        Measuring staleness on the files closes it. Mutation check: drop the
+        ``last_file_at__lt=cutoff`` filter and this fails.
+        """
+        ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        _age(ex, 9000)  # execution row looks ancient (it is just the start time)
+        WorkflowFileExecution.objects.filter(workflow_execution=ex).update(
+            modified_at=timezone.now()  # ...but the work finished a moment ago
+        )
+
+        out = self._call(stuck_seconds=600)
+
+        ex.refresh_from_db()
+        assert out["scanned"] == 0
+        assert ex.status == ExecutionStatus.EXECUTING.value
+
+    def test_execution_whose_files_went_quiet_long_ago_IS_recovered(self):
+        """The other half of the same predicate — moving staleness onto the files must
+        not stop genuinely abandoned work from being recovered.
+        """
+        ex = self._exec(ExecutionStatus.EXECUTING, files=[ExecutionStatus.COMPLETED])
+        _age(ex, 9000)
+        WorkflowFileExecution.objects.filter(workflow_execution=ex).update(
+            modified_at=timezone.now() - timedelta(seconds=3600)
+        )
+
+        out = self._call(stuck_seconds=600)
+
+        ex.refresh_from_db()
+        assert out["recovered"] == 1
+        assert ex.status == ExecutionStatus.COMPLETED.value
 
 
 class TerminalOneWayGuardTests(TestCase):
@@ -420,6 +638,8 @@ class ModelStaleWriterGuardTests(TestCase):
         assert ex.status == ExecutionStatus.COMPLETED.value
         assert ex.successful_files == 1
         assert ex.result_acknowledged is True
+
+
 class RetrieveNotFoundTests(TestCase):
     """A missing execution must return 404, not 500 (UN-3719). The reaper's
     orphan-claim sweep relies on the deterministic 404 to GC claims for deleted

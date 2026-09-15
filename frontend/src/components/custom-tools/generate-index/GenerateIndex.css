@@ -5,11 +5,11 @@
 }
 
 .gen-index-progress {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .gen-index-success {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .gen-index-fail {
@@ -18,4 +18,9 @@
 
 .gen-index-icon {
   font-size: 24px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 24px;
+  height: 24px;
 }

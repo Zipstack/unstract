@@ -18,9 +18,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from tool_instance_v2.models import ToolInstance
 
+from unstract.core.data_models import WorkflowTransport
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
-from workflow_manager.workflow_v2.transport import resolve_transport
 
 logger = logging.getLogger(__name__)
 
@@ -321,23 +321,14 @@ def create_workflow_execution(request):
             # Handle tags logic if needed
             pass
 
-        # Resolve the transport this execution rides (9e). Decided once here, at
-        # the creation chokepoint, and returned so the caller carries it in the
-        # dispatched task's payload — not persisted on the row. Flipt (gated by
-        # the env master-switch) decides; fails closed to "celery".
-        transport = resolve_transport(
-            execution_id=str(execution.id),
-            organization_id=org_id,
-            workflow_id=str(workflow.id),
-            pipeline_id=data.get("pipeline_id"),
-        )
-
         return Response(
             {
                 "execution_id": str(execution.id),
                 "status": execution.status,
                 "execution_log_id": execution.execution_log_id,  # Return for workers to use
-                "transport": transport,
+                # Wire field the workers still branch on. PG is the only
+                # transport now; the field goes when those branches do.
+                "transport": WorkflowTransport.PG_QUEUE.value,
             }
         )
 
@@ -385,75 +376,6 @@ def compile_workflow(request):
 
     except Exception as e:
         logger.error(f"Error compiling workflow: {e}")
-        return Response(
-            {"error": "Internal server error"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
-
-
-@csrf_exempt  # Safe: Internal API with Bearer token auth, no session/cookies
-@api_view(["POST"])
-def submit_file_batch_for_processing(request):
-    """Submit file batch for processing by workers.
-
-    This endpoint receives batch data and returns immediately,
-    as actual processing is handled by Celery workers.
-
-    Returns:
-        JSON response with batch submission status
-    """
-    try:
-        batch_data = request.data
-
-        # Get organization from header
-        org_id = request.headers.get("X-Organization-ID")
-        if not org_id:
-            return Response(
-                {"error": "X-Organization-ID header is required"},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        # Add organization ID to file_data where WorkerFileData expects it
-        if "file_data" in batch_data:
-            batch_data["file_data"]["organization_id"] = org_id
-        else:
-            # Fallback: add at top level for backward compatibility
-            batch_data["organization_id"] = org_id
-
-        # Submit to file processing worker queue using Celery
-        try:
-            from backend.celery_service import app as celery_app
-
-            # Submit the batch data to the file processing worker using send_task
-            # This calls the task by name without needing to import it
-            task_result = celery_app.send_task(
-                "process_file_batch",  # Task name as defined in workers/file_processing/tasks.py
-                args=[batch_data],  # Pass batch_data as first argument
-                queue="file_processing",  # Send to file processing queue
-            )
-
-            logger.info(
-                f"Successfully submitted file batch {batch_data.get('batch_id')} to worker queue (task: {task_result.id})"
-            )
-
-            return Response(
-                {
-                    "success": True,
-                    "batch_id": batch_data.get("batch_id"),
-                    "celery_task_id": task_result.id,
-                    "message": "Batch submitted for processing",
-                }
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to submit batch to worker queue: {e}")
-            return Response(
-                {"error": f"Failed to submit batch for processing: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-    except Exception as e:
-        logger.error(f"Error submitting file batch: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

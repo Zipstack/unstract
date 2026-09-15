@@ -25,7 +25,7 @@
 
 .agency-sider-content > div {
   height: 100%;
-  background-color: var(--white);
+  background-color: var(--card);
   /* background-color: #DAE3EC; */
 }
 
@@ -42,7 +42,7 @@
 }
 
 .agency-ide-collapse-panel {
-  background-color: var(--white);
+  background-color: var(--card);
   border: none;
   border-radius: 0px;
 }
@@ -93,7 +93,7 @@
 }
 
 .progress-count {
-  font-size: 14px;
+  font-size: 13px;
   color: #8c8c8c;
 }
 
@@ -109,8 +109,13 @@
   flex-direction: column;
 }
 
+/* shadcn's Alert base is `w-full`, where antd's sized to its container. With
+ * `margin: 0 24px` that made the box 100% + 48px, so `.agency-layout`
+ * (overflow-x: auto) grew a horizontal scrollbar on every workflow page.
+ * Subtract the margins from the width rather than dropping them. */
 .deployment-alert {
   margin: 0 24px;
+  width: calc(100% - 48px);
 }
 .workflow-card-header {
   display: flex;
@@ -122,7 +127,7 @@
 .workflow-card-number {
   width: 32px;
   height: 32px;
-  background: #1890ff;
+  background: var(--primary);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -135,12 +140,17 @@
 
 .workflow-card-number.completed {
   background: #e6f7ff;
-  color: #1890ff;
+  color: var(--primary);
 }
 
 .workflow-card-number.completed .anticon {
   font-size: 16px;
-  color: #1890ff;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 16px;
+  height: 16px;
+  color: var(--primary);
 }
 
 .workflow-card-info {
@@ -170,7 +180,7 @@
 
 .workflow-select:focus {
   outline: none;
-  border-color: #1890ff;
+  border-color: var(--primary);
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
@@ -263,8 +273,8 @@
 }
 
 .select-tool-btn:hover {
-  border-color: #1890ff;
-  color: #1890ff;
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 /* Status Message */
@@ -277,7 +287,7 @@
 }
 
 .status-text {
-  font-size: 14px;
+  font-size: 13px;
   color: #586069;
   font-style: italic;
 }

@@ -1,21 +1,25 @@
-import {
-  AppstoreOutlined,
-  CalendarOutlined,
-  CheckCircleFilled,
-  ClearOutlined,
-  CloseCircleFilled,
-  CloudDownloadOutlined,
-  FileSearchOutlined,
-  HistoryOutlined,
-  KeyOutlined,
-  NotificationOutlined,
-  ScheduleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import { Avatar, Flex, Space, Switch, Tag, Tooltip, Typography } from "antd";
 import cronstrue from "cronstrue";
+import {
+  Bell,
+  Calendar,
+  CalendarClock,
+  CircleCheck,
+  CircleX,
+  CloudDownload,
+  Eraser,
+  FileSearch,
+  History,
+  Key,
+  LayoutGrid,
+  RefreshCw,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Avatar, Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 import {
@@ -111,10 +115,10 @@ function StatusPills({
             {hasFileCounts && (
               <Space size={12} className="status-tooltip-counts">
                 <Typography.Text className="status-tooltip-count success">
-                  <CheckCircleFilled /> {run.successful_files}
+                  <CircleCheck /> {run.successful_files}
                 </Typography.Text>
                 <Typography.Text className="status-tooltip-count error">
-                  <CloseCircleFilled /> {run.failed_files}
+                  <CircleX /> {run.failed_files}
                 </Typography.Text>
               </Space>
             )}
@@ -189,12 +193,7 @@ function ConnectorFieldRow({ label, icon, instanceName, connectorName }) {
         {label}
       </Typography.Text>
       <Space size={10} className="card-list-field-value">
-        <Avatar
-          src={icon}
-          size={32}
-          shape="square"
-          icon={<AppstoreOutlined />}
-        />
+        <Avatar src={icon} size={32} shape="square" icon={<LayoutGrid />} />
         <Flex vertical gap={2} className="card-list-field-text">
           <Typography.Text className="card-list-field-instance-name">
             {instanceName || connectorName}
@@ -266,19 +265,19 @@ function createPipelineCardConfig({
         items: [
           {
             key: "view-logs",
-            icon: <FileSearchOutlined />,
+            icon: <FileSearch />,
             label: "View Logs",
             onClick: () => onViewLogs?.(pipeline),
           },
           {
             key: "file-history",
-            icon: <HistoryOutlined />,
+            icon: <History />,
             label: "View File History",
             onClick: () => onViewFileHistory?.(pipeline),
           },
           {
             key: "clear-history",
-            icon: <ClearOutlined />,
+            icon: <Eraser />,
             label: isClearingFileHistory ? "Clearing..." : "Clear File History",
             disabled: isClearingFileHistory,
             onClick: () => onClearFileHistory?.(pipeline),
@@ -286,27 +285,27 @@ function createPipelineCardConfig({
           { type: "divider" },
           {
             key: "sync-now",
-            icon: <SyncOutlined />,
+            icon: <RefreshCw />,
             label: "Sync Now",
             onClick: () => onSyncNow?.(pipeline),
           },
           { type: "divider" },
           {
             key: "manage-keys",
-            icon: <KeyOutlined />,
+            icon: <Key />,
             label: "Manage Keys",
             onClick: () => onManageKeys?.(pipeline),
           },
           {
             key: "notifications",
-            icon: <NotificationOutlined />,
+            icon: <Bell />,
             label: "Notifications",
             onClick: () => onSetupNotifications?.(pipeline),
           },
           { type: "divider" },
           {
             key: "download-postman",
-            icon: <CloudDownloadOutlined />,
+            icon: <CloudDownload />,
             label: "Download Postman Collection",
             onClick: () => onDownloadPostman?.(pipeline),
           },
@@ -330,6 +329,7 @@ function createPipelineCardConfig({
                 <Switch
                   size="small"
                   checked={pipeline.active}
+                  data-testid={`pipeline-toggle-${pipeline.id}`}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     handleEnablePipeline(checked, pipeline.id);
@@ -338,6 +338,7 @@ function createPipelineCardConfig({
               </Tooltip>
               <CardActionBox
                 item={pipeline}
+                testIdPrefix="pipeline"
                 setSelectedItem={setSelectedPorD}
                 onEdit={onEdit}
                 onShare={onShare}
@@ -387,7 +388,7 @@ function createPipelineCardConfig({
                   Next Run At
                 </Typography.Text>
                 <Space size={10} className="card-list-field-value">
-                  <ScheduleOutlined />
+                  <CalendarClock />
                   <Typography.Text>
                     {formattedDateTime(pipeline.next_run_time)}
                   </Typography.Text>
@@ -407,7 +408,7 @@ function createPipelineCardConfig({
           {/* Footer: Schedule | Total Runs */}
           <Flex align="center" gap={32} className="card-list-footer-row">
             <Space size={10} className="card-list-footer-item">
-              <CalendarOutlined />
+              <Calendar />
               <Typography.Text
                 type="secondary"
                 className="card-list-footer-label"
@@ -417,7 +418,7 @@ function createPipelineCardConfig({
               <Typography.Text>{scheduleDisplay}</Typography.Text>
             </Space>
             <Space size={10} className="card-list-footer-item">
-              <SyncOutlined />
+              <RefreshCw />
               <Typography.Text
                 type="secondary"
                 className="card-list-footer-label"

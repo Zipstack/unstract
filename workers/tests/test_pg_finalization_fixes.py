@@ -3,51 +3,45 @@
 - L2: ``_update_execution_status_unified`` re-raises on the PG path (so the failed
   finalization vt-redelivers / poison-drops) but swallows on the Celery path.
 - L3: ``_backoff_with_jitter`` spreads retries across [base/2, base] (equal jitter)
-  so concurrent workers don't retry in synchronized waves.
+  so concurrent workers don't retry in synchronized waves. Unconditional since
+  UN-4046 — it was gated on ``pg_queue_enabled`` to keep the Celery flow on the
+  exact exponential cadence.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-_JITTER_FLAG = "shared.clients.base_client.check_feature_flag_status"
-
 
 class TestBackoffJitter:
-    def test_flag_off_returns_exact_base(self):
-        # Celery flow (pg_queue_enabled off): exact exponential backoff, no jitter.
-        from shared.clients.base_client import _backoff_with_jitter
+    """UN-4046: jitter is unconditional, so there is no flag to patch.
 
-        with patch(_JITTER_FLAG, return_value=False):
-            assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
+    The two flag-off cases (``flag off returns exact base``, ``Flipt error fails
+    closed to no jitter``) are GONE — they asserted the exact exponential cadence
+    the Celery flow kept, and there is no Celery flow and no Flipt call left. What
+    they were really protecting is that the RESULT stays a sane backoff, which the
+    band assertion below already pins from both sides. The remaining three drop
+    their patch and assert the same properties directly.
+    """
 
-    def test_flipt_error_fails_closed_to_no_jitter(self):
-        from shared.clients.base_client import _backoff_with_jitter
-
-        with patch(_JITTER_FLAG, side_effect=RuntimeError("flipt down")):
-            assert _backoff_with_jitter(1.0, 2) == pytest.approx(4.0)
-
-    def test_within_equal_jitter_band_when_flag_on(self):
+    def test_within_equal_jitter_band(self):
         from shared.clients.base_client import _backoff_with_jitter
 
         # base = backoff_factor(1.0) * 2**attempt(2) = 4.0 → equal jitter [2.0, 4.0]
-        with patch(_JITTER_FLAG, return_value=True):
-            for _ in range(500):
-                assert 2.0 <= _backoff_with_jitter(1.0, 2) <= 4.0
+        for _ in range(500):
+            assert 2.0 <= _backoff_with_jitter(1.0, 2) <= 4.0
 
     def test_zero_base_returns_zero(self):
         from shared.clients.base_client import _backoff_with_jitter
 
-        with patch(_JITTER_FLAG, return_value=True):
-            assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
+        assert _backoff_with_jitter(0.0, 3) == pytest.approx(0.0)
 
-    def test_is_not_constant_when_flag_on(self):
+    def test_is_not_constant(self):
         from shared.clients.base_client import _backoff_with_jitter
 
         # De-correlation: repeated calls must NOT all land on the same value
         # (that synchronized schedule is exactly the thundering herd we fix).
-        with patch(_JITTER_FLAG, return_value=True):
-            assert len({_backoff_with_jitter(1.0, 3) for _ in range(64)}) > 1
+        assert len({_backoff_with_jitter(1.0, 3) for _ in range(64)}) > 1
 
 
 class TestPGFinalizationReraise:
@@ -117,6 +111,57 @@ class TestRecoverStuckClientResponseShape:
 
 
 _RECOVERY_ENV = "WORKER_PG_STUCK_EXECUTION_RECOVERY_ENABLED"
+_RECOVERY_SECONDS_ENV = "WORKER_PG_STUCK_EXECUTION_RECOVERY_SECONDS"
+
+
+class TestStuckRecoveryWindowDefault:
+    """The window must be a DEFAULT, not something an operator sets.
+
+    It used to inherit the barrier stuck-timeout (~2.5 h), which answers a different
+    question: that one bounds how long a batch may make no progress, where a single
+    file legitimately can take hours. This one only needs to outlast a callback that
+    is about to fire — seconds.
+
+    The threshold is not what makes recovery safe; the endpoint skips unless EVERY
+    file is terminal, so a running execution is never a candidate however short this
+    is. Inheriting hours therefore bought nothing and left a stranded execution dead
+    for ~2.5 h — the common shape being a Celery run whose callback worker was removed
+    by a deploy (300 s grace, against file-processing's 7200 s).
+
+    Pinned as a default because production and on-prem have **no operator and no
+    Flipt**: a value that only exists as an env override is one those environments
+    never receive, and they are precisely the ones that cannot diagnose a hung
+    execution themselves.
+    """
+
+    def _seconds(self, monkeypatch, value=None):
+        from queue_backend.pg_queue import reaper as R
+
+        monkeypatch.delenv(_RECOVERY_SECONDS_ENV, raising=False)
+        if value is not None:
+            monkeypatch.setenv(_RECOVERY_SECONDS_ENV, value)
+        return R._positive_duration_from_env(
+            _RECOVERY_SECONDS_ENV, R._DEFAULT_STUCK_RECOVERY_SECONDS, int
+        )
+
+    def test_default_is_ten_minutes(self, monkeypatch):
+        assert self._seconds(monkeypatch) == 600
+
+    def test_default_is_NOT_the_barrier_stuck_timeout(self, monkeypatch):
+        """The regression this replaces. Any multi-hour value here means a stranded
+        execution stays dead for hours in an environment with nobody to notice."""
+        assert self._seconds(monkeypatch) < 3600
+
+    def test_env_still_overrides_for_tuning(self, monkeypatch):
+        assert self._seconds(monkeypatch, "120") == 120
+
+    def test_a_nonsense_value_raises_rather_than_silently_defaulting(self, monkeypatch):
+        """Loud-on-misconfig, matching the other duration knobs: silently falling back
+        would hide a typo'd ConfigMap behind behaviour that looks deliberate."""
+        import pytest
+
+        with pytest.raises(ValueError):
+            self._seconds(monkeypatch, "not-a-number")
 
 
 class TestStuckRecoveryDefaultOn:
