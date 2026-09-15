@@ -1,11 +1,12 @@
 /**
- * Whether the current user may change a shared resource.
+ * Whether the current user owns a shared resource.
  *
- * Sharing — direct, via group, or org-wide — grants READ only. Owners,
- * co-owners and org admins may edit. Delete mostly follows, but callers own
- * their own carve-outs. The backend is the authority
- * (`is_workflow_mutator` and the `IsOwner` family); this only decides what the
- * UI offers, so nobody fills in a form that can only fail.
+ * True for owners, co-owners and org admins. What that unlocks is per
+ * resource and the backend is the authority: on most resources sharing grants
+ * read only, while Prompt Studio and Agentic Prompt Studio are shared for
+ * collaboration and hold back only the name, delete and access changes.
+ * This only decides what the UI offers, so nobody fills in a form that can
+ * only fail — it is not itself the rule.
  *
  * `is_owner` is set by every shareable resource's serializer.
  */

@@ -85,7 +85,7 @@ class ResourceShareManagementMixin:
         """Apply a replace-style share state for the resource.
 
         HTTP entry gate is the host viewset's ``get_permissions`` (currently
-        ``IsOwnerOrSharedUserOrSharedToOrg`` on all 7 resources — see
+        ``IsOwnerOrSharedUserOrSharedToOrg`` on every shareable resource — see
         UN-2977 plan §B). Per-axis authorization (owner / org admin /
         shared user / group member) and scope checks (org-membership for
         users, group-membership for groups) live in
