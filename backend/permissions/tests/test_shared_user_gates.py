@@ -316,10 +316,16 @@ class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
         from prompt_studio.prompt_studio_v2.views import ToolStudioPromptView
 
         view = ToolStudioPromptView.as_view({"post": "reorder_prompts"})
+        # Complete payload on purpose: omitting a required field 400s before
+        # the id is ever parsed, which is not what this pins.
         request = self.factory.post(
-            "/x/", {"prompt_id": "not-a-uuid", "start_sequence_number": 1}, format="json"
+            "/x/",
+            {
+                "prompt_id": "not-a-uuid",
+                "start_sequence_number": 1,
+                "end_sequence_number": 2,
+            },
+            format="json",
         )
         force_authenticate(request, user=self.owner)
-        self.assertNotEqual(
-            view(request).status_code, status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        self.assertEqual(view(request).status_code, status.HTTP_400_BAD_REQUEST)

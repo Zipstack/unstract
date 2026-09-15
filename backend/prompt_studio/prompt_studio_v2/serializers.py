@@ -53,7 +53,9 @@ class ToolStudioIndexSerializer(serializers.Serializer):
 class ReorderPromptsSerializer(serializers.Serializer):
     start_sequence_number = serializers.IntegerField(required=True)
     end_sequence_number = serializers.IntegerField(required=True)
-    prompt_id = serializers.CharField(required=True)
+    # UUID, not CharField: the controller feeds this straight to objects.get,
+    # where a malformed id is a 500 rather than a 400.
+    prompt_id = serializers.UUIDField(required=True)
 
     def validate(self, data):
         start_sequence_number = data.get("start_sequence_number")
