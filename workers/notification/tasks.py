@@ -512,13 +512,12 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 # redelivery (minutes) plus one of the consumer's bounded attempts.
 _GROUP_NOTIFICATION_ATTEMPTS = 3
 _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
-# Per-phase, because httpx has NO whole-request timeout: a scalar timeout is
-# applied to connect, write and read separately, so each can spend it in full.
-# The loop below is the only retry -- ``HTTPTransport(retries=2)`` would retry
-# the connect phase *inside* one post, stacking its own timeouts under these.
-# Sum x _GROUP_NOTIFICATION_ATTEMPTS must stay under the consumer's visibility
-# timeout (300s) or a sibling re-claims the message mid-fan-out, and under
-# health-stale (360s) or the pod is restarted mid-task.
+# Per-phase, because httpx has NO whole-request timeout: a scalar one is applied
+# to connect, write and read separately. The loop below is the only retry --
+# transport-level retries would stack their own timeouts underneath these.
+# Sum x _GROUP_NOTIFICATION_ATTEMPTS is the task's bound, and must stay under
+# WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat is frozen for the
+# task's duration) and VT_SECONDS. Excludes DNS, which connect does not cover.
 _GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
 
 
@@ -562,7 +561,12 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
                     json=payload,
                     timeout=_GROUP_NOTIFICATION_TIMEOUT,
                 )
-        except (httpx.ReadTimeout, httpx.WriteTimeout) as e:
+        except (
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.ReadError,
+            httpx.RemoteProtocolError,
+        ) as e:
             # The request reached the backend, and the backend does not stop
             # when we disconnect. Its outcome is unknown, and the send path has
             # no checkpoint, so re-posting re-mails every group that already

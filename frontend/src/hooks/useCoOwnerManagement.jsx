@@ -184,10 +184,10 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         return true;
       }
       // "ok" and "error" both fall through: the mutations landed either way and
-      // their outcomes are known without the refresh. Staying silent on "error"
-      // would leave the modal open on a stale roster whose staged diff still
-      // looks unapplied, and a second Apply would re-post mutations the backend
-      // has already accepted -- reporting every one as a failure.
+      // their outcomes are known without the refresh, so a clean apply closes
+      // the modal rather than stranding it. A partial failure still leaves the
+      // staged diff computed against an unrefreshed roster -- clearing that is
+      // not done here.
       setAlertDetails(
         buildApplyAlert(
           addUsers,

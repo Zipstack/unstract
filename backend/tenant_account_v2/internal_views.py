@@ -5,8 +5,8 @@ notification worker calls these because ``workers/`` has no Django and every
 step of the send — group expansion, org re-validation, resource lookup, the
 email plugin — needs it.
 
-An unhandled problem surfaces as non-2xx so the worker retries. Cases that a
-retry cannot help are answered 200 at the site that recognises them.
+A 200 does not imply the email was sent -- see the send path in
+:mod:`tenant_account_v2.group_notification_service`.
 """
 
 import logging
