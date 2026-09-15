@@ -7,7 +7,15 @@ single ``structure_pipeline`` operation to the executor worker instead of
 are assembled and the result is written to filesystem.
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, create_autospec, patch
+
+# create_autospec, NOT MagicMock(spec=...): only autospec enforces the method
+# SIGNATURE. A bare MagicMock accepts any keyword, which is how a `headers=`
+# argument the real dispatcher does not take (UN-4046) reached production and
+# made every extraction raise TypeError while this suite stayed green.
+# `spec=` alone does not close that hole — it restricts attribute names only,
+# and was verified to still accept `headers=`.
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
 
 import pytest
 from shared.enums.task_enums import TaskName
@@ -174,7 +182,7 @@ class TestStructureToolPipeline:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
 
         pipeline_result = _make_pipeline_result(
@@ -225,7 +233,7 @@ class TestStructureToolPipeline:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result()
 
@@ -289,7 +297,7 @@ class TestStructureToolSinglePass:
 
         base_params["tool_instance_metadata"]["single_pass_extraction_mode"] = True
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
@@ -337,7 +345,7 @@ class TestStructureToolSummarize:
         tool_metadata_regular["tool_settings"]["summarize_prompt"] = "Summarize this doc"
         base_params["tool_instance_metadata"]["summarize_as_source"] = True
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
@@ -396,7 +404,7 @@ class TestStructureToolSmartTable:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "table_answer"},
@@ -451,7 +459,7 @@ class TestStructureToolAgentic:
             "tool_metadata": agentic_metadata,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
 
         # Mock X2Text extraction
@@ -511,7 +519,7 @@ class TestStructureToolProfileOverrides:
             "llm_id": "llm-override",
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
@@ -552,7 +560,7 @@ class TestStructureToolPipelineFailure:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
 
         pipeline_failure = ExecutionResult.failure(
@@ -601,7 +609,7 @@ class TestStructureToolMultipleOutputs:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "a", "field_b": "b"},
@@ -647,7 +655,7 @@ class TestStructureToolOutputWritten:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
@@ -717,7 +725,7 @@ class TestStructureToolMetadataFileName:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
@@ -758,7 +766,7 @@ class TestStructureToolNoSummarize:
             "tool_metadata": tool_metadata_regular,
         }
 
-        dispatcher_instance = MagicMock()
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
         mock_get_executor_dispatcher.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result()
 

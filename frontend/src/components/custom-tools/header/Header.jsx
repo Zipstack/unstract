@@ -1,7 +1,10 @@
-import { SettingOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
+import { Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -336,7 +339,8 @@ function Header({
         <div>
           <Tooltip title="Settings">
             <Button
-              icon={<SettingOutlined />}
+              icon={<Settings />}
+              data-testid="ps-header-settings-btn"
               onClick={() => setOpenSettings(true)}
             />
           </Tooltip>
@@ -369,6 +373,7 @@ function Header({
           }}
           trigger={["click"]}
           disabled={isPublicSource}
+          data-testid="ps-header-export-menu"
         >
           <CustomButton
             type="primary"
@@ -376,6 +381,7 @@ function Header({
             disabled={isPublicSource}
             icon={<ExportToolIcon />}
             className="export-text"
+            data-testid="ps-header-export-btn"
           >
             Export
           </CustomButton>
@@ -442,6 +448,7 @@ function Header({
       />
       <Modal
         title="Edit Project"
+        data-testid="ps-edit-project-modal"
         open={editModalOpen}
         onOk={handleEditSubmit}
         onCancel={() => setEditModalOpen(false)}
@@ -467,6 +474,7 @@ function Header({
         onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
         open={confirmModalVisible}
         title="Are you sure"
+        data-testid="ps-force-export-modal"
         okText="Force Export"
         centered
       >
@@ -479,6 +487,7 @@ function Header({
         onCancel={() => setApiDeploymentConfirmModalVisible(false)}
         open={apiDeploymentConfirmModalVisible}
         title="Create API Deployment"
+        data-testid="ps-create-api-deployment-modal"
         okText="Proceed"
         centered
         width={600}

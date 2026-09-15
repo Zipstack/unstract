@@ -1,18 +1,14 @@
-import { CloudDownloadOutlined, CloudUploadOutlined } from "@ant-design/icons";
-import {
-  Button,
-  Col,
-  Image,
-  Modal,
-  Row,
-  Select,
-  Space,
-  Tabs,
-  Typography,
-} from "antd";
 import { cloneDeep, isEqual } from "lodash";
+import { CloudDownload, CloudUpload } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -614,9 +610,9 @@ function ConfigureConnectorModal({
         {!connDetails?.id && connMode !== "API" && (
           <div className="connector-placeholder">
             {connType === "input" ? (
-              <CloudDownloadOutlined className="connector-placeholder-icon" />
+              <CloudDownload className="connector-placeholder-icon" />
             ) : (
-              <CloudUploadOutlined className="connector-placeholder-icon" />
+              <CloudUpload className="connector-placeholder-icon" />
             )}
             <Typography.Text className="connector-placeholder-text">
               Select an existing connector or create a new connector to continue

@@ -1,18 +1,20 @@
 """Direct unit tests for ``file_processing.structure_tool_task`` helpers.
 
-Locks contracts that the integration test in ``test_sanity_phase5.py``
-exercises indirectly. Specifically guards ``_fairness_headers``:
+UN-4046 removed ``TestFairnessHeaders``. It pinned the wire shape of
+``_fairness_headers()``, which was passed as ``headers=`` to every executor
+dispatch — but the routing dispatcher never forwarded headers to the PG path
+(see ``PgExecutionDispatcher.dispatch``'s own docstring), so the value was
+inert on the only transport that runs. With the router gone the helper is
+deleted and the three tests describe a function that no longer exists.
 
-* The hard-coded ``WorkloadType.NON_API`` default. Per the docstring,
-  ``API`` is "strictly worse" here — flipping it would silently
-  preempt ETL work under API traffic.
-* The wire shape consumers see at the dispatcher. A regression in
-  ``FairnessKey.as_header()``'s serialisation surfaces here too.
+Fairness on PG is not lost and is not tested here: it rides the enqueue payload
+(``transport.enqueue(..., org_id=...)``), and ``queue_backend`` owns its
+coverage. The paired "call site forwards it" assertion referenced by the old
+docstring lived in a ``test_sanity_phase5.py`` that no longer exists either.
 
-Paired with the ``headers=`` assertion in
-``test_sanity_phase5.TestStructureToolSingleDispatch`` — together
-they cover both "the helper returns the right thing" and "the call
-site forwards it".
+What remains is ``TestDispatcherFactory``, which guards the UN-3779 regression:
+the impl must build its dispatcher via the factory, not a raw
+``ExecutionDispatcher``.
 """
 
 from __future__ import annotations
@@ -20,43 +22,13 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-
 from file_processing import structure_tool_task as st
-from file_processing.structure_tool_task import _fairness_headers
-from queue_backend.fairness import WorkloadType
-
-
-class TestFairnessHeaders:
-    def test_returns_non_api_wire_shape(self):
-        """``_fairness_headers`` emits the canonical ``x-fairness-key``
-        envelope with ``workload_type='non_api'`` and the default
-        ``pipeline_priority=5``."""
-        assert _fairness_headers("org-1") == {
-            "x-fairness-key": {
-                "org_id": "org-1",
-                "workload_type": "non_api",
-                "pipeline_priority": 5,
-            }
-        }
-
-    def test_org_id_is_propagated_verbatim(self):
-        wire = _fairness_headers("another-org")
-        assert wire["x-fairness-key"]["org_id"] == "another-org"
-
-    def test_workload_type_is_non_api_not_api(self):
-        """Pinned because the docstring calls ``NON_API`` "the safe
-        default" and ``API`` "strictly worse" — a regression that
-        flips this would silently let API traffic preempt ETL work.
-        """
-        wire = _fairness_headers("org-1")
-        assert wire["x-fairness-key"]["workload_type"] == WorkloadType.NON_API.value
-        assert wire["x-fairness-key"]["workload_type"] != WorkloadType.API.value
 
 
 class TestDispatcherFactory:
     """Pin the call-site swap this PR makes: the impl builds its dispatcher via
-    ``get_executor_dispatcher(celery_app=app)`` (the gate-routed dispatcher), not
-    the raw SDK ``ExecutionDispatcher``. A mis-import or wrong arg would otherwise
+    ``get_executor_dispatcher()`` (the shared factory), not
+    the raw SDK ``ExecutionDispatcher``. A mis-import would otherwise
     silently bypass the PG routing with nothing failing.
     """
 
@@ -73,7 +45,7 @@ class TestDispatcherFactory:
             "execution_data_dir": "/data",
         }
 
-    def test_impl_builds_dispatcher_via_factory_with_app(self):
+    def test_impl_builds_dispatcher_via_factory(self):
         # Stub everything up to (and just past) the dispatcher construction, then
         # raise to stop before the heavy tool-metadata work runs.
         with (
@@ -86,7 +58,9 @@ class TestDispatcherFactory:
             params = self._params()
             with pytest.raises(RuntimeError, match="stop"):
                 st._execute_structure_tool_impl(params)
-        factory.assert_called_once_with(celery_app=st.app)
+        # No arguments since UN-4046 — the factory's accepted-and-ignored
+        # `celery_app` was removed once Sonar flagged it as an unused parameter.
+        factory.assert_called_once_with()
 
 
 if __name__ == "__main__":

@@ -6,7 +6,6 @@ default_stages:
 ci:
   skip:
     - hadolint-docker # Fails in pre-commit CI
-    - biome-check # Uses local npm/npx, not available in pre-commit CI
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -23,7 +22,9 @@ repos:
       - id: check-docstring-first
       - id: check-ast
       - id: check-json
-        exclude: ".vscode/launch.json"
+        # Both files are JSONC — their tooling (VS Code, tsc) allows comments,
+        # but this hook parses with strict `json.loads`, which does not.
+        exclude: "(\\.vscode/launch\\.json|frontend/tsconfig\\.json)$"
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: check-toml
@@ -81,8 +82,18 @@ repos:
     hooks:
       - id: biome-check
         name: biome check
-        entry: bash -c 'cd frontend && bunx @biomejs/biome check --write --files-ignore-unknown=true --no-errors-on-unmatched "${@#frontend/}"' --
-        language: system
+        # `language: node` lets pre-commit provision Biome itself, so this runs
+        # in pre-commit CI too instead of needing a local bun/npx.
+        #
+        # Not the upstream biomejs/pre-commit hook: that one runs from the repo
+        # root, but Biome's project root here is `frontend/` (where biome.json
+        # lives). Running from the root resolves the wrong package.json, which
+        # changes both `organizeImports` grouping and CSS formatting. Hence the
+        # `cd frontend` plus stripping the prefix off the paths pre-commit
+        # passes, which are relative to the repo root.
+        entry: bash -c 'cd frontend && biome check --write --files-ignore-unknown=true --no-errors-on-unmatched "${@#frontend/}"' --
+        language: node
+        additional_dependencies: ["@biomejs/biome@2.3.13"]
         files: ^frontend/src/
         types_or: [javascript, jsx, ts, tsx, json]
 

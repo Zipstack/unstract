@@ -9,6 +9,10 @@
 
 .doc-manager-header {
   display: flex;
+  /* Without this, children default to `stretch`: the view tabs centred at one
+   * height while the file name and Manage Documents button sat 4-5px lower,
+   * so nothing in the row shared a baseline. */
+  align-items: center;
   justify-content: space-between;
   padding-right: 12px;
 }
@@ -24,6 +28,11 @@
 
 .doc-manager-paginate-icon {
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
 }
 
 .text-viewer-layout {

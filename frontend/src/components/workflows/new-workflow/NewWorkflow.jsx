@@ -1,6 +1,8 @@
-import { Form, Input, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useRef, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 
 const { TextArea } = Input;
@@ -78,6 +80,7 @@ function NewWorkflow({
       centered
       maskClosable={false}
       okText={name ? "Edit Workflow" : "Create Workflow"}
+      data-testid="new-workflow-modal"
       width="400px"
       okButtonProps={{ disabled: disableCreation, loading: loading }}
     >

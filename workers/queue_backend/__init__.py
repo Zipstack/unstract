@@ -25,13 +25,14 @@ time rather than silently falling back, which would mask a typo'd
 flag in a production env.
 
 **Queue-transport routing (separate axis).** ``dispatch()`` consults
-:func:`~queue_backend.routing.select_backend`, which reads the
-PG-queue routing table (``WORKER_PG_QUEUE_ENABLED_TASKS``) to decide
-Celery-vs-PG per task. This is orthogonal to the barrier choice above:
-the barrier is *how a batch's fan-in fires the callback*; the transport
-is *how messages travel*. Both default to Celery. The routing table is
-a scaffold today — PG-selected tasks still ride Celery (no PG consumer
-yet) — so it is observable but inert.
+:func:`~queue_backend.routing.select_backend`, which returns PG
+unconditionally since UN-4046. This is orthogonal to the barrier choice
+above: the barrier is *how a batch's fan-in fires the callback*; the
+transport is *how messages travel*. It is emphatically NOT inert — every
+dispatch rides PG and needs its consumer running, or the message is
+durably enqueued and never executed, with no error at the producer.
+(It used to read a ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list that was
+set nowhere, so everything defaulted to Celery; both are gone.)
 """
 
 import os

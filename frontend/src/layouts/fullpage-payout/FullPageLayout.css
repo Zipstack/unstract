@@ -1,4 +1,9 @@
-.container {
+/*
+ * Not `.container`: Tailwind v4 ships `container` as a utility that caps width
+ * at the current breakpoint (1536px at 2xl). This class sits on the app shell,
+ * so the collision clamped every page and left a dead strip on wider screens.
+ */
+.full-page-layout {
   background: #eceff3;
   height: 100%;
   width: 100%;

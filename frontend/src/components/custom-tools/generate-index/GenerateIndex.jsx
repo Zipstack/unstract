@@ -1,11 +1,8 @@
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  ExclamationCircleFilled,
-} from "@ant-design/icons";
-import { Col, Row, Typography } from "antd";
+import { CircleAlert, CircleCheck, CircleX } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./GenerateIndex.css";
 
@@ -43,13 +40,13 @@ function GenerateIndex({ isGeneratingIndex, result }) {
           <Col span={3}>
             <div>
               {isGeneratingIndex ? (
-                <ExclamationCircleFilled className="gen-index-progress gen-index-icon" />
+                <CircleAlert className="gen-index-progress gen-index-icon" />
               ) : (
                 <>
                   {result === "SUCCESS" ? (
-                    <CheckCircleFilled className="gen-index-success gen-index-icon" />
+                    <CircleCheck className="gen-index-success gen-index-icon" />
                   ) : (
-                    <CloseCircleFilled className="gen-index-fail gen-index-icon" />
+                    <CircleX className="gen-index-fail gen-index-icon" />
                   )}
                 </>
               )}
