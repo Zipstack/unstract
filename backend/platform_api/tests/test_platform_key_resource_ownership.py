@@ -1,16 +1,8 @@
 """A resource created through a platform key is owned by the key's creator.
 
-One case per resource that grants an OWNER row on create. They live together
-rather than in each owning app because the behaviour under test is one
-resolver's (`owner_user_for`), and the interesting part is the same everywhere:
-the middleware swaps `request.user` for a service account, and service accounts
-are filtered out of every owner surface, so granting to one leaves the resource
-with no human owner at all.
-
-Each case drives the real URLconf and middleware chain with a key minted here,
-so the swap is exercised rather than simulated. Side effects that are not part
-of the grant -- cron scheduling, API-key minting, adapter encryption -- are
-patched out; what is asserted is only who ends up on the OWNER row.
+One case per resource that grants an OWNER row on create, kept together since
+they all exercise one resolver. Each drives the real URLconf and middleware
+with a key minted here; side effects unrelated to the grant are patched out.
 """
 
 import secrets

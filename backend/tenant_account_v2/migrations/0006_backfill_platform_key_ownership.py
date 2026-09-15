@@ -1,13 +1,8 @@
-"""UN-3853: re-point service-account OWNER rows to the key's creator.
+"""Re-point service-account OWNER rows to the key's live creator.
 
-Rows written before ``owner_user_for`` existed name the key's service account.
-Every owner surface filters those out, so the resource shows no owner and only
-an org admin can manage it. This hands each one to the same successor the
-resolver picks, under the same membership rule -- a creator who has left the
-org is skipped, since granting them a fresh OWNER row would reopen the rejoin
-backdoor ``cleanup_user_org_access`` exists to close.
-
-Idempotent: a second run finds no service-account OWNER rows left to move.
+Rows written before ``owner_user_for`` existed name the service account, which
+every owner surface filters out. Skips a creator who has left the org, matching
+the resolver. Idempotent.
 """
 
 from django.db import migrations
@@ -20,8 +15,7 @@ def _forward(apps, schema_editor):
     organization_member_model = apps.get_model("tenant_account_v2", "OrganizationMember")
     platform_api_key_model = apps.get_model("platform_api", "PlatformApiKey")
 
-    # Successor per service account. Keyed off the key rows rather than
-    # ``is_service_account`` so only accounts that actually back a key move.
+    # Keyed off key rows so only accounts actually backing a key move.
     successor: dict[int, int] = {}
     for key in platform_api_key_model.objects.exclude(api_user_id=None).exclude(
         created_by_id=None
@@ -48,9 +42,8 @@ def _forward(apps, schema_editor):
             row.user_id = new_user_id
             row.save(update_fields=["user"])
             continue
-        # The creator already holds a row on this resource. Keep the stronger
-        # role and drop the service account's, so (user, content_type,
-        # object_id) is never violated -- mirrors _transfer_membership_rows.
+        # Creator already holds a row here: keep the stronger role, drop the
+        # service account's, so the uniqueness constraint holds.
         if clash.role != OWNER:
             clash.role = OWNER
             clash.save(update_fields=["role"])

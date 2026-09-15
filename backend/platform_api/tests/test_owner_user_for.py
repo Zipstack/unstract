@@ -94,17 +94,10 @@ class OwnerUserForTest(_KeyFixture, APITestCase):
         self.assertEqual(owner_user_for(service_account), service_account)
 
     def test_a_creator_who_left_the_org_leaves_the_resource_ownerless(self) -> None:
-        """Granting OWNER to an ex-member would reopen the rejoin backdoor.
-
-        ``cleanup_user_org_access`` purges a departing user's OWNER rows
-        because ``_is_resource_owner`` grants on any surviving row without
-        checking live membership. Minting a new one after that purge would
-        hand co-ownership back on re-invite.
-        """
+        """An ex-member must not be granted OWNER; it would survive re-invite."""
         creator = self._make_member()
         key = self._make_key(created_by=creator)
-        # ``_base_manager``: the default manager is org-scoped by UserContext,
-        # which is unset here, so a plain delete would match nothing.
+        # _base_manager: the default one is org-scoped and UserContext is unset.
         OrganizationMember._base_manager.filter(
             user=creator, organization=self.org
         ).delete()
@@ -124,13 +117,7 @@ class OwnerUserForTest(_KeyFixture, APITestCase):
 
 
 class KeyDeletionSuccessorTest(_KeyFixture, APITestCase):
-    """Deleting a key must not hand its rows to a departed creator.
-
-    ``delete_api_user_for_key`` re-points the service account's rows to the
-    key's creator. That is the same grant ``owner_user_for`` refuses at create
-    time, so it asks the same question -- otherwise deleting a key reopens the
-    rejoin backdoor the resolver closes.
-    """
+    """Deleting a key must not hand its rows to a departed creator."""
 
     def _owner_row_users(self, resource):
         return {m.user_id for m in resource.memberships.filter(role=ResourceRole.OWNER)}

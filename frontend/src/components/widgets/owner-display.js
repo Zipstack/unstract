@@ -1,12 +1,9 @@
-// Service-account address minted by `create_api_user_for_key`. Its owner is a
-// platform API key, not a person, so the field is labelled rather than named.
+// Service accounts live in this domain; label them rather than name them.
 const PLATFORM_KEY_EMAIL_DOMAIN = "@platform.internal";
 
 /**
- * Resolve the "Owned By" label for a resource row.
- *
- * Shared by the list table and the card views so the two cannot drift — they
- * previously disagreed on both the source field and the "Me" rule.
+ * Resolve the "Owned By" label for a resource row. Shared by the table and
+ * card views so the two cannot drift.
  *
  * @param {object} item Resource row from a list endpoint.
  * @param {object} sessionDetails Current session, for the "Me" comparison.
@@ -14,20 +11,14 @@ const PLATFORM_KEY_EMAIL_DOMAIN = "@platform.internal";
  * @return {{email: string|undefined, name: string, extra: string}}
  */
 function resolveOwnerDisplay(item, sessionDetails, ownerEmailsProp) {
-  // owner_emails is earliest-first; [0] is the primary shown owner. Fall back
-  // to created_by_email so rows with no live OWNER membership (pre-backfill
-  // rows) don't render "Unknown".
+  // Earliest owner first; created_by_email covers rows with no OWNER row.
   const ownerEmails = item?.[ownerEmailsProp ?? "owner_emails"];
   const rawEmail =
     (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
     item?.created_by_email;
-  // Suppress the synthetic address rather than dress a machine identity up as
-  // a colleague.
   const isPlatformKey = Boolean(rawEmail?.endsWith(PLATFORM_KEY_EMAIL_DOMAIN));
   const email = isPlatformKey ? undefined : rawEmail;
-  // "Me" must track the DISPLAYED owner, not the viewer's own membership —
-  // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
-  // the shown email so the creator viewing their own resource still reads "Me".
+  // Tracks the displayed owner, not the viewer's own membership.
   const isMe = Boolean(email) && email === sessionDetails?.email;
   let name = email?.split("@")[0] || "Unknown";
   if (isPlatformKey) {

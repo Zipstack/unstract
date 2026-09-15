@@ -546,10 +546,8 @@ class APIDeploymentListSerializer(ModelSerializer):
 
     def get_owner_emails(self, obj) -> list[str]:
         """Email of each owner, earliest first. Empty if none is a person."""
-        # This docstring is the published description: APIDeploymentSummary
-        # subclasses this serializer, so the field reaches platform-key callers
-        # beside the created_by_email they already received. Kept deliberately
-        # -- the UI reads the same endpoint and needs it to name the owner.
+        # Published field: APIDeploymentSummary inherits it, so it also
+        # reaches platform-key callers.
         return obj.owner_emails()
 
     # Both read the list view's annotations when they are there, and fall back

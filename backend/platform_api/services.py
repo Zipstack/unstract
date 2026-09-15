@@ -95,19 +95,10 @@ def live_key_creator(platform_api_key: PlatformApiKey) -> User | None:
 def owner_user_for(user: User) -> User:
     """Resolve the human who should own a resource created by ``user``.
 
-    A platform key authenticates as a service account, which ``owners()``,
-    ``owner_email()`` and ``owner_emails()`` all filter out, so a resource
-    granted to one names no human owner and only an org admin can manage it.
-    Attribute it to the key's creator instead — the successor
-    :func:`delete_api_user_for_key` already hands ownership to.
-
-    Returns ``user`` unchanged for a normal session, and whenever no live
-    creator can be named: no key row, a creator deleted since (``created_by``
-    is ``SET_NULL``), or a creator who has left the organization. The OWNER row
-    then goes to the service account, which the owner surfaces filter out, and
-    the UI labels the resource "Platform key".
-
-    Naming a successor is :func:`live_key_creator`'s question, not this one's.
+    Service accounts are filtered out of every owner surface, so granting to
+    one leaves no human owner; attribute it to the key's live creator instead.
+    Returns ``user`` unchanged for a normal session, or when no live creator
+    can be named -- the UI then labels the resource "Platform key".
     """
     if not getattr(user, "is_service_account", False):
         return user

@@ -110,10 +110,8 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          // Refetch rather than splice the create response: it is a summary
-          // carrying none of the owner fields the list renders, so a spliced
-          // row shows no owner until the next fetch. The response is still
-          // what the code modal needs -- only it carries the API key.
+          // Refetch: the create response is a summary without the owner
+          // fields the list renders.
           refreshList?.();
           setSelectedRow(res?.data);
           openCodeModal(true);
