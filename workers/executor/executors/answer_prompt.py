@@ -22,7 +22,6 @@ from unstract.sdk1.utils.signature_highlights import (
     merge_into_highlight_data,
     resolve_signature_highlight_coords,
 )
-from unstract.sdk1.utils.url_safety import is_safe_public_url
 
 logger = logging.getLogger(__name__)
 
@@ -431,9 +430,9 @@ class AnswerPromptService:
         if not webhook_url:
             logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
             return parsed_data, None
-        if not is_safe_public_url(webhook_url):
-            logger.warning("Postprocessing webhook URL is not allowed; skipping.")
-            return parsed_data, None
+        # No URL check here: _make_webhook_request applies the identical guard
+        # at the sink. Duplicating it only bought a second blocking getaddrinfo
+        # per prompt per document.
         try:
             return postprocess_data(
                 parsed_data,

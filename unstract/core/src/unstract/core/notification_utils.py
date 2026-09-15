@@ -11,6 +11,11 @@ from uuid import UUID
 
 import requests
 
+from unstract.core.network.ssrf import (
+    is_retryable_refusal,
+    safe_host,
+    webhook_url_refusal,
+)
 from unstract.core.notification_enums import AuthorizationType
 
 logger = logging.getLogger(__name__)
@@ -136,6 +141,34 @@ def send_webhook_request(
     Raises:
         requests.exceptions.RequestException: If request fails after all retries
     """
+    # Guard at the sink, not at the callers, so no future caller can skip it.
+    refusal = webhook_url_refusal(url)
+    if refusal is not None:
+        # A resolver outage clears on its own, so that one stays retryable.
+        # Every other reason is a property of the URL and cannot change between
+        # attempts — retrying it wastes an attempt (and, when the refusal came
+        # from resolution, a DNS lookup on a tenant-supplied hostname) without
+        # ever changing the outcome, and delays dead-lettering.
+        retryable = is_retryable_refusal(refusal)
+        logger.error(
+            "Refusing webhook: %s (host=%s, retryable=%s)",
+            refusal,
+            safe_host(url),
+            retryable,
+        )
+        return {
+            "success": False,
+            "error": (
+                "Webhook URL could not be resolved"
+                if retryable
+                else "Webhook URL is not an allowed public destination"
+            ),
+            "refusal_reason": refusal,
+            "retryable": retryable,
+            "attempts": current_retry + 1,
+            "url": url,
+        }
+
     # Serialize payload to handle UUIDs and datetimes
     serialized_payload = serialize_notification_data(payload)
 
@@ -143,7 +176,13 @@ def send_webhook_request(
         logger.debug(f"Sending webhook to {url} (attempt {current_retry + 1})")
 
         response = requests.post(
-            url=url, json=serialized_payload, headers=headers or {}, timeout=timeout
+            url=url,
+            json=serialized_payload,
+            headers=headers or {},
+            timeout=timeout,
+            # A 302 to an internal host would otherwise be followed, and
+            # 302/303 rewrites POST to GET.
+            allow_redirects=False,
         )
 
         # Check response status
