@@ -49,10 +49,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
-    # Backward compat: workers may call without X-Organization-ID during
-    # rolling deployments. Safe because internal APIs require service API key
-    # and get_queryset() applies org filtering when header is present.
-    # Remove once all workers reliably pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
+    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
+    # therefore required in practice: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):

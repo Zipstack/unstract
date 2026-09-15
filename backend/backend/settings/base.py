@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -670,23 +671,45 @@ SPECTACULAR_SETTINGS = {
             "deploymentKey": {
                 "type": "http",
                 "scheme": "bearer",
-                "description": "The API deployment's own key.",
-            }
+                "description": (
+                    "A key that runs an API deployment: the deployment's own "
+                    "key, or a global API deployment key with access to it."
+                ),
+            },
+            "platformKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "An organisation-wide platform API key, minted under "
+                    "Settings. It carries the organisation it belongs to, but "
+                    "cannot execute an API deployment."
+                ),
+            },
         }
     },
     # Without this the enum component is named after the field that holds it,
     # and generated clients get a class called `TypeEnum`.
-    "ENUM_NAME_OVERRIDES": {"ErrorType": "api_v2.openapi_schema.ERROR_TYPES"},
+    "ENUM_NAME_OVERRIDES": {
+        "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
+        "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+    },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
     "TAGS": [
         {
             "name": "deployment",
             "description": (
-                "Run an API deployment against one or more documents and poll "
-                "the result."
+                "Discover an organisation's API deployments, run one against "
+                "one or more documents, and poll the result."
             ),
-        }
+        },
+        {
+            "name": "identity",
+            "description": (
+                "Resolve what a platform API key is scoped to, so a client can "
+                "discover its organisation rather than being told it."
+            ),
+        },
     ],
 }
 
@@ -709,8 +732,29 @@ WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
-# These path will work without organization in request
-ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
+# These path will work without organization in request.
+# `whoami` resolves the organisation from the API key itself, so it carries no
+# organisation segment -- without this the middleware would read `whoami` as one.
+# Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
+# Anchored: `re.match` is a prefix test, so without the `$` an organisation
+# literally named `whoami` would have its entire API treated as organisation-less.
+#
+# Built from TENANT_SUBFOLDER_PREFIX rather than re-spelling the mount: if the
+# mount moves, a second literal here would silently stop matching and every
+# organisation-less `whoami` call would start answering 403, with no startup
+# error and no failing test. `re.escape` because PATH_PREFIX comes from the
+# environment and would otherwise be interpreted as a pattern.
+#
+# Adding an entry to this list disarms BOTH organisation guards in
+# CustomAuthMiddleware for that path -- the key-belongs-to-org check at the
+# Bearer branch and the org-access-denied check on the session branch -- because
+# each is conditioned on `request.organization_id` being truthy and this branch
+# sets it to None. `whoami` is safe because its view derives the organisation
+# from the key row and refuses a session caller outright; a new entry inherits
+# neither of those properties by default.
+ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
+    rf"^/{re.escape(TENANT_SUBFOLDER_PREFIX)}/whoami/$",
+]
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"

@@ -29,6 +29,13 @@ class ToolStudioPromptSerializer(AuditSerializer):
         # View owns uniqueness (IntegrityError->DuplicateData on create); drop
         # the DRF auto-validator that 400s on re-save / PUT before the view runs.
         validators = []
+        # Prompts and LLM output legitimately contain XML-like markup.
+        html_safe_fields = (
+            "prompt",
+            "assert_prompt",
+            "assertion_failure_prompt",
+            "output",
+        )
 
 
 class ToolStudioIndexSerializer(serializers.Serializer):

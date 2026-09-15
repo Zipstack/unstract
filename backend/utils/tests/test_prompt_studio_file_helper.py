@@ -1,4 +1,4 @@
-"""Tests for the streaming write helper."""
+"""Tests for the streaming write helper and the IDE file delete."""
 
 from __future__ import annotations
 
@@ -313,3 +313,70 @@ def test_close_failure_after_write_error_does_not_mask_original(
 
     assert failing.closed == 1
     assert storage.fs.rm_calls == ["/p/file.pdf"]
+
+
+# --- delete_for_ide: idempotent on the source file ------------------------
+#
+# Callers delete the object-store file *before* the DocumentManager row, so a
+# failed file delete leaves a row worth retrying. The residue in the other
+# direction — file gone, row delete failed — then retries against a path that
+# is no longer there. An unguarded rm() raises FileNotFoundError on the usual
+# fsspec backends, the view's broad except turns that into "File deletion
+# failed" (400), and the row can never be deleted through the endpoint again.
+
+
+class _DeleteFs:
+    """Minimal fsspec stand-in: rm() raises on a path that is not there."""
+
+    def __init__(self, existing: list[str]) -> None:
+        self.existing = set(existing)
+        self.removed: list[str] = []
+
+    def exists(self, path: str) -> bool:
+        return path in self.existing
+
+    def rm(self, path: str) -> None:
+        if path not in self.existing:
+            raise FileNotFoundError(path)
+        self.existing.remove(path)
+        self.removed.append(path)
+
+    def glob(self, pattern: str) -> list[str]:
+        return []
+
+
+def _delete_with(fs: _DeleteFs):
+    from unittest.mock import patch
+
+    from utils.file_storage.helpers.prompt_studio_file_helper import (
+        PromptStudioFileHelper,
+    )
+
+    module = "utils.file_storage.helpers.prompt_studio_file_helper"
+    with (
+        patch(f"{module}.EnvHelper.get_storage", return_value=fs),
+        patch.object(
+            PromptStudioFileHelper,
+            "get_or_create_prompt_studio_subdirectory",
+            return_value="/base",
+        ),
+    ):
+        return PromptStudioFileHelper.delete_for_ide(
+            org_id="org", user_id="user", tool_id="tool", file_name="invoice.pdf"
+        )
+
+
+def test_delete_for_ide_removes_the_source_file() -> None:
+    """Without this, a guard that skipped everything would pass below."""
+    fs = _DeleteFs(["/base/invoice.pdf"])
+
+    assert _delete_with(fs) is True
+    assert fs.removed == ["/base/invoice.pdf"]
+
+
+def test_delete_for_ide_is_idempotent_when_the_source_is_already_gone() -> None:
+    """The retry after a partial failure has to be able to reach the row."""
+    fs = _DeleteFs([])
+
+    assert _delete_with(fs) is True
+    assert fs.removed == []

@@ -10,70 +10,14 @@ method when the plugin is installed.  Challenge and evaluation plugins
 are integrated at the caller level (LegacyExecutor).
 """
 
-import ipaddress
 import logging
 import os
-import socket
 from typing import Any
-from urllib.parse import urlparse
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_host_addresses(host: str) -> set[str]:
-    """Resolve a hostname or IP string to a set of IP address strings."""
-    try:
-        ipaddress.ip_address(host)
-        return {host}
-    except ValueError:
-        pass
-    try:
-        return {
-            sockaddr[0]
-            for _family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-                host, None, type=socket.SOCK_STREAM
-            )
-        }
-    except Exception:
-        return set()
-
-
-def _is_safe_public_url(url: str) -> bool:
-    """Validate webhook URL for SSRF protection.
-
-    Only allows HTTPS and blocks private/loopback/internal addresses.
-    """
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("https",):
-            return False
-        host = p.hostname or ""
-        if host in ("localhost",):
-            return False
-
-        addrs = _resolve_host_addresses(host)
-        if not addrs:
-            return False
-
-        for addr in addrs:
-            try:
-                ip = ipaddress.ip_address(addr)
-            except ValueError:
-                return False
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-            ):
-                return False
-        return True
-    except Exception:
-        return False
 
 
 class AnswerPromptService:
@@ -395,9 +339,9 @@ class AnswerPromptService:
         if not webhook_url:
             logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
             return parsed_data, None
-        if not _is_safe_public_url(webhook_url):
-            logger.warning("Postprocessing webhook URL is not allowed; skipping.")
-            return parsed_data, None
+        # No URL check here: _make_webhook_request applies the identical guard
+        # at the sink. Duplicating it only bought a second blocking getaddrinfo
+        # per prompt per document.
         try:
             return postprocess_data(
                 parsed_data,

@@ -9,6 +9,8 @@ The result is cached per model class — BFS runs only once per model.
 
 import logging
 from collections import deque
+from collections.abc import Mapping
+from types import MappingProxyType
 
 from django.db import models
 
@@ -19,6 +21,50 @@ _org_path_cache: dict[type, str | None] = {}
 
 _FK_TYPES = (models.ForeignKey, models.OneToOneField)
 
+# Org paths pinned explicitly, checked before BFS. Keyed by model label
+# ("app_label.ModelName") so this module stays import-free of the models.
+#
+# BFS returns the *shortest* path and breaks ties by field declaration order.
+# Reordering two fields can therefore swap in a different path of the same
+# length, and if that path runs through a nullable FK the resulting INNER JOIN
+# silently drops every row with a NULL — data loss that reads as "missing
+# records", not as an error. Pinning freezes the path against that.
+#
+# What test_org_path_discovery actually asserts: each pin still matches what
+# BFS would pick, and every hop on it is non-nullable *unless* listed in that
+# module's KNOWN_NULLABLE_HOPS with a reason. Several pins are on that list —
+# including every terminal `organization` FK, which DefaultOrganizationMixin
+# declares null=True — so "pinned" does not mean "cannot drop rows", it means
+# "the rows it drops are known and written down".
+#
+# Precedence, for the two consumers:
+#   - OrgAwareManager always uses the pin.
+#   - OrganizationFilterBackend checks a viewset's `org_filter_paths` FIRST and
+#     only falls back to the pin. A viewset that sets it therefore scopes that
+#     model through a different join than its pin. Prefer the pin; reach for
+#     `org_filter_paths` only when a model needs OR across several nullable
+#     paths, which is why notification_v2 has it.
+# Read-only: a wrong entry here is a cross-tenant leak, so the table is not
+# something an importer should be able to reach in and change.
+ORG_PATH_OVERRIDES: Mapping[str, str] = MappingProxyType(
+    {
+        "prompt_studio_document_manager_v2.DocumentManager": "tool__organization",
+        "prompt_studio_index_manager_v2.IndexManager": (
+            "document_manager__tool__organization"
+        ),
+        "prompt_studio_output_manager_v2.PromptStudioOutputManager": (
+            "tool_id__organization"
+        ),
+        # ToolStudioPrompt.tool_id is nullable — prompts orphaned from their tool
+        # are excluded. This is the path already in force.
+        "prompt_studio_v2.ToolStudioPrompt": "tool_id__organization",
+        # Deliberately not prompt_studio_tool__organization: that FK is nullable,
+        # so it would drop tool-less profiles. vector_store is non-null and
+        # AdapterInstance is org-owned, so it scopes to the same organization.
+        "prompt_profile_manager_v2.ProfileManager": "vector_store__organization",
+    }
+)
+
 
 def get_org_path(model: type) -> str | None:
     """Get the cached FK path from a model to Organization.
@@ -26,6 +72,10 @@ def get_org_path(model: type) -> str | None:
     Returns the ORM lookup path (e.g., "wf_execution__workflow__organization")
     or None if no path exists.
     """
+    pinned = ORG_PATH_OVERRIDES.get(model._meta.label)
+    if pinned:
+        return pinned
+
     if model in _org_path_cache:
         return _org_path_cache[model]
 

@@ -419,7 +419,11 @@ services:
       # Sized for a minutes-long aggregation: stale > vt > the task's own ceiling.
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_METRICS_VT_SECONDS:-900}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_METRICS_HEALTH_STALE_SECONDS:-960}
-      # One at a time — these are global singletons, not parallel work.
+      # One at a time. Since UN-3974 split the aggregation by tier the crons can
+      # overlap (the :20 daily/monthly row against a long */15 run, and the 04:40
+      # reconcile against the 04:45 one), and the per-tier lock keys deliberately do
+      # not exclude them — so this serialises them instead. Raise to 2 if the tail
+      # delay matters more than the DB load two concurrent runs add.
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=1
       - WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS=1
     labels:
