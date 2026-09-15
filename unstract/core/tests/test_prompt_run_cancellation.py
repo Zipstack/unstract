@@ -227,3 +227,44 @@ class TestRunOwnership(unittest.TestCase):
 
     def test_an_unknown_run_has_no_owner(self):
         assert prc.run_owner("org", "never-dispatched") is None
+
+
+class TestClientBuildIsThreadSafe(unittest.TestCase):
+    """Django serves requests on several threads, so the lazily built client
+    must be built once, not once per racing thread (raised in review).
+    """
+
+    def setUp(self):
+        prc._client_singleton = None
+        prc._client_last_failure = None
+        self.addCleanup(setattr, prc, "_client_singleton", None)
+        self.addCleanup(setattr, prc, "_client_last_failure", None)
+
+    def test_racing_threads_build_the_client_once(self):
+        import threading
+        import time
+
+        builds = []
+
+        def slow_factory(**_kwargs):
+            # Widen the window so an unguarded check-then-build would race.
+            builds.append(1)
+            time.sleep(0.05)
+            return mock.MagicMock(name="redis")
+
+        barrier = threading.Barrier(8)
+        results = []
+
+        def worker():
+            barrier.wait()
+            results.append(prc._get_client())
+
+        with mock.patch.object(prc, "create_redis_client", side_effect=slow_factory):
+            threads = [threading.Thread(target=worker) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=5)
+
+        assert len(builds) == 1
+        assert len({id(r) for r in results}) == 1

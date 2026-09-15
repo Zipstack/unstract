@@ -517,9 +517,9 @@ def ide_prompt_complete(
             tool_id=tool_id,
             extra={
                 "run_id": run_id,
-                "prompt_ids": prompt_ids + cancelled_prompt_ids
-                if was_cancelled
-                else prompt_ids,
+                "prompt_ids": (
+                    (prompt_ids + cancelled_prompt_ids) if was_cancelled else prompt_ids
+                ),
                 "cancelled_prompt_ids": cancelled_prompt_ids,
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,

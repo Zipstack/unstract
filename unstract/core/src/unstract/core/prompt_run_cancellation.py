@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 import time
 from typing import Final
 
@@ -83,6 +84,10 @@ _CLIENT_RETRY_COOLDOWN_SECONDS: Final = 30.0
 
 _client_singleton: redis.Redis | None = None
 _client_last_failure: float | None = None
+# Guards the two globals above. Django serves requests on several threads, and
+# without it two can race to build the client (a duplicate) or interleave a
+# reset with a build (a reset lost). Same pattern as ``aborting._get_loop``.
+_client_lock = threading.Lock()
 
 
 def cancel_key(org_id: str, run_id: str) -> str:
@@ -172,6 +177,19 @@ def _get_client() -> redis.Redis | None:
     self-heals once the cooldown elapses.
     """
     global _client_singleton, _client_last_failure
+    # Lock-free fast path: checkpoints call this in tight per-prompt loops, and
+    # reading a module global is atomic, so the common case never contends.
+    client = _client_singleton
+    if client is not None:
+        return client
+    with _client_lock:
+        return _build_client_locked()
+
+
+def _build_client_locked() -> redis.Redis | None:
+    """Build the client. Caller must hold ``_client_lock``."""
+    global _client_singleton, _client_last_failure
+    # Re-check under the lock: another thread may have built it meanwhile.
     if _client_singleton is not None:
         return _client_singleton
     if (
@@ -213,8 +231,9 @@ def _reset_client() -> None:
     the error paths below, where a dead connection must not be reused forever).
     """
     global _client_singleton, _client_last_failure
-    _client_singleton = None
-    _client_last_failure = time.monotonic()
+    with _client_lock:
+        _client_singleton = None
+        _client_last_failure = time.monotonic()
 
 
 def request_cancel(org_id: str, run_id: str, prompt_ids: list[str] | None = None) -> bool:
