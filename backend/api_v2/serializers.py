@@ -10,6 +10,9 @@ from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from prompt_studio.vlm_utils import (
+    validate_workflow_for_deployment as validate_workflow_vlm_for_deployment,
+)
 from rest_framework import serializers
 from rest_framework.serializers import (
     BooleanField,
@@ -145,6 +148,11 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
             raise ValidationError(
                 "Destination endpoint must have a connector configured for non-API and non-manual review connections before creating an API deployment."
             )
+
+        # Image-output-mode profiles need a vision-capable LLM at run time;
+        # block deployment creation on a definitive mismatch (cloud-only
+        # check — no-op in OSS, where image mode is gated off entirely).
+        validate_workflow_vlm_for_deployment(workflow)
 
         return workflow
 
