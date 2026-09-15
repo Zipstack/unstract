@@ -27,7 +27,11 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
-from unstract.core.data_models import WorkflowTransport, WorkloadType
+from unstract.core.data_models import (
+    LEGACY_TRANSPORT_KEY,
+    LEGACY_TRANSPORT_VALUE,
+    WorkloadType,
+)
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -71,6 +75,10 @@ EXECUTION_EXCLUDED_PARAMS = {
     "hitl_queue_name",
     "hitl_packet_id",
     "custom_data",
+    # Still carried on the dispatch payload as a write-only rolling-deploy shim
+    # (LEGACY_TRANSPORT_KEY), so it must never reach the legacy
+    # ``execute_workflow`` signature, where it would raise as an unexpected kwarg.
+    # Drop this entry together with the shim's writes.
     "transport",
 }
 
@@ -620,9 +628,8 @@ class WorkflowHelper:
                 "hitl_queue_name": hitl_queue_name,
                 "hitl_packet_id": hitl_packet_id,
                 "custom_data": custom_data,
-                # Wire field the workers still branch on. PG is the only
-                # transport now; the field goes when those branches do.
-                "transport": WorkflowTransport.PG_QUEUE.value,
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
             dispatch_handle = cls._dispatch_orchestrator_task(
                 queue=queue,

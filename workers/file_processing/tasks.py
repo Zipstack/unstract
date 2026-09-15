@@ -54,7 +54,6 @@ from unstract.core.data_models import (
     FileHashData,
     PreCreatedFileData,
     WorkerFileData,
-    WorkflowTransport,
 )
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
@@ -239,10 +238,9 @@ class _TerminalExecutionSkip(Exception):
     resurrect the execution back to EXECUTING and re-run its files (double LLM /
     destination write). The batch is skipped instead.
 
-    Gated to the PG path (``is_pg``): a no-op on Celery, so the existing Celery
-    flow is behaviorally unchanged. It's PG-specific because the **reaper** that
-    marks an in-flight execution terminal (and tears its barrier down) is a
-    PG-only mechanism — the Celery chord has no equivalent.
+    The resurrection this prevents exists because the **reaper** can mark an
+    in-flight execution terminal (and tear its barrier down) while a batch for it
+    is still in flight or waiting to be redelivered.
 
     This is a validate-first *narrowing*, not a transactional guarantee: the
     status read and the later ``EXECUTING`` write are not atomic, so a reaper
@@ -260,20 +258,16 @@ class _TerminalExecutionSkip(Exception):
 
 
 def _raise_if_execution_terminal(
-    workflow_execution: dict[str, Any], execution_id: str, *, is_pg: bool
+    workflow_execution: dict[str, Any], execution_id: str
 ) -> None:
-    """PG-path-only validate-first guard: refuse to (re)process a batch whose
-    execution is already terminal. See :class:`_TerminalExecutionSkip`.
+    """Validate-first guard: refuse to (re)process a batch whose execution is
+    already terminal. See :class:`_TerminalExecutionSkip`.
 
-    No-op on the Celery path (``is_pg=False``) — the resurrection this prevents
-    is PG-specific, so gating leaves the Celery flow behaviorally unchanged. A
-    missing or unrecognized status is treated as non-terminal (fail open —
-    proceed as normal), but both are logged on the PG path so a degraded
-    execution-fetch response or a new/renamed status isn't silently masked (an
-    unrecognized terminal-ish state would otherwise let a stale batch through).
+    A missing or unrecognized status is treated as non-terminal (fail open —
+    proceed as normal), but both are logged so a degraded execution-fetch
+    response or a new/renamed status isn't silently masked (an unrecognized
+    terminal-ish state would otherwise let a stale batch through).
     """
-    if not is_pg:
-        return
     status = workflow_execution.get("status")
     if not status:
         # Fail open (proceed), but surface it — a missing status is an
@@ -319,17 +313,13 @@ def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
 
 
 def _run_batch_stages(
-    file_batch_data: dict[str, Any], celery_task_id: str, *, is_pg: bool
+    file_batch_data: dict[str, Any], celery_task_id: str
 ) -> dict[str, Any]:
     """The actual batch work (validate → setup → pre-create → process → compile).
 
-    Transport-agnostic: identical on the Celery chord path and the PG
-    fire-and-forget path. The task instance isn't needed here — its only use
-    (deriving ``celery_task_id``) happens in the caller. Returns the
-    JSON-serialisable batch result.
-
-    ``is_pg`` (keyword-only, no default so a PG call site can't silently forget
-    it) forwards to the terminal guard; see :class:`_TerminalExecutionSkip`.
+    The task instance isn't needed here — its only use (deriving
+    ``celery_task_id``) happens in the caller. Returns the JSON-serialisable
+    batch result.
     """
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
@@ -338,7 +328,7 @@ def _run_batch_stages(
     # stale/redelivered batch for an already-terminal execution — see
     # :class:`_TerminalExecutionSkip`.
     try:
-        context = _setup_execution_context(batch_data, celery_task_id, is_pg=is_pg)
+        context = _setup_execution_context(batch_data, celery_task_id)
     except _TerminalExecutionSkip as skip:
         logger.warning(
             f"[exec:{skip.execution_id}] Skipping batch of "
@@ -388,17 +378,23 @@ def _process_file_batch_core(
     )
 
     if barrier_context is None:
-        # Celery chord path — the chord's .link runs the decrement after this.
-        # is_pg=False disables the terminal guard → Celery flow unchanged.
-        return _run_batch_stages(file_batch_data, celery_task_id, is_pg=False)
+        # Every fan-out injects ``_barrier_context`` (PgBarrier._dispatch_header_pg),
+        # so this means a malformed or hand-crafted payload. Run the batch — the
+        # work is still well-defined — but say so loudly: with no barrier to
+        # decrement, nothing will fire the aggregating callback and the execution
+        # will sit until the reaper reclaims it.
+        logger.error(
+            "process_file_batch received no _barrier_context; the batch will run "
+            "but no barrier will be decremented and the aggregating callback will "
+            "never fire. This indicates a malformed payload."
+        )
+        return _run_batch_stages(file_batch_data, celery_task_id)
 
-    # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
-    # the stages, then decrement the barrier in-body / self-chain the callback.
-    # is_pg=True enables the terminal guard (skip a stale/redelivered batch for a
-    # reaper-recovered execution).
+    # Claim the batch (idempotent on redelivery), run the stages, then decrement
+    # the barrier in-body / self-chain the callback.
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_batch_stages(file_batch_data, celery_task_id, is_pg=True),
+        lambda: _run_batch_stages(file_batch_data, celery_task_id),
     )
 
 
@@ -470,24 +466,21 @@ def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatch
 
 
 def _setup_execution_context(
-    batch_data: FileBatchData, celery_task_id: str, *, is_pg: bool
+    batch_data: FileBatchData, celery_task_id: str
 ) -> WorkflowContextData:
     """Setup execution context with validation and API client initialization.
 
     Args:
         batch_data: Validated batch data
-        celery_task_id: Celery task ID for tracking
-        is_pg: Whether this batch runs on the PG (at-least-once) transport.
-            Keyword-only, no default so a PG call site can't silently forget it.
-            Enables the terminal guard; a no-op on Celery.
+        celery_task_id: Task ID for tracking
 
     Returns:
         WorkflowContextData containing type-safe execution context
 
     Raises:
         ValueError: If required context fields are missing
-        _TerminalExecutionSkip: On the PG path, if the execution is already
-            terminal (a stale/redelivered batch after reaper-recovery).
+        _TerminalExecutionSkip: If the execution is already terminal (a
+            stale/redelivered batch after reaper-recovery).
     """
     # Extract context using dataclass
     file_data = batch_data.file_data
@@ -530,7 +523,7 @@ def _setup_execution_context(
     # Validate-first terminal guard (PG only) — skip a stale/redelivered batch
     # for an already-terminal execution, before we touch status or process
     # anything. See :class:`_TerminalExecutionSkip`.
-    _raise_if_execution_terminal(workflow_execution, execution_id, is_pg=is_pg)
+    _raise_if_execution_terminal(workflow_execution, execution_id)
 
     # Set LOG_EVENTS_ID in StateStore for WebSocket messaging (critical for UI logs)
     # This enables the WorkerWorkflowLogger to send logs to the UI via WebSocket
@@ -599,18 +592,12 @@ def _setup_execution_context(
             f"File history from fallback access for workflow {workflow_id}: use_file_history = {use_file_history}"
         )
 
-    # Create type-safe workflow context. Set the transport authoritatively from
-    # is_pg (the batch-level fact) — WorkerFileData carries none — so the
-    # destination layer can apply PG-only guards.
     context_data = WorkflowContextData(
         workflow_id=workflow_id,
         workflow_name=workflow_name,
         workflow_type=workflow_type,
         execution_id=execution_id,
         organization_context=org_context,
-        transport=(
-            WorkflowTransport.PG_QUEUE.value if is_pg else WorkflowTransport.CELERY.value
-        ),
         files={
             f"file_{i}": file for i, file in enumerate(files)
         },  # Convert list to dict format
@@ -875,7 +862,6 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
             workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
             workflow_logger=workflow_logger,  # Pass workflow logger for UI logging
-            transport=context.transport,  # Drives the PG-only destination guard
         )
 
         # Handle file processing result
@@ -1645,7 +1631,6 @@ def _process_file(
     workflow_file_execution_id: str = None,
     workflow_file_execution_object: Any = None,
     workflow_logger: Any = None,
-    transport: str | None = None,
 ) -> dict[str, Any]:
     """Process a single file matching Django backend _process_file pattern.
 
@@ -1659,8 +1644,6 @@ def _process_file(
         file_hash: FileHashData instance with type-safe access
         api_client: Internal API client
         workflow_execution: Workflow execution context
-        transport: Execution transport (celery | pg_queue); drives PG-only
-            destination guards downstream.
 
     Returns:
         File execution result
@@ -1676,7 +1659,6 @@ def _process_file(
         workflow_file_execution_id=workflow_file_execution_id,
         workflow_file_execution_object=workflow_file_execution_object,
         workflow_logger=workflow_logger,
-        transport=transport,
     )
 
 
