@@ -236,13 +236,7 @@ class SharedPromptStudioProjectTests(CoOwnerOrgTestMixin, TestCase):
 
 
 class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
-    """Adding a prompt or an LLM profile is gated by access to the project.
-
-    The two halves are gated differently: ``create_prompt`` is a custom
-    ``@action`` that has to resolve the parent itself, while profiles go
-    through a plain DRF ``create`` whose parent is read from the payload in
-    ``ParentToolAccess.has_permission``.
-    """
+    """Adding a prompt or an LLM profile is gated by access to the project."""
 
     def setUp(self) -> None:
         self._seed_org()
