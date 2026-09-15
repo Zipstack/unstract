@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
-from prompt_studio.permission import PromptAcesssToUser
+from prompt_studio.permission import PromptAcesssToUser, parse_uuid
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptKeys
 from prompt_studio.prompt_studio_v2.controller import PromptStudioController
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
@@ -63,7 +63,7 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         # Routed without a pk, so DRF runs no object check of its own; resolve
         # the prompt so reordering is gated like every other write here.
         prompt = ToolStudioPrompt.objects.filter(
-            prompt_id=request.data.get(ToolStudioPromptKeys.PROMPT_ID)
+            prompt_id=parse_uuid(request.data.get(ToolStudioPromptKeys.PROMPT_ID))
         ).first()
         if prompt:
             self.check_object_permissions(request, prompt)

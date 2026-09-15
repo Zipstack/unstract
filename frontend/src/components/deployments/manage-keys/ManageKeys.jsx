@@ -279,13 +279,24 @@ const ManageKeys = ({
       align: "center",
       render: (_, record) => (
         <>
-          <Space className="actions" onClick={() => openEditModal(record)}>
-            <Tooltip title="edit" className="cursorPointer">
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && openEditModal(record)}
+          >
+            <Tooltip title={ownerOnlyTitle || "edit"} className="cursorPointer">
               <Pencil />
             </Tooltip>
           </Space>
-          <Space className="actions" onClick={() => showDeleteModal(record)}>
-            <Tooltip title="delete" className="cursorPointer">
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && showDeleteModal(record)}
+          >
+            <Tooltip
+              title={ownerOnlyTitle || "delete"}
+              className="cursorPointer"
+            >
               <Trash2 />
             </Tooltip>
           </Space>

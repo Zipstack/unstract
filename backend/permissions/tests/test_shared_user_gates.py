@@ -13,6 +13,7 @@ still caught.
 from typing import Any
 
 from account_v2.models import User
+from connector_v2.models import ConnectorInstance
 from django.test import TestCase
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin
@@ -35,10 +36,18 @@ class SharedWorkflowEndpointTests(CoOwnerOrgTestMixin, TestCase):
         )
         self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
         self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.connector = ConnectorInstance.objects.create(
+            connector_name="dest-conn",
+            connector_id="minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
+            connector_metadata={"key": "AKIA-SECRET", "secret": "s3cr3t"},
+            organization=self.org,
+            created_by=self.owner,
+        )
         self.endpoint = WorkflowEndpoint.objects.create(
             workflow=self.workflow,
             endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
             connection_type=WorkflowEndpoint.ConnectionType.FILESYSTEM,
+            connector_instance=self.connector,
         )
         self.factory = APIRequestFactory()
 
@@ -74,6 +83,18 @@ class SharedWorkflowEndpointTests(CoOwnerOrgTestMixin, TestCase):
     def test_shared_viewer_can_still_read_it(self) -> None:
         # Refusing the write must not also hide the resource.
         self.assertEqual(self._read(self.viewer).status_code, status.HTTP_200_OK)
+
+    def test_shared_viewer_does_not_receive_the_connector_credentials(self) -> None:
+        # Sharing grants read; the connector's secrets are not part of it.
+        rep = self._read(self.viewer).data
+        self.assertEqual(rep["connector_instance"]["connector_metadata"], {})
+
+    def test_owner_still_receives_the_connector_credentials(self) -> None:
+        rep = self._read(self.owner).data
+        self.assertEqual(
+            rep["connector_instance"]["connector_metadata"],
+            {"key": "AKIA-SECRET", "secret": "s3cr3t"},
+        )
 
     def test_owner_and_co_owner_can_change_it(self) -> None:
         self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
@@ -172,3 +193,97 @@ class SharedPromptStudioProjectTests(CoOwnerOrgTestMixin, TestCase):
             self.viewer, {"tool_name": "ps-project", "postamble": "echoed"}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
+    """Adding a prompt or an LLM profile is gated by access to the project.
+
+    Both are collection-level ``@action``s, so DRF never calls ``get_object()``
+    by itself and the object gate has to be reached explicitly.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+        self.tool = CustomTool.objects.create(
+            tool_name="ps-child-create",
+            description="create gate test",
+            organization=self.org,
+            created_by=self.owner,
+        )
+        self.tool.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.tool.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.factory = APIRequestFactory()
+
+    def _create_prompt(self, actor: User, **extra: Any) -> Response:
+        from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+
+        view = PromptStudioCoreView.as_view({"post": "create_prompt"})
+        payload: dict[str, Any] = {
+            "prompt_key": "p1",
+            "prompt": "extract something",
+            "tool_id": str(self.tool.pk),
+        }
+        payload.update(extra)
+        request = self.factory.post("/x/", payload, format="json")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.tool.pk))
+
+    def test_an_outsider_cannot_add_a_prompt(self) -> None:
+        from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+
+        self.assertEqual(
+            self._create_prompt(self.outsider).status_code, status.HTTP_404_NOT_FOUND
+        )
+        self.assertFalse(ToolStudioPrompt.objects.filter(tool_id=self.tool).exists())
+
+    def test_the_payload_cannot_redirect_the_prompt_to_another_project(self) -> None:
+        # The URL is authoritative: a body naming someone else's project must
+        # not decide where the row lands.
+        from prompt_studio.prompt_studio_core_v2.models import CustomTool
+        from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+
+        other = CustomTool.objects.create(
+            tool_name="not-mine",
+            description="owned by the outsider",
+            organization=self.org,
+            created_by=self.outsider,
+        )
+        other.memberships.create(user=self.outsider, role=ResourceRole.OWNER)
+
+        response = self._create_prompt(self.owner, tool_id=str(other.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(ToolStudioPrompt.objects.filter(tool_id=other).exists())
+        self.assertTrue(ToolStudioPrompt.objects.filter(tool_id=self.tool).exists())
+
+    def test_a_collaborator_can_add_a_prompt(self) -> None:
+        # Prompt Studio is shared for collaboration: prompts stay editable.
+        self.assertEqual(
+            self._create_prompt(self.viewer).status_code, status.HTTP_201_CREATED
+        )
+
+    def test_a_malformed_parent_id_is_refused_not_a_server_error(self) -> None:
+        # The gate filters a UUID column on raw request data, ahead of any
+        # serializer: an unparseable id must miss the lookup, not raise.
+        from prompt_studio.prompt_profile_manager_v2.views import ProfileManagerView
+
+        view = ProfileManagerView.as_view({"post": "create"})
+        request = self.factory.post(
+            "/x/", {"profile_name": "p", "prompt_studio_tool": "not-a-uuid"}, format="json"
+        )
+        force_authenticate(request, user=self.owner)
+        self.assertEqual(view(request).status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_a_malformed_prompt_id_on_reorder_is_not_a_server_error(self) -> None:
+        from prompt_studio.prompt_studio_v2.views import ToolStudioPromptView
+
+        view = ToolStudioPromptView.as_view({"post": "reorder_prompts"})
+        request = self.factory.post(
+            "/x/", {"prompt_id": "not-a-uuid", "start_sequence_number": 1}, format="json"
+        )
+        force_authenticate(request, user=self.owner)
+        self.assertNotEqual(
+            view(request).status_code, status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

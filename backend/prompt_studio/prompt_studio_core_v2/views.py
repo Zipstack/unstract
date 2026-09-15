@@ -936,9 +936,14 @@ class PromptStudioCoreView(
 
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
+        # Collection-level create: DRF never calls get_object() on its own, so
+        # the object gate would not run. Resolve the parent from the URL and
+        # pin it, so the payload cannot name a project the caller cannot reach.
+        prompt_studio_tool = self.get_object()
         context = super().get_serializer_context()
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
+        serializer.validated_data[ToolStudioPromptKeys.TOOL_ID] = prompt_studio_tool
         try:
             # serializer.save()
             self.perform_create(serializer)
@@ -955,18 +960,15 @@ class PromptStudioCoreView(
         context = super().get_serializer_context()
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
-        # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data.get(
-            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        # The URL is authoritative for the parent: resolving it here is what
+        # runs the object gate, and pinning it stops the payload naming another
+        # project. Also keeps perform_create() from persisting NULL and
+        # orphaning the profile from every ``filter(prompt_studio_tool=...)``.
+        prompt_studio_tool = self.get_object()
+        serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
+            prompt_studio_tool
         )
-        if not prompt_studio_tool:
-            # Write back into validated_data so perform_create() doesn't
-            # persist NULL and orphan the profile from every
-            # ``filter(prompt_studio_tool=...)`` query.
-            prompt_studio_tool = self.get_object()
-            serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
-                prompt_studio_tool
-            )
+        # Check for the maximum number of profiles constraint
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
