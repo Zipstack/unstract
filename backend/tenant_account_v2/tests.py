@@ -26,6 +26,7 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from tenant_account_v2.group_notification_service import (
+    ResourceNotFoundError,
     send_membership_changed,
     send_resource_shared,
 )
@@ -558,15 +559,155 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
         self.assertEqual(kwargs["resource_name"], "wf-1")
 
     def test_group_from_another_org_is_never_mailed(self) -> None:
+        """The foreign group's member is deliberately also an org-A member.
+
+        Users belong to any number of orgs here, so without that the group has
+        no resolvable recipients and the test passes on an empty list rather
+        than on the org filter -- green even with the filter deleted.
+        """
         other_org = Organization.objects.create(
             name="org-b", display_name="Org B", organization_id="org-b"
         )
         foreign_group = OrganizationGroup.objects.create(
             organization=other_org, name="Foreign", created_by=self.owner
         )
+        dual = _make_user("dual@example.com")
+        OrganizationMember.objects.create(organization=self.org, user=dual, role="user")
+        OrganizationMember.objects.create(organization=other_org, user=dual, role="user")
+        GroupMembership.objects.create(group=foreign_group, user=dual)
+
         for action in (ShareAction.SHARED.value, ShareAction.REVOKED.value):
             self._send(group_ids=[foreign_group.id], share_action=action)
+        self.assertEqual(self._mailed(), [])
+
+    def test_group_member_outside_the_org_is_never_mailed(self) -> None:
+        """A group row that outlives the org membership must not produce mail.
+
+        Pins the outcome, not the layer: ``OrganizationMember``'s default
+        manager is org-scoped, so deleting the explicit filter in
+        ``_live_member_users`` changes nothing. ``OrganizationGroup`` has no
+        such manager, which is why the group-level filter IS pinnable -- see
+        ``test_group_from_another_org_is_never_mailed``.
+        """
+        other_org = Organization.objects.create(
+            name="org-d", display_name="Org D", organization_id="org-d"
+        )
+        # A member of ANOTHER org, not of no org: a user with no membership row
+        # at all is excluded by the table rather than by the org clause, which
+        # would leave this test green with the filter deleted.
+        stranger = _make_user("stranger@example.com")
+        OrganizationMember.objects.create(
+            organization=other_org, user=stranger, role="user"
+        )
+        GroupMembership.objects.create(group=self.group, user=stranger)
+        set_resource_share_groups(self.workflow, [self.group.id])
+        self._send(group_ids=[self.group.id])
+        self.assertEqual(self._mailed(), [("Team", ["member@example.com"])])
+
+    def test_actor_outside_the_org_is_not_resolved(self) -> None:
+        """The actor's name and email render into the outgoing mail, so an
+        actor from another org must not resolve. Outcome-level, like the
+        recipient case above: the org-scoped manager enforces it either way.
+        """
+        other_org = Organization.objects.create(
+            name="org-e", display_name="Org E", organization_id="org-e"
+        )
+        # Again a member of another org rather than of none, so the org clause
+        # is the only thing that can exclude them.
+        foreign_actor = _make_user("foreign-actor@example.com")
+        OrganizationMember.objects.create(
+            organization=other_org, user=foreign_actor, role="user"
+        )
+        # The grant direction drops a group with no live share row, which would
+        # stop the mail before the actor is ever resolved.
+        set_resource_share_groups(self.workflow, [self.group.id])
+        send_resource_shared(
+            organization=self.org,
+            group_ids=[self.group.id],
+            actor_id=foreign_actor.pk,
+            resource_kind="workflow",
+            resource_id=str(self.workflow.pk),
+            share_action=ShareAction.SHARED.value,
+            revoked_at=None,
+        )
         self.service.send_group_resource_shared_notification.assert_not_called()
+
+    def test_resource_from_another_org_is_not_resolved(self) -> None:
+        """A resource id belonging to another org must not resolve.
+
+        For ``Workflow`` the org-scoped manager already enforces this, so this
+        pins the outcome rather than the explicit filter. That filter exists
+        for ``AgenticProject``, whose manager deliberately spans orgs -- a
+        cloud-only model, so the case it guards cannot be exercised here.
+        """
+        other_org = Organization.objects.create(
+            name="org-c", display_name="Org C", organization_id="org-c"
+        )
+        foreign_wf = Workflow.objects.create(
+            workflow_name="wf-other", organization=other_org, created_by=self.owner
+        )
+        with self.assertRaises(ResourceNotFoundError):
+            send_resource_shared(
+                organization=self.org,
+                group_ids=[self.group.id],
+                actor_id=self.owner.pk,
+                resource_kind="workflow",
+                resource_id=str(foreign_wf.pk),
+                share_action=ShareAction.SHARED.value,
+                revoked_at=None,
+            )
+        self.service.send_group_resource_shared_notification.assert_not_called()
+
+    def test_revoke_on_an_org_shared_resource_mails_nobody(self) -> None:
+        """Nobody lost access, so nobody is told.
+
+        The short-circuit that skips hydrating every org member to reach this
+        answer is an optimisation, not a behaviour change -- removing it leaves
+        this assertion green. Only a query count would pin that half.
+        """
+        self.workflow.shared_to_org = True
+        self.workflow.save(update_fields=["shared_to_org"])
+        self._send(group_ids=[self.group.id], share_action=ShareAction.REVOKED.value)
+        self.assertEqual(self._mailed(), [])
+
+    def test_revoke_does_not_tell_an_owner_they_lost_access(self) -> None:
+        """Owners sit outside ``compute_effective_members``, so they have to be
+        added back explicitly or an owner inside a revoked group is mailed a
+        false removal notice.
+        """
+        GroupMembership.objects.create(group=self.group, user=self.owner)
+        self._send(group_ids=[self.group.id], share_action=ShareAction.REVOKED.value)
+        self.assertEqual(self._mailed(), [("Team", ["member@example.com"])])
+
+    def test_membership_removal_is_mailed_as_a_removal(self) -> None:
+        """The ADDED direction was the only one exercised, so hardcoding the
+        action passed every test while telling removed users they were added.
+        """
+        send_membership_changed(
+            organization=self.org,
+            group_id=self.group.id,
+            actor_id=self.owner.pk,
+            membership_action=MembershipAction.REMOVED.value,
+            user_ids=[self.member.pk],
+        )
+        kwargs = self.service.send_group_membership_notification.call_args.kwargs
+        self.assertEqual(kwargs["membership_action"], "removed")
+
+    def test_membership_recipients_are_revalidated_against_the_org(self) -> None:
+        """Leaving a group does not remove someone from the org, and leaving the
+        org does not delete their group rows -- so the recipient list is filtered
+        on OrganizationMember rather than taken from the payload.
+        """
+        stranger = _make_user("ex@example.com")
+        send_membership_changed(
+            organization=self.org,
+            group_id=self.group.id,
+            actor_id=self.owner.pk,
+            membership_action=MembershipAction.REMOVED.value,
+            user_ids=[self.member.pk, stranger.pk],
+        )
+        kwargs = self.service.send_group_membership_notification.call_args.kwargs
+        self.assertEqual([u.email for u in kwargs["recipients"]], ["member@example.com"])
 
     def test_revoke_skips_members_who_joined_after_the_cutoff(self) -> None:
         revoked_at = timezone.now()
