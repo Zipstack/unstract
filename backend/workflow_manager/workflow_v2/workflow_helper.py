@@ -27,7 +27,11 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
-from unstract.core.data_models import WorkloadType
+from unstract.core.data_models import (
+    LEGACY_TRANSPORT_KEY,
+    LEGACY_TRANSPORT_VALUE,
+    WorkloadType,
+)
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -71,11 +75,10 @@ EXECUTION_EXCLUDED_PARAMS = {
     "hitl_queue_name",
     "hitl_packet_id",
     "custom_data",
-    # Retained after UN-4078 removed the field from the dispatch payload. During
-    # a rolling deploy an un-upgraded producer can still emit it, and without the
-    # exclusion it would reach the legacy ``execute_workflow`` signature as an
-    # unexpected kwarg and raise. Safe to drop once no pre-UN-4078 producer can
-    # still be running.
+    # Still carried on the dispatch payload as a write-only rolling-deploy shim
+    # (LEGACY_TRANSPORT_KEY), so it must never reach the legacy
+    # ``execute_workflow`` signature, where it would raise as an unexpected kwarg.
+    # Drop this entry together with the shim's writes.
     "transport",
 }
 
@@ -625,6 +628,8 @@ class WorkflowHelper:
                 "hitl_queue_name": hitl_queue_name,
                 "hitl_packet_id": hitl_packet_id,
                 "custom_data": custom_data,
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
             dispatch_handle = cls._dispatch_orchestrator_task(
                 queue=queue,

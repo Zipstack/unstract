@@ -18,6 +18,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from tool_instance_v2.models import ToolInstance
 
+from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
@@ -325,6 +326,8 @@ def create_workflow_execution(request):
                 "execution_id": str(execution.id),
                 "status": execution.status,
                 "execution_log_id": execution.execution_log_id,  # Return for workers to use
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
         )
 

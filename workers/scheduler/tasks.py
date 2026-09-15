@@ -39,6 +39,8 @@ from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
 
 from unstract.core.data_models import (
+    LEGACY_TRANSPORT_KEY,
+    LEGACY_TRANSPORT_VALUE,
     NotificationPayload,
     NotificationSource,
 )
@@ -182,6 +184,8 @@ def _execute_scheduled_workflow(
                 kwargs={
                     "use_file_history": context.use_file_history,
                     "pipeline_id": context.pipeline_id,
+                    # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                    LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
                 },
                 queue=QueueName.GENERAL,
                 # Stated explicitly rather than left to select_backend(): the whole

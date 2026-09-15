@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
 
 from .fairness import FairnessKey
 from .handle import BarrierHandle
@@ -118,6 +118,9 @@ class CallbackDescriptor(TypedDict):
     kwargs: dict[str, Any]
     queue: str
     fairness_headers: dict[str, Any] | None
+    # Write-only rolling-deploy shim, see LEGACY_TRANSPORT_KEY in
+    # unstract.core.data_models. Read by pre-UN-4078 workers only.
+    transport: NotRequired[str]
 
 
 class BarrierContext(TypedDict):

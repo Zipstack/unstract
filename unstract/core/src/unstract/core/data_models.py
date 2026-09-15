@@ -200,6 +200,16 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
+# Rolling-deploy shim (UN-4078): nothing reads this key any more, but it is still
+# WRITTEN for one release. A pre-UN-4078 worker treats an absent ``transport`` as
+# "celery" and publishes the fan-out / callback to RabbitMQ, which has no consumers,
+# so during the rollout window an old pod receiving a new producer's payload would
+# strand the execution. Remove every write of this key in the release after UN-4078,
+# once no pre-UN-4078 worker can still be running.
+LEGACY_TRANSPORT_KEY = "transport"
+LEGACY_TRANSPORT_VALUE = "pg_queue"
+
+
 class WorkloadType(StrEnum):
     """Workflow-execution workload class (fairness L2). Binary api-vs-not.
 

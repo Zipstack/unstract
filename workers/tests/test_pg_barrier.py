@@ -771,6 +771,22 @@ class TestPgBarrierEnqueue:
         for i, call in enumerate(mock_dispatch.call_args_list):
             assert call.kwargs["kwargs"]["_barrier_context"]["batch_index"] == i
 
+    def test_callback_descriptor_still_carries_legacy_transport(self, barrier_db):
+        # Rolling-deploy shim (UN-4078): a pre-UN-4078 file-processing pod reads
+        # callback_descriptor["transport"] and fires the callback via Celery when
+        # it is absent. Must stay written until the release after UN-4078.
+        task, _ = _mock_header_task()
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            PgBarrier().enqueue(
+                [task],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-LT"},
+                callback_queue="general",
+                app_instance=None,
+            )
+        ctx = mock_dispatch.call_args.kwargs["kwargs"]["_barrier_context"]
+        assert ctx["callback_descriptor"]["transport"] == "pg_queue"
+
     def test_enqueue_sets_expires_cap_and_fresh_progress(self, barrier_db, monkeypatch):
         # enqueue stamps expires_at = now()+ttl (the absolute cap) AND
         # last_progress_at = now() (fresh), so a just-enqueued barrier is neither

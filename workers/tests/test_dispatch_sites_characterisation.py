@@ -220,12 +220,13 @@ class TestSchedulerDispatchSite:
         assert args[4] is True  # scheduled flag (always True here)
 
     def test_dispatch_kwargs_layout(self):
-        """Kwargs MUST contain exactly use_file_history and pipeline_id.
+        """Kwargs MUST contain exactly use_file_history, pipeline_id and the
+        write-only ``transport`` shim.
 
-        The ``transport`` payload field is gone (UN-4078). Asserting the whole
-        dict rather than individual keys is deliberate: it fails if a stray key
-        is reintroduced, which is what a half-reverted transport field would
-        look like.
+        Nothing reads ``transport`` after UN-4078, but a pre-UN-4078 general
+        worker falls back to Celery when it is absent, so it stays written for
+        one release. Asserting the whole dict is deliberate: it fails on a stray
+        key, and it fails if the shim is dropped too early.
         """
         from scheduler.tasks import _execute_scheduled_workflow
 
@@ -239,14 +240,15 @@ class TestSchedulerDispatchSite:
         assert kwargs == {
             "use_file_history": True,
             "pipeline_id": "pipe-007",
+            "transport": "pg_queue",
         }
 
     def test_dispatch_ignores_a_transport_field_from_the_backend(self):
-        """A stale backend still returning ``transport`` must not resurrect it.
+        """A ``transport`` value from the backend response is never forwarded.
 
-        During a rolling deploy an un-upgraded backend can still put the field in
-        its create-execution response. It must be ignored outright rather than
-        threaded into the payload, where a consumer might branch on it.
+        The payload carries the constant ``pg_queue`` shim regardless of what the
+        create-execution response says, so a stale ``"celery"`` cannot reach an
+        un-upgraded consumer that still branches on it.
         """
         from scheduler.tasks import _execute_scheduled_workflow
 
@@ -259,7 +261,7 @@ class TestSchedulerDispatchSite:
         with patch("scheduler.tasks.dispatch") as mock_dispatch:
             _execute_scheduled_workflow(api, self._make_context())
 
-        assert "transport" not in mock_dispatch.call_args.kwargs["kwargs"]
+        assert mock_dispatch.call_args.kwargs["kwargs"]["transport"] == "pg_queue"
         assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
 
     def test_backend_is_always_pg(self):

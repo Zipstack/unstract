@@ -74,6 +74,8 @@ import psycopg2
 import psycopg2.errors
 import psycopg2.extensions
 
+from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
+
 from .barrier import (
     BarrierContext,
     CallbackDescriptor,
@@ -595,6 +597,8 @@ class PgBarrier:
                 "kwargs": callback_kwargs,
                 "queue": callback_queue,
                 "fairness_headers": fairness_headers,
+                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
             }
             # expires_at = absolute orphan cap (6h). last_progress_at = now() (the
             # reaper's fast stuck signal, re-stamped on every decrement).
