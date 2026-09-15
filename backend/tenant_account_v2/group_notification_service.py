@@ -98,7 +98,7 @@ def send_resource_shared(
             shared.type,
         )
         return
-    retained = _retained_user_ids(shared.instance, share_action)
+    retained = _retained_user_ids(organization, shared.instance, share_action)
     if retained is None:
         return
     for group in _groups_to_mail(organization, group_ids, shared.instance, share_action):
@@ -193,35 +193,41 @@ def _get_user(organization: Organization, user_id: int) -> User | None:
     return member.user if member else None
 
 
-def _retained_user_ids(resource: Any, share_action: str) -> set[int] | None:
+def _retained_user_ids(
+    organization: Organization, resource: Any, share_action: str
+) -> set[int] | None:
     """Users who still reach ``resource``; empty on the share direction.
 
-    A revoked group's members may keep access through another group, a direct
-    share or an org-wide share — telling them it was removed would be wrong,
-    and the revoke email also repoints their CTA at the dashboard. Owners sit
-    outside ``compute_effective_members`` by design, so add them back: an owner
-    in the revoked group has lost nothing.
+    A revoked group's members may keep access by a route the revoke did not
+    touch — another group, a direct share, ownership, or being an org admin,
+    who reaches every resource in the org. Telling any of them their access was
+    removed would be wrong, and the revoke email also repoints their CTA at the
+    dashboard. ``compute_effective_members`` covers the share routes only, so
+    owners and admins are added back explicitly.
 
-    ``None`` means an org-wide share still covers everyone, so the caller skips
-    the fan-out entirely.
+    ``None`` means access never depended on the share at all, so the caller
+    skips the fan-out entirely.
     """
     if share_action != ShareAction.REVOKED.value:
         return set()
-    if getattr(resource, "shared_to_org", False):
-        # Org-wide share still covers everyone — nobody lost access, and
-        # answering it via ``compute_effective_members`` would hydrate every
-        # member of the org to say so (same guard as the direct-share path).
+    from tenant_account_v2.sharing_helpers import (
+        access_survives_share_changes,
+        compute_effective_members,
+        org_admin_user_ids,
+    )
+
+    if access_survives_share_changes(resource):
         logger.info(
-            "group-notification: revoke on an org-shared resource %s — "
-            "nobody lost access, no mail",
+            "group-notification: revoke on %s, whose access does not depend on "
+            "shares — nobody lost access, no mail",
             resource.pk,
         )
         return None
-    from tenant_account_v2.sharing_helpers import compute_effective_members
 
-    return {member["user_id"] for member in compute_effective_members(resource)} | {
+    retained = {member["user_id"] for member in compute_effective_members(resource)} | {
         owner.pk for owner in resource.owners()
     }
+    return retained | org_admin_user_ids(organization)
 
 
 def _groups_to_mail(

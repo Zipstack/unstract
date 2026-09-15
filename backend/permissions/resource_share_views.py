@@ -68,14 +68,22 @@ def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
     """
     if not users:
         return []
-    if getattr(instance, "shared_to_org", False):
-        # Org-wide share still covers everyone — nobody lost access, and
-        # answering it via ``compute_effective_members`` would hydrate every
-        # member of the org to say so.
+    from tenant_account_v2.sharing_helpers import (
+        access_survives_share_changes,
+        compute_effective_members,
+        org_admin_user_ids,
+    )
+
+    if access_survives_share_changes(instance):
+        # Org-wide or frictionless: access never depended on the share, so
+        # nobody lost anything — and answering it via
+        # ``compute_effective_members`` would hydrate the whole org to say so.
         return []
-    from tenant_account_v2.sharing_helpers import compute_effective_members
 
     retained = {member["user_id"] for member in compute_effective_members(instance)}
+    # Admins are outside compute_effective_members but ``for_user`` hands them
+    # every resource in the org, so a revoke takes nothing from them.
+    retained |= org_admin_user_ids(getattr(instance, "organization", None))
     return [user for user in users if user.pk not in retained]
 
 

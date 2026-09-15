@@ -679,6 +679,22 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
         self._send(group_ids=[self.group.id], share_action=ShareAction.REVOKED.value)
         self.assertEqual(self._mailed(), [("Team", ["member@example.com"])])
 
+    def test_revoke_does_not_tell_an_org_admin_they_lost_access(self) -> None:
+        """An admin reaches every resource in the org via ``for_user``, so a
+        revoke takes nothing from them.
+
+        The admin ROLE STRING differs between the OSS and auth0 auth plugins,
+        so the predicate is patched rather than resolved for real.
+        """
+        GroupMembership.objects.create(group=self.group, user=self.admin)
+        with patch(
+            "account_v2.authentication_controller.AuthenticationController"
+            ".is_admin_by_role",
+            side_effect=lambda role: role == "admin",
+        ):
+            self._send(group_ids=[self.group.id], share_action=ShareAction.REVOKED.value)
+        self.assertEqual(self._mailed(), [("Team", ["member@example.com"])])
+
     def test_membership_removal_is_mailed_as_a_removal(self) -> None:
         """The ADDED direction was the only one exercised, so hardcoding the
         action passed every test while telling removed users they were added.

@@ -261,6 +261,36 @@ def serialize_owner_refs(resource_obj: Any) -> list[dict[str, Any]]:
     return [{"id": user.pk, "email": user.email} for user in resource_obj.owners()]
 
 
+def access_survives_share_changes(resource_obj: Any) -> bool:
+    """True when access to ``resource_obj`` does not depend on shares at all.
+
+    Revoking a share removes nothing in that case, so nobody should be told it
+    did. ``shared_to_org`` covers every org member; ``is_friction_less`` is the
+    adapter equivalent -- ``AdapterInstance.for_user`` admits it unconditionally.
+    """
+    return bool(getattr(resource_obj, "shared_to_org", False)) or bool(
+        getattr(resource_obj, "is_friction_less", False)
+    )
+
+
+def org_admin_user_ids(organization: Any) -> set[int]:
+    """Users who reach every resource in ``organization`` as admins.
+
+    ``for_user`` returns the whole queryset for an org admin, so a revoke never
+    takes their access away and they must not be mailed about losing it. The
+    role STRING is plugin-dependent (it differs between the OSS and auth0
+    plugins), so this goes through the auth controller rather than comparing to
+    a literal.
+    """
+    from account_v2.authentication_controller import AuthenticationController
+
+    controller = AuthenticationController()
+    rows = OrganizationMember.objects.filter(organization=organization).values_list(
+        "user_id", "role"
+    )
+    return {uid for uid, role in rows if controller.is_admin_by_role(role)}
+
+
 def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     """Compute effective members of a shareable resource.
 
