@@ -60,9 +60,9 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     // callers pass the token captured BEFORE their POSTs so a modal switch
     // during the mutation itself is caught too, not just one mid-refresh.
     // Returns the verdict rather than leaving each caller to re-derive it:
-    // "stale" (superseded — touch no shared state), "gone" (404, alert already
-    // raised), "error" (refresh failed, alert already raised, roster
-    // unverified), "ok" (proceed).
+    // "stale" (a later modal superseded this one), "gone" (404), "error"
+    // (refresh failed; roster unverified), "ok". "gone" and "error" have both
+    // already raised their own alert.
     async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
@@ -173,12 +173,21 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         // page-scoped rather than modal-scoped. ("gone" already refreshed it.)
         onListRefresh?.();
       }
-      if (outcome !== "ok") {
-        // "stale": the user has opened another resource, so closing or
-        // alerting would hit that one. "gone"/"error": an alert is already
-        // standing, and a summary on top of it would only mislead.
-        return outcome === "gone";
+      if (outcome === "stale") {
+        // The user has opened another resource, so closing this modal or
+        // alerting would hit that one instead.
+        return false;
       }
+      if (outcome === "gone") {
+        // The refresh closed the modal and raised its own alert; a summary on
+        // top of it would only mislead.
+        return true;
+      }
+      // "ok" and "error" both fall through: the mutations landed either way and
+      // their outcomes are known without the refresh. Staying silent on "error"
+      // would leave the modal open on a stale roster whose staged diff still
+      // looks unapplied, and a second Apply would re-post mutations the backend
+      // has already accepted -- reporting every one as a failure.
       setAlertDetails(
         buildApplyAlert(
           addUsers,

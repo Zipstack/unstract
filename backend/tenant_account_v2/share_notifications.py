@@ -105,8 +105,9 @@ def _notify_group_share(
     kind = kind_for_instance(resource)
     if not organization_id or kind is None:
         # Neither is a routine skip: a shareable resource always resolves an
-        # org, and a kind the registry does not carry means the resource
-        # reached a share endpoint it was never registered for.
+        # org, and the share endpoint accepts ``shared_groups`` for any host
+        # viewset, so an unregistered kind means a group share landed on a
+        # resource this feature cannot mail about.
         logger.warning(
             "group-notification: skipping %s share for %s %s "
             "(organization=%s kind=%s)",
@@ -200,7 +201,7 @@ def _dispatch_quietly(
         )
     except Exception:
         logger.exception(
-            "group-notification: failed to dispatch %s for org %s",
+            "metric=group_notification_enqueue_failed_total task=%s org_id=%s",
             task_name,
             organization_id,
         )

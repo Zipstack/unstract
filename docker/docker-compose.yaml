@@ -589,8 +589,9 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_NOTIFICATION_CONCURRENCY:-2}
       # Log publisher — see the note on the backend service (UN-4046).
       - LOG_TRANSPORT=redis
-      # Up to 3 outbound HTTP POSTs per task (group-notification retries, ~274s
-      # worst case). VT sits above a slow subscriber so a
+      # Several outbound HTTP POSTs per task -- the group-notification retry
+      # budget is derived at ``_GROUP_NOTIFICATION_ATTEMPTS`` in
+      # workers/notification/tasks.py. VT sits above a slow subscriber so a
       # sibling replica cannot re-claim mid-POST and double-deliver; health-stale
       # above that. Mirrors the chart's workerPgNotification bounds.
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_NOTIFICATION_VT_SECONDS:-300}

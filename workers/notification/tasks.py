@@ -510,14 +510,16 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 # Retries for a transient backend problem (restart, 5xx). Kept inside the task
 # so a brief blip is absorbed here rather than costing a full lease-expiry
 # redelivery (minutes) plus one of the consumer's bounded attempts.
-#
-# These two bound the task's wall time, which must stay under the consumer's
-# visibility timeout (300s): ``HTTPTransport(retries=2)`` retries the CONNECT,
-# so one post is up to 3 x 30s; three attempts, the sleeps, and httpcore's own
-# 0.5s/1.0s connect backoff reach ~278s. Check that budget before raising
-# either constant or the per-post timeout.
 _GROUP_NOTIFICATION_ATTEMPTS = 3
 _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
+# Per-phase, because httpx has NO whole-request timeout: a scalar timeout is
+# applied to connect, write and read separately, so each can spend it in full.
+# The loop below is the only retry -- ``HTTPTransport(retries=2)`` would retry
+# the connect phase *inside* one post, stacking its own timeouts under these.
+# Sum x _GROUP_NOTIFICATION_ATTEMPTS must stay under the consumer's visibility
+# timeout (300s) or a sibling re-claims the message mid-fan-out, and under
+# health-stale (360s) or the pod is restarted mid-task.
+_GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
 
 
 def _post_group_notification(endpoint: str, organization_id: str, payload: dict) -> None:
@@ -553,8 +555,22 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     last_error = ""
     for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
         try:
-            with httpx.Client(transport=httpx.HTTPTransport(retries=2)) as client:
-                response = client.post(url, headers=headers, json=payload, timeout=30.0)
+            with httpx.Client() as client:
+                response = client.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=_GROUP_NOTIFICATION_TIMEOUT,
+                )
+        except (httpx.ReadTimeout, httpx.WriteTimeout) as e:
+            # The request reached the backend, and the backend does not stop
+            # when we disconnect. Its outcome is unknown, and the send path has
+            # no checkpoint, so re-posting re-mails every group that already
+            # succeeded. End the in-process attempts like a sub-500 does.
+            # (The queue can still redeliver; only an idempotency key on the
+            # handler would bound that, which this PR does not add.)
+            last_error = f"timeout_after_send={e!r}"
+            break
         except Exception as e:  # noqa: BLE001
             last_error = f"exception={e!r}"
         else:
@@ -572,6 +588,12 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
                 last_error,
             )
             time.sleep(_GROUP_NOTIFICATION_RETRY_DELAY)
+    logger.error(
+        "metric=group_notification_post_failed_total endpoint=%s org_id=%s error=%s",
+        endpoint,
+        organization_id,
+        last_error,
+    )
     raise RuntimeError(f"Group notification {endpoint} failed: {last_error}")
 
 

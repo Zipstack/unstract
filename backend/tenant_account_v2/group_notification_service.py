@@ -74,7 +74,7 @@ def send_resource_shared(
     actor_id: int,
     resource_kind: str,
     resource_id: str,
-    share_action: str = ShareAction.SHARED.value,
+    share_action: str,
     revoked_at: datetime | None = None,
 ) -> None:
     """Mail every current member of each group whose resource access changed.

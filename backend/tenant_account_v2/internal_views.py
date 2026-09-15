@@ -5,9 +5,8 @@ notification worker calls these because ``workers/`` has no Django and every
 step of the send — group expansion, org re-validation, resource lookup, the
 email plugin — needs it.
 
-Failure contract: **any** unhandled problem must surface as non-2xx so the
-worker retries. The one deliberate exception is a resource that no longer
-exists, which returns 200 — retrying that can only fail again.
+An unhandled problem surfaces as non-2xx so the worker retries. Cases that a
+retry cannot help are answered 200 at the site that recognises them.
 """
 
 import logging
