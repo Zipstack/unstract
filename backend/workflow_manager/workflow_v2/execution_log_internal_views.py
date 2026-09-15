@@ -16,6 +16,9 @@ from workflow_manager.workflow_v2.execution_log_utils import (
     process_log_history_from_cache,
 )
 from workflow_manager.workflow_v2.models import WorkflowExecution
+from workflow_manager.workflow_v2.undispatched_sweep import (
+    sweep_undispatched_executions,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +171,36 @@ class ProcessLogHistoryAPIView(APIView):
 
         except Exception as e:
             logger.error(f"Error processing log history: {e}", exc_info=True)
+            return Response(
+                {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+class SweepUndispatchedExecutionsAPIView(APIView):
+    """Terminalise executions that were created but never dispatched.
+
+    Called by the PG-queue reaper on its sweep tick. The reaper owns *when* — it is
+    leader-elected, so exactly one instance sweeps — and the backend owns the *logic*,
+    mirroring ProcessLogHistoryAPIView above.
+
+    It lives here rather than in the reaper because the reaper deliberately never
+    touches backend tables: it reads execution state through
+    ``get_workflow_execution`` and writes through ``update_workflow_execution_status``.
+    A ``WorkflowExecution`` query inside the worker would break that boundary, and the
+    sweep also needs the rate limiter — both backend-side.
+
+    Transport-agnostic on purpose: the create-then-dispatch window sits upstream of
+    transport selection, so this still recovers strands left by the pre-UN-4046
+    Celery path.
+    """
+
+    def post(self, request: Request) -> Response:
+        """Run one sweep. Returns the number of executions terminalised."""
+        try:
+            swept = sweep_undispatched_executions()
+            return Response({"swept": swept})
+        except Exception as e:
+            logger.error(f"Error sweeping undispatched executions: {e}", exc_info=True)
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

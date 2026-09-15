@@ -1,8 +1,8 @@
-import { Tabs, Tooltip } from "antd";
-import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";
@@ -66,10 +66,10 @@ function JsonView({
       <div className="combined-op-header">
         <Tabs activeKey={activeKey} onChange={handleTabChange} moreIcon={<></>}>
           {!isSinglePass && (
-            <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
+            <Tabs.TabPane tab={<span>Default</span>} key={"0"}></Tabs.TabPane>
           )}
           {adapterData.map((adapter) => (
-            <TabPane
+            <Tabs.TabPane
               tab={
                 <Tooltip title={adapter?.llm_model || adapter?.profile_name}>
                   <span>

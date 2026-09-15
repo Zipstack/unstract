@@ -1,29 +1,24 @@
 import {
-  CalendarOutlined,
-  ClockCircleOutlined,
-  CloseCircleFilled,
-  CopyOutlined,
-  EyeOutlined,
-  FileTextOutlined,
-  HourglassOutlined,
-  InfoCircleFilled,
-  MoreOutlined,
-  SearchOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Card,
-  Checkbox,
-  Dropdown,
-  Flex,
-  Input,
-  Table,
-  Tooltip,
-  Typography,
-} from "antd";
+  Calendar,
+  CircleX,
+  Clock,
+  Copy,
+  EllipsisVertical,
+  Eye,
+  FileText,
+  Hourglass,
+  Info,
+  Search,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Checkbox, Input } from "@/components/ui/shims/antd-inputs";
+import { Flex } from "@/components/ui/shims/antd-layout";
+import { Dropdown, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card, Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -76,7 +71,7 @@ const ActionColumnHeader = ({ menu }) => (
     <span>Action</span>
     <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
       <span className="column-settings-trigger">
-        <MoreOutlined className="column-settings-icon" />
+        <EllipsisVertical className="column-settings-icon" />
       </span>
     </Dropdown>
   </div>
@@ -251,7 +246,7 @@ const DetailedLogs = () => {
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
-          {record.executedAt}
+          <span>{record.executedAt}</span>
         </Tooltip>
       ),
     },
@@ -272,7 +267,7 @@ const DetailedLogs = () => {
         </div>
       ),
       filterIcon: () => (
-        <SearchOutlined style={{ color: searchText ? "#1890ff" : undefined }} />
+        <Search style={{ color: searchText ? "var(--primary)" : undefined }} />
       ),
     },
     {
@@ -327,7 +322,7 @@ const DetailedLogs = () => {
       render: (_, record) => (
         <Tooltip title="View logs">
           <Button
-            icon={<EyeOutlined />}
+            icon={<Eye />}
             onClick={() => handleLogsModalOpen(record)}
           ></Button>
         </Tooltip>
@@ -457,7 +452,7 @@ const DetailedLogs = () => {
           {type} Execution ID {id}
           <Button
             className="copy-btn-outlined"
-            icon={<CopyOutlined />}
+            icon={<Copy />}
             onClick={() => copyToClipboard(id, "Execution ID")}
           />
         </Typography.Title>
@@ -473,10 +468,10 @@ const DetailedLogs = () => {
         justify="space-between"
         className="detailed-logs-cards"
       >
-        <Flex className="pad-12">
+        <Flex className="detailed-logs-card-group">
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
-              <CalendarOutlined className="logging-card-icons" />
+              <Calendar className="logging-card-icons" />
               <div>
                 <Typography className="logging-card-title">Started</Typography>
                 <Tooltip title={executionDetails?.executedAtWithSeconds}>
@@ -487,7 +482,7 @@ const DetailedLogs = () => {
           </Card>
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
-              <ClockCircleOutlined className="logging-card-icons" />
+              <Clock className="logging-card-icons" />
               <div>
                 <Typography className="logging-card-title">
                   {executionDetails?.status.toLowerCase() === "executing"
@@ -500,7 +495,7 @@ const DetailedLogs = () => {
           </Card>
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
-              <FileTextOutlined className="logging-card-icons" />
+              <FileText className="logging-card-icons" />
               <div>
                 <Typography className="logging-card-title">
                   {executionDetails?.status.toLowerCase() === "executing"
@@ -509,7 +504,7 @@ const DetailedLogs = () => {
                   -{" "}
                   <Tooltip title="Total files">
                     <span className="status-container">
-                      <FileTextOutlined className="gen-index-progress" />{" "}
+                      <FileText className="gen-index-progress" />{" "}
                       {executionDetails?.totalFiles}
                     </span>
                   </Tooltip>
@@ -517,13 +512,13 @@ const DetailedLogs = () => {
                 <span>
                   <Tooltip title="Successful files">
                     <span className="status-container">
-                      <InfoCircleFilled className="gen-index-success" />{" "}
+                      <Info className="gen-index-success" />{" "}
                       {executionDetails?.successfulFiles}
                     </span>
                   </Tooltip>
                   <Tooltip title="Failed files">
                     <span className="status-container">
-                      <CloseCircleFilled className="gen-index-fail" />{" "}
+                      <CircleX className="gen-index-fail" />{" "}
                       {executionDetails?.failedFiles}
                     </span>
                   </Tooltip>
@@ -533,7 +528,7 @@ const DetailedLogs = () => {
                         executionDetails?.failedFiles) >
                       0 && (
                       <span className="status-container">
-                        <HourglassOutlined className="gen-index-progress" />{" "}
+                        <Hourglass className="gen-index-progress" />{" "}
                         {executionDetails?.totalFiles -
                           (executionDetails?.successfulFiles +
                             executionDetails?.failedFiles)}
@@ -547,7 +542,7 @@ const DetailedLogs = () => {
         </Flex>
         <Button
           className="view-log-button"
-          icon={<EyeOutlined />}
+          icon={<Eye />}
           onClick={() => handleLogsModalOpen({})}
         >
           View Logs

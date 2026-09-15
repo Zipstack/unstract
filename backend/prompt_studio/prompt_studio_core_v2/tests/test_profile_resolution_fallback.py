@@ -162,6 +162,10 @@ def _call(
             autospec=True,
             side_effect=lambda _doc, _prompt, _org, _user, _tool, output: output,
         ),
+        # Lookups no-op in OSS but hit the database in trees where the plugin is
+        # installed, which the mock prompt can't satisfy. Stubbed so both take
+        # the same path; the call itself is asserted below.
+        patch.object(psh, "get_lookup_config", autospec=True, return_value=None),
         patch.object(psh, "EnvHelper", MagicMock()),
         patch.object(psh, "PromptIdeBaseTool", MagicMock()),
         patch.object(psh, "IndexingUtils", MagicMock()),
@@ -194,7 +198,12 @@ def _call(
             kwargs["prompts"] = [prompt]
         else:
             kwargs["prompt"] = prompt
-        return getattr(helper, builder)(**kwargs)
+        result = getattr(helper, builder)(**kwargs)
+        # Stubbing the seam would otherwise let its call site be deleted
+        # silently. Only the single-prompt builder consults it.
+        if builder == "build_fetch_response_payload":
+            psh.get_lookup_config.assert_called_once_with(prompt)
+        return result
 
 
 @pytest.mark.parametrize("builder", FK_AWARE_BUILDERS)

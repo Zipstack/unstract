@@ -11,6 +11,7 @@ import pytest
 from celery import Celery
 
 from queue_backend import FairnessKey, dispatch
+from queue_backend.routing import QueueBackend
 from queue_backend.fairness import (
     DEFAULT_PRIORITY,
     FAIRNESS_HEADER_NAME,
@@ -153,24 +154,101 @@ class TestFairnessKey:
 
 
 class TestDispatchAttachesFairness:
-    def test_omitted_fairness_no_header_sent(self):
-        with patch("queue_backend.dispatch.current_app") as mock_app:
+    """UN-4046: these assert the PG path, which is the only one dispatch takes.
+
+    They used to patch ``current_app`` and read ``send_task.call_args`` — the
+    Celery branch. ``select_backend`` returns PG unconditionally now, so that
+    branch is unreachable without an explicit ``backend=`` override and the
+    assertions failed on a mock that was never called. The property under test is
+    unchanged: fairness must reach the transport WITHOUT being folded into the
+    business kwargs, since tasks without ``**kwargs`` would break. On PG that
+    means the ``fairness`` payload slot plus the ``org_id``/``priority`` columns
+    the dequeue orders by.
+    """
+
+    def test_omitted_fairness_writes_neutral_defaults(self):
+        with patch("queue_backend.dispatch._get_pg_client") as mock_client:
             dispatch("any_task", kwargs={"foo": "bar"})
 
-        call_kwargs = mock_app.send_task.call_args.kwargs
-        assert call_kwargs["headers"] is None
-        assert call_kwargs["kwargs"] == {"foo": "bar"}
+        _, payload = mock_client.return_value.send.call_args.args
+        send_kwargs = mock_client.return_value.send.call_args.kwargs
+        assert payload["fairness"] is None
+        assert payload["kwargs"] == {"foo": "bar"}
+        assert send_kwargs["org_id"] is None
+        assert send_kwargs["priority"] == DEFAULT_PRIORITY
 
-    def test_explicit_fairness_none_no_header_sent(self):
+    def test_explicit_fairness_none_writes_neutral_defaults(self):
         # Documented opt-out for non-workflow dispatches.
-        with patch("queue_backend.dispatch.current_app") as mock_app:
+        with patch("queue_backend.dispatch._get_pg_client") as mock_client:
             dispatch("send_webhook_notification", kwargs={"x": 1}, fairness=None)
 
-        call_kwargs = mock_app.send_task.call_args.kwargs
-        assert call_kwargs["headers"] is None
-        assert call_kwargs["kwargs"] == {"x": 1}
+        _, payload = mock_client.return_value.send.call_args.args
+        assert payload["fairness"] is None
+        assert payload["kwargs"] == {"x": 1}
 
-    def test_provided_fairness_attached_as_message_header(self):
+    def test_provided_fairness_rides_the_payload_and_the_columns(self):
+        with patch("queue_backend.dispatch._get_pg_client") as mock_client:
+            dispatch(
+                "any_task",
+                kwargs={"foo": "bar"},
+                fairness=FairnessKey(
+                    org_id="org-1", workload_type=WorkloadType.API, pipeline_priority=9
+                ),
+            )
+
+        _, payload = mock_client.return_value.send.call_args.args
+        send_kwargs = mock_client.return_value.send.call_args.kwargs
+        assert payload["fairness"] == {
+            "org_id": "org-1",
+            "workload_type": "api",
+            "pipeline_priority": 9,
+        }
+        # org_id + priority are separate COLUMNS, not just payload keys: the
+        # dequeue orders by them, so a payload-only fairness would be inert.
+        assert send_kwargs["org_id"] == "org-1"
+        assert send_kwargs["priority"] == 9
+        # Business kwargs must NOT contain the fairness slot — tasks
+        # without **kwargs would break.
+        assert payload["kwargs"] == {"foo": "bar"}
+        assert FAIRNESS_HEADER_NAME not in payload["kwargs"]
+
+    def test_fairness_with_no_business_kwargs(self):
+        with patch("queue_backend.dispatch._get_pg_client") as mock_client:
+            dispatch(
+                "any_task",
+                fairness=FairnessKey(org_id=None, workload_type=WorkloadType.NON_API),
+            )
+
+        _, payload = mock_client.return_value.send.call_args.args
+        send_kwargs = mock_client.return_value.send.call_args.kwargs
+        assert payload["kwargs"] == {}
+        assert payload["fairness"] == {
+            "org_id": None,
+            "workload_type": "non_api",
+            "pipeline_priority": DEFAULT_PRIORITY,
+        }
+        assert send_kwargs["org_id"] is None
+        assert send_kwargs["priority"] == DEFAULT_PRIORITY
+
+    def test_caller_kwargs_not_mutated_in_place(self):
+        caller_kwargs = {"foo": "bar"}
+        with patch("queue_backend.dispatch._get_pg_client"):
+            dispatch(
+                "any_task",
+                kwargs=caller_kwargs,
+                fairness=FairnessKey(org_id="org-1", workload_type=WorkloadType.API),
+            )
+
+        assert caller_kwargs == {"foo": "bar"}
+        assert FAIRNESS_HEADER_NAME not in caller_kwargs
+
+    def test_explicit_celery_override_still_attaches_the_header(self):
+        """The Celery branch survives only as a ``backend=`` override target.
+
+        Nothing selects it — ``select_backend`` returns PG unconditionally — and
+        it is slated for deletion with the rest of the Celery transport. Until
+        then it must not rot silently: an override is the one way to reach it.
+        """
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch(
                 "any_task",
@@ -178,6 +256,7 @@ class TestDispatchAttachesFairness:
                 fairness=FairnessKey(
                     org_id="org-1", workload_type=WorkloadType.API, pipeline_priority=9
                 ),
+                backend=QueueBackend.CELERY,
             )
 
         call_kwargs = mock_app.send_task.call_args.kwargs
@@ -188,40 +267,7 @@ class TestDispatchAttachesFairness:
                 "pipeline_priority": 9,
             }
         }
-        # Business kwargs must NOT contain the fairness slot — tasks
-        # without **kwargs would break.
-        sent_kwargs = call_kwargs["kwargs"]
-        assert sent_kwargs == {"foo": "bar"}
-        assert FAIRNESS_HEADER_NAME not in sent_kwargs
-
-    def test_fairness_with_no_business_kwargs(self):
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch(
-                "any_task",
-                fairness=FairnessKey(org_id=None, workload_type=WorkloadType.NON_API),
-            )
-
-        call_kwargs = mock_app.send_task.call_args.kwargs
-        assert call_kwargs["kwargs"] is None
-        assert call_kwargs["headers"] == {
-            FAIRNESS_HEADER_NAME: {
-                "org_id": None,
-                "workload_type": "non_api",
-                "pipeline_priority": DEFAULT_PRIORITY,
-            }
-        }
-
-    def test_caller_kwargs_not_mutated_in_place(self):
-        caller_kwargs = {"foo": "bar"}
-        with patch("queue_backend.dispatch.current_app"):
-            dispatch(
-                "any_task",
-                kwargs=caller_kwargs,
-                fairness=FairnessKey(org_id="org-1", workload_type=WorkloadType.API),
-            )
-
-        assert caller_kwargs == {"foo": "bar"}
-        assert FAIRNESS_HEADER_NAME not in caller_kwargs
+        assert call_kwargs["kwargs"] == {"foo": "bar"}
 
 
 class TestDispatchCallSitesPassFairness:
@@ -279,7 +325,12 @@ class TestNoConsumerYet:
 
 
 class TestHeaderSurvivesCeleryPipeline:
-    """End-to-end: header survives Celery's real send_task code path."""
+    """End-to-end: header survives Celery's real send_task code path.
+
+    Reached via an explicit ``backend=`` override since UN-4046 — see
+    ``test_explicit_celery_override_still_attaches_the_header``. Kept as long as
+    the Celery branch exists, and deleted with it.
+    """
 
     def test_header_present_on_outbound_message(self):
         app = Celery(
@@ -296,6 +347,7 @@ class TestHeaderSurvivesCeleryPipeline:
                     workload_type=WorkloadType.NON_API,
                     pipeline_priority=9,
                 ),
+                backend=QueueBackend.CELERY,
             )
 
         call_headers = wrapped_send.call_args.kwargs["headers"]

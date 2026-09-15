@@ -52,6 +52,10 @@ class Milvus(VectorDBAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/Milvus.png"
 
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/vector_dbs/milvus_vectordb/"
+
     def get_vector_db_instance(self) -> VectorStore:
         return self._vector_db_instance
 
