@@ -18,6 +18,8 @@ from celery import current_app as app
 from queue_backend import worker_task
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
 
+from unstract.core.prompt_run_cancellation import PROMPT_RUN_CANCELLED_ERROR
+
 logger = logging.getLogger(__name__)
 
 PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result"
@@ -180,7 +182,15 @@ def ide_index_complete(
         # Check executor-level failure
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
-            logger.error("ide_index executor reported failure: %s", error_msg)
+            # A stop reaches here as a failure result whenever the executor
+            # converted it at a handler boundary rather than raising. It is
+            # still a stop, and must not be shown to the user as an error
+            # (UN-1031) — the same check `ide_index_error` already makes.
+            cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
+            if cancelled:
+                logger.info("ide_index stopped by user: run_id=%s", run_id)
+            else:
+                logger.error("ide_index executor reported failure: %s", error_msg)
             api.remove_document_indexing(
                 org_id=org_id,
                 user_id=user_id,
@@ -194,10 +204,13 @@ def ide_index_complete(
                 "index_document",
                 tool_id=tool_id,
                 extra={"document_id": document_id},
-                status="failed",
-                error=error_msg,
+                status="cancelled" if cancelled else "failed",
+                error="" if cancelled else error_msg,
             )
-            return {"status": "failed", "error": error_msg}
+            return {
+                "status": "cancelled" if cancelled else "failed",
+                "error": "" if cancelled else error_msg,
+            }
 
         doc_id = result_dict.get("data", {}).get("doc_id", doc_id_key)
 
@@ -341,8 +354,10 @@ def ide_index_error(
         error_msg = _get_task_error(
             failed_task_id, default="Indexing failed", explicit=cb.get("error")
         )
+        cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
 
-        # Clean up the indexing-in-progress flag
+        # Clean up the indexing-in-progress flag. Runs for a stop too: leaving
+        # it set would block every prompt on this document for the flag's TTL.
         if doc_id_key:
             api.remove_document_indexing(
                 org_id=org_id,
@@ -357,9 +372,9 @@ def ide_index_error(
             executor_task_id,
             "index_document",
             tool_id=tool_id,
-            extra={"document_id": document_id},
-            status="failed",
-            error=error_msg,
+            extra={"document_id": document_id, "run_id": cb.get("run_id", "")},
+            status="cancelled" if cancelled else "failed",
+            error="" if cancelled else error_msg,
         )
     except Exception:
         logger.exception("ide_index_error callback failed")
@@ -393,7 +408,13 @@ def ide_prompt_complete(
         # Check executor-level failure
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
-            logger.error("ide_prompt executor reported failure: %s", error_msg)
+            # As above: a stop converted at a handler boundary arrives as a
+            # failure result, and must still be reported as a stop (UN-1031).
+            cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
+            if cancelled:
+                logger.info("ide_prompt stopped by user: run_id=%s", run_id)
+            else:
+                logger.error("ide_prompt executor reported failure: %s", error_msg)
             _emit_event(
                 api,
                 log_events_id,
@@ -401,18 +422,36 @@ def ide_prompt_complete(
                 operation,
                 tool_id=tool_id,
                 extra={
+                    "run_id": run_id,
                     "prompt_ids": prompt_ids,
                     "document_id": document_id,
                     "profile_manager_id": profile_manager_id,
                 },
-                status="failed",
-                error=error_msg,
+                status="cancelled" if cancelled else "failed",
+                error="" if cancelled else error_msg,
             )
-            return {"status": "failed", "error": error_msg}
+            return {
+                "status": "cancelled" if cancelled else "failed",
+                "error": "" if cancelled else error_msg,
+            }
 
         data = result_dict.get("data", {})
         outputs = _json_safe(data.get("output", {}))
         metadata = _json_safe(data.get("metadata", {}))
+
+        # A run the user stopped part-way still returns success, carrying the
+        # answers that completed before the stop (UN-1031). The flags live in
+        # the executor's own top-level metadata, NOT in data["metadata"], which
+        # is the per-prompt persistence payload read just above.
+        exec_metadata = result_dict.get("metadata") or {}
+        was_cancelled = bool(exec_metadata.get("cancelled"))
+        cancelled_prompt_ids = [
+            str(p) for p in (exec_metadata.get("cancelled_prompt_ids") or [])
+        ]
+        if was_cancelled:
+            # Persist only what finished: a stopped prompt has no answer, and
+            # writing it would overwrite a previous good output with a blank.
+            prompt_ids = [p for p in prompt_ids if str(p) not in cancelled_prompt_ids]
 
         # Agentic table executor returns {"tables": [...], "page_count": ...,
         # "headers": [...], ...}, but OutputManagerHelper expects
@@ -434,23 +473,28 @@ def ide_prompt_complete(
             profile_manager_id,
         )
 
-        # Persist outputs via internal API
-        resp = api.update_prompt_output(
-            run_id=run_id,
-            prompt_ids=prompt_ids,
-            outputs=outputs,
-            document_id=document_id,
-            is_single_pass_extract=is_single_pass,
-            metadata=metadata,
-            profile_manager_id=profile_manager_id,
-            organization_id=org_id,
-        )
-        response = resp.get("data", []) if resp.get("success") else []
+        # Persist outputs via internal API. Skipped when a stop left nothing
+        # to store — the endpoint rejects an empty prompt_ids list.
+        response = []
+        if prompt_ids:
+            resp = api.update_prompt_output(
+                run_id=run_id,
+                prompt_ids=prompt_ids,
+                outputs=outputs,
+                document_id=document_id,
+                is_single_pass_extract=is_single_pass,
+                metadata=metadata,
+                profile_manager_id=profile_manager_id,
+                organization_id=org_id,
+                cancelled=was_cancelled,
+            )
+            response = resp.get("data", []) if resp.get("success") else []
 
         _track_subscription_usage(org_id, run_id)
 
-        # Fire HubSpot event if applicable
-        hubspot_user_id = cb.get("hubspot_user_id")
+        # Fire HubSpot event if applicable. Not for a stopped run: the
+        # analytics event means "the user ran a prompt", which this wasn't.
+        hubspot_user_id = None if was_cancelled else cb.get("hubspot_user_id")
         if hubspot_user_id:
             try:
                 api.notify_hubspot(
@@ -463,6 +507,8 @@ def ide_prompt_complete(
             except Exception:
                 logger.warning("Failed to send HubSpot PROMPT_RUN event", exc_info=True)
 
+        # ``prompt_ids`` here is what was PERSISTED; the UI also needs the
+        # stopped ones so it can clear their spinners.
         _emit_event(
             api,
             log_events_id,
@@ -470,16 +516,23 @@ def ide_prompt_complete(
             operation,
             tool_id=tool_id,
             extra={
-                "prompt_ids": prompt_ids,
+                "run_id": run_id,
+                "prompt_ids": (
+                    (prompt_ids + cancelled_prompt_ids) if was_cancelled else prompt_ids
+                ),
+                "cancelled_prompt_ids": cancelled_prompt_ids,
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
             },
-            status="completed",
+            status="cancelled" if was_cancelled else "completed",
             result=response,
         )
         # Return minimal status to avoid logging sensitive extracted data
-        return {"status": "completed", "operation": operation}
+        return {
+            "status": "cancelled" if was_cancelled else "completed",
+            "operation": operation,
+        }
 
     except Exception as e:
         logger.exception("ide_prompt_complete callback failed")
@@ -490,6 +543,7 @@ def ide_prompt_complete(
             operation,
             tool_id=tool_id,
             extra={
+                "run_id": run_id,
                 "prompt_ids": prompt_ids,
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
@@ -521,6 +575,11 @@ def ide_prompt_error(
         error_msg = _get_task_error(
             failed_task_id, default="Prompt execution failed", explicit=cb.get("error")
         )
+        # A run the user stopped before it started reaches us down the error
+        # channel (the consumer's pre-run cancel), but it is not a failure —
+        # reporting it as one would show the user an error they caused on
+        # purpose (UN-1031).
+        cancelled = error_msg == PROMPT_RUN_CANCELLED_ERROR
 
         _emit_event(
             api,
@@ -529,12 +588,14 @@ def ide_prompt_error(
             operation,
             tool_id=tool_id,
             extra={
+                "run_id": cb.get("run_id", ""),
                 "prompt_ids": cb.get("prompt_ids", []),
+                "cancelled_prompt_ids": cb.get("prompt_ids", []) if cancelled else [],
                 "document_id": cb.get("document_id", ""),
                 "profile_manager_id": cb.get("profile_manager_id"),
             },
-            status="failed",
-            error=error_msg,
+            status="cancelled" if cancelled else "failed",
+            error="" if cancelled else error_msg,
         )
     except Exception:
         logger.exception("ide_prompt_error callback failed")

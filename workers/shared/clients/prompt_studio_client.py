@@ -38,8 +38,14 @@ class PromptStudioAPIClient(BaseAPIClient):
         metadata: dict[str, Any],
         profile_manager_id: str | None = None,
         organization_id: str | None = None,
+        cancelled: bool = False,
     ) -> dict[str, Any]:
         """Persist prompt execution output via OutputManagerHelper.
+
+        Args:
+            cancelled: The user stopped this run, so ``outputs`` holds only the
+                prompts that finished. The backend then persists just those —
+                see the note on the receiving end (UN-1031).
 
         Returns:
             Backend response with serialized output data.
@@ -52,6 +58,7 @@ class PromptStudioAPIClient(BaseAPIClient):
             "is_single_pass_extract": is_single_pass_extract,
             "profile_manager_id": profile_manager_id,
             "metadata": metadata,
+            "cancelled": cancelled,
         }
         return self.post(_OUTPUT_ENDPOINT, data=payload, organization_id=organization_id)
 

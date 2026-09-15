@@ -58,6 +58,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     NoPromptsFound,
     OperationNotSupported,
     PermissionError,
+    PromptRunCancelled,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import (
     SummarizeMigrationUtils,
@@ -76,6 +77,10 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from unstract.core.prompt_run_cancellation import (
+    PROMPT_RUN_CANCELLED_ERROR,
+    is_cancelled,
+)
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
@@ -441,6 +446,7 @@ class PromptStudioHelper:
         output[TSPKeys.LLM] = llm
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
+        output[TSPKeys.PROMPT_ID] = str(prompt.prompt_id)
         output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
@@ -478,14 +484,36 @@ class PromptStudioHelper:
         return output
 
     @staticmethod
+    def _raise_if_cancelled(org_id: str, run_id: str | None) -> None:
+        """Abort the request if the user has stopped this run (UN-1031).
+
+        Called at the boundaries of the blocking stages, where the request
+        thread still owns the work and nothing has been enqueued yet — the
+        cheapest place to stop. A missing ``run_id`` (nothing to key on) and an
+        unreachable signal store both read as "not cancelled", so a run is
+        never killed by a cache outage.
+        """
+        if not run_id:
+            return
+        if is_cancelled(org_id, str(run_id)):
+            logger.info("Prompt run %s cancelled by user; unwinding request", run_id)
+            raise PromptRunCancelled(PROMPT_RUN_CANCELLED_ERROR)
+
+    @staticmethod
     def _wait_for_indexing(
-        org_id: str, user_id: str, doc_id_key: str
+        org_id: str, user_id: str, doc_id_key: str, run_id: str | None = None
     ) -> dict[str, str] | None:
         """Poll until an in-progress indexing completes or times out.
 
         Returns:
             Completed/pending result dict, or ``None`` if indexing failed
             and the caller should re-index.
+
+        Raises:
+            PromptRunCancelled: If the user stops the run while we are parked
+                here. This loop can hold the request thread for five minutes
+                doing nothing billable, so it is the one place where a cancel
+                is both free and most valuable.
         """
         if not DocumentIndexingService.is_document_indexing(
             org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
@@ -503,6 +531,7 @@ class PromptStudioHelper:
         while elapsed < max_wait:
             time.sleep(poll_interval)
             elapsed += poll_interval
+            PromptStudioHelper._raise_if_cancelled(org_id, run_id)
             indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
@@ -889,6 +918,7 @@ class PromptStudioHelper:
         output[TSPKeys.LLM] = llm
         output[TSPKeys.TYPE] = prompt.enforce_type
         output[TSPKeys.NAME] = prompt.prompt_key
+        output[TSPKeys.PROMPT_ID] = str(prompt.prompt_id)
         output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
@@ -965,6 +995,11 @@ class PromptStudioHelper:
 
         log_events_id = StateStore.get(Common.LOG_EVENTS_ID) or ""
         request_id = StateStore.get(Common.REQUEST_ID) or ""
+
+        # Nothing has been enqueued yet, so stopping here costs the user
+        # nothing and spends no LLM tokens. The consumer's pre-run check is
+        # the backstop for a Stop that lands after this point (UN-1031).
+        PromptStudioHelper._raise_if_cancelled(org_id, run_id)
 
         context = ExecutionContext(
             executor_name="legacy",
@@ -1159,6 +1194,11 @@ class PromptStudioHelper:
         log_events_id = StateStore.get(Common.LOG_EVENTS_ID) or ""
         request_id = StateStore.get(Common.REQUEST_ID) or ""
 
+        # Nothing has been enqueued yet, so stopping here costs the user
+        # nothing and spends no LLM tokens. The consumer's pre-run check is
+        # the backstop for a Stop that lands after this point (UN-1031).
+        PromptStudioHelper._raise_if_cancelled(org_id, run_id)
+
         context = ExecutionContext(
             executor_name="legacy",
             operation="answer_prompt",
@@ -1295,6 +1335,7 @@ class PromptStudioHelper:
                     TSPKeys.ACTIVE: p.active,
                     TSPKeys.TYPE: p.enforce_type,
                     TSPKeys.NAME: p.prompt_key,
+                    TSPKeys.PROMPT_ID: str(p.prompt_id),
                 }
             )
 
@@ -1325,6 +1366,11 @@ class PromptStudioHelper:
 
         log_events_id = StateStore.get(Common.LOG_EVENTS_ID) or ""
         request_id = StateStore.get(Common.REQUEST_ID) or ""
+
+        # Nothing has been enqueued yet, so stopping here costs the user
+        # nothing and spends no LLM tokens. The consumer's pre-run check is
+        # the backstop for a Stop that lands after this point (UN-1031).
+        PromptStudioHelper._raise_if_cancelled(org_id, run_id)
 
         context = ExecutionContext(
             executor_name="legacy",
@@ -2260,6 +2306,12 @@ class PromptStudioHelper:
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
+        # Whether THIS request set the indexing flag. A cancel can land while
+        # we are parked in _wait_for_indexing, i.e. while the flag belongs to a
+        # different request that is still indexing — clearing it there would let
+        # a third caller start a duplicate index (duplicate embedding spend and
+        # duplicate vector writes).
+        owns_indexing_flag = False
         try:
             usage_kwargs = {"run_id": run_id}
             # Orginal file name with which file got uploaded in prompt studio
@@ -2276,7 +2328,10 @@ class PromptStudioHelper:
                     }
                 # Wait for in-progress indexing instead of returning PENDING
                 wait_result = PromptStudioHelper._wait_for_indexing(
-                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                    org_id=org_id,
+                    user_id=user_id,
+                    doc_id_key=doc_id_key,
+                    run_id=run_id,
                 )
                 if wait_result is not None:
                     return wait_result
@@ -2287,6 +2342,12 @@ class PromptStudioHelper:
             DocumentIndexingService.set_document_indexing(
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
             )
+            owns_indexing_flag = True
+            # Checked inside the try and after the flag is ours, so the except
+            # below clears it — otherwise every prompt on this document would
+            # block for INDEXING_FLAG_TTL (UN-1031).
+            PromptStudioHelper._raise_if_cancelled(org_id, run_id)
+
             logger.info(f"Invoking prompt service for indexing : {doc_id_key}")
             payload = {
                 IKeys.TOOL_ID: tool_id,
@@ -2323,6 +2384,8 @@ class PromptStudioHelper:
             )
             result = dispatcher.dispatch(index_context)
             if not result.success:
+                if result.error == PROMPT_RUN_CANCELLED_ERROR:
+                    raise PromptRunCancelled(result.error)
                 raise IndexingAPIError(
                     f"Failed to index '{filename}'. {result.error}",
                 )
@@ -2337,6 +2400,18 @@ class PromptStudioHelper:
                 org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
+        except PromptRunCancelled:
+            # Same flag cleanup as a failure, but no error log and no
+            # IndexingAPIError: the caller unwinds the request as a cancel.
+            # Only ours to clear — see owns_indexing_flag above.
+            if owns_indexing_flag:
+                try:
+                    DocumentIndexingService.remove_document_indexing(
+                        org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                    )
+                except Exception:
+                    logger.exception("Failed to clear indexing flag for %s", doc_id_key)
+            raise
         except (IndexingError, IndexingAPIError, SdkError) as e:
             # Clear the indexing flag so subsequent requests are not blocked
             try:
@@ -2561,6 +2636,10 @@ class PromptStudioHelper:
         platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
         payload["platform_api_key"] = platform_api_key
 
+        # Last free moment: everything past this dispatch costs OCR/x2text
+        # spend that a cancel cannot refund (UN-1031).
+        PromptStudioHelper._raise_if_cancelled(org_id, run_id)
+
         dispatcher = PromptStudioHelper._get_dispatcher()
         extract_context = ExecutionContext(
             executor_name="legacy",
@@ -2575,6 +2654,11 @@ class PromptStudioHelper:
         result = dispatcher.dispatch(extract_context)
         if not result.success:
             msg = result.error or "Unknown extraction error"
+            # A user stop is not an extraction failure: recording it as one
+            # would leave a bogus error on the document and make the next run
+            # believe extraction had been attempted and failed.
+            if msg == PROMPT_RUN_CANCELLED_ERROR:
+                raise PromptRunCancelled(msg)
             status_result = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,

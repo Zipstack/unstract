@@ -13,6 +13,9 @@ class PromptServiceConstants:
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     NAME = "name"
+    # Set by the backend payload builders so a per-prompt cancel can be
+    # matched by id rather than by the user-editable prompt key (UN-1031).
+    PROMPT_ID = "prompt_id"
     ACTIVE = "active"
     PROMPT = "prompt"
     CHUNK_SIZE = "chunk-size"

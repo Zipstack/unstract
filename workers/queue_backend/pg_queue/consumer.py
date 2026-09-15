@@ -32,11 +32,15 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from enum import Enum
-from typing import TYPE_CHECKING, Any, TypeVar
+from typing import TYPE_CHECKING, Any, Final, TypeVar
 
 from celery import current_app
 
 from unstract.core.data_models import ContinuationSpec, TaskPayload
+from unstract.core.prompt_run_cancellation import (
+    PROMPT_RUN_CANCELLED_ERROR,
+    is_cancelled,
+)
 
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
@@ -103,6 +107,12 @@ _TASK_STATUS_RETENTION_SECONDS = 86400
 # raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
 # max(batch_size x worst_case_task_seconds, backoff_max).
 _DEFAULT_HEALTH_STALE_SECONDS = 60.0
+# Prompt Studio cancellation (UN-1031). Only ``execute_extraction`` messages
+# carry an ExecutionContext with a run_id, and only IDE-sourced ones have a
+# user-facing Stop — so the pre-run cancel check skips everything else rather
+# than putting the workflow fleet's traffic through the signal store.
+_EXECUTE_EXTRACTION_TASK: Final = "execute_extraction"
+_IDE_EXECUTION_SOURCE: Final = "ide"
 
 
 def _json_safe(value: object) -> object:
@@ -531,6 +541,31 @@ class PgQueueConsumer:
 
         return task
 
+    @staticmethod
+    def _is_cancelled_ide_run(payload: TaskPayload, task_name: str | None) -> bool:
+        """Whether this message is a Prompt Studio run the user already stopped.
+
+        The cheapest possible cancel: the task has been claimed but not started,
+        so dropping it here costs the user nothing and spends no LLM tokens. It
+        is the only cancel the transport itself can serve — once the task body
+        is running, only the executor's own checkpoints can stop it.
+
+        Scoped to IDE-sourced executor dispatches so workflow traffic (the vast
+        majority of messages) never touches the signal store.
+        """
+        if task_name != _EXECUTE_EXTRACTION_TASK:
+            return False
+        args = payload.get("args") or []
+        if not args or not isinstance(args[0], dict):
+            return False
+        context = args[0]
+        if context.get("execution_source") != _IDE_EXECUTION_SOURCE:
+            return False
+        run_id = context.get("run_id")
+        if not run_id:
+            return False
+        return is_cancelled(str(context.get("organization_id") or ""), str(run_id))
+
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
         task_name = payload.get("task_name")
@@ -552,6 +587,22 @@ class PgQueueConsumer:
         # unknown-task message is dropped+acked inside the helper (returns None).
         task = self._resolve_runnable_task(message, payload, task_name)
         if task is None:
+            return
+
+        # Stopped before we started it: surface the cancel on the message's own
+        # return channel and ack. _fail_dispatch chains on_error (which records
+        # pg_task_result), so the UI still gets a terminal event — deleting the
+        # row silently would strand the frontend spinner forever, since the
+        # continuations live in the payload and die with it.
+        if self._is_cancelled_ide_run(payload, task_name):
+            logger.info(
+                "PG-queue consumer: dropping cancelled prompt run (msg_id=%s "
+                "task_id=%s)",
+                message.msg_id,
+                payload.get("task_id"),
+            )
+            self._fail_dispatch(payload, error=PROMPT_RUN_CANCELLED_ERROR)
+            self._client.delete(message.msg_id)  # ack
             return
 
         try:

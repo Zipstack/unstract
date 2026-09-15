@@ -46,10 +46,16 @@ class WhispererEnv:
 
     Attributes:
         WAIT_TIMEOUT: Timeout for the extraction in seconds. Defaults to 300s
+        V2_POLL_INTERVAL: Seconds between status polls. Defaults to 5s
         LOG_LEVEL: Logging level for the client library. Defaults to INFO
     """
 
     WAIT_TIMEOUT = "ADAPTER_LLMW_WAIT_TIMEOUT"
+    # v2-specific on purpose: ``ADAPTER_LLMW_POLL_INTERVAL`` is v1's knob and
+    # is deployed at 30s. Reusing it here would slow every v2 extraction by up
+    # to half a minute, since v2 previously polled inside the vendored client
+    # at a fixed five seconds.
+    POLL_INTERVAL = "ADAPTER_LLMW_V2_POLL_INTERVAL"
     MAX_RETRIES = "ADAPTER_LLMW_MAX_RETRIES"
     RETRY_MIN_WAIT = "ADAPTER_LLMW_RETRY_MIN_WAIT"
     RETRY_MAX_WAIT = "ADAPTER_LLMW_RETRY_MAX_WAIT"
@@ -118,7 +124,14 @@ class WhispererDefaults:
     TAG = "default"
     TEXT_ONLY = False
     WAIT_TIMEOUT = int(os.getenv(WhispererEnv.WAIT_TIMEOUT, 900))
-    WAIT_FOR_COMPLETION = True
+    # False so the wait happens in OUR loop rather than the vendored client's.
+    # The client's loop sleeps in fixed blocks with no way to interrupt it, so
+    # a user pressing Stop would have to wait out the whole extraction
+    # (UN-1031). Polling here costs the same and can be abandoned.
+    WAIT_FOR_COMPLETION = False
+    # Matches the fixed interval the vendored client used, so both the latency
+    # of an extraction and the load on LLMWhisperer are unchanged.
+    POLL_INTERVAL = float(os.getenv(WhispererEnv.POLL_INTERVAL, 5.0))
     LOGGING_LEVEL = os.getenv(WhispererEnv.LOG_LEVEL, "INFO")
     MAX_RETRIES = int(os.getenv(WhispererEnv.MAX_RETRIES, 3))
     RETRY_MIN_WAIT = float(os.getenv(WhispererEnv.RETRY_MIN_WAIT, 1.0))

@@ -1,15 +1,73 @@
-import { CirclePlay, FastForward } from "lucide-react";
+import { CirclePlay, FastForward, Square } from "lucide-react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { PROMPT_RUN_TYPES } from "../../../helpers/GetStaticData";
+import { useLingeringStop } from "../../../hooks/useLingeringStop";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
+import "./PromptCard.css";
 
 function RunAllPrompts() {
-  const { selectedDoc, isMultiPassExtractLoading, isPublicSource } =
-    useCustomToolStore();
-  const { handlePromptRunRequest } = usePromptRun();
+  const {
+    selectedDoc,
+    isMultiPassExtractLoading,
+    isSinglePassExtractLoading,
+    isPublicSource,
+    details,
+  } = useCustomToolStore();
+  const { handlePromptRunRequest, stopAllRuns } = usePromptRun();
+  const activeRuns = usePromptRunStatusStore((state) => state.activeRuns);
+
+  const isRunning = isMultiPassExtractLoading || isSinglePassExtractLoading;
+  // Only runs this hook started are cancellable — a run dispatched elsewhere
+  // (the cloud single-pass button, until it registers its run_id) has no id to
+  // name, so we keep today's disabled-while-running buttons rather than
+  // offering a Stop that would do nothing (UN-1031).
+  // Scoped to this project: the store is global and survives navigating
+  // between projects, so another project's run must not make this button
+  // appear — or be stopped by it.
+  const stoppableRuns = Object.entries(activeRuns || {})
+    .filter(([, run]) => run?.toolId === details?.tool_id)
+    .map(([runId]) => runId);
+  const canStop = isRunning && stoppableRuns.length > 0;
+  // Every in-flight run has already been told to stop; the button stays out of
+  // the way until the executors reach their next checkpoints.
+  // Spent only when every prompt of every run is already stopping. A
+  // per-prompt Stop must not disable Stop All while its siblings run on.
+  const isStopping =
+    canStop &&
+    stoppableRuns.every((runId) => {
+      const run = activeRuns[runId];
+      const promptIds = run?.promptIds || [];
+      const stoppingIds = run?.stoppingPromptIds || [];
+      return (
+        promptIds.length > 0 &&
+        promptIds.every((id) => stoppingIds.includes(id))
+      );
+    });
+  const isStoppingSlowly = useLingeringStop(isStopping);
+  let stopTooltip = "Stop all running prompts";
+  if (isStopping) {
+    stopTooltip = isStoppingSlowly
+      ? "Still stopping — the step already in progress is finishing"
+      : "Stopping…";
+  }
+
+  if (canStop) {
+    return (
+      <Tooltip title={stopTooltip}>
+        <Button
+          data-testid="ps-stop-all-prompts-btn"
+          icon={<Square className="prompt-card-actions-head" />}
+          className="prompt-card-stop-button"
+          onClick={stopAllRuns}
+          disabled={isStopping || isPublicSource}
+        />
+      </Tooltip>
+    );
+  }
 
   return (
     <Space>
@@ -25,7 +83,7 @@ function RunAllPrompts() {
               selectedDoc?.document_id,
             )
           }
-          disabled={isMultiPassExtractLoading || isPublicSource}
+          disabled={isRunning || isPublicSource}
         />
       </Tooltip>
       <Tooltip title="Run all prompts for all LLMs and documents">
@@ -42,7 +100,7 @@ function RunAllPrompts() {
               null,
             )
           }
-          disabled={isMultiPassExtractLoading || isPublicSource}
+          disabled={isRunning || isPublicSource}
         />
       </Tooltip>
     </Space>

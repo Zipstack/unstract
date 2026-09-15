@@ -228,6 +228,21 @@ def prompt_output(request):
                 status=status.HTTP_404_NOT_FOUND,
             )
 
+        # ORDER MATTERS. The org-scope check above compares against the ids the
+        # caller asked for, so it has to see the full resolved set. This filter
+        # deliberately SHRINKS that set, and running it first would make the
+        # check above fire on every stopped run — answering 404 and discarding
+        # the very partial results the stop was meant to preserve.
+        #
+        # A stopped run carries answers only for the prompts that finished
+        # (UN-1031). The helper writes ``outputs.get(prompt.prompt_key)``
+        # unconditionally, so a prompt missing from the map would be saved as a
+        # blank ON TOP of whatever a previous good run stored. Keying on the
+        # answers themselves (rather than trusting the caller's id list) makes
+        # that impossible however the two drift apart.
+        if data.get("cancelled"):
+            prompts = [p for p in prompts if p.prompt_key in outputs]
+
         response = OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,

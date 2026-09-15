@@ -28,6 +28,7 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
 )
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.utils.aborting import sliced_sleep
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +80,76 @@ class LLMWhispererHelper:
             ) from e
 
     @staticmethod
+    def await_extraction(
+        client: LLMWhispererClientV2,
+        whisper_hash: str,
+        wait_timeout: float,
+        accepted: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Poll until the extraction finishes, or the caller stops waiting.
+
+        A local copy of the wait loop inside ``LLMWhispererClientV2.whisper``,
+        which cannot be interrupted. The returned dict reproduces that loop's
+        shape exactly — ``status_code`` and ``message`` are what the caller
+        turns into an ``ExtractorError``, so any drift here would surface as a
+        confusing error rather than a clear one.
+
+        Raises:
+            AbortedError: If the caller stopped waiting. Note that
+                LLMWhisperer has no cancel endpoint, so the extraction itself
+                continues, and is billed, on their side.
+        """
+        import time as _time
+
+        # Start from the accepted response and mutate it, as the vendored loop
+        # does — keys from the 202 body (notably whisper_hash) must survive
+        # into the result.
+        message: dict[str, Any] = dict(accepted or {})
+        deadline = _time.monotonic() + float(wait_timeout)
+
+        while _time.monotonic() < deadline:
+            status = client.whisper_status(whisper_hash=whisper_hash)
+
+            if status["status_code"] != 200:
+                message["status_code"] = -1
+                message["message"] = "Whisper client operation failed"
+                message["extraction"] = {}
+                return message
+
+            state = status["status"]
+            if state == "processed":
+                retrieved = client.whisper_retrieve(whisper_hash=whisper_hash)
+                if retrieved["status_code"] == 200:
+                    message["status_code"] = 200
+                    message["message"] = "Whisper operation completed"
+                    message["status"] = "processed"
+                    message["extraction"] = retrieved["extraction"]
+                else:
+                    message["status_code"] = -1
+                    message["message"] = "Whisper client operation failed"
+                    message["extraction"] = {}
+                return message
+
+            if state == "error" or "error" in state:
+                message["status_code"] = -1
+                # The vendored loop reports `message` for an exact "error" and
+                # falls back to the status text for its legacy variants.
+                message["message"] = status.get("message") if state == "error" else state
+                message["status"] = "error"
+                message["extraction"] = {}
+                return message
+
+            logger.debug(f"Whisper-hash:{whisper_hash} | STATUS: {state}, still waiting")
+            # Sliced so a stop is noticed within a fraction of a second rather
+            # than at the end of the interval.
+            sliced_sleep(WhispererDefaults.POLL_INTERVAL)
+
+        message["status_code"] = -1
+        message["message"] = "Whisper client operation timed out"
+        message["extraction"] = {}
+        return message
+
+    @staticmethod
     def make_request(
         config: dict[str, Any],
         headers: dict[str, Any] | None = None,
@@ -121,6 +192,19 @@ class LLMWhispererHelper:
                 whisper_hash = response.get(X2TextConstants.WHISPER_HASH_V2, "")
                 if whisper_hash:
                     logger.info(f"LLMWhisperer responded, whisper_hash: {whisper_hash}")
+                if response.get("status_code") == 202:
+                    # Accepted for background processing. We poll rather than
+                    # letting the client block, so the wait can be abandoned
+                    # when the caller stops caring (UN-1031).
+                    response = LLMWhispererHelper.await_extraction(
+                        client=client,
+                        whisper_hash=whisper_hash,
+                        wait_timeout=params.get(
+                            WhispererConfig.WAIT_TIMEOUT,
+                            WhispererDefaults.WAIT_TIMEOUT,
+                        ),
+                        accepted=response,
+                    )
                 if response["status_code"] == 200:
                     response["extraction"][X2TextConstants.WHISPER_HASH_V2] = (
                         response.get(X2TextConstants.WHISPER_HASH_V2, "")
