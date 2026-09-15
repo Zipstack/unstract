@@ -69,6 +69,17 @@ class RepairOwnerlessOwnerRowsTests(TestCase):
 
         self.assertEqual(self._owner_ids(tool), {self.creator.id})
 
+    def test_creator_with_an_existing_viewer_row_is_promoted_to_owner(self) -> None:
+        """Membership is unique per (user, resource): the VIEWER row must be upgraded."""
+        tool = self._tool("viewer-creator-project", self.creator)
+        tool.memberships.create(user=self.creator, role=ResourceRole.VIEWER)
+
+        repaired = self._repair()
+
+        self.assertEqual(repaired, 1)
+        self.assertEqual(self._owner_ids(tool), {self.creator.id})
+        self.assertEqual(tool.memberships.filter(user=self.creator).count(), 1)
+
     def test_tool_that_already_has_an_owner_is_left_alone(self) -> None:
         """A creator deliberately replaced by a co-owner must not be re-added."""
         tool = self._tool("handed-over-project", self.creator)

@@ -98,7 +98,7 @@ def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
     # ``_base_manager``: several resources' default manager is org-scoped by
     # ``UserContext`` (unset here → it would filter every row out and silently
     # repair nothing). Same guard as ``tenant_account_v2.signals``.
-    repaired = skipped = 0
+    repaired = promoted = skipped = 0
     for resource in Resource._base_manager.exclude(created_by=None).iterator():
         if resource.organization_id is None:
             skipped += 1
@@ -106,19 +106,26 @@ def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
         object_id = str(resource.pk)
         if object_id in owned_ids:
             continue
-        _, created = Membership.objects.get_or_create(
+        # ``update_or_create``, not ``get_or_create``: membership is unique per
+        # (user, resource), so a creator already holding a VIEWER row would be
+        # returned unchanged and stay locked out. Promoting is safe because only
+        # resources with zero OWNER rows reach this point.
+        _, created = Membership.objects.update_or_create(
             content_type=content_type,
             object_id=object_id,
             user_id=resource.created_by_id,
             defaults={"role": OWNER, "organization_id": resource.organization_id},
         )
-        repaired += int(created)
+        repaired += 1
+        promoted += int(not created)
 
     logger.info(
-        "%s.%s ownerless repair: owners granted=%s (skipped %s null-org)",
+        "%s.%s ownerless repair: owners granted=%s (%s promoted from an existing "
+        "row; skipped %s null-org)",
         app_label,
         model_name,
         repaired,
+        promoted,
         skipped,
     )
     return repaired
