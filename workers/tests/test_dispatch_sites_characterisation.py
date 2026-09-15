@@ -16,6 +16,7 @@ drops a field, rewires a queue, or changes an endpoint fails loudly:
 from unittest.mock import MagicMock, patch
 
 import pytest
+from queue_backend import QueueBackend
 from shared.patterns.notification.helper import (
     ENQUEUE_BUFFER_ENDPOINT,
     _enqueue_to_buffer,
@@ -219,11 +220,12 @@ class TestSchedulerDispatchSite:
         assert args[4] is True  # scheduled flag (always True here)
 
     def test_dispatch_kwargs_layout(self):
-        """Kwargs MUST contain use_file_history, pipeline_id, and transport.
+        """Kwargs MUST contain exactly use_file_history and pipeline_id.
 
-        ``transport`` (9e) is carried in the task payload so the pipeline stays
-        on one transport end-to-end. It defaults to ``"celery"`` when the
-        create-execution response omits it (older backend / inert PR 1).
+        The ``transport`` payload field is gone (UN-4078). Asserting the whole
+        dict rather than individual keys is deliberate: it fails if a stray key
+        is reintroduced, which is what a half-reverted transport field would
+        look like.
         """
         from scheduler.tasks import _execute_scheduled_workflow
 
@@ -237,50 +239,42 @@ class TestSchedulerDispatchSite:
         assert kwargs == {
             "use_file_history": True,
             "pipeline_id": "pipe-007",
+        }
+
+    def test_dispatch_ignores_a_transport_field_from_the_backend(self):
+        """A stale backend still returning ``transport`` must not resurrect it.
+
+        During a rolling deploy an un-upgraded backend can still put the field in
+        its create-execution response. It must be ignored outright rather than
+        threaded into the payload, where a consumer might branch on it.
+        """
+        from scheduler.tasks import _execute_scheduled_workflow
+
+        api = MagicMock()
+        api.create_workflow_execution.return_value = {
+            "execution_id": "exec-123",
             "transport": "celery",
         }
 
-    def test_dispatch_carries_backend_resolved_transport(self):
-        """The transport the backend returns from create-execution is threaded
-        verbatim into the dispatched task's payload (payload-carry, 9e)."""
-        from scheduler.tasks import _execute_scheduled_workflow
-
-        api = MagicMock()
-        api.create_workflow_execution.return_value = {
-            "execution_id": "exec-123",
-            "transport": "pg_queue",
-        }
-
         with patch("scheduler.tasks.dispatch") as mock_dispatch:
             _execute_scheduled_workflow(api, self._make_context())
 
-        assert mock_dispatch.call_args.kwargs["kwargs"]["transport"] == "pg_queue"
-
-    def test_pg_transport_routes_dispatch_to_pg_backend(self):
-        """The one line that actually routes the scheduled orchestrator onto PG:
-        transport=="pg_queue" → dispatch(backend=QueueBackend.PG) (identity, not
-        the allow-list)."""
-        from queue_backend import QueueBackend
-        from scheduler.tasks import _execute_scheduled_workflow
-
-        api = MagicMock()
-        api.create_workflow_execution.return_value = {
-            "execution_id": "exec-123",
-            "transport": "pg_queue",
-        }
-        with patch("scheduler.tasks.dispatch") as mock_dispatch:
-            _execute_scheduled_workflow(api, self._make_context())
-
+        assert "transport" not in mock_dispatch.call_args.kwargs["kwargs"]
         assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
 
-    def test_celery_transport_leaves_backend_none(self):
-        """transport=="celery" → backend=None (legacy Celery dispatch unchanged)."""
+    def test_backend_is_always_pg(self):
+        """The scheduled orchestrator always pins the dispatch to PG.
+
+        This used to be conditional on the payload's transport, with ``None``
+        (defer to select_backend) on the Celery branch. Stating it explicitly
+        keeps the whole execution pipeline pinned at its entry point.
+        """
         from scheduler.tasks import _execute_scheduled_workflow
 
         with patch("scheduler.tasks.dispatch") as mock_dispatch:
             _execute_scheduled_workflow(self._make_api_client(), self._make_context())
 
-        assert mock_dispatch.call_args.kwargs["backend"] is None
+        assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
 
     def test_no_dispatch_when_execution_creation_fails(self):
         """If api_client.create_workflow_execution returns no execution_id,

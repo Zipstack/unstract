@@ -27,7 +27,7 @@ from queue_backend.pg_barrier import (
     _barrier_pg_decrement,
     _fire_barrier_callback,
     barrier_pg_abort,
-    barrier_pg_decr_and_check,
+    _barrier_pg_decrement,
     claim_batch,
     run_batch_with_barrier,
     try_claim_orchestration,
@@ -55,11 +55,14 @@ _CALLBACK = {
 
 
 def _mock_header_task():
-    """A header-task Signature whose clone() records link/link_error/apply_async."""
-    cloned = MagicMock(name="cloned_signature")
-    task = MagicMock(name="header_signature")
-    task.clone.return_value = cloned
-    return task, cloned
+    """A header-task Signature for the fan-out, PG-shaped.
+
+    Kept as a two-tuple so the many ``_mock_header_task()[0]`` call sites read
+    unchanged; the second element is now unused (it was the ``.clone()`` mock the
+    Celery ``.link`` path recorded against, and that path is gone).
+    """
+    sig = _pg_header()
+    return sig, None
 
 
 # --- Layer 1: protocol shape + TTL (no DB) ---
@@ -749,21 +752,24 @@ def _last_progress_age_seconds(conn, execution_id):
 
 
 class TestPgBarrierEnqueue:
-    def test_upsert_creates_row_and_attaches_links(self, barrier_db):
+    def test_upsert_creates_row_and_dispatches_headers(self, barrier_db):
         tasks = [_mock_header_task() for _ in range(3)]
-        handle = PgBarrier().enqueue(
-            [t for t, _ in tasks],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-A"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            handle = PgBarrier().enqueue(
+                [t for t, _ in tasks],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-A"},
+                callback_queue="general",
+                app_instance=None,
+            )
         assert handle.id == "exec-A"
         assert _row(barrier_db, "exec-A") == (3, [])
-        for _, cloned in tasks:
-            cloned.link.assert_called_once()
-            cloned.link_error.assert_called_once()
-            cloned.apply_async.assert_called_once()
+        # One PG dispatch per header, each carrying its barrier context. There is
+        # no .link/.link_error to assert on any more — the consumer decrements
+        # in-body from the injected _barrier_context.
+        assert mock_dispatch.call_count == 3
+        for i, call in enumerate(mock_dispatch.call_args_list):
+            assert call.kwargs["kwargs"]["_barrier_context"]["batch_index"] == i
 
     def test_enqueue_sets_expires_cap_and_fresh_progress(self, barrier_db, monkeypatch):
         # enqueue stamps expires_at = now()+ttl (the absolute cap) AND
@@ -799,32 +805,35 @@ class TestPgBarrierEnqueue:
         monkeypatch.setattr(pg_barrier, "create_pg_connection", lambda **_k: barrier_db)
 
         tasks = [_mock_header_task() for _ in range(3)]
-        handle = PgBarrier().enqueue(
-            [t for t, _ in tasks],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-HEAL"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            handle = PgBarrier().enqueue(
+                [t for t, _ in tasks],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-HEAL"},
+                callback_queue="general",
+                app_instance=None,
+            )
 
         assert handle.id == "exec-HEAL"
         assert dead.closed is True  # stale conn discarded by _cursor
         assert _row(barrier_db, "exec-HEAL") == (3, [])  # row landed once, remaining=N
-        for _, cloned in tasks:  # every header dispatched exactly once
-            cloned.apply_async.assert_called_once()
+        assert mock_dispatch.call_count == 3  # every header dispatched exactly once
 
-    def test_fairness_header_stamped(self, barrier_db):
-        task, cloned = _mock_header_task()
-        PgBarrier().enqueue(
-            [task],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-F"},
-            callback_queue="general",
-            app_instance=None,
-            fairness=FairnessKey(org_id="o", workload_type=WorkloadType.API),
-        )
-        headers = cloned.set.call_args.kwargs["headers"]
-        assert FAIRNESS_HEADER_NAME in headers
+    def test_fairness_forwarded_to_dispatch(self, barrier_db):
+        # Fairness reaches the queue row as a FairnessKey on the dispatch, not as
+        # an AMQP header on a cloned signature (that was the .link path).
+        task, _ = _mock_header_task()
+        fairness = FairnessKey(org_id="o", workload_type=WorkloadType.API)
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            PgBarrier().enqueue(
+                [task],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-F"},
+                callback_queue="general",
+                app_instance=None,
+                fairness=fairness,
+            )
+        assert mock_dispatch.call_args.kwargs["fairness"] is fairness
 
     def test_upsert_overwrites_stale_state(self, barrier_db):
         # A prior run left a row at remaining=1 with results; the new enqueue
@@ -889,17 +898,20 @@ class TestPgBarrierEnqueue:
 
     def test_mid_loop_dispatch_failure_deletes_row(self, barrier_db):
         good, _ = _mock_header_task()
-        bad, bad_cloned = _mock_header_task()
-        bad_cloned.apply_async.side_effect = RuntimeError("broker down")
+        bad, _ = _mock_header_task()
         barrier = PgBarrier()
-        with pytest.raises(RuntimeError):
-            barrier.enqueue(
-                [good, bad],
-                callback_task_name="cb",
-                callback_kwargs={"execution_id": "exec-D"},
-                callback_queue="general",
-                app_instance=None,
-            )
+        with patch(
+            "queue_backend.dispatch.dispatch",
+            side_effect=[None, RuntimeError("queue write failed")],
+        ):
+            with pytest.raises(RuntimeError):
+                barrier.enqueue(
+                    [good, bad],
+                    callback_task_name="cb",
+                    callback_kwargs={"execution_id": "exec-D"},
+                    callback_queue="general",
+                    app_instance=None,
+                )
         assert _row(barrier_db, "exec-D") is None  # cleaned up
 
 
@@ -917,7 +929,7 @@ def _seed(conn, execution_id, remaining, *, results="[]"):
 class TestDecrAndCheck:
     def test_pending_decrements_only(self, barrier_db):
         _seed(barrier_db, "exec-P", 3)
-        out = barrier_pg_decr_and_check(
+        out = _barrier_pg_decrement(
             {"f": 1}, execution_id="exec-P", callback_descriptor=_CALLBACK
         )
         assert out["status"] == "pending"
@@ -940,7 +952,7 @@ class TestDecrAndCheck:
                 " now() - interval '1 hour')"
             )
         assert _last_progress_age_seconds(barrier_db, "exec-SL") > 3000  # ~1h stale
-        barrier_pg_decr_and_check(
+        _barrier_pg_decrement(
             {"f": 1}, execution_id="exec-SL", callback_descriptor=_CALLBACK
         )
         assert _last_progress_age_seconds(barrier_db, "exec-SL") < 5  # refreshed
@@ -1006,9 +1018,9 @@ class TestDecrAndCheck:
             lambda **_k: create_pg_connection(env_prefix="TEST_DB_"),
         )
 
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="cb-ptb")
-            out = barrier_pg_decr_and_check(
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            sig.return_value = MagicMock(id="cb-ptb")
+            out = _barrier_pg_decrement(
                 {"f": "x"}, execution_id="exec-PTB", callback_descriptor=_CALLBACK
             )
 
@@ -1019,35 +1031,54 @@ class TestDecrAndCheck:
 
     def test_complete_fires_callback_with_aggregated_results(self, barrier_db):
         _seed(barrier_db, "exec-C", 1, results='[{"f": "a"}]')
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="cb-task-1")
-            out = barrier_pg_decr_and_check(
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="cb-task-1")
+            out = _barrier_pg_decrement(
                 {"f": "b"}, execution_id="exec-C", callback_descriptor=_CALLBACK
             )
         assert out["status"] == "complete"
         # Callback got the full aggregated list as its first positional arg.
-        assert sig.call_args.kwargs["args"] == [[{"f": "a"}, {"f": "b"}]]
+        assert mock_dispatch.call_args.kwargs["args"] == [[{"f": "a"}, {"f": "b"}]]
         assert _row(barrier_db, "exec-C") is None  # row deleted after dispatch
 
     def test_complete_path_passes_fairness_header(self, barrier_db):
         _seed(barrier_db, "exec-FH", 1)
-        descriptor = {**_CALLBACK, "fairness_headers": {FAIRNESS_HEADER_NAME: {"o": 1}}}
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="cb")
-            barrier_pg_decr_and_check(
+        # A full header payload: the PG path *parses* it back into a FairnessKey
+        # (the Celery path only forwarded the dict opaquely), so a partial one
+        # would fail on the missing workload_type rather than assert anything.
+        descriptor = {
+            **_CALLBACK,
+            "fairness_headers": {
+                FAIRNESS_HEADER_NAME: {
+                    "org_id": "o",
+                    "workload_type": "api",
+                    "pipeline_priority": 5,
+                }
+            },
+        }
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="cb")
+            _barrier_pg_decrement(
                 {"f": 1}, execution_id="exec-FH", callback_descriptor=descriptor
             )
-        assert sig.call_args.kwargs["headers"] == {FAIRNESS_HEADER_NAME: {"o": 1}}
+        # Reconstructed into a FairnessKey and handed to the dispatch, so the
+        # callback rides the same org/priority its header tasks did.
+        forwarded = mock_dispatch.call_args.kwargs["fairness"]
+        assert forwarded.org_id == "o"
+        assert forwarded.workload_type is WorkloadType.API
+        assert forwarded.pipeline_priority == 5
 
     def test_callback_dispatch_failure_preserves_row(self, barrier_db):
         # The central failure-masking invariant: dispatch happens BEFORE the row
-        # is deleted, so an apply_async failure leaves the row in place (reclaimed
-        # by expiry) — guards against a delete-before-dispatch reorder.
+        # is deleted, so a callback-dispatch failure leaves the row in place
+        # (reclaimed by expiry) — guards against a delete-before-dispatch reorder.
         _seed(barrier_db, "exec-CF", 1)
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.side_effect = RuntimeError("broker down")
+        with patch(
+            "queue_backend.dispatch.dispatch",
+            side_effect=RuntimeError("queue write failed"),
+        ):
             with pytest.raises(RuntimeError):
-                barrier_pg_decr_and_check(
+                _barrier_pg_decrement(
                     {"f": 1}, execution_id="exec-CF", callback_descriptor=_CALLBACK
                 )
         assert _row(barrier_db, "exec-CF") is not None  # row survives for TTL reclaim
@@ -1056,7 +1087,7 @@ class TestDecrAndCheck:
         # jsonb_build_array() must append a list-shaped result as ONE element
         # (plain `||` would concatenate it). Guards that choice.
         _seed(barrier_db, "exec-L", 2)
-        barrier_pg_decr_and_check(
+        _barrier_pg_decrement(
             [1, 2], execution_id="exec-L", callback_descriptor=_CALLBACK
         )
         remaining, results = _row(barrier_db, "exec-L")
@@ -1068,7 +1099,7 @@ class TestDecrAndCheck:
         # be torn down (fail fast) rather than hang to expiry.
         _seed(barrier_db, "exec-NB", 1)
         with pytest.raises(psycopg2.DataError):
-            barrier_pg_decr_and_check(
+            _barrier_pg_decrement(
                 {"f": "bad\x00value"},
                 execution_id="exec-NB",
                 callback_descriptor=_CALLBACK,
@@ -1081,8 +1112,8 @@ class TestDecrAndCheck:
         # fires — even when it would otherwise have hit remaining == 0.
         _seed(barrier_db, "exec-DA", 1)
         barrier_pg_abort(execution_id="exec-DA")  # header failed → row deleted
-        with patch("celery.current_app.signature") as sig:
-            out = barrier_pg_decr_and_check(
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            out = _barrier_pg_decrement(
                 {"f": 1}, execution_id="exec-DA", callback_descriptor=_CALLBACK
             )
         assert out["status"] == "abandoned"
@@ -1090,8 +1121,8 @@ class TestDecrAndCheck:
 
     def test_negative_remaining_does_not_fire(self, barrier_db):
         _seed(barrier_db, "exec-N", 0)  # decrement → -1
-        with patch("celery.current_app.signature") as sig:
-            out = barrier_pg_decr_and_check(
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            out = _barrier_pg_decrement(
                 {"f": 1}, execution_id="exec-N", callback_descriptor=_CALLBACK
             )
         assert out["status"] == "abandoned"
@@ -1099,8 +1130,8 @@ class TestDecrAndCheck:
         assert _row(barrier_db, "exec-N") is None
 
     def test_missing_row_does_not_fire(self, barrier_db):
-        with patch("celery.current_app.signature") as sig:
-            out = barrier_pg_decr_and_check(
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            out = _barrier_pg_decrement(
                 {"f": 1}, execution_id="nope", callback_descriptor=_CALLBACK
             )
         assert out["status"] == "abandoned"
@@ -1110,13 +1141,9 @@ class TestDecrAndCheck:
         _seed(barrier_db, "exec-U", 1)
         bad_result = {object()}
         with pytest.raises(TypeError):
-            barrier_pg_decr_and_check(
+            _barrier_pg_decrement(
                 bad_result, execution_id="exec-U", callback_descriptor=_CALLBACK
             )
-
-    def test_registered_under_canonical_name(self):
-        assert barrier_pg_decr_and_check.name == "barrier_pg_decr_and_check"
-
 
 class TestDecrementCoreExtraction:
     """The decrement logic lives in a plain ``_barrier_pg_decrement`` core so the
@@ -1149,7 +1176,7 @@ class TestDecrementCoreExtraction:
         # forwarding test below, this would catch a renamed/reordered core param
         # — the core is NOT mocked away.
         _seed(barrier_db, "exec-wrap", 3)
-        out = barrier_pg_decr_and_check(
+        out = _barrier_pg_decrement(
             {"f": 1}, execution_id="exec-wrap", callback_descriptor=_CALLBACK
         )
         assert out["status"] == "pending"
@@ -1157,21 +1184,9 @@ class TestDecrementCoreExtraction:
         assert remaining == 2
         assert results == [{"f": 1}]
 
-    def test_worker_task_forwards_kwargs_verbatim(self):
-        # Complements the real-row test above by pinning the keyword-forwarding
-        # contract explicitly: the wrapper passes result + execution_id +
-        # callback_descriptor straight through, returning the core's result.
-        sentinel = {"status": "pending", "remaining": 9}
-        with patch.object(
-            pg_barrier, "_barrier_pg_decrement", return_value=sentinel
-        ) as core:
-            out = barrier_pg_decr_and_check(
-                {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
-            )
-        assert out is sentinel
-        core.assert_called_once_with(
-            {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
-        )
+    # ``test_worker_task_forwards_kwargs_verbatim`` is gone with the
+    # ``barrier_pg_decr_and_check`` @worker_task wrapper it pinned: there is no
+    # wrapper left to forward anything, only the core called directly in-body.
 
     def test_open_transaction_on_shared_conn_raises(self):
         # The in-body contract is enforced loudly: a caller that enters with an
@@ -1210,8 +1225,9 @@ class TestAbort:
         assert barrier_pg_abort.name == "barrier_pg_abort"
 
     def test_max_retries_zero(self):
-        # A Celery retry would replay the decrement and corrupt the count.
-        assert barrier_pg_decr_and_check.max_retries == 0
+        # A retry would replay the teardown. (The decrement's no-replay contract
+        # is enforced by its in-body caller, not a task option — its @worker_task
+        # wrapper went with the Celery .link path.)
         assert barrier_pg_abort.max_retries == 0
 
 
@@ -1236,15 +1252,15 @@ class TestDecrementAtomicityThroughTask:
             conns.append(conn)
             pg_barrier._local.conn = conn  # this thread's own connection
             try:
-                out = barrier_pg_decr_and_check(
+                out = _barrier_pg_decrement(
                     {"t": label}, execution_id="exec-Z", callback_descriptor=_CALLBACK
                 )
                 statuses[label] = out["status"]
             finally:
                 pg_barrier._local.conn = None
 
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="cb")
+        with patch("queue_backend.dispatch.dispatch") as sig:
+            sig.return_value = MagicMock(id="cb")
             threads = [threading.Thread(target=run, args=(x,)) for x in ("a", "b")]
             for t in threads:
                 t.start()
@@ -1252,7 +1268,7 @@ class TestDecrementAtomicityThroughTask:
                 t.join(timeout=10)
             assert all(not t.is_alive() for t in threads)
             assert sorted(statuses.values()) == ["complete", "pending"]
-            assert sig.return_value.apply_async.call_count == 1  # single fire
+            assert sig.call_count == 1  # single fire
         for c in conns:
             c.close()
 
@@ -1292,7 +1308,6 @@ class TestPgFireAndForgetMode:
                 callback_kwargs={"execution_id": "exec-pg"},
                 callback_queue="general",
                 app_instance=None,
-                transport="pg_queue",
             )
         assert mock_dispatch.call_count == 2  # one per header, no .link
         for i, call in enumerate(mock_dispatch.call_args_list):
@@ -1302,7 +1317,6 @@ class TestPgFireAndForgetMode:
             ctx = call.kwargs["kwargs"]["_barrier_context"]
             assert ctx["execution_id"] == "exec-pg"
             assert ctx["batch_index"] == i
-            assert ctx["callback_descriptor"]["transport"] == "pg_queue"
         # The pre-existing kwarg on h0 survives alongside the injected context.
         assert mock_dispatch.call_args_list[0].kwargs["kwargs"]["pre_existing"] == "keep"
 
@@ -1321,7 +1335,6 @@ class TestPgFireAndForgetMode:
                 callback_kwargs={"execution_id": "exec-reuse"},
                 callback_queue="general",
                 app_instance=None,
-                transport="pg_queue",
             )
         with barrier_db.cursor() as cur:
             cur.execute(
@@ -1432,7 +1445,7 @@ class TestPgFireAndForgetMode:
         assert remaining == 2
 
     def test_fire_barrier_callback_pg_self_chains_via_dispatch(self):
-        descriptor = {**_CALLBACK, "transport": "pg_queue"}
+        descriptor = dict(_CALLBACK)
         with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
             mock_dispatch.return_value = MagicMock(id="pg-cb-1")
             cb_id = _fire_barrier_callback(descriptor, [{"r": 1}])
@@ -1444,7 +1457,7 @@ class TestPgFireAndForgetMode:
         # The PG callback carries the _pg_transport marker so the aggregating
         # callback can gate its at-least-once duplicate guard on it. The shared
         # descriptor must NOT be mutated (a copy is dispatched).
-        descriptor = {**_CALLBACK, "transport": "pg_queue"}
+        descriptor = dict(_CALLBACK)
         with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
             mock_dispatch.return_value = MagicMock(id="pg-cb")
             _fire_barrier_callback(descriptor, [{"r": 1}])
@@ -1452,21 +1465,11 @@ class TestPgFireAndForgetMode:
         assert dispatched.get(pg_barrier.PG_TRANSPORT_CALLBACK_KWARG) is True
         assert pg_barrier.PG_TRANSPORT_CALLBACK_KWARG not in descriptor["kwargs"]
 
-    def test_fire_barrier_callback_legacy_omits_transport_marker(self):
-        # The Celery .link path must NOT inject the marker → the callback's PG
-        # guard stays a no-op on Celery (no redelivery to guard).
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="celery-cb")
-            _fire_barrier_callback(_CALLBACK, [{"r": 1}])
-        passed = sig.call_args.kwargs["kwargs"]
-        assert pg_barrier.PG_TRANSPORT_CALLBACK_KWARG not in passed
-
     def test_fire_barrier_callback_pg_carries_fairness(self):
         # greptile: the PG callback must ride the producer's org/priority (parity
         # with the Celery path), reconstructed from the stored fairness_headers.
         descriptor = {
             **_CALLBACK,
-            "transport": "pg_queue",
             "fairness_headers": {
                 FAIRNESS_HEADER_NAME: {
                     "org_id": "org-9",
@@ -1485,19 +1488,11 @@ class TestPgFireAndForgetMode:
 
     def test_fire_barrier_callback_pg_without_fairness_passes_none(self):
         # No producer key → None (dispatch writes neutral defaults), not a crash.
-        descriptor = {**_CALLBACK, "transport": "pg_queue"}  # fairness_headers None
+        descriptor = dict(_CALLBACK)  # fairness_headers None
         with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
             mock_dispatch.return_value = MagicMock(id="pg-cb")
             _fire_barrier_callback(descriptor, [{"r": 1}])
         assert mock_dispatch.call_args.kwargs["fairness"] is None
-
-    def test_fire_barrier_callback_legacy_uses_celery(self):
-        # No backend marker → the .link-mode Celery dispatch (unchanged).
-        with patch("celery.current_app.signature") as sig:
-            sig.return_value.apply_async.return_value = MagicMock(id="celery-cb")
-            cb_id = _fire_barrier_callback(_CALLBACK, [{"r": 1}])
-        assert cb_id == "celery-cb"
-        sig.assert_called_once()
 
     def test_abort_clears_dedup_markers(self, barrier_db):
         with barrier_db.cursor() as cur:
@@ -1542,7 +1537,6 @@ class TestPgFireAndForgetMode:
             "kwargs": {"execution_id": "exec-last"},
             "queue": "api_file_processing_callback",
             "fairness_headers": None,
-            "transport": "pg_queue",
         }
         ctx = {
             "execution_id": "exec-last",
@@ -1621,7 +1615,6 @@ class TestPgFireAndForgetMode:
                     callback_kwargs={"execution_id": "exec-midfail"},
                     callback_queue="general",
                     app_instance=None,
-                    transport="pg_queue",
                 )
         assert _row(barrier_db, "exec-midfail") is None  # row deleted on failure
         with barrier_db.cursor() as cur:
