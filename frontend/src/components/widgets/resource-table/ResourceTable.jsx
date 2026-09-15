@@ -289,9 +289,10 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
-    // Sharing grants read only: no edit, no delete. Both controls stay on
-    // screen but disabled, so it is obvious they exist and why they are not
-    // available. Sharing onward stays open to shared users.
+    // Edit and delete are the owner's on every resource this renders. What
+    // else sharing allows differs per resource, so it is not stated here.
+    // Both controls stay on screen but disabled, so it is obvious they exist
+    // and why they are not available. Sharing onward stays open.
     const canEdit = canEditResource(item, sessionDetails);
     const locked = !canEdit;
     // Frictionless adapters are platform-provisioned: any org member may

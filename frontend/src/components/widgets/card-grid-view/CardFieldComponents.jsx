@@ -50,8 +50,9 @@ function CardActionBox({
   testIdPrefix,
 }) {
   const { sessionDetails } = useSessionStore();
-  // Sharing grants read only: no edit, no delete. Sharing onward stays
-  // available -- see the Share button below.
+  // Edit and delete are the owner's on every resource this renders. What
+  // else sharing allows differs per resource, so it is not stated here.
+  // Sharing onward stays available -- see the Share button below.
   const canEdit = canEditResource(item, sessionDetails);
   const lockedTitle = canEdit ? undefined : "Only the owner can change this";
   const testId = (suffix) =>
@@ -155,7 +156,10 @@ CardActionBox.propTypes = {
  * @return {JSX.Element} Rendered owner field row
  */
 function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
-  const isOwner = item?.is_owner ?? item.created_by === sessionDetails?.userId;
+  // Ownership, not editability: an org admin may edit a resource that is not
+  // theirs. Every list serializer sends is_owner, and the old created_by
+  // fallback could not see co-owners.
+  const isOwner = Boolean(item?.is_owner);
   const email = item.created_by_email;
   const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
   const extra =
