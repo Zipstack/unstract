@@ -513,8 +513,9 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 #
 # These two bound the task's wall time, which must stay under the consumer's
 # visibility timeout (300s): ``HTTPTransport(retries=2)`` retries the CONNECT,
-# so one post is up to 3 x 30s, and three attempts plus the sleeps reach ~274s.
-# Raising either constant, or the per-post timeout, overruns the VT.
+# so one post is up to 3 x 30s; three attempts, the sleeps, and httpcore's own
+# 0.5s/1.0s connect backoff reach ~278s. Check that budget before raising
+# either constant or the per-post timeout.
 _GROUP_NOTIFICATION_ATTEMPTS = 3
 _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
 
@@ -581,7 +582,7 @@ def notify_resource_shared_with_group(
     resource_kind: str,
     resource_id: str,
     organization_id: str,
-    share_action: str = "shared",
+    share_action: str,
     revoked_at: str | None = None,
 ) -> None:
     """Email every current member of the groups whose access just changed.

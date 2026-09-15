@@ -35,7 +35,12 @@ function buildApplyAlert(
     return { type: "success", content: summary };
   }
   const failedNames = failed.map((user) => user?.email || user?.id).join(", ");
-  return { type: "warning", content: `${summary}. Failed for: ${failedNames}` };
+  // "Not applied" rather than "Failed": this list also carries removals that
+  // were deliberately skipped because an addition failed first.
+  return {
+    type: "warning",
+    content: `${summary}. Not applied for: ${failedNames}`,
+  };
 }
 
 function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
@@ -56,7 +61,8 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
     // during the mutation itself is caught too, not just one mid-refresh.
     // Returns the verdict rather than leaving each caller to re-derive it:
     // "stale" (superseded — touch no shared state), "gone" (404, alert already
-    // raised), "ok" (proceed).
+    // raised), "error" (refresh failed, alert already raised, roster
+    // unverified), "ok" (proceed).
     async (resourceId, requestId = latestRequestRef.current) => {
       try {
         const res = await service.getSharedUsers(resourceId);
@@ -82,7 +88,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         setAlertDetails(
           handleException(err, "Unable to refresh co-owner data"),
         );
-        return "ok";
+        return "error";
       }
     },
     [service, onListRefresh, setAlertDetails, handleException],
@@ -162,17 +168,17 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       }
       // Reconverge the modal on true server state regardless of partial outcome.
       const outcome = await refreshCoOwnerData(resourceId, requestId);
-      if (outcome === "stale") {
-        // The user has opened another resource since Apply. Closing the modal
-        // or alerting now would hit that one instead of this.
-        return false;
+      if (outcome !== "gone") {
+        // The mutations landed whatever the refresh said, and the list is
+        // page-scoped rather than modal-scoped. ("gone" already refreshed it.)
+        onListRefresh?.();
       }
-      if (outcome === "gone") {
-        // The refresh already closed the modal, refreshed the list and raised
-        // its own alert — an apply summary on top of it would only mislead.
-        return true;
+      if (outcome !== "ok") {
+        // "stale": the user has opened another resource, so closing or
+        // alerting would hit that one. "gone"/"error": an alert is already
+        // standing, and a summary on top of it would only mislead.
+        return outcome === "gone";
       }
-      onListRefresh?.();
       setAlertDetails(
         buildApplyAlert(
           addUsers,

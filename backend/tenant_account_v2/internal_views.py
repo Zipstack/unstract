@@ -37,8 +37,8 @@ class ResourceSharedWithGroupSerializer(serializers.Serializer):
     actor_id = serializers.IntegerField()
     resource_kind = serializers.CharField()
     resource_id = serializers.CharField()
-    # Both are required: the worker sends them on every call, so a default here
-    # would turn a renamed field into a revoke silently mailed as a share.
+    # Required, and the worker task takes no default for it either: a default
+    # on both sides would turn a dropped field into a revoke mailed as a share.
     share_action = serializers.ChoiceField(choices=[a.value for a in ShareAction])
     # Revoke only: members who joined after this are excluded from the mail.
     # Nullable because the worker sends the key on both directions.

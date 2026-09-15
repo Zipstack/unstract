@@ -248,7 +248,7 @@ def _groups_to_mail(
     if len(to_mail) != len(groups):
         logger.info(
             "group-notification: dropped %d of %d groups "
-            "(access revoked or group gone since enqueue)",
+            "(access revoked since enqueue)",
             len(groups) - len(to_mail),
             len(groups),
         )
