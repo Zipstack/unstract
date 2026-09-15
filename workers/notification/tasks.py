@@ -6,6 +6,7 @@ while maintaining backward compatibility.
 """
 
 import os
+import time
 from typing import Any
 
 import httpx
@@ -504,6 +505,150 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 
     # Set priority flag and delegate to main processor
     return process_notification(notification_type, priority=True, **kwargs)
+
+
+# Retries for a transient backend problem (restart, 5xx). Kept inside the task
+# so a brief blip is absorbed here rather than costing a full lease-expiry
+# redelivery (minutes) plus one of the consumer's bounded attempts.
+_GROUP_NOTIFICATION_ATTEMPTS = 3
+_GROUP_NOTIFICATION_RETRY_DELAY = 2.0
+# Per-phase, because httpx has NO whole-request timeout: a scalar one is applied
+# to connect, write and read separately. The loop below is the only retry --
+# transport-level retries would stack their own timeouts underneath these.
+# Sum x _GROUP_NOTIFICATION_ATTEMPTS is the task's bound, and must stay under
+# WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat is frozen for the
+# task's duration) and VT_SECONDS. Excludes DNS, which connect does not cover.
+_GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
+
+
+def _post_group_notification(endpoint: str, organization_id: str, payload: dict) -> None:
+    """POST a group-notification job to the backend and insist it succeeded.
+
+    Unlike ``_mark_buffer_outcome`` this deliberately **raises** on failure:
+    nothing tracks an unsent group email, so a swallowed error would be a
+    silent drop. The raise leaves the message on the queue for redelivery,
+    bounded by the consumer's attempt cap.
+
+    A sub-500 response ends the in-process attempts — a rejected payload will
+    be rejected again. Delivery is at-least-once: a response lost after the
+    backend already sent re-posts the *whole* payload, and the backend mails
+    group by group with no checkpoint, so a failure partway through the fan-out
+    re-mails the groups that already succeeded. The send path writes nothing, so
+    duplicate email is the only effect — but the bound is these 3 attempts times
+    the consumer's attempt cap, not one.
+    """
+    base_url = os.getenv("INTERNAL_API_BASE_URL")
+    api_key = os.getenv("INTERNAL_SERVICE_API_KEY")
+    if not base_url or not api_key:
+        raise RuntimeError(
+            "INTERNAL_API_BASE_URL / INTERNAL_SERVICE_API_KEY not set; "
+            "cannot send group notification"
+        )
+    url = f"{base_url.rstrip('/')}/v1/group-notification/{endpoint}/"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        # The backend resolves the tenant from this header; without it every
+        # org-scoped query comes back empty.
+        "X-Organization-ID": organization_id,
+    }
+    last_error = ""
+    for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
+        try:
+            with httpx.Client() as client:
+                response = client.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=_GROUP_NOTIFICATION_TIMEOUT,
+                )
+        except (
+            httpx.ReadTimeout,
+            httpx.WriteTimeout,
+            httpx.ReadError,
+            httpx.RemoteProtocolError,
+        ) as e:
+            # The request reached the backend, and the backend does not stop
+            # when we disconnect. Its outcome is unknown, and the send path has
+            # no checkpoint, so re-posting re-mails every group that already
+            # succeeded. End the in-process attempts like a sub-500 does.
+            # (The queue can still redeliver; only an idempotency key on the
+            # handler would bound that, which this PR does not add.)
+            last_error = f"timeout_after_send={e!r}"
+            break
+        except Exception as e:  # noqa: BLE001
+            last_error = f"exception={e!r}"
+        else:
+            if response.status_code == 200:
+                return
+            last_error = f"http_{response.status_code} body={response.text[:200]}"
+            if response.status_code < 500:
+                break
+        if attempt < _GROUP_NOTIFICATION_ATTEMPTS:
+            logger.warning(
+                "Group notification %s attempt %d/%d failed (%s); retrying",
+                endpoint,
+                attempt,
+                _GROUP_NOTIFICATION_ATTEMPTS,
+                last_error,
+            )
+            time.sleep(_GROUP_NOTIFICATION_RETRY_DELAY)
+    logger.error(
+        "metric=group_notification_post_failed_total endpoint=%s org_id=%s error=%s",
+        endpoint,
+        organization_id,
+        last_error,
+    )
+    raise RuntimeError(f"Group notification {endpoint} failed: {last_error}")
+
+
+@worker_task(name="notify_resource_shared_with_group")
+def notify_resource_shared_with_group(
+    group_ids: list[int],
+    actor_id: int,
+    resource_kind: str,
+    resource_id: str,
+    organization_id: str,
+    share_action: str,
+    revoked_at: str | None = None,
+) -> None:
+    """Email every current member of the groups whose access just changed.
+
+    ``revoked_at`` is set on a revoke only; the backend uses it to skip members
+    who joined the group after the access was taken away.
+    """
+    _post_group_notification(
+        "resource-shared",
+        organization_id,
+        {
+            "group_ids": group_ids,
+            "actor_id": actor_id,
+            "resource_kind": resource_kind,
+            "resource_id": resource_id,
+            "share_action": share_action,
+            "revoked_at": revoked_at,
+        },
+    )
+
+
+@worker_task(name="notify_group_membership_changed")
+def notify_group_membership_changed(
+    group_id: int,
+    actor_id: int,
+    membership_action: str,
+    user_ids: list[int],
+    organization_id: str,
+) -> None:
+    """Email the users whose membership of a group just changed."""
+    _post_group_notification(
+        "membership-changed",
+        organization_id,
+        {
+            "group_id": group_id,
+            "actor_id": actor_id,
+            "membership_action": membership_action,
+            "user_ids": user_ids,
+        },
+    )
 
 
 @worker_task(name="notification_health_check")
