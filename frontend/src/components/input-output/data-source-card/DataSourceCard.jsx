@@ -1,5 +1,7 @@
-import { Card, Image, Typography } from "antd";
 import PropTypes from "prop-types";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./DataSourceCard.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -30,6 +32,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
       type="inner"
       bordered={true}
       className={`ds-card ${srcDetails?.isDisabled ? "disabled" : ""}`}
+      data-testid={`ds-card-${srcDetails?.id}`}
       onClick={handleSelectSource}
     >
       <div className="cover-container">

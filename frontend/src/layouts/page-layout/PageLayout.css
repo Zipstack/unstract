@@ -5,8 +5,21 @@
   grid-template-rows: auto 1fr;
 }
 
+/*
+ * The top bar is a LIGHT surface; the violet is the sidebar's alone.
+ *
+ * This was `var(--primary)`, which put a full-width violet strip above the
+ * sidebar. The Figma design (node 586-119) keeps the brand colour to the
+ * sidebar and renders the top row as part of the page.
+ *
+ * `--card` rather than `--background`: the bar is a raised surface over the
+ * page, the same plane as tables and modals. The hairline below is what
+ * separates the two planes -- without it the bar dissolves into any content
+ * that is also white, so it is not decorative.
+ */
 .topNav {
-  background-color: var(--primary);
+  background-color: var(--card);
+  border-bottom: 1px solid var(--border);
   padding-block: 14px;
   padding-inline-start: 20px;
   padding-inline-end: 12px;
