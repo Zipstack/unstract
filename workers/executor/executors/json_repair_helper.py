@@ -169,9 +169,10 @@ def _emit_raw_payload(json_str: str, context: dict[str, Any]) -> None:
     # request_id is stamped onto the record by RequestIDFilter; execution_id is
     # not, so pass it explicitly to keep a payload tied to its execution.
     raw_logger.warning(
-        "raw LLM response (%s) execution_id=%s: %s",
+        "raw LLM response (%s) execution_id=%s whisper_hash=%s: %s",
         context.get("outcome", ""),
         correlation.get("execution_id", "-"),
+        context.get("whisper_hash") or "-",
         _head_tail(json_str),
     )
 
@@ -514,7 +515,11 @@ def _pick_best_partial(value: Any, raw: str, contract: JsonContract) -> Any:
 
 
 def _log_cleansing_chain(
-    json_str: str, parsed: Any, contract: JsonContract | None, satisfied: bool
+    json_str: str,
+    parsed: Any,
+    contract: JsonContract | None,
+    satisfied: bool,
+    whisper_hash: str | None = None,
 ) -> None:
     """Emit the step-by-step parse trace for every repair.
 
@@ -524,7 +529,11 @@ def _log_cleansing_chain(
     fact is not possible from the outcome alone — hence the whole chain, on
     every call rather than only the ones that blew up.
 
-    Structure only: no document content at any level.
+    Structure only: no document content at any level. ``whisper_hash`` is the
+    one exception and is safe to emit: it is an opaque LLMWhisperer extraction
+    id, not derived from the document text, and it is the only field that ties
+    a bad parse here to the extraction that produced the text — without it a
+    correlation needs the raw payload, which production may not log.
     """
     known_keys = frozenset(contract.required_keys) if contract else frozenset()
     annotated = _is_annotated(json_str)
@@ -535,9 +544,10 @@ def _log_cleansing_chain(
     if logger.isEnabledFor(level):
         logger.log(
             level,
-            "JSON repair %s | raw=%s annotated=%s alignment=%s | legacy=%s | "
-            "unwrapped=%s | wanted=%s keys=%s | skeleton=%s",
+            "JSON repair %s | whisper_hash=%s | raw=%s annotated=%s alignment=%s | "
+            "legacy=%s | unwrapped=%s | wanted=%s keys=%s | skeleton=%s",
             "satisfied contract" if satisfied else "did NOT satisfy contract",
+            whisper_hash or "-",
             _shape(json_str),
             annotated,
             alignment,
@@ -558,6 +568,7 @@ def _log_cleansing_chain(
                 "legacy_shape": _shape(parsed),
                 "annotated": _is_annotated(json_str),
                 "environment": os.getenv("DEPLOYMENT_ENV", ""),
+                "whisper_hash": whisper_hash or "",
             },
         )
 
@@ -595,7 +606,9 @@ def _candidates(parsed: Any, json_str: str, contract: JsonContract):
 
 
 def repair_json_with_best_structure(
-    json_str: str, contract: JsonContract | None = None
+    json_str: str,
+    contract: JsonContract | None = None,
+    whisper_hash: str | None = None,
 ) -> Any:
     """Intelligently repair JSON string using the best parsing strategy.
 
@@ -603,6 +616,10 @@ def repair_json_with_best_structure(
         json_str: The JSON string to repair
         contract: Optional shape the caller requires. When omitted the
             result is exactly what this function has always returned.
+        whisper_hash: Optional LLMWhisperer extraction id, logged with the
+            parse trace so a malformed response can be correlated with the
+            extraction it came from. Diagnostics only — it never reaches the
+            parse, so passing it cannot change the return value.
 
     Returns:
         The parsed JSON object with the best structure. With a contract,
@@ -612,7 +629,7 @@ def repair_json_with_best_structure(
     parsed = _repair_legacy(json_str)
     satisfied = contract is None or contract.satisfied_by(parsed)
     try:
-        _log_cleansing_chain(json_str, parsed, contract, satisfied)
+        _log_cleansing_chain(json_str, parsed, contract, satisfied, whisper_hash)
     except Exception:  # noqa: BLE001 - diagnostics must never fail a repair
         logger.warning("JSON repair diagnostics failed", exc_info=True)
     if satisfied:

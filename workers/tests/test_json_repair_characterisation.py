@@ -753,3 +753,127 @@ def test_contract_output_is_pinned_against_library_drift():
         "invoice_number": "INV-001",
         "total": 1250.5,
     }
+
+
+# --- Part 7: whisper-hash correlation ------------------------------------
+# The trace already says what the parse did; the whisper hash says which
+# extraction it was reading. That pairing is what lets a bad parse be matched
+# against the LLMWhisperer extraction that produced the text, without the raw
+# payload — which production never logs.
+
+
+@pytest.mark.parametrize("raw", CORPUS)
+def test_whisper_hash_cannot_change_the_returned_value(raw):
+    """Diagnostics only. The guarantee the rest of this file exists to protect."""
+    assert repair_json_with_best_structure(
+        raw, whisper_hash="wh-deadbeef"
+    ) == repair_json_with_best_structure(raw)
+    assert repair_json_with_best_structure(
+        raw, contract=DICT_CONTRACT, whisper_hash="wh-deadbeef"
+    ) == repair_json_with_best_structure(raw, contract=DICT_CONTRACT)
+
+
+def test_trace_carries_the_whisper_hash_with_no_flag_enabled(caplog):
+    """Production default: no raw capture, and the hash is still there."""
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(
+            OBJ, contract=DICT_CONTRACT, whisper_hash="wh-abc123"
+        )
+    assert "whisper_hash=wh-abc123" in caplog.text
+
+
+def test_trace_carries_the_whisper_hash_on_the_failure_path(caplog):
+    with caplog.at_level(logging.WARNING):
+        repair_json_with_best_structure(
+            OBJ + ',{"b": 2}', contract=DICT_CONTRACT, whisper_hash="wh-fail"
+        )
+    assert "whisper_hash=wh-fail" in caplog.text
+
+
+@pytest.mark.parametrize("supplied", [None, ""])
+def test_trace_shows_a_placeholder_when_no_hash_is_supplied(caplog, supplied):
+    """A non-LLMWhisperer extraction has no hash; the field must not read as one."""
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(
+            OBJ, contract=DICT_CONTRACT, whisper_hash=supplied
+        )
+    assert "whisper_hash=-" in caplog.text
+
+
+def test_webhook_payload_carries_the_whisper_hash(monkeypatch):
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
+    monkeypatch.setenv("DEBUG_LOG_RAW_LLM_SINK", "webhook")
+    monkeypatch.setenv("DEBUG_RAW_LLM_WEBHOOK_URL", "http://collector.local/raw")
+    sent = {}
+    monkeypatch.setattr(
+        "executor.executors.json_repair_helper._post_to_webhook",
+        lambda url, payload: sent.update(payload),
+    )
+    repair_json_with_best_structure(
+        OBJ + ',{"b": 2}', contract=DICT_CONTRACT, whisper_hash="wh-hook"
+    )
+    assert sent["whisper_hash"] == "wh-hook"
+
+
+def test_log_sink_carries_the_whisper_hash(monkeypatch, caplog):
+    monkeypatch.setenv(RAW_FLAG, "true")
+    monkeypatch.setenv("DEPLOYMENT_ENV", "staging")
+    monkeypatch.delenv("DEBUG_LOG_RAW_LLM_SINK", raising=False)
+    with caplog.at_level(logging.DEBUG):
+        repair_json_with_best_structure(
+            OBJ, contract=DICT_CONTRACT, whisper_hash="wh-sink"
+        )
+    assert "whisper_hash=wh-sink" in caplog.text
+
+
+def test_handle_json_forwards_the_hash_from_metadata(monkeypatch):
+    """The wiring, not the helper: the live caller must actually pass it."""
+    from executor.executors.answer_prompt import AnswerPromptService
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    seen = {}
+
+    def _capture(json_str, contract=None, whisper_hash=None):
+        seen["whisper_hash"] = whisper_hash
+        return {"field_a": 1}
+
+    monkeypatch.setattr(
+        "executor.executors.json_repair_helper.repair_json_with_best_structure",
+        _capture,
+    )
+    structured_output: dict = {}
+    AnswerPromptService.handle_json(
+        answer=OBJ,
+        structured_output=structured_output,
+        output={PSKeys.NAME: "field_a"},
+        llm=None,
+        metadata={PSKeys.WHISPER_HASH: "wh-from-metadata"},
+    )
+    assert seen["whisper_hash"] == "wh-from-metadata"
+    assert structured_output["field_a"] == {"field_a": 1}
+
+
+def test_handle_json_tolerates_absent_metadata(monkeypatch):
+    """``metadata`` is optional on the signature, so the lookup must not raise."""
+    from executor.executors.answer_prompt import AnswerPromptService
+    from executor.executors.constants import PromptServiceConstants as PSKeys
+
+    seen = {}
+
+    def _capture(json_str, contract=None, whisper_hash=None):
+        seen["whisper_hash"] = whisper_hash
+        return {}
+
+    monkeypatch.setattr(
+        "executor.executors.json_repair_helper.repair_json_with_best_structure",
+        _capture,
+    )
+    AnswerPromptService.handle_json(
+        answer=OBJ,
+        structured_output={},
+        output={PSKeys.NAME: "field_a"},
+        llm=None,
+        metadata=None,
+    )
+    assert seen["whisper_hash"] is None
