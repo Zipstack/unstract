@@ -105,6 +105,8 @@ class ToolStudioPromptKeys:
     EXECUTION_SOURCE = "execution_source"
     LINE_ITEM = "line-item"
     CUSTOM_DATA = "custom_data"
+    SIGNATURE_METADATA = "signature_metadata"
+    SIGNATURE_PAGE_REFERENCES = "signature_page_references"
     # Webhook postprocessing settings
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
