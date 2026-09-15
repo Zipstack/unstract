@@ -1,8 +1,10 @@
 import logging
 from typing import Any
 
+from connector_v2.constants import ConnectorInstanceKey as CIKey
 from connector_v2.models import ConnectorInstance
 from connector_v2.serializers import ConnectorInstanceSerializer
+from permissions.permission import is_workflow_mutator
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -31,5 +33,28 @@ class WorkflowEndpointSerializer(ModelSerializer):
         context is available.
         """
         fields = super().get_fields()
-        fields["connector_instance_id"].queryset = ConnectorInstance.objects.all()
+        # User-scoped, so an endpoint cannot be pointed at a connector the
+        # requester has no access to. The nested read is redacted separately,
+        # in to_representation.
+        request = self.context.get("request")
+        fields["connector_instance_id"].queryset = (
+            ConnectorInstance.objects.for_user(request.user)
+            if request
+            else ConnectorInstance.objects.none()
+        )
         return fields
+
+    def to_representation(self, instance: WorkflowEndpoint) -> dict[str, Any]:
+        """Blank the connector's credentials for anyone who may only read.
+
+        Sharing grants read, and the nested serializer returns
+        ``connector_metadata`` decrypted. Fails closed without a request.
+        """
+        rep = super().to_representation(instance)
+        connector = rep.get("connector_instance")
+        if not connector:
+            return rep
+        request = self.context.get("request")
+        if not request or not is_workflow_mutator(request, instance.workflow):
+            connector[CIKey.CONNECTOR_METADATA] = {}
+        return rep
