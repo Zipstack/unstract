@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 import uuid as _uuid
 from typing import TYPE_CHECKING
@@ -14,6 +15,12 @@ if TYPE_CHECKING:
     from account_v2.models import Organization
 
     from platform_api.models import PlatformApiKey
+
+logger = logging.getLogger(__name__)
+
+# Reserved domain for service-account addresses. The frontend matches on it to
+# label an ownerless resource "Platform key" instead of naming a machine.
+SERVICE_ACCOUNT_EMAIL_DOMAIN = "platform.internal"
 
 # Business app labels whose models may carry created_by / membership rows.
 # Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
@@ -45,7 +52,7 @@ def create_api_user_for_key(
         name_slug = _slugify_for_email(platform_api_key.name)
         user = User(
             username=f"svc-{name_slug}-{uid[:8]}",
-            email=f"{name_slug}-{uid[:8]}@platform.internal",
+            email=f"{name_slug}-{uid[:8]}@{SERVICE_ACCOUNT_EMAIL_DOMAIN}",
             user_id=uid,
             is_service_account=True,
         )
@@ -61,6 +68,63 @@ def create_api_user_for_key(
         platform_api_key.api_user = user
         platform_api_key.save(update_fields=["api_user"])
     return user
+
+
+def live_key_creator(platform_api_key: PlatformApiKey) -> User | None:
+    """The key's creator if they still belong to the key's organization.
+
+    ``_is_resource_owner`` grants on any surviving OWNER row without checking
+    live membership, which is why ``cleanup_user_org_access`` purges those rows
+    when a user leaves. Handing an ex-member a fresh row -- at create, on key
+    deletion, or in a backfill -- reopens that rejoin backdoor, so every path
+    that names a successor asks this one question.
+    """
+    creator = platform_api_key.created_by
+    if creator is None:
+        return None
+    # ``_base_manager`` because the default manager is org-scoped by
+    # ``UserContext``, which is None outside a request — an empty result would
+    # silently strip every resource of its owner. The org is filtered here.
+    if not OrganizationMember._base_manager.filter(
+        user=creator, organization=platform_api_key.organization
+    ).exists():
+        return None
+    return creator
+
+
+def owner_user_for(user: User) -> User:
+    """Resolve the human who should own a resource created by ``user``.
+
+    Service accounts are filtered out of every owner surface, so granting to
+    one leaves no human owner; attribute it to the key's live creator instead.
+    Returns ``user`` unchanged for a normal session, or when no live creator
+    can be named -- the UI then labels the resource "Platform key".
+    """
+    if not getattr(user, "is_service_account", False):
+        return user
+
+    # Imported here so the module keeps its models import behind TYPE_CHECKING.
+    from platform_api.models import PlatformApiKey
+
+    key = (
+        PlatformApiKey.objects.filter(api_user=user)
+        .select_related("created_by", "organization")
+        .first()
+    )
+    if key is None:
+        logger.warning(
+            "Service account %s backs no platform key; resource gets no human owner",
+            user.id,
+        )
+        return user
+    creator = live_key_creator(key)
+    if creator is None:
+        logger.warning(
+            "Platform key %s has no live creator; resource gets no human owner",
+            key.id,
+        )
+        return user
+    return creator
 
 
 def _get_user_fk_fields(model: type) -> list[str]:
@@ -173,11 +237,16 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
-    """Transfer ownership to key creator, then delete the service account."""
+    """Transfer ownership to the key's creator, then delete the service account.
+
+    A creator who has left the org is not a successor -- ``transfer_ownership``
+    short-circuits on ``None`` and the rows are dropped with the account, which
+    is what ``cleanup_user_org_access`` would have done to them anyway.
+    """
     api_user = platform_api_key.api_user
     if not api_user:
         return
 
     with transaction.atomic():
-        transfer_ownership(from_user=api_user, to_user=platform_api_key.created_by)
+        transfer_ownership(from_user=api_user, to_user=live_key_creator(platform_api_key))
         api_user.delete()

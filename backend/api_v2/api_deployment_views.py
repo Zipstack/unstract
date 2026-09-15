@@ -9,7 +9,6 @@ from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from platform_api.openapi_schema import PlatformKeyAutoSchema
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
@@ -360,9 +359,7 @@ class APIDeploymentViewSet(
         self.perform_create(serializer)
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}

@@ -510,6 +510,7 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_run_time = SerializerMethodField()
     is_owner = SerializerMethodField()
     co_owners_count = SerializerMethodField()
+    owner_emails = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -529,6 +530,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_run_time",
             "is_owner",
             "co_owners_count",
+            "owner_emails",
         ]
 
     def get_created_by_email(self, obj) -> str | None:
@@ -541,6 +543,12 @@ class APIDeploymentListSerializer(ModelSerializer):
 
     def get_co_owners_count(self, obj) -> int:
         return obj.co_owners_count()
+
+    def get_owner_emails(self, obj) -> list[str]:
+        """Email of each owner, earliest first. Empty if none is a person."""
+        # Published field: APIDeploymentSummary inherits it, so it also
+        # reaches platform-key callers.
+        return obj.owner_emails()
 
     # Both read the list view's annotations when they are there, and fall back
     # to a query for the callers that serialize a plain queryset. A deployment
