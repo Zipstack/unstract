@@ -11,9 +11,9 @@ the specific directive that loads it (a style pulled from a script-src-only host
 -- run the browser probe from SKILL.md to settle that.
 
 Usage:
-    python3 scan_origins.py --dist frontend/dist          # after `npm run build`
+    python3 scan_origins.py --dist frontend/build         # after `bun run build`
     python3 scan_origins.py --url https://us-central.unstract.com
-    python3 scan_origins.py --dist frontend/dist --conf frontend/nginx.conf
+    python3 scan_origins.py --dist frontend/build --conf frontend/nginx.conf
 """
 
 import argparse
@@ -37,6 +37,7 @@ IGNORED = {
     "github.com",
     "raw.githubusercontent.com",
     "reactjs.org",
+    "react.dev",
     "redux.js.org",
     "redux-toolkit.js.org",
     "react-dnd.github.io",

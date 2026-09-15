@@ -2,28 +2,35 @@
 name: csp-check
 description: >
   Check the frontend Content-Security-Policy in frontend/nginx.conf against what the app
-  actually loads. Use when adding or upgrading a third-party frontend dependency (CDN,
-  analytics, payments, widgets), when a feature loads assets from a new external host,
-  when a CSP violation shows up in the browser console, or before flipping the policy out
-  of report-only mode.
+  actually loads. The policy is enforced, so a host it does not list is blocked. Use when
+  adding or upgrading a third-party frontend dependency (CDN, analytics, payments,
+  widgets), when a feature loads assets from a new external host, when a CSP violation
+  shows up in the browser console, or when something works in `bun run dev` but breaks
+  behind nginx.
 ---
 
 # CSP Check
 
-The frontend ships a `Content-Security-Policy-Report-Only` header from
-`frontend/nginx.conf`. Report-only means violations are written to each user's browser
-console and nowhere else, so a policy gap is invisible until someone looks. This skill is
-how you look.
+The frontend ships an enforcing `Content-Security-Policy` header from
+`frontend/nginx.conf` (UN-2238; it was report-only until then). A resource from an origin
+no directive lists is **blocked** — whatever needed it breaks, and the only trace is a
+console violation. So the policy has to be widened in the same change that adds the
+dependency, not after someone reports a broken page.
+
+There is no report collector: violations reach each user's browser console and nowhere
+else. These checks are the only way to see a gap before a user does. Note the header is
+only served by the production nginx image — `bun run dev` has no CSP at all, so "it worked
+locally" says nothing.
 
 Three checks, cheapest first. Run 1 on every change that touches a frontend dependency;
-run 2 and 3 before widening the policy or flipping it to enforcing.
+run 2 and 3 before widening the policy or shipping a new third-party integration.
 
 ## 1. Static: does the bundle reference a host the policy never allows?
 
 ```bash
 cd .claude/skills/csp-check/scripts
 python3 extract_policy.py                                  # what the policy says today
-python3 scan_origins.py --url https://us-central.unstract.com   # or --dist frontend/dist
+python3 scan_origins.py --url https://us-central.unstract.com   # or --dist frontend/build
 ```
 
 `scan_origins.py` pulls every `/assets/*.js|css` chunk (following relative imports),
@@ -77,9 +84,9 @@ that never initialises reports nothing.
 
 ## Changing the policy
 
-Edit the single `add_header Content-Security-Policy-Report-Only` line in
-`frontend/nginx.conf`. Keep it one line: nginx accepts multi-line quoted strings, but the
-newlines end up in the header value.
+Edit the single `add_header Content-Security-Policy` line in `frontend/nginx.conf`. Keep
+it one line: nginx accepts multi-line quoted strings, but the newlines end up in the
+header value.
 
 Verify before pushing — nginx will start with a malformed policy and browsers will silently
 drop the bad directive:
