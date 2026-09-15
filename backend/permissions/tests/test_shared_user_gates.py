@@ -89,6 +89,46 @@ class SharedWorkflowEndpointTests(CoOwnerOrgTestMixin, TestCase):
         rep = self._read(self.viewer).data
         self.assertEqual(rep["connector_instance"]["connector_metadata"], {})
 
+    def test_redacting_credentials_does_not_query_per_endpoint(self) -> None:
+        """The redaction must ride the queryset's prefetch, not re-ask per row.
+
+        Measured: 44 queries for 7 endpoints both with and without
+        ``to_representation``, so the redaction itself costs nothing. Losing
+        the ``workflow__memberships`` prefetch, or making the owner check
+        query again, shows up as roughly one more query per endpoint.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        for n in range(6):
+            wf = Workflow.objects.create(
+                workflow_name=f"wf-bulk-{n}",
+                organization=self.org,
+                created_by=self.owner,
+            )
+            wf.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+            WorkflowEndpoint.objects.create(
+                workflow=wf,
+                endpoint_type=WorkflowEndpoint.EndpointType.DESTINATION,
+                connection_type=WorkflowEndpoint.ConnectionType.FILESYSTEM,
+                connector_instance=self.connector,
+            )
+
+        view = WorkflowEndpointViewSet.as_view({"get": "list"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=self.owner)
+        with CaptureQueriesContext(connection) as ctx:
+            response = view(request)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.data), 7)
+        for row in response.data:
+            self.assertEqual(
+                row["connector_instance"]["connector_metadata"],
+                {"key": "AKIA-SECRET", "secret": "s3cr3t"},
+            )
+        self.assertLess(len(ctx.captured_queries), 48)
+
     def test_owner_still_receives_the_connector_credentials(self) -> None:
         rep = self._read(self.owner).data
         self.assertEqual(
@@ -198,8 +238,9 @@ class SharedPromptStudioProjectTests(CoOwnerOrgTestMixin, TestCase):
 class PromptStudioChildCreateTests(CoOwnerOrgTestMixin, TestCase):
     """Adding a prompt or an LLM profile is gated by access to the project.
 
-    Both are collection-level ``@action``s, so DRF never calls ``get_object()``
-    by itself and the object gate has to be reached explicitly.
+    Both are custom ``@action``s, so DRF never calls ``get_object()`` by
+    itself -- a pk in the route does not change that -- and the object gate
+    has to be reached explicitly.
     """
 
     def setUp(self) -> None:

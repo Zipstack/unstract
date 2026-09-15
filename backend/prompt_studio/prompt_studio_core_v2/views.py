@@ -936,9 +936,10 @@ class PromptStudioCoreView(
 
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
-        # Collection-level create: DRF never calls get_object() on its own, so
-        # the object gate would not run. Resolve the parent from the URL and
-        # pin it, so the payload cannot name a project the caller cannot reach.
+        # A custom @action, so DRF never calls get_object() on its own even
+        # though the route carries a pk -- the object gate would not run.
+        # Resolve the parent from the URL and pin it, so the payload cannot
+        # name a project the caller cannot reach.
         prompt_studio_tool = self.get_object()
         context = super().get_serializer_context()
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)

@@ -140,7 +140,6 @@ function createApiDeploymentCardConfig({
             />
             <OwnerFieldRow
               item={deployment}
-              sessionDetails={sessionDetails}
               onManageCoOwners={() => onManageCoOwners?.(deployment)}
             />
             <LastRunFieldRow lastRunTime={deployment.last_run_time} />

@@ -34,6 +34,9 @@ class WorkflowEndpointViewSet(WorkflowOwnerMutationMixin, viewsets.ModelViewSet)
         queryset = (
             WorkflowEndpoint.objects.all()
             .select_related("workflow", "connector_instance")
+            # The serializer redacts credentials per row by asking whether the
+            # reader owns the workflow; without this that is a query each time.
+            .prefetch_related("workflow__memberships")
             .filter(workflow__in=accessible_workflows)
         )
         workflow_filter = self.request.query_params.get("workflow", None)

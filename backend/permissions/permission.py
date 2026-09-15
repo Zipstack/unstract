@@ -80,9 +80,9 @@ def _is_resource_owner(user: Any, obj: Any) -> bool:
     memberships = getattr(obj, "memberships", None)
     if memberships is None:
         return obj.created_by == user
-    from permissions.roles import ResourceRole
-
-    return memberships.filter(user=user, role=ResourceRole.OWNER).exists()
+    # ``is_owner`` walks ``memberships.all()``, so a caller that prefetched
+    # them pays nothing per row. Same rule as filtering for an OWNER row.
+    return obj.is_owner(user)
 
 
 def _is_resource_viewer(user: Any, obj: Any) -> bool:

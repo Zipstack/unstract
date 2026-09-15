@@ -155,7 +155,7 @@ CardActionBox.propTypes = {
  * Reusable owner field row
  * @return {JSX.Element} Rendered owner field row
  */
-function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
+function OwnerFieldRow({ item, onManageCoOwners }) {
   // Ownership, not editability: an org admin may edit a resource that is not
   // theirs. Every list serializer sends is_owner, and the old created_by
   // fallback could not see co-owners.
@@ -202,7 +202,6 @@ function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
 
 OwnerFieldRow.propTypes = {
   item: PropTypes.object.isRequired,
-  sessionDetails: PropTypes.object,
   onManageCoOwners: PropTypes.func,
 };
 
