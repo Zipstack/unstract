@@ -9,6 +9,21 @@ from typing import Any
 
 from queue_backend import FairnessKey, QueueBackend, dispatch, worker_task
 from queue_backend.fairness import WorkloadType
+
+# Register the dashboard-metrics proxy tasks on this worker type (UN-3796). Imported
+# purely for the side effect.
+#
+# ABSOLUTE package import, and it must stay that way — this module is reached by TWO
+# different mechanisms and only this form survives both:
+#   1. worker.py loads /app/scheduler/tasks.py BY PATH with the worker dir on sys.path.
+#      No parent package is set, so `from . import ...` cannot resolve.
+#   2. general/tasks.py does `from scheduler.tasks import execute_pipeline_task_v2`,
+#      importing it as a package module. Then /app/scheduler is NOT on sys.path, so a
+#      bare `import dashboard_metrics_tasks` raises ModuleNotFoundError and crash-loops
+#      worker-general (this happened — the bare form shipped and broke the general
+#      worker at flag-off, where PG is not even involved).
+# `/app` is on PYTHONPATH (run-worker-docker.sh), so `scheduler.` resolves under both.
+from scheduler import dashboard_metrics_tasks  # noqa: F401, E402  (side-effect import)
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig

@@ -57,7 +57,6 @@ class APIEndpoints:
     )
 
     # Notification endpoints
-    WEBHOOK_SEND = build_internal_endpoint("webhook/send/")
     NOTIFICATION_SEND = build_internal_endpoint("notification/send/")
 
     # Health and monitoring endpoints

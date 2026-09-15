@@ -1,11 +1,12 @@
-import { Button, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { useSessionStore } from "../../store/session-store";
 import "./PromptStudioModal.css";
 
-export function PromptStudioModal({ onClose, showModal }) {
+export function PromptStudioModal({ onClose = null, showModal = false }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
 
@@ -67,9 +68,4 @@ export function PromptStudioModal({ onClose, showModal }) {
 PromptStudioModal.propTypes = {
   onClose: PropTypes.func,
   showModal: PropTypes.bool,
-};
-
-PromptStudioModal.defaultProps = {
-  onClose: null,
-  showModal: false,
 };

@@ -213,6 +213,17 @@ class WorkflowExecution(BaseModel):
         db_comment="Details of encountered errors",
     )
     attempts = models.IntegerField(default=0, db_comment="number of attempts taken")
+    dispatched_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Set when the orchestrator task was handed to its transport. NULL means "
+            "never dispatched. The POSITIVE fact the undispatched sweep needs: absent "
+            "task_id/queue_message_id also occurs for executions that ARE running, "
+            "because three paths in workflow_helper return without recording a handle "
+            "after the message is already enqueued."
+        ),
+    )
     execution_time = models.FloatField(default=0, db_comment="execution time in seconds")
     tags = models.ManyToManyField(Tag, related_name="workflow_executions", blank=True)
 
@@ -239,6 +250,32 @@ class WorkflowExecution(BaseModel):
                 name="we_active_by_workflow_idx",
                 condition=~Q(status__in=["COMPLETED", "STOPPED", "ERROR"]),
             ),
+            # Partial index over UNDISPATCHED executions — see migration 0026.
+            # Serves the undispatched-execution sweep (undispatched_sweep.py), which
+            # terminalises rows left PENDING because the request died between
+            # create_workflow_execution and execute_workflow_async. Effectively EMPTY
+            # in steady state: an execution leaves PENDING within seconds, and one of
+            # task_id / queue_message_id is stamped the moment dispatch succeeds — so
+            # it costs almost nothing and only grows when something is wrong.
+            # we_active_by_workflow_idx above is *usable* for the same predicate
+            # (PENDING implies NOT IN terminal) but is keyed on workflow_id, which the
+            # sweep does not filter on — so without this the sweep falls back to a full
+            # scan of that index. Literals are frozen in the migration and tied to
+            # ExecutionStatus by tests/test_undispatched_execution_index.py.
+            models.Index(
+                fields=["created_at"],
+                name="we_undispatched_dispatch_idx",
+                condition=Q(
+                    status="PENDING",
+                    dispatched_at__isnull=True,
+                    task_id__isnull=True,
+                    queue_message_id__isnull=True,
+                ),
+            ),
+            # Bare created_at range scans, which no index above serves: the two that
+            # are keyed on created_at are partial, so neither covers the full range.
+            # See migration 0029.
+            models.Index(fields=["created_at"], name="we_created_at_idx"),
         ]
 
     @property

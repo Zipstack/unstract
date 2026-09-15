@@ -34,12 +34,6 @@ urlpatterns = [
         internal_api_views.compile_workflow,
         name="compile_workflow",
     ),
-    # File batch processing
-    path(
-        "file-batch/submit/",
-        internal_api_views.submit_file_batch_for_processing,
-        name="submit_file_batch_for_processing",
-    ),
     # Workflow definition and type detection (using sophisticated class-based views)
     path(
         "workflow/<str:workflow_id>/",

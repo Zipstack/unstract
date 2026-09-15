@@ -1,5 +1,5 @@
-import { Image } from "antd";
 import PropTypes from "prop-types";
+import { Image } from "@/components/ui/shims/antd-leaves";
 
 import { isImageUrl } from "../../../helpers/GetStaticData";
 

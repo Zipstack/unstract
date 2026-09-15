@@ -536,6 +536,19 @@ run_pg_consumer() {
     exec "$PG_QUEUE_PYTHON_BIN" -m pg_queue_consumer
 }
 
+run_log_stream_consumer() {
+    ensure_pg_interpreter
+    export WORKER_NAME="${WORKER_NAME:-log-stream-consumer}"
+
+    # Named for its transport, not the `pg-` family: this drains a Redis list, not
+    # pg_queue_message. It is nonetheless the flag-on replacement for the Celery
+    # worker-log-consumer, which is why it lives beside the PG components here.
+    print_status $GREEN "Starting log stream consumer (Redis transport)..."
+    print_status $BLUE "Queue: ${LOG_STREAM_QUEUE_NAME:-log_stream_queue}"
+
+    exec "$PG_QUEUE_PYTHON_BIN" -m log_consumer.redis_stream_consumer
+}
+
 run_pg_reaper() {
     ensure_pg_interpreter
     export WORKER_NAME="${WORKER_NAME:-pg-reaper}"
@@ -566,6 +579,9 @@ case "${1:-}" in
         ;;
     pg-queue-reaper|pg-reaper|reaper)
         run_pg_reaper
+        ;;
+    log-stream-consumer)
+        run_log_stream_consumer
         ;;
     pg-*)
         # Obviously-PG-intended but unrecognized (e.g. a typo'd command) — fail

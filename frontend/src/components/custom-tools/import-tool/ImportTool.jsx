@@ -1,19 +1,31 @@
-import { InboxOutlined } from "@ant-design/icons";
-import { Modal, message, Typography, Upload } from "antd";
+import { Inbox } from "lucide-react";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Upload } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
+import { message } from "@/hooks/useAppToast";
 
 import { AdapterSelectionModal } from "../adapter-selection-modal/AdapterSelectionModal";
 import "./ImportTool.css";
 
 const { Dragger } = Upload;
-const { Text } = Typography;
-
 function ImportTool({ open, setOpen, onImport, loading }) {
   const [fileList, setFileList] = useState([]);
   const [projectData, setProjectData] = useState(null);
   const [showAdapterSelection, setShowAdapterSelection] = useState(false);
   const [parseLoading, setParseLoading] = useState(false);
+
+  // The parent closes the modal itself once an import succeeds, so without
+  // this the next Import Project opens with the previous file still staged.
+  useEffect(() => {
+    if (!open) {
+      setFileList([]);
+      setProjectData(null);
+      setShowAdapterSelection(false);
+      setParseLoading(false);
+    }
+  }, [open]);
 
   const handleUploadChange = (info) => {
     setFileList(info.fileList);
@@ -78,6 +90,9 @@ function ImportTool({ open, setOpen, onImport, loading }) {
   const uploadProps = {
     name: "file",
     multiple: false,
+    // Only one project is imported at a time, so a second pick replaces the
+    // first rather than queueing behind it.
+    maxCount: 1,
     accept: ".json",
     beforeUpload: () => false, // Prevent automatic upload
     fileList,
@@ -106,7 +121,7 @@ function ImportTool({ open, setOpen, onImport, loading }) {
 
         <Dragger {...uploadProps}>
           <p className="ant-upload-drag-icon">
-            <InboxOutlined />
+            <Inbox />
           </p>
           <p className="ant-upload-text">
             Click or drag file to this area to upload

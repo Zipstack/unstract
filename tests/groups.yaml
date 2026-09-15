@@ -46,6 +46,22 @@ defaults:
 
 groups:
   # ── Unit tier: pure pytest, no external services ───────────────────────────
+  frontend:
+    # Vitest + React Testing Library over jsdom — the antd→shadcn shims and the
+    # components built on them. Node, not Python: no uv_sync_group, and the
+    # runner points vitest's own JUnit reporter at the group's junit.xml, so
+    # results come through per-test rather than as one synthetic row.
+    #
+    # `optional` because CI images without `node_modules` should skip this
+    # rather than fail: the runner exits 5 ("nothing collected") when npx is
+    # absent, and optional keeps that from gating the overall result.
+    tier: unit
+    runner: vitest
+    workdir: frontend
+    paths: [src]
+    timeout_seconds: 900
+    optional: true
+
   unit-rig:
     # Rig self-tests. Run from repo root so the `tests.rig` import resolves.
     tier: unit
@@ -108,6 +124,21 @@ groups:
     workdir: unstract/core
     paths: [tests]
     # No `test` uv group in unstract/core today; rig still injects pytest plugins.
+    install_editable: true
+    coverage_source: src
+
+  # runner/tests was registered in NO group, so it was collected by nothing. Its
+  # only suite guards that LOG_TRANSPORT and LOG_STREAM_QUEUE_NAME reach the tool
+  # sidecar's hand-picked env allowlist — a list that drops anything not named in
+  # it, so a missing entry means the sidecar silently logs to the wrong transport.
+  # Nothing else covers that, and it went in alongside the Redis log transport.
+  # install_editable because the suite imports `unstract.runner`, which resolves
+  # only from this package's own src layout (packages = ["src/unstract"]).
+  unit-runner:
+    tier: unit
+    workdir: runner
+    paths: [tests]
+    uv_sync_group: test
     install_editable: true
     coverage_source: src
 
@@ -220,4 +251,29 @@ groups:
     paths: [tests/e2e/hurl]
     requires_platform: true
     depends_on: [e2e-smoke]
+    optional: true
+
+  ui:
+    # Playwright browser e2e over the real UI. Scaffolding only for now — the
+    # spec directory holds a single smoke test; extend it here.
+    #
+    # This is the tier that the 348 vitest tests structurally cannot cover:
+    # jsdom computes no layout, so overflow, positioning and visual state are
+    # unobservable there. Every UI defect found during the shadcn migration was
+    # spotted by a human in a browser, not by the unit suite.
+    #
+    # `requires_platform` so the rig boots the stack and exports the endpoints:
+    # the Playwright config takes its baseURL from UNSTRACT_FRONTEND_URL, and
+    # fixtures.js drives the API through UNSTRACT_BACKEND_URL.
+    # `optional` until the suite is real: no browsers installed (or no
+    # node_modules) must skip, not gate merges.
+    tier: e2e
+    runner: playwright
+    # Self-contained: specs, playwright.config.js and @playwright/test all live
+    # in tests/e2e/ui, colocated with the other e2e suites.
+    workdir: tests/e2e/ui
+    paths: ["."]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    timeout_seconds: 1800
     optional: true

@@ -1,6 +1,10 @@
-import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
-import { Button, Input, Select, Space, Table, Typography } from "antd";
-import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -42,7 +46,6 @@ const actionTypes = {
 
 function CustomSynonyms() {
   const [synonyms, setSynonyms] = useState([]);
-  const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasChanges, setHasChanges] = useState(false);
@@ -78,13 +81,21 @@ function CustomSynonyms() {
     setSynonyms(updatedSynonyms);
   }, [details]);
 
-  useEffect(() => {
+  /*
+   * Derived during render, NOT stored in state via an effect.
+   *
+   * The rows hold live <Input>/<Select> elements. Building them in a
+   * `useEffect` keyed on [synonyms] meant every keystroke rendered once with
+   * the STALE element (still carrying the previous value) before the effect
+   * replaced it, so the controlled input was reset mid-typing and dropped the
+   * leading characters — typing "bill" into the Word column produced "il".
+   */
+  const rows = useMemo(() => {
     if (!synonyms || synonyms.length === 0) {
-      setRows([]);
-      return;
+      return [];
     }
 
-    const data = [...synonyms].map((item, index) => {
+    return [...synonyms].map((item, index) => {
       const word = item?.word;
       const listOfSynonyms = item?.synonyms || [];
       return {
@@ -115,15 +126,15 @@ function CustomSynonyms() {
             isDisabled={listOfSynonyms?.length === 0}
           >
             <Button size="small" disabled={isPublicSource} type="text">
-              <DeleteOutlined className="cus-syn-del" />
+              <Trash2 className="cus-syn-del" />
             </Button>
           </ConfirmModal>
         ),
       };
     });
-
-    setRows(data);
-  }, [synonyms]);
+    // handleChange/handleDelete close over `synonyms`, which is in the deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [synonyms, isPublicSource]);
 
   const handleChange = (index, propertyName, value) => {
     const updatedSynonyms = [...synonyms];
@@ -225,7 +236,7 @@ function CustomSynonyms() {
           <div>
             <CustomButton
               type="primary"
-              icon={<PlusOutlined />}
+              icon={<Plus />}
               onClick={handleAddRow}
               disabled={isPublicSource || synonyms?.length >= SYNONYMS_LIMIT}
             >

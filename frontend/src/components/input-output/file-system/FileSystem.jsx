@@ -1,7 +1,8 @@
-import { CaretDownOutlined } from "@ant-design/icons";
-import { Tree, Typography } from "antd";
+import { ChevronDown } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Tree } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 
 import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";
@@ -12,8 +13,6 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./FileSystem.css";
 
 const { DirectoryTree } = Tree;
-const { Text } = Typography;
-
 function FileExplorer({
   selectedConnector = "",
   data = [],
@@ -145,7 +144,7 @@ function FileExplorer({
             rootClassName="explorerTree"
             showLine
             treeData={tree}
-            switcherIcon={<CaretDownOutlined />}
+            switcherIcon={<ChevronDown />}
             expandedKeys={expandedKeys}
             selectedKeys={selectedKeys}
             autoExpandParent={autoExpandParent}

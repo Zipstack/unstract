@@ -16,8 +16,8 @@ consumer poll loop that drains and runs claimed tasks, the leader-elected
 reaper, and the result backend. :func:`queue_backend.dispatch.dispatch` enqueues
 a PG-selected task here as a :class:`TaskPayload` instead of sending it to Celery.
 
-Default-empty ``WORKER_PG_QUEUE_ENABLED_TASKS`` → everything still routes to
-Celery, so this is inert unless a task is explicitly opted in.
+Every dispatch routes here since UN-4046 — this subpackage is on the critical
+path, not inert. A queue without its consumer running strands work silently.
 """
 
 from .client import PgQueueClient, QueueMessage
