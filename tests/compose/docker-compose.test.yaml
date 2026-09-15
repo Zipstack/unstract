@@ -17,17 +17,39 @@ services:
   runner:
     image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
 
+  # Retargeted onto the PG consumers (UN-4046). The Celery worker services these
+  # used to name — worker-executor-v2, worker-file-processing-v2,
+  # worker-api-deployment-v2 — are gone from docker/docker-compose.yaml. An
+  # override for a service that does not exist is NOT a no-op: compose creates it
+  # with neither image nor build context and rejects the whole project with
+  # "invalid compose project", so e2e could not bring the stack up at all.
+
   # Execute-path e2e must never reach a real provider.
-  worker-executor-v2:
+  worker-pg-executor:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
-  worker-file-processing-v2:
+  worker-pg-fileproc:
     environment:
       - UNSTRACT_LLM_MOCK_RESPONSE=${UNSTRACT_LLM_MOCK_RESPONSE:-}
 
   # Only the worker's fallback if it can't reach the backend; kept in step so it
   # can't quietly serialise the fan-out test.
-  worker-api-deployment-v2:
+  worker-pg-orchestrator-api:
     environment:
       - MAX_PARALLEL_FILE_BATCHES=${MAX_PARALLEL_FILE_BATCHES:-3}
+
+  # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
+  # the app derives every API URL from window.location.origin. The production
+  # nginx config serves only static files plus an SPA fallback, so `/api/v1/*`
+  # came back as index.html and authenticated specs never got past login. This
+  # mounts a test-only config that proxies the API prefixes to the backend,
+  # giving the suite a single origin. See frontend-nginx.test.conf for why the
+  # Traefik origin the compose stack already provides is not usable here.
+  frontend:
+    volumes:
+      # Relative to the PROJECT directory (docker/, from the first -f), not to
+      # this file — Compose resolves every path against the project dir, so a
+      # bare ./ here would silently resolve to docker/ and Docker would create
+      # an empty directory at the mount target rather than error.
+      - ../tests/compose/frontend-nginx.test.conf:/etc/nginx/nginx.conf:ro

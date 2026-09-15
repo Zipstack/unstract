@@ -2,10 +2,16 @@ import logging
 from typing import Any
 
 from utils.cache_service import CacheService
+from utils.user_context import UserContext
 
 from tenant_account_v2.models import OrganizationMember
 
 logger = logging.getLogger(__name__)
+
+# Memo for the admin predicate, set on the ``User`` instance as
+# ``(organization_identifier, is_admin)``. The answer depends on the org, and a
+# live user can be moved between orgs, so the org id is part of the key.
+_ADMIN_MEMO_ATTR = "_unstract_is_org_admin"
 
 
 class OrganizationMemberService:
@@ -23,11 +29,19 @@ class OrganizationMemberService:
         Service accounts are not org admins — they have their own bypass
         path in the relevant permissions / managers. Returns False on any
         lookup failure (anonymous user, no membership row, DB unavailable).
+
+        The result is memoized on ``user``, keyed by the current organization —
+        execution filtering resolves this predicate four times per call
+        otherwise, on a polled endpoint.
         """
         if not user or not getattr(user, "is_authenticated", False):
             return False
         if getattr(user, "is_service_account", False):
             return False
+        org_id = UserContext.get_organization_identifier()
+        memo = getattr(user, _ADMIN_MEMO_ATTR, None)
+        if memo is not None and memo[0] == org_id:
+            return memo[1]
         try:
             member = OrganizationMember.objects.get(user=user.id)  # type: ignore
         except OrganizationMember.DoesNotExist:
@@ -42,7 +56,11 @@ class OrganizationMemberService:
         # Delegate so admin-role string handling matches the active auth plugin.
         from account_v2.authentication_controller import AuthenticationController
 
-        return AuthenticationController().is_admin_by_role(member.role)
+        is_admin = AuthenticationController().is_admin_by_role(member.role)
+        # Failure paths above deliberately stay uncached — a transient DB error
+        # must not pin this user to "not an admin" for the rest of the request.
+        setattr(user, _ADMIN_MEMO_ATTR, (org_id, is_admin))
+        return is_admin
 
     @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:

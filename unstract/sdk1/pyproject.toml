@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.2.2",
     # # Adapter changes
     "tiktoken~=0.12.0",
-    "litellm==1.90.3",
+    "litellm==1.96.2",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
@@ -47,7 +47,7 @@ dependencies = [
     "pdfplumber>=0.11.2",
     "redis>=5.2.1",
     # # LLMWhisperer client
-    "llmwhisperer-client>=2.6.2",
+    "llmwhisperer-client>=2.8.1",
     # # Core utilities (Redis Sentinel-aware client factory, etc.)
     "unstract-core",
 ]
@@ -69,6 +69,10 @@ dev = [
 ]
 docs = ["lazydocs~=0.4.8"]
 test = [
+    # LiteLLM signs Bedrock/Bedrock-Mantle requests with SigV4 via botocore. At
+    # runtime that arrives with the `aws` extra (or transitively through the
+    # connectors), but the test venv needs it explicitly to exercise signing.
+    "boto3~=1.34.131",
     "parameterized==0.9.0",
     "pytest>=9.0.3",
     "pytest-mock==3.14.0",

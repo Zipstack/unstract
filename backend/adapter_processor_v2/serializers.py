@@ -184,24 +184,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
         if not instance.is_available and instance.deprecation_metadata:
             rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
 
-        # Only call SDK for available adapters
-        if instance.is_available:
-            try:
-                rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-                    instance.adapter_id, common.ICON
-                )
-            except Exception as e:
-                # Log error but don't fail serialization
-                import logging
-
-                logger = logging.getLogger(__name__)
-                logger.warning(
-                    f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
-                )
-                rep[common.ICON] = "⚠️"  # Fallback icon for SDK errors
-        else:
-            # Use generic warning icon for deprecated adapters
-            rep[common.ICON] = "⚠️"
+        rep[common.ICON] = AdapterProcessor.get_icon(instance)
 
         model = instance.metadata.get("model")
         if model:

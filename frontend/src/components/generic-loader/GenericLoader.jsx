@@ -1,11 +1,10 @@
-import { Typography } from "antd";
-
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { Logo64 } from "../../assets";
 import "./GenericLoader.css";
 
 function GenericLoader() {
   return (
-    <div className="center">
+    <div className="generic-loader center">
       <div className="spinner-box">
         <Logo64 className="fadeinout" />
         <div className="pulse-container">

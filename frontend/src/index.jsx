@@ -1,6 +1,16 @@
 // Install the global `Prism` at bootstrap, before any lazy chunk (incl. the
 // shared one holding prismjs add-ons) can load. See helpers/prismSetup.js.
 import "./helpers/prismSetup";
+
+// Self-hosted fonts (P0-04). Deliberately NOT a Google Fonts / CDN link: prod
+// serves built assets through nginx and must not depend on an external host.
+// Weights match the --font-weight-* tokens in index.css (400/500/600/700).
+import "@fontsource/inter/400.css";
+import "@fontsource/inter/500.css";
+import "@fontsource/inter/600.css";
+import "@fontsource/inter/700.css";
+import "@fontsource/geist-mono/400.css";
+
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
 import React from "react";
@@ -10,7 +20,7 @@ import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
 import config from "./config.js";
 import { getDeployment } from "./helpers/PostHogDeployment.js";
-import { SocketProvider } from "./helpers/SocketContext.js";
+import { SocketProvider } from "./helpers/SocketContext.jsx";
 import "./index.css";
 
 // Runtime config (containerized deployments) wins when it carries a

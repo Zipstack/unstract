@@ -1,5 +1,5 @@
-import { InputNumber } from "antd";
 import PropTypes from "prop-types";
+import { InputNumber } from "@/components/ui/shims/antd-inputs";
 
 import { RjsfWidgetLayout } from "../../../layouts/rjsf-widget-layout/RjsfWidgetLayout.jsx";
 
