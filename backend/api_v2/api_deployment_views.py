@@ -7,7 +7,11 @@ from django.db.models import Count, F, IntegerField, OuterRef, QuerySet, Subquer
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
 from permissions.roles import ResourceRole
 from platform_api.openapi_schema import PlatformKeyAutoSchema
@@ -270,6 +274,12 @@ class APIDeploymentViewSet(
         return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. Everything else on these verbs stays with the owner.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="is_active"
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
         if self.action in [
             "destroy",
             "partial_update",

@@ -89,13 +89,12 @@ function createApiDeploymentCardConfig({
         ],
       };
 
-      const canToggle = canEditResource(deployment, sessionDetails);
-      let toggleTitle = "Only the owner can change this";
-      if (canToggle) {
-        toggleTitle = deployment.is_active
-          ? "Disable API deployment"
-          : "Enable API deployment";
-      }
+      // Enabling or disabling is use, not configuration, so anyone the
+      // deployment is shared with may do it -- the backend admits an
+      // activation-only PATCH for exactly this.
+      const toggleTitle = deployment.is_active
+        ? "Disable API deployment"
+        : "Enable API deployment";
 
       return (
         <div className="card-list-content">
@@ -109,7 +108,6 @@ function createApiDeploymentCardConfig({
                   size="small"
                   checked={deployment.is_active}
                   data-testid={`api-deployment-toggle-${deployment.id}`}
-                  disabled={!canToggle}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     updateStatus(deployment);

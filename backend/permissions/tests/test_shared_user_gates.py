@@ -492,15 +492,29 @@ class ClearFileMarkerMethodTests(CoOwnerOrgTestMixin, TestCase):
         self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
         self.factory = APIRequestFactory()
 
-    def test_a_get_is_rejected(self) -> None:
+    def test_the_action_accepts_post_only(self) -> None:
         """Pins the GET->POST move: a GET is reachable by prefetch or a
         pasted URL, with no CSRF in the way.
+
+        Asserts the action's own mapping. Driving ``as_view({"post": ...})``
+        and sending a GET proves nothing -- the 405 comes from that map, so
+        it passes with the decorator back on ``methods=["get"]``.
         """
-        view = WorkflowViewSet.as_view({"post": "clear_file_marker"})
-        request = self.factory.get("/x/")
-        force_authenticate(request, user=self.owner)
-        response = view(request, pk=str(self.workflow.pk))
-        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+        mapping = WorkflowViewSet.clear_file_marker.mapping
+        self.assertEqual(set(mapping), {"post"})
+        self.assertEqual(mapping["post"], "clear_file_marker")
+
+    def test_the_route_binds_post_only(self) -> None:
+        """The URLconf and the decorator have to agree, or one silently wins."""
+        from workflow_manager.workflow_v2.urls.workflow import urlpatterns
+
+        matched = [
+            p for p in urlpatterns if "clear-file-marker" in str(p.pattern)
+        ]
+        # More than one: DRF adds a format-suffix twin. Every one must agree.
+        self.assertTrue(matched)
+        for pattern in matched:
+            self.assertEqual(set(pattern.callback.actions), {"post"})
 
     def test_shared_viewer_cannot_post_it(self) -> None:
         view = WorkflowViewSet.as_view({"post": "clear_file_marker"})
@@ -597,3 +611,148 @@ class DeployAnothersWorkflowTests(CoOwnerOrgTestMixin, TestCase):
         # The scoping must not lock the owner out of their own workflow.
         response = self._schedule(self.owner)
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_a_pipeline_co_owner_can_still_save_it(self) -> None:
+        """Co-owning the pipeline is not co-owning its workflow.
+
+        The edit modal PUTs the whole form back, ``workflow`` included, so a
+        queryset holding only workflows the requester owns refuses a write
+        that changes nothing about the parent.
+        """
+        from pipeline_v2.models import Pipeline
+        from pipeline_v2.views import PipelineViewSet
+
+        pipeline = Pipeline.objects.create(
+            pipeline_name="shared-etl",
+            pipeline_type="ETL",
+            workflow=self.workflow,
+            organization=self.org,
+            created_by=self.owner,
+            cron_string="0 0 * * *",
+        )
+        pipeline.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        pipeline.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+
+        view = PipelineViewSet.as_view({"put": "update"})
+        request = self.factory.put(
+            "/x/",
+            {
+                "workflow": str(self.workflow.pk),
+                "pipeline_name": "shared-etl-renamed",
+                "pipeline_type": "ETL",
+                "cron_string": "0 0 * * *",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.coowner)
+        response = view(request, pk=str(pipeline.pk))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        pipeline.refresh_from_db()
+        self.assertEqual(pipeline.pipeline_name, "shared-etl-renamed")
+        self.assertEqual(pipeline.workflow_id, self.workflow.pk)
+
+    def test_a_co_owner_still_cannot_repoint_it(self) -> None:
+        """Keeping the bound workflow selectable must not reopen reparenting."""
+        from pipeline_v2.models import Pipeline
+        from pipeline_v2.views import PipelineViewSet
+
+        other = Workflow.objects.create(
+            workflow_name="wf-elsewhere", organization=self.org, created_by=self.owner
+        )
+        other.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        pipeline = Pipeline.objects.create(
+            pipeline_name="shared-etl-2",
+            pipeline_type="ETL",
+            workflow=self.workflow,
+            organization=self.org,
+            created_by=self.owner,
+            cron_string="0 0 * * *",
+        )
+        pipeline.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        pipeline.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+
+        view = PipelineViewSet.as_view({"put": "update"})
+        request = self.factory.put(
+            "/x/",
+            {
+                "workflow": str(other.pk),
+                "pipeline_name": "shared-etl-2",
+                "pipeline_type": "ETL",
+                "cron_string": "0 0 * * *",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=self.coowner)
+        self.assertEqual(
+            view(request, pk=str(pipeline.pk)).status_code,
+            status.HTTP_400_BAD_REQUEST,
+        )
+        pipeline.refresh_from_db()
+        self.assertEqual(pipeline.workflow_id, self.workflow.pk)
+
+
+class SharedPipelineActivationTests(CoOwnerOrgTestMixin, TestCase):
+    """Starting and stopping a shared pipeline is use, not configuration."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        from pipeline_v2.models import Pipeline
+
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-toggle", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.pipeline = Pipeline.objects.create(
+            pipeline_name="etl-toggle",
+            pipeline_type="ETL",
+            workflow=self.workflow,
+            organization=self.org,
+            created_by=self.owner,
+            cron_string="0 0 * * *",
+            active=False,
+        )
+        self.pipeline.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.pipeline.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.factory = APIRequestFactory()
+
+    def _patch(self, actor: User, payload: dict[str, Any]) -> Response:
+        from pipeline_v2.views import PipelineViewSet
+
+        view = PipelineViewSet.as_view({"patch": "partial_update"})
+        request = self.factory.patch("/x/", payload, format="json")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.pipeline.pk))
+
+    def test_a_shared_viewer_can_enable_it(self) -> None:
+        response = self._patch(
+            self.viewer, {"active": True, "pipeline_id": str(self.pipeline.pk)}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.pipeline.refresh_from_db()
+        self.assertTrue(self.pipeline.active)
+
+    def test_a_shared_viewer_cannot_smuggle_another_field_alongside(self) -> None:
+        """The relaxation is activation-only; one extra key and it is gone."""
+        response = self._patch(
+            self.viewer, {"active": True, "pipeline_name": "renamed-by-viewer"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.pipeline.refresh_from_db()
+        self.assertFalse(self.pipeline.active)
+        self.assertEqual(self.pipeline.pipeline_name, "etl-toggle")
+
+    def test_a_shared_viewer_still_cannot_rename_it(self) -> None:
+        response = self._patch(self.viewer, {"pipeline_name": "renamed"})
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_an_outsider_cannot_enable_it(self) -> None:
+        response = self._patch(
+            self.outsider, {"active": True, "pipeline_id": str(self.pipeline.pk)}
+        )
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND),
+        )
+        self.pipeline.refresh_from_db()
+        self.assertFalse(self.pipeline.active)

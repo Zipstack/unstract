@@ -58,8 +58,18 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         """
         fields = super().get_fields()
         request = self.context.get("request")
-        fields["workflow"].queryset = (
-            mutable_workflows_for(request) if request else Workflow.objects.none()
+        queryset = mutable_workflows_for(request) if request else Workflow.objects.none()
+        # An update resends the bound workflow unchanged, so keep it
+        # selectable: a co-owner of this resource need not own the workflow.
+        # ``validate_workflow`` still refuses an actual change.
+        if self.instance is not None:
+            queryset = queryset | Workflow.objects.filter(pk=self.instance.workflow_id)
+        fields["workflow"].queryset = queryset
+        # Same code, readable text: the default names a pk the user never
+        # typed. Tests discriminate on the code, which is unchanged.
+        fields["workflow"].error_messages["does_not_exist"] = (
+            "You can only schedule a workflow you own. Ask its owner to add "
+            "you as a co-owner."
         )
         return fields
 

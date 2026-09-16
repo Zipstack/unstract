@@ -136,6 +136,21 @@ def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     return _is_organization_admin(request)
 
 
+def is_activation_only_patch(
+    request: Request, *, flag: str, ignore: tuple[str, ...] = ()
+) -> bool:
+    """Whether this PATCH changes nothing but the enable/disable flag.
+
+    Sharing grants run and watch, and starting or stopping a shared pipeline
+    or deployment is part of that. Editing its settings is not -- so the
+    relaxation holds only when no other field rides along.
+    """
+    if request.method != "PATCH":
+        return False
+    keys = set(request.data)
+    return flag in keys and not (keys - {flag} - set(ignore))
+
+
 def mutable_workflows_for(request: Request) -> Any:
     """Workflows ``request.user`` may mutate or build on.
 

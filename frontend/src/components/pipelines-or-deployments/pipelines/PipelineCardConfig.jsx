@@ -313,11 +313,12 @@ function createPipelineCardConfig({
         ],
       };
 
-      const canToggle = canEditResource(pipeline, sessionDetails);
-      let toggleTitle = "Only the owner can change this";
-      if (canToggle) {
-        toggleTitle = pipeline.active ? "Disable pipeline" : "Enable pipeline";
-      }
+      // Enabling or disabling is use, not configuration, so anyone the
+      // pipeline is shared with may do it -- the backend admits an
+      // activation-only PATCH for exactly this.
+      const toggleTitle = pipeline.active
+        ? "Disable pipeline"
+        : "Enable pipeline";
 
       return (
         <div className="card-list-content">
@@ -335,7 +336,6 @@ function createPipelineCardConfig({
                   size="small"
                   checked={pipeline.active}
                   data-testid={`pipeline-toggle-${pipeline.id}`}
-                  disabled={!canToggle}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     handleEnablePipeline(checked, pipeline.id);
