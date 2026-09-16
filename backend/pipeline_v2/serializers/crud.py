@@ -6,17 +6,19 @@ from typing import Any
 from croniter import croniter
 from django.conf import settings
 from django.utils import timezone
+from permissions.permission import mutable_workflows_for
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.constants import PipelineScheduling
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
-from rest_framework.serializers import SerializerMethodField
+from rest_framework.serializers import SerializerMethodField, ValidationError
 from scheduler.helper import SchedulerHelper
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.serializers import AuditSerializer
 from unstract.connectors.connectorkit import Connectorkit
@@ -46,6 +48,26 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
+
+    def get_fields(self) -> dict[str, Any]:
+        """Scope ``workflow`` to the requester.
+
+        The default manager is only org-scoped, so an unscoped field lets any
+        member schedule a colleague's workflow -- running it with its
+        connectors and adapters, at the owner's cost.
+        """
+        fields = super().get_fields()
+        request = self.context.get("request")
+        fields["workflow"].queryset = (
+            mutable_workflows_for(request) if request else Workflow.objects.none()
+        )
+        return fields
+
+    def validate_workflow(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.workflow:
+            raise ValidationError("A pipeline cannot be moved to another workflow.")
+        return value
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_pipeline_name": {

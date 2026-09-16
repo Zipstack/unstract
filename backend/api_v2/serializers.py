@@ -8,6 +8,7 @@ from django.apps import apps
 from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
+from permissions.permission import mutable_workflows_for
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers
@@ -34,6 +35,7 @@ from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
@@ -91,8 +93,26 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     def validate_display_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Display name")
 
+    def get_fields(self) -> dict[str, Any]:
+        """Scope ``workflow`` to the requester, as the endpoint serializer does.
+
+        The default manager is only org-scoped, so an unscoped field lets any
+        member deploy a colleague's workflow -- executing it with its
+        connectors and adapters, at the owner's cost. Deploying is an owner
+        act: a deployment is a persistent execution surface its creator then
+        owns and can share onward.
+        """
+        fields = super().get_fields()
+        request = self.context.get("request")
+        fields["workflow"].queryset = (
+            mutable_workflows_for(request) if request else Workflow.objects.none()
+        )
+        return fields
+
     def validate_workflow(self, workflow):
-        """Validate that the workflow has properly configured source and destination endpoints."""
+        """Refuse reparenting, then validate the endpoint configuration."""
+        if self.instance and workflow != self.instance.workflow:
+            raise ValidationError("A deployment cannot be moved to another workflow.")
         # Get all endpoints for this workflow with related data
         endpoints = WorkflowEndpoint.objects.filter(workflow=workflow).select_related(
             "connector_instance"

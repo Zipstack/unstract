@@ -27,7 +27,10 @@ from tenant_account_v2.models import (
     ResourceGroupShare,
 )
 from tool_instance_v2.views import ToolInstanceViewSet
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.file_history_views import FileHistoryViewSet
+from workflow_manager.workflow_v2.models.file_history import FileHistory
+from workflow_manager.workflow_v2.views import WorkflowViewSet
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.views import WorkflowEndpointViewSet
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -148,6 +151,25 @@ class SharedWorkflowEndpointTests(CoOwnerOrgTestMixin, TestCase):
         for actor in (self.owner, self.coowner):
             self.assertEqual(self._patch(actor).status_code, status.HTTP_200_OK)
 
+    def _endpoint_list(self, actor: User) -> Response:
+        view = WorkflowEndpointViewSet.as_view({"get": "workflow_endpoint_list"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=actor)
+        return view(request, pk=str(self.workflow.pk))
+
+    def test_endpoint_list_refuses_a_user_with_no_access(self) -> None:
+        # Pins the list scoping: unscoped, this returned another user's
+        # endpoints with their connector configuration.
+        self.assertEqual(
+            self._endpoint_list(self.outsider).status_code, status.HTTP_404_NOT_FOUND
+        )
+
+    def test_endpoint_list_redacts_credentials_for_a_shared_viewer(self) -> None:
+        response = self._endpoint_list(self.viewer)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        for row in response.data:
+            self.assertEqual(row["connector_instance"]["connector_metadata"], {})
+
     def test_a_user_with_no_access_gets_404_not_403(self) -> None:
         # 403 would confirm the endpoint exists to someone who cannot see it.
         self.assertEqual(
@@ -188,6 +210,35 @@ class SharedWorkflowToolInstanceTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(
             self._create(self.outsider).status_code, status.HTTP_404_NOT_FOUND
         )
+
+    def test_a_tool_cannot_be_moved_to_another_workflow(self) -> None:
+        """Pins both reparent guards, including the ``workflow_id`` alias.
+
+        The gate authorises against the stored parent, so a writable parent
+        FK would let an owner of workflow B pull a tool off workflow A.
+        """
+        from tool_instance_v2.models import ToolInstance
+
+        other = Workflow.objects.create(
+            workflow_name="wf-other", organization=self.org, created_by=self.owner
+        )
+        other.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        tool = ToolInstance.objects.create(
+            workflow=self.workflow,
+            tool_id="tool-uid",
+            step=1,
+            version="",
+            metadata={},
+            created_by=self.owner,
+        )
+        view = ToolInstanceViewSet.as_view({"patch": "partial_update"})
+        for payload in ({"workflow": str(other.pk)}, {"workflow_id": str(other.pk)}):
+            request = self.factory.patch("/x/", payload, format="json")
+            force_authenticate(request, user=self.owner)
+            response = view(request, pk=str(tool.pk))
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            tool.refresh_from_db()
+            self.assertEqual(tool.workflow_id, self.workflow.pk)
 
 
 class SharedPromptStudioProjectTests(CoOwnerOrgTestMixin, TestCase):
@@ -383,3 +434,166 @@ class GroupSharedWorkflowFileHistoryTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(
             self._list(self.outsider).status_code, status.HTTP_403_FORBIDDEN
         )
+
+
+class FileHistoryWriteGateTests(CoOwnerOrgTestMixin, TestCase):
+    """Deleting a workflow's execution history is the owner's."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-fh-write", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.history = FileHistory.objects.create(
+            workflow=self.workflow,
+            cache_key=f"ck-{self.workflow.pk}",
+            provider_file_uuid="pf-1",
+            status=ExecutionStatus.COMPLETED.value,
+        )
+        self.factory = APIRequestFactory()
+
+    def test_shared_viewer_cannot_delete_one_row(self) -> None:
+        view = FileHistoryViewSet.as_view({"delete": "destroy"})
+        request = self.factory.delete("/x/")
+        force_authenticate(request, user=self.viewer)
+        response = view(
+            request, workflow_id=str(self.workflow.pk), id=str(self.history.pk)
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(FileHistory.objects.filter(pk=self.history.pk).exists())
+
+    def test_shared_viewer_cannot_clear_the_history(self) -> None:
+        view = FileHistoryViewSet.as_view({"post": "clear"})
+        request = self.factory.post("/x/", {"ids": [str(self.history.pk)]}, format="json")
+        force_authenticate(request, user=self.viewer)
+        response = view(request, workflow_id=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertTrue(FileHistory.objects.filter(pk=self.history.pk).exists())
+
+    def test_owner_can_clear_the_history(self) -> None:
+        view = FileHistoryViewSet.as_view({"post": "clear"})
+        request = self.factory.post("/x/", {"ids": [str(self.history.pk)]}, format="json")
+        force_authenticate(request, user=self.owner)
+        response = view(request, workflow_id=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class ClearFileMarkerMethodTests(CoOwnerOrgTestMixin, TestCase):
+    """Clearing execution markers is a POST, and an owner action."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-marker", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.factory = APIRequestFactory()
+
+    def test_a_get_is_rejected(self) -> None:
+        """Pins the GET->POST move: a GET is reachable by prefetch or a
+        pasted URL, with no CSRF in the way.
+        """
+        view = WorkflowViewSet.as_view({"post": "clear_file_marker"})
+        request = self.factory.get("/x/")
+        force_authenticate(request, user=self.owner)
+        response = view(request, pk=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_shared_viewer_cannot_post_it(self) -> None:
+        view = WorkflowViewSet.as_view({"post": "clear_file_marker"})
+        request = self.factory.post("/x/")
+        force_authenticate(request, user=self.viewer)
+        response = view(request, pk=str(self.workflow.pk))
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class DeployAnothersWorkflowTests(CoOwnerOrgTestMixin, TestCase):
+    """Deploying a workflow is an owner act, not a use of a shared one.
+
+    ``workflow`` is writable on both the deployment and pipeline serializers
+    and was bound through a merely org-scoped manager, so any member could
+    point a new deployment at a colleague's private workflow -- then execute
+    it, with its connectors and adapters, at the owner's cost, and mint API
+    keys against it.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-private", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        self.factory = APIRequestFactory()
+
+    def _deploy(self, actor: User) -> Response:
+        from api_v2.api_deployment_views import DeploymentExecution  # noqa: F401
+        from api_v2.api_deployment_views import APIDeploymentViewSet
+
+        view = APIDeploymentViewSet.as_view({"post": "create"})
+        request = self.factory.post(
+            "/x/",
+            {
+                "workflow": str(self.workflow.pk),
+                "display_name": "stolen",
+                "api_name": "stolen",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=actor)
+        return view(request)
+
+    def _schedule(self, actor: User) -> Response:
+        from pipeline_v2.views import PipelineViewSet
+
+        view = PipelineViewSet.as_view({"post": "create"})
+        request = self.factory.post(
+            "/x/",
+            {
+                "workflow": str(self.workflow.pk),
+                "pipeline_name": "stolen",
+                "pipeline_type": "ETL",
+                "cron_string": "0 0 * * *",
+            },
+            format="json",
+        )
+        force_authenticate(request, user=actor)
+        return view(request)
+
+    def _assert_workflow_refused(self, response: Response) -> None:
+        """Refused because the workflow is not in the field's queryset.
+
+        The code matters: this serializer also rejects a workflow whose
+        endpoints are unconfigured, on the same ``workflow`` attr. Only the
+        scoping produces ``does_not_exist``, so asserting the attr alone
+        passes with the gate removed.
+        """
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        codes = {
+            e.get("code")
+            for e in response.data.get("errors", [])
+            if e.get("attr") == "workflow"
+        }
+        self.assertIn("does_not_exist", codes)
+
+    def test_an_outsider_cannot_deploy_it(self) -> None:
+        self._assert_workflow_refused(self._deploy(self.outsider))
+
+    def test_a_shared_viewer_cannot_deploy_it(self) -> None:
+        # Shared for use: running it is fine, standing up a permanent
+        # execution surface on it is the owner's.
+        self._assert_workflow_refused(self._deploy(self.viewer))
+
+    def test_an_outsider_cannot_schedule_it(self) -> None:
+        self._assert_workflow_refused(self._schedule(self.outsider))
+
+    def test_a_shared_viewer_cannot_schedule_it(self) -> None:
+        self._assert_workflow_refused(self._schedule(self.viewer))
+
+    def test_the_owner_is_not_blocked(self) -> None:
+        # The scoping must not lock the owner out of their own workflow.
+        response = self._schedule(self.owner)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)

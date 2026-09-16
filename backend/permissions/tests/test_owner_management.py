@@ -536,9 +536,13 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         self.assertIn(created, model.objects.for_user(self.coowner))
 
     def _build_workflow_fixture(self) -> Workflow:
-        return Workflow.objects.create(
+        workflow = Workflow.objects.create(
             workflow_name="wf-parent", organization=self.org, created_by=self.coowner
         )
+        # The real create path grants this row, and ``created_by`` is
+        # audit-only -- without it the creator does not own the parent.
+        workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        return workflow
 
     @pytest.mark.critical_path("co-owner-manage")
     def test_workflow_create_grants_creator_ownership(self) -> None:

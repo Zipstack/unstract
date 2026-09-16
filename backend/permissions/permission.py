@@ -136,6 +136,29 @@ def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     return _is_organization_admin(request)
 
 
+def mutable_workflows_for(request: Request) -> Any:
+    """Workflows ``request.user`` may mutate or build on.
+
+    Queryset counterpart of :func:`is_workflow_mutator`, for scoping writable
+    ``workflow`` fields. A shared workflow grants read and run, so it is not
+    here: deploying one is an owner act, not a use of it.
+    """
+    from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
+    from workflow_manager.workflow_v2.models.workflow import Workflow
+
+    from permissions.roles import ResourceRole
+
+    # ``Workflow.objects`` is org-scoped by its manager, so this needs no
+    # organization filter of its own. The subquery casts the membership
+    # table's varchar ``object_id``; a direct join does not compare.
+    if _is_service_account(request) or _is_organization_admin(request):
+        return Workflow.objects.all()
+    owned = resources_visible_via_memberships(
+        Workflow, request.user, role=ResourceRole.OWNER
+    )
+    return Workflow.objects.filter(pk__in=owned)
+
+
 class IsParentWorkflowOwner(permissions.BasePermission):
     """Mutation gate for nested workflow sub-resources.
 
