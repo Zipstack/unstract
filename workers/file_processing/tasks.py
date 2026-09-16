@@ -364,11 +364,11 @@ def _process_file_batch_core(
     Args:
         task_instance: The Celery task instance (self)
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
-        barrier_context: Present only on the 9e PG fire-and-forget path — carries
-            ``execution_id`` / ``batch_index`` / ``callback_descriptor`` so the
-            batch claims its slot and runs the barrier decrement in-body (a
-            PG-consumed task fires no Celery ``.link``). ``None`` on the Celery
-            chord path, where the chord ``.link`` drives the decrement instead.
+        barrier_context: Carries ``execution_id`` / ``batch_index`` /
+            ``callback_descriptor`` so the batch claims its slot and runs the
+            barrier decrement in-body. Every fan-out injects it
+            (``PgBarrier._dispatch_header_pg``), so ``None`` means a malformed
+            payload — see the guard below, which logs and still runs the batch.
 
     Returns:
         Dictionary with successful_files and failed_files counts
@@ -383,8 +383,12 @@ def _process_file_batch_core(
         # work is still well-defined — but say so loudly: with no barrier to
         # decrement, nothing will fire the aggregating callback and the execution
         # will sit until the reaper reclaims it.
+        file_data = file_batch_data.get("file_data") or {}
         logger.error(
-            "process_file_batch received no _barrier_context; the batch will run "
+            f"[exec:{file_data.get('execution_id')}] "
+            f"[workflow:{file_data.get('workflow_id')}] process_file_batch received "
+            f"no _barrier_context for a batch of "
+            f"{len(file_batch_data.get('files') or [])} file(s); the batch will run "
             "but no barrier will be decremented and the aggregating callback will "
             "never fire. This indicates a malformed payload."
         )
@@ -421,10 +425,9 @@ def process_file_batch(
 
     Args:
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
-        _barrier_context: Injected only when this task is dispatched onto the PG
-            queue (9e fire-and-forget path) by ``PgBarrier`` — carries the barrier
-            coordination context (``execution_id`` / ``batch_index`` /
-            ``callback_descriptor``). Absent on the Celery chord path.
+        _barrier_context: Injected by ``PgBarrier`` on every fan-out — carries the
+            barrier coordination context (``execution_id`` / ``batch_index`` /
+            ``callback_descriptor``). Absent only on a malformed payload.
 
     Returns:
         Dictionary with successful_files and failed_files counts
@@ -520,7 +523,7 @@ def _setup_execution_context(
     execution_context = execution_response.data
     workflow_execution = execution_context.get("execution", {})
 
-    # Validate-first terminal guard (PG only) — skip a stale/redelivered batch
+    # Validate-first terminal guard — skip a stale/redelivered batch
     # for an already-terminal execution, before we touch status or process
     # anything. See :class:`_TerminalExecutionSkip`.
     _raise_if_execution_terminal(workflow_execution, execution_id)
@@ -2224,55 +2227,35 @@ def process_file_batch_resilient(
 def process_file_batch_django_compat(
     self, file_batch_data: dict[str, Any]
 ) -> dict[str, Any]:
-    """Backward compatibility wrapper for Django backend task name.
+    """Backward compatibility wrapper for the old Django backend task name.
 
-    This allows new workers to handle tasks sent from the old Django backend
-    during the transition period when both systems are running.
+    Registered so a task sent under the pre-workers name is still recognised.
+    Its only producer was the in-backend Celery chord, which UN-4078 removed
+    along with the rest of the Celery transport.
+
+    It carries no ``_barrier_context``, so the batch would run with no claim
+    (no ``pg_batch_dedup`` marker, so a redelivery re-runs the whole batch: the
+    LLM spend twice, and a duplicate destination write when
+    ``use_file_history=False``) and with nothing to fire the aggregating
+    callback. Refuse instead — the same choice ``step_execution`` makes on the
+    backend — so the failure is visible rather than a silent double-spend.
 
     Args:
-        file_batch_data: File batch data from Django backend
+        file_batch_data: File batch data from the old Django backend
 
-    Returns:
-        Same result as process_file_batch
+    Raises:
+        RuntimeError: always.
     """
-    logger.info(
-        "Processing file batch via Django compatibility task name: "
-        "workflow_manager.workflow_v2.file_execution_tasks.process_file_batch"
+    file_data = file_batch_data.get("file_data") or {}
+    raise RuntimeError(
+        f"[exec:{file_data.get('execution_id')}] "
+        f"[workflow:{file_data.get('workflow_id')}] the Django-compat task name "
+        "workflow_manager.workflow_v2.file_execution_tasks.process_file_batch is no "
+        "longer executable: it carries no barrier context, so the batch would run "
+        "unclaimed and no aggregating callback would fire. Its only producer was the "
+        "Celery chord removed in UN-4078. Dispatch process_file_batch through "
+        "PgBarrier instead."
     )
-
-    # Django compatibility: Calculate and apply manual review requirements
-    # This replicates the MRQ logic that was originally in Django backend
-    try:
-        # Extract organization_id from Django backend data structure
-        # Django sends: {files: [...], file_data: {organization_id: "...", ...}}
-        file_data = file_batch_data.get("file_data", {})
-        organization_id = file_data.get("organization_id")
-
-        if not organization_id:
-            logger.warning(
-                "Django compatibility: No organization_id found in file_data, skipping MRQ calculation"
-            )
-        else:
-            # Create organization-scoped API client
-            api_client = create_api_client(organization_id)
-
-            # Calculate manual review requirements
-            mrq_flags = _calculate_manual_review_requirements(file_batch_data, api_client)
-
-            # Enhance batch data with MRQ flags
-            _enhance_batch_with_mrq_flags(file_batch_data, mrq_flags)
-
-            logger.info(
-                f"Django compatibility: Applied manual review flags to file batch for org {organization_id}"
-            )
-
-    except Exception as e:
-        logger.warning(f"Django compatibility: Failed to calculate MRQ flags: {e}")
-        raise
-        # Continue processing without MRQ flags rather than failing
-
-    # Delegate to the core implementation (same as main task)
-    return _process_file_batch_core(self, file_batch_data)
 
 
 # Helper functions for refactored _handle_file_processing_result

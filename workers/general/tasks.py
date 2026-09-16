@@ -236,16 +236,16 @@ def async_execute_bin_general(
             f"Starting general workflow execution for workflow {workflow_id}, execution {execution_id}"
         )
 
-        # Tracks whether THIS delivery won the PG orchestration claim, so the
-        # error path releases the claim only when we actually acquired it (not, for
+        # Tracks whether THIS delivery won the orchestration claim, so the error
+        # path releases the claim only when we actually acquired it (not, for
         # instance, when the claim's own INSERT raised). Set below only after the
-        # gate returns "proceed" on the PG path.
+        # gate returns "proceed".
         claimed_orchestration = False
         try:
-            # PG-only idempotency gate (claim-before-work): a duplicate /
-            # redelivered orchestration no-ops here BEFORE any setup, barrier arm,
-            # or batch dispatch — so exactly one delivery orchestrates the
-            # execution even with replicas > 1. No-op on Celery.
+            # Idempotency gate (claim-before-work): a duplicate / redelivered
+            # orchestration no-ops here BEFORE any setup, barrier arm, or batch
+            # dispatch — so exactly one delivery orchestrates the execution even
+            # with replicas > 1.
             if _should_skip_duplicate_orchestration(
                 execution_id, schema_name, self.request.retries
             ):

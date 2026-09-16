@@ -26,7 +26,11 @@ from typing import Any
 # are live wire contract. Imported from the production constant rather than
 # re-declared, so a rename cannot silently pass these tests while stranding the
 # real consumer.
-from unstract.workflow_execution.executor_rpc import QUEUE_PREFIX, ExecResultRow
+from unstract.workflow_execution.executor_rpc import (
+    QUEUE_PREFIX,
+    ExecResultRow,
+    queue_for_executor,
+)
 
 __all__ = [
     "QUEUE_PREFIX",
@@ -38,8 +42,13 @@ __all__ = [
 
 
 def queue_for(executor_name: str) -> str:
-    """The queue an executor's dispatches land on."""
-    return f"{QUEUE_PREFIX}{executor_name}"
+    """The queue an executor's dispatches land on.
+
+    Delegates to the production helper rather than re-deriving the rule, so an
+    assertion here observes what the dispatcher actually does: a change to the
+    naming fails these suites instead of them agreeing with a stale copy.
+    """
+    return queue_for_executor(executor_name)
 
 
 def callback_signature(task_name: str, *, queue: str = "celery_callback") -> Any:
@@ -70,8 +79,31 @@ class FakeExecutorTransport:
         self.wait_timeouts: list[float] = []
         self._result = result
 
-    def enqueue(self, **kwargs: Any) -> None:
-        self.enqueue_calls.append(kwargs)
+    def enqueue(
+        self,
+        *,
+        queue: str,
+        context: Any,
+        org_id: str,
+        reply_key: str | None = None,
+        on_success: Any | None = None,
+        on_error: Any | None = None,
+        task_id: str | None = None,
+    ) -> None:
+        # Mirrors the QueueTransport protocol exactly (keyword-only, fixed key
+        # set) rather than swallowing **kwargs: a production signature change
+        # then fails these suites instead of being silently absorbed.
+        self.enqueue_calls.append(
+            {
+                "queue": queue,
+                "context": context,
+                "org_id": org_id,
+                "reply_key": reply_key,
+                "on_success": on_success,
+                "on_error": on_error,
+                "task_id": task_id,
+            }
+        )
 
     def wait_for_result(self, reply_key: str, timeout: float) -> ExecResultRow | None:
         del reply_key
@@ -120,7 +152,10 @@ class EagerExecutorTransport(FakeExecutorTransport):
         super().__init__()
         self._task = task
 
-    def enqueue(self, **kwargs: Any) -> None:
-        super().enqueue(**kwargs)
-        outcome = self._task.apply(args=[kwargs["context"].to_dict()])
+    def enqueue(self, *, context: Any, **kwargs: Any) -> None:
+        # ``context`` is named so this fake breaks loudly if the protocol drops
+        # it; the rest is forwarded to the base recorder, which pins the full
+        # keyword-only key set.
+        super().enqueue(context=context, **kwargs)
+        outcome = self._task.apply(args=[context.to_dict()])
         self._result = outcome.get()

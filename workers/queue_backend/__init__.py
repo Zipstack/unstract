@@ -11,9 +11,10 @@ at import time by ``WORKER_BARRIER_BACKEND`` from ``chord`` /
 ``get_barrier()`` factory went with the Celery transport in UN-4078.
 
 **Every dispatch rides PG and needs its consumer running**, or the message is
-durably enqueued and never executed, with no error at the producer. The chart's
-``validate-pg-worker-fleet.yaml`` refuses a partial fleet at render time for
-exactly this reason.
+durably enqueued and never executed, with no error at the producer. The
+deployment chart (``validate-pg-worker-fleet.yaml``, in the closed-source
+``unstract-cloud`` repo — it is not in this tree) refuses a partial fleet at
+render time for exactly this reason.
 """
 
 from .barrier import Barrier, BarrierHandle

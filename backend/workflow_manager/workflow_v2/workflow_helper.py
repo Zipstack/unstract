@@ -75,11 +75,11 @@ EXECUTION_EXCLUDED_PARAMS = {
     "hitl_queue_name",
     "hitl_packet_id",
     "custom_data",
-    # Still carried on the dispatch payload as a write-only rolling-deploy shim
+    # Still carried on the dispatch payload as a rolling-deploy shim
     # (LEGACY_TRANSPORT_KEY), so it must never reach the legacy
     # ``execute_workflow`` signature, where it would raise as an unexpected kwarg.
-    # Drop this entry together with the shim's writes.
-    "transport",
+    # Named through the constant so the shim's removal checklist finds this site.
+    LEGACY_TRANSPORT_KEY,
 }
 
 

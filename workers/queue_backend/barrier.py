@@ -14,15 +14,17 @@ the call sites twice. It carried three implementations: ``CeleryChordBarrier``
 (``celery.chord``, the original), ``RedisDecrBarrier`` (a ``DECR`` counter), and
 ``PgBarrier``. Selection was runtime, via ``WORKER_BARRIER_BACKEND``. The first
 two, the env var, and the ``get_barrier()`` factory were deleted in UN-4078 once
-PG became the only transport; the protocol is kept because two call sites still
-program against it and it is the natural home for the shared TypedDicts below.
+PG became the only transport. Nothing annotates against the protocol any more —
+both fan-out sites construct :class:`PgBarrier` concretely — so it survives only
+as documentation of the seam's shape, alongside the shared TypedDicts below,
+which ARE load-bearing. Deleting it is a separate post-decommission cleanup.
 """
 
 from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, Literal, Protocol, TypedDict
 
 from .fairness import FairnessKey
 from .handle import BarrierHandle
@@ -108,19 +110,24 @@ def barrier_stuck_timeout_seconds() -> int:
 class CallbackDescriptor(TypedDict):
     """Serialisable aggregating-callback spec baked into a barrier link signature.
 
-    Crosses a Celery serialisation boundary (producer → broker → worker), so the
-    four-key contract is typed to catch a typo/rename before it surfaces as a
-    remote ``KeyError`` mid-aggregation. Shared by both the Redis and PG
-    backends. ``fairness_headers`` is ``None`` when the producer passed no key.
+    Crosses a serialisation boundary (producer → queue → worker), so the contract
+    is typed to catch a typo/rename before it surfaces as a remote ``KeyError``
+    mid-aggregation. ``fairness_headers`` is ``None`` when the producer passed no
+    key.
     """
 
     task_name: str
     kwargs: dict[str, Any]
     queue: str
     fairness_headers: dict[str, Any] | None
-    # Write-only rolling-deploy shim, see LEGACY_TRANSPORT_KEY in
-    # unstract.core.data_models. Read by pre-UN-4078 workers only.
-    transport: NotRequired[str]
+    # Rolling-deploy shim, see LEGACY_TRANSPORT_KEY in unstract.core.data_models.
+    # REQUIRED for the shim release, not optional: a pre-UN-4078 consumer reads
+    # ``callback_descriptor.get("transport")`` and, finding nothing, fires the
+    # aggregating callback through Celery onto a broker with no consumers —
+    # stranding the execution. ``Literal`` rejects "celery", the one value that
+    # must never be written here, and makes the follow-up removal a type error at
+    # the write site rather than a grep.
+    transport: Literal["pg_queue"]
 
 
 class BarrierContext(TypedDict):
@@ -162,8 +169,8 @@ class Barrier(Protocol):
 
     Semantically: "enqueue these header tasks in parallel; when all
     complete, fire this callback with the list of header results."
-    The concrete substrate (Celery chord today, Redis DECR or PG
-    SKIP LOCKED later) is hidden behind this protocol.
+    :class:`~queue_backend.pg_barrier.PgBarrier` (PG ``SKIP LOCKED``) is the sole
+    implementation since UN-4078.
     """
 
     def enqueue(
@@ -195,6 +202,7 @@ class Barrier(Protocol):
 
         ``app_instance`` is accepted for backward compatibility with the two
         call sites and is unused by :class:`PgBarrier` — the header tasks are
-        dispatched onto the PG queue by name, not through a Celery app.
+        dispatched onto the PG queue by name, not through a Celery app. It goes
+        with the protocol in the post-decommission cleanup.
         """
         ...

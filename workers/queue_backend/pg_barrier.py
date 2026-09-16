@@ -543,6 +543,31 @@ class _PgBarrierHandle:
     id: str
 
 
+def build_callback_descriptor(
+    *,
+    task_name: str,
+    kwargs: dict[str, Any],
+    queue: str,
+    fairness_headers: dict[str, Any] | None,
+) -> CallbackDescriptor:
+    """Build the descriptor carried to the consumer that fires the callback.
+
+    A function rather than an inline literal so the rolling-deploy shim it stamps
+    (:data:`~unstract.core.data_models.LEGACY_TRANSPORT_KEY`) is pinned by a test
+    that needs no Postgres — the enqueue path's own tests are skipped wherever a
+    database is unavailable, which would let the shim be dropped against a green
+    required build. See ``tests/test_legacy_transport_shim.py``.
+    """
+    return {
+        "task_name": task_name,
+        "kwargs": kwargs,
+        "queue": queue,
+        "fairness_headers": fairness_headers,
+        # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+        LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
+    }
+
+
 class PgBarrier:
     """``Barrier`` implementation via a Postgres ``pg_barrier_state`` row.
 
@@ -592,14 +617,12 @@ class PgBarrier:
 
         try:
             fairness_headers = fairness.as_header() if fairness else None
-            callback_descriptor: CallbackDescriptor = {
-                "task_name": callback_task_name,
-                "kwargs": callback_kwargs,
-                "queue": callback_queue,
-                "fairness_headers": fairness_headers,
-                # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
-                LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
-            }
+            callback_descriptor = build_callback_descriptor(
+                task_name=callback_task_name,
+                kwargs=callback_kwargs,
+                queue=callback_queue,
+                fairness_headers=fairness_headers,
+            )
             # expires_at = absolute orphan cap (6h). last_progress_at = now() (the
             # reaper's fast stuck signal, re-stamped on every decrement).
             ttl_seconds = barrier_ttl_seconds()
@@ -962,8 +985,11 @@ def _barrier_pg_decrement(
     the count (fires the callback early with incomplete results, or skips past 0
     and strands the barrier). This is enforced loudly, not just in prose — entry
     raises if the shared connection is already mid-transaction (see the guard
-    below), and the Celery wrapper pins ``max_retries=0`` so a task-level replay
-    can't re-drive it; an orphaned barrier is bounded by ``expires_at`` instead.
+    below). The task-level replay guard that used to back this up — the Celery
+    wrapper's ``max_retries=0`` — went with ``barrier_pg_decr_and_check`` in
+    UN-4078; the decrement now runs in-body, so a replay would be a redelivery of
+    the batch itself, which ``claim_batch`` already makes idempotent. An orphaned
+    barrier is bounded by ``expires_at``.
 
     The decrement DOES self-heal one narrow, provably-safe case via
     :func:`_apply_decrement`: an execute-phase failure on a cached connection that

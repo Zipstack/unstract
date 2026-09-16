@@ -200,12 +200,26 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
-# Rolling-deploy shim (UN-4078): nothing reads this key any more, but it is still
-# WRITTEN for one release. A pre-UN-4078 worker treats an absent ``transport`` as
-# "celery" and publishes the fan-out / callback to RabbitMQ, which has no consumers,
-# so during the rollout window an old pod receiving a new producer's payload would
-# strand the execution. Remove every write of this key in the release after UN-4078,
-# once no pre-UN-4078 worker can still be running.
+# Rolling-deploy shim (UN-4078). Nothing BRANCHES on this key any more, but it is
+# still written for one release, and one site still matches it by name (the
+# EXECUTION_EXCLUDED_PARAMS entry below). A pre-UN-4078 worker treats an absent
+# ``transport`` as "celery" and publishes the fan-out / callback to RabbitMQ, which
+# has no consumers, so during the rollout window an old pod receiving a new
+# producer's payload would strand the execution.
+#
+# REMOVAL CHECKLIST for the release after UN-4078, once no pre-UN-4078 worker can
+# still be running (`grep -rn LEGACY_TRANSPORT_ ` finds every item but the last):
+#   1. the four writes — backend ``WorkflowHelper`` dispatch payload, backend
+#      ``create_workflow_execution`` response, ``workers/scheduler/tasks.py``
+#      dispatch kwargs, ``PgBarrier`` callback descriptor
+#   2. ``CallbackDescriptor.transport`` — workers/queue_backend/barrier.py
+#   3. the ``LEGACY_TRANSPORT_KEY`` entry in ``EXECUTION_EXCLUDED_PARAMS`` —
+#      backend/workflow_manager/workflow_v2/workflow_helper.py
+#   4. these two constants
+#   5. the gating tests — workers/tests/test_legacy_transport_shim.py,
+#      workers/tests/test_pg_barrier.py, the shim cases in
+#      workers/tests/test_dispatch_sites_characterisation.py, and
+#      backend/workflow_manager/workflow_v2/tests/test_legacy_transport_shim.py
 LEGACY_TRANSPORT_KEY = "transport"
 LEGACY_TRANSPORT_VALUE = "pg_queue"
 
