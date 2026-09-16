@@ -197,6 +197,32 @@ class ServiceAccountStaysAuthorizedTest(_KeyFixture, APITestCase):
             user=key.api_user, adapter_ids={str(adapter.id)}
         )
 
+    def test_adapter_delete_admits_a_service_account(self) -> None:
+        """A key must be able to delete the adapter it created."""
+        from adapter_processor_v2.models import AdapterInstance
+        from permissions.permission import IsFrictionLessAdapterDelete
+
+        creator = self._make_member()
+        key = self._make_key(created_by=creator)
+        adapter = AdapterInstance.objects.create(
+            adapter_name=f"a-{uuid.uuid4().hex[:8]}",
+            adapter_id=f"llm|{uuid.uuid4()}",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=creator,
+        )
+        adapter.grant_owner(creator)
+
+        request = APIRequestFactory().delete("/")
+        request.user = key.api_user
+
+        self.assertTrue(
+            IsFrictionLessAdapterDelete().has_object_permission(
+                request, view=None, obj=adapter
+            )
+        )
+
     def test_workflow_permission_admits_a_service_account(self) -> None:
         from workflow_manager.workflow_v2.models.workflow import Workflow
         from workflow_manager.workflow_v2.permissions import IsWorkflowOwnerOrShared
