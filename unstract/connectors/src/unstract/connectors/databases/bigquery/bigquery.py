@@ -13,6 +13,7 @@ from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
+    BigQueryValueException,
     ColumnMissingException,
 )
 from unstract.connectors.databases.sql_safety import (
@@ -106,13 +107,14 @@ class BigQuery(UnstractDB):
             if data == 0:
                 return 0.0
 
-            # Limit total significant figures to 15 for IEEE 754 compatibility
-            # BigQuery PARSE_JSON requires values that round-trip cleanly
-            # For large numbers (like Unix timestamps), this reduces decimal precision
-            # For small numbers (like costs), full precision is preserved
-            magnitude = math.floor(math.log10(abs(data))) + 1
-            safe_decimals = max(0, 15 - magnitude)
-            return float(f"{data:.{safe_decimals}f}")
+            # Limit total significant figures to 15 for IEEE 754 compatibility.
+            # BigQuery PARSE_JSON requires values that round-trip cleanly.
+            #
+            # UN-3176: `g` asks for significant figures directly. The previous
+            # form asked for a DECIMAL-place count derived from the magnitude,
+            # which is not the same quantity and drifted from 15 sig figs at
+            # both ends of the range.
+            return float(f"{data:.15g}")
 
         elif isinstance(data, dict):
             return {k: BigQuery._sanitize_for_bigquery(v) for k, v in data.items()}
@@ -318,6 +320,17 @@ class BigQuery(UnstractDB):
                 detail=e.message, table_name=table_name
             ) from e
         except google.api_core.exceptions.BadRequest as e:
+            # UN-3176: BigQuery returns BadRequest for VALUE-level failures as
+            # well as for schema mismatches. Mapping them all to
+            # ColumnMissingException told users to check their columns when the
+            # columns were fine (e.g. a float that will not round-trip through
+            # PARSE_JSON), which misdirects the investigation. Discriminate
+            # before wrapping.
+            if BigQuery._is_value_error(e):
+                logger.error(f"Value rejected by BigQuery on insert: {str(e)}")
+                raise BigQueryValueException(
+                    detail=e.message, table_name=table_name
+                ) from e
             logger.error(f"Column missing in inserting data: {str(e)}")
             db, schema, table = table_name.split(".")
             raise ColumnMissingException(
@@ -326,6 +339,38 @@ class BigQuery(UnstractDB):
                 schema=schema,
                 table_name=table,
             ) from e
+
+    @staticmethod
+    def _is_value_error(e: Any) -> bool:
+        """True if a BigQuery BadRequest is about the DATA, not the schema.
+
+        UN-3176. Matches known value-level signatures -- notably the PARSE_JSON
+        round-trip failure in this ticket -- against the exception's own text
+        and then against each entry of its structured ``errors`` payload. The
+        payload is checked separately because BigQuery's REST path fills it
+        with plain dicts, and ``GoogleAPICallError.__str__`` folds an entry
+        into the string only when it exposes ``.code``/``.message`` attributes.
+        Unknown shapes fall through to the existing column-missing behaviour,
+        so this only ever narrows a message that was already wrong for these
+        cases.
+        """
+        value_error_markers = (
+            "parse_json",
+            "round-trip through string representation",
+            "invalid json",
+            "cannot round-trip",
+            "failed to parse json",
+        )
+        text = f"{getattr(e, 'message', '') or ''} {str(e)}".lower()
+        if any(marker in text for marker in value_error_markers):
+            return True
+        for error in getattr(e, "errors", None) or []:
+            if not isinstance(error, dict):
+                continue
+            message = str(error.get("message", "")).lower()
+            if any(marker in message for marker in value_error_markers):
+                return True
+        return False
 
     def get_information_schema(self, table_name: str) -> dict[str, str]:
         """Function to generate information schema of the big query table.

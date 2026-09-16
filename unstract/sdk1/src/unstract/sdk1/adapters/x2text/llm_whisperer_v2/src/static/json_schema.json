@@ -58,8 +58,12 @@
     "line_splitter_strategy": {
       "type": "string",
       "title": "Line Splitter Strategy",
-      "enum": ["left-priority", "mid-priority", "right-priority"],
-      "default":"left-priority",
+      "enum": [
+        "left-priority",
+        "mid-priority",
+        "right-priority"
+      ],
+      "default": "left-priority",
       "description": "An advanced option for customizing the line splitting process."
     },
     "horizontal_stretch_factor": {
@@ -92,6 +96,14 @@
       "title": "Mark horizontal lines",
       "default": false,
       "description": "States whether to reproduce horizontal lines in the document. Note: This parameter is not applicable if `mode` chosen is `native_text` and will not work if `mark_vertical_lines` is set to `false`."
+    },
+    "word_confidence_threshold": {
+      "type": "number",
+      "title": "Word confidence threshold",
+      "default": 0.3,
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Minimum OCR confidence a word must reach to be included in the extracted text. Lower this when words are dropped because the scan is faint or noisy. Note: This parameter is not applicable if `mode` chosen is `native_text`."
     },
     "tag": {
       "type": "string",
