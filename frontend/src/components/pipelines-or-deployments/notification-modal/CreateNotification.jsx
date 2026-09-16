@@ -68,13 +68,7 @@ function CreateNotification({
   editDetails,
 }) {
   const [form] = Form.useForm();
-  // Lazy initializer: this component remounts fresh every time Edit opens
-  // (NotificationModal renders DisplayNotifications in between), so editDetails
-  // is already the row being edited by this first render. Seeding formDetails
-  // here -- rather than via a useEffect a render later -- matters because the
-  // Form shim seeds its fields from `initialValues` on ITS OWN first mount
-  // only, same as real antd; seeding one render late meant the form always
-  // mounted on the blank defaults, and the saved name/url never appeared.
+  // Lazy init: the Form shim seeds initialValues only on first mount.
   const [formDetails, setFormDetails] = useState(
     () => editDetails ?? DEFAULT_FORM_DETAILS,
   );
