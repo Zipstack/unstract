@@ -3,55 +3,21 @@
 Rows written before ``owner_user_for`` existed name the service account, which
 every owner surface filters out. Skips a creator who has left the org, matching
 the resolver. Idempotent.
+
+The repair itself lives in ``_membership_backfill.repair_platform_key_ownership``
+so a cloud-only app -- which this migration can't declare a dependency on --
+can import and re-run it after its own absorb-shared-users migration.
 """
 
 from django.db import migrations
-from django.utils import timezone
 
-OWNER = "owner"
+from tenant_account_v2.migrations._membership_backfill import (
+    repair_platform_key_ownership,
+)
 
 
 def _forward(apps, schema_editor):
-    resource_membership_model = apps.get_model("tenant_account_v2", "ResourceMembership")
-    organization_member_model = apps.get_model("tenant_account_v2", "OrganizationMember")
-    platform_api_key_model = apps.get_model("platform_api", "PlatformApiKey")
-
-    # Keyed off key rows so only accounts actually backing a key move.
-    successor: dict[int, int] = {}
-    for key in platform_api_key_model.objects.exclude(api_user_id=None).exclude(
-        created_by_id=None
-    ):
-        if organization_member_model.objects.filter(
-            user_id=key.created_by_id, organization_id=key.organization_id
-        ).exists():
-            successor[key.api_user_id] = key.created_by_id
-
-    if not successor:
-        return
-
-    rows = resource_membership_model.objects.filter(
-        role=OWNER, user_id__in=successor.keys()
-    )
-    for row in rows.iterator():
-        new_user_id = successor[row.user_id]
-        clash = resource_membership_model.objects.filter(
-            user_id=new_user_id,
-            content_type_id=row.content_type_id,
-            object_id=row.object_id,
-        ).first()
-        if clash is None:
-            row.user_id = new_user_id
-            # Historical models skip BaseModel.save's modified_at injection.
-            row.modified_at = timezone.now()
-            row.save(update_fields=["user", "modified_at"])
-            continue
-        # Creator already holds a row here: keep the stronger role, drop the
-        # service account's, so the uniqueness constraint holds.
-        if clash.role != OWNER:
-            clash.role = OWNER
-            clash.modified_at = timezone.now()
-            clash.save(update_fields=["role", "modified_at"])
-        row.delete()
+    repair_platform_key_ownership(apps)
 
 
 class Migration(migrations.Migration):
