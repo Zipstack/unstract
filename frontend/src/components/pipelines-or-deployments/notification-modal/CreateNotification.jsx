@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Form } from "@/components/ui/shims/antd-form";
 import { Checkbox, Input, Select } from "@/components/ui/shims/antd-inputs";
@@ -68,23 +68,17 @@ function CreateNotification({
   editDetails,
 }) {
   const [form] = Form.useForm();
-  const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
+  // Lazy initializer: this component remounts fresh every time Edit opens
+  // (NotificationModal renders DisplayNotifications in between), so editDetails
+  // is already the row being edited by this first render. Seeding formDetails
+  // here -- rather than via a useEffect a render later -- matters because the
+  // Form shim seeds its fields from `initialValues` on ITS OWN first mount
+  // only, same as real antd; seeding one render late meant the form always
+  // mounted on the blank defaults, and the saved name/url never appeared.
+  const [formDetails, setFormDetails] = useState(
+    () => editDetails ?? DEFAULT_FORM_DETAILS,
+  );
   const [backendErrors, setBackendErrors] = useState(null);
-  const [resetForm, setResetForm] = useState(false);
-
-  useEffect(() => {
-    if (editDetails) {
-      setFormDetails(editDetails);
-      setResetForm(true);
-    }
-  }, [editDetails]);
-
-  useEffect(() => {
-    if (resetForm) {
-      form.resetFields();
-      setResetForm(false);
-    }
-  }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
     const nextValues = { ...formDetails, ...allValues };
