@@ -125,7 +125,7 @@ class OwnerManagementMixin:
         # way (a group, a direct share, an org-wide share, org admin), same as
         # the direct-share and group-revoke paths already check.
         retained = retained_user_ids(resource)
-        if retained is not None and user.pk in retained:
+        if retained is None or user.pk in retained:
             return
         resource_type, resource_name = ctx
         try:
