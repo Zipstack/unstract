@@ -87,7 +87,6 @@ function ApiDeployment() {
     requestList,
     handlePaginationChange,
     handleSearch,
-    handleListRefresh,
   } = usePaginatedList();
 
   // A new deployment has never run, and the list sorts never-run rows last, so
