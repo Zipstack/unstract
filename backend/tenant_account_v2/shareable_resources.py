@@ -55,7 +55,7 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "LookupDefinition",
         "lookup_definition",
         "name",
-        "id",
+        "lookup_id",
     ),
 )
 
