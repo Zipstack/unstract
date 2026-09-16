@@ -6,6 +6,8 @@ from account_v2.models import User
 from django.db import models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.vector_db import VectorDB
 from utils.models.base_model import BaseModel
 from utils.models.org_aware_manager import OrgAwareManager
 from utils.user_context import UserContext
@@ -13,8 +15,6 @@ from utils.user_context import UserContext
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
-from unstract.sdk1.constants import LogLevel
-from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 

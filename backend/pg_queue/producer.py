@@ -22,8 +22,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from django.utils import timezone
-
-from pg_queue.models import PgQueueMessage
 from unstract.core.data_models import (
     FAIRNESS_DEFAULT_PRIORITY,
     FAIRNESS_MAX_PRIORITY,
@@ -33,6 +31,8 @@ from unstract.core.data_models import (
     QueueMessageState,
     TaskPayload,
 )
+
+from pg_queue.models import PgQueueMessage
 
 _READY = QueueMessageState.READY.value
 _SCHEDULED = QueueMessageState.SCHEDULED.value

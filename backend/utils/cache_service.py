@@ -6,7 +6,6 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import cache
 from django_redis import get_redis_connection
-
 from unstract.core.cache.redis_client import create_redis_client
 
 redis_cache = get_redis_connection("default")
