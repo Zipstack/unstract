@@ -403,8 +403,11 @@ class APIDeploymentViewSet(
             # Get API deployments for these workflows the user can access —
             # ``created_by`` is audit-only; access flows through memberships,
             # sharing, and the admin/SA bypasses (UN-2202).
-            deployments = APIDeployment.objects.for_user(request.user).filter(
-                workflow_id__in=workflow_ids
+            deployments = (
+                APIDeployment.objects.for_user(request.user)
+                .select_related("created_by")
+                .prefetch_related("memberships__user")
+                .filter(workflow_id__in=workflow_ids)
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)

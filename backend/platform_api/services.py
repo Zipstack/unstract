@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Distinguishes "caller said nothing" from an explicit None in transfer_ownership.
+_SAME_AS_TO_USER: object = object()
+
 # Reserved domain for service-account addresses. The frontend matches on it to
 # label an ownerless resource "Platform key" instead of naming a machine.
 SERVICE_ACCOUNT_EMAIL_DOMAIN = "platform.internal"
@@ -214,7 +217,9 @@ def _transfer_membership_rows(from_user: User, to_user: User) -> None:
         row.delete()
 
 
-def transfer_ownership(from_user: User, to_user: User | None) -> None:
+def transfer_ownership(
+    from_user: User, to_user: User | None, membership_to: User | None = _SAME_AS_TO_USER
+) -> None:
     """Transfer all resource ownership from one user to another.
 
     Replaces from_user with to_user across business models:
@@ -223,30 +228,41 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
     - OWNER/VIEWER membership rows (custom-through, UN-2202) — re-pointed,
       reconciling by role precedence when to_user already holds a row so the
       resource keeps an owner.
+
+    ``membership_to`` splits the two halves. Audit fields may follow a user who
+    has left the org -- nulling them has no security value and breaks deletes
+    that dereference ``created_by`` -- while an OWNER row may not.
     """
-    if not to_user:
-        return
+    if membership_to is _SAME_AS_TO_USER:
+        membership_to = to_user
 
     with transaction.atomic():
-        for model in apps.get_models():
-            if model._meta.app_label not in _BUSINESS_APP_LABELS:
-                continue
-            _transfer_model_ownership(model, from_user, to_user)
+        if to_user:
+            for model in apps.get_models():
+                if model._meta.app_label not in _BUSINESS_APP_LABELS:
+                    continue
+                _transfer_model_ownership(model, from_user, to_user)
         # Memberships live in one polymorphic table — transfer once, not per model.
-        _transfer_membership_rows(from_user, to_user)
+        if membership_to:
+            _transfer_membership_rows(from_user, membership_to)
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
     """Transfer ownership to the key's creator, then delete the service account.
 
-    A creator who has left the org is not a successor -- ``transfer_ownership``
-    short-circuits on ``None`` and the rows are dropped with the account, which
-    is what ``cleanup_user_org_access`` would have done to them anyway.
+    Audit fields follow ``created_by`` even if they have left the org: deleting
+    the account is ``SET_NULL`` on those FKs, and a null ``created_by`` breaks
+    callers that dereference it. An OWNER row is a live-membership question, so
+    it goes only to a creator ``live_key_creator`` still admits.
     """
     api_user = platform_api_key.api_user
     if not api_user:
         return
 
     with transaction.atomic():
-        transfer_ownership(from_user=api_user, to_user=live_key_creator(platform_api_key))
+        transfer_ownership(
+            from_user=api_user,
+            to_user=platform_api_key.created_by,
+            membership_to=live_key_creator(platform_api_key),
+        )
         api_user.delete()

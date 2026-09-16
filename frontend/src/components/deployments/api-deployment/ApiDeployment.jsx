@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
@@ -83,10 +83,20 @@ function ApiDeployment() {
     setSearchTerm,
     // The hook owns the fetch ref; assigned below (avoids declaration ordering).
     fetchRef,
+    sort,
+    requestList,
     handlePaginationChange,
     handleSearch,
     handleListRefresh,
   } = usePaginatedList();
+
+  // A new deployment has never run, and the list sorts never-run rows last, so
+  // refreshing the current page can leave it out of view. Go back to page 1.
+  const handleCreatedRefresh = useCallback(
+    () =>
+      requestList(1, pagination.pageSize, searchTerm, sort.sortBy, sort.order),
+    [pagination.pageSize, searchTerm, sort.sortBy, sort.order],
+  );
 
   const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
     useScrollRestoration({
@@ -361,7 +371,7 @@ function ApiDeployment() {
           openCodeModal={setOpenCodeModal}
           setSelectedRow={setSelectedRow}
           workflowEndpointList={workflowEndpointList}
-          refreshList={handleListRefresh}
+          refreshList={handleCreatedRefresh}
         />
       )}
       <ManageKeys

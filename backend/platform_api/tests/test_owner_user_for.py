@@ -6,6 +6,7 @@ End-to-end coverage of the create sites that call them lives in
 
 import secrets
 import uuid
+from types import SimpleNamespace
 
 from account_v2.enums import UserRole
 from account_v2.models import Organization, User
@@ -14,8 +15,9 @@ from django.test.utils import CaptureQueriesContext
 from permissions.roles import ResourceRole
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.services import create_api_user_for_key, owner_user_for
-from rest_framework.test import APITestCase
+from rest_framework.test import APIRequestFactory, APITestCase
 from tenant_account_v2.models import OrganizationMember
+from utils.user_context import UserContext
 
 ORG = "org-owner-test"
 
@@ -148,3 +150,69 @@ class KeyDeletionSuccessorTest(_KeyFixture, APITestCase):
         ).delete()
         key.delete()
         self.assertNotIn(creator.id, self._owner_row_users(workflow))
+
+    def test_a_departed_creator_still_keeps_the_audit_trail(self) -> None:
+        """Deleting the account is SET_NULL on created_by; a null breaks deletes."""
+        creator = self._make_member()
+        key, workflow = self._key_owned_workflow(creator)
+        workflow.created_by = key.api_user
+        workflow.save(update_fields=["created_by"])
+        OrganizationMember._base_manager.filter(
+            user=creator, organization=self.org
+        ).delete()
+
+        key.delete()
+
+        workflow.refresh_from_db()
+        self.assertEqual(workflow.created_by_id, creator.id)
+
+
+class ServiceAccountStaysAuthorizedTest(_KeyFixture, APITestCase):
+    """Ownership no longer names the service account, so the gates that read
+    ownership need their own bypass -- otherwise a key cannot use what it made.
+    """
+
+    def test_adapter_access_admits_a_service_account(self) -> None:
+        from adapter_processor_v2.models import AdapterInstance
+        from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
+
+        creator = self._make_member()
+        key = self._make_key(created_by=creator)
+        adapter = AdapterInstance.objects.create(
+            adapter_name=f"a-{uuid.uuid4().hex[:8]}",
+            adapter_id=f"llm|{uuid.uuid4()}",
+            adapter_type="LLM",
+            adapter_metadata={},
+            organization=self.org,
+            created_by=creator,
+        )
+        adapter.grant_owner(creator)
+        # AdapterInstance.objects is org-scoped; without this the gate sees an
+        # empty queryset and the assertion proves nothing.
+        UserContext.set_organization_identifier(ORG)
+        self.addCleanup(UserContext.set_organization_identifier, None)
+
+        # Raises PermissionDenied without the bypass.
+        ToolInstanceHelper.validate_adapter_access(
+            user=key.api_user, adapter_ids={str(adapter.id)}
+        )
+
+    def test_workflow_permission_admits_a_service_account(self) -> None:
+        from workflow_manager.workflow_v2.models.workflow import Workflow
+        from workflow_manager.workflow_v2.permissions import IsWorkflowOwnerOrShared
+
+        creator = self._make_member()
+        key = self._make_key(created_by=creator)
+        workflow = Workflow.objects.create(
+            workflow_name=f"wf-{uuid.uuid4().hex[:8]}", organization=self.org
+        )
+        workflow.grant_owner(creator)
+
+        request = APIRequestFactory().get("/")
+        request.user = key.api_user
+        view = SimpleNamespace(kwargs={"workflow_id": str(workflow.id)})
+        # The permission resolves the workflow through the org-scoped manager.
+        UserContext.set_organization_identifier(ORG)
+        self.addCleanup(UserContext.set_organization_identifier, None)
+
+        self.assertTrue(IsWorkflowOwnerOrShared().has_permission(request, view))

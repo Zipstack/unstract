@@ -6,6 +6,7 @@ the resolver. Idempotent.
 """
 
 from django.db import migrations
+from django.utils import timezone
 
 OWNER = "owner"
 
@@ -40,13 +41,16 @@ def _forward(apps, schema_editor):
         ).first()
         if clash is None:
             row.user_id = new_user_id
-            row.save(update_fields=["user"])
+            # Historical models skip BaseModel.save's modified_at injection.
+            row.modified_at = timezone.now()
+            row.save(update_fields=["user", "modified_at"])
             continue
         # Creator already holds a row here: keep the stronger role, drop the
         # service account's, so the uniqueness constraint holds.
         if clash.role != OWNER:
             clash.role = OWNER
-            clash.save(update_fields=["role"])
+            clash.modified_at = timezone.now()
+            clash.save(update_fields=["role", "modified_at"])
         row.delete()
 
 
