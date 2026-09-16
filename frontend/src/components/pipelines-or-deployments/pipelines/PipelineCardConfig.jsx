@@ -313,6 +313,12 @@ function createPipelineCardConfig({
         ],
       };
 
+      const canToggle = canEditResource(pipeline, sessionDetails);
+      let toggleTitle = "Only the owner can change this";
+      if (canToggle) {
+        toggleTitle = pipeline.active ? "Disable pipeline" : "Enable pipeline";
+      }
+
       return (
         <div className="card-list-content">
           {/* Header Row: Name + Actions */}
@@ -324,20 +330,12 @@ function createPipelineCardConfig({
             </Tooltip>
 
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={
-                  canEditResource(pipeline, sessionDetails)
-                    ? pipeline.active
-                      ? "Disable pipeline"
-                      : "Enable pipeline"
-                    : "Only the owner can change this"
-                }
-              >
+              <Tooltip title={toggleTitle}>
                 <Switch
                   size="small"
                   checked={pipeline.active}
                   data-testid={`pipeline-toggle-${pipeline.id}`}
-                  disabled={!canEditResource(pipeline, sessionDetails)}
+                  disabled={!canToggle}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     handleEnablePipeline(checked, pipeline.id);

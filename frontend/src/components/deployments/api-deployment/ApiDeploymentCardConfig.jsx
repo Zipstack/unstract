@@ -89,6 +89,14 @@ function createApiDeploymentCardConfig({
         ],
       };
 
+      const canToggle = canEditResource(deployment, sessionDetails);
+      let toggleTitle = "Only the owner can change this";
+      if (canToggle) {
+        toggleTitle = deployment.is_active
+          ? "Disable API deployment"
+          : "Enable API deployment";
+      }
+
       return (
         <div className="card-list-content">
           <CardHeaderRow
@@ -96,20 +104,12 @@ function createApiDeploymentCardConfig({
             description={deployment.description}
           >
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={
-                  canEditResource(deployment, sessionDetails)
-                    ? deployment.is_active
-                      ? "Disable API deployment"
-                      : "Enable API deployment"
-                    : "Only the owner can change this"
-                }
-              >
+              <Tooltip title={toggleTitle}>
                 <Switch
                   size="small"
                   checked={deployment.is_active}
                   data-testid={`api-deployment-toggle-${deployment.id}`}
-                  disabled={!canEditResource(deployment, sessionDetails)}
+                  disabled={!canToggle}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     updateStatus(deployment);

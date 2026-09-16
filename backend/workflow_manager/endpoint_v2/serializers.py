@@ -52,9 +52,8 @@ class WorkflowEndpointSerializer(ModelSerializer):
         """
         rep = super().to_representation(instance)
         connector = rep.get("connector_instance")
-        if not connector:
-            return rep
-        request = self.context.get("request")
-        if not request or not is_workflow_mutator(request, instance.workflow):
-            connector[CIKey.CONNECTOR_METADATA] = {}
+        if connector:
+            request = self.context.get("request")
+            if not request or not is_workflow_mutator(request, instance.workflow):
+                connector[CIKey.CONNECTOR_METADATA] = {}
         return rep
