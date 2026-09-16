@@ -49,6 +49,14 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "name",
         "id",
     ),
+    # ``lookups`` is cloud-only, same as ``agentic_studio_v1`` above.
+    ShareableResource(
+        "lookups",
+        "LookupDefinition",
+        "lookup_definition",
+        "name",
+        "id",
+    ),
 )
 
 

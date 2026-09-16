@@ -107,6 +107,7 @@ class TestRetryClassification:
             httpx.ReadTimeout("read"),
             httpx.WriteTimeout("write"),
             httpx.ReadError("read err"),
+            httpx.WriteError("write err"),
             httpx.RemoteProtocolError("server disconnected"),
         ],
     )
@@ -145,7 +146,10 @@ class TestRequestShape:
     def test_missing_credentials_raise_before_any_post(self):
         client = _Client([])
         with (
-            patch.dict("os.environ", {"INTERNAL_API_BASE_URL": "", "INTERNAL_SERVICE_API_KEY": ""}),
+            patch.dict(
+                "os.environ",
+                {"INTERNAL_API_BASE_URL": "", "INTERNAL_SERVICE_API_KEY": ""},
+            ),
             patch("notification.tasks.httpx.Client", client),
         ):
             with pytest.raises(RuntimeError):

@@ -1,4 +1,4 @@
-"""Send-side logic for group-sharing email notifications (UN-3494 / mfbt UNS-848).
+"""Send-side logic for group-sharing email notifications.
 
 Reached over the internal API by the notification worker. The enqueue side
 (:mod:`tenant_account_v2.share_notifications`) only records *what happened*;
@@ -12,6 +12,7 @@ entry point below no-ops cleanly.
 from __future__ import annotations
 
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -21,7 +22,11 @@ from django.conf import settings
 from django.db.models import QuerySet
 from plugins import get_plugin
 
-from tenant_account_v2.models import OrganizationGroup, OrganizationMember
+from tenant_account_v2.models import (
+    GroupMembership,
+    OrganizationGroup,
+    OrganizationMember,
+)
 from tenant_account_v2.share_notifications import MembershipAction, ShareAction
 from tenant_account_v2.shareable_resources import ShareableResource, descriptor_for_kind
 
@@ -42,6 +47,7 @@ _STATIC_RESOURCE_TYPES = {
     "connector_instance": "connector",
     "custom_tool": "text_extractor",
     "agentic_project": "agentic_project",
+    "lookup_definition": "lookup",
 }
 _ADAPTER_RESOURCE_TYPES = {
     "LLM": "llm",
@@ -101,8 +107,12 @@ def send_resource_shared(
     retained = _retained_user_ids(organization, shared.instance, share_action)
     if retained is None:
         return
-    for group in _groups_to_mail(organization, group_ids, shared.instance, share_action):
-        recipients = _group_recipients(organization, group, retained, revoked_at)
+    groups = list(_groups_to_mail(organization, group_ids, shared.instance, share_action))
+    recipients_by_group = _group_recipients_batch(
+        organization, groups, retained, revoked_at
+    )
+    for group in groups:
+        recipients = recipients_by_group.get(group.pk, [])
         logger.info(
             "group-notification: task=notify_resource_shared_with_group "
             "group_id=%s action=%s recipient_count=%d",
@@ -210,24 +220,16 @@ def _retained_user_ids(
     """
     if share_action != ShareAction.REVOKED.value:
         return set()
-    from tenant_account_v2.sharing_helpers import (
-        access_survives_share_changes,
-        compute_effective_members,
-        org_admin_user_ids,
-    )
+    from tenant_account_v2.sharing_helpers import retained_user_ids
 
-    if access_survives_share_changes(resource):
+    retained = retained_user_ids(resource, organization)
+    if retained is None:
         logger.info(
             "group-notification: revoke on %s, whose access does not depend on "
             "shares — nobody lost access, no mail",
             resource.pk,
         )
-        return None
-
-    retained = {member["user_id"] for member in compute_effective_members(resource)} | {
-        owner.pk for owner in resource.owners()
-    }
-    return retained | org_admin_user_ids(organization)
+    return retained
 
 
 def _groups_to_mail(
@@ -253,33 +255,52 @@ def _groups_to_mail(
     to_mail = [group for group in groups if group.pk in live]
     if len(to_mail) != len(groups):
         logger.info(
-            "group-notification: dropped %d of %d groups "
-            "(access revoked since enqueue)",
+            "group-notification: dropped %d of %d groups (access revoked since enqueue)",
             len(groups) - len(to_mail),
             len(groups),
         )
     return to_mail
 
 
-def _group_recipients(
+def _group_recipients_batch(
     organization: Organization,
-    group: OrganizationGroup,
+    groups: list[OrganizationGroup],
     retained: set[int],
     joined_before: datetime | None = None,
-) -> list[User]:
-    """Live members of ``group`` who did not keep access via ``retained``.
+) -> dict[int, list[User]]:
+    """Live members of each of ``groups`` who did not keep access via ``retained``.
 
-    ``joined_before`` (a revoke's timestamp) drops anyone who joined after the
-    access was taken away: they never held it through this group, so a
-    revocation notice would be about access they never had.
+    One query across every group in the fan-out rather than one per group --
+    a resource shared with N groups issued N ``OrganizationMember`` queries
+    before this, since ``joined_before`` (a revoke's timestamp) is the same
+    cutoff for every group being mailed in one call, so the membership lookup
+    batches cleanly.
+
+    ``joined_before`` drops anyone who joined after the access was taken away:
+    they never held it through this group, so a revocation notice would be
+    about access they never had.
     """
-    memberships = group.memberships
+    if not groups:
+        return {}
+    memberships = GroupMembership.objects.filter(group__in=groups)
     if joined_before is not None:
         memberships = memberships.filter(created_at__lte=joined_before)
-    users = _live_member_users(
-        organization, memberships.values_list("user_id", flat=True)
-    )
-    return [user for user in users if user.pk not in retained]
+    user_ids_by_group: dict[int, set[int]] = defaultdict(set)
+    all_user_ids: set[int] = set()
+    for group_id, user_id in memberships.values_list("group_id", "user_id"):
+        user_ids_by_group[group_id].add(user_id)
+        all_user_ids.add(user_id)
+    users_by_id = {
+        user.pk: user for user in _live_member_users(organization, all_user_ids)
+    }
+    return {
+        group.pk: [
+            users_by_id[uid]
+            for uid in user_ids_by_group.get(group.pk, ())
+            if uid in users_by_id and uid not in retained
+        ]
+        for group in groups
+    }
 
 
 def _mail_group(

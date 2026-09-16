@@ -1,4 +1,4 @@
-"""Enqueue hooks for group-sharing email notifications (UN-3494 / mfbt UNS-848).
+"""Enqueue hooks for group-sharing email notifications.
 
 Two events earn a group's members an email: a resource shared with or revoked
 from the group, and a user added to or removed from it. Both are dispatched
@@ -6,9 +6,8 @@ asynchronously — the caller's request returns as soon as the write lands.
 
 The sending itself runs in ``workers/``, which is Django-free, so the worker
 task is a thin HTTP shim back to :mod:`tenant_account_v2.internal_views`; the
-backend does the ORM and plugin work. Transport is the PG queue, the only one
-there is (UN-4046) — the ``notifications`` queue the notification consumer
-polls.
+backend does the ORM and plugin work. Transport is the PG queue, the only
+one there is — the ``notifications`` queue the notification consumer polls.
 
 A missing org or any dispatch error means no notification, never a broken
 share. Like the direct-user mail in ``ResourceShareManagementMixin`` and the

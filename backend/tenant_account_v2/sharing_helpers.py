@@ -343,6 +343,30 @@ def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     return list(seen.values())
 
 
+def retained_user_ids(resource_obj: Any, organization: Any = None) -> set[int] | None:
+    """Every user id who still reaches ``resource_obj`` after a revoke.
+
+    ``None`` means access never depended on shares at all (see
+    ``access_survives_share_changes``) -- the caller's cue that nobody lost
+    anything and no notification is owed. Shared by the direct-share and
+    group-share revoke paths so they can't independently drift on what counts
+    as "still has access".
+    """
+    if access_survives_share_changes(resource_obj):
+        return None
+    retained = {member["user_id"] for member in compute_effective_members(resource_obj)}
+    # compute_effective_members deliberately excludes owners (they hold the
+    # resource, they aren't "shared with" it); a revoke never touches them.
+    retained |= {owner.pk for owner in resource_obj.owners()}
+    org = (
+        organization
+        if organization is not None
+        else getattr(resource_obj, "organization", None)
+    )
+    retained |= org_admin_user_ids(org)
+    return retained
+
+
 def _add_org_members(seen: dict[int, dict[str, Any]], resource_obj: Any) -> None:
     """Add org-wide members to ``seen`` (skips users already recorded)."""
     if not getattr(resource_obj, "shared_to_org", False):

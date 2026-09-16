@@ -155,18 +155,28 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         serializer = GroupMemberAddSerializer(data=request.data, context={"group": group})
         serializer.is_valid(raise_exception=True)
         user_ids_to_add: list[int] = serializer.validated_data["user_ids_to_add"]
+        # The serializer's "already a member" check ran at validation time, not
+        # at this write, so a concurrent request adding the same user in
+        # between would make our own insert a silent no-op (ignore_conflicts)
+        # while we still believe we added them. Re-check right before the
+        # write to keep that window as small as it can be.
+        already_members = set(
+            group.memberships.filter(user_id__in=user_ids_to_add).values_list(
+                "user_id", flat=True
+            )
+        )
+        newly_added_ids = [uid for uid in user_ids_to_add if uid not in already_members]
         GroupMembership.objects.bulk_create(
-            [GroupMembership(group=group, user_id=uid) for uid in user_ids_to_add],
+            [GroupMembership(group=group, user_id=uid) for uid in newly_added_ids],
             ignore_conflicts=True,
         )
-        # The serializer already subtracts existing members, so nobody gets a
-        # second "you've been added" mail for a group they were already in.
-        notify_group_membership_changed(
-            group=group,
-            action=MembershipAction.ADDED,
-            user_ids=user_ids_to_add,
-            actor=request.user,
-        )
+        if newly_added_ids:
+            notify_group_membership_changed(
+                group=group,
+                action=MembershipAction.ADDED,
+                user_ids=newly_added_ids,
+                actor=request.user,
+            )
         return Response(
             {"added_user_ids": user_ids_to_add},
             status=status.HTTP_201_CREATED,

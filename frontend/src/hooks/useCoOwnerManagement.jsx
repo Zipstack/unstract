@@ -43,6 +43,42 @@ function buildApplyAlert(
   };
 }
 
+/**
+ * Run one Apply's add/remove calls. Attempts every user independently --
+ * one rejection must not drop the rest or leave the modal contradicting the
+ * server.
+ */
+async function applyCoOwnerMutations(
+  service,
+  resourceId,
+  addUsers,
+  removeUsers,
+) {
+  const failed = [];
+  let lastError = null;
+  const run = async (users, call) => {
+    for (const user of users) {
+      try {
+        await call(user.id);
+      } catch (err) {
+        failed.push(user);
+        lastError = err;
+      }
+    }
+  };
+  // Adds first: the backend rejects removing the last owner, so a one-shot
+  // owner swap has to grow the roster before it shrinks it.
+  await run(addUsers, (id) => service.addCoOwner(resourceId, id));
+  if (failed.length) {
+    // The roster never grew, so removing now can strip the very owner the
+    // swap was meant to replace. Report them rather than attempt them.
+    failed.push(...removeUsers);
+  } else {
+    await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
+  }
+  return { failed, lastError };
+}
+
 function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const handleException = useExceptionHandler();
 
@@ -142,52 +178,24 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const onApplyCoOwners = useCallback(
     async (resourceId, { addUsers = [], removeUsers = [] }) => {
       const requestId = latestRequestRef.current;
-      // Attempt every user independently — one rejection must not drop the rest
-      // or leave the modal contradicting the server.
-      const failed = [];
-      let lastError = null;
-      const run = async (users, call) => {
-        for (const user of users) {
-          try {
-            await call(user.id);
-          } catch (err) {
-            failed.push(user);
-            lastError = err;
-          }
-        }
-      };
-      // Adds first: the backend rejects removing the last owner, so a one-shot
-      // owner swap has to grow the roster before it shrinks it.
-      await run(addUsers, (id) => service.addCoOwner(resourceId, id));
-      if (failed.length) {
-        // The roster never grew, so removing now can strip the very owner the
-        // swap was meant to replace. Report them rather than attempt them.
-        failed.push(...removeUsers);
-      } else {
-        await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
-      }
-      // Reconverge the modal on true server state regardless of partial outcome.
+      const { failed, lastError } = await applyCoOwnerMutations(
+        service,
+        resourceId,
+        addUsers,
+        removeUsers,
+      );
+      // Reconverge on true server state regardless of partial outcome.
       const outcome = await refreshCoOwnerData(resourceId, requestId);
       if (outcome !== "gone") {
-        // The mutations landed whatever the refresh said, and the list is
-        // page-scoped rather than modal-scoped. ("gone" already refreshed it.)
-        onListRefresh?.();
+        onListRefresh?.(); // page-scoped list; "gone" already refreshed it
       }
       if (outcome === "stale") {
-        // The user has opened another resource, so closing this modal or
-        // alerting would hit that one instead.
-        return false;
+        return false; // another resource is open now, not our modal to alert
       }
       if (outcome === "gone") {
-        // The refresh closed the modal and raised its own alert; a summary on
-        // top of it would only mislead.
-        return true;
+        return true; // refresh already closed the modal and alerted
       }
-      // "ok" and "error" both fall through: the mutations landed either way and
-      // their outcomes are known without the refresh, so a clean apply closes
-      // the modal rather than stranding it. A partial failure still leaves the
-      // staged diff computed against an unrefreshed roster -- clearing that is
-      // not done here.
+      // "ok" and "error" both fall through: the mutations landed either way.
       setAlertDetails(
         buildApplyAlert(
           addUsers,

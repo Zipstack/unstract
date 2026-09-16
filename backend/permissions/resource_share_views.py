@@ -68,22 +68,13 @@ def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
     """
     if not users:
         return []
-    from tenant_account_v2.sharing_helpers import (
-        access_survives_share_changes,
-        compute_effective_members,
-        org_admin_user_ids,
-    )
+    from tenant_account_v2.sharing_helpers import retained_user_ids
 
-    if access_survives_share_changes(instance):
+    retained = retained_user_ids(instance)
+    if retained is None:
         # Org-wide or frictionless: access never depended on the share, so
-        # nobody lost anything — and answering it via
-        # ``compute_effective_members`` would hydrate the whole org to say so.
+        # nobody lost anything.
         return []
-
-    retained = {member["user_id"] for member in compute_effective_members(instance)}
-    # Admins are outside compute_effective_members but ``for_user`` hands them
-    # every resource in the org, so a revoke takes nothing from them.
-    retained |= org_admin_user_ids(getattr(instance, "organization", None))
     return [user for user in users if user.pk not in retained]
 
 
@@ -144,8 +135,21 @@ class ResourceShareManagementMixin:
 
         resource = self.get_object()  # type: ignore[attr-defined]
         desired = _extract_desired_share_state(request.data)
-        users_before = self._read_axis(resource, "shared_users")
-        groups_before = self._read_axis(resource, "shared_groups")
+        # Only read an axis this request actually touches. authorize_and_commit
+        # takes long enough (auth checks, a DB write) that a concurrent request
+        # changing an axis this one left alone would otherwise land inside the
+        # window and get diffed as if this request made the change — the wrong
+        # actor's name in the notification.
+        users_before = (
+            self._read_axis(resource, "shared_users")
+            if "shared_users" in desired
+            else set()
+        )
+        groups_before = (
+            self._read_axis(resource, "shared_groups")
+            if "shared_groups" in desired
+            else set()
+        )
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
@@ -156,8 +160,16 @@ class ResourceShareManagementMixin:
         # Only the two per-recipient axes notify. ``shared_to_org`` is left out
         # deliberately: a toggle has no recipient list short of the whole org,
         # and it is read below as a reason someone KEPT access, not lost it.
-        users_after = self._read_axis(resource, "shared_users")
-        groups_after = self._read_axis(resource, "shared_groups")
+        users_after = (
+            self._read_axis(resource, "shared_users")
+            if "shared_users" in desired
+            else users_before
+        )
+        groups_after = (
+            self._read_axis(resource, "shared_groups")
+            if "shared_groups" in desired
+            else groups_before
+        )
         notify_resource_group_share_changed(
             resource=resource,
             added=groups_after - groups_before,

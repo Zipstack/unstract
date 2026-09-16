@@ -16,7 +16,6 @@ from unittest.mock import Mock, patch
 import pytest
 from account_v2.models import User
 from django.test import TestCase
-from permissions.roles import ResourceRole
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
@@ -26,6 +25,7 @@ from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from permissions.membership_serializers import AddOwnerSerializer
 from permissions.permission import IsParentToolOwner
+from permissions.roles import ResourceRole
 from permissions.tests.base import (
     RESOURCE_SPECS,
     CoOwnerOrgTestMixin,
@@ -124,7 +124,8 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_remove_rejects_service_account(self) -> None:
         """Symmetric with the add-side guard: a service-account owner cannot be
-        removed, so it can't be stranded off the resource (UN-2202 review #7)."""
+        removed, so it can't be stranded off the resource (UN-2202 review #7).
+        """
         svc = make_user("svc@example.com", is_service_account=True)
         self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
         response = self._remove(self.owner, svc.pk)
@@ -134,7 +135,8 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
     def test_shared_viewer_can_list_shared_users(self) -> None:
         """``list_of_shared_users`` is viewer-tier by design (spec §10): a shared
         user may open the owner popup. Guards against a re-tighten to IsOwner
-        (UN-2202 review #6)."""
+        (UN-2202 review #6).
+        """
         self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
         view = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
         request = self.factory.get("/x/")
@@ -191,7 +193,8 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_service_account_excluded_from_owner_roster(self) -> None:
         """A service-account OWNER row is a real grant but must not surface as a
-        removable co-owner or inflate the count badge (UN-2202 review #7)."""
+        removable co-owner or inflate the count badge (UN-2202 review #7).
+        """
         svc = make_user("svc@example.com", is_service_account=True)
         self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
         self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
@@ -201,9 +204,7 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(self.workflow.co_owners_count(), 2)
         # the filter is display-only — the SA still genuinely owns the resource
         self.assertTrue(
-            self.workflow.memberships.filter(
-                user=svc, role=ResourceRole.OWNER
-            ).exists()
+            self.workflow.memberships.filter(user=svc, role=ResourceRole.OWNER).exists()
         )
 
     def test_membership_save_derives_organization(self) -> None:
@@ -216,7 +217,8 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
 
 class CrossResourceOwnerManagementTests(CoOwnerOrgTestMixin, TestCase):
     """The shared owner-management surface behaves identically for every OSS
-    shareable resource (AgenticProject is covered cloud-side)."""
+    shareable resource (AgenticProject is covered cloud-side).
+    """
 
     def setUp(self) -> None:
         self._seed_org()
@@ -253,7 +255,8 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
     notifications with the right payload, and swallow notification failures so
     the owners request is never broken (best-effort). The resource-type hook is
     patched to a fixed value so the test does not depend on the cloud-only
-    notification plugin's conditional ``ResourceType`` import."""
+    notification plugin's conditional ``ResourceType`` import.
+    """
 
     def setUp(self) -> None:
         self._seed_org()
@@ -310,6 +313,20 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(kwargs["removed_by"], self.owner)
         self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
         self.assertEqual(kwargs["resource_instance"], self.workflow)
+
+    def test_remove_skips_notification_when_demoted_owner_retains_access(self) -> None:
+        """Demoted from OWNER, but an org admin still reaches every resource --
+        nothing was actually taken from them, so no "access removed" email.
+        """
+        self.workflow.memberships.create(user=self.admin, role=ResourceRole.OWNER)
+        with patch(
+            "account_v2.authentication_controller.AuthenticationController"
+            ".is_admin_by_role",
+            side_effect=lambda role: role == "admin",
+        ):
+            response = self._remove(self.owner, self.admin.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.service.send_access_removed_notification.assert_not_called()
 
     def test_notification_failure_does_not_break_add(self) -> None:
         self.service.send_co_owner_added_notification.side_effect = RuntimeError("boom")
@@ -399,9 +416,7 @@ class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
         before = {self.owner.pk, self.coowner.pk, self.viewer.pk}
         after = {self.owner.pk}
         with (
-            patch.object(
-                AdapterInstanceViewSet, "get_object", return_value=self.adapter
-            ),
+            patch.object(AdapterInstanceViewSet, "get_object", return_value=self.adapter),
             patch.object(
                 AdapterInstanceViewSet,
                 "_effective_member_ids",
@@ -536,9 +551,7 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         from adapter_processor_v2.views import AdapterInstanceViewSet
 
         # Only the SDK context-window lookup (a provider-shaped call) is mocked.
-        with patch.object(
-            AdapterInstance, "get_context_window_size", return_value=4096
-        ):
+        with patch.object(AdapterInstance, "get_context_window_size", return_value=4096):
             response = self._create(
                 AdapterInstanceViewSet,
                 {
@@ -615,7 +628,8 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_import_path_grants_creator_ownership(self) -> None:
         """The 7th grant site — ``create_tool_from_import_data`` — is a helper
-        the viewset sweep can't reach; pin it directly."""
+        the viewset sweep can't reach; pin it directly.
+        """
         from prompt_studio.prompt_studio_core_v2.models import CustomTool
         from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
             PromptStudioHelper,

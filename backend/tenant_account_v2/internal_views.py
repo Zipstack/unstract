@@ -1,4 +1,4 @@
-"""Internal API views for group-sharing email notifications (UN-3494 / UNS-848).
+"""Internal API views for group-sharing email notifications.
 
 Mounted under ``/internal/`` and gated by ``InternalAPIAuthMiddleware``. The
 notification worker calls these because ``workers/`` has no Django and every
