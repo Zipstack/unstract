@@ -350,12 +350,11 @@ function ConfigureConnectorModal({
     return true;
   };
 
-  // The read-only styling stops the mouse but not the keyboard, so cut the
-  // form's own submit path too rather than let Enter fire a doomed request.
-  const submitIfEditable = canEdit ? handleValidateAndSubmit : undefined;
-
-  const handleSave = async () => {
-    const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
+  const handleSave = async (validatedFormData) => {
+    // RJSF hands its own validated data to the submit path; the Save button
+    // has none and the state is current for it.
+    const formData = validatedFormData ?? formDataConfig;
+    const hasConfigChanges = !isEqual(formData, initialFormDataConfig);
 
     if (
       hasConfigChanges &&
@@ -373,7 +372,7 @@ function ConfigureConnectorModal({
     // configuration and closing as though everything saved. Stay quiet on
     // success when rules follow: the rule write reports the real outcome, and
     // a success toast ahead of its failure would read as though both landed.
-    if (!(await handleValidateAndSubmit(formDataConfig, !writesRules))) {
+    if (!(await handleValidateAndSubmit(formData, !writesRules))) {
       return false;
     }
     if (writesRules) {
@@ -389,6 +388,12 @@ function ConfigureConnectorModal({
     }
     return true;
   };
+
+  // Both ways of submitting take the same path. Enter used to reach the
+  // endpoint-only route, so a rule edit made alongside a config edit was
+  // reported saved and silently dropped. The read-only styling stops the
+  // mouse but not the keyboard, so this is still cut when canEdit is false.
+  const submitIfEditable = canEdit ? handleSave : undefined;
 
   const handleModalClose = () => {
     if (hasUnsavedChanges()) {
@@ -581,7 +586,9 @@ function ConfigureConnectorModal({
               <Button
                 type="primary"
                 loading={isSavingEndpoint}
-                onClick={handleSave}
+                // Wrapped: a bare reference would hand the click event to
+                // handleSave's validated-data parameter.
+                onClick={() => handleSave()}
                 disabled={!hasUnsavedChanges()}
               >
                 Save
