@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef, forwardRef, useEffect, useImperativeHandle } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -117,6 +118,106 @@ describe("antd-compatible structural shims (P4)", () => {
     const selected = screen.getByRole("tab", { selected: true });
     expect(selected).toHaveTextContent("Two");
     expect(screen.getByText("second")).toBeInTheDocument();
+  });
+
+  // A pane plus a live count of how many copies are mounted.
+  const mountProbe = (text) => {
+    const state = { mounts: 0 };
+    function Pane() {
+      useEffect(() => {
+        state.mounts += 1;
+        return () => {
+          state.mounts -= 1;
+        };
+      }, []);
+      return <div>{text}</div>;
+    }
+    return [Pane, state];
+  };
+
+  // Radix drops the pane behind an inactive tab; antd keeps it. The connector
+  // modal saves both panes through a ref, so a dropped pane loses both.
+  it("Tabs keep an opened keepMounted pane across a switch", () => {
+    const [Pane, probe] = mountProbe("hitl-pane");
+    const items = [
+      { key: "1", label: "Settings", children: <div>settings-pane</div> },
+      {
+        key: "MANUALREVIEW",
+        label: "Manual Review",
+        keepMounted: true,
+        children: <Pane />,
+      },
+    ];
+    const { rerender } = render(
+      <Tabs activeKey="MANUALREVIEW" items={items} />,
+    );
+    expect(probe.mounts).toBe(1);
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(probe.mounts).toBe(1);
+    // Mounted is not shown, and jsdom has no Tailwind -- assert the class.
+    const pane = screen.getByText("hitl-pane").closest(".ant-tabs-tabpane");
+    expect(pane).toHaveAttribute("data-state", "inactive");
+    expect(pane).toHaveClass("data-[state=inactive]:hidden");
+  });
+
+  // The failure this fixes is a ref, not a mount count: the modal saves the
+  // pane through one, and a dropped pane nulls it, so the save is skipped.
+  it("Tabs keep a ref into a kept pane usable after a switch", () => {
+    const ref = createRef();
+    const Pane = forwardRef((_props, r) => {
+      useImperativeHandle(r, () => ({ save: () => "saved" }));
+      return <div>hitl-pane</div>;
+    });
+    Pane.displayName = "Pane";
+    const items = [
+      { key: "1", label: "Settings", children: <div>settings-pane</div> },
+      {
+        key: "MANUALREVIEW",
+        label: "Manual Review",
+        keepMounted: true,
+        children: <Pane ref={ref} />,
+      },
+    ];
+    const { rerender } = render(
+      <Tabs activeKey="MANUALREVIEW" items={items} />,
+    );
+    expect(ref.current?.save()).toBe("saved");
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(ref.current?.save()).toBe("saved");
+  });
+
+  // Held from first open, not from render: a pane that loads on mount would
+  // otherwise alert for a tab nobody opened.
+  it("Tabs do not mount a keepMounted pane before it is opened", () => {
+    const [Pane, probe] = mountProbe("unopened-pane");
+    render(
+      <Tabs
+        activeKey="1"
+        items={[
+          { key: "1", label: "Settings", children: <div>settings-pane</div> },
+          {
+            key: "2",
+            label: "Manual Review",
+            keepMounted: true,
+            children: <Pane />,
+          },
+        ]}
+      />,
+    );
+    expect(probe.mounts).toBe(0);
+  });
+
+  // Per pane on purpose: panes that refetch on remount keep today's default.
+  it("Tabs still unmount a pane that did not ask to be kept", () => {
+    const [Pane, probe] = mountProbe("plain-pane");
+    const items = [
+      { key: "1", label: "One", children: <div>one</div> },
+      { key: "2", label: "Two", children: <Pane /> },
+    ];
+    const { rerender } = render(<Tabs activeKey="2" items={items} />);
+    expect(probe.mounts).toBe(1);
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(probe.mounts).toBe(0);
   });
 
   /*
