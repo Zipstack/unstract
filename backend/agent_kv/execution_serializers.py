@@ -135,8 +135,8 @@ class TableKeysSerializer(serializers.Serializer):
 
 
 # Each extractor's own validators. Keyed by the same names as EXTRACTOR_ROUTES;
-# `test_every_supported_extractor_has_a_route_and_a_stage_list` plus the
-# lookup below keep the three tables in step.
+# `test_every_supported_extractor_has_a_route_stage_list_and_options_serializer`
+# keeps the three tables in step.
 _OPTIONS_SERIALIZERS = {
     V1_EXTRACTOR_NAME: KVOptionsSerializer,
     TABLE_EXTRACTOR_NAME: TableOptionsSerializer,

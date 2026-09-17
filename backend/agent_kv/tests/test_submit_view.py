@@ -679,6 +679,50 @@ def test_real_serializer_through_real_view_reaches_dispatch_intact(
     assert kwargs["options"]["page_end"] == 5
 
 
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)  # autospec: see _stamp_created_at
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(AgentKVKey, "objects")
+def test_real_serializer_through_real_view_reaches_dispatch_intact_for_table(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
+):
+    """The table path's version of the test above -- and the exact contract
+    that already broke once: an earlier version had the consumer reading
+    `target_table` off the top level of `executor_params` while the producer
+    nested it under `schema`, which would have failed every table job, and it
+    survived two rounds of unit tests on both sides because each side was
+    internally consistent on its own. Only a test that runs the real
+    serializer AND the real view together, and inspects what lands at
+    `dispatch_job`, can catch that kind of drift.
+    """
+    m_keys.get.return_value = kv_key()
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+    schema = {"target_table": "Rent rolls"}
+
+    resp = ev.SubmitView.as_view()(
+        _real_multipart_post(
+            [{"name": "table", "keys": schema, "options": {"instructions": "skip totals"}}],
+        )
+    )
+
+    assert resp.status_code == 202, resp.data
+    kwargs = m_dispatch.call_args.kwargs
+    assert kwargs["extractor"] == "table"
+    # Nested under `schema`, matching exactly what the cloud executor reads
+    # (`params["schema"]["target_table"]") -- NOT hoisted to the top level.
+    assert kwargs["schema"] == {"target_table": "Rent rolls"}
+    assert kwargs["options"]["instructions"] == "skip totals"
+
+    # The job row records which extractor it ran (execution_views.py:142) --
+    # asserted here since nothing else in this suite reads it back.
+    job = m_dispatch.call_args.args[0]
+    assert job.extractor == "table"
+
+
 @mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(ev, "get_plugin", return_value={"module": object()})
 @mock.patch.object(AgentKVKey, "objects")

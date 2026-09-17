@@ -27,6 +27,7 @@ from agent_kv.constants import (  # noqa: E402
     V1_EXTRACTOR_NAME,
 )
 from agent_kv.execution_serializers import (  # noqa: E402
+    _OPTIONS_SERIALIZERS,
     SUPPORTED_EXTRACTORS,
     ExtractorSerializer,
 )
@@ -37,13 +38,18 @@ def test_both_extractors_are_supported():
     assert set(SUPPORTED_EXTRACTORS) == {V1_EXTRACTOR_NAME, TABLE_EXTRACTOR_NAME}
 
 
-def test_every_supported_extractor_has_a_route_and_a_stage_list():
+def test_every_supported_extractor_has_a_route_stage_list_and_options_serializer():
     """A supported extractor with no route dispatches nowhere; with no stage
-    list its progress is recorded and then filtered out of the status document.
+    list its progress is recorded and then filtered out of the status
+    document; with no options serializer, a submit for it raises an
+    uncaught KeyError at `_OPTIONS_SERIALIZERS[data["name"]]` instead of a
+    validation error -- `validate_name` already passed it, since
+    `SUPPORTED_EXTRACTORS` is derived from `EXTRACTOR_ROUTES`.
     """
     for name in SUPPORTED_EXTRACTORS:
         assert name in EXTRACTOR_ROUTES, name
         assert name in STAGE_NAMES_BY_EXTRACTOR, name
+        assert name in _OPTIONS_SERIALIZERS, name
 
 
 def test_the_table_route_targets_the_existing_executor():
