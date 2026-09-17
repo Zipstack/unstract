@@ -105,7 +105,14 @@ interface CardProps
 
 interface TabsProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
-  items?: Array<KeyedItem & { children?: React.ReactNode }>;
+  /**
+   * `keepMounted` holds a pane in the DOM once it has been opened, as antd
+   * does. Radix unmounts the pane behind an inactive tab, so a pane carrying
+   * unsaved edits loses them -- and any ref to it -- on a tab switch.
+   */
+  items?: Array<
+    KeyedItem & { children?: React.ReactNode; keepMounted?: boolean }
+  >;
   activeKey?: string;
   defaultActiveKey?: string;
   onChange?: (key: string) => void;
@@ -523,6 +530,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
           icon?: React.ReactNode;
           children?: React.ReactNode;
           disabled?: boolean;
+          keepMounted?: boolean;
           "data-testid"?: string;
         }> => React.isValidElement(c),
       )
@@ -547,9 +555,30 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         icon: c.props.icon,
         children: c.props.children,
         disabled: c.props.disabled,
+        keepMounted: c.props.keepMounted,
       }));
 
   const first = panes[0]?.key;
+
+  /*
+   * Only a pane the user has actually opened is held. Mounting every
+   * `keepMounted` pane up front would run its loaders behind a tab nobody
+   * looked at -- the HITL pane alerts on a failed load, so that surfaces as
+   * an error for a tab the user never opened.
+   */
+  const shownKey = String(activeKey ?? defaultActiveKey ?? first ?? "");
+  const [openedKeys, setOpenedKeys] = React.useState<ReadonlySet<string>>(
+    () => new Set(shownKey ? [shownKey] : []),
+  );
+  const noteOpened = React.useCallback((key: string) => {
+    setOpenedKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }, []);
+  // Covers the controlled case; the uncontrolled one comes through onChange.
+  React.useEffect(() => {
+    if (shownKey) {
+      noteOpened(shownKey);
+    }
+  }, [shownKey, noteOpened]);
 
   return (
     <ShadcnTabs
@@ -559,7 +588,10 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
       {...(activeKey != null
         ? { value: String(activeKey) }
         : { defaultValue: String(defaultActiveKey ?? first ?? "") })}
-      onValueChange={(v) => onChange?.(v)}
+      onValueChange={(v) => {
+        noteOpened(v);
+        onChange?.(v);
+      }}
       className={cn("ant-tabs", className)}
       data-testid={testId}
       // Radix Root takes value/defaultValue/onValueChange/orientation only;
@@ -636,7 +668,15 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         <TabsContent
           key={String(p.key)}
           value={String(p.key)}
-          className="ant-tabs-content ant-tabs-tabpane"
+          // A force-mounted pane counts as present, so Radix renders it
+          // without `hidden` -- both panes would show. Hide it on the state.
+          forceMount={
+            p.keepMounted && openedKeys.has(String(p.key)) ? true : undefined
+          }
+          className={cn(
+            "ant-tabs-content ant-tabs-tabpane",
+            p.keepMounted && "data-[state=inactive]:hidden",
+          )}
         >
           {p.children}
         </TabsContent>

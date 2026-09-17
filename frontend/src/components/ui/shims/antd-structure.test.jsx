@@ -6,6 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -117,6 +118,95 @@ describe("antd-compatible structural shims (P4)", () => {
     const selected = screen.getByRole("tab", { selected: true });
     expect(selected).toHaveTextContent("Two");
     expect(screen.getByText("second")).toBeInTheDocument();
+  });
+
+  /*
+   * A counter shared by the mounting tests below. Returns the pane component
+   * plus a read of how many copies are currently mounted.
+   */
+  const mountProbe = (text) => {
+    const state = { mounts: 0 };
+    function Pane() {
+      useEffect(() => {
+        state.mounts += 1;
+        return () => {
+          state.mounts -= 1;
+        };
+      }, []);
+      return <div>{text}</div>;
+    }
+    return [Pane, state];
+  };
+
+  /*
+   * Radix unmounts the pane behind an inactive tab; antd keeps it. The
+   * connector modal's one Save flushes both panes through a ref, so an
+   * unmounted HITL pane lost its edits AND its ref -- and the save skipped
+   * it and still reported success.
+   */
+  it("Tabs keep an opened keepMounted pane across a switch", () => {
+    const [Pane, probe] = mountProbe("hitl-pane");
+    const items = [
+      { key: "1", label: "Settings", children: <div>settings-pane</div> },
+      {
+        key: "MANUALREVIEW",
+        label: "Manual Review",
+        keepMounted: true,
+        children: <Pane />,
+      },
+    ];
+    const { rerender } = render(
+      <Tabs activeKey="MANUALREVIEW" items={items} />,
+    );
+    expect(probe.mounts).toBe(1);
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(probe.mounts).toBe(1);
+    // Mounted is not shown. Radix leaves a force-mounted pane WITHOUT its
+    // `hidden` attribute, so without this class both panes render at once.
+    // jsdom loads no Tailwind, so the class is what is assertable here.
+    const pane = screen.getByText("hitl-pane").closest(".ant-tabs-tabpane");
+    expect(pane).toHaveAttribute("data-state", "inactive");
+    expect(pane).toHaveClass("data-[state=inactive]:hidden");
+  });
+
+  /*
+   * Held from first open, not from render. The HITL pane loads on mount and
+   * alerts when that fails, so mounting it up front would raise an error for
+   * a tab the user never opened.
+   */
+  it("Tabs do not mount a keepMounted pane before it is opened", () => {
+    const [Pane, probe] = mountProbe("unopened-pane");
+    render(
+      <Tabs
+        activeKey="1"
+        items={[
+          { key: "1", label: "Settings", children: <div>settings-pane</div> },
+          {
+            key: "2",
+            label: "Manual Review",
+            keepMounted: true,
+            children: <Pane />,
+          },
+        ]}
+      />,
+    );
+    expect(probe.mounts).toBe(0);
+  });
+
+  /*
+   * The opt-in is per pane on purpose. Panes that fetch on mount rely on the
+   * unmount to refresh, so the default has to stay as it was.
+   */
+  it("Tabs still unmount a pane that did not ask to be kept", () => {
+    const [Pane, probe] = mountProbe("plain-pane");
+    const items = [
+      { key: "1", label: "One", children: <div>one</div> },
+      { key: "2", label: "Two", children: <Pane /> },
+    ];
+    const { rerender } = render(<Tabs activeKey="2" items={items} />);
+    expect(probe.mounts).toBe(1);
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(probe.mounts).toBe(0);
   });
 
   /*
